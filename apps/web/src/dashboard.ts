@@ -1,6 +1,7 @@
 import { ApiClient, friendlyError, type Dto } from './api';
 import { date, esc } from './ui';
 import { prototypeIcon as icon } from './prototype-design';
+import { ReviewHistory } from './review-history';
 
 type Project = Dto<'ProjectListResponse'>['items'][number];
 const states: Record<string, string> = { draft:'待提供材料',preparing:'准备中',queued:'排队中',running:'正在更新',awaiting_input:'待补充材料',paused:'等待继续',validating:'检查成果',delivering:'生成文档',settlement_pending:'结算处理中',succeeded:'已完成',test_completed:'内部测试稿',failed:'处理失败',cancelled:'已停止',rejected:'未启动' };
@@ -10,14 +11,15 @@ export class Dashboard {
   private controller = new AbortController();
   private filter = 'all';
   private items: Project[] = [];
-  constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private current: () => boolean) {}
-  dispose() { this.controller.abort(); }
+  private history: ReviewHistory;
+  constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private current: () => boolean) { this.history = new ReviewHistory(api); }
+  dispose() { this.controller.abort(); this.history.dispose(); }
   async render() {
     this.shell(`<div class="page-head"><div><div class="eyebrow">INTELLIGENCE DASHBOARD</div><h1>工作台</h1><p>查看项目成果与处理进度，选择下一项任务。</p></div></div>
-      <div class="stats">${[['update','募集书更新','查看更新项目','update'],['review','募集书复核','尚未开放','review'],['qa','项目问答','尚未开放','chat']].map(([kind,title,status,ico]) => `<a class="stat" href="${kind === 'update' ? '#tasks?kind=update' : `#${kind}`}"><div class="stat-icon">${icon(ico)}</div><div><div class="stat-label">${title}</div><div class="stat-number stat-availability">${kind === 'update' ? '成果与进度' : status}</div></div><span class="stat-tail">${kind === 'update' ? '查看成果 ↗' : '准备中'}</span></a>`).join('')}</div>
+      <div class="stats">${[['update','募集书更新','查看更新项目','update'],['review','募集书复核','成果与进度','review'],['qa','项目问答','尚未开放','chat']].map(([kind,title,status,ico]) => `<a class="stat" href="${kind !== 'qa' ? '#tasks?kind=' + kind : `#${kind}`}"><div class="stat-icon">${icon(ico)}</div><div><div class="stat-label">${title}</div><div class="stat-number stat-availability">${kind === 'update' ? '成果与进度' : status}</div></div><span class="stat-tail">${kind !== 'qa' ? '查看成果 ↗' : '准备中'}</span></a>`).join('')}</div>
       <section><div class="section-head"><h2>今天，从哪一步开始？</h2><span class="muted">专为债券项目工作而设计</span></div><div class="workflow-cards">${[
         ['update','01','更新募集书','结合项目资料与发行安排，<br>完成整份募集书的更新。','材料评估 · Word 导出'],
-        ['review','02','复核募集书','财务数据、合规与格式、<br>公开信息，三类依据交叉复核。','尚未开放'],
+        ['review','02','复核募集书','财务数据、合规与格式、<br>公开信息，三类依据交叉复核。','三维复核 · 按问题修订'],
         ['generate','03','材料生成','关联募集书，按模板生成<br>立项报告、核查意见等材料。','尚未开放'],
         ['qa','04','项目问答','解读项目与财务材料，<br>查询工商、股权和债券信息。','尚未开放']
       ].map(([route,n,title,description,tail]) => `<a class="workflow-card" href="#${route}"><span class="card-number">${n} /</span><div class="feature-icon">${icon(route === 'generate' ? 'spark' : route === 'qa' ? 'chat' : route)}</div><h3>${title}</h3><p>${description}</p><div class="card-bottom"><span>${tail}</span>${icon('arrow')}</div></a>`).join('')}</div></section>
@@ -38,7 +40,22 @@ export class Dashboard {
       const result = await this.api.projects(undefined, { limit:'4', ...(this.filter === 'all' ? {} : { kind:this.filter as 'update' | 'review' }) }, signal);
       if (!this.current() || signal.aborted) return;
       this.items = result.items;
+      const reviewProjects = this.items.filter(item=>item.kind==='review');
       host.innerHTML = this.items.length ? `<div class="table-wrap"><table><thead><tr><th>项目名称</th><th>状态</th><th>最近更新</th><th></th></tr></thead><tbody>${this.items.map(item => `<tr><td><a class="task-title" href="#/projects/${encodeURIComponent(item.project_id)}">${esc(item.name)}</a><span class="sub">${esc(item.issuer_name || '发行人待填写')}</span></td><td><span class="badge ${item.status === 'failed' ? 'error' : 'neutral'}">${esc(states[item.status ?? 'draft'] ?? '正在同步')}</span></td><td class="muted">${esc(date(item.updated_at))}</td><td><a href="#/projects/${encodeURIComponent(item.project_id)}" aria-label="继续${esc(item.name)}">${icon('chevron')}</a>${item.latest_artifact ? `<a class="text-btn" href="#/artifacts/${encodeURIComponent(item.latest_artifact.artifact_id)}">查看成果</a>` : ''}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty"><div class="empty-icon">${icon('folder')}</div><h3>你的下一份成果，从这里开始</h3><p>项目、材料和处理结果会汇集在这里。</p><a class="btn secondary small" href="#update">${icon('plus')}新建募集书项目</a></div>`;
+      // Review history belongs to workbench project cards, including failed/stopped runs.
+      for (const item of reviewProjects) {
+        host.querySelector(`a.task-title[href="#/projects/${encodeURIComponent(item.project_id)}"]`)?.closest('tr')?.remove();
+      }
+      if (reviewProjects.length === this.items.length) host.querySelector('.table-wrap')?.remove();
+      if (reviewProjects.length) {
+        const cards=document.createElement('div');cards.className='review-project-cards';
+        cards.innerHTML=reviewProjects.map(item=>`<article class="review-project-card"><div class="review-project-card-head"><span class="review-tag">募集书复核</span><span class="badge ${item.status==='failed'?'error':'neutral'}">${esc(item.status==='running'?'正在复核':item.status==='settlement_pending'?'确认结果中':states[item.status??'draft']??'正在同步')}</span></div><h3><a href="#/projects/${encodeURIComponent(item.project_id)}">${esc(item.name)}</a></h3><p>${esc(item.issuer_name||'发行人从材料识别')} · ${esc(date(item.updated_at))}</p><div class="review-history-actions"><a class="btn secondary small" href="#/projects/${encodeURIComponent(item.project_id)}">继续项目</a><button class="review-history-button" data-review-history="${esc(item.project_id)}">版本记录</button></div></article>`).join('');
+        host.prepend(cards);
+        cards.querySelectorAll<HTMLButtonElement>('[data-review-history]').forEach(button=>button.addEventListener('click',()=>{
+          const project=reviewProjects.find(item=>item.project_id===button.dataset.reviewHistory);
+          if(project)void this.history.open(project.project_id,project.name);
+        }));
+      }
     } catch (error) {
       if (!this.current() || signal.aborted) return;
       host.innerHTML = `<div class="empty"><p role="alert">${esc(friendlyError(error))}</p><button class="btn secondary" id="retry-dashboard">重新读取项目</button></div>`;
