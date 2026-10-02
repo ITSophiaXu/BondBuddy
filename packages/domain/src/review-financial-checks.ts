@@ -97,7 +97,7 @@ function candidate(ctx: ReviewEvidenceContext, o: ReviewFinancialObservation, ke
     target_refs:o.value_refs,evidence_refs:support,limitations:limits,verification:'deterministic' };
 }
 
-export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: ReviewEvidenceContext): ReviewEvaluation {
+export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: ReviewEvidenceContext, targetObservationIds?:readonly string[]): ReviewEvaluation {
   if (input.observations.length > 10000 || input.calculations.length > 10000) throw new Error('REVIEW_FINANCIAL_INPUT_LIMIT');
   if (new Set(input.observations.map(o => o.observation_id)).size !== input.observations.length
     || new Set(input.calculations.map(c => c.calculation_id)).size !== input.calculations.length) throw new Error('REVIEW_FINANCIAL_DUPLICATE_ID');
@@ -112,8 +112,8 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
     result.coverage.push(reviewCoverage(ctx,checkId,'financial',outcome,reason,
       uniqueEvidence([...references(o),...support].filter(ref => validateReviewEvidence(ref,ctx).length === 0)),findings));
   };
-  const disclosures = input.observations.filter(o => o.source_kind === 'disclosure');
-  if (!disclosures.length) result.coverage.push(reviewCoverage(ctx,'financial:source-mapping','financial','uncovered',
+  const disclosures = input.observations.filter(o => o.source_kind === 'disclosure' && (!targetObservationIds || targetObservationIds.includes(o.observation_id)));
+  if (!disclosures.length && targetObservationIds === undefined) result.coverage.push(reviewCoverage(ctx,'financial:source-mapping','financial','uncovered',
     '尚无带主体、期间、口径和原文锚点的募集书财务观察，不能将未抽取视作无差异。',[]));
   for (const o of disclosures) {
     const key = `compare:${o.observation_id}`;
@@ -145,6 +145,7 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
     emit(key,o,finding,support,'本项金额差异经精确数值复算确认。');
   }
   for (const calculation of input.calculations) {
+    if(targetObservationIds&&!targetObservationIds.includes(calculation.result_id))continue;
     const key = `calculation:${calculation.calculation_id}`;
     const observed = byId.get(calculation.result_id);
     const operands = calculation.operand_ids.map(id => byId.get(id));

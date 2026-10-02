@@ -1,5 +1,6 @@
 // All entities, document contents and model replies are SYNTHETIC. PostgreSQL, private Azure Blob,
-// upload inspection, Python parse, contained process/journal, Word writers, promotion and downloads are real.
+// upload inspection, Python parse, contained CLI process/journal and run-local tool server,
+// Word writers, promotion and downloads are real. This is not a model-provider or professional acceptance.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -36,7 +37,7 @@ const run=promisify(execFile);
 const docx='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const fake=fileURLToPath(new URL('../test-fixtures/codex/review-pipeline.mjs',import.meta.url));
 
-test('M3 real upload/parse → synthetic contained review → report/comments downloads → accepted plan revision pair → immutable history',
+test('M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history',
   {skip:!database||!connection||!python,timeout:180000},async()=>{
     const pool=new Pool({connectionString:database});
     const root=await mkdtemp(join(tmpdir(),'bb-m3-pipeline-')),marker=join(root,'synthetic-calls.jsonl');
@@ -135,7 +136,7 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       const modelAttempts=async()=> (await pool.query(`SELECT a.id,a.logical_call_id,a.attempt_no,a.status FROM bb_model_call_attempts a
         JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.id=a.job_id WHERE j.owner_user_id=$1 AND j.run_id=$2 ORDER BY a.id`,[owner,reviewRun.run_id])).rows;
       const beforeReplayReports=await savedReports(),beforeReplayFiles=await promotedFiles(),beforeReplayAttempts=await modelAttempts(),beforeReplayCalls=await calls();
-      assert.equal(beforeReplayReports.length,1);assert.equal(beforeReplayFiles.length,2);assert.equal(beforeReplayAttempts.length,2);
+      assert.equal(beforeReplayReports.length,1);assert.equal(beforeReplayFiles.length,2);assert.equal(beforeReplayAttempts.length,1,'one CLI turn replaces extraction batches');
       const completion=(await pool.query('SELECT checkpoint,state FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2',[owner,reviewRun.run_id])).rows[0];
       assert.equal(completion.state,'running');assert.equal(completion.checkpoint.stages.review_completion.completed_at,beforeReplayReports[0].report.created_at);
       assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_artifacts WHERE owner_user_id=$1 AND run_id=$2',[owner,reviewRun.run_id])).rows[0].n),0);
@@ -168,7 +169,8 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       const sourceView=await inspect(sourceBytes,'source-inspected'),commentView=await inspect(comments.bytes,'comments-downloaded'),reportView=await inspect(reportFile.bytes,'report-downloaded');
       assert.equal(commentView.visible,sourceView.visible);assert.equal(commentView.insertions,0);assert.equal(commentView.deletions,0);
       assert.ok(commentView.comment_count>=2);assert.ok(commentView.comments.includes(selected.finding_id));assert.ok(reportView.visible.includes('募集书复核报告'));
-      const reviewCalls=(await calls()).filter(call=>call.operation==='review');assert.equal(reviewCalls.length,2);for(const call of reviewCalls)assert.deepEqual(call.requirements,input.requirements);
+      const reviewCalls=(await calls()).filter(call=>call.operation==='review');assert.equal(reviewCalls.length,1);
+      for(const call of reviewCalls){assert.deepEqual(call.requirements,input.requirements);assert.equal(call.tool_receipts,1,'CLI explicitly requested the financial check');assert(call.knowledge_read_complete);}
       const evidenceMessage=await send('POST',`/api/v1/projects/${project}/review-messages`,{submission_request_id:randomUUID(),content:'合成问题：结合所选问题解释审计附件原文。',
         context:{project_id:project,report_id:report.report_id,finding_ids:[selected.finding_id],material_refs:[audit]}});
       assert.equal(evidenceMessage.statusCode,200,evidenceMessage.body);assert.equal(await runReviewAssistantOnce({pool,blobs,config}),'completed');

@@ -62,7 +62,9 @@ function graphProblem(start:string,edges:ReadonlyMap<string,string[]>):string|un
  * It does not approve facts, promote model context, or substitute cached values for original text.
  */
 export function produceNativeReviewFormulas(input:{evidence:ReviewEvidenceContext;records:readonly ReviewAnalysisRecord[];
-  observations:readonly ReviewFinancialObservation[];target_keys:ReadonlySet<string>;full_review:boolean}):NativeReviewFormulaResult{
+  observations:readonly ReviewFinancialObservation[];target_keys:ReadonlySet<string>;full_review:boolean;
+  /** CLI tools select declarations. Omitted preserves the existing native producer API. */
+  declaration_record_keys?:ReadonlySet<string>}):NativeReviewFormulaResult{
   const output:NativeReviewFormulaResult={calculations:[],gaps:[]};
   const declarations=input.records.flatMap(r=>{const d=declaration(r);return d?[d]:[];});
   const groups=new Map<string,ReviewAnalysisRecord[]>();
@@ -106,6 +108,7 @@ export function produceNativeReviewFormulas(input:{evidence:ReviewEvidenceContex
     edges.set(key,[...edges.get(key)??[],...d.terms.slice(0,MAX_TERMS).map(term=>locationKey(d,term))]);
   }
   for(const d of declarations){
+    if(input.declaration_record_keys&&!input.declaration_record_keys.has(evidenceKey(d.record)))continue;
     const records=groups.get(d.scope)!;
     const target=resolve(d,d.result),targeted=target.observations.filter(o=>o.value_refs.every(ref=>input.target_keys.has(evidenceKey(ref))));
     const targetRecords=target.records.filter(r=>input.target_keys.has(evidenceKey(r)));

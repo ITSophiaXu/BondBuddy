@@ -34,16 +34,17 @@ function ruleBelongsToPack(ref: ReviewRuleRef, pack: RulePack | undefined): bool
     && source.effective_from === ref.effective_from && source.effective_to === ref.effective_to;
 }
 
-export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: ReviewEvidenceContext): ReviewEvaluation {
+export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: ReviewEvidenceContext,selection?:{rule_keys:readonly string[];formatting_check_ids:readonly string[]}): ReviewEvaluation {
   if (input.assessments.length > 10000 || input.formatting_requirements.length > 10000) throw new Error('REVIEW_COMPLIANCE_INPUT_LIMIT');
   if (new Set([...input.assessments,...input.formatting_requirements].map(c => c.check_id)).size !== input.assessments.length + input.formatting_requirements.length)
     throw new Error('REVIEW_COMPLIANCE_DUPLICATE_CHECK');
   const result: ReviewEvaluation = { findings:[],coverage:[],limitations:[] };
   const eligible = new Map<string, Set<string>>();
   const gatedPacks = new Map<string, string>();
-  if (!input.context) result.coverage.push(reviewCoverage(ctx,'rules:context-missing','compliance','uncovered',
+  if (!input.context && (!selection || selection.rule_keys.length)) result.coverage.push(reviewCoverage(ctx,'rules:context-missing','compliance','uncovered',
     '市场、品种、适用日期或发行阶段缺失，不能推测规则适用性。',[]));
   for (const pack of input.packs) {
+    if (selection && !selection.rule_keys.some(key => key.startsWith(`${pack.pack_id}:`))) continue;
     if (eligible.has(pack.pack_id) || gatedPacks.has(pack.pack_id)) throw new Error('REVIEW_RULE_PACK_AMBIGUOUS');
     try {
       if (!input.context) { gatedPacks.set(pack.pack_id,'rule_context_missing'); continue; }
@@ -58,10 +59,11 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     } catch { gatedPacks.set(pack.pack_id,'rule_pack_invalid');
       result.coverage.push(reviewCoverage(ctx,`rules:${pack.pack_id}:applicability`,'compliance','uncovered','规则包结构或来源校验未通过，不能生成正式合规结论。',[])); }
   }
-  if (!input.packs.length) result.coverage.push(reviewCoverage(ctx,'rules:missing','compliance','uncovered',
+  if (!input.packs.length && (!selection || selection.rule_keys.length)) result.coverage.push(reviewCoverage(ctx,'rules:missing','compliance','uncovered',
     '没有针对当前市场、品种及阶段的有效规则包，不套用其他市场或小公募规则。',[]));
   const assessed = new Set<string>();
   for (const assessment of input.assessments) {
+    if (selection && !selection.rule_keys.includes(`${assessment.pack_id}:${assessment.rule_id}`)) continue;
     const ids = eligible.get(assessment.pack_id);
     if (!ids?.has(assessment.rule_id)) {
       // A persisted source may be supplied as reading material while project applicability is
@@ -107,12 +109,14 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
       assessment.rule_refs.filter(ref => validateReviewRule(ref,ctx).length === 0)));
   }
   for (const [packId,ids] of eligible) for (const ruleId of ids) if (!assessed.has(`${packId}:${ruleId}`)) {
+    if (selection && !selection.rule_keys.includes(`${packId}:${ruleId}`)) continue;
     result.coverage.push(reviewCoverage(ctx,`rules:${packId}:${ruleId}:not-run`,'compliance','uncovered',
       '该适用规则没有实际检查记录，不能因无 finding 视为通过。',[],[],ctx.rules.filter(rule => rule.pack_id === packId && rule.rule_id === ruleId)));
   }
-  if (!input.formatting_requirements.length) result.coverage.push(reviewCoverage(ctx,'formatting:requirements-missing','compliance','uncovered',
+  if (!input.formatting_requirements.length && !selection) result.coverage.push(reviewCoverage(ctx,'formatting:requirements-missing','compliance','uncovered',
     '尚未提供明确的适用格式或模板要求，本轮不声称字体、字号、间距、分页或视觉版式已检查。',[]));
   for (const requirement of input.formatting_requirements) {
+    if (selection && !selection.formatting_check_ids.includes(requirement.check_id)) continue;
     const ruleErrors = validateReviewRule(requirement.rule_ref,ctx);
     const applicable = requirement.rule_ref.applicability === 'applicable' && (requirement.rule_ref.authority !== 'regulatory'
       || eligible.get(requirement.rule_ref.pack_id)?.has(requirement.rule_ref.rule_id)

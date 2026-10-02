@@ -13,11 +13,12 @@ import { normalizeReviewFindings } from '../../../packages/domain/dist/review-fi
 import { produceNativeReviewFormulas } from './review-native-formulas.js';
 import { chunkReviewRecords, normalizeModelReviewAnalysis, reviewModelStage, type ReviewAnalysisInput, type ReviewAnalysisRecord, type ReviewAnalysisResult, type ModelReviewAnalysis } from './review-model-stage.js';
 import { reviewPromptRecordId } from './review-record-context.js';
+import { syntheticCliReview } from './review-cli-test-fixtures.js';
 import type { StageContext } from './run-pipeline.js';
 
 const python=process.env.BONDBUDDY_TEST_PYTHON??process.env.BB_PYTHON??'python3';
-const pythonAvailable=spawnSync(python,['-c','import docx,lxml,openpyxl'],{encoding:'utf8',windowsHide:true}).status===0;
-const nativeOptions={skip:pythonAvailable?false:'Set BONDBUDDY_TEST_PYTHON to Python with python-docx/lxml/openpyxl'};
+const pythonAvailable=spawnSync(python,['-c','import docx,lxml,openpyxl,pdfplumber,pypdf'],{encoding:'utf8',windowsHide:true}).status===0;
+const nativeOptions={skip:pythonAvailable?false:'Set BONDBUDDY_TEST_PYTHON to Python with the document parser dependencies'};
 const root=resolve(fileURLToPath(import.meta.url),'../../../..');
 const statement=(metric:string,value:string)=>'合成甲公司 合并 原始报表 2025-01-01至2025-12-31 CNY 万元 '+metric+value+'。';
 const citation=(r:ReviewAnalysisRecord)=>({record_id:reviewPromptRecordId(r),quote:r.literal_quote});
@@ -164,31 +165,40 @@ async function parseSynthetic(kind:'docx'|'xlsx'):Promise<ReviewAnalysisRecord[]
       literal_quote:r.literal_quote,extraction_method:r.extraction_method,uncertainty:r.uncertainty,formatting:r.formatting,context:r.context,source_kind:'disclosure'}));
   }finally{assert(directory.startsWith(resolve(tmpdir(),'bb-native-formulas-')));await rm(directory,{recursive:true,force:true});}
 }
-async function runStage(input:ReviewAnalysisInput,maxBatchRecords=1,includeModelFormula=false){
+async function runStage(input:ReviewAnalysisInput,includeModelFormula=true,selectNative=true){
   let calls=0;
   const ctx={run:{id:'synthetic-native-formula-run',owner_user_id:'owner',project_id:'project',input_revision:1,input_hash:input.input_hash},
     values:new Map(),checkpoint:{},signal:new AbortController().signal} as unknown as StageContext;
-  const result=await reviewModelStage({loadInput:async()=>input,maxBatchRecords,model:options=>({name:options.name,run:async context=>{
-    calls++;const data=JSON.parse((await options.buildPrompt(context)).split('输入数据：\n')[1]!);
-    const primary=input.evidence.records.filter(r=>data.records.some((p:{id:string})=>p.id===reviewPromptRecordId(r)));
-    const output=empty(data.records.map((r:{id:string})=>r.id));output.observations=values(primary).map(observation);
-    if(includeModelFormula&&output.observations.length===3)output.calculations=[{calculation_id:'model-sum',label:'模型计算',operation:'sum',result_id:'合计',operand_ids:['甲项','乙项'],complete_terms:true}];
-    assert(options.validate(output));return {kind:'done',value:output};
+  const result=await reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async context=>{
+    calls++;const prompt=JSON.parse((await options.buildPrompt(context)).split('输入数据：\n')[1]!);
+    assert.equal(prompt.records,undefined,'the CLI prompt is not an extraction batch');
+    const data=options.reviewTools!;
+    const primary=values(input.evidence.records).filter(r=>data.allowed_target_ids.includes(reviewPromptRecordId(r)));
+    const observations=primary.map(observation);
+    const calculations:ModelReviewAnalysis['calculations']=includeModelFormula&&observations.length===3
+      ?[{calculation_id:'cli-sum',label:'CLI explicitly selected sum',operation:'sum',result_id:'合计',operand_ids:['甲项','乙项'],complete_terms:true}]:[];
+    const native_formula_record_ids=selectNative?input.evidence.records.filter(r=>/^(计算关系|公式)：/.test(r.literal_quote)).map(reviewPromptRecordId):[];
+    const value=syntheticCliReview(data,{financial:{observations,calculations,native_formula_record_ids}});
+    assert(options.validate(value.output));return {kind:'done',value};
   }})}).run(ctx);
   assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('stage failed');return {report:(result.value as ReviewAnalysisResult).report,calls};
 }
-for(const kind of ['docx','xlsx'] as const)test('real '+kind+' parser → separate model batches → native source sum → bounded financial target',nativeOptions,async()=>{
+for(const kind of ['docx','xlsx'] as const)test('real '+kind+' parser → CLI-requested native source sum → bounded financial target without automatic scans',nativeOptions,async()=>{
   const records=await parseSynthetic(kind),before=structuredClone(records),input=inputFor(records);
   const batches=chunkReviewRecords(records,64000,1);assert(batches.length>=7);
-  const full=await runStage(input);assert.equal(full.calls,batches.length);
+  const full=await runStage(input);assert.equal(full.calls,1,'one CLI turn uses explicit tools instead of extraction batches');
   const errors=full.report.findings.filter(f=>f.conclusion==='error');
   assert.equal(errors.length,1);assert.equal(errors[0]!.suggested_change,'30.00');assert.equal(errors[0]!.repairability.can_revise,true);
   const total=records.find(r=>r.literal_quote===statement('合计','35.00'))!;
   assert.deepEqual(errors[0]!.target_refs.map(evidenceKey),[evidenceKey(total)]);
   assert(errors[0]!.evidence_refs.some(r=>r.quote.startsWith(kind==='docx'?'计算关系：':'公式：')));
   assert.deepEqual(records,before);
-  const joined=await runStage(input,120,true);
-  assert.equal(joined.report.coverage.filter(c=>c.check_id.startsWith('calculation:')).length,1,'same raw model relation is superseded, not duplicated');
+  assert.equal(full.report.coverage.filter(c=>c.check_id.startsWith('calculation:')).length,1,'the explicitly selected native relation is not duplicated');
+  const unrequested=await runStage(input,false,false);
+  assert(!unrequested.report.findings.some(f=>f.conclusion==='error'&&f.calculation?.expression==='sum'),'backend must not discover and calculate the native relation on its own');
+  assert(!unrequested.report.coverage.some(c=>c.check_id.startsWith('native-sum:')||c.check_id.startsWith('calculation:')));
+  const unverified=await runStage(input,true,false);
+  assert(unverified.report.findings.every(f=>!f.repairability.can_revise),'CLI arithmetic without explicit verified native relation is not repair authority');
   const prior=normalizeReviewFindings([{stable_key:'selected-sum',dimension:'financial',conclusion:'manual',severity:'P2',title:'合成合计待核',
     description:'只复核合计值',target_refs:[referenceFor(total)],evidence_refs:[referenceFor(total)]}],{...input.evidence,report_id:'previous-report'})[0]!;
   input.previous_report={...full.report,report_id:'previous-report',run_id:'previous-run',findings:[prior],coverage:[]};

@@ -12,10 +12,13 @@ import { normalizeReviewFindings } from '../../../packages/domain/dist/review-fi
 import { chunkReviewRecords, normalizeModelReviewAnalysis, reviewModelStage, type ReviewAnalysisInput, type ReviewAnalysisRecord, type ReviewAnalysisResult, type ModelReviewAnalysis } from './review-model-stage.js';
 import { createReviewContextSelector, promptReviewRecord, reviewPromptRecordId, reviewTableScope } from './review-record-context.js';
 import type { StageContext } from './run-pipeline.js';
+import { syntheticCliReview } from './review-cli-test-fixtures.js';
+import { callReviewTool, createReviewToolTrace } from './review-tools.js';
+import type { CliReview } from './review-model-stage.js';
 
 const python=process.env.BONDBUDDY_TEST_PYTHON??process.env.BB_PYTHON??'python3';
-const pythonAvailable=spawnSync(python,['-c','import docx,lxml,openpyxl'],{encoding:'utf8',windowsHide:true}).status===0;
-const nativeOptions={skip:pythonAvailable?false:'Set BONDBUDDY_TEST_PYTHON to Python with python-docx/lxml/openpyxl'};
+const pythonAvailable=spawnSync(python,['-c','import docx,lxml,openpyxl,pdfplumber,pypdf'],{encoding:'utf8',windowsHide:true}).status===0;
+const nativeOptions={skip:pythonAvailable?false:'Set BONDBUDDY_TEST_PYTHON to Python with the document parser dependencies'};
 const root=resolve(fileURLToPath(import.meta.url),'../../../..');
 async function parseSynthetic(kind:'xlsx'|'docx'):Promise<ReviewAnalysisRecord[]>{
   const directory=await mkdtemp(resolve(tmpdir(),'bb-review-context-'));
@@ -108,17 +111,19 @@ test('native XLSX batches retain exact own-sheet headers, merged anchors and spl
     const mixed=structuredClone(raw);mixed.observations[0]!.context_refs.period=[citation(foreign)];
     assert.throws(()=>normalizeModelReviewAnalysis({...input,evidence:{...input.evidence,records:[...records,old]}},mixed),/mixed_table_context/);
   }
-  let crossBatchChecked=false;
-  const run=await reviewModelStage({loadInput:async()=>input,maxBatchRecords:maxRecords,model:options=>({name:options.name,run:async c=>{
-    const data=JSON.parse((await options.buildPrompt(c)).split('输入数据：\n')[1]!);const output=empty(data.records.map((r:{id:string})=>r.id));
-    if(data.records.some((r:{id:string})=>r.id===reviewPromptRecordId(d25))){
-      crossBatchChecked=true;output.observations=[financialObservation(d25,headers)];assert(options.validate(output));
-      assert(data.context_records.some((r:{id:string})=>r.id===reviewPromptRecordId(headers[1]!)));
-      const repeated=structuredClone(output);repeated.observations=[financialObservation(headers[1]!,headers)];assert.equal(options.validate(repeated),false,'context cannot become a fresh extraction source');
-    }
-    return {kind:'done',value:output};
+  let explicitToolChecked=false;
+  const run=await reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async c=>{
+    const prompt=JSON.parse((await options.buildPrompt(c)).split('输入数据：\n')[1]!);
+    assert.equal(prompt.records,undefined,'CLI reads exact records through tools, not extraction batches');
+    const value=syntheticCliReview(options.reviewTools!,{financial:{observations:[financialObservation(d25,headers)],calculations:[]}});
+    explicitToolChecked=true;assert(options.validate(value.output));
+    for(const r of [d25,...headers])assert(value.tool_trace.read_record_ids.includes(reviewPromptRecordId(r)),'all cited headers were really read');
+    const observed=value.tool_trace.receipts[0]!.financial!.observations[0]!;
+    assert.equal(observed.context_verification,'unverified');
+    assert.equal(evidenceKey(observed.context_refs.period[0]!),evidenceKey(headers[1]!));
+    return {kind:'done',value};
   }})}).run(ctx);
-  assert.equal(run.kind,'done');assert(crossBatchChecked);
+  assert.equal(run.kind,'done');assert(explicitToolChecked);
   if(run.kind!=='done')return;
   const report=(run.value as ReviewAnalysisResult).report;assert(!report.coverage.some(c=>c.check_id.includes('context-capacity')));
   const sourceRef=normalized.financial.observations[0]!.value_refs[0]!;
@@ -126,11 +131,17 @@ test('native XLSX batches retain exact own-sheet headers, merged anchors and spl
   input.previous_report={...report,report_id:'previous-context-report',run_id:'previous-run',findings:[prior],coverage:[]};input.scope={mode:'differential_review',finding_ids:[prior.finding_id]};
   let scopedCalls=0;
   const differential=await reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async c=>{
-    scopedCalls++;const data=JSON.parse((await options.buildPrompt(c)).split('输入数据：\n')[1]!);assert.deepEqual(data.records.map((r:{id:string})=>r.id),[reviewPromptRecordId(d25)]);
-    const label=cell(records,sheet,'A25');assert(data.context_records.some((r:{id:string})=>r.id===reviewPromptRecordId(label)));
-    const output=empty([reviewPromptRecordId(d25)]);const widened=structuredClone(output);
+    scopedCalls++;await options.buildPrompt(c);assert.deepEqual(options.reviewTools!.allowed_target_ids,[reviewPromptRecordId(d25)]);
+    const label=cell(records,sheet,'A25');const value=syntheticCliReview(options.reviewTools!);
+    assert(value.tool_trace.read_record_ids.includes(reviewPromptRecordId(label)),'unselected row label may be read as context');
+    const widened=structuredClone(value.output);
     widened.concerns=[{stable_key:'outside',dimension:'financial',conclusion:'manual',severity:'P2',title:'Unselected context',description:'Cannot expand selected scope',target_refs:[citation(label)],evidence_refs:[],rule_keys:[],suggested_change:null,limitations:[]}];
-    assert.equal(options.validate(widened),false);return {kind:'done',value:output};
+    assert.equal(options.validate(widened),false);
+    const outside=callReviewTool(options.reviewTools!,'check_financial',{observations:[financialObservation(d24,headers)],calculations:[]},value.tool_trace) as {findings:{target_refs:unknown[]}[];coverage:unknown[]};
+    assert.deepEqual(outside.findings,[],'a read context observation cannot become an unselected differential target');
+    assert.deepEqual(outside.coverage,[],'unselected context observations do not produce target checks');
+    value.output.receipt_ids=value.tool_trace.receipts.map(r=>r.receipt_id);
+    return {kind:'done',value};
   }})}).run(ctx);
   assert.equal(differential.kind,'done');assert.equal(scopedCalls,1);
 });
@@ -154,19 +165,29 @@ test('native DOCX multi-batch tables and nested table:1 scopes cannot borrow for
   assert.throws(()=>normalizeModelReviewAnalysis({...input,evidence:{...input.evidence,records:[...records,oldPreamble]}},raw),/mixed_table_context/);
 });
 
-test('context byte/count overflow is explicit in prompt and persisted uncovered coverage, not silent truncation',nativeOptions,async()=>{
+test('context byte/count limits and CLI record pagination keep omitted evidence explicitly uncovered',nativeOptions,async()=>{
   const records=await parseSynthetic('xlsx'),sheet='02合并利润表',target=cell(records,sheet,'D25'),selector=createReviewContextSelector(records);
   for(const limits of [{maxBytes:0},{maxRecords:0},{maxBytes:900,maxRecords:1}]){
     const selected=selector([target],limits);assert(selected.gaps[0]!.omitted_record_count>0);assert.equal(selected.groups[0]?.omitted_record_count,selected.gaps[0]?.omitted_record_count);
     assert(Buffer.byteLength(selected.records.map(r=>JSON.stringify(promptReviewRecord(r))).join(''))<=(limits.maxBytes??64000));
   }
-  const {input,ctx}=fixture(records);let explicitGaps=0;
-  const result=await reviewModelStage({loadInput:async()=>input,maxBatchRecords:40,maxContextRecords:0,model:options=>({name:options.name,run:async c=>{
-    const data=JSON.parse((await options.buildPrompt(c)).split('输入数据：\n')[1]!);explicitGaps+=data.context_groups.filter((g:{omitted_record_count:number})=>g.omitted_record_count>0).length;
-    return {kind:'done',value:empty(data.records.map((r:{id:string})=>r.id))};
+  const {input,ctx}=fixture(records);let unreadCount=0;
+  const result=await reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async c=>{
+    await options.buildPrompt(c);const data=options.reviewTools!,trace=createReviewToolTrace(data);
+    const materials=(callReviewTool(data,'list_materials',{},trace) as {materials:{id:string;records:number}[]}).materials;
+    const page=callReviewTool(data,'read_records',{material_id:materials[0]!.id,offset:0,limit:1},trace) as {next_offset:number|null};
+    assert.equal(page.next_offset,1,'pagination explicitly exposes the unread remainder');
+    unreadCount=records.length-trace.read_record_ids.length;assert(unreadCount>0);
+    let offset:number|null=0;while(offset!==null)offset=(callReviewTool(data,'read_knowledge',{offset,limit:30000},trace) as {next_offset:number|null}).next_offset;
+    const output:CliReview={summary:'Synthetic partial CLI read; full evidence was not examined.',reviewed_record_count:trace.read_record_ids.length,receipt_ids:[],concerns:[],
+      checks:[{check_id:'cli:table-pagination-gap',dimension:'financial',outcome:'uncovered',reason:`本页未读取剩余 ${unreadCount} 条证据，不能确定完整同表上下文。`,
+        evidence_refs:[citation(records[0]!)],rule_keys:[],concern_keys:[],receipt_id:null,receipt_check_id:null,resolves_finding_ids:[]}],limitations:['Synthetic partial pagination only.']};
+    assert(options.validate(output));return {kind:'done',value:{output,tool_trace:trace}};
   }})}).run(ctx);
   assert.equal(result.kind,'done');if(result.kind!=='done')return;const report=(result.value as ReviewAnalysisResult).report;
-  const gaps=report.coverage.filter(c=>c.check_id.includes('context-capacity'));assert.equal(gaps.length,explicitGaps);assert(gaps.length>0);assert(gaps.every(c=>c.outcome==='uncovered'&&c.evidence_refs.length));assert(report.limitations.some(x=>x.includes('上下文容量缺口')));
+  const gap=report.coverage.find(c=>c.check_id==='cli:table-pagination-gap')!;assert.equal(gap.outcome,'uncovered');assert.equal(gap.evidence_refs.length,1);
+  const reading=report.coverage.find(c=>c.check_id==='cli:reading-coverage:financial')!;assert.equal(reading.outcome,'uncovered');assert(reading.reason.includes(`未读 ${unreadCount} 条`));
+  assert(!report.coverage.some(c=>c.outcome==='pass'),'reading a bounded page cannot imply completed checks');
 });
 
 test('a complete statement in a hidden worksheet remains unverified even with literal context proof',()=>{
