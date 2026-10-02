@@ -678,3 +678,7 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 ### 2026-10-02 M1 编制超时恢复
 
 已记录进程退出的统一编制 MODEL_TIMEOUT 由 worker sweep 在核对调用、结果引用和用量后自动安排有界重试，复用同 run/input 和已完成检查点。未知用量仍为 unknown；每逻辑调用最多重试两次、每任务六次，耗尽后明确失败，不无限暂停。进程失联、取消、已有结果和用量冲突不自动重放。具体条件、审计及私有恢复入口见 [供应商结果恢复说明](runbooks/provider-result-reconciliation.md#m1-unified-authoring-timeout-recovery-2026-10-02)。这不会新增材料或业务确认门槛，不改变 Word 交付检查。
+
+### 2026-10-02 编制执行修正
+
+统一编制新任务移除全集阅读笔记前置，在正文编制时通过同一 worker 内的三个固定只读材料工具检索本次输入；旧任务按原检查点继续重用已有调用。工具不提供通用 shell、任意文件路径、网络或数据库能力，原输入隔离及真实 Word 交付检查保留。暂停恢复只响应实际解析等待，不能用材料就绪重排上下文失败。[问题、实现和验收边界](acceptance/issue-35-direct-authoring-20261002.md)。

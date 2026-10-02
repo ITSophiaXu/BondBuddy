@@ -21,6 +21,7 @@ import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
+import type { MaterialToolData } from './authoring-material-tools.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
 import { markTestWord } from './test-word-marking.js';
@@ -456,6 +457,7 @@ export function codexModelStage(options: {
   name: string; logicalCallId: string; config: CodexAdapterConfig | (() => CodexAdapterConfig);
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
+  materialTools?: MaterialToolData;
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
   wrapJournal?: (journal: CodexJournal) => CodexJournal;
 }): RunStage {
@@ -490,7 +492,7 @@ export function codexModelStage(options: {
       if (callGate) return callGate;
       const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: { kind: 'json', schema: options.schema, validate: options.validate }, signal: ctx.signal }, journal, config);
+        output: { kind: 'json', schema: options.schema, validate: options.validate }, materialTools: options.materialTools, signal: ctx.signal }, journal, config);
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       // The observation may already have paused or failed the job; otherwise park it ourselves.

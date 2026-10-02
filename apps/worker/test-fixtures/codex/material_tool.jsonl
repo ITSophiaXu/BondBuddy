@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"synthetic-mcp-thread"}
+{"type":"item.started","item":{"id":"mcp-1","type":"mcp_tool_call","server":"bb_materials","tool":"read_records","arguments":{"material_id":"m0","offset":0}}}
+{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"bb_materials","tool":"read_records","status":"completed"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"{\"answer\":\"OK\",\"n\":16}"}}
+{"type":"turn.completed","usage":{"input_tokens":40,"output_tokens":16}}
