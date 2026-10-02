@@ -58,7 +58,7 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
-  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; wordSummary?: Record<string, unknown> }
+  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; wordSummary?: Record<string, unknown>; deliveryPolicy?: 'generated_pair_v1' }
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
   | { kind: 'stopped' };
 export type RunStage = {
@@ -585,7 +585,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, safePauseReason(outcome.reason)); return 'paused'; }
       if (outcome.kind === 'fail') { await finish(pool, lease, 'failed', { errorCode: outcome.code, failedStage: stage.name }); return 'failed'; }
       if (outcome.kind === 'stopped') return 'stopped';
-      if (Boolean(outcome.cleanBytes) !== Boolean(outcome.baselineBytes) ||
+      if ((outcome.deliveryPolicy === 'generated_pair_v1' ? !outcome.cleanBytes : Boolean(outcome.cleanBytes) !== Boolean(outcome.baselineBytes)) ||
         (outcome.cleanBytes && !outcome.wordSummary)) {
         await finish(pool, lease, 'failed', { errorCode: 'VALIDATION_FAILED', failedStage: stage.name });
         return 'failed';
@@ -596,7 +596,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
         : [];
       const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
-      if (outcome.baselineBytes) {
+      if (outcome.baselineBytes && outcome.deliveryPolicy !== 'generated_pair_v1') {
         const baseline = await promoteWordArtifact(pool, lease, await wordBytes(outcome.baselineBytes), blobs);
         if (baseline.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: baseline.failureCode, failedStage: stage.name });
@@ -605,14 +605,14 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         baselineArtifactId = baseline.artifactId;
       }
       if (outcome.cleanBytes) {
-        const clean = await promoteWordArtifact(pool, lease, await wordBytes(outcome.cleanBytes), blobs);
+        const clean = await promoteWordArtifact(pool, lease, await wordBytes(outcome.cleanBytes), blobs, outcome.deliveryPolicy);
         if (clean.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: clean.failureCode, failedStage: stage.name });
           return 'failed';
         }
         cleanArtifactId = clean.artifactId;
       }
-      const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs);
+      const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs, outcome.deliveryPolicy);
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
       if (cleanArtifactId) {

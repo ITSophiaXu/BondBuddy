@@ -1,10 +1,11 @@
 import { Pool } from 'pg';
-import { listOperatorReconciliations, resolveOperatorReconciliation, repairUnifiedTimeoutRetry, type OperatorReconcileDecision } from '@bondbuddy/api/queue';
+import { listOperatorReconciliations, resolveOperatorReconciliation, repairUnifiedTimeoutRetry, requeueGeneratedWordDelivery, type OperatorReconcileDecision } from '@bondbuddy/api/queue';
 
-const usage = 'usage: reconcile-run list | resolve <run_id> <attempt_id> <retry_unknown_usage|fail_run> <reason_code> | repair-timeout-retry <run_id> <attempt_id>';
+const usage = 'usage: reconcile-run list | resolve <run_id> <attempt_id> <retry_unknown_usage|fail_run> <reason_code> | repair-timeout-retry <run_id> <attempt_id> | deliver-generated-pair <run_id>';
 
 export async function runReconcileCommand(pool:Pool,args:string[],actor:string) {
   if(args.length===1 && args[0]==='list')return listOperatorReconciliations(pool);
+  if(args.length===2 && args[0]==='deliver-generated-pair')return requeueGeneratedWordDelivery(pool,{runId:args[1]!,actor});
   if(args.length===3 && args[0]==='repair-timeout-retry')return repairUnifiedTimeoutRetry(pool,{runId:args[1]!,attemptId:args[2]!,actor});
   if(args.length===5 && args[0]==='resolve') {
     const [,runId,attemptId,decision,reasonCode]=args;

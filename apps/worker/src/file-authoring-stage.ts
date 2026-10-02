@@ -1,9 +1,8 @@
 import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
+import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput,type UnifiedInput } from './unified-input.js';
@@ -15,13 +14,17 @@ const MAX=100*1024*1024;
 type FileRef={key:string;sha256:string;byte_size:number};
 export type FileAuthoringResult={version:'codex-file-word-v1';input_hash:string;files:Record<string,FileRef>;summary:Record<string,unknown>;error?:string};
 const fileNames=['tracked.docx','clean.docx','baseline.docx','delivery.md'] as const;
+const requiredFiles=['tracked.docx','clean.docx'] as const;
 function prefix(ctx:StageContext){return `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/file-authoring/`;}
+function validPair(r:FileAuthoringResult,ctx:StageContext){
+  return requiredFiles.every(name=>{
+    const f=r.files?.[name];return f && f.key.startsWith(prefix(ctx)) && !f.key.includes('..') && /^[a-f0-9]{64}$/.test(f.sha256) && Number.isSafeInteger(f.byte_size) && f.byte_size>0 && f.byte_size<=MAX;
+  });
+}
 export function validFileResult(value:unknown,ctx:StageContext):value is FileAuthoringResult {
   const r=value as FileAuthoringResult;
   return !!r && r.version==='codex-file-word-v1' && r.input_hash===ctx.run.input_hash.trim() && !!r.summary &&
-    (r.error==='WORD_QUALITY_REJECTED' || fileNames.every(name=>{
-      const f=r.files?.[name];return f && f.key.startsWith(prefix(ctx)) && !f.key.includes('..') && /^[a-f0-9]{64}$/.test(f.sha256) && Number.isSafeInteger(f.byte_size) && f.byte_size>0 && f.byte_size<=MAX;
-    }));
+    (r.error==='WORD_QUALITY_REJECTED' || validPair(r,ctx));
 }
 
 export function editingSource(input:UnifiedInput){
@@ -39,6 +42,14 @@ async function checkedFile(root:string,name:string,max=MAX){
 
 export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:typeof loadUnifiedInput;config?:ReturnType<typeof loadCodexAdapterConfig>}={}):RunStage{
   return {name:'model_generation',replay:true,run:async ctx=>{
+    const recovery=ctx.lease.checkpoint.word_pair_delivery_recovery as {attempt_no?:number}|undefined;
+    if(recovery){
+      // Explicit delivery-only repair can never fall back to another provider call.
+      const saved=await readCheckpointedProviderResult({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,
+        logicalCallId:'file-authoring-v1',attemptNo:recovery.attempt_no!,validateResult:value=>validFileResult(value,ctx)});
+      if(!saved)return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
+      return {kind:'done',value:saved.value,checkpoint:{logical_call_id:'file-authoring-v1'}};
+    }
     const input=await (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
     const source=editingSource(input);
     const originals=new Map<string,string>();
@@ -87,21 +98,17 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         if(!stored||digest(stored)!==sha256)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
         files[name]={key,sha256,byte_size:bytes.length};
       }
-      let summary:Record<string,unknown>;
-      try{
-        // Fixed trusted checker reads files; no model-authored executable is run here.
-        for(const name of fileNames)await checkedFile(join(cwd,'output'),name,name==='delivery.md'?256*1024:MAX);
-        const result=await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??'python3',['-m','bondbuddy_file_authoring.check',join(cwd,'input.json')],
-          {cwd:repo,env:{PATH:process.env.PATH,PYTHONPATH:join(repo,'python'),LANG:'C.UTF-8'},timeout:120000,maxBuffer:1024*1024,signal:ctx.signal});
-        summary=JSON.parse(result.stdout.trim());
-      }catch(error){
-        // The provider completion/usage is still durable; invalid Word is never marked successful.
-        const diagnostic=String((error as {stderr?:string}).stderr??'').trim();
+      if(!requiredFiles.every(name=>files[name])){
+        // Keep the durable completion and usage even if a required output is missing.
         return {version:'codex-file-word-v1',input_hash:ctx.run.input_hash.trim(),files,
-          summary:{validation_error:/^WORD_[A-Z_]{1,64}$/.test(diagnostic)?diagnostic:'WORD_OUTPUT_INVALID'},error:'WORD_QUALITY_REJECTED'};
+          summary:{validation_error:'WORD_OUTPUT_MISSING'},error:'WORD_QUALITY_REJECTED'};
       }
-      const delivery=(await checkedFile(join(cwd,'output'),'delivery.md',256*1024)).toString('utf8');
-      return {version:'codex-file-word-v1',input_hash:ctx.run.input_hash.trim(),files,summary:{...summary,authoring_summary:[delivery.slice(0,12000)],source_issuer:source?.pin.role==='project_output'?input.manifest.issuer_name:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===source?.pin.material_id)?.issuer_name??null}};
+      const delivery=files['delivery.md']?(await checkedFile(join(cwd,'output'),'delivery.md',256*1024)).toString('utf8'):'';
+      return {version:'codex-file-word-v1',input_hash:ctx.run.input_hash.trim(),files,summary:{
+        baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf',
+        source_sha256:source?.pin.sha256??null,effective_baseline_sha256:files['baseline.docx']?.sha256??null,
+        authoring_summary:delivery?[delivery.slice(0,12000)]:[],
+        source_issuer:source?.pin.role==='project_output'?input.manifest.issuer_name:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===source?.pin.material_id)?.issuer_name??null}};
     };
     const config=options.config??loadCodexAdapterConfig();
     return (options.model??codexModelStage)({name:'file_authoring_v1',logicalCallId:'file-authoring-v1',
@@ -115,9 +122,15 @@ export function fileAuthoringDeliveryStage():RunStage{
   return {name:'word_delivery',replay:true,run:async ctx=>{
     const value=ctx.values.get('model_generation');
     if(!validFileResult(value,ctx))return {kind:'fail',code:'VALIDATION_FAILED'};
-    if(value.error)return {kind:'fail',code:'WORD_QUALITY_REJECTED'};
+    if(!validPair(value,ctx))return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
     const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
     const read=async(name:string)=>{const f=value.files[name]!;const b=await ctx.blobs.getIfExistsBounded(f.key,MAX);if(!b||b.length!==f.byte_size||digest(b)!==f.sha256)throw Error('WORD_OUTPUT_BLOB_MISMATCH');return b;};
-    return {kind:'deliver',bytes:await read('tracked.docx'),cleanBytes:await read('clean.docx'),baselineBytes:await read('baseline.docx'),wordSummary:value.summary};
+    // Preserve any old checker result in its original private provider record; it is not
+    // rewritten as a pass. A new policy publishes just the two generated files.
+    return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:await read('tracked.docx'),cleanBytes:await read('clean.docx'),
+      wordSummary:{...value.summary,writer_version:'bondbuddy-file-word-1.0.0',delivery_policy:'generated_pair_v1',content_review:'not_performed',
+        source_sha256:value.summary.source_sha256??null,baseline_hash:value.summary.baseline_hash??null,
+        effective_baseline_sha256:value.summary.effective_baseline_sha256??null,plan_hash:value.summary.plan_hash??null,
+        replacements:null,columns:null,pending:null,pending_review:[]}};
   }};
 }

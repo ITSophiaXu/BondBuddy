@@ -4,7 +4,7 @@ import { emitInternal, internalEvent, recordOperation } from './observability.js
 import { ERROR_CODES, RUN_PAUSE_STAGES, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
-import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
+import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
@@ -289,10 +289,10 @@ async function persistAvailableWord(pool:Pool,lease:Lease,inspection:DocxInspect
   return {status:'available',...identity,evidenceId,sha256:inspection.sha256,byteSize:inspection.byte_size,deliveryCode:'readback_verified',inspection};
 }
 
-// This seam accepts bytes from a trusted processor. It never writes an invalid DOCX and
-// marks an artifact available only after a bounded Blob readback matches the candidate.
-export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs):Promise<WordPromotionResult> {
-  const inspection=inspectDocx(candidate);
+// Generated pairs use file availability only; legacy processors retain their inspector.
+// Both policies require owned private storage and byte-for-byte readback.
+export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs,policy?:'generated_pair_v1'):Promise<WordPromotionResult> {
+  const inspection=policy==='generated_pair_v1'?inspectGeneratedWord(candidate):inspectDocx(candidate);
   const identity=wordArtifactIdentity(lease,inspection);
   if(inspection.quality_status!=='passed')return persistRejectedWord(pool,lease,inspection,identity);
   await transaction(pool,async client=>{
@@ -378,9 +378,9 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,'blob_hash_mismatch',{sha256:digest(bytes),byteSize:bytes.length});
       throw new Problem(422,'DELIVERY_FAILED','Word artifact hash mismatch');
     }
-    const inspection=inspectDocx(bytes);
+    const inspection=artifact.validator_version===GENERATED_WORD_DELIVERY_VERSION?inspectGeneratedWord(bytes):inspectDocx(bytes);
     const evidence=artifact.quality_evidence as DocxInspection;
-    if(inspection.quality_status!=='passed' || inspection.validator_version!==WORD_DELIVERY_VALIDATOR_VERSION
+    if(inspection.quality_status!=='passed' || inspection.validator_version!==artifact.validator_version
       || inspection.sha256!==artifact.sha256.trim() || inspection.byte_size!==Number(artifact.evidence_byte_size)
       || evidence?.quality_status!=='passed' || evidence.validator_version!==inspection.validator_version
       || evidence.sha256!==inspection.sha256 || evidence.byte_size!==inspection.byte_size)
@@ -579,6 +579,45 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
 }
 const operatorField = /^[A-Za-z0-9_.@-]{1,128}$/;
 const operatorReason = /^[a-z][a-z0-9_]{1,63}$/;
+
+/** Private delivery-only recovery under the user-approved generated-pair policy.
+ * Preserve failure events, prior evidence, provider result and usage; never rerun the CLI.
+ */
+export async function requeueGeneratedWordDelivery(pool:Pool,input:{runId:string;actor:string}) {
+  if(!operatorField.test(input.runId)||!operatorField.test(input.actor))throw new Problem(422,'VALIDATION_FAILED','Invalid recovery identity');
+  return transaction(pool,async client=>{
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[input.runId])).rows[0];
+    if(!r)throw missing();
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
+    if(!j)throw missing();
+    if(j.checkpoint?.word_pair_delivery_recovery)return {run_id:r.id,idempotent:true};
+    const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','No recoverable completed Word pair');
+    if(r.channel!=='production'||r.state!=='failed'||j.state!=='failed'||j.lease_token||j.lease_until||r.artifact_id)throw refuse();
+    const project=(await client.query('SELECT deleted_at FROM bb_projects WHERE id=$1 AND owner_user_id=$2',[r.project_id,r.owner_user_id])).rows[0];
+    if(!project||project.deleted_at)throw refuse();
+    const active=await client.query("SELECT 1 FROM bb_runs WHERE project_id=$1 AND owner_user_id=$2 AND state IN ('queued','running','paused')",[r.project_id,r.owner_user_id]);
+    if(active.rowCount||await providerCallNeedsReconciliation(client,j.id))throw refuse();
+    const last=(await client.query('SELECT payload FROM bb_run_events WHERE run_id=$1 AND seq=$2',[r.id,r.event_cursor])).rows[0]?.payload;
+    if(last?.reason!=='processor_failed'||!['WORD_QUALITY_REJECTED','WORD_DELIVERY_UNAVAILABLE'].includes(last?.error_code))throw refuse();
+    if(j.checkpoint?.stages?.model_generation?.logical_call_id!=='file-authoring-v1')throw refuse();
+    const results=(await client.query(`SELECT a.id,a.attempt_no,p.id AS result_id,p.result_sha256,p.result_ref
+      FROM bb_model_call_attempts a JOIN bb_provider_result_refs p ON p.attempt_id=a.id
+      JOIN bb_call_usage u ON u.attempt_id=a.id
+      WHERE a.job_id=$1 AND a.owner_user_id=$2 AND a.logical_call_id='file-authoring-v1'
+        AND a.status='completed' AND u.usage_status='measured' AND u.conflicting_measurements=0
+        AND p.run_id=$3 AND p.owner_user_id=$2 AND p.result_schema_version='codex-file-word-v1'`,[j.id,r.owner_user_id,r.id])).rows;
+    if(results.length!==1)throw refuse();
+    const a=results[0],refs=j.checkpoint?.provider_results;
+    if(!Array.isArray(refs)||!refs.some(p=>p.call_id===a.id&&p.result_id===a.result_id&&p.result_sha256===a.result_sha256.trim()&&p.result_ref===a.result_ref))throw refuse();
+    const audit={actor:input.actor,attempt_id:a.id,attempt_no:a.attempt_no,result_id:a.result_id,
+      policy:'generated_pair_v1',failure_event_seq:String(r.event_cursor)};
+    await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',error_code=NULL,updated_at=now(),
+      checkpoint=jsonb_set(checkpoint,'{word_pair_delivery_recovery}',$2::jsonb,true) WHERE id=$1`,[j.id,JSON.stringify(audit)]);
+    await event(client,r,'queued','queued','word_pair_delivery_requeued',undefined,'run.state_changed',{
+      actor:input.actor,attempt_id:a.id,policy:audit.policy,failure_event_seq:audit.failure_event_seq});
+    return {run_id:r.id,idempotent:false};
+  });
+}
 
 /** Private, explicit repair of the journal flag regression; never a generic failed-run resume.
  * The already-authorized timeout retry was rejected before sending another call. Preserve

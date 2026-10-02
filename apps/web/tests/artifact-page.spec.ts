@@ -29,6 +29,7 @@ type State = {
   pendingCount?: number; pendingItems?: typeof summary.pending_review;
   downloadBody?: Buffer;
   moreProjects?: boolean;
+  generatedPair?: boolean;
 };
 const state = (): State => ({ calls: [], metadataReads: {}, grants: [], metadataStatus: 200, downloadStatus: 200,
   loggedOut: false, missingSummary: false, changedRun: false, runState: 'succeeded', wrongMediaType: false });
@@ -64,7 +65,8 @@ async function installApi(page: Page, data: State) {
         download_url: data.urlOverride ?? `/api/v1/artifacts/${id}/download?grant=fresh-${data.metadataReads[id]}`,
         expires_at: '2026-09-26T02:05:00Z',
         ...(data.missingSummary ? {} : { word_delivery: { ...summary, variant,
-          pending_review_count: data.pendingCount ?? summary.pending_review_count, pending_review: data.pendingItems ?? summary.pending_review } }) };
+          pending_review_count: data.pendingCount ?? summary.pending_review_count, pending_review: data.pendingItems ?? summary.pending_review,
+          ...(data.generatedPair ? {writer_version:'bondbuddy-file-word-1.0.0' as const,baseline_artifact_id:undefined,delivery_policy:'generated_pair_v1' as const,content_review:'not_performed' as const,replacements:null,columns:null,pending_review_count:null,pending_review:[]} : {}) } }) };
       return json(route, 200, artifact);
     }
     return json(route, 404, { code: 'NOT_FOUND' });
@@ -83,7 +85,7 @@ test('completed project shows checked summary and downloads in the continuous wo
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.locator('#execution-progress')).toContainText('已生成');
   await expect(page.locator('#execution-delivery')).toContainText('工作稿已生成，含待人工确认事项');
-  await expect(page.locator('.project-cowork')).toBeVisible();
+  await expect(page.locator('.project-cowork')).toBeHidden();
   await page.setViewportSize({width:1440,height:960}); await page.evaluate(()=>scrollTo(0,0));
   await page.screenshot({path:join(tmpdir(),'bb361-completed-desktop.png'),fullPage:true});
   const download=page.waitForEvent('download'); await page.getByRole('button',{name:'下载修订版',exact:true}).click();
@@ -151,6 +153,23 @@ for (const status of [404, 503]) {
     await expect(page.getByRole('button', { name: '下载清洁版', exact: true })).toBeVisible();
   });
 }
+
+test('generated pair offers both downloads without baseline or content-check claims',async({page})=>{
+  const data=state();data.generatedPair=true;await installApi(page,data);
+  await page.goto('/#/artifacts/word-revision');
+  await expect(page.getByText('修订版和清洁版已生成，可以下载。',{exact:true})).toBeVisible();
+  await expect(page.getByText(/文件已通过服务端交付检查/)).toHaveCount(0);
+  await expect(page.locator('.artifact-review')).toHaveCount(0);
+  await expect(page.getByText(/null 处|0 处替换/)).toHaveCount(0);
+  for(const label of ['修订版','清洁版']){
+    const pending=page.waitForEvent('download');
+    await page.getByRole('button',{name:`下载${label}`,exact:true}).click();
+    expect(await(await pending).failure()).toBeNull();
+  }
+  expect(data.calls.every(c=>c.method==='GET')).toBe(true);
+  await page.setViewportSize({width:1440,height:960});
+  await page.screenshot({path:join(tmpdir(),'bondbuddy-generated-pair-desktop.png'),fullPage:true});
+});
 
 test('legacy metadata has a generic download and never invents a clean version or verified facts', async ({ page }) => {
   const data = state(); data.missingSummary = true; await installApi(page, data);

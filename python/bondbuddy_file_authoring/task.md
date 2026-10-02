@@ -24,13 +24,12 @@ baseline_path 指定实际编辑基线：有 DOCX 时保留原包的样式、字
 
 非 DOCX 原稿要如实重建基线为 output/baseline.docx，保留原文与表结构并在交付说明写清重建限制。没有任何原稿时，直接编制完整可编辑首稿；output/tracked.docx、output/clean.docx、output/baseline.docx 为同一首稿的副本，不伪造旧文或删除记录。
 
-必须实际写出 output/tracked.docx、output/clean.docx、output/baseline.docx 及 output/delivery.md。清洁版为接受修订后的新稿，不含修订标记；不是旧原稿或空模板。可运行：
+必须实际写出 output/tracked.docx 和 output/clean.docx。清洁版为接受修订后的新稿，不含修订标记；不是旧原稿或空模板。baseline.docx 和 delivery.md 为辅助资料，不是交付前置。两份 Word 写好后即完成交付，不运行额外的内容、格式或修订一致性检查，不因检查未执行而停留、重做或失败。生成清洁版可以使用：
 
 ```
 /opt/venv/bin/python -m bondbuddy_file_authoring.check clean output/tracked.docx output/clean.docx
-/opt/venv/bin/python -m bondbuddy_file_authoring.check input.json
 ```
 
-检查程序验证真实文件、接受／拒绝修订的一致性和包结构，不决定业务内容。若检查失败，阅读错误，修复自己的文件后再检查，保持同一次任务完成。不能修改检查程序或伪造检查结果。
+以上 clean 命令只用于接受修订并写出清洁版；不要求运行检查子命令。保持实际修订编辑要求，不能把未执行的内容或兼容性检查写成通过。
 
 在 output/delivery.md 用中文说明实际更新范围、缺项、基线所属企业及版本、采用的知识、检查方法和局限。没有页面渲染器时写明“未进行页面视觉检查”，不得声称排版或 Word/WPS 已验收。保留修订稿原件，预览转换不能覆盖它。交付完后用普通中文简述结果，不需要固定 JSON 字段。
