@@ -82,6 +82,7 @@ if [ "${BB_DEPLOY_INFLIGHT_GATE:-0}" = 1 ] && compose ps --status running --serv
     exit 76
   fi
 fi
+bash "$(dirname "$0")/install-codex-file-sandbox.sh"
 compose up -d postgres $( [ "$(env_value COMPOSE_PROFILES)" = staging-blob ] && echo azurite )
 compose run --rm migrate
 compose up -d --remove-orphans --wait api worker ops egress web

@@ -1,15 +1,14 @@
-// #16 contained Codex -> DeepSeek adapter. Server-side only; not wired into runOnce.
-// Each attempt runs `codex exec --json` with a fresh CODEX_HOME, an isolated cwd, a minimal
-// environment, read-only sandbox and tool features disabled. Any tool item the model still
-// emits is treated as a containment breach: the process group is killed and the attempt
-// fails closed. Authoring may additionally register the three fixed, read-only bb_materials
-// methods over an immutable run-local dataset. No general file, shell or network tools.
+// Server-side Codex adapter with durable intent, usage, cancellation and result replay.
+// Ordinary calls disable tools; legacy authoring permits only fixed read-only material tools.
+// Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
+// scratch/output, no command network or credentials. Unapproved tool items fail closed.
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { filePermissionArgs, verifyFilePermissions } from './codex-file-permissions.js';
 import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import type { ModelAdapterAttemptRecord, ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelAttemptRuntime } from '@bondbuddy/api/provider-results';
@@ -182,7 +181,7 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
 }
 
 // -c overrides, applied with --ignore-user-config so no host or user config can widen them.
-export function codexConfigOverrides(c: CodexAdapterConfig): string[] {
+export function codexConfigOverrides(c: CodexAdapterConfig, files = false): string[] {
   const q = (v: string) => JSON.stringify(v);
   const p = `model_providers.${c.model_provider}`;
   const kv: string[] = [
@@ -190,7 +189,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig): string[] {
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,
     c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : c.credential.kind === 'command'
       ? `${p}.auth.command=${q(c.credential.path)}` : `${p}.requires_openai_auth=true`,
-    `approval_policy="never"`, `sandbox_mode="read-only"`, `web_search="disabled"`,
+    `approval_policy="never"`, ...(files ? [] : [`sandbox_mode="read-only"`]), `web_search="disabled"`,
     `shell_environment_policy.inherit="none"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `mcp_servers={}`,
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
@@ -203,9 +202,15 @@ export function codexConfigOverrides(c: CodexAdapterConfig): string[] {
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string }): string[] {
-  const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', '--sandbox', 'read-only', '--cd', o.cwd,
-    ...codexConfigOverrides(c), ...c.disabled_features.flatMap(f => ['--disable', f])];
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; fileAuthoring?: boolean }): string[] {
+  const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
+    ...codexConfigOverrides(c,o.fileAuthoring), ...c.disabled_features.filter(f=>!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)).flatMap(f => ['--disable', f])];
+  if(o.fileAuthoring){
+    if(o.schemaFile || o.materialDataFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+    args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec','--enable','view_image',
+      '-c',`shell_environment_policy.set={PATH="/opt/venv/bin:/usr/local/bin:/usr/bin:/bin",HOME=${JSON.stringify(join(o.cwd,'scratch'))},TMPDIR=${JSON.stringify(join(o.cwd,'scratch'))},PYTHONPATH="/app/python",PYTHONDONTWRITEBYTECODE="1",LANG="C.UTF-8"}`);
+    if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"');
+  }
   if (o.ephemeral) args.push('--ephemeral');
   if (o.materialDataFile) {
     if(resolve(o.materialDataFile)!==resolve(o.cwd,'materials.json'))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -264,7 +269,7 @@ export type CodexProcessResult = {
 
 // One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
 // private buffer for status markers, then discarded. It is never logged or persisted.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; fileAuthoring?: boolean; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -313,7 +318,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
           const item = ev.item as Record<string, unknown> | undefined;
           const type = typeof item?.type === 'string' ? item.type : 'unknown';
           if (!TEXT_ITEM_TYPES.has(type)) {
-            const allowed=!!o.materialDataFile && type==='mcp_tool_call' && item?.server==='bb_materials' && MATERIAL_TOOLS.includes(item?.tool as typeof MATERIAL_TOOLS[number]);
+            const allowed=(!!o.fileAuthoring && ['command_execution','file_change','image_view'].includes(type)) ||
+              (!!o.materialDataFile && type==='mcp_tool_call' && item?.server==='bb_materials' && MATERIAL_TOOLS.includes(item?.tool as typeof MATERIAL_TOOLS[number]));
             if(!allowed){r.tool_attempts++; stop('tool', true); return;}
             if(ev.type==='item.started')r.tool_attempts++;
           }
@@ -389,6 +395,7 @@ export type ContainedCallInput = {
   onEvent?: (event: Record<string, unknown>) => void;
   /** Immutable, owner-scoped material records prepared by the authoring worker. */
   materialTools?: MaterialToolData;
+  fileWorkspace?: { prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent)=>Promise<unknown> };
 };
 export type ContainedCallResult = {
   status: 'completed' | 'reused' | 'failed' | 'needs_reconcile';
@@ -466,15 +473,22 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if ((await readdir(cwd)).length) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         const materialDataFile=input.materialTools?join(cwd,'materials.json'):undefined;
         if(materialDataFile)await writeFile(materialDataFile,JSON.stringify(input.materialTools),{mode:0o600});
+        if(input.fileWorkspace){
+          if(input.output.kind!=='text' || input.materialTools || persistent)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+          await input.fileWorkspace.prepare(cwd);
+          await verifyFilePermissions(c,cwd,home);
+        }
 
         await journal.recordIntent(intent); // durable before spawn
-        // A normal authoring turn can take 20–30 minutes. Its deadline is independent
+        // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
         // Lease loss and cancellation still abort the same process immediately.
-        const executionConfig = input.materialTools && c.authoring_timeout_ms !== undefined
+        const executionConfig = (input.materialTools || input.fileWorkspace) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, signal: input.signal, onEvent: input.onEvent });
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, fileAuthoring:!!input.fileWorkspace, signal: input.signal, onEvent: input.onEvent });
         if (raw.thread_id) threadId = raw.thread_id;
+        // File delivery is decided by the trusted collector, not a final prose message.
+        if(input.fileWorkspace && raw.turn_completed && raw.last_message===null)raw.last_message='';
         const output = input.output;
         const cls = classifyCodexResult(raw, text => {
           if (output.kind === 'text') return { ok: true, value: { text } };
@@ -482,11 +496,14 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         });
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
-          try { obs = { ...obs, ...await journal.storeResult(intent, Buffer.from(JSON.stringify(cls.value)), input.result_schema_version) }; }
+          try {
+            if(input.fileWorkspace)cls.value=await input.fileWorkspace.collect(cwd,intent);
+            obs = { ...obs, ...await journal.storeResult(intent, Buffer.from(JSON.stringify(cls.value)), input.result_schema_version) };
+          }
           catch { obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_RESULT_STORE_FAILED' }; }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
-        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
+        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? 'codex-file-authoring-1' : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });

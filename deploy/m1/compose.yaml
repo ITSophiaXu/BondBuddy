@@ -158,7 +158,7 @@ services:
     tmpfs: [/tmp]
     # Compose's default 10 s is shorter than the drain window; SIGKILL would skip lease release.
     stop_grace_period: 30s
-    security_opt: [no-new-privileges:true]
+    security_opt: [no-new-privileges:true, "seccomp=./security/codex-seccomp.json", "apparmor=bondbuddy-codex-v1"]
     cap_drop: [ALL]
     deploy: {resources: {limits: {cpus: '1.0', memory: 768M}}}
 

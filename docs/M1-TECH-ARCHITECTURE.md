@@ -697,3 +697,12 @@ v4 仅对明确标识 `codex-material-readonly-1`、已退出、无结果且 MOD
 `knowledge/audit-reconciliation/` 保存用户提供的 40 项勾稽知识原件、原文定位及内部适用性说明；`packages/domain/src/audit-reconciliation-knowledge.ts` 定义固定版本目录，`review-audit-reconciliation.ts` 在 worker 聚合带原文证据的观察后复算明确适用的算术式。方法目录不是项目财务事实或监管规则包，不进入正式法规发布链。证据校验复用既有财务观察检查，不新建公开 DTO、数据库迁移或页面。
 
 抽取 prompt 带完整知识目录及内容哈希，调用名/逻辑标识/模板版本均含哈希，报告检查点保存版本和哈希。计算采用精确十进制有理数、明确单位和源精度；同一来源版本的完整、有效操作数才能支持修订金额。条件/概念关系、缺源、冲突、OCR 或期间不符不产生自动金额修订。结果沿用现有 financial finding/coverage/计算链；未观察到的规则记录未覆盖，差异复核只认可实际重新执行的检查。
+
+
+## 2026-10-02 单次原文件编制（取代新任务的 v3/v4 批次）
+
+按[本次用户决定](product-decisions/2026-10-02-single-cli-authoring.md)，`file-authoring-stage.ts` 将精确锁定原件、项目与原稿信息、要求、知识 MD 放入独立工作目录。新统一任务直接运行一次 Codex CLI，由它使用原生 shell/Python 自主编制并写出修订/清洁 Word；不使用业务输出 schema，也不等待后台完整解析。历史 v3/v4 检查点保持原逻辑调用，不自动切换或重开取消任务。
+
+Codex 使用命名文件权限：本次输入只读、scratch/output 可写，网络禁止，其他项目、/proc 和凭据不可读；工具环境不继承凭据。每次模型发送前真实探测目录外读写/原件修改/网络拒绝。Docker 仍 cap_drop ALL、只读根和 no-new-privileges；专用 seccomp/AppArmor 仅补齐嵌套非特权命名空间所需系统调用与挂载，未使用 privileged、unconfined 或 danger-full-access。详见 deploy/m1/security/README.md。
+
+模型完成后平台独立检查真实文件：输入 hash 不变、OOXML 可读、接受修订与清洁稿一致、拒绝本轮修订与基线一致、基线原件及媒体保留，无原稿不造修订。真实结果文件先入本人私有 Blob 并回读 hash，文件引用经既有持久调用 journal 保存，后续继续现有 Word 检查、成果提升和授权下载。复用完成调用；未知调用不盲目重放，新文件模式不加入只读批次的自动超时重试。模型完成不等于 Word 验收通过，真实业务/页面验收仍分开。

@@ -20,7 +20,7 @@ import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
-import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
+import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput } from './codex-adapter.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
@@ -387,6 +387,9 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
     if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
+      // New file-authoring runs consume original files. Readability/OCR is handled by Codex
+      // on demand, not by a pre-run full-material parse barrier. Input gate still checks ownership/hashes.
+      if(!Object.keys(checkpoint).some(k=>/^unified_v[34]_/.test(k)))return {kind:'done',checkpoint:{original_files:true}};
       // Native reading/OCR remains a worker tool; a separate fact inventory is not an admission requirement.
       const r = await materialsReadiness(pool, run);
       if (r.status === 'failed') return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_material_unreadable' };
@@ -458,6 +461,7 @@ export function codexModelStage(options: {
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
   materialTools?: MaterialToolData;
+  fileWorkspace?: ContainedCallInput['fileWorkspace'];
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
   wrapJournal?: (journal: CodexJournal) => CodexJournal;
 }): RunStage {
@@ -492,7 +496,7 @@ export function codexModelStage(options: {
       if (callGate) return callGate;
       const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: { kind: 'json', schema: options.schema, validate: options.validate }, materialTools: options.materialTools, signal: ctx.signal }, journal, config);
+        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, signal: ctx.signal }, journal, config);
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       // The observation may already have paused or failed the job; otherwise park it ourselves.
