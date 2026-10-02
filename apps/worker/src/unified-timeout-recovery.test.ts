@@ -6,7 +6,7 @@ import { digest, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { claim, finish, pauseRun, recordPotentialCall, recoverUnifiedTimeout, repairUnifiedTimeoutRetry } from '@bondbuddy/api/queue';
-import { recordModelAttemptRuntime, recordProviderCallObservation, latestProviderAttempt } from '@bondbuddy/api/provider-results';
+import { recordModelAttemptRuntime, recordProviderCallObservation, latestProviderAttempt, READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -20,7 +20,7 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
     const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
     const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
     const logical='unified-v3-read_0_10_part_0';
-    type EvidenceOptions={unified?:boolean;runtime?:boolean;observation?:boolean;error?:string;observationError?:string;exited?:boolean;tools?:number;measured?:boolean};
+    type EvidenceOptions={unified?:boolean;runtime?:boolean;observation?:boolean;error?:string;observationError?:string;exited?:boolean;tools?:number;measured?:boolean;logical?:string;adapterVersion?:string};
     async function fixture(options:EvidenceOptions={}){
       const p=await send('POST','/api/v1/projects',{name:'Synthetic timeout',kind:'update',issuer_name:'合成企业',market:'sse',offering:'private',
         ...(options.unified!==false?{update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}}:{})});
@@ -36,13 +36,14 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       return timeout(lease,project,1,options);
     }
     async function timeout(lease:NonNullable<Awaited<ReturnType<typeof claim>>>,project:string,n:number,options:EvidenceOptions={}){
+      const logical=options.logical??'unified-v3-read_0_10_part_0';
       const objectKey=`users/${owner}/projects/${project}/snapshots/${uid()}`;
       const content=Buffer.from('synthetic timeout prompt');await blobs.put(objectKey,content,'text/plain');
       const prompt=await saveSnapshotRef(pool,{owner,projectId:project,runId:lease.runId,kind:'model_request',version:n,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',blobs});
       const attempt=await recordPotentialCall(pool,lease,logical,n,{modelId:'synthetic',promptSnapshotId:prompt});
       if(options.runtime!==false)await recordModelAttemptRuntime(pool,lease,{owner_user_id:owner,project_id:project,run_id:lease.runId,trace_id:lease.runId,job_id:lease.jobId,
         logical_call_id:logical,attempt_no:n,call_id:attempt,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:prompt},
-        {adapter:'codex_exec',adapter_version:'synthetic-v1',model_provider:'deepseek',model_config_version:'synthetic-v1',provider_request_id_status:'unknown',
+        {adapter:'codex_exec',adapter_version:options.adapterVersion??'synthetic-v1',model_provider:'deepseek',model_config_version:'synthetic-v1',provider_request_id_status:'unknown',
           framework_thread_id:null,started_at:new Date().toISOString(),duration_ms:600000,exit_code:null,exit_signal:options.exited===false?null:'SIGTERM',finish_reason:'timeout',error_code:options.error??'MODEL_TIMEOUT',tool_attempts:options.tools??0,pricing_status:'unknown'});
       if(options.observation!==false)await recordProviderCallObservation(pool,blobs,{owner_user_id:owner,project_id:project,run_id:lease.runId,trace_id:lease.runId,job_id:lease.jobId,
         logical_call_id:logical,attempt_no:n,call_id:attempt,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:prompt,
@@ -76,10 +77,19 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       for(const options of [
         {runtime:false},{error:'MODEL_CANCELLED'},{exited:false},{tools:1},
         {observationError:'MODEL_STREAM_BROKEN'},{observation:false},{measured:true},
+        {logical:'unified-v4-update_0',tools:2},
+        {logical:'unified-v4-update_0',tools:2,adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION,exited:false},
+        {logical:'unified-v4-update_0',tools:2,adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION,error:'MODEL_TOOL_ATTEMPT_BLOCKED'},
       ]){
         const refused=await fixture(options);assert.equal(await refused.recover(),false,JSON.stringify(options));
       }
       const legacy=await fixture({unified:false});assert.equal(await legacy.recover(),false);
+      const readonly=await fixture({logical:'unified-v4-update_0',tools:2,adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION});
+      assert.equal(await readonly.recover(),true);
+      const readonlyLease=await claim(pool,30);assert.equal(readonlyLease?.runId,readonly.lease.runId);
+      assert.equal((await latestProviderAttempt(pool,readonlyLease!,'unified-v4-update_0'))?.operator_retry,true);
+      assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[readonly.attempt])).rows[0].usage_status,'unknown');
+      await finish(pool,readonlyLease!,'failed',{errorCode:'MODEL_TIMEOUT',failedStage:'model_generation'});
       const capped=await fixture();
       const history=Object.fromEntries(Array.from({length:6},(_,i)=>[`synthetic-${i}`,{reason_code:'terminated_timeout_auto_retry',logical_call_id:`unified-v3-update_${i}`}]));
       await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',$2::jsonb) WHERE id=$1",[capped.lease.jobId,JSON.stringify(history)]);

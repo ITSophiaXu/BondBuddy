@@ -1,0 +1,6 @@
+{"fake":"sleep","ms":800}
+{"type":"thread.started","thread_id":"0199a1f0-0000-7000-8000-00000000c0de"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"synthetic reasoning summary"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"{\"answer\":\"OK\",\"n\":16}"}}
+{"type":"turn.completed","usage":{"input_tokens":8418,"cached_input_tokens":6784,"output_tokens":46,"reasoning_output_tokens":33}}

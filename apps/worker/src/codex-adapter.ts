@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import type { ModelAdapterAttemptRecord, ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelAttemptRuntime } from '@bondbuddy/api/provider-results';
+import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
@@ -29,6 +30,8 @@ export type CodexAdapterConfig = {
   credential: CodexCredential;
   work_root: string;
   timeout_ms: number;
+  /** Separate wall-clock deadline for document authoring with material reads. */
+  authoring_timeout_ms?: number;
   kill_grace_ms: number;
   max_output_bytes: number;
   max_schema_reasks: number;
@@ -150,6 +153,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     credential,
     work_root: env.BB_CODEX_WORK_ROOT ?? join(tmpdir(), 'bb-codex'),
     timeout_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
+    authoring_timeout_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 2700000),
     kill_grace_ms: 2000,
     max_output_bytes: 4 * 1024 * 1024,
     max_schema_reasks: Number(env.BB_CODEX_MAX_SCHEMA_REASKS ?? 1),
@@ -169,7 +173,9 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     (c.credential.kind === 'env' ? envName(c.credential.name) : c.credential.kind === 'command'
       ? c.credential.path === '/usr/local/bin/bb-copilot-token' && c.credential.oauth_file === '/run/secrets/bb-copilot-oauth'
       : isAbsolute(c.credential.path)) && isAbsolute(c.work_root) &&
-    count(c.timeout_ms) && c.timeout_ms > 0 && count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
+    count(c.timeout_ms) && c.timeout_ms > 0 && c.timeout_ms <= 2147483647 &&
+    (c.authoring_timeout_ms === undefined || (count(c.authoring_timeout_ms) && c.authoring_timeout_ms > 0 && c.authoring_timeout_ms <= 2147483647)) &&
+    count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
     count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -462,7 +468,12 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if(materialDataFile)await writeFile(materialDataFile,JSON.stringify(input.materialTools),{mode:0o600});
 
         await journal.recordIntent(intent); // durable before spawn
-        const raw = await runCodexProcess(c, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, signal: input.signal, onEvent: input.onEvent });
+        // A normal authoring turn can take 20–30 minutes. Its deadline is independent
+        // of short model probes; silence while reasoning is not evidence of a hang.
+        // Lease loss and cancellation still abort the same process immediately.
+        const executionConfig = input.materialTools && c.authoring_timeout_ms !== undefined
+          ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, signal: input.signal, onEvent: input.onEvent });
         if (raw.thread_id) threadId = raw.thread_id;
         const output = input.output;
         const cls = classifyCodexResult(raw, text => {
@@ -475,7 +486,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           catch { obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_RESULT_STORE_FAILED' }; }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
-        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
+        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });
