@@ -14,14 +14,16 @@ import { runMaterialParseOnce } from './material-parse-job.js';
 import { inputLockStage, materialsReadyStage, runPipelineOnce, type StageContext } from './run-pipeline.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
+import { loadCodexAdapterConfig } from './codex-adapter.js';
 
 const database = await isolatedTestDatabase(undefined,'unified-authoring');
 const connection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
+const live=process.env.BB_TEST_LIVE_AUTHORING==='1';
 const periods = [{start:'2025-01-01',end:'2025-12-31',period_kind:'annual' as const,scope:'consolidated' as const,status:'user_asserted' as const,evidence_refs:[]}];
 
-test('unified API → real parsing → synthetic model → real Word pair, immutable requirements, previous output and owner isolation',
-  {skip:!database || !connection,timeout:180000},async()=>{
+test(`unified API → real parsing → ${live?'real provider on synthetic materials':'synthetic model'} → real Word pair, immutable requirements, previous output and owner isolation`,
+  {skip:!database || !connection,timeout:live?900000:180000},async()=>{
     const pool = new Pool({connectionString:database});
     const container = `bb-unified-${randomUUID().replaceAll('-','')}`;
     const blobs = azureBlobs(connection!,container);
@@ -32,7 +34,7 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
       headers:{origin,...headers},payload:payload as any});
     try {
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`unified_${randomUUID().slice(0,8)}`]);
-      for(const scenario of [null,'same_issuer','parent','subsidiary','similar_business','absent_metadata','partial_metadata'] as const){
+      for(const scenario of (live?['same_issuer']:[null,'same_issuer','parent','subsidiary','similar_business','absent_metadata','partial_metadata']) as (null|'same_issuer'|'parent'|'subsidiary'|'similar_business'|'absent_metadata'|'partial_metadata')[]){
         const missingMetadata=scenario==='absent_metadata'||scenario==='partial_metadata';
         const relation=missingMetadata?null:scenario;
         const created=await send('POST','/api/v1/projects',{kind:'update',name:`Synthetic unified ${relation}`,issuer_name:'合成目标发行人',market:'sse',offering:'private',
@@ -90,7 +92,7 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
         // A later edit never mutates the already locked requirement body.
         assert.equal((await send('POST',`/api/v1/projects/${project}/messages`,{...message,submission_request_id:randomUUID(),expected_message_version:1,body:'合成后续要求：下一轮才生效。'})).statusCode,201);
         let modelCalls=0;
-        const model=unifiedModelGenerationStage({model:options=>({name:options.name,run:async(ctx:StageContext)=>{
+        const model=unifiedModelGenerationStage({direct:true,...(live?{config:loadCodexAdapterConfig()}:{model:options=>({name:options.name,run:async(ctx:StageContext)=>{
           // Exercise the real durable-journal boundary even though model replies are synthetic.
           assert.equal(await latestProviderAttempt(pool,ctx.lease,options.logicalCallId),null);
           const prompt=await options.buildPrompt(ctx);
@@ -103,10 +105,16 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
               {kind:'paragraph',text:'合成目标发行人2025年净资产120万元。',rows:[],evidence:['target'],pending:[]}],summary:['合成编制'] }:
               {reviewed:data.records.map((r:any)=>r.id),edits:[{record_id:data.records[0].id,after:`合成目标发行人2025年净资产120万元，第${ctx.run.input_revision}轮。`,evidence:['target'],pending:[]}],additions:[],summary:['合成更新']};
           assert.ok(options.validate(value));return {kind:'done',value};
-        }})});
+        }})})});
         const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,unifiedWordDeliveryStage()],
           onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
-        assert.equal(await execute(),'succeeded');assert.ok(modelCalls>0);
+        assert.equal(await execute(),'succeeded');
+        if(!live)assert.ok(modelCalls>0);
+        else {
+          const calls=(await pool.query('SELECT logical_call_id,outcome,usage_status,total_tokens FROM bb_provider_call_observations WHERE run_id=$1',[run.run_id])).rows;
+          assert.ok(calls.length>0);assert.ok(calls.every(c=>c.outcome==='completed'&&c.usage_status==='measured'&&c.total_tokens>0));
+          console.log(JSON.stringify({synthetic_materials:true,real_provider:true,calls}));
+        }
         const delivered=(await send('GET',`/api/v1/runs/${run.run_id}`)).json();
         assert.equal(delivered.state,'succeeded');
         const artifact=(await send('GET',`/api/v1/artifacts/${delivered.artifact_id}`)).json();

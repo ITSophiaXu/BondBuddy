@@ -16,7 +16,7 @@ import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
-import { checkpointStage, claim, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, pauseRun, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
 import { configureTrialGuard, createOverride, revokeOverride, setKillSwitch, trialConfigFromEnv } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
@@ -312,8 +312,14 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(parseStream2.at(-1)!.data.reason, 'terminal');
     await runtime.sweep();
     assert.equal((await runRow(materialsRun)).state, 'queued');
+    // Parsed files cannot fix the former notes-context overflow. It must not requeue forever.
+    const contextLease=await claim(pool,30);assert.equal(contextLease?.runId,materialsRun);
+    await pauseRun(pool,contextLease!,'awaiting_materials','authoring_material_context_too_large');
+    await runtime.sweep();await runtime.sweep();
+    assert.equal((await runRow(materialsRun)).state,'paused','context failures do not occupy the worker again');
+    assert.equal((await send('POST',`/api/v1/runs/${materialsRun}/resume`,{reason:'synthetic explicit resume'})).statusCode,200);
     const pinnedRun = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1', [materialsRun])).rows[0];
-    const materialContext = { pool, run: pinnedRun } as StageContext;
+    const materialContext = { pool, run: pinnedRun, values:new Map() } as StageContext;
     assert.deepEqual(await createMaterialsReadyStage().run(materialContext),
       { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidate_producer_unavailable' });
     const productionMaterials = workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' })

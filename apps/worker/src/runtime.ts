@@ -209,8 +209,12 @@ export class WorkerRuntime {
     const { pool } = this.o;
     this.counters.sweeps++;
     for (const r of await pausedRuns(pool, 'awaiting_materials')) {
-      const run = (await pool.query('SELECT owner_user_id,project_id,input_revision,input_hash FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [r.run_id, r.owner_user_id])).rows[0];
+      const run = (await pool.query(`SELECT owner_user_id,project_id,input_revision,input_hash,
+        (SELECT payload->>'reason' FROM bb_run_events WHERE run_id=bb_runs.id AND state='paused' ORDER BY seq DESC LIMIT 1) AS pause_reason
+        FROM bb_runs WHERE id=$1 AND owner_user_id=$2`, [r.run_id, r.owner_user_id])).rows[0];
       if (!run) continue;
+      // Parsed material readiness cannot resolve a model context/output/OCR failure.
+      if(run.pause_reason!=='material_parse_pending')continue;
       const readiness = await materialsReadiness(pool, run);
       // A failed material is decided on the next claim (the stage fails the run with its code).
       if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
