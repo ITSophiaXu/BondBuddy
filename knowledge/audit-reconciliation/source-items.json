@@ -1,0 +1,331 @@
+{
+  "version": "audit-reconciliation-2026-10-02-v1",
+  "source_name": "审计报告科目之间的勾稽关系.docx",
+  "source_sha256": "0dd2a03aaca23e48b01144594b50451f17806059460ef9567aedd782f1124ecb",
+  "source_file": "sources/source.docx",
+  "authority": "internal_method",
+  "authority_claims_verified": false,
+  "paragraph_numbering": "one-based original Word body paragraphs, including empty paragraphs",
+  "items": [
+    {
+      "source_item": 1,
+      "title": "会计恒等式",
+      "source_heading": "第1项：会计恒等式",
+      "source_heading_paragraph": 7,
+      "source_quote": "资产 = 负债 + 所有者权益",
+      "source_quote_paragraph": 8
+    },
+    {
+      "source_item": 2,
+      "title": "流动资产汇总",
+      "source_heading": "第2项：流动资产汇总",
+      "source_heading_paragraph": 12,
+      "source_quote": "流动资产合计 = 货币资金 + 交易性金融资产 + 应收票据 + 应收账款 + 应收款项融资 + 预付款项 + 其他应收款 + 存货 + 合同资产 + 一年内到期的非流动资产 + 其他流动资产（各明细科目相加）",
+      "source_quote_paragraph": 13
+    },
+    {
+      "source_item": 3,
+      "title": "非流动资产汇总",
+      "source_heading": "第3项：非流动资产汇总",
+      "source_heading_paragraph": 15,
+      "source_quote": "非流动资产合计 = 债权投资 + 其他债权投资 + 长期应收款 + 长期股权投资 + 其他权益工具投资 + 投资性房地产 + 固定资产 + 在建工程 + 使用权资产 + 无形资产 + 商誉 + 长期待摊费用 + 递延所得税资产 + 其他非流动资产（各明细科目相加）",
+      "source_quote_paragraph": 16
+    },
+    {
+      "source_item": 4,
+      "title": "资产总计",
+      "source_heading": "第4项：资产总计",
+      "source_heading_paragraph": 18,
+      "source_quote": "流动资产合计 + 非流动资产合计 = 资产总计",
+      "source_quote_paragraph": 19
+    },
+    {
+      "source_item": 5,
+      "title": "流动负债汇总",
+      "source_heading": "第5项：流动负债汇总",
+      "source_heading_paragraph": 21,
+      "source_quote": "流动负债合计 = 短期借款 + 交易性金融负债 + 应付票据 + 应付账款 + 预收款项 + 合同负债 + 应付职工薪酬 + 应交税费 + 其他应付款 + 一年内到期的非流动负债 + 其他流动负债（各明细科目相加）",
+      "source_quote_paragraph": 22
+    },
+    {
+      "source_item": 6,
+      "title": "非流动负债汇总",
+      "source_heading": "第6项：非流动负债汇总",
+      "source_heading_paragraph": 24,
+      "source_quote": "非流动负债合计 = 长期借款 + 应付债券 + 租赁负债 + 长期应付款 + 预计负债 + 递延收益 + 递延所得税负债 + 其他非流动负债（各明细科目相加）",
+      "source_quote_paragraph": 25
+    },
+    {
+      "source_item": 7,
+      "title": "负债合计",
+      "source_heading": "第7项：负债合计",
+      "source_heading_paragraph": 27,
+      "source_quote": "流动负债合计 + 非流动负债合计 = 负债合计",
+      "source_quote_paragraph": 28
+    },
+    {
+      "source_item": 8,
+      "title": "所有者权益合计",
+      "source_heading": "第8项：所有者权益合计",
+      "source_heading_paragraph": 30,
+      "source_quote": "所有者权益合计 = 实收资本（股本）+ 资本公积 + 其他综合收益 + 专项储备 + 盈余公积 + 未分配利润",
+      "source_quote_paragraph": 31
+    },
+    {
+      "source_item": 9,
+      "title": "固定资产净值",
+      "source_heading": "第9项：固定资产净值",
+      "source_heading_paragraph": 35,
+      "source_quote": "固定资产净值 = 固定资产原值 - 累计折旧",
+      "source_quote_paragraph": 36
+    },
+    {
+      "source_item": 10,
+      "title": "固定资产账面价值",
+      "source_heading": "第10项：固定资产账面价值",
+      "source_heading_paragraph": 38,
+      "source_quote": "固定资产账面价值 = 固定资产原值 - 累计折旧 - 减值准备",
+      "source_quote_paragraph": 39
+    },
+    {
+      "source_item": 11,
+      "title": "在建工程转固",
+      "source_heading": "第11项：在建工程转固",
+      "source_heading_paragraph": 41,
+      "source_quote": "在建工程期末余额 = 在建工程期初余额 + 本期增加 - 本期转入固定资产 - 本期其他减少",
+      "source_quote_paragraph": 42
+    },
+    {
+      "source_item": 12,
+      "title": "无形资产账面价值",
+      "source_heading": "第12项：无形资产账面价值",
+      "source_heading_paragraph": 44,
+      "source_quote": "无形资产账面价值 = 无形资产原值 - 累计摊销 - 减值准备",
+      "source_quote_paragraph": 45
+    },
+    {
+      "source_item": 13,
+      "title": "应收账款净额",
+      "source_heading": "第13项：应收账款净额",
+      "source_heading_paragraph": 47,
+      "source_quote": "应收账款净额 = 应收账款账面余额 - 坏账准备",
+      "source_quote_paragraph": 48
+    },
+    {
+      "source_item": 14,
+      "title": "其他应收款净额",
+      "source_heading": "第14项：其他应收款净额",
+      "source_heading_paragraph": 50,
+      "source_quote": "其他应收款净额 = 其他应收款账面余额 - 坏账准备",
+      "source_quote_paragraph": 51
+    },
+    {
+      "source_item": 15,
+      "title": "存货净额",
+      "source_heading": "第15项：存货净额",
+      "source_heading_paragraph": 53,
+      "source_quote": "存货净额 = 存货账面余额 - 存货跌价准备",
+      "source_quote_paragraph": 54
+    },
+    {
+      "source_item": 16,
+      "title": "长期股权投资",
+      "source_heading": "第16项：长期股权投资",
+      "source_heading_paragraph": 56,
+      "source_quote": "长期股权投资账面价值 = 初始投资成本 ± 损益调整 ± 其他综合收益调整 ± 其他权益变动 - 减值准备",
+      "source_quote_paragraph": 57
+    },
+    {
+      "source_item": 17,
+      "title": "未分配利润（表内）",
+      "source_heading": "第17项：未分配利润（表内）",
+      "source_heading_paragraph": 59,
+      "source_quote": "未分配利润期末余额 = 未分配利润期初余额 + 本期净利润 - 提取盈余公积 - 分配股利/利润",
+      "source_quote_paragraph": 60
+    },
+    {
+      "source_item": 18,
+      "title": "营业利润",
+      "source_heading": "第18项：营业利润",
+      "source_heading_paragraph": 67,
+      "source_quote": "营业利润 = 营业收入 - 营业成本 - 税金及附加 - 销售费用 - 管理费用 - 研发费用 - 财务费用 + 其他收益 + 投资收益（损失以\"-\"号填列）+ 公允价值变动收益（损失以\"-\"号填列）- 信用减值损失 - 资产减值损失 + 资产处置收益（损失以\"-\"号填列）",
+      "source_quote_paragraph": 68
+    },
+    {
+      "source_item": 19,
+      "title": "利润总额",
+      "source_heading": "第19项：利润总额",
+      "source_heading_paragraph": 70,
+      "source_quote": "利润总额 = 营业利润 + 营业外收入 - 营业外支出",
+      "source_quote_paragraph": 71
+    },
+    {
+      "source_item": 20,
+      "title": "净利润",
+      "source_heading": "第20项：净利润",
+      "source_heading_paragraph": 73,
+      "source_quote": "净利润 = 利润总额 - 所得税费用",
+      "source_quote_paragraph": 74
+    },
+    {
+      "source_item": 21,
+      "title": "毛利",
+      "source_heading": "第21项：毛利",
+      "source_heading_paragraph": 78,
+      "source_quote": "毛利 = 营业收入 - 营业成本",
+      "source_quote_paragraph": 79
+    },
+    {
+      "source_item": 22,
+      "title": "主营业务收入与成本配比",
+      "source_heading": "第22项：主营业务收入与成本配比",
+      "source_heading_paragraph": 81,
+      "source_quote": "主营业务收入与主营业务成本之间通常存在一定的配比关系",
+      "source_quote_paragraph": 82
+    },
+    {
+      "source_item": 23,
+      "title": "净利润归属",
+      "source_heading": "第23项：净利润归属",
+      "source_heading_paragraph": 84,
+      "source_quote": "净利润 = 归属于母公司所有者的净利润 + 少数股东损益",
+      "source_quote_paragraph": 85
+    },
+    {
+      "source_item": 24,
+      "title": "综合收益总额",
+      "source_heading": "第24项：综合收益总额",
+      "source_heading_paragraph": 87,
+      "source_quote": "综合收益总额 = 净利润 + 其他综合收益税后净额",
+      "source_quote_paragraph": 88
+    },
+    {
+      "source_item": 25,
+      "title": "现金净流量",
+      "source_heading": "第25项：现金净流量",
+      "source_heading_paragraph": 95,
+      "source_quote": "现金净流量 = 现金流入 - 现金流出",
+      "source_quote_paragraph": 96
+    },
+    {
+      "source_item": 26,
+      "title": "现金及现金等价物净增加额",
+      "source_heading": "第26项：现金及现金等价物净增加额",
+      "source_heading_paragraph": 98,
+      "source_quote": "现金及现金等价物净增加额 = 经营活动现金流量净额 + 投资活动现金流量净额 + 筹资活动现金流量净额",
+      "source_quote_paragraph": 99
+    },
+    {
+      "source_item": 27,
+      "title": "期末现金余额",
+      "source_heading": "第27项：期末现金余额",
+      "source_heading_paragraph": 101,
+      "source_quote": "期末现金及现金等价物余额 = 期初现金及现金等价物余额 + 现金及现金等价物净增加额",
+      "source_quote_paragraph": 102
+    },
+    {
+      "source_item": 28,
+      "title": "间接法核心",
+      "source_heading": "第28项：间接法核心",
+      "source_heading_paragraph": 106,
+      "source_quote": "经营活动现金流量净额 = 净利润 + 不影响经营活动现金流量但减少净利润的项目 - 不影响经营活动现金流量但增加净利润的项目 + 与净利润无关但增加经营活动现金流量的项目 - 与净利润无关但减少经营活动现金流量的项目",
+      "source_quote_paragraph": 107
+    },
+    {
+      "source_item": 29,
+      "title": "间接法展开",
+      "source_heading": "第29项：间接法展开",
+      "source_heading_paragraph": 109,
+      "source_quote": "经营活动现金流量净额 = 净利润 + 资产减值准备 + 信用减值损失 + 固定资产折旧 + 无形资产摊销 + 长期待摊费用摊销 + 处置固定资产/无形资产/其他长期资产的损失（收益以\"-\"号填列）+ 固定资产报废损失（收益以\"-\"号填列）+ 公允价值变动损失（收益以\"-\"号填列）+ 财务费用（收益以\"-\"号填列）+ 投资损失（收益以\"-\"号填列）+ 递延所得税资产减少（增加以\"-\"号填列）+ 递延所得税负债增加（减少以\"-\"号填列）+ 存货的减少（增加以\"-\"号填列）+ 经营性应收项目的减少（增加以\"-\"号填列）+ 经营性应付项目的增加（减少以\"-\"号填列）",
+      "source_quote_paragraph": 110
+    },
+    {
+      "source_item": 30,
+      "title": "净利润与未分配利润（证监会表述）",
+      "source_heading": "第30项：净利润与未分配利润（证监会表述）",
+      "source_heading_paragraph": 117,
+      "source_quote": "资产负债表年初数\"未分配利润\" + 利润表中本年累计数\"净利润\" = 资产负债表期末数\"未分配利润\"",
+      "source_quote_paragraph": 118
+    },
+    {
+      "source_item": 31,
+      "title": "净利润与未分配利润（含分配）",
+      "source_heading": "第31项：净利润与未分配利润（含分配）",
+      "source_heading_paragraph": 120,
+      "source_quote": "期末未分配利润 = 期初未分配利润 + 本期净利润（± 以前年度损益调整）- 提取盈余公积 - 分配股利/利润",
+      "source_quote_paragraph": 121
+    },
+    {
+      "source_item": 32,
+      "title": "动态会计方程",
+      "source_heading": "第32项：动态会计方程",
+      "source_heading_paragraph": 123,
+      "source_quote": "资产 + 费用 = 负债 + 所有者权益 + 收入",
+      "source_quote_paragraph": 124
+    },
+    {
+      "source_item": 33,
+      "title": "现金及现金等价物（证监会表述）",
+      "source_heading": "第33项：现金及现金等价物（证监会表述）",
+      "source_heading_paragraph": 129,
+      "source_quote": "现金流量表中的\"现金及现金等价物净额\" = 资产负债表中的\"货币资金\"期末金额 - \"货币资金\"期初金额（企业不存在可划分为现金等价物的短期投资及不影响变现的定期存款时）",
+      "source_quote_paragraph": 130
+    },
+    {
+      "source_item": 34,
+      "title": "期末现金余额",
+      "source_heading": "第34项：期末现金余额",
+      "source_heading_paragraph": 132,
+      "source_quote": "现金流量表\"期末现金及现金等价物余额\" = 资产负债表\"货币资金\"期末余额（须扣除受限货币资金）",
+      "source_quote_paragraph": 133
+    },
+    {
+      "source_item": 35,
+      "title": "受限货币资金",
+      "source_heading": "第35项：受限货币资金",
+      "source_heading_paragraph": 135,
+      "source_quote": "资产负债表\"货币资金\" - 现金流量表\"现金及现金等价物\" = 附注中\"受限货币资金\"",
+      "source_quote_paragraph": 136
+    },
+    {
+      "source_item": 36,
+      "title": "扩展恒等式",
+      "source_heading": "第36项：扩展恒等式",
+      "source_heading_paragraph": 138,
+      "source_quote": "现金及现金等价物净增加额 + 非现金资产净增加额 = 负债净增加额 + 所有者权益净增加额",
+      "source_quote_paragraph": 139
+    },
+    {
+      "source_item": 37,
+      "title": "现金净增加额推导",
+      "source_heading": "第37项：现金净增加额推导",
+      "source_heading_paragraph": 141,
+      "source_quote": "现金及现金等价物净增加额 = 负债净增加额 + 所有者权益净增加额 - 非现金资产净增加额",
+      "source_quote_paragraph": 142
+    },
+    {
+      "source_item": 38,
+      "title": "净利润→经营现金流（间接法）",
+      "source_heading": "第38项：净利润→经营现金流（间接法）",
+      "source_heading_paragraph": 146,
+      "source_quote": "净利润 ± 经营活动非现金的资产和负债的变化 = 经营活动现金流量净额",
+      "source_quote_paragraph": 147
+    },
+    {
+      "source_item": 39,
+      "title": "支付的各项税费",
+      "source_heading": "第39项：支付的各项税费",
+      "source_heading_paragraph": 154,
+      "source_quote": "支付的各项税费 = 附注中应交税费本期减少 + 直接计入管理费用中的税费",
+      "source_quote_paragraph": 155
+    },
+    {
+      "source_item": 40,
+      "title": "支付给职工的现金",
+      "source_heading": "第40项：支付给职工的现金",
+      "source_heading_paragraph": 159,
+      "source_quote": "支付给职工以及为职工支付的现金 = 附注中应付职工薪酬本期减少 + 直接计入管理费用中的与职工相关的费用 + 支付的个人所得税",
+      "source_quote_paragraph": 160
+    }
+  ]
+}

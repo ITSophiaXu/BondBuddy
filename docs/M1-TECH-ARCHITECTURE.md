@@ -691,3 +691,9 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 带只读材料工具的编制执行使用独立 `BB_CODEX_AUTHORING_TIMEOUT_MS`（默认 2700000ms / 45 分钟）；普通调用和平台探针保留 `BB_CODEX_TIMEOUT_MS`。45 分钟是单次 Codex 执行兜底期限，不是整份募集书的完成时间。没有按静默时长杀进程的逻辑；取消、租约丢失、进程错误和安全检查继续有效。来源批次和 v4 检查点不变，不靠进一步拆小正文规避合理编制时长。
 
 v4 仅对明确标识 `codex-material-readonly-1`、已退出、无结果且 MODEL_TIMEOUT 的尝试复用现有有界恢复；普通工具、未标识旧调用、取消或失联不自动重放。每调用两次、每 run 六次上限和 unknown 用量均保留。
+
+### 2026-10-02 M3-02 审计勾稽方法
+
+`knowledge/audit-reconciliation/` 保存用户提供的 40 项勾稽知识原件、原文定位及内部适用性说明；`packages/domain/src/audit-reconciliation-knowledge.ts` 定义固定版本目录，`review-audit-reconciliation.ts` 在 worker 聚合带原文证据的观察后复算明确适用的算术式。方法目录不是项目财务事实或监管规则包，不进入正式法规发布链。证据校验复用既有财务观察检查，不新建公开 DTO、数据库迁移或页面。
+
+抽取 prompt 带完整知识目录及内容哈希，调用名/逻辑标识/模板版本均含哈希，报告检查点保存版本和哈希。计算采用精确十进制有理数、明确单位和源精度；同一来源版本的完整、有效操作数才能支持修订金额。条件/概念关系、缺源、冲突、OCR 或期间不符不产生自动金额修订。结果沿用现有 financial finding/coverage/计算链；未观察到的规则记录未覆盖，差异复核只认可实际重新执行的检查。
