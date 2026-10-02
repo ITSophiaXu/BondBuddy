@@ -657,6 +657,27 @@ test('resumed source-input task shows compilation without a false blocker', asyn
   }
 });
 
+test('provider timeout explains service recovery and keeps the same task after automatic retry', async ({ page }) => {
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('.execution-summary')).toContainText('无需补充材料');
+  await expect(page.locator('.execution-summary')).not.toContainText('待处理条件');
+  await expect(page.locator('#project-conversation-root')).not.toBeVisible();
+  const run=[...state.runs.values()][0];const hash=run.input_hash;
+  if(process.env.BB_TIMEOUT_UX_DIR){
+    await mkdir(process.env.BB_TIMEOUT_UX_DIR,{recursive:true});
+    for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+      await page.setViewportSize({width,height});await page.screenshot({path:join(process.env.BB_TIMEOUT_UX_DIR,`recovery-${name}.png`)});
+    }
+  }
+  run.state='running';run.stage='provider_call';state.runReason='provider_call_may_be_sent';state.eventSeq++;
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
+  await expect(page.locator('.execution-summary')).toHaveCount(0);expect(state.executes).toHaveLength(1);expect(run.input_hash).toBe(hash);
+  run.state='failed';run.stage='failed';state.runReason='provider_timeout_retries_exhausted';state.eventSeq++;
+  await page.reload();await expect(page.locator('.execution-summary')).toContainText('编制服务多次响应超时');
+  await expect(page.locator('#prepare-next-version')).toBeVisible();
+});
+
 test('account switch ignores an in-flight execute result', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
