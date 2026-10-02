@@ -1,0 +1,73 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "review-report.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": true,
+      "observed_normalizations": [],
+      "source_sha256": "1a17649339784c402308c6e5bca4672d0f2dfd4c643b43634c3ae94dbea148fd",
+      "word_saved_sha256": "b6d4e3dbf1b7eec4a88ae2b01521c0d2952b4bb27258dcd062158205c3fbefc4",
+      "before": {
+        "body": [
+          [
+            "募集书复核报告",
+            "报告 synthetic-report · 版本 1\n完成时间 2026-10-02T00:00:00Z",
+            "复核结果用于辅助判断；零发现不保证合规。已修改、异议和补证不等于复核通过。",
+            "范围与来源",
+            "复核范围：完整复核\n源稿：source · 版本 1\n锁定输入版本：1\n执行编号：synthetic-run",
+            "发现数量：财务核对 1 项；合规与格式 0 项；公开信息 0 项",
+            "严重性分布：P1 1 项；P2 0 项；P3 0 项",
+            "实际覆盖",
+            "F001 · 合计不一致",
+            "F001 · P1 · 合计不一致\n核对合计与原表\n建议：补充证据或人工确认\n说明：修改、异议或补证不代表复核通过。",
+            "结论：存在差错；状态：本轮核对；来源报告：synthetic-report",
+            "原文定位：材料 source · 版本 1 · 第 1 段\n100万元",
+            "原文定位：材料 source · 版本 1 · 表格 1 / 第 1 行 / 第 1 列 / 第 1 段\n90万元"
+          ],
+          []
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "募集书复核报告",
+            "报告 synthetic-report · 版本 1\n完成时间 2026-10-02T00:00:00Z",
+            "复核结果用于辅助判断；零发现不保证合规。已修改、异议和补证不等于复核通过。",
+            "范围与来源",
+            "复核范围：完整复核\n源稿：source · 版本 1\n锁定输入版本：1\n执行编号：synthetic-run",
+            "发现数量：财务核对 1 项；合规与格式 0 项；公开信息 0 项",
+            "严重性分布：P1 1 项；P2 0 项；P3 0 项",
+            "实际覆盖",
+            "F001 · 合计不一致",
+            "F001 · P1 · 合计不一致\n核对合计与原表\n建议：补充证据或人工确认\n说明：修改、异议或补证不代表复核通过。",
+            "结论：存在差错；状态：本轮核对；来源报告：synthetic-report",
+            "原文定位：材料 source · 版本 1 · 第 1 段\n100万元",
+            "原文定位：材料 source · 版本 1 · 表格 1 / 第 1 行 / 第 1 列 / 第 1 段\n90万元"
+          ],
+          []
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    }
+  ]
+}
