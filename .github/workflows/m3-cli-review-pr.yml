@@ -79,8 +79,6 @@ jobs:
             apps/worker/dist/authoring-material-tools.test.js \
             apps/worker/dist/codex-adapter.test.js \
             apps/worker/dist/codex-durable.test.js \
-            apps/worker/dist/codex-file-authoring.test.js \
-            apps/worker/dist/file-authoring.pg.test.js \
             apps/worker/dist/model-generation-router.test.js \
             apps/api/dist/review-workspace.test.js \
             packages/domain/dist/review-*.test.js \
@@ -92,6 +90,37 @@ jobs:
           fi
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m3-cli-review.tap"
           grep -Eq '^# fail 0$' "$RUNNER_TEMP/m3-cli-review.tap"
+      - name: Build the pinned native file sandbox runtime
+        run: |
+          if ! command -v apparmor_parser >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends apparmor
+          fi
+          bash deploy/m1/scripts/install-codex-file-sandbox.sh
+          docker build -f deploy/m1/Dockerfile --target worker \
+            --build-arg NODE_IMAGE=node:24.14.0-bookworm-slim \
+            -t bondbuddy-m3-cli-native:ci .
+      - name: Native file sandbox, cancellation and real Word pair downloads
+        run: |
+          docker run --rm --network host --read-only --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --security-opt apparmor=bondbuddy-codex-v1 \
+            --security-opt "seccomp=$GITHUB_WORKSPACE/deploy/m1/security/codex-seccomp.json" \
+            --cpus 2 --memory 2g --memory-swap 2g --pids-limit 256 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=512m \
+            -e BB_TEST_DATABASE_URL -e BB_TEST_AZURITE_CONNECTION_STRING \
+            -e BB_PYTHON=/opt/venv/bin/python \
+            -e BONDBUDDY_TEST_PYTHON=/opt/venv/bin/python \
+            -e BONDBUDDY_WORD_PYTHON=/opt/venv/bin/python \
+            -e PYTHONPATH=/app/python:/app/python/tests -e PYTHONDONTWRITEBYTECODE=1 \
+            --entrypoint node bondbuddy-m3-cli-native:ci \
+            --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/codex-file-authoring.test.js apps/worker/dist/file-authoring.pg.test.js \
+            | tee "$RUNNER_TEMP/m3-cli-native.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m3-cli-native.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m3-cli-native.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m3-cli-native.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/m3-cli-native.tap"
       - name: Native Word and parser regressions
         run: python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery test_file_authoring
       - name: Stop private Blob test service

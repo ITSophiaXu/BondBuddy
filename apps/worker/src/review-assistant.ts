@@ -106,8 +106,10 @@ async function materialEvidence(pool:Pool,lease:ReviewAssistantLease,snapshot:As
   for(const pin of snapshot.material_refs) {
     // A parse finishing after Send is not silently substituted into this message's evidence.
     const row=(await pool.query(`SELECT id,response_sha256 FROM bb_parse_snapshots WHERE owner_user_id=$1 AND project_id=$2
-      AND material_id=$3 AND material_version=$4 AND content_sha256=$5 AND created_at<=$6 ORDER BY created_at DESC,id DESC LIMIT 1`,
-    [lease.owner_user_id,lease.project_id,pin.material_id,pin.material_version,pin.sha256,lease.created_at])).rows[0];
+      AND material_id=$3 AND material_version=$4 AND content_sha256=$5
+      AND created_at<=(SELECT created_at FROM bb_review_messages WHERE id=$6 AND owner_user_id=$1 AND project_id=$2)
+      ORDER BY created_at DESC,id DESC LIMIT 1`,
+    [lease.owner_user_id,lease.project_id,pin.material_id,pin.material_version,pin.sha256,lease.id])).rows[0];
     if(!row){result.push({material_ref:pin,parse_snapshot_id:null,parse_response_sha256:null,status:'unparsed',scope:'attachment',records:[],
       omitted_record_count:0,limitations:['发送消息时尚无已固定的解析正文；附件待解析，不能声称已经阅读或核验。']});continue;}
     const existing=groups.get(row.id);
@@ -182,9 +184,12 @@ async function verifyContext(pool:Pool,lease:ReviewAssistantLease,snapshot:Assis
       [lease.owner_user_id,lease.project_id,pin.material_id,pin.material_version])).rows[0];
     if (!row || String(row.sha256).trim()!==pin.sha256) fail('ASSISTANT_CONTEXT_INVALID');
   }
+  // Compare database timestamps directly: pg's JavaScript Date drops microseconds,
+  // which can otherwise exclude legitimate earlier messages in the same millisecond.
   const prior=snapshot.prior_message_ids.length ? (await pool.query(`SELECT id,role,content,context,proposal FROM bb_review_messages
-    WHERE owner_user_id=$1 AND project_id=$2 AND id=ANY($3::text[]) AND created_at<=$4`,
-  [lease.owner_user_id,lease.project_id,snapshot.prior_message_ids,lease.created_at])).rows : [];
+    WHERE owner_user_id=$1 AND project_id=$2 AND id=ANY($3::text[])
+    AND created_at<=(SELECT created_at FROM bb_review_messages WHERE id=$4 AND owner_user_id=$1 AND project_id=$2)`,
+  [lease.owner_user_id,lease.project_id,snapshot.prior_message_ids,lease.id])).rows : [];
   if (prior.length!==snapshot.prior_message_ids.length) fail('ASSISTANT_CONTEXT_INVALID');
   const byId=new Map(prior.map(row=>[row.id,row]));
   return {history:snapshot.prior_message_ids.map(id=>byId.get(id)),

@@ -108,10 +108,10 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       await pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)`,
         [source.report_id,owner,project,source.run_id,inputManifestHash(source),source]);
     }
-    const queue=async(options:{source?:ReviewReport|null;prior?:string[];mutate?:(m:ReturnType<typeof message>)=>void;status?:'queued'|'completed'}={})=>{
+    const queue=async(options:{source?:ReviewReport|null;prior?:string[];mutate?:(m:ReturnType<typeof message>)=>void;status?:'queued'|'completed';createdAt?:string}={})=>{
       const m=message(project,options.source===undefined?source:options.source,options.prior);options.mutate?.(m);
-      await pool.query(`INSERT INTO bb_review_messages(id,owner_user_id,project_id,submission_request_id,request_hash,role,content,context,context_snapshot,reply_status)
-        VALUES($1,$2,$3,$4,$5,'user',$6,$7,$8,$9)`,[m.id,owner,project,randomUUID(),m.request_hash,m.content,m.context,m.context_snapshot,options.status??'queued']);
+      await pool.query(`INSERT INTO bb_review_messages(id,owner_user_id,project_id,submission_request_id,request_hash,role,content,context,context_snapshot,reply_status,created_at)
+        VALUES($1,$2,$3,$4,$5,'user',$6,$7,$8,$9,COALESCE($10::timestamptz,now()))`,[m.id,owner,project,randomUUID(),m.request_hash,m.content,m.context,m.context_snapshot,options.status??'queued',options.createdAt??null]);
       return m;
     };
     const config=(reply:unknown=source?proposedReply:plainReply,usage:unknown=measured):CodexAdapterConfig=>({
@@ -210,8 +210,9 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       } finally {await evidenceGate('open');await killSwitch('released');}
     });
 
-    await t.test('concurrent workers claim once; prompt snapshot, measured usage and proposal are durable without plan/task/billing writes',async ctx=>{
-      const f=await fixture(ctx,true),prior=await f.queue({status:'completed'}),m=await f.queue({prior:[prior.id]});
+    await t.test('concurrent workers claim once with same-millisecond history; prompt snapshot, measured usage and proposal are durable without plan/task/billing writes',async ctx=>{
+      const f=await fixture(ctx,true),prior=await f.queue({status:'completed',createdAt:'2026-10-02T00:00:00.123100Z'}),
+        m=await f.queue({prior:[prior.id],createdAt:'2026-10-02T00:00:00.123900Z'});
       const outcomes=await Promise.all([runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()})]);
       assert.deepEqual(outcomes.sort(),['completed','idle']);assert.equal(await f.sends(),1);
       const user=await f.row(m.id),replies=await f.replies(m.id),attempt=await f.attempt(m.id);
@@ -239,6 +240,14 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       await assert.rejects(pool.query("UPDATE bb_review_messages SET context_snapshot='{}' WHERE id=$1",[m.id]),/immutable/);
       await assert.rejects(pool.query('UPDATE bb_review_assistant_attempts SET input_tokens=84 WHERE id=$1',[attempt.id]),/immutable/);
       assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'idle');assert.equal(await f.sends(),1);
+    });
+
+    await t.test('same-millisecond history created after Send remains invalid before any model call',async ctx=>{
+      const f=await fixture(ctx),later=await f.queue({status:'completed',createdAt:'2026-10-02T00:00:00.123950Z'}),
+        m=await f.queue({prior:[later.id],createdAt:'2026-10-02T00:00:00.123900Z'});
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
+      assert.equal((await f.row(m.id)).error,'ASSISTANT_CONTEXT_INVALID');assert.equal(await f.attempt(m.id),undefined);
+      assert.equal((await f.replies(m.id)).length,0);assert.equal(await f.sends(),0);
     });
 
     await t.test('large attachment bodies reserve every report reference before optional text and disclose omissions',async ctx=>{
