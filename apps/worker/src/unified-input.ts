@@ -73,7 +73,9 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   if (revision && (!await reviewRevisionInputGate(pool, run, revision) || m.authoring.previous_output)) return fail;
   if (revision && !revision.selected_findings.some(executableRevisionFinding))
     return { kind: 'pause', stage: 'capability_not_ready', reason: 'revision_no_executable_changes' };
-  if (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || (!revision && !m.update_details.target_reporting_periods?.length))
+  // A finding revision already pins its verified source/report/evidence. Optional project
+  // labels cannot impose M1 whole-document authoring prerequisites on that accepted scope.
+  if (!revision && (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || !m.update_details.target_reporting_periods?.length))
     return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_target_information_required' };
   if (!m.materials.length) return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };
   for (const pin of m.materials) {
@@ -124,7 +126,8 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     const revisionSnapshots = new Set(pinnedRefs.map(ref => ref.parse_snapshot_id));
     if (revisionSnapshots.size > 1) throw new Error('INPUT_REVISION_CONFLICT');
     if (!revisionSnapshots.size && result.state !== 'succeeded') throw new UnifiedInputPending(result.state === 'failed' ? 'authoring_material_unreadable' : 'material_parse_pending');
-    const snapshotId = revisionSnapshots.size ? [...revisionSnapshots][0] : result.checkpoint?.stages?.parse_evidence?.snapshot_id;    const snapshot = snapshotId ? await getParseSnapshot({ pool: ctx.pool }, scope, snapshotId) : null;
+    const snapshotId = revisionSnapshots.size ? [...revisionSnapshots][0] : result.checkpoint?.stages?.parse_evidence?.snapshot_id;
+    const snapshot = snapshotId ? await getParseSnapshot({ pool: ctx.pool }, scope, snapshotId) : null;
     if (snapshot && snapshot.contentSha256 !== pin.sha256) throw new Error('INPUT_REVISION_CONFLICT');
     let records: UnifiedRecord[] = snapshot?.evidence ?? [];
     if (pinnedRefs.some(ref => !snapshot || snapshot.snapshotId !== ref.parse_snapshot_id || snapshot.responseSha256 !== ref.parse_response_sha256

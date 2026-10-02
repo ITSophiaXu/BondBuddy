@@ -56,6 +56,23 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     const active = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE state IN ('queued','running')");
     assert.equal(active.rows[0].count, 0, 'requires a dedicated database');
 
+    const web=await fixture('web-evidence'),webJournal=journalFor(web);
+    let webIntent!: Parameters<CodexDurableJournal['recordIntent']>[0];
+    const recordIntent=webJournal.recordIntent.bind(webJournal);
+    webJournal.recordIntent=async intent=>{webIntent=intent;await recordIntent(intent);};
+    const searched=await runContainedModelCall(callFor(web,'SCENARIO:web_search'),webJournal,{...config,web_search:'live'});
+    assert.equal(searched.status,'completed');
+    const stored=(await pool.query('SELECT events,content_sha256 FROM bb_model_web_search_evidence WHERE call_id=$1',[webIntent.call_id])).rows[0];
+    assert.equal(stored.events.length,1);assert.equal(stored.events[0].item.id,'search-1');
+    await webJournal.recordWebSearchEvents(webIntent,stored.events);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_web_search_evidence WHERE call_id=$1',[webIntent.call_id])).rows[0].n,1);
+    await assert.rejects(webJournal.recordWebSearchEvents(webIntent,[]),{code:'IDEMPOTENCY_CONFLICT'});
+    await assert.rejects(webJournal.recordWebSearchEvents({...webIntent,project_id:'another-project'},stored.events),{code:'CAPABILITY_NOT_READY'});
+    await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",[web.lease.jobId]);
+    await assert.rejects(webJournal.recordWebSearchEvents(webIntent,stored.events),{code:'CAPABILITY_NOT_READY'});
+    await pool.query("UPDATE bb_jobs SET lease_until=now()+interval '30 seconds' WHERE id=$1",[web.lease.jobId]);
+    await pauseRun(pool,web.lease,'awaiting_materials','synthetic_test_complete');
+
     // Schema-invalid first answer is re-asked under the same lease; both attempts are durable.
     const ok = await fixture('reask');
     const r = await runContainedModelCall(callFor(ok, 'SCENARIO:invalid_json REASK_SCENARIO:structured'), journalFor(ok), config);
@@ -81,7 +98,9 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     const t = await runContainedModelCall(callFor(slow, 'SCENARIO:hang'), journalFor(slow), config);
     assert.equal(t.error_code, 'MODEL_TIMEOUT');
     const tr = (await pool.query('SELECT a.status,a.usage_status,o.input_tokens,t.error_code,t.exit_signal FROM bb_model_call_attempts a JOIN bb_provider_call_observations o ON o.attempt_id=a.id JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id WHERE a.job_id=$1', [slow.lease.jobId])).rows[0];
-    assert.deepEqual([tr.status, tr.usage_status, tr.input_tokens, tr.error_code, tr.exit_signal], ['pending_reconcile', 'unknown', null, 'MODEL_TIMEOUT', 'SIGKILL']);
+    assert.deepEqual([tr.status, tr.usage_status, tr.input_tokens, tr.error_code], ['pending_reconcile', 'unknown', null, 'MODEL_TIMEOUT']);
+    if(process.platform==='win32')assert.ok(tr.exit_signal===null||tr.exit_signal==='SIGKILL');
+    else assert.equal(tr.exit_signal,'SIGKILL');
     assert.equal((await jobSnapshot(pool, owner, slow.runId)).state, 'paused');
 
     // Exercise the real journal boundary beyond the ordinary JSON re-ask budget.
