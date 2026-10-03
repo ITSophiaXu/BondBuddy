@@ -75,3 +75,23 @@ test('review mode precedes ordinary authoring and continues to the independent p
   assert.deepEqual(result,{kind:'done',value:{version:'review-analysis-v1',report:'public-result'}});
   assert.equal(reviews,1);assert.equal(publicChecks,1);assert.equal(files,0);
 });
+
+test('legacy revision recovery never starts a new CLI file task; mixed modes pause',async()=>{
+  let cli=0,legacy=0;
+  const router=modelGenerationRouter({revisionStage:{name:'model_generation',run:async()=>{cli++;return {kind:'done',value:'cli'};}},
+    legacyRevisionStage:{name:'model_generation',run:async()=>{legacy++;return {kind:'done',value:'legacy'};}}});
+  const ctx=context('update');ctx.values.set('input_lock',{authoring_mode:'unified_v1',review_revision:true});
+  ctx.checkpoint.review_revision_0_prompt={snapshot_id:'saved'};
+  assert.deepEqual(await router.run(ctx),{kind:'done',value:'legacy'});assert.equal(cli,0);
+  ctx.checkpoint.review_revision_cli_v1_prompt={snapshot_id:'other'};
+  assert.deepEqual(await router.run(ctx),{kind:'pause',stage:'capability_not_ready',reason:'revision_execution_mode_changed'});
+  assert.equal(legacy,1);assert.equal(cli,0);
+});
+
+test('public review method pins survive the combined model-generation checkpoint',async()=>{
+  const ctx=context('review');ctx.values.set('input_lock',{review_mode:'review_v1'});
+  const publicPin={execution_mode:'cli-public-v2',public_context_sha256:'a'.repeat(64)};
+  const result=await modelGenerationRouter({reviewStage:{name:'model_generation',run:async()=>({kind:'done',value:{version:'review-analysis-v1'},checkpoint:{execution_mode:'cli-led-v3'}})},
+    publicStage:{name:'public_review',run:async()=>({kind:'done',value:'report',checkpoint:publicPin})}}).run(ctx);
+  assert.equal(result.kind,'done');if(result.kind==='done')assert.deepEqual(result.checkpoint,{execution_mode:'cli-led-v3',public_review:publicPin});
+});

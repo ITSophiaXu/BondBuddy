@@ -10,6 +10,7 @@ import { reviewModelStage } from './review-model-stage.js';
 import { reviewPublicStage } from './review-public-stage.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
+import { reviewRevisionCliStage } from './review-revision-cli-stage.js';
 
 export interface ModelGenerationRouterOptions {
   /** Trusted adapters are supplied only after their server-side sources are implemented. */
@@ -20,6 +21,7 @@ export interface ModelGenerationRouterOptions {
   reviewStage?: RunStage;
   publicStage?: RunStage;
   revisionStage?: RunStage;
+  legacyRevisionStage?: RunStage;
   fileStage?: RunStage;
   /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
   factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
@@ -61,13 +63,22 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
         ctx.values.set('model_generation', result.value);
         const publicResult = await (options.publicStage ?? reviewPublicStage()).run(ctx);
         if (publicResult.kind !== 'done') return publicResult;
-        return { ...result, value: { ...(result.value as Record<string, unknown>), report: publicResult.value } };
+        return { ...result, value: { ...(result.value as Record<string, unknown>), report: publicResult.value },
+          ...(result.checkpoint || publicResult.checkpoint ? { checkpoint: { ...result.checkpoint,
+            ...(publicResult.checkpoint ? { public_review: publicResult.checkpoint } : {}) } } : {}) };
       }
       const locked = ctx.values.get('input_lock') as {authoring_mode?:string;review_revision?:boolean}|undefined;
       if (locked?.authoring_mode === 'unified_v1') {
         // An accepted M3 finding revision stays on its bounded source/report/plan path.
         // Ordinary new authoring uses original files; previously started calls keep their identity.
-        if(locked.review_revision)return (options.revisionStage ?? unifiedModelGenerationStage()).run(ctx);
+        if(locked.review_revision){
+          const keys=Object.keys(ctx.checkpoint), prior=ctx.checkpoint.model_generation;
+          const legacy=keys.some(k=>/^review_revision_\d+(_prompt)?$/.test(k)) || prior?.version==='unified-plan-v1';
+          const cli=keys.some(k=>k.startsWith('review_revision_cli_')) || prior?.execution_mode==='review-revision-cli-v1';
+          if(legacy&&cli)return {kind:'pause',stage:'capability_not_ready',reason:'revision_execution_mode_changed'};
+          return legacy ? (options.legacyRevisionStage ?? unifiedModelGenerationStage()).run(ctx)
+            : (options.revisionStage ?? reviewRevisionCliStage()).run(ctx);
+        }
         const old=Object.keys(ctx.checkpoint).some(k=>/^unified_v[34]_/.test(k));
         if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
         return (options.fileStage ?? fileAuthoringStage()).run(ctx);

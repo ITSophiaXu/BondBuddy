@@ -4,11 +4,13 @@ import { reviewFixture, syntheticReviewPack, syntheticRuleContext } from '../../
 import { evidenceKey, referenceFor, reviewContentHash } from '../../../packages/domain/dist/review-evidence.js';
 import { normalizeReviewFindings, reviewCoverage } from '../../../packages/domain/dist/review-finding-normalization.js';
 import { isReviewReport, type ReviewReport } from '../../../packages/contracts/dist/review-results.js';
-import { buildReviewAnalysisPrompt, chunkReviewRecords, normalizeModelReviewAnalysis, reviewModelStage, reviewPromptRecordId, reviewPromptRuleId,
+import { buildReviewAnalysisPrompt, buildCliReviewPrompt, chunkReviewRecords, normalizeModelReviewAnalysis, reviewModelStage, reviewPromptRecordId, reviewPromptRuleId,
   reviewAnalysisTemplateVersion, type ModelReviewAnalysis, type ReviewAnalysisInput, type ReviewAnalysisRecord, type ReviewAnalysisResult } from './review-model-stage.js';
 import type { StageContext } from './run-pipeline.js';
 import { syntheticCliReview } from './review-cli-test-fixtures.js';
-import { createReviewToolTrace, callReviewTool } from './review-tools.js';
+import { createReviewToolTrace, callReviewTool, reviewToolDataHash, type ReviewToolData } from './review-tools.js';
+import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
+import { loadReviewAuditKnowledge } from './review-knowledge.js';
 
 function fixture(){
   const f=reviewFixture();f.observation('disclosure','100.00');f.observation('audit','1000.00',{source_kind:'audit'});
@@ -82,9 +84,9 @@ test('prose sums do not accept model completeness claims as independently verifi
 });
 
 test('CLI selects a financial tool check and delivers its receipt-backed discrepancy (synthetic)',async()=>{
-  const {input,ctx}=fixture();const calls:string[]=[];
+  const {input,ctx}=fixture();const calls:string[]=[],skill=loadM3RuntimeSkill('m3-review');
   const stage=reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async()=>{
-    calls.push(options.logicalCallId);assert.equal(options.resultSchemaVersion,'review-cli-v2');assert.equal(options.templateVersion,reviewAnalysisTemplateVersion);
+    calls.push(options.logicalCallId);assert.equal(options.resultSchemaVersion,'review-cli-v3');assert(options.templateVersion?.startsWith(`m3-review-${skill.sha256.slice(0,16)}-`));
     const value=syntheticCliReview(options.reviewTools!,{financial:{observations:input.evidence.records.map((r,i)=>observation(r,i?'1000.00':'100.00',`o${i}`)),calculations:[]}});
     assert(options.validate(value.output));return {kind:'done',value};
   }})});
@@ -94,7 +96,63 @@ test('CLI selects a financial tool check and delivers its receipt-backed discrep
   assert(value.report.coverage.some(c=>c.check_id==='cli:reading-coverage:financial'&&c.outcome==='uncovered'));
   assert.equal(value.report.coverage.filter(c=>c.check_id.startsWith('cli-method:')).length,40);
   assert(!value.report.coverage.some(c=>c.check_id.startsWith('audit-reconciliation:')),'unrequested knowledge checks are never executed');
-  await stage.run(ctx);assert.equal(calls[0],calls[1]);assert.equal(first.checkpoint?.execution_mode,'cli-led-v2');
+  await stage.run(ctx);assert.equal(calls[0],calls[1]);assert.equal(first.checkpoint?.execution_mode,'cli-led-v3');
+});
+
+test('new review v3 explicitly injects the pinned skill and replays stable prompt, call and template identities',async()=>{
+  const {input,ctx}=fixture(),skill=loadM3RuntimeSkill('m3-review');
+  const calls:{name:string;logicalId:string;template:string|undefined;prompt:string}[]=[];
+  const stage=reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async context=>{
+    const prompt=await options.buildPrompt(context);
+    assert(prompt.startsWith(`Runtime skill m3-review@${skill.version}; SHA-256 ${skill.sha256}\n`));assert(prompt.includes(skill.content));
+    assert.equal(options.resultSchemaVersion,'review-cli-v3');assert.match(options.name,/^review_cli_v3_[a-f0-9]{24}$/);
+    assert.match(options.logicalCallId,/^review-cli-v3-[a-f0-9]{24}$/);
+    calls.push({name:options.name,logicalId:options.logicalCallId,template:options.templateVersion,prompt});
+    context.checkpoint[`${options.name}_prompt`]={snapshot_id:'synthetic-stable-prompt'};
+    return {kind:'done',value:syntheticCliReview(options.reviewTools!)};
+  }})});
+  const first=await stage.run(ctx);assert.equal(first.kind,'done');if(first.kind!=='done')return;
+  assert.equal(first.checkpoint?.skill_sha256,skill.sha256);assert.equal(first.checkpoint?.skill_version,skill.version);
+  ctx.checkpoint.model_generation=first.checkpoint!;
+  const replay=await stage.run(ctx);assert.equal(replay.kind,'done');assert.deepEqual(calls[1],calls[0]);
+  input.requirements.push('A changed run input must not reuse the existing result identity');
+  assert.deepEqual(await stage.run(ctx),{kind:'pause',stage:'capability_not_ready',reason:'review_cli_snapshot_changed'});assert.equal(calls.length,2);
+});
+
+test('already-started v2 review keeps the original prompt, call and template without injecting the current skill',async()=>{
+  const {input,ctx}=fixture(),knowledge=await loadReviewAuditKnowledge();
+  const data:ReviewToolData={input,knowledge,allowed_target_ids:input.evidence.records.filter(r=>r.source_kind==='disclosure').map(reviewPromptRecordId)};
+  const legacyPrompt=buildCliReviewPrompt(input,[],reviewToolDataHash(data)),key=reviewContentHash(legacyPrompt).slice(0,24);
+  ctx.checkpoint[`review_cli_v2_${key}_prompt`]={snapshot_id:'synthetic-v2-prompt'};
+  let calls=0;
+  const stage=reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async context=>{
+    calls++;assert.equal(options.name,`review_cli_v2_${key}`);assert.equal(options.logicalCallId,`review-cli-v2-${key}`);
+    assert.equal(options.resultSchemaVersion,'review-cli-v2');assert.equal(options.templateVersion,reviewAnalysisTemplateVersion);
+    const prompt=await options.buildPrompt(context);assert.equal(prompt,legacyPrompt);assert(!prompt.includes('Runtime skill m3-review@'));
+    return {kind:'done',value:syntheticCliReview(options.reviewTools!)};
+  }})});
+  const first=await stage.run(ctx);assert.equal(first.kind,'done');if(first.kind!=='done')return;
+  assert.equal(first.checkpoint?.execution_mode,'cli-led-v2');assert.equal(first.checkpoint?.skill_sha256,undefined);
+  ctx.checkpoint.model_generation=first.checkpoint!;assert.equal((await stage.run(ctx)).kind,'done');assert.equal(calls,2);
+});
+
+test('method, skill and protocol drift pause before any additional model call',async()=>{
+  for(const drift of ['skill-sha','skill-version','method-sha','method-version','mixed','unknown-mode','old-extraction','prompt'] as const){
+    const {input,ctx}=fixture();let calls=0;
+    const stage=reviewModelStage({loadInput:async()=>input,model:options=>({name:options.name,run:async()=>{calls++;return {kind:'done',value:syntheticCliReview(options.reviewTools!)};}})});
+    const first=await stage.run(ctx);assert.equal(first.kind,'done');if(first.kind!=='done')continue;
+    ctx.checkpoint.model_generation=structuredClone(first.checkpoint!);
+    const saved=ctx.checkpoint.model_generation;let reason='review_execution_mode_changed';
+    if(drift==='skill-sha'){saved.skill_sha256='0'.repeat(64);reason='review_skill_version_changed';}
+    if(drift==='skill-version'){saved.skill_version='unrecognized';reason='review_skill_version_changed';}
+    if(drift==='method-sha'){saved.audit_knowledge_sha256='0'.repeat(64);reason='review_audit_knowledge_version_changed';}
+    if(drift==='method-version'){saved.audit_knowledge_version='unrecognized';reason='review_audit_knowledge_version_changed';}
+    if(drift==='mixed')ctx.checkpoint.review_cli_v2_legacy_prompt={snapshot_id:'legacy'};
+    if(drift==='unknown-mode')saved.execution_mode='cli-led-future';
+    if(drift==='old-extraction')ctx.checkpoint.review_v1_extract_0_prompt={snapshot_id:'legacy'};
+    if(drift==='prompt'){ctx.checkpoint.review_cli_v3_changed_prompt={snapshot_id:'changed'};reason='review_cli_snapshot_changed';}
+    assert.deepEqual(await stage.run(ctx),{kind:'pause',stage:'capability_not_ready',reason},drift);assert.equal(calls,1,drift);
+  }
 });
 
 test('reading all material without requesting calculation does not cause backend business checks',async()=>{

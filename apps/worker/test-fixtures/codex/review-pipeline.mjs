@@ -1,18 +1,70 @@
 #!/usr/bin/env node
 // SYNTHETIC only. This local stand-in never contacts a model supplier or network.
 import { appendFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
+const args = process.argv.slice(2);
+// File-mode tests still execute the real native permission probe. The local
+// marker is only a synthetic-fixture option, never a Codex CLI argument.
+if (args.includes('sandbox')) {
+  const result = spawnSync('/usr/local/bin/codex', args.filter(arg => !arg.startsWith('--m3-marker=')), { stdio: 'inherit' });
+  process.exit(result.status ?? 1);
+}
 let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
 const marker = process.argv.find(value => value.startsWith('--m3-marker='))?.slice('--m3-marker='.length);
 const assistant = prompt.includes('ref=review-context\n');
-const data = JSON.parse(assistant ? prompt.match(/<<BB-DATA-[a-f0-9]+ ref=review-context\n([\s\S]+)\nBB-DATA-[a-f0-9]+>>/)[1] : prompt.split('输入数据：\n')[1]);
+const fileRevision = args.includes('exec') && !args.includes('--output-schema') && prompt.includes('accepted revision');
+let data = fileRevision ? null : JSON.parse(assistant ? prompt.match(/<<BB-DATA-[a-f0-9]+ ref=review-context\n([\s\S]+)\nBB-DATA-[a-f0-9]+>>/)[1] : prompt.split('输入数据：\n')[1]);
 let value;
 let toolEvidence;
 const out = event => process.stdout.write(JSON.stringify(event) + '\n');
 out({ type: 'thread.started', thread_id: 'synthetic-m3-pipeline' });
 out({ type: 'turn.started' });
+function explicitRevisionTool() {
+  const cwd = args[args.indexOf('--cd') + 1], permissions = [];
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] === '-c' && /^(default_permissions|permissions)=/.test(args[i + 1])) permissions.push(args[i], args[++i]);
+  }
+  if (permissions.length !== 4) throw Error('Synthetic revision requires the real scoped native permissions');
+  // Source reads, the scoped proposal and the bounded writer all run in the same
+  // actual Codex sandbox. No host-created revision replaces this tool action.
+  const program = `import json,subprocess,sys
+from pathlib import Path
+r=Path.cwd();d=json.loads((r/'input.json').read_text(encoding='utf-8'))
+assert d['version']=='review-revision-cli-v1'
+assert all((r/m['path']).is_file() for m in d['materials'])
+selected=d['revision']['selected_findings'];executable=set(d['executable_finding_ids'])
+records={item['record_id']:item for item in d['records']}
+allowed=sorted({rid for f in selected if f['finding_id'] in executable for rid in f['repairability']['allowed_record_ids']})
+edits=[];handling=[]
+for finding in selected:
+ fid=finding['finding_id'];evidence=list(dict.fromkeys(ref['material_id']+'/'+ref['record_id'] for ref in finding['evidence_refs']))
+ modified=False
+ if fid in executable:
+  for rid in finding['repairability']['allowed_record_ids']:
+   before=records[rid]['literal_quote'];after=before.replace('营业收入100.00','营业收入120.00')
+   if before!=after:
+    edits.append({'record_id':rid,'after':after,'evidence':evidence,'finding_ids':[fid]});modified=True
+ handling.append({'finding_id':fid,'status':'modified' if modified else 'needs_evidence','reason':'Synthetic selected revenue only; no review-pass claim.','evidence':evidence})
+assert len(edits)==1 and len(selected)==1
+p={'version':d['version'],'input_hash':d['input_hash'],'reviewed':allowed,'edits':edits,'additions':[],'handling':handling,'summary':['Synthetic native sandbox revision of selected revenue only.']}
+(r/'scratch/proposal.json').write_text(json.dumps(p,ensure_ascii=False),encoding='utf-8')
+subprocess.run([sys.executable,'-B',str(r/'tools/revision_cli.py'),'scratch/proposal.json'],check=True,stdout=subprocess.PIPE)
+assert all((r/'output'/name).is_file() for name in ['tracked.docx','clean.docx','baseline.docx','handling.json','summary.json','proposal.json'])
+print(json.dumps({'requirements':d['requirements'],'source_report':d['revision']['source_report'],'accepted_plan':d['revision']['accepted_plan'],'method':d['version'],'workspace_input_hash':d['input_hash'],'native_writer':True},ensure_ascii=True))
+`;
+  out({ type: 'item.started', item: { id: 'synthetic-revision-tool', type: 'command_execution' } });
+  const result = spawnSync('/usr/local/bin/codex', [...permissions, 'sandbox', '--', '/opt/venv/bin/python', '-B', '-c', program],
+    { cwd, env: { ...process.env, TMPDIR: `${cwd}/scratch`, PYTHONDONTWRITEBYTECODE: '1' }, encoding: 'utf8', timeout: 60000 });
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr ?? 'Synthetic native revision tool failed');
+    throw Error('Synthetic native revision tool failed');
+  }
+  const context = JSON.parse(result.stdout);
+  out({ type: 'item.completed', item: { id: 'synthetic-revision-tool', type: 'command_execution', exit_code: 0 } });
+  return context;
+}
 async function explicitReviewTools() {
   // Start the exact trusted MCP configured by the real contained adapter. The synthetic
   // CLI cannot manufacture receipts: the host tool server writes its own trace file.
@@ -91,7 +143,11 @@ async function explicitReviewTools() {
     await closed;
   }
 }
-if (assistant) {
+if (fileRevision) {
+  data = explicitRevisionTool();
+  toolEvidence = { method: data.method, workspace_input_hash: data.workspace_input_hash, native_writer: data.native_writer };
+  value = { summary: 'Synthetic accepted revision artifacts generated by the native scoped Word tool.' };
+} else if (assistant) {
   value = { content: '合成材料解释：' + data.material_evidence.map(item => item.status === 'unparsed' ? '该固定版本发送时待解析。' :
     item.records.map(record => record.literal_quote).join('\n')).join('\n'), cited_finding_ids: data.context.finding_ids, proposal: null };
 } else if (data.editable_records) {
@@ -110,7 +166,7 @@ if (assistant) {
 } else {
   value = await explicitReviewTools();
 }
-if (marker) appendFileSync(marker, JSON.stringify({ synthetic: true, operation: assistant ? 'assistant' : data.editable_records ? 'revision' : 'review',
+if (marker) appendFileSync(marker, JSON.stringify({ synthetic: true, operation: assistant ? 'assistant' : fileRevision || data.editable_records ? 'revision' : 'review',
   requirements: data.requirements, source_report: data.source_report ?? null, accepted_plan: data.accepted_plan ?? null,
   ...(assistant ? { material_evidence: data.material_evidence, context: data.context } : toolEvidence ?? {}) }) + '\n');
 out({ type: 'item.completed', item: { id: 'synthetic-reply', type: 'agent_message', text: JSON.stringify(value) } });

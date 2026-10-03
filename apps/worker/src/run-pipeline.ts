@@ -23,6 +23,7 @@ import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseL
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput } from './codex-adapter.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
+import { isMaterialModelEnvelope } from './material-tool-trace.js';
 import { isReviewModelEnvelope, type ReviewToolData } from './review-tools.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
@@ -467,6 +468,7 @@ export function codexModelStage(options: {
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
   materialTools?: MaterialToolData;
+  materialToolsTrace?: true;
   fileWorkspace?: ContainedCallInput['fileWorkspace'];
   reviewTools?: ReviewToolData;
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
@@ -497,14 +499,15 @@ export function codexModelStage(options: {
       const bytes = await blobs.getIfExists(ref.object_key);
       if (!bytes || digest(bytes) !== ref.content_sha256.trim()) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
       const config = typeof options.config === 'function' ? options.config() : options.config;
-      const validateResult = options.reviewTools ? (value:unknown) => isReviewModelEnvelope(value,options.reviewTools!) && options.validate(value.output) : options.validate;
+      const validateResult = options.reviewTools ? (value:unknown) => isReviewModelEnvelope(value,options.reviewTools!) && options.validate(value.output)
+        : options.materialToolsTrace ? (value:unknown) => isMaterialModelEnvelope(value,options.materialTools!) && options.validate(value.model_output) : options.validate;
       const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult });
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
       const callGate = await ctx.validateBeforeModelCall?.();
       if (callGate) return callGate;
       const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
+        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       // The observation may already have paused or failed the job; otherwise park it ourselves.
