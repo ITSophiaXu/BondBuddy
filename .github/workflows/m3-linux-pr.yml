@@ -2,7 +2,7 @@ name: M3 Linux integration
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, master]
 
 permissions:
   contents: read
