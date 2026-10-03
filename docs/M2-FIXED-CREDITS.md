@@ -30,3 +30,34 @@
 5. 回滚只停止新收费／新充值，已冻结任务继续按原模式终态结算，已付款订单仍可对账到账。不得用回滚删除历史账务或永久关闭已付款回调。
 
 测试范围、命令和原型对照在本 PR 验收记录登记；合成测试、真实商户支付、上线版本、用户项目验收分别记录。
+
+## 2026-10-03 验证记录
+
+实现提交：`d11198100bf4c788af6ce71e27612c10c6230ba7`，基于最新 `develop d5314d2f2e4537fcf3aab9a54e9e086782c75830`。新增迁移在隔离数据库应用，未向生产应用迁移或启用收费。截图与逐屏对照见 [M2 UX 证据](../apps/web/test-evidence/m2-credits/README.md)。
+
+| 检查 | 实际结果 |
+|---|---|
+| contracts/domain/API/worker TypeScript；web TypeScript 与 Vite build | 通过 |
+| 公共契约样例 | 166 synthetic + 12 内部库样例／不变量；另 4 个数据生命周期样例通过 |
+| OCR v2 / issuer binding 契约测试 | 40 passed，0 skipped |
+| M1/M2/M3 浏览器回归 | 100 passed；最终报价卡样式调整后 M2 3 项定向复跑通过 |
+| Linux PostgreSQL/Azurite 定向测试 | 10 passed，0 failed，0 skipped；容器 `bb-m2-tests-1790989766`，退出码 0 |
+| 真实商户支付、生产部署、用户项目付费复测 | 未执行，#40/#46 继续开放 |
+
+Linux 测试使用隔离数据库与私有测试 Blob、已有 Node 镜像加当前编译代码。模型 CLI 和支付供应商均为明确的 synthetic fixture；API、事务、迁移、worker journal 与 Blob 读回是真实组件。测试不会请求真实模型、收款或启动用户项目。
+
+可复现命令（先构建工作区，迁移专用测试库，设置 `BB_TEST_DATABASE_URL` 和 `BB_TEST_AZURITE_CONNECTION_STRING`）：
+
+```sh
+node --test --test-concurrency=1 \
+  apps/api/dist/billing-classification.test.js \
+  apps/api/dist/billing.pg.test.js \
+  apps/api/dist/payments.pg.test.js \
+  apps/worker/dist/m2-paid-worker.test.js \
+  apps/worker/dist/provider-reconciliation.test.js \
+  apps/api/dist/generated-word-delivery.test.js
+```
+
+同一命令已登记在 `.github/workflows/m2-credits-pr.yml`。场景包括八档及已确认边界、P−1/P、伪造价格、并发争用／重复提交、锁价与旧报价失效、outbox 故障全回滚、双 Word 结算、取消／成功竞争、失败释放、赠分跨期补偿、追加纠错与账务核对、信息不足免费例外、支付验签／金额／商户不匹配及重放、付款后写账失败的同单补发。固定价任务的确定结果可在用量未知时继续和重启复用；M1 原有不确定执行结果对账边界回归通过。迟到用量只追加内部成本证据，不重新写终态或扣费。
+
+剩余依赖：确认并配置生产支付渠道，完成正式商户适配器（含实际支付页／二维码、官方验签和认证查询）、真实支付／到账恢复验收，然后按正常评审发版流程验证并开启收费。当前没有可直接启用的生产支付适配器，不能仅设置收费环境变量就宣告上线。
