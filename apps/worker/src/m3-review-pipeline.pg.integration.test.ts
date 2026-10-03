@@ -197,7 +197,7 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       const latestInput={...nextInput,requirements:['合成运行中追加：只能下轮生效。']};
       assert.equal((await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:2,input:latestInput})).statusCode,200);
       if(cliRevision){
-        await assert.rejects(execute(router,async stage=>{if(stage==='word_promoted')throw new Error('SYNTHETIC_REVISION_CRASH');}),/SYNTHETIC_REVISION_CRASH/);
+        await assert.rejects(execute(router,async stage=>{if(stage==='word_promoted')throw new Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
         const beforeRevisionReplay=await calls();
         assert.equal(beforeRevisionReplay.filter(call=>call.operation==='revision').length,1);
         const job=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2',[owner,revisionRun.run_id])).rows[0];
