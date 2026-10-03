@@ -206,6 +206,16 @@ test('M2 price change refreshes the displayed quote and requires another confirm
   state.executeError=undefined;await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
   expect(state.executes[1].quote_id).toBe('quote-test-v2');
 });
+test('M2 a legacy empty quote cannot offer a new free task',async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.freeClassification=true;
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('请查看本次任务报价后确认开始');
+  await expect(page.getByRole('button',{name:'按 M1 免费编制'})).toHaveCount(0);
+  await expect(page.locator('#fixed-quote')).toBeHidden();expect(state.executes).toHaveLength(0);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('请查看本次任务报价后确认开始');
+  expect(state.executes).toHaveLength(0);
+});
 test('M2 missing uploaded source metadata blocks the next action before quote or execution',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.available=0;
   state.project.update_details!.source_prospectuses=[];

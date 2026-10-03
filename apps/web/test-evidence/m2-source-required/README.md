@@ -26,3 +26,5 @@
 API PostgreSQL 的新提交拒绝、旧缺项输入拒绝及原免费任务幂等重放测试已加入本 PR 的 Linux CI；结果以 PR 当前提交的检查记录为准。未部署生产；正式支付及上线验收仍归 #40／#46。
 
 `d555911` 的 [固定积分 Linux CI](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37126348459) 13 passed、0 failed、0 skipped，包含上述 API 场景。共享 Linux 与文件 CLI 回归首次运行发现 `unified-authoring.pg.test.ts` 和 `file-authoring.pg.test.ts` 仍要求缺项新任务成功；已更新为验证缺项拒绝、草稿补齐后继续原有执行路径及真实 Word 生成与下载，保留无原稿、四类关系、输入不可变及归属隔离场景。文件 CLI 流程仍直接接收原始文件，不增加材料预解析。该测试修正后的结果见 PR 最新检查，不将初次失败隐藏为通过。
+
+前端同时移除旧“按 M1 免费编制”分支：收费开启但未返回报价时不创建任务、不提供免费选项。最终生产构建预览的 `project-execution.spec.ts --grep 'M2 '` 4 passed，覆盖充值、调价、原稿缺项和旧空报价；此前本地开发服务因文件监控锁退出的一次尝试为连接失败，恢复为 production preview 后复跑通过。TypeScript 和 Vite 构建通过，界面必填区与上面截图一致。
