@@ -224,7 +224,11 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
         assert.equal(revisionCalls[0].method,REVIEW_REVISION_CLI_METHOD);assert.equal(revisionCalls[0].native_writer,true);
         const locked=(await pool.query('SELECT input_hash FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[revisionRun.run_id,owner])).rows[0];
         assert.equal(revisionCalls[0].workspace_input_hash,locked.input_hash.trim());
-        assert.equal(summary.method,REVIEW_REVISION_CLI_METHOD);
+        // Execution identity belongs to the durable checkpoint; the public artifact
+        // DTO intentionally exposes only delivery metadata and revision handling.
+        const delivery=(await pool.query("SELECT checkpoint#>'{stages,word_delivery_pair}' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[owner,revisionRun.run_id])).rows[0].pair;
+        assert.equal(delivery.method,REVIEW_REVISION_CLI_METHOD);
+        for(const key of ['revision_artifact_id','clean_artifact_id','baseline_artifact_id'])assert.equal(delivery[key],summary[key]);
       }
       const afterRevision=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json();
       assert.equal(inputManifestHash(afterRevision.selected_report),originalHash);assert.deepEqual(afterRevision.artifacts.map((a:any)=>a.kind).sort(),['baseline','clean','revision']);
@@ -251,8 +255,10 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       assert.equal(afterDiff.scope.mode,'differential_review');assert.deepEqual(afterDiff.scope.finding_ids,[selected.finding_id]);
       if(cliRevision){
         assert.deepEqual(afterDiff.source_material,revisionSource);
-        assert.notEqual(afterDiff.coverage.find(c=>c.check_id===`scope:${selected.finding_id}`)?.outcome,'pass',
-          'changed source text without a verified anchor/check must not be silently declared resolved');
+        const selectedCoverage=afterDiff.coverage.find(c=>c.check_id===`scope:${selected.finding_id}`);
+        assert(selectedCoverage,'differential review must explicitly account for the selected finding');
+        assert.equal(selectedCoverage.outcome,'uncovered',
+          'changed source text without an exact current anchor must remain explicitly uncovered');
       }
       assert.equal(afterDiff.findings.find(f=>f.finding_id===excluded.finding_id)?.check_status,'carried_forward');
       assert.equal(afterDiff.findings.find(f=>f.finding_id===excluded.finding_id)?.origin_report_id,report.report_id);
