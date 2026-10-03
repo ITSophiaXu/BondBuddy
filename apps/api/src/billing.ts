@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { BILLING_TASKS, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { classifyFixedPrice } from './billing-classification.js';
+import { assertAuthoringSourceInformation, isUnifiedInput } from './unified-authoring.js';
 
 type Db = Pool | PoolClient;
 export async function lockCreditAccount(client: PoolClient, owner: string) {
@@ -52,10 +53,10 @@ export async function quoteCredits(pool: Pool, owner: string, projectId: string,
     if (!i) throw missing();
     if (i.input_hash.trim() !== hash || p.latest_input_revision !== revision || p.draft_revision !== i.manifest.draft_revision)
       throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Project inputs changed before quotation');
+    if (isUnifiedInput(i.manifest)) assertAuthoringSourceInformation(i.manifest.materials as any[], i.manifest.authoring.source_prospectuses);
     const balance = await creditBalance(c, owner);
     const classification = classifyFixedPrice(i.manifest);
-    if (!classification.task) return { enabled: true, quote: null, balance, shortage: 0,
-      reason: `${classification.reason} 本次保留 M1 免费编制，不冻结积分，之后不补扣。` };
+    if (!classification.task) throw new Problem(422, 'INPUT_REQUIRED', `${classification.reason} 请补齐信息并保存当前输入后重新获取报价。`);
     const price = await activePrice(c);
     await c.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(owner_user_id,project_id,input_revision,price_version) DO NOTHING`,

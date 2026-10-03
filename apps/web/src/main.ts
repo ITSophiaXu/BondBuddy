@@ -10,7 +10,7 @@ import { ReviewWorkspace, renderNewReview, reviewProjectFields, bindReviewProjec
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
-import { sourceFields, readSourceFields, sourcePeriodSummary, clearSourceSelections } from './source-prospectus.js';
+import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
@@ -850,6 +850,7 @@ function bindMaterialWorkspace(projectId: string) {
       source.querySelector('[data-source-field="offering"]')!.innerHTML = template.content.querySelector('[data-source-field="offering"]')!.innerHTML;
     }
     source.querySelector('[data-source-period-summary]')!.textContent = sourcePeriodSummary(value.reporting_periods);
+    source.querySelector('[data-source-required-message]')!.textContent = sourceRequiredMessage(value);
     syncProjectExecution(projectId);
   });
   host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });

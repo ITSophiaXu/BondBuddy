@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { emptyUpdateDetails, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
@@ -21,6 +21,9 @@ function fixture() {
   const materials: Dto<'MaterialResponse'>[] = ['history', 'audit'].map((name, i) => ({ material_id: `synthetic-${name}`, material_version: 1,
     upload_id: `synthetic-upload-${i}`, role: i === 0 ? 'historical' : 'audit', filename: `${name}.docx`,
     media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, sha256: hash(name), state: 'persisted', persisted_at: now, error: null }));
+  project.update_details!.source_prospectuses=[{material_id:materials[0].material_id,material_version:1,sha256:materials[0].sha256,
+    issuer_name:'合成发行人',relation:'same_issuer',market:'sse',offering:'private',
+    reporting_periods:reportingWindow('sse','private','2024-12-31'),status:'user_asserted'}];
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
     nextInputRevision: undefined as number | undefined, patchRequests: 0,
@@ -203,12 +206,14 @@ test('M2 price change refreshes the displayed quote and requires another confirm
   state.executeError=undefined;await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
   expect(state.executes[1].quote_id).toBe('quote-test-v2');
 });
-test('M2 incomplete metadata retains explicit free M1 action with no paid quote',async({page})=>{
-  const state=fixture();state.paid=true;state.freeClassification=true;state.checkStatus='ready';state.available=0;
-  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('M1 免费编制');
-  await expect(page.locator('#execute-input')).toHaveText('按 M1 免费编制');expect(state.executes).toHaveLength(0);
-  await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);
-  expect(state.executes[0].quote_id).toBeUndefined();
+test('M2 missing uploaded source metadata blocks the next action before quote or execution',async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=0;
+  state.project.update_details!.source_prospectuses=[];
+  await setup(page,state,false);
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await expect(page.locator('#start-disabled-reason')).toContainText('原发行人名称、企业关系、原发行市场、原品种、原稿最新报告期');
+  await expect(page.locator('#fixed-quote')).toBeHidden();
+  expect(state.inputs).toHaveLength(0);expect(state.preflights).toHaveLength(0);expect(state.executes).toHaveLength(0);
 });
 test('ready input saves, preflights and executes through one explicit action', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state);
@@ -382,6 +387,7 @@ test('recheck replaces rejected input v3 with current v7 materials without submi
   state.project.input_revision=7;
   state.project.input_hash=hash('synthetic-current-v7');
   state.materials.push({...state.materials[0],material_id:'synthetic-current-history',material_version:2,filename:'current-history.docx'});
+  state.project.update_details!.source_prospectuses!.push({...state.project.update_details!.source_prospectuses![0],material_id:'synthetic-current-history',material_version:2});
   state.snapshots.set(7,{...state.snapshots.get(3)!,input_revision:7,input_hash:state.project.input_hash,
     material_versions:state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version}))});
   await page.locator('#recheck-input').click();
@@ -566,6 +572,7 @@ test('temporary start failure retains support reference and does not claim missi
 
 test('unified authoring includes all uploaded source materials without a second selection form', async ({ page }) => {
   const state=fixture(); state.materials.push({...state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx'});
+  state.project.update_details!.source_prospectuses!.push({...state.project.update_details!.source_prospectuses![0],material_id:'synthetic-reference',relation:'similar_business'});
   await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
   expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
@@ -579,6 +586,7 @@ test('legacy generation task kind is retained with unified source metadata', asy
   state.project.update_details={...state.project.update_details!,has_historical:false};
   const reference={...state.materials[0],material_id:'synthetic-reference',role:'reference' as const,filename:'reference.docx',parse_snapshot_id:'synthetic-snapshot'};
   state.materials=[reference as Dto<'MaterialResponse'>,state.materials[1]];
+  Object.assign(state.project.update_details!.source_prospectuses![0],{material_id:'synthetic-reference',relation:'similar_business'});
   state.checkStatus='ready';
   await setup(page,state);
   await page.locator('#execute-input').click();
@@ -599,6 +607,7 @@ test('reference parsing is handled by the unified worker after an immutable task
   const state=fixture(); state.project.kind='generation';
   state.project.update_details={...state.project.update_details!,has_historical:false};
   state.materials=[{...state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx'},state.materials[1]];
+  Object.assign(state.project.update_details!.source_prospectuses![0],{material_id:'synthetic-reference',relation:'similar_business'});
   state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
@@ -692,7 +701,7 @@ test('resumed source-input task shows compilation without a false blocker', asyn
   const state = fixture(); state.checkStatus = 'ready';
   state.runStage = 'awaiting_materials'; state.runReason = 'authoring_source_information_required';
   await setup(page, state); await page.locator('#execute-input').click();
-  await expect(page.locator('.execution-summary')).toContainText('原稿信息现为选填');
+  await expect(page.locator('.execution-summary')).toContainText('旧任务保留原输入');
   const run = [...state.runs.values()][0]; const inputHash = run.input_hash;
   run.state = 'running'; run.stage = 'provider_call';
   state.runReason = 'provider_call_may_be_sent'; state.eventSeq++;
@@ -948,6 +957,12 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
       await page.screenshot({ path: join(output, `materials-${label}.png`), fullPage: true });
     }
+    const source = history.locator('[data-source-material]');
+    await source.getByLabel('原发行人名称',{exact:true}).fill('合成发行人');
+    await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('same_issuer');
+    await source.getByLabel('原发行市场',{exact:true}).selectOption('sse');
+    await source.getByLabel('原品种',{exact:true}).selectOption('private');
+    await source.getByRole('radio',{name:'年末',exact:true}).check();
     await page.getByRole('button', { name: '开始编制', exact: true }).click();
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await expect(page.locator('#execution-preflight')).toBeHidden();

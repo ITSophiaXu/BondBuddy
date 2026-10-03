@@ -49,7 +49,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -674,6 +674,8 @@ export function createServer(settings: Settings = {}) {
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
       for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
+        assertAuthoringSourceInformation(resolved, p.update_details.source_prospectuses);
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
       let testIssuerCandidate: Awaited<ReturnType<typeof loadTestIssuerCandidate>> = null;
       if(p.kind==='update'){
@@ -1392,6 +1394,10 @@ export function createServer(settings: Settings = {}) {
       if((lockedKind==='generation'||b.task_kind==='generation')&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
+      // Exact replays return above. New runs using older incomplete snapshots must
+      // return to materials; running tasks keep their already locked inputs.
+      if (['update','generation'].includes(lockedKind) && isUnifiedInput(input.rows[0].manifest))
+        assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
@@ -1401,11 +1407,9 @@ export function createServer(settings: Settings = {}) {
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',testGrantId?'non_production_test':'production',testGrantId]);
       if(paidAuthoring && !testGrantId && ['update','generation'].includes(lockedKind)) {
-        if(classifyFixedPrice(input.rows[0].manifest).task) await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject);
-        else {
-          if(b.quote_id)throw new Problem(409,'QUOTE_CHANGED','当前输入不适用此收费报价，请重新查看。');
-          await client.query("UPDATE bb_runs SET billing_exemption='classification_pending' WHERE id=$1",[q.rows[0].id]);
-        }
+        if(!classifyFixedPrice(input.rows[0].manifest).task)
+          throw new Problem(422,'INPUT_REQUIRED','请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。');
+        await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject);
       }
       if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});

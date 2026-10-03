@@ -1,5 +1,7 @@
 # M2 固定积分原型与实现对照
 
+> 以下是原稿必填决定前的首轮证据。原稿信息不足时的免费分支已被[最新决定](../../../../docs/product-decisions/2026-10-03-source-information-required.md)替代；原记录保留，当前原稿校验见 [追加证据](../m2-source-required/README.md)。
+
 核对日期：2026-10-03。所有截图与浏览器数据均为 synthetic；没有真实支付、客户材料或用户账号。
 
 原型基线：`d5314d2f2e4537fcf3aab9a54e9e086782c75830` 中的 `product-prototype/public/`，`#billing` 页面和 `credits.css`。这次不修改原型。实现：`d11198100bf4c788af6ce71e27612c10c6230ba7` 的 `apps/web/src/billing-page.ts`、`project-execution.ts` 及样式。截图由真实 Chromium 和合成 HTTP fixture 生成。

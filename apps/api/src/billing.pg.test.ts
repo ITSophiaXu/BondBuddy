@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
-import { INITIAL_FIXED_PRICES, emptyUpdateDetails } from '@bondbuddy/contracts';
+import { INITIAL_FIXED_PRICES, emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { creditBalance, grantCredits, publishPrices } from './billing.js';
@@ -10,6 +10,7 @@ import { checkpointStage, claim, finish, promoteWordArtifact, recordPotentialCal
 import { digest, transaction, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { auditCredits, correctSettlement } from './billing-ops.js';
+import { inputManifestHash } from './production-rule-pin.js';
 import { saveSnapshotRef, observeUsage } from './observability.js';
 import { persistProviderResultObject,recordProviderCallObservation,readCheckpointedProviderResult,type ProviderCallObservation } from './provider-results.js';
 
@@ -31,7 +32,16 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal((await send('PUT',u.json().upload_url,b,{'content-type':'application/octet-stream'})).statusCode,204);
     const material=await send('POST',`/api/v1/projects/${id}/materials/uploads/${u.json().upload_id}/complete`,d);
     assert.equal(material.statusCode,200,material.body);
-    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+    let draftRevision=1;
+    if(role==='historical'){
+      const incomplete=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+      assert.equal(incomplete.statusCode,422,incomplete.body);assert.equal(incomplete.json().code,'INPUT_REQUIRED');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[id])).rows[0].n,0);
+      const saved=await send('PATCH',`/api/v1/projects/${id}`,{update_details:{...c.json().update_details,
+        source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:'Synthetic issuer',relation:'same_issuer',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':'1'});
+      assert.equal(saved.statusCode,200,saved.body);draftRevision=saved.json().draft_revision;
+    }
+    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
     assert.equal(input.statusCode,201,input.body);return input.json();
   };
   const quote=async(i:any)=>{const q=await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash});assert.equal(q.statusCode,200,q.body);return q.json();};
@@ -96,13 +106,37 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     const failedLease=await claim(pool);assert.ok(failedLease);
     await finish(pool,failedLease,'failed',{errorCode:'DELIVERY_FAILED'});
     assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
-    const trial=await newInput('historical'),trialQuote=await quote(trial);
-    assert.equal(trialQuote.quote,null);assert.match(trialQuote.reason,/M1 免费编制/);
-    const freeRequest={...req,project_id:trial.project_id,input_revision:trial.input_revision,input_hash:trial.input_hash,input_manifest_ref:trial.input_hash,workspace_id:trial.project_id,quote_id:undefined,execution_request_id:randomUUID()};
-    const freeRun=await send('POST','/api/v1/runs/execute',freeRequest);assert.equal(freeRun.statusCode,202,freeRun.body);
-    assert.equal(freeRun.json().billing_mode,'platform_trial');assert.equal(freeRun.json().reservation_id,null);
+    const declared=await newInput('historical'),declaredQuote=await quote(declared);
+    assert.equal(declaredQuote.quote.task_type,'interim');
+    const declaredRun=await send('POST','/api/v1/runs/execute',request(declared,declaredQuote));
+    assert.equal(declaredRun.statusCode,202,declaredRun.body);
+    assert.equal(declaredRun.json().billing_mode,'fixed_credits');assert.ok(declaredRun.json().reservation_id);
+    await send('POST',`/api/v1/runs/${declaredRun.json().run_id}/cancel`,{reason:'synthetic-stop'});
     assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
-    await send('POST',`/api/v1/runs/${freeRun.json().run_id}/cancel`,{reason:'synthetic-stop'});
+    // Seed an immutable snapshot from before required source declarations existed.
+    // New execution/quotation rejects it; an already submitted free task still replays.
+    const legacy=await newInput('historical');
+    const original=(await pool.query('SELECT * FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[legacy.project_id,legacy.input_revision])).rows[0];
+    const manifest=structuredClone(original.manifest);manifest.authoring.source_prospectuses=[];
+    manifest.update_details.source_prospectuses=[];
+    const legacyHash=inputManifestHash(manifest),legacyRevision=legacy.input_revision+1;
+    await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[legacy.project_id,legacyRevision,owner,original.draft_revision,legacyHash,manifest,JSON.stringify(original.material_versions),JSON.stringify(original.requirement_message_ids),original.rule_pack_version,original.template_version]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=$2 WHERE id=$1',[legacy.project_id,legacyRevision]);
+    const oldRequest={execution_request_id:randomUUID(),project_id:legacy.project_id,input_revision:legacyRevision,input_hash:legacyHash,task_kind:'update',input_manifest_ref:legacyHash,storage_origin:'cloud',workspace_id:legacy.project_id};
+    const beforeLegacyRuns=await count('bb_runs'),beforeLegacyHolds=await count('bb_credit_reservations');
+    assert.equal((await send('POST',`/api/v1/projects/${legacy.project_id}/credit-quote`,{input_revision:legacyRevision,input_hash:legacyHash})).statusCode,422);
+    const legacyRejected=await send('POST','/api/v1/runs/execute',oldRequest);
+    assert.equal(legacyRejected.statusCode,422,legacyRejected.body);assert.equal(legacyRejected.json().code,'INPUT_REQUIRED');
+    assert.equal(await count('bb_runs'),beforeLegacyRuns);assert.equal(await count('bb_credit_reservations'),beforeLegacyHolds);
+    const oldRunId=randomUUID(),replayRequest={...oldRequest,execution_request_id:randomUUID()};
+    const {execution_request_id,...identity}=replayRequest;
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor)
+      VALUES($1,$2,$3,$4,$5,$6,'update',$7,'queued',0)`,[oldRunId,owner,legacy.project_id,legacyRevision,legacyHash,execution_request_id,digest(JSON.stringify(identity))]);
+    const replayed=await send('POST','/api/v1/runs/execute',replayRequest);
+    assert.equal(replayed.statusCode,202,replayed.body);assert.equal(replayed.json().run_id,oldRunId);
+    assert.equal(replayed.json().billing_mode,'platform_trial');assert.equal(replayed.json().reservation_id,null);
+    assert.equal(await count('bb_credit_reservations'),beforeLegacyHolds);
     const rollbackInput=await newInput(),rollbackQuote=await quote(rollbackInput),runsBefore=await count('bb_runs'),holdsBefore=await count('bb_credit_reservations');
     await pool.query("CREATE FUNCTION synthetic_m2_outbox_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic outbox fault'; END; $$; CREATE TRIGGER synthetic_m2_fault BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION synthetic_m2_outbox_fault()");
     try{assert.equal((await send('POST','/api/v1/runs/execute',request(rollbackInput,rollbackQuote))).statusCode,500);}

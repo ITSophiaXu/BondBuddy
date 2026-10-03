@@ -5,7 +5,7 @@
 ## 代码与契约
 
 - 唯一公开契约：`packages/contracts/src/billing.ts`、`index.ts`。余额、报价、当前任务收费、充值配置／创建／查询／刷新接口均在 `/api/v1`。
-- `billing-classification.ts` 从不可变 M1 输入选择唯一套餐；无法分类的源信息按已批准例外保留免费。
+- `billing-classification.ts` 从不可变 M1 输入选择唯一套餐；按[最新要求](product-decisions/2026-10-03-source-information-required.md)在材料页及输入锁定／报价／新任务准入校验原稿声明；无法分类提示补齐，不走新的免费例外。旧已提交任务保留原输入与费用。
 - 迁移 `0087_m2_fixed_credits.sql` 只新增；价格／报价／账务事件不可覆盖。账户行锁串行冻结、发分及释放；交易、队列和 outbox 同事务。失败时无半个 reservation 或孤立任务。
 - `billing.ts` 负责冻结和可信积分发放；run 终态触发器统一处理 worker、取消及其他既有终态路径。只按已锁定 P 结算，既有免费 run 默认为 platform_trial。
 - `provider-results.ts` 仅对固定价任务把已验证持久化结果与内部 usage 对账分开。未知执行结果、多个结果、归属／hash 错误仍不能复用。原始 usage 不改写成 measured 或零。
@@ -31,7 +31,7 @@
 
 测试范围、命令和原型对照在本 PR 验收记录登记；合成测试、真实商户支付、上线版本、用户项目验收分别记录。
 
-## 2026-10-03 验证记录
+## 2026-10-03 首轮验证记录（原稿必填决定前）
 
 实现提交：`d11198100bf4c788af6ce71e27612c10c6230ba7`，基于最新 `develop d5314d2f2e4537fcf3aab9a54e9e086782c75830`。新增迁移在隔离数据库应用，未向生产应用迁移或启用收费。截图与逐屏对照见 [M2 UX 证据](../apps/web/test-evidence/m2-credits/README.md)。
 

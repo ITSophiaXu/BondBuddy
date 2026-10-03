@@ -59,6 +59,7 @@ jobs:
       - name: Fixed pricing, ledger, synthetic signed payments and durable worker regression
         run: |
           node --test --test-concurrency=1 \
+            packages/contracts/dist/source-prospectus.test.js \
             apps/api/dist/billing-classification.test.js \
             apps/api/dist/billing.pg.test.js \
             apps/api/dist/payments.pg.test.js \

@@ -1,6 +1,6 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
-import { BILLING_TASKS, reportingWindow, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
+import { BILLING_TASKS, reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -74,7 +74,7 @@ export function readinessMessage(reason: string): string {
   if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
-  if (reason === 'authoring_source_information_required') return '旧任务因原稿信息缺失暂停。原稿信息现为选填，请联系支持恢复此任务；无需补齐或重复提交。';
+  if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
   if (reason === 'authoring_issuer_materials_required') return '请补充目标发行人的材料；其他企业的参考稿不能代替目标企业事实。保存后停止本次任务，再以新输入重新编制。';
   if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
   if (reason === 'authoring_material_unreadable') return '有材料无法读取，请查看材料区，替换文件后以新输入重新编制。';
@@ -222,6 +222,11 @@ export class ProjectExecution {
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return '项目信息尚未保存，请返回上一步处理。';
     if (!this.draft.fields.market || !this.draft.fields.offering) return '请在上一步选择发行市场和发行方式。';
     if (this.run && !this.nextRequested) return '需要再次修改时，请点击上方“继续修改”。';
+    const sourceGaps = sourceProspectusInputGaps(this.eligibleMaterials(), this.draft.fields.update_details.source_prospectuses);
+    if (sourceGaps.length) {
+      const first = sourceGaps[0], material = this.materials.find(m => m.material_id === first.material_id);
+      return `请补齐“${material?.filename ?? '历史／参考募集书'}”的${first.missing.join('、')}后继续${sourceGaps.length > 1 ? `（共 ${sourceGaps.length} 份原稿待补充）` : ''}。`;
+    }
     if (this.conversation.blockReason) return this.conversation.blockReason;
     return '';
   }

@@ -2,7 +2,7 @@
 
 ## M2 固定积分增量（2026-10-03）
 
-沿用 M1 统一编制、私有文件与持久 worker；新增固定价报价、积分批次账本、冻结／终态结算及充值订单。公共契约在 `packages/contracts/src/billing.ts`，新增迁移 `0087_m2_fixed_credits.sql`，详细事务与运营说明见 [M2 固定积分实现](M2-FIXED-CREDITS.md)。原稿信息不足而无法定价时保留 M1 免费编制，不补扣；M3 复核仍免费。新收费默认关闭，生产商户适配器和真实支付验收未完成，不把合成渠道测试视为上线。
+沿用 M1 统一编制、私有文件与持久 worker；新增固定价报价、积分批次账本、冻结／终态结算及充值订单。公共契约在 `packages/contracts/src/billing.ts`，新增迁移 `0087_m2_fixed_credits.sql`，详细事务与运营说明见 [M2 固定积分实现](M2-FIXED-CREDITS.md)。[最新原稿信息要求](product-decisions/2026-10-03-source-information-required.md)：每份上传原稿的信息补齐后才能继续，API 同样校验；新任务缺项不自动免费，已提交任务不追补；M3 复核仍免费。新收费默认关闭，生产商户适配器和真实支付验收未完成，不把合成渠道测试视为上线。
 
 > 2026-10-02 交付更新：[双 Word 生成后直接下载](product-decisions/2026-10-02-generated-word-download.md)。统一编制路径使用 `generated-word-download-v1` 文件可用性证据，取消内容/修订/完整 OOXML/基线检查对交付的阻断；保留私有存储读回与授权下载。新证据明确 `content_review=not_performed`，旧检查证据不变。已有完整模型结果可经审计的 delivery-only 命令恢复，恢复路径不调用模型。下文旧质量门描述按此决定调整。
 
