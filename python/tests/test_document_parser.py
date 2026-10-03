@@ -214,7 +214,7 @@ class DocumentParserTests(unittest.TestCase):
 
         result = self.request(rewritten, MEDIA_DOCX)
         repeated = self.request(rewritten, MEDIA_DOCX)
-        self.assertEqual(result["parser_version"], "bondbuddy-document-parser-1.0.7")
+        self.assertEqual(result["parser_version"], "bondbuddy-document-parser-1.0.8")
         self.assertEqual([item["target_id"] for item in result["document"]["auxiliary_targets"]],
                          [item["target_id"] for item in repeated["document"]["auxiliary_targets"]])
         semantic_body_fields = ("record_id", "locator_type", "locator", "literal_quote", "context", "extraction_method",
@@ -1180,7 +1180,7 @@ class DocumentParserTests(unittest.TestCase):
         # Same versioned response envelope and immutable material binding as DOCX/PDF/XLSX/TXT.
         self.assertEqual(first["schema_version"], "document-parse-response-v1")
         self.assertEqual(first["request_id"], "parse-synthetic")
-        self.assertEqual(first["parser_version"], "bondbuddy-document-parser-1.0.7")
+        self.assertEqual(first["parser_version"], "bondbuddy-document-parser-1.0.8")
         self.assertEqual(first["status"], "parsed")
         self.assertEqual(first["error"], None)
         self.assertEqual(first["warnings"], [])

@@ -14,6 +14,7 @@ outputs
 backend
 web
 product-prototype
-# apps/web imports these two prototype stylesheets directly (#361).
+# apps/web imports these prototype stylesheets directly (#361, M2).
 !product-prototype/public/styles.css
 !product-prototype/public/project-workspace.css
+!product-prototype/public/credits.css

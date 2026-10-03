@@ -1,4 +1,6 @@
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
+import { billingSchemas } from './billing.js';
+export * from './billing.js';
 export * from './account-recovery.js';
 import { OcrReviewSchema, OcrCorrectionRequestSchema, OcrCorrectionSchema } from './ocr.js';
 // Internal #76/#79 platform-paid OCR/parse consumption event; separate from model usage.
@@ -6,6 +8,7 @@ export * from './platform-processing-cost.js';
 export * from './ocr.js';
 export * from './ocr-v2.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import { ReviewRevisionHandlingSchema } from './review-revision.js';
 import { RUN_CHANNELS, RUN_BILLING_MODES, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 export * from './run-channel.js';
 import { TestUncoveredItemsSchema } from './test-coverage.js';
@@ -63,7 +66,7 @@ export const PROJECT_STATES = ['draft', ...RUN_STATES] as const;
 export const PROJECT_ARCHIVE_VIEWS = ['active', 'archived', 'all'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['BROWSER_ERROR_REPORTED', 'TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
+export const ERROR_CODES = ['BROWSER_ERROR_REPORTED', 'TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'QUOTE_REQUIRED', 'QUOTE_CHANGED', 'BILLING_NOT_READY', 'PAYMENT_UNAVAILABLE', 'PAYMENT_INVALID', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -163,6 +166,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
+  ...billingSchemas,
   ...browserErrorSchemas,
   ...targetPeriodEvidenceSchemas,
   ...issuerIdentityReviewSchemas,
@@ -240,9 +244,9 @@ export const schemas = {
     { properties: { reporting_periods: Type.Any() }, required: ['reporting_periods'] },
   ] }),
   PreflightRequest: obj({ input_revision: revision, input_hash: hash, test_grant_id: Type.Optional(id) }),
-  PreflightResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation'), Type.Literal('blocked')]), missing_inputs: Type.Array(Type.String()), uncertainty: Type.Array(Type.String()), blocking_inputs: Type.Array(Type.String()), advisory_inputs: Type.Array(Type.String()), billing_mode: Type.Literal('platform_trial'), update_difficulty: Type.Optional(obj({ snapshot_id: id, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation')]), estimated_n: nullable(Type.Integer({ minimum: 0 })), structure_adaptation_required: nullable(Type.Boolean()), confirmation_reasons: Type.Array(Type.String()), source_profile_version: revision })) }),
-  ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id, test_grant_id: Type.Optional(id), user_prompt: Type.Optional(Type.String({ minLength: 1, maxLength: 12000 })) }),
-  RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, channel: enumOf(RUN_CHANNELS), test_grant_id: nullable(id), uncovered_items: TestUncoveredItemsSchema, state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: enumOf(RUN_BILLING_MODES), reservation_id: Type.Null(), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
+  PreflightResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation'), Type.Literal('blocked')]), missing_inputs: Type.Array(Type.String()), uncertainty: Type.Array(Type.String()), blocking_inputs: Type.Array(Type.String()), advisory_inputs: Type.Array(Type.String()), billing_mode: Type.Union([Type.Literal('platform_trial'), Type.Literal('fixed_credits')]), update_difficulty: Type.Optional(obj({ snapshot_id: id, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation')]), estimated_n: nullable(Type.Integer({ minimum: 0 })), structure_adaptation_required: nullable(Type.Boolean()), confirmation_reasons: Type.Array(Type.String()), source_profile_version: revision })) }),
+  ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id, quote_id: Type.Optional(id), test_grant_id: Type.Optional(id), user_prompt: Type.Optional(Type.String({ minLength: 1, maxLength: 12000 })) }),
+  RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, channel: enumOf(RUN_CHANNELS), test_grant_id: nullable(id), uncovered_items: TestUncoveredItemsSchema, state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: enumOf(RUN_BILLING_MODES), reservation_id: nullable(id), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
   RunActionRequest: obj({ reason: Type.String({ minLength: 1 }) }),
   MaterialParseJobResponse: MaterialParseJobSchema,
   RunEvent: RunEventSchema,
@@ -258,6 +262,7 @@ export const schemas = {
       delivery_policy: Type.Optional(Type.Literal('generated_pair_v1')), content_review: Type.Optional(Type.Literal('not_performed')),
       baseline_kind: Type.Optional(Type.Union([Type.Literal('none'), Type.Literal('uploaded_source'), Type.Literal('reconstructed_pdf'), Type.Literal('project_output')])),
       source_issuer: Type.Optional(nullable(Type.String())), authoring_summary: Type.Optional(Type.Array(Type.String())),
+      revision_handling: Type.Optional(ReviewRevisionHandlingSchema), review_passed: Type.Optional(Type.Literal(false)),
       replacements: nullable(Type.Integer({ minimum: 0 })), columns: nullable(Type.Integer({ minimum: 0 })), pending_review_count: nullable(Type.Integer({ minimum: 0 })),
       pending_review: Type.Array(obj({ record_id: id, message: Type.String({ minLength: 1 }) })) })) }),
   ConversationMessageRequest: obj({ message_id: id, project_id: id, body: Type.String({ minLength: 1 }), prompt_version: revision, attachment_material_ids: Type.Array(id) }),
@@ -307,6 +312,13 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get','/credits/balance','Read available and frozen credits','CreditBalanceResponse'),
+  op('post','/projects/{project_id}/credit-quote','Preview one fixed price for the immutable input without reserving credits','FixedQuoteResponse',200,'FixedQuoteRequest',[404,409,503]),
+  op('get','/runs/{run_id}/credit-charge','Read this task confirmation and settlement state','RunCreditChargeResponse',200,undefined,[404]),
+  op('get','/credits/recharge-config','Read configured payment channels and locked recharge packs','RechargeConfigResponse'),
+  op('post','/credits/recharge-orders','Create an idempotent recharge order without starting a task','RechargeOrderResponse',201,'RechargeOrderRequest',[404,409,503]),
+  op('get','/credits/recharge-orders/{order_id}','Read an owned recharge order','RechargeOrderResponse',200,undefined,[404]),
+  op('post','/credits/recharge-orders/{order_id}/refresh','Verify payment with the configured provider and idempotently issue credits','RechargeOrderResponse',200,undefined,[404,409,422,503]),
   op('post', '/browser-errors', 'Submit a bounded, redacted browser diagnostic under the current session', 'BrowserErrorReportResponse', 201, 'BrowserErrorReportRequest', [401, 403, 404, 422, 429]),
   op('get', '/browser-errors/{report_id}', 'Read one own browser diagnostic', 'BrowserErrorReportView', 200, undefined, [404]),
   op('get', '/admin/browser-errors/{report_id}', 'Audited diagnostic metadata view for log_reader', 'BrowserErrorReportView', 200, undefined, [404]),
@@ -515,9 +527,17 @@ export function openApiDocument() {
   for (const [path, method] of [['/runs/execute', 'post'], ['/runs/{run_id}/cancel', 'post'], ['/runs/{run_id}/resume', 'post']] as const)
     (paths[`/api/v1${path}`][method] as Record<string, unknown>)['x-implementation-status'] = 'implemented; worker-runtime; production-501-unless-BB_RUN_RUNTIME_ENABLED; stages-without-implementation-pause-capability_not_ready';
   // --- end #17 worker runtime ---
+  for (const operation of operations.filter(o => o.path.startsWith('/credits/') || o.path.endsWith('/credit-quote') || o.path.endsWith('/credit-charge'))) {
+    (paths[`/api/v1${operation.path}`][operation.method] as Record<string, unknown>)['x-implementation-status'] =
+      'implemented; owner-scoped; new-charges-require-BB_PAID_AUTHORING_ENABLED; recharge-requires-configured-provider';
+  }
   Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
   Object.assign(paths, agreementOpenApiPaths(ref)); // #7 registration agreement
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
 }
 
 export { reportingWindow } from './reporting-window.js';
+
+export * from './review-results.js';
+export * from './review-workspace.js';
+export * from './review-revision.js';

@@ -1,6 +1,7 @@
 import { PROJECT_STATES, PROJECT_ARCHIVE_VIEWS, PROJECT_FIELD_LIMITS, TASK_KINDS } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { ArtifactDownloads, artifactError } from './artifact-download';
+import { ReviewHistory } from './review-history';
 import { date, esc, icon } from './ui';
 import './project-browser.css';
 
@@ -24,8 +25,9 @@ export class ProjectBrowser {
   private filters: Filters = {};
   private downloads = new ArtifactDownloads();
   private downloading = new Set<string>();
-  constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private current: () => boolean) {}
-  dispose() { this.generation++; this.controller.abort(); clearTimeout(this.timer); this.downloads.dispose(); this.downloading.clear(); }
+  private reviewHistory: ReviewHistory;
+  constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private current: () => boolean) { this.reviewHistory = new ReviewHistory(api); }
+  dispose() { this.generation++; this.controller.abort(); clearTimeout(this.timer); this.downloads.dispose(); this.downloading.clear(); this.reviewHistory.dispose(); }
 
   async render() {
     const saved = new URLSearchParams(location.hash.split('?')[1]);
@@ -112,6 +114,13 @@ export class ProjectBrowser {
       (form.elements.namedItem('archive') as HTMLSelectElement).value='active';form.requestSubmit();
     });
     list.querySelectorAll<HTMLButtonElement>('[data-archive]').forEach(button=>button.addEventListener('click',()=>{void this.archive(button);}));
+    for(const item of this.items.filter(item=>item.kind==='review')) {
+      const row=[...list.querySelectorAll<HTMLElement>('[data-project-id]')].find(node=>node.dataset.projectId===item.project_id);
+      if(!row)continue;
+      const button=document.createElement('button');button.className='text-button';button.textContent='版本记录';button.dataset.reviewHistory=item.project_id;
+      button.addEventListener('click',()=>void this.reviewHistory.open(item.project_id,item.name));row.querySelector('.project-row-actions')?.prepend(button);
+      if(item.status==='settlement_pending')row.querySelector('.project-state')!.textContent='确认结果中';
+    }
     list.querySelectorAll<HTMLButtonElement>('[data-download]').forEach(button=>{
       button.disabled=this.downloading.has(button.dataset.download!);
       button.addEventListener('click',()=>{void this.download(button);});

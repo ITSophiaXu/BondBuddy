@@ -1,14 +1,14 @@
 {
-  "spec_version": "1.4",
+  "spec_version": "1.5",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-10-01T05:56:34.374Z",
+  "assembled_at": "2026-10-03T13:26:05.693Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
     {
       "file": "00-产品边界与需求决策.md",
       "title": "00 产品边界与需求决策",
-      "sha256": "66d04034b7a584de61b7723bfd5adbe04bd0c49fd9a637afa3068905946d8ab3"
+      "sha256": "b7093ceeabf8010f2ff8e6968a5af3084f7e0ceb5a5d28d863655767142d0ab4"
     },
     {
       "file": "01-Windows客户端与运行架构.md",
@@ -23,7 +23,7 @@
     {
       "file": "03-首页与项目管理.md",
       "title": "03 首页与项目管理",
-      "sha256": "9b4ad2d85e9b5d52ba12041b77ca9aa76e41071407310facf25ffb9a6dd0b7ba"
+      "sha256": "ede308272d2142730edaad55ead8599b7799156cbee30564b01c6508b017a4d6"
     },
     {
       "file": "04-材料导入与证据处理.md",
@@ -33,12 +33,12 @@
     {
       "file": "05-更新募集书.md",
       "title": "05 募集书编制与更新",
-      "sha256": "e7164a1aed29f674729b6648bc1211f1caa49fae7faebc1043895e135c277780"
+      "sha256": "a0436ca61fab6b841a998a5dd138b3142fe588d7a205a2ff7d3713232ca0e0bf"
     },
     {
       "file": "06-复核募集书.md",
       "title": "06 复核募集书",
-      "sha256": "a431b9dbef4c431271ba8a485633a4bd4bc08c6bbdd39feb169f70446a5ad7ed"
+      "sha256": "299e3ea7b617bd0545134bba79d36f7d9a1c74d790810551d1a2146951d130b5"
     },
     {
       "file": "07-材料生成通用流程.md",
@@ -73,27 +73,27 @@
     {
       "file": "13-QA与项目对话.md",
       "title": "13 QA 问答与项目对话",
-      "sha256": "c170381a28650b9a555b39f1c83487ffbe57ecb015d1e9c37358d7334ff278e7"
+      "sha256": "b6ec55caa323b565eea9a1340074707ef663dbd942d1ff6c0572b2e74d3655bb"
     },
     {
       "file": "14-积分充值与结算.md",
       "title": "14 积分充值与结算",
-      "sha256": "f1f16177946d0c403cf111420e3c2caf93ec48ddcdfdaa65cc34e42781bb9d25"
+      "sha256": "798bcdf703577f0f30efa7adf33e2182581d3d3faa298d09c81f949d4e54bd97"
     },
     {
       "file": "15-后台规则模板及数据接入.md",
       "title": "15 后台规则、模板及数据接入",
-      "sha256": "691445f6be71de82d00c04469bc474ac64a8a552cbe6a2e92a112681a85f89cb"
+      "sha256": "680c1aa803e213bb8166d24fa14b838b5d693141d8cf8c3971472f7660e1f84d"
     },
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "91f84683a10234230dc0465bdc31ababd77001f1e26de53302bb16b8b2a722d8"
+      "sha256": "ba2a2bd31dddf0a35adee7c04367f8ae47591bf284b0bdd6b6cfef4f80adbdf6"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "bc42d99ce2ccd83ee0de85c2e4e6b9cc8a366b7c625e26730ef1bc176a8a5bb0"
+      "sha256": "a462cd7f25e9fa33edc188404bd872986284448c28b448bb64ca63dc4a1a41a0"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -105,52 +105,52 @@
     {
       "relative_path": "product-prototype/product-specs/references/BondBuddy详细积分方案-v1.1-来源快照.md",
       "sha256": "76ff33f66847742d330189708ebca104d5e55e958f0546795a5ce33a56482066",
-      "observed_mtime": "2026-09-30T04:36:42.304Z"
+      "observed_mtime": "2026-10-03T00:13:43.998Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/积分参数-v1.1-来源快照.json",
       "sha256": "db50cd1335c5dd6112e661e514ae25c31b5af84a94edf6e22e4768308123b787",
-      "observed_mtime": "2026-09-30T04:36:42.306Z"
+      "observed_mtime": "2026-10-03T00:13:44.000Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/本地规格来源指纹-v1.1.json",
       "sha256": "51b69c0545b1b9ce4a2ea7687827a9ce20a36587998df65c5d0458977c4b3d01",
-      "observed_mtime": "2026-09-30T04:36:42.305Z"
+      "observed_mtime": "2026-10-03T00:13:43.999Z"
     },
     {
       "relative_path": "product-prototype/package.json",
       "sha256": "979fe857fe0cf376f5acf182b52747b21c6e1a7989e2dff310a9d4ea7340635c",
-      "observed_mtime": "2026-09-30T04:36:42.208Z"
+      "observed_mtime": "2026-10-03T00:13:43.876Z"
     },
     {
       "relative_path": "product-prototype/server.mjs",
       "sha256": "be63308d49de645458491314aa3b98f380041acb88edda668f48c79371a25a50",
-      "observed_mtime": "2026-09-30T04:36:42.358Z"
+      "observed_mtime": "2026-10-03T00:13:44.055Z"
     },
     {
       "relative_path": "product-prototype/docs/PROJECT-WORKSPACE.md",
       "sha256": "5a50f4c1bade760d6d44b5613695073c24bb724ace804b231e971bb67f391463",
-      "observed_mtime": "2026-09-30T04:36:42.135Z"
+      "observed_mtime": "2026-10-03T00:13:43.798Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-pricing.mjs",
       "sha256": "f52ed2bbde736786f9953e494bbf645de90d7c88b9c0805f45cfae767ac5bc9b",
-      "observed_mtime": "2026-09-30T04:36:42.194Z"
+      "observed_mtime": "2026-10-03T00:13:43.862Z"
     },
     {
       "relative_path": "product-prototype/public/markets.js",
-      "sha256": "3e59b309472e0c6707b539988ff27b5468abd05b4ceb5787bc20a848f77479a9",
-      "observed_mtime": "2026-09-30T04:36:42.319Z"
+      "sha256": "ff91310b57160c4521ec46f58d3f625c9bc76f5d4bab6c21b89f00d2305d4851",
+      "observed_mtime": "2026-10-03T00:13:44.016Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-wallet.mjs",
       "sha256": "4e6cd1564665476ae5a175a7cf10855abb7a8f561b9fc2613ff938d4b8561b21",
-      "observed_mtime": "2026-09-30T04:36:42.196Z"
+      "observed_mtime": "2026-10-03T00:13:43.863Z"
     },
     {
       "relative_path": "product-prototype/public/credit-account.js",
       "sha256": "b4ddbe0736d40e81a6b1b39c3035f4d5b2c0056bfb37cd770eb5cf93fa4b7d66",
-      "observed_mtime": "2026-09-30T04:36:42.312Z"
+      "observed_mtime": "2026-10-03T00:13:44.008Z"
     }
   ],
   "acceptance_ids": [
@@ -173,6 +173,9 @@
     "PRJ-A01",
     "PRJ-A02",
     "PRJ-A03",
+    "PRJ-A04",
+    "PRJ-A05",
+    "PRJ-A06",
     "MAT-A01",
     "MAT-A02",
     "MAT-A03",
@@ -211,10 +214,22 @@
     "REV-A04",
     "REV-A05",
     "REV-A06",
+    "REV-A11",
     "REV-A07",
     "REV-A08",
     "REV-A09",
     "REV-A10",
+    "REV-A12",
+    "REV-A13",
+    "REV-A14",
+    "REV-A15",
+    "REV-A16",
+    "REV-A17",
+    "REV-A18",
+    "REV-A19",
+    "REV-A20",
+    "REV-A21",
+    "REV-A22",
     "GEN-A01",
     "GEN-A02",
     "GEN-A03",
@@ -301,6 +316,7 @@
     "UX-A01",
     "UX-A02",
     "UX-A03",
+    "UX-A04",
     "E2E-01",
     "E2E-02",
     "E2E-03",
@@ -351,9 +367,9 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 74999,
-    "local_links_checked": 243,
-    "tables_checked": 131,
+    "han_characters": 88069,
+    "local_links_checked": 302,
+    "tables_checked": 141,
     "json_examples_checked": 4,
     "errors": []
   },

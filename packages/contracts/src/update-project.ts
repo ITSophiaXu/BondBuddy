@@ -3,6 +3,7 @@ import { MARKETS, OFFERINGS, MARKET_OFFERINGS } from './public-enums.js';
 import type { ProjectMessageSetPin } from './project-message-set-pin.js';
 
 export type UnifiedAuthoringInput = {
+  review_revision?: import('./review-revision.js').ReviewRevisionPin;
   version: 'unified_v1'; source_prospectuses: SourceProspectus[];
   requirements: ProjectMessageSetPin['members'];
   knowledge: { path: string; sha256: string; markdown: string }[];
@@ -57,6 +58,29 @@ export const SourceProspectusSchema = Type.Object({
   status: Type.Literal('user_asserted')
 }, { additionalProperties: false });
 export type SourceProspectus = Static<typeof SourceProspectusSchema>;
+export type SourceMaterialPin = { material_id: string; material_version: number; sha256: string; role: string };
+/** Draft fields stay nullable while editing. New authoring submissions require a declaration for every selected source. */
+export function sourceProspectusMissingFields(source?: SourceProspectus): string[] {
+  const missing: string[] = [];
+  if (!source?.issuer_name?.trim()) missing.push('原发行人名称');
+  if (!source?.relation || !Object.hasOwn(SOURCE_RELATIONS, source.relation)) missing.push('企业关系');
+  if (!source?.market || !MARKETS.includes(source.market)) missing.push('原发行市场');
+  if (!source?.offering || !source.market || !(MARKET_OFFERINGS[source.market] as readonly string[] | undefined)?.includes(source.offering)) missing.push('原品种');
+  const validDate = (value: string | null) => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  // Financial statement scope and audit evidence are not input requirements.
+  if (!source?.reporting_periods.length || source.reporting_periods.some(p =>
+    !validDate(p.start) || !validDate(p.end) || p.start! > p.end! || !['annual', 'interim'].includes(p.period_kind ?? '')))
+    missing.push('原稿最新报告期');
+  return missing;
+}
+export function sourceProspectusInputGaps(materials: readonly SourceMaterialPin[], sources: readonly SourceProspectus[] = []) {
+  return materials.filter(m => m.role === 'historical' || m.role === 'reference').flatMap(material => {
+    const matches = sources.filter(s => s.material_id === material.material_id && s.material_version === material.material_version && s.sha256 === material.sha256);
+    const missing = sourceProspectusMissingFields(matches.length === 1 ? matches[0] : undefined);
+    return missing.length ? [{ material_id: material.material_id, missing }] : [];
+  });
+}
 export const UpdateDetailsSchema = Type.Object({
   authoring_mode: Type.Optional(Type.Literal('unified_v1')),
   source_prospectuses: Type.Optional(Type.Array(SourceProspectusSchema, { maxItems: 60 })),

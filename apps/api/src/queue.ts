@@ -24,6 +24,7 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
 }
 
 // Used by claim, the operator queue and resolve so no paused attempt is invisible.
+const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND billing_run.billing_mode='fixed_credits')";
 const needsProviderReconciliation = `(
   a.status='pending_reconcile'
   OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
@@ -34,13 +35,14 @@ const needsProviderReconciliation = `(
       WHERE o.attempt_id=a.id AND o.outcome='failed' AND o.usage_status='measured')
   ))
   OR (a.status='completed' AND (
-    COALESCE(u.usage_status,'unknown')<>'measured'
-    OR COALESCE(u.conflicting_measurements,0)>0
+    (NOT ${fixedPriceRun} AND (COALESCE(u.usage_status,'unknown')<>'measured'
+      OR COALESCE(u.conflicting_measurements,0)>0))
     OR (SELECT count(*) FROM bb_provider_result_refs p WHERE p.attempt_id=a.id)<>1
     OR NOT EXISTS (
       SELECT 1 FROM bb_provider_call_observations o
       JOIN bb_provider_result_refs p ON p.id=o.result_id AND p.attempt_id=o.attempt_id
-      WHERE o.attempt_id=a.id AND o.outcome='completed' AND o.usage_status='measured'
+      WHERE o.attempt_id=a.id AND ((o.outcome='completed' AND (o.usage_status='measured' OR ${fixedPriceRun}))
+        OR (${fixedPriceRun} AND o.outcome='pending_reconcile' AND o.finish_reason='stop' AND o.error_code IN ('MODEL_USAGE_PENDING','USAGE_PENDING')))
     )
   ))
 )`;

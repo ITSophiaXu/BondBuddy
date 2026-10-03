@@ -7,6 +7,7 @@
 import type { Pool } from 'pg';
 import { isUnifiedInput } from '@bondbuddy/contracts';
 import { unifiedInputGate } from './unified-input.js';
+import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
 import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
@@ -22,6 +23,8 @@ import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseL
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput } from './codex-adapter.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
+import { isMaterialModelEnvelope } from './material-tool-trace.js';
+import { isReviewModelEnvelope, type ReviewToolData } from './review-tools.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
 import { markTestWord } from './test-word-marking.js';
@@ -40,7 +43,7 @@ export type LoadGenerationIssuerBinding = (scope: GenerationIssuerBindingScope) 
 /** #76 target-period candidate producer call site; injected by the runtime only when enabled. */
 export type TargetPeriodCandidateProducer = (request: ProduceTargetPeriodCandidateSnapshotRequest) => Promise<void>;
 
-export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
+export type RunRow = { billing_mode?: (typeof import('@bondbuddy/contracts').RUN_BILLING_MODES)[number]; id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
   pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunRow; signal: AbortSignal;
   /** Checkpoint of completed stages, then values produced by stages in this attempt. */
@@ -58,7 +61,7 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
-  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; wordSummary?: Record<string, unknown>; deliveryPolicy?: 'generated_pair_v1' }
+  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments'; bytes: Buffer }[]; wordSummary?: Record<string, unknown>; deliveryPolicy?: 'generated_pair_v1' }
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
   | { kind: 'stopped' };
 export type RunStage = {
@@ -297,7 +300,9 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
-    if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: { authoring_mode: 'unified_v1' } };
+    if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: {
+      authoring_mode: 'unified_v1', review_revision: !!(manifest as {authoring?:{review_revision?:unknown}}).authoring?.review_revision } };
+    if (isReviewInput(manifest)) return (await reviewInputGate(pool, run, input)) ?? { kind: 'done', value: { review_mode: 'review_v1' } };
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
     const issuerBindingGate = await verifyGenerationIssuerBinding(run, manifest, loadGenerationIssuerBinding);
@@ -364,7 +369,7 @@ export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_us
     if (job?.state !== 'succeeded') { pending.push(key); continue; }
     const snapshotId = job.checkpoint?.stages?.parse_evidence?.snapshot_id;
     const materialReadiness = { role: pin.role, sha256: pin.sha256, media_type: String(material.media_type) };
-    const factSource = !isUnifiedInput(input.manifest) && (financialRoles.has(pin.role) || isRqAnnualProspectus(materialReadiness));
+    const factSource = !isUnifiedInput(input.manifest) && !isReviewInput(input.manifest) && (financialRoles.has(pin.role) || isRqAnnualProspectus(materialReadiness));
     if (factSource && (typeof snapshotId !== 'string' || !snapshotId))
       return { status: 'failed', code: 'DATA_UNAVAILABLE', materials, pending };
     if (factSource) {
@@ -386,10 +391,12 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   name: 'materials_ready',
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
+    if ((values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') return reviewMaterialsReady({ pool, run });
     if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
       // New file-authoring runs consume original files. Readability/OCR is handled by Codex
       // on demand, not by a pre-run full-material parse barrier. Input gate still checks ownership/hashes.
-      if(!Object.keys(checkpoint).some(k=>/^unified_v[34]_/.test(k)))return {kind:'done',checkpoint:{original_files:true}};
+      if(!(values.get('input_lock') as {review_revision?:boolean})?.review_revision
+          && !Object.keys(checkpoint).some(k=>/^unified_v[34]_/.test(k)))return {kind:'done',checkpoint:{original_files:true}};
       // Native reading/OCR remains a worker tool; a separate fact inventory is not an admission requirement.
       const r = await materialsReadiness(pool, run);
       if (r.status === 'failed') return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_material_unreadable' };
@@ -461,7 +468,9 @@ export function codexModelStage(options: {
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
   materialTools?: MaterialToolData;
+  materialToolsTrace?: true;
   fileWorkspace?: ContainedCallInput['fileWorkspace'];
+  reviewTools?: ReviewToolData;
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
   wrapJournal?: (journal: CodexJournal) => CodexJournal;
 }): RunStage {
@@ -490,15 +499,24 @@ export function codexModelStage(options: {
       const bytes = await blobs.getIfExists(ref.object_key);
       if (!bytes || digest(bytes) !== ref.content_sha256.trim()) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
       const config = typeof options.config === 'function' ? options.config() : options.config;
-      const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult: options.validate });
+      const validateResult = options.reviewTools ? (value:unknown) => isReviewModelEnvelope(value,options.reviewTools!) && options.validate(value.output)
+        : options.materialToolsTrace ? (value:unknown) => isMaterialModelEnvelope(value,options.materialTools!) && options.validate(value.model_output) : options.validate;
+      const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult });
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
       const callGate = await ctx.validateBeforeModelCall?.();
       if (callGate) return callGate;
       const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, signal: ctx.signal }, journal, config);
+        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
       if (result.status === 'completed' || result.status === 'reused')
-        return { kind: 'done', value: result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
+        return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
+      if(result.status==='needs_reconcile'&&run.billing_mode==='fixed_credits'&&!options.reviewTools){
+        const attempt=await durable.latestAttempt(options.logicalCallId);
+        if(attempt?.status==='completed'){
+          const saved=await durable.readCompleted(options.logicalCallId,attempt.attempt_no);
+          if(saved)return {kind:'done',value:saved.value,checkpoint:{logical_call_id:options.logicalCallId,prompt_snapshot_ref:snapshotId}};
+        }
+      }
       // The observation may already have paused or failed the job; otherwise park it ourselves.
       const job = (await pool.query('SELECT state,lease_token FROM bb_jobs WHERE id=$1', [lease.jobId])).rows[0];
       if (job?.state !== 'running' || job.lease_token !== lease.token) return { kind: 'stopped' };
@@ -548,6 +566,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
       if (isUnifiedInput(input.manifest)) return unifiedInputGate(pool, run, input);
+      if (isReviewInput(input.manifest)) return reviewInputGate(pool, run, input);
       const generationGate = await verifyGenerationIssuerBinding(run, input.manifest, deps.loadGenerationIssuerBinding);
       if (generationGate) return generationGate;
       if(run.channel==='non_production_test')
@@ -592,6 +611,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       }
       let cleanArtifactId: string | undefined;
       let baselineArtifactId: string | undefined;
+      const reviewExecution = (await pool.query('SELECT operation FROM bb_review_executions WHERE owner_user_id=$1 AND run_id=$2', [run.owner_user_id, run.id])).rows[0];
+      const reviewArtifacts: { id: string; version: number; kind: string }[] = [];
       const uncovered:TestUncoveredItem[]=run.channel==='non_production_test'
         ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
         : [];
@@ -603,6 +624,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
           return 'failed';
         }
         baselineArtifactId = baseline.artifactId;
+        reviewArtifacts.push({ id: baseline.artifactId, version: baseline.artifactVersion, kind: 'baseline' });
       }
       if (outcome.cleanBytes) {
         const clean = await promoteWordArtifact(pool, lease, await wordBytes(outcome.cleanBytes), blobs, outcome.deliveryPolicy);
@@ -611,10 +633,22 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
           return 'failed';
         }
         cleanArtifactId = clean.artifactId;
+        reviewArtifacts.push({ id: clean.artifactId, version: clean.artifactVersion, kind: 'clean' });
+      }
+      for (const attachment of outcome.attachments ?? []) {
+        const extra = await promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs);
+        if (extra.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: extra.failureCode, failedStage: stage.name }); return 'failed'; }
+        reviewArtifacts.push({ id: extra.artifactId, version: extra.artifactVersion, kind: attachment.kind });
       }
       const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs, outcome.deliveryPolicy);
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
+      if (reviewExecution) {
+        reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: reviewExecution.operation === 'revision' ? 'revision' : 'report' });
+        for (const artifact of reviewArtifacts) await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
+          VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
+        [run.owner_user_id,run.project_id,run.id,artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);
+      }
       if (cleanArtifactId) {
         const pair = { ...outcome.wordSummary, revision_artifact_id: delivered.artifactId,
           clean_artifact_id: cleanArtifactId, baseline_artifact_id: baselineArtifactId };

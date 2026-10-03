@@ -16,14 +16,15 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY apps apps
-# apps/web/src/main.ts imports the prototype stylesheets as the layout baseline (#361).
-COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/
+# The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
+COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
 COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
 COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
 COPY knowledge/exchange-bonds/共通方法与差异.md knowledge/exchange-bonds/冲突与未覆盖项.md knowledge/exchange-bonds/
 COPY knowledge/nafmii/APPLICABILITY.md knowledge/nafmii/APPLICABILITY.md
 COPY knowledge/nafmii/drafts/ knowledge/nafmii/drafts/
+COPY knowledge/audit-reconciliation/METHODS.md knowledge/audit-reconciliation/METHODS.md
 RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
  && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src

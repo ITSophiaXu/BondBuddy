@@ -35,7 +35,7 @@ const pythonExecutable = process.env.BB_PYTHON?.trim() || (existsSync(localPytho
 const optedIn = process.env.BB_RUN_AUTHORIZED_QX202606_TARGET_PERIODS === '1';
 const PDF = 'application/pdf';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const PARSER_VERSION = 'bondbuddy-document-parser-1.0.7';
+const PARSER_VERSION = 'bondbuddy-document-parser-1.0.8';
 const REPORTING_CUTOFF = '2026-06-30'; // Task intent only; never passed to source-profile recognition.
 const tesseractLanguages = spawnSync('tesseract', ['--list-langs'], { encoding: 'utf8' });
 const hasChineseOcrLanguage = tesseractLanguages.status === 0 && /^chi_sim$/m.test(tesseractLanguages.stdout);

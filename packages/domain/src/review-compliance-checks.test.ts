@@ -55,6 +55,20 @@ test('known style discrepancy is retained alongside unknown portions and cannot 
   f.input.formatted_records=[{ref:f.target,formatting:{runs:[{half_points:'22'},{half_points:null}]}}];const result=reviewComplianceEvidence(f.input,f.ctx);
   assert.equal(result.findings[0]?.conclusion,'error');assert.equal(result.coverage.find(c=>c.check_id==='format')?.outcome,'uncovered');
 });
+
+test('heading levels use resolved paragraph attributes; old snapshots and style names cannot imply a level',async()=>{
+  const f=await fixture();const standard={...f.ref,authority:'internal_method' as const};f.ctx.rules=[standard];f.input.packs=[];
+  f.input.formatting_requirements=[{check_id:'outline',record_ids:['d'],rule_ref:standard,property:'outline_level',expected:'1'}];
+  for(const [formatting,outcome] of [
+    [{outline_level:'1'},'pass'],[{outline_level:'3'},'issue'],[{outline_level:'body'},'issue'],
+    [{style:'Heading 1'},'uncovered'],[{outline_level:null},'uncovered'],[{outline_level:'10'},'uncovered'],
+  ] as const){
+    f.input.formatted_records=[{ref:f.target,formatting}];const result=reviewComplianceEvidence(f.input,f.ctx);
+    assert.equal(result.coverage.find(c=>c.check_id==='outline')?.outcome,outcome,JSON.stringify(formatting));
+    assert.equal(result.findings.length,outcome==='issue'?1:0);
+    if(result.findings.length){assert.equal(result.findings[0]!.repairability.can_revise,false);assert.match(result.findings[0]!.title,/用户指定/);}
+  }
+});
 test('fixed ledger sources with unknown project applicability retain cited manual observations only',async()=>{
   const f=await fixture();f.input.context=null;const unknown={...f.ref,applicability:'unknown' as const};f.ctx.rules=[unknown];
   f.input.assessments=[{...f.assessment,rule_refs:[unknown],evaluation_method:'model',outcome:'pass'}];

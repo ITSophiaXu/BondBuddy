@@ -1,0 +1,156 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "fixed quote shortage",
+      "schema": "FixedQuoteResponse",
+      "valid": true,
+      "value": {
+        "enabled": true,
+        "quote": {
+          "quote_id": "synthetic-quote",
+          "project_id": "synthetic-project",
+          "input_revision": 1,
+          "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "task_type": "interim",
+          "points": 17900,
+          "price_version": "synthetic-v1",
+          "reason": "合成一期更新",
+          "created_at": "2026-10-03T00:00:00Z"
+        },
+        "balance": {
+          "available": 17899,
+          "frozen": 0
+        },
+        "shortage": 1,
+        "reason": null
+      }
+    },
+    {
+      "name": "incomplete input keeps free M1",
+      "schema": "FixedQuoteResponse",
+      "valid": true,
+      "value": {
+        "enabled": true,
+        "quote": null,
+        "balance": {
+          "available": 0,
+          "frozen": 0
+        },
+        "shortage": 0,
+        "reason": "原稿信息不足，本次保留 M1 免费编制，不补扣。"
+      }
+    },
+    {
+      "name": "held fixed price",
+      "schema": "RunCreditChargeResponse",
+      "valid": true,
+      "value": {
+        "quote": {
+          "quote_id": "synthetic-quote",
+          "project_id": "synthetic-project",
+          "input_revision": 1,
+          "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "task_type": "interim",
+          "points": 17900,
+          "price_version": "synthetic-v1",
+          "reason": "合成一期更新",
+          "created_at": "2026-10-03T00:00:00Z"
+        },
+        "state": "held"
+      }
+    },
+    {
+      "name": "legacy M1 has no charge",
+      "schema": "RunCreditChargeResponse",
+      "valid": true,
+      "value": {
+        "quote": null,
+        "state": null
+      }
+    },
+    {
+      "name": "negative credit balance rejected",
+      "schema": "CreditBalanceResponse",
+      "valid": false,
+      "value": {
+        "enabled": true,
+        "available": -1,
+        "frozen": 0
+      }
+    },
+    {
+      "name": "fractional credit price rejected",
+      "schema": "FixedQuoteResponse",
+      "valid": false,
+      "value": {
+        "enabled": true,
+        "quote": {
+          "quote_id": "synthetic-quote",
+          "project_id": "synthetic-project",
+          "input_revision": 1,
+          "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "task_type": "interim",
+          "points": 0.5,
+          "price_version": "synthetic-v1",
+          "reason": "合成一期更新",
+          "created_at": "2026-10-03T00:00:00Z"
+        },
+        "balance": {
+          "available": 0,
+          "frozen": 0
+        },
+        "shortage": 1,
+        "reason": null
+      }
+    },
+    {
+      "name": "quote cannot accept client price",
+      "schema": "FixedQuoteRequest",
+      "valid": false,
+      "value": {
+        "input_revision": 1,
+        "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "points": 1
+      }
+    },
+    {
+      "name": "recharge only server pack",
+      "schema": "RechargeOrderRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-request",
+        "pack_id": "cny50",
+        "provider": "alipay"
+      }
+    },
+    {
+      "name": "recharge cannot accept arbitrary points",
+      "schema": "RechargeOrderRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-request",
+        "pack_id": "cny50",
+        "provider": "alipay",
+        "points": 999999
+      }
+    },
+    {
+      "name": "paid order receipt",
+      "schema": "RechargeOrderResponse",
+      "valid": true,
+      "value": {
+        "order_id": "synthetic-order",
+        "provider": "alipay",
+        "state": "paid",
+        "amount_fen": 5000,
+        "points": 5000,
+        "currency": "CNY",
+        "checkout_url": null,
+        "project_id": "synthetic-project",
+        "expires_at": "2026-10-03T01:00:00Z",
+        "credited_at": "2026-10-03T00:31:00Z"
+      }
+    }
+  ]
+}

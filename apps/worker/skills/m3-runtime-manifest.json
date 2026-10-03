@@ -1,0 +1,21 @@
+{
+  "version": "m3-runtime-skills-v1",
+  "skills": {
+    "m3-review": {
+      "path": "apps/worker/skills/m3-review/SKILL.md",
+      "sha256": "80170b117056c97deeb5def00c18d04a609bc0eb294b24c5c767c0d494809f6a"
+    },
+    "m3-public-review": {
+      "path": "apps/worker/skills/m3-public-review/SKILL.md",
+      "sha256": "37dda757ed9ba18a06f1cd98019ec8e0b47c6a7e07fafd2f5cb6fb6493d71f71"
+    },
+    "m3-review-revision": {
+      "path": "apps/worker/skills/m3-review-revision/SKILL.md",
+      "sha256": "d6ddb08943c32633bda74cac8608eb4864cda8a0aa916f12c38991c306ff6179"
+    },
+    "m3-project-assistant": {
+      "path": "apps/worker/skills/m3-project-assistant/SKILL.md",
+      "sha256": "4060654ab936bc1c2b9bfce4d26aa44e1ec27c389e0c0aff8632b584d6cc3aac"
+    }
+  }
+}

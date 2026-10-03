@@ -12,6 +12,9 @@ export interface ReviewFinancialObservation {
   /** Canonical value plus the exact visible numeral, e.g. -1234.5 and (1,234.50). */
   value: string; value_literal: string;
   value_refs: ReviewEvidenceRef[];
+  /** Internal producer provenance. Never accepted from model JSON or a browser. */
+  context_verification?: 'trusted_structured' | 'literal_statement' | 'unverified';
+  context_limitations?: string[];
   /** Each context field must have traceable source text. No model confidence alone suffices. */
   context_refs: { entity: ReviewEvidenceRef[]; period: ReviewEvidenceRef[]; accounting_scope: ReviewEvidenceRef[];
     currency: ReviewEvidenceRef[]; unit: ReviewEvidenceRef[]; basis: ReviewEvidenceRef[] };
@@ -22,6 +25,10 @@ export interface ReviewFinancialCalculation {
   result_id: string; operand_ids: string[];
   /** A sum with an incomplete row inventory is not evidence of an arithmetic error. */
   complete_terms: boolean;
+  /** Arithmetic alone does not verify that these operands define the disclosed metric. */
+  relation_verification?: 'trusted_structured' | 'unverified';
+  /** Exact native declaration and term labels supplied by the deterministic relationship producer. */
+  relation_refs?: ReviewEvidenceRef[];
 }
 export interface ReviewFinancialInput { observations: ReviewFinancialObservation[]; calculations: ReviewFinancialCalculation[] }
 const units: Record<string, string> = { yuan:'元', thousand_yuan:'千元', ten_thousand:'万元', ten_thousand_yuan:'万元', hundred_million_yuan:'亿元', percent:'%', percentage_point:'百分点' };
@@ -46,6 +53,7 @@ const contextIdentity = (o: ReviewFinancialObservation, includePeriod = true) =>
 const references = (o: ReviewFinancialObservation) => uniqueEvidence([...o.value_refs, ...Object.values(o.context_refs).flat()]);
 function validObservation(o: ReviewFinancialObservation, ctx: ReviewEvidenceContext): string[] {
   const problems: string[] = [];
+  if (!['trusted_structured','literal_statement'].includes(o.context_verification ?? '')) problems.push('financial_semantic_context_unverified',...(o.context_limitations ?? []));
   if (![o.observation_id,o.entity_id,o.metric,o.accounting_scope,o.basis,o.currency,o.unit].every(value => typeof value === 'string' && value.trim())) problems.push('financial_context_missing');
   if (![o.period.start,o.period.end,o.period.as_of].every(day) || !(o.period.as_of || o.period.start && o.period.end)
     || o.period.start && o.period.end && o.period.start > o.period.end) problems.push('financial_period_invalid');
@@ -89,7 +97,7 @@ function candidate(ctx: ReviewEvidenceContext, o: ReviewFinancialObservation, ke
     target_refs:o.value_refs,evidence_refs:support,limitations:limits,verification:'deterministic' };
 }
 
-export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: ReviewEvidenceContext): ReviewEvaluation {
+export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: ReviewEvidenceContext, targetObservationIds?:readonly string[]): ReviewEvaluation {
   if (input.observations.length > 10000 || input.calculations.length > 10000) throw new Error('REVIEW_FINANCIAL_INPUT_LIMIT');
   if (new Set(input.observations.map(o => o.observation_id)).size !== input.observations.length
     || new Set(input.calculations.map(c => c.calculation_id)).size !== input.calculations.length) throw new Error('REVIEW_FINANCIAL_DUPLICATE_ID');
@@ -104,13 +112,13 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
     result.coverage.push(reviewCoverage(ctx,checkId,'financial',outcome,reason,
       uniqueEvidence([...references(o),...support].filter(ref => validateReviewEvidence(ref,ctx).length === 0)),findings));
   };
-  const disclosures = input.observations.filter(o => o.source_kind === 'disclosure');
-  if (!disclosures.length) result.coverage.push(reviewCoverage(ctx,'financial:source-mapping','financial','uncovered',
+  const disclosures = input.observations.filter(o => o.source_kind === 'disclosure' && (!targetObservationIds || targetObservationIds.includes(o.observation_id)));
+  if (!disclosures.length && targetObservationIds === undefined) result.coverage.push(reviewCoverage(ctx,'financial:source-mapping','financial','uncovered',
     '尚无带主体、期间、口径和原文锚点的募集书财务观察，不能将未抽取视作无差异。',[]));
   for (const o of disclosures) {
     const key = `compare:${o.observation_id}`;
     const problems = validation.get(o.observation_id)!;
-    if (problems.length) { emit(key,o,candidate(ctx,o,key,'needs_evidence','财务披露依据待核对','原文、数值或上下文证据不完整，暂不判断金额错误。',[],problems),[],problems.join('；')); continue; }
+    if (problems.length) { emit(key,o,candidate(ctx,o,key,problems.includes('financial_semantic_context_unverified')?'manual':'needs_evidence','财务披露依据待核对','原文、数值或上下文证据不完整，暂不判断金额错误。',[],problems),[],problems.join('；')); continue; }
     const candidates = input.observations.filter(a => ['audit','financial_statement'].includes(a.source_kind) && a.metric === o.metric);
     const matches = candidates.filter(a => contextIdentity(a) === contextIdentity(o));
     if (!matches.length) {
@@ -122,7 +130,7 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
     }
     const support = uniqueEvidence(matches.flatMap(references));
     const sourceProblems = matches.flatMap(a => validation.get(a.observation_id)!);
-    if (sourceProblems.length) { emit(key,o,candidate(ctx,o,key,'needs_evidence','财务来源待核对','存在解析、OCR 或来源上下文限制，不能直接定性。',support,sourceProblems),support,'来源尚不支持确定性比较。'); continue; }
+    if (sourceProblems.length) { emit(key,o,candidate(ctx,o,key,sourceProblems.includes('financial_semantic_context_unverified')?'manual':'needs_evidence','财务来源待核对','存在解析、OCR 或来源上下文限制，不能直接定性。',support,sourceProblems),support,'来源尚不支持确定性比较。'); continue; }
     let values: Rational[];
     try { values = matches.map(a => converted(a,o.unit)); }
     catch { emit(key,o,candidate(ctx,o,key,'manual','金额单位不可可靠换算','仅支持有明确单位的同币种换算，不推测汇率或金额单位。',support),support,'单位转换缺少依据。'); continue; }
@@ -137,6 +145,7 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
     emit(key,o,finding,support,'本项金额差异经精确数值复算确认。');
   }
   for (const calculation of input.calculations) {
+    if(targetObservationIds&&!targetObservationIds.includes(calculation.result_id))continue;
     const key = `calculation:${calculation.calculation_id}`;
     const observed = byId.get(calculation.result_id);
     const operands = calculation.operand_ids.map(id => byId.get(id));
@@ -144,8 +153,13 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
       result.coverage.push(reviewCoverage(ctx,key,'financial','uncovered','公式引用的披露结果或操作数不存在。',[])); continue;
     }
     const sources = operands as ReviewFinancialObservation[];
-    const support = uniqueEvidence(sources.flatMap(references));
+    const support = uniqueEvidence([...sources.flatMap(references),...(calculation.relation_refs??[])]);
     const problems = [...validation.get(observed.observation_id)!, ...sources.flatMap(o => validation.get(o.observation_id)!)];
+    for(const ref of calculation.relation_refs??[]){
+      problems.push(...validateReviewEvidence(ref,ctx,true));
+      if(ref.extraction_method!=='native_text'||ref.uncertainty.length)problems.push('financial_formula_source_uncertain');
+    }
+    if (calculation.relation_verification !== 'trusted_structured') problems.push('financial_formula_relation_unverified');
     if (new Set(calculation.operand_ids).size !== calculation.operand_ids.length || calculation.operand_ids.includes(calculation.result_id)) problems.push('formula_duplicate_or_self_reference');
     const sameContext = sources.every(o => o.entity_id === observed.entity_id && o.accounting_scope === observed.accounting_scope && o.basis === observed.basis
       && (calculation.operation === 'growth_percent' || canonical(o.period) === canonical(observed.period)))
@@ -162,7 +176,7 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
       if (!!current!.as_of !== !!previous!.as_of || !!current!.start !== !!previous!.start
         || current!.start && (current!.start.slice(5) !== previous!.start?.slice(5) || current!.end?.slice(5) !== previous!.end?.slice(5))) problems.push('formula_growth_period_lengths_differ');
     }
-    if (problems.length) { emit(key,observed,candidate(ctx,observed,key,'needs_evidence','财务公式暂不可复算','公式的主体、期间、口径、完整行或来源不满足可比要求。',support,problems),support,problems.join('；')); continue; }
+    if (problems.length) { emit(key,observed,candidate(ctx,observed,key,problems.includes('financial_semantic_context_unverified')||problems.includes('financial_formula_relation_unverified')?'manual':'needs_evidence','财务公式暂不可复算','公式的主体、期间、口径、完整行或公式关系尚未独立核实，不将模型选取的操作数直接作为修订依据。',support,problems),support,problems.join('；')); continue; }
     let computed: Rational;
     try {
       if (calculation.operation === 'sum') computed = sources.reduce((sum,o) => add(sum,converted(o,observed.unit)),decimal('0'));

@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"synthetic-schema-rejected"}
+{"type":"error","message":"{\"error\":{\"message\":\"synthetic rejected request: uniqueItems is not permitted\",\"code\":\"invalid_request_body\"}}"}
+{"type":"turn.failed","error":{"message":"{\"error\":{\"message\":\"synthetic rejected request: uniqueItems is not permitted\",\"code\":\"invalid_request_body\"}}"}}

@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"synthetic-missing-usage"}
+{"type":"item.completed","item":{"id":"a1","type":"agent_message","text":"{\"answer\":\"OK\",\"n\":16}"}}
+{"type":"turn.completed"}

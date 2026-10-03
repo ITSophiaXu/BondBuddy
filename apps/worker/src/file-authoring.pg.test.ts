@@ -43,7 +43,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         assert.equal(created.statusCode,201,created.body);
         const project=created.json().project_id;
         const refs:{material_id:string;material_version:number}[]=[];
-        let source:SourceProspectus|undefined;
+        let source:SourceProspectus|undefined, completeSource:SourceProspectus|undefined;
         for(const role of missingMetadata?['historical']:relation?['historical','audit']:['audit']){
           const bytes=role==='historical'?makeWorkerDocxFixture({externalLink:false}):Buffer.from('合成目标发行人：2025年净资产120万元；无新增对外担保。');
           const media=role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain';
@@ -54,8 +54,11 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const complete=await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`,declaration);
           assert.equal(complete.statusCode,200,complete.body);
           refs.push({material_id:complete.json().material_id,material_version:1});
-          if(role==='historical') source={...refs.at(-1)!,sha256:declaration.sha256,issuer_name:relation==='same_issuer'?'合成目标发行人':'合成参考企业',
-            relation,market:'szse',offering:'public_all',reporting_periods:periods,status:'user_asserted'};
+          if(role==='historical') {
+            completeSource={...refs.at(-1)!,sha256:declaration.sha256,issuer_name:relation==='same_issuer'||missingMetadata?'合成目标发行人':'合成参考企业',
+              relation:relation??'same_issuer',market:'szse',offering:'public_all',reporting_periods:periods,status:'user_asserted'};
+            source=completeSource;
+          }
           if(scenario==='absent_metadata')source=undefined;
           if(scenario==='partial_metadata'&&source)source={...source,issuer_name:null,relation:null,market:null,offering:null,reporting_periods:[]};
           // Deliberately do not run parsing: original bytes must reach the CLI immediately.
@@ -63,17 +66,30 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
         const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});
         assert.equal(patched.statusCode,200,patched.body);
+        let draftRevision=patched.json().draft_revision;
         const message={message_id:randomUUID(),submission_request_id:randomUUID(),expected_message_version:null,body:'合成要求：明确2025年信息，缺项标待确认。',material_versions:[]};
         const saved=await send('POST',`/api/v1/projects/${project}/messages`,message);
         assert.equal(saved.statusCode,201,saved.body);
-        const lock=async()=>{
+        const lockResponse=async()=>{
           const messagePage=await send('GET',`/api/v1/projects/${project}/messages`);
           assert.equal(messagePage.statusCode,200,messagePage.body);
           const messages=messagePage.json().project_message_set_ref;
-          const response=await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:2,material_versions:refs,
+          return send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:draftRevision,material_versions:refs,
             requirement_message_ids:messages.message_ids,project_message_set_ref:messages});
+        };
+        const lock=async()=>{
+          const response=await lockResponse();
           assert.equal(response.statusCode,201,response.body);return response.json();
         };
+        if(missingMetadata){
+          const rejected=await lockResponse();
+          assert.equal(rejected.statusCode,422,rejected.body);assert.equal(rejected.json().code,'INPUT_REQUIRED');
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[project])).rows[0].n,0);
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,0);
+          assert.ok(completeSource);source=completeSource;
+          const completed=await send('PATCH',`/api/v1/projects/${project}`,{update_details:{...details,source_prospectuses:[source]}},{'if-match':String(draftRevision)});
+          assert.equal(completed.statusCode,200,completed.body);draftRevision=completed.json().draft_revision;
+        }
         const input=await lock();
         const manifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,input.input_revision])).rows[0].manifest;
         assert.equal(manifest.issuer_name,'合成目标发行人');

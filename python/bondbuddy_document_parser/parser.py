@@ -24,11 +24,12 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 import pdfplumber
 from pypdf import PdfReader
+from .paragraph_outline import ParagraphOutlineResolver
 
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.7"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.8"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -160,6 +161,7 @@ def _paragraph_formatting(
     paragraph_style: Any,
     style_layers: Any,
     default_rpr: Any,
+    outline_level: str | None,
 ) -> dict[str, Any]:
     summaries: list[dict[str, Any]] = []
     previous_key: str | None = None
@@ -199,6 +201,7 @@ def _paragraph_formatting(
         "style": paragraph_style.name if paragraph_style else "",
         "runs": summaries,
         "paragraph_overrides": layout,
+        "outline_level": outline_level,
     }
 
 
@@ -1069,6 +1072,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     root = document.element
     unsupported_revision_count = _unsupported_docx_revision_count(root)
     styles = document.styles
+    outline_resolver = ParagraphOutlineResolver(styles.element)
     defaults = styles.element.find(qn("w:docDefaults"))
     default_rpr = defaults.find(".//" + qn("w:rPr")) if defaults is not None else None
     style_cache: dict[tuple[int, str | None], tuple[Any, list[Any]]] = {}
@@ -1103,7 +1107,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
             locator,
             value,
             context=heading,
-            formatting=_paragraph_formatting(paragraph, paragraph_style, style_layers, default_rpr),
+            formatting=_paragraph_formatting(paragraph, paragraph_style, style_layers, default_rpr, outline_resolver.resolve(paragraph._p)),
             uncertainty=uncertainty,
         ))
 
