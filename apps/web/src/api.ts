@@ -52,6 +52,12 @@ export function friendlyError(error: unknown): string {
     case 'INPUT_REQUIRED': return `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
+    case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请充值后重新确认。';
+    case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
+    case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
+    case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
+    case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
+    case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
     case 'PASSWORD_INVALID': return '当前密码不正确。';
     case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
     case 'PROJECT_DELETE_BLOCKED': return '项目中还有任务尚未结束，暂时不能删除。';
@@ -65,6 +71,15 @@ export function friendlyError(error: unknown): string {
 }
 
 export class ApiClient {
+  creditBalance(signal?: AbortSignal) { return this.request<Dto<'CreditBalanceResponse'>>('GET','/credits/balance',undefined,{},signal); }
+  creditQuote(id: string, input: Dto<'FixedQuoteRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'FixedQuoteResponse'>>('POST',`/projects/${encodeURIComponent(id)}/credit-quote`,input,{},signal);
+  }
+  runCharge(id: string, signal?: AbortSignal) { return this.request<Dto<'RunCreditChargeResponse'>>('GET',`/runs/${encodeURIComponent(id)}/credit-charge`,undefined,{},signal); }
+  rechargeConfig(signal?: AbortSignal) { return this.request<Dto<'RechargeConfigResponse'>>('GET','/credits/recharge-config',undefined,{},signal); }
+  createRecharge(input: Dto<'RechargeOrderRequest'>, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST','/credits/recharge-orders',input,{},signal); }
+  rechargeOrder(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('GET',`/credits/recharge-orders/${encodeURIComponent(id)}`,undefined,{},signal); }
+  refreshRecharge(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST',`/credits/recharge-orders/${encodeURIComponent(id)}/refresh`,{}, {},signal); }
   private controller = new AbortController();
   private refresh: Promise<void> | undefined;
   constructor(private sessionLost: () => void) {}

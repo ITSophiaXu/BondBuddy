@@ -9,11 +9,13 @@ work/
 docs/*
 !docs/product.md
 !docs/M1-TECH-ARCHITECTURE.md
+!docs/M2-FIXED-CREDITS.md
 !docs/product-decisions/
 docs/product-decisions/*
 !docs/product-decisions/2026-09-30-m1-simplification.md
 !docs/product-decisions/2026-10-02-generated-word-download.md
 !docs/product-decisions/2026-10-02-m3-cli-led-review.md
+!docs/product-decisions/2026-10-03-m2-fixed-credits.md
 !docs/ACCOUNT-RECOVERY.md
 outputs/*
 !outputs/上交所私募公司债财务数据更新规则_专家审阅版.md

@@ -281,7 +281,12 @@ export async function recordProviderCallObservation(
     const usageRow=(await client.query('SELECT usage_status,conflicting_measurements FROM bb_call_usage WHERE attempt_id=$1',[a.id])).rows[0];
     const usageStatus:ProviderObservationResult['usage_status']=usageRow?.usage_status==='conflict'?'conflict':usageRow?.usage_status==='measured'?'measured':usageRow?.usage_status==='pending'?'pending':'unknown';
     const measuredWithoutConflict=usageStatus==='measured' && Number(usageRow.conflicting_measurements)===0;
-    const complete=observation.outcome==='completed' && !!result && candidateCount===1 && measuredWithoutConflict;
+    // A verified durable result is sufficient for a fixed-price task. Unknown or
+    // conflicting usage remains in the internal cost ledger without holding credits.
+    const usageOnlyPending=observation.outcome==='pending_reconcile'&&observation.finish_reason==='stop'&&
+      ['MODEL_USAGE_PENDING','USAGE_PENDING'].includes(observation.error_code??'');
+    const complete=!!result && candidateCount===1 &&
+      (observation.outcome==='completed'&&(measuredWithoutConflict || r.billing_mode==='fixed_credits') || r.billing_mode==='fixed_credits'&&usageOnlyPending);
     // A provider's explicit invalid_request_error is a request rejection, with no
     // generated result to reconcile. Keep usage unknown; all other unmeasured failures
     // still require reconciliation because the request may have consumed tokens.
@@ -363,8 +368,8 @@ export async function readCheckpointedProviderResult(input: {
   if (!safeId(input.logicalCallId) || !Number.isSafeInteger(input.attemptNo) || input.attemptNo<1) throw new Error('Invalid replay identity');
   const activeLease=await input.pool.query("SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[input.lease.owner,input.lease.jobId,input.lease.runId,input.lease.token]);
   if (!activeLease.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result reuse requires the active worker lease');
-  const q=await input.pool.query(`SELECT a.id,a.status,a.logical_call_id,a.attempt_no,j.checkpoint,u.usage_status,u.conflicting_measurements
-    FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_call_usage u ON u.attempt_id=a.id
+  const q=await input.pool.query(`SELECT a.id,a.status,a.logical_call_id,a.attempt_no,j.checkpoint,u.usage_status,u.conflicting_measurements,r.billing_mode
+    FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_runs r ON r.id=j.run_id JOIN bb_call_usage u ON u.attempt_id=a.id
     WHERE a.owner_user_id=$1 AND a.job_id=$2 AND j.run_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5`,[input.lease.owner,input.lease.jobId,input.lease.runId,input.logicalCallId,input.attemptNo]);
   const attempt=q.rows[0];
   if (!attempt) {
@@ -381,10 +386,11 @@ export async function readCheckpointedProviderResult(input: {
     WHERE rr.owner_user_id=$1 AND rr.project_id=(SELECT project_id FROM bb_runs WHERE owner_user_id=$1 AND id=$2)
       AND rr.job_id=$3 AND rr.run_id=$2 AND rr.logical_call_id=$4 AND rr.attempt_no=$5 AND rr.attempt_id=$6 AND rr.id=$7 AND rr.result_sha256=$8
       AND (SELECT count(*) FROM bb_provider_result_refs candidate WHERE candidate.attempt_id=rr.attempt_id)=1`,[input.lease.owner,input.lease.runId,input.lease.jobId,input.logicalCallId,input.attemptNo,replay.call_id,replay.result_id,replay.result_sha256])).rows[0];
-  if (!result || attempt.status!=='completed' || attempt.usage_status!=='measured' || result.result_ref!==replay.result_ref || result.result_schema_version!==replay.result_schema_version || Number(result.byte_size)<1 || Number(attempt.conflicting_measurements)>0 || result.trace_id!==input.lease.runId) {
+  const fixedPrice=attempt.billing_mode==='fixed_credits';
+  if (!result || attempt.status!=='completed' || !fixedPrice && (attempt.usage_status!=='measured' || Number(attempt.conflicting_measurements)>0) || result.result_ref!==replay.result_ref || result.result_schema_version!==replay.result_schema_version || Number(result.byte_size)<1 || result.trace_id!==input.lease.runId) {
     throw new Problem(409,'CAPABILITY_NOT_READY','Provider result or usage is not reconciled; call remains pending');
   }
-  const observation=(await input.pool.query("SELECT 1 FROM bb_provider_call_observations WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND run_id=$4 AND attempt_id=$5 AND result_id=$6 AND outcome='completed' AND usage_status='measured' LIMIT 1",[input.lease.owner,result.project_id,input.lease.jobId,input.lease.runId,result.attempt_id,result.id])).rowCount;
+  const observation=(await input.pool.query("SELECT 1 FROM bb_provider_call_observations WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND run_id=$4 AND attempt_id=$5 AND result_id=$6 AND ((outcome='completed' AND (usage_status='measured' OR $7)) OR ($7 AND outcome='pending_reconcile' AND finish_reason='stop' AND error_code IN ('MODEL_USAGE_PENDING','USAGE_PENDING'))) LIMIT 1",[input.lease.owner,result.project_id,input.lease.jobId,input.lease.runId,result.attempt_id,result.id,fixedPrice])).rowCount;
   if (!observation) throw new Problem(409,'CAPABILITY_NOT_READY','No verified completed provider observation is available');
   let bytes:Buffer;
   try { bytes=await input.blobs.get(result.result_ref); }

@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
@@ -29,6 +29,8 @@ function fixture() {
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    paid:false,freeClassification:false,points:17900,available:17899,priceVersion:'test-v1',
+    order:undefined as Dto<'RechargeOrderResponse'>|undefined,
     parseSucceeded: false,
     runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
     runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
@@ -99,8 +101,16 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       if (state.holdCheck) await new Promise<void>(resolve => { state.releaseCheck = resolve; });
       const blocking = state.checkStatus === 'blocked' ? state.blockers ?? [state.reason] : [];
       return json(route, 200, { project_id: id, ...body, status: state.checkStatus, missing_inputs: blocking,
-        blocking_inputs: blocking, advisory_inputs: [], uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: 'platform_trial' });
+        blocking_inputs: blocking, advisory_inputs: [], uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: state.paid?'fixed_credits':'platform_trial' });
     }
+    if(path.endsWith('/credit-quote'))return json(route,200,{enabled:true,quote:state.freeClassification?null:{quote_id:`quote-${state.priceVersion}`,project_id:id,...request.postDataJSON(),task_type:'interim',points:state.points,price_version:state.priceVersion,reason:'合成一期更新',created_at:now},balance:{available:state.available,frozen:0},shortage:state.freeClassification?0:Math.max(0,state.points-state.available),reason:state.freeClassification?'原稿信息不足，本次保留 M1 免费编制，不补扣。':null});
+    if(path==='/credits/balance')return json(route,200,{enabled:true,available:state.available,frozen:0});
+    if(path==='/credits/recharge-config')return json(route,200,{enabled:true,providers:['alipay'],packs:RECHARGE_PACKS,pack_version:'synthetic-v1'});
+    if(path==='/credits/recharge-orders'){
+      state.order={order_id:'synthetic-order',provider:'alipay',state:'pending',amount_fen:5000,points:5000,currency:'CNY',checkout_url:'https://synthetic.invalid/pay',project_id:id,expires_at:now,credited_at:null};
+      return json(route,201,state.order);
+    }
+    if(path.startsWith('/credits/recharge-orders/'))return json(route,200,state.order);
     if (path === '/runs/execute') {
       const body = request.postDataJSON();
       expect(Value.Check(schemas.ExecuteRequest, body)).toBe(true);
@@ -121,6 +131,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
+      if(path.endsWith('/credit-charge'))return json(route,200,{quote:null,state:null});
       if (method === 'POST' && (path.endsWith('/cancel') || path.endsWith('/resume'))) { state.runActions.push(path); run.state = path.endsWith('/cancel') ? 'cancelled' : 'running'; return json(route,200,run); }
       if (path.endsWith('/events')) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
@@ -157,6 +168,48 @@ async function prepare(page: Page) {
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
 }
 
+test('M2 shortage preserves inputs, recharge never executes, returning requires confirmed quote',async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.project.update_details!.authoring_mode='unified_v1';
+  await page.setViewportSize({width:1440,height:960});await setup(page,state);
+  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('还差 1 积分');
+  expect(state.executes).toHaveLength(0);await expect(page.locator('#execute-input')).toBeDisabled();
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'m2-quote-desktop.png')});}
+  await page.locator('#fixed-quote').getByRole('link',{name:'充值积分',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'积分与充值',exact:true})).toBeVisible();
+  if(evidence)await page.screenshot({path:join(evidence,'m2-billing-desktop.png')});
+  await expect(page.locator('[data-pack]')).toHaveCount(4);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  if(evidence)await page.screenshot({path:join(evidence,'m2-billing-mobile.png')});
+  await page.setViewportSize({width:1440,height:960});
+  await page.getByRole('button',{name:'充值 ¥50',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();expect(state.executes).toHaveLength(0);
+  state.order!.state='paid';state.order!.credited_at=now;state.available+=5000;
+  await page.getByRole('button',{name:'刷新支付状态'}).click();await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
+  expect(state.executes).toHaveLength(0);
+  await page.getByRole('link',{name:'返回项目确认开始'}).first().click();
+  await page.locator('#execute-input').click();await expect(page.locator('#execute-input')).toHaveText('确认并开始更新');
+  expect(state.executes).toHaveLength(0);await page.locator('#execute-input').click();
+  await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('quote-test-v1');
+  expect(state.inputs.at(-1)!.material_versions).toEqual(state.inputs[0].material_versions);
+});
+test('M2 price change refreshes the displayed quote and requires another confirmation',async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=999999;
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#fixed-quote')).toContainText('17,900');
+  state.points=20000;state.priceVersion='test-v2';state.executeError={status:409,code:'QUOTE_CHANGED',correlation_id:'synthetic'};
+  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('20,000');
+  expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(0);
+  state.executeError=undefined;await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
+  expect(state.executes[1].quote_id).toBe('quote-test-v2');
+});
+test('M2 incomplete metadata retains explicit free M1 action with no paid quote',async({page})=>{
+  const state=fixture();state.paid=true;state.freeClassification=true;state.checkStatus='ready';state.available=0;
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('M1 免费编制');
+  await expect(page.locator('#execute-input')).toHaveText('按 M1 免费编制');expect(state.executes).toHaveLength(0);
+  await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);
+  expect(state.executes[0].quote_id).toBeUndefined();
+});
 test('ready input saves, preflights and executes through one explicit action', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state);
   await page.locator('#execute-input').click();
@@ -226,7 +279,7 @@ test('double click and edits during submission preserve the locked request', asy
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
   await expect(page.locator('#execute-input')).toBeDisabled();
-  await page.getByLabel('补充说明与写作要求').fill('下一轮的补充'); state.releaseExecute!();
+  await page.getByLabel('补充募集书更新说明').fill('下一轮的补充'); state.releaseExecute!();
   await expect(page.locator('#execution-progress')).toContainText('使用材料版本 1');
   expect(state.executes).toHaveLength(1); expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
 });
@@ -234,10 +287,10 @@ test('double click and edits during submission preserve the locked request', asy
 test('editing while preflight is pending discards that result; next action locks a new revision', async ({ page }) => {
   const state=await setup(page); state.holdCheck=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseCheck).toBe(true);
-  await page.getByLabel('补充说明与写作要求').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
+  await page.getByLabel('补充募集书更新说明').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
   await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
   await expect(page.locator('#start-disabled-reason')).toContainText('尚未保存');
-  await page.getByLabel('补充说明与写作要求').fill('');
+  await page.getByLabel('补充募集书更新说明').fill('');
   await prepare(page);
   expect(state.inputs).toHaveLength(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click();

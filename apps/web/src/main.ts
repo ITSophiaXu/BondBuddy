@@ -1,4 +1,5 @@
 import { Dashboard } from './dashboard';
+import { BillingPage } from './billing-page';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
@@ -42,6 +43,7 @@ let newDirty = false;
 let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
 let dashboard: Dashboard | undefined;
+let billingPage: BillingPage | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
@@ -79,6 +81,7 @@ function clearPrivateState() {
   clearSourceSelections();
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   dashboard?.dispose(); dashboard = undefined;
+  billingPage?.dispose(); billingPage = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
@@ -238,9 +241,9 @@ function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate',true)}${nav('qa','chat','项目问答',section === 'qa',true)}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}${section==='review'?'':nav('billing','shield','积分与充值',section === 'billing',true)}</nav>
+    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate',true)}${nav('qa','chat','项目问答',section === 'qa',true)}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}${section==='review'?'':nav('billing','shield','积分与充值',section === 'billing')}</nav>
     <div class="sidebar-bottom"><nav aria-label="账号">${nav('/account','settings','账号设置',section === 'account')}<a class="nav-item" href="#/data-policy">${prototypeIcon('lock')}数据保存与删除</a></nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : '全部项目'}</span></div><div class="top-actions"><span class="trial">受控试用 · 平台承担成本</span><a href="#/data-policy">${prototypeIcon('help')}使用说明</a></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions">${section==='review'?'<span class="trial">复核免费</span>':'<a class="top-plan-link" href="#billing">积分与充值</a>'}<a href="#/data-policy">${prototypeIcon('help')}使用说明</a></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
@@ -310,7 +313,12 @@ async function renderRoute() {
   currentRoute = nextRoute;
   if (requested === '/dashboard') { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
   if (requested === 'review') { renderNewReview(api, shell, () => token === epoch); return; }
-  if (['generate','qa','billing'].includes(requested)) {
+  if(requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')){
+    const project=new URLSearchParams(requested.split('?')[1]??'').get('project')??undefined;
+    billingPage=new BillingPage(api,shell,()=>token===epoch,project,requested.startsWith('payment/')?decodeURIComponent(requested.slice(8)):undefined);
+    await billingPage.render();return;
+  }
+  if (['generate','qa'].includes(requested)) {
     const labels: Record<string,string> = { review:'复核募集书',generate:'材料生成',qa:'项目问答',billing:'积分与充值' };
     shell(`<div class="page-head"><div class="eyebrow">BOND WORKSPACE</div><h1>${labels[requested]}</h1></div><section class="panel unavailable-panel"><h2>这项功能尚未开放</h2><p>你可以先创建募集书更新项目，准备材料和发行安排。</p><a class="btn primary" href="#update">更新募集书</a><a class="btn secondary" href="#dashboard">返回工作台</a></section>`, requested); return;
   }
