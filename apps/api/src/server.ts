@@ -49,7 +49,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -62,8 +62,12 @@ import { installProductionReviewLedgerRoutes } from './production-review-ledger.
 import { installProductionRulePackReleaseRoutes } from './production-rule-pack-releases.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 
+import { creditBalance, quoteCredits, reserveCredits, quoteDto } from './billing.js';
+import { classifyFixedPrice } from './billing-classification.js';
+import { installPayments, type PaymentProvider } from './payments.js';
+
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -121,6 +125,7 @@ export function createServer(settings: Settings = {}) {
   // Preflight jobs persist request IDs; keep them unique across server restarts.
   const app = Fastify({ logger: false, genReqId: uid, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
+  const paidAuthoring = settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1';
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
@@ -162,6 +167,7 @@ export function createServer(settings: Settings = {}) {
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   registerReviewRoutes(app, db, owner);
+  installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
     schema:{body:schemas.TargetPeriodEvidenceDecisionRequest,response:{200:schemas.TargetPeriodEvidenceDecisionResponse}}},async request=>{
     const user=await owner(request),projectId=param(request,'project_id');
@@ -668,6 +674,8 @@ export function createServer(settings: Settings = {}) {
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
       for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
+        assertAuthoringSourceInformation(resolved, p.update_details.source_prospectuses);
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
       let testIssuerCandidate: Awaited<ReturnType<typeof loadTestIssuerCandidate>> = null;
       if(p.kind==='update'){
@@ -1249,11 +1257,29 @@ export function createServer(settings: Settings = {}) {
     const items=rows.map(event=>({event_id:event.id,schema_version:1 as const,trace_id:event.trace_id,project_id:event.project_id,seq:Number(event.seq),occurred_at:date(event.occurred_at),type:event.type,payload:{material_id:event.payload.material_id,uploaded_bytes:event.payload.uploaded_bytes,total_bytes:event.payload.total_bytes}}));
     return {items,next_cursor:hasMore?items.at(-1)!.seq:null};
   });
+  app.get('/api/v1/credits/balance',{schema:{response:{200:schemas.CreditBalanceResponse}}},async request=>{
+    const user=await owner(request);return {enabled:paidAuthoring,...await creditBalance(db(),user)};
+  });
+  app.get('/api/v1/runs/:run_id/credit-charge',{schema:{response:{200:schemas.RunCreditChargeResponse}}},async request=>{
+    const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
+    if(!r.reservation_id)return {quote:null,state:null};
+    const row=(await db().query('SELECT q.*,r.state AS charge_state FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2',[user,r.reservation_id])).rows[0];
+    if(!row)throw missing();
+    return {quote:quoteDto(row),state:row.charge_state};
+  });
+  app.post('/api/v1/projects/:project_id/credit-quote',{schema:{body:schemas.FixedQuoteRequest,response:{200:schemas.FixedQuoteResponse}}},async request=>{
+    const user=await owner(request),id=param(request,'project_id');
+    await project(db(),user,id);
+    const b=body<{input_revision:number;input_hash:string}>(request);
+    if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Invalid input revision');
+    if(!paidAuthoring)return {enabled:false,quote:null,balance:await creditBalance(db(),user),shortage:0,reason:null};
+    return quoteCredits(db(),user,id,b.input_revision,b.input_hash);
+  });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);
-    const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string;test_grant_id?:string;user_prompt?:string}>(request);
+    const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string;quote_id?:string;test_grant_id?:string;user_prompt?:string}>(request);
     const traceId=uid();
-    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.user_prompt?{user_prompt_sha256:digest(b.user_prompt)}:{}),...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
+    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.quote_id?{quote_id:b.quote_id}:{}),...(b.user_prompt?{user_prompt_sha256:digest(b.user_prompt)}:{}),...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
     const rawExecutionKey=executionKeyStorage(b.execution_request_id);
     const wideRevision=!isPgInputRevision(b.input_revision);
     const browserKey=isBrowserUpdateKey(b.execution_request_id,b.project_id,b.input_revision,b.input_hash);
@@ -1368,13 +1394,23 @@ export function createServer(settings: Settings = {}) {
       if((lockedKind==='generation'||b.task_kind==='generation')&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
+      // Exact replays return above. New runs using older incomplete snapshots must
+      // return to materials; running tasks keep their already locked inputs.
+      if (['update','generation'].includes(lockedKind) && isUnifiedInput(input.rows[0].manifest))
+        assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       if(autoBrowserTestKey&&!testGrantId)throw new Problem(409,'TEST_GRANT_INVALID','Automatic test grant was not issued');
+      if(paidAuthoring && !testGrantId && b.task_kind!==lockedKind) throw new Problem(409,'INPUT_REVISION_CONFLICT','Task kind cannot bypass the project billing mode');
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',testGrantId?'non_production_test':'production',testGrantId]);
+      if(paidAuthoring && !testGrantId && ['update','generation'].includes(lockedKind)) {
+        if(!classifyFixedPrice(input.rows[0].manifest).task)
+          throw new Problem(422,'INPUT_REQUIRED','请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。');
+        await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject);
+      }
       if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
@@ -1398,6 +1434,10 @@ export function createServer(settings: Settings = {}) {
             return same?{run:visibleRunDto(priorRun)}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
           }
           const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+          if(owned.rowCount && ['CREDITS_INSUFFICIENT','QUOTE_REQUIRED','QUOTE_CHANGED','BILLING_NOT_READY'].includes(error.code)){
+            await recordOperation(client,{owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
+            return {errorCode:error.code,httpStatus:error.status,replay:false};
+          }
           if(owned.rowCount){
             return recordExecuteRejection(client,error.code,error.status,wideRevision?'revision_out_of_range':'submission_rejected');
           }
@@ -1567,7 +1607,7 @@ export function createServer(settings: Settings = {}) {
           const status = queueEnabled || settings.enableRunStaging ? 'ready' as const : 'blocked' as const;
           await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status});
           return { project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,
-            missing_inputs:[],uncertainty:[],blocking_inputs:status==='blocked'?['execution_capability_not_ready']:[],advisory_inputs:[],billing_mode:'platform_trial' as const };
+            missing_inputs:[],uncertainty:[],blocking_inputs:status==='blocked'?['execution_capability_not_ready']:[],advisory_inputs:[],billing_mode:paidAuthoring&&!b.test_grant_id?'fixed_credits' as const:'platform_trial' as const };
         }
         const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
           {userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},input);

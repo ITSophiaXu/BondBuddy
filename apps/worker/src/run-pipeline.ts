@@ -43,7 +43,7 @@ export type LoadGenerationIssuerBinding = (scope: GenerationIssuerBindingScope) 
 /** #76 target-period candidate producer call site; injected by the runtime only when enabled. */
 export type TargetPeriodCandidateProducer = (request: ProduceTargetPeriodCandidateSnapshotRequest) => Promise<void>;
 
-export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
+export type RunRow = { billing_mode?: (typeof import('@bondbuddy/contracts').RUN_BILLING_MODES)[number]; id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
   pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunRow; signal: AbortSignal;
   /** Checkpoint of completed stages, then values produced by stages in this attempt. */
@@ -510,6 +510,13 @@ export function codexModelStage(options: {
         output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
+      if(result.status==='needs_reconcile'&&run.billing_mode==='fixed_credits'&&!options.reviewTools){
+        const attempt=await durable.latestAttempt(options.logicalCallId);
+        if(attempt?.status==='completed'){
+          const saved=await durable.readCompleted(options.logicalCallId,attempt.attempt_no);
+          if(saved)return {kind:'done',value:saved.value,checkpoint:{logical_call_id:options.logicalCallId,prompt_snapshot_ref:snapshotId}};
+        }
+      }
       // The observation may already have paused or failed the job; otherwise park it ourselves.
       const job = (await pool.query('SELECT state,lease_token FROM bb_jobs WHERE id=$1', [lease.jobId])).rows[0];
       if (job?.state !== 'running' || job.lease_token !== lease.token) return { kind: 'stopped' };

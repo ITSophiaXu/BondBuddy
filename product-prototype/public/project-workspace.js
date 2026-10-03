@@ -23,13 +23,23 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     const status=plan.requiresProfessional?'当前套餐依据上传材料复核；公开检索与工商查询需专业版。':plan.web||plan.registry||plan.connectorIds.length?'将使用已连接的公开检索和数据来源；未覆盖的部分会单独说明。':'公开查询服务暂未连接；相关核验会标记为未覆盖。';
     return '<section class="review-overview"><h2>这次会复核什么</h2><div class="review-dimensions">'+REVIEW_DIMENSIONS.map((d,i)=>'<article><span class="review-number">0'+(i+1)+'</span><h3>'+d.title+'</h3><p>'+d.description+'</p><small>'+d.deliverable+'</small></article>').join('')+'</div><p class="review-source-status">'+esc(status)+'</p><p class="authoring-help">结果包括原文批注、复核报告和待补充事项。未取得依据的事项不会标为已通过。</p></section>';
   }
+  function sourceMissingFields(v){
+    return [[!v.issuer_name?.trim(),'原发行人名称'],[!v.relation,'企业关系'],[!v.market,'原发行市场'],[!v.offering,'原品种'],[!v.quarter,'原稿最新报告期']].filter(([missing])=>missing).map(([,label])=>label);
+  }
   function sourceMetadata(kind,f,index){
     if(kind!=='update'||!['historical','userReference'].includes(f.role))return '';
     const d=draft(kind),v=d.sourceProspectuses?.[f.key||index]||{},year=v.year||String(new Date().getFullYear());
-    const selectSource=(field,label,options)=>`<label>${label}<select data-prototype-source="${index}" data-source-field="${field}"><option value="">请选择</option>${options.map(([id,text])=>`<option value="${id}" ${v[field]===id?'selected':''}>${text}</option>`).join('')}</select></label>`;
+    const selectSource=(field,label,options)=>`<label>${label}<select data-prototype-source="${index}" data-source-field="${field}" required><option value="">请选择</option>${options.map(([id,text])=>`<option value="${id}" ${v[field]===id?'selected':''}>${text}</option>`).join('')}</select></label>`;
     const count=annualCountFor(v.offering),last=Number(year)-(v.quarter==='12-31'?0:1);
-    const summary=v.quarter?`原稿报告期：${Array.from({length:count},(_,i)=>`${last-count+i+1}年`).join('、')}${v.quarter==='12-31'?'':`、${year}年1—${Number(v.quarter.slice(0,2))}月`}`:'选填；未填写也可开始编制。';
-    return `<fieldset class="prototype-source"><legend>原稿信息（选填）</legend><div class="field-grid"><label>原发行人名称<input data-prototype-source="${index}" data-source-field="issuer_name" value="${esc(v.issuer_name||'')}"></label>${selectSource('relation','与目标发行人的关系',[['same_issuer','同企业'],['parent','母公司'],['subsidiary','子公司'],['similar_business','相似业务企业']])}${selectSource('market','原发行市场',MARKETS)}${selectSource('offering','原品种',v.market?offeringsFor(v.market):[])}<div class="field full"><label>原稿最新报告期<select data-prototype-source="${index}" data-source-field="year">${Array.from({length:new Date().getFullYear()-1998},(_,i)=>String(new Date().getFullYear()+1-i)).map(y=>`<option value="${y}" ${y===year?'selected':''}>${y} 年</option>`).join('')}</select></label><div class="quarter-grid">${[['03-31','3月末'],['06-30','6月末'],['09-30','9月末'],['12-31','年末']].map(([q,l])=>`<label class="quarter"><input type="radio" name="source-period-${index}" data-prototype-source="${index}" data-source-field="quarter" value="${q}" ${v.quarter===q?'checked':''}>${l}</label>`).join('')}</div><small>${summary}</small></div></div><small>原稿信息与本次目标分开保存；未知可留空，由编制时结合材料处理。</small></fieldset>`;
+    const summary=v.quarter?`原稿报告期：${Array.from({length:count},(_,i)=>`${last-count+i+1}年`).join('、')}${v.quarter==='12-31'?'':`、${year}年1—${Number(v.quarter.slice(0,2))}月`}`:'请选择原稿最新报告期的年份和期末。';
+    return `<fieldset class="prototype-source"><legend>原稿信息（上传后必填）</legend><div class="field-grid"><label>原发行人名称<input data-prototype-source="${index}" data-source-field="issuer_name" required value="${esc(v.issuer_name||'')}"></label>${selectSource('relation','与目标发行人的关系',[['same_issuer','同企业'],['parent','母公司'],['subsidiary','子公司'],['similar_business','相似业务企业']])}${selectSource('market','原发行市场',MARKETS)}${selectSource('offering','原品种',v.market?offeringsFor(v.market):[])}<div class="field full"><label>原稿最新报告期<select data-prototype-source="${index}" data-source-field="year">${Array.from({length:new Date().getFullYear()-1998},(_,i)=>String(new Date().getFullYear()+1-i)).map(y=>`<option value="${y}" ${y===year?'selected':''}>${y} 年</option>`).join('')}</select></label><div class="quarter-grid">${[['03-31','3月末'],['06-30','6月末'],['09-30','9月末'],['12-31','年末']].map(([q,l])=>`<label class="quarter"><input type="radio" name="source-period-${index}" data-prototype-source="${index}" data-source-field="quarter" required value="${q}" ${v.quarter===q?'checked':''}>${l}</label>`).join('')}</div><small>${summary}</small></div></div><small>每份已上传的历史／参考募集书都需填写以上信息，用于选择知识和计算积分；原稿与本次目标分开保存。</small><p role="status">${sourceMissingFields(v).length?`请补齐${sourceMissingFields(v).join("、")}后继续。`:"原稿信息已填写完整。"}</p></fieldset>`;
+  }
+  function sourceInformationMissing(kind){
+    if(kind!=='update')return false;
+    return selected(kind).filter(f=>['historical','userReference'].includes(f.role)).some(f=>{
+      const v=draft(kind).sourceProspectuses?.[f.key||state.files[kind].indexOf(f)]||{};
+      return sourceMissingFields(v).length>0;
+    });
   }
   function fileRow(kind,f){
     const index=state.files[kind].indexOf(f),pending=f.uploadStatus==='uploading',failed=f.uploadStatus==='error';
@@ -94,15 +104,16 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     if(!d.otherAgencies&&d.trustee)d.otherAgencies='受托管理人：'+d.trustee;
     if(!offeringsFor(d.exchange).some(([v])=>v===d.offering))d.offering=offeringsFor(d.exchange)[0][0];
     conversation.migrate(kind);
-    const uploading=selected(kind).some(f=>f.uploadStatus==='uploading');
+    const uploading=selected(kind).some(f=>f.uploadStatus==='uploading'),sourceMissing=state.step===2&&sourceInformationMissing(kind);
     state.step=Math.min(2,state.step);const locked=busy(kind),step=state.step,ready=state.health.authoringVersion===2&&state.health.projectInputVersion===3&&state.health.oneClickExecution===true;const labels=['创建项目','材料与要求'];
     const content=(ready?'':'<div class="notice" role="status"><span>新版项目流程等待服务重启。请关闭原启动窗口，重新打开 Start-BondBuddy.cmd 后刷新；已填写的信息会保留，重启前不会开始任务或扣点。</span></div>')+(step===1?basics(kind,d):step===2?uploads(kind,d):quoteContent(d.assessment));
     const button=step===1?(d.projectId?'保存并继续':'创建项目，继续提供材料'):'开始'+(kind==='update'?'更新':'复核');
-    return head(kind==='update'?'更新募集说明书':'复核募集说明书','提供项目材料和要求，点击开始即可执行。','PROSPECTUS WORKSPACE','<a class="btn secondary" href="#tasks">查看全部项目</a>')+`<div class="stepper">${labels.map((label,i)=>`${i?'<span class="step-line"></span>':''}<span class="step ${step===i+1?'current':''}"><b>${step>i+1?'✓':i+1}</b>${label}</span>`).join('')}</div><fieldset class="workspace-layout authoring-workspace workspace-controls" ${locked?'disabled aria-busy="true"':''}><div><form id="workflow-form"><div class="panel form-card">${content}</div></form>${step===2?cowork(kind,d):''}<div class="form-footer">${step>1?'<button type="button" class="btn secondary" data-action="previous-step">上一步</button>':'<span>创建项目与上传材料免费</span>'}<button type="submit" form="workflow-form" class="btn primary" id="start-task" ${ready&&!uploading&&!locked?'':'disabled'}>${locked?pending.get(operationKey(kind)):!ready?'等待服务重启':uploading?'等待材料上传完成':button}</button></div></div></fieldset>`;
+    return head(kind==='update'?'更新募集说明书':'复核募集说明书','提供项目材料和要求，点击开始即可执行。','PROSPECTUS WORKSPACE','<a class="btn secondary" href="#tasks">查看全部项目</a>')+`<div class="stepper">${labels.map((label,i)=>`${i?'<span class="step-line"></span>':''}<span class="step ${step===i+1?'current':''}"><b>${step>i+1?'✓':i+1}</b>${label}</span>`).join('')}</div><fieldset class="workspace-layout authoring-workspace workspace-controls" ${locked?'disabled aria-busy="true"':''}><div><form id="workflow-form"><div class="panel form-card">${content}</div></form>${step===2?cowork(kind,d):''}<div class="form-footer">${step>1?'<button type="button" class="btn secondary" data-action="previous-step">上一步</button>':'<span>创建项目与上传材料免费</span>'}<button type="submit" form="workflow-form" class="btn primary" id="start-task" ${ready&&!uploading&&!locked&&!sourceMissing?'':'disabled'}>${locked?pending.get(operationKey(kind)):!ready?'等待服务重启':uploading?'等待材料上传完成':sourceMissing?'请补齐原稿信息':button}</button></div></div></fieldset>`;
   }
   async function assess(kind){
     const d=draft(kind),epoch=state.accountEpoch,data=new FormData();for(const [k,v] of Object.entries(fields(kind)))if(v!==undefined&&v!==null&&typeof v!=='object')data.set(k,v);
     const files=selected(kind);data.set('retainedFiles',JSON.stringify(files.filter(f=>f.stored).map(f=>f.key)));for(const f of files)if(!f.stored)data.append(f.role,f.file);
+    if(sourceInformationMissing(kind))throw new Error('请补齐每份已上传原稿的发行人、企业关系、市场、品种和最新报告期后继续。');
     if(files.some(f=>['uploading','error'].includes(f.uploadStatus)))throw new Error('请等待上传完成，并重试未成功的文件。');
     if(!files.some(f=>FINANCIAL_ROLES.includes(f.role)))throw new Error('请先上传审计报告，或财务报表及附注。');
     let job;

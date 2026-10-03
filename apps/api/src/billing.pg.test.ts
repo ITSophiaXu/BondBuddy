@@ -1,0 +1,170 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import test from 'node:test';
+import { Pool } from 'pg';
+import { INITIAL_FIXED_PRICES, emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
+import { createServer } from './server.js';
+import { isolatedTestDatabase } from './test-database.js';
+import { creditBalance, grantCredits, publishPrices } from './billing.js';
+import { checkpointStage, claim, finish, promoteWordArtifact, recordPotentialCall } from './queue.js';
+import { digest, transaction, type PrivateBlobs } from './data.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { auditCredits, correctSettlement } from './billing-ops.js';
+import { inputManifestHash } from './production-rule-pin.js';
+import { saveSnapshotRef, observeUsage } from './observability.js';
+import { persistProviderResultObject,recordProviderCallObservation,readCheckpointedProviderResult,type ProviderCallObservation } from './provider-results.js';
+
+const connection=await isolatedTestDatabase(undefined,'m2-credits');
+test('paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes', {skip:!connection,timeout:180000},async()=>{
+  const pool=new Pool({connectionString:connection}),owner=`credit-${randomUUID()}`;let actor=owner;
+  const bytes=new Map<string,Buffer>();
+  const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
+    getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
+  const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
+  const fund=(points:number,key:string=randomUUID(),expiresAt:string|null=null)=>transaction(pool,c=>grantCredits(c,{owner,points,key,source:expiresAt?'existing_grant':'purchase',expiresAt,actor:'synthetic-test',reason:'synthetic-only'}));
+  const newInput=async(role='audit')=>{
+    const c=await send('POST','/api/v1/projects',{kind:'update',name:'Synthetic paid authoring',issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}});
+    assert.equal(c.statusCode,201,c.body);const id=c.json().project_id;
+    const b=role==='historical'?makeSyntheticDocxFixture({text:'Synthetic historical prospectus'}):Buffer.from('Synthetic issuer information'),d={byte_size:b.length,sha256:digest(b)};
+    const u=await send('POST',`/api/v1/projects/${id}/materials/uploads`,{...d,filename:role==='historical'?'synthetic.docx':'synthetic.txt',media_type:role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain',role});
+    assert.equal(u.statusCode,201,u.body);
+    assert.equal((await send('PUT',u.json().upload_url,b,{'content-type':'application/octet-stream'})).statusCode,204);
+    const material=await send('POST',`/api/v1/projects/${id}/materials/uploads/${u.json().upload_id}/complete`,d);
+    assert.equal(material.statusCode,200,material.body);
+    let draftRevision=1;
+    if(role==='historical'){
+      const incomplete=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+      assert.equal(incomplete.statusCode,422,incomplete.body);assert.equal(incomplete.json().code,'INPUT_REQUIRED');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[id])).rows[0].n,0);
+      const saved=await send('PATCH',`/api/v1/projects/${id}`,{update_details:{...c.json().update_details,
+        source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:'Synthetic issuer',relation:'same_issuer',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':'1'});
+      assert.equal(saved.statusCode,200,saved.body);draftRevision=saved.json().draft_revision;
+    }
+    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+    assert.equal(input.statusCode,201,input.body);return input.json();
+  };
+  const quote=async(i:any)=>{const q=await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash});assert.equal(q.statusCode,200,q.body);return q.json();};
+  const request=(i:any,q:any,key=randomUUID())=>({execution_request_id:key,project_id:i.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:i.project_id,quote_id:q.quote.quote_id});
+  const count=async(table:string)=>Number((await pool.query(`SELECT count(*) n FROM ${table} WHERE owner_user_id=$1`,[owner])).rows[0].n);
+  try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_billing']);
+    await publishPrices(pool,{id:'test-v1',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
+    const i=await newInput(),q=await quote(i),P=q.quote.points;
+    assert.equal((await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash,points:1})).statusCode,422);
+    assert.equal(P,159900);assert.equal(q.shortage,P);
+    const req=request(i,q);
+    assert.equal((await send('POST','/api/v1/runs/execute',{...req,quote_id:undefined})).statusCode,409);
+    await fund(P-1,'seed');
+    const tooPoor=await send('POST','/api/v1/runs/execute',req);assert.equal(tooPoor.statusCode,402,tooPoor.body);
+    assert.equal(await count('bb_runs'),0);assert.equal(await count('bb_credit_reservations'),0);
+    assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_jobs WHERE owner_user_id=$1 AND job_type IN ('update','generation')",[owner])).rows[0].n),0);
+    const materialCount=await count('bb_material_versions');assert.equal(materialCount,1);
+    await Promise.all([fund(1,'last-point'),fund(1,'last-point')]);
+    assert.deepEqual(await creditBalance(pool,owner),{available:P,frozen:0});
+    const both=await Promise.all([send('POST','/api/v1/runs/execute',req),send('POST','/api/v1/runs/execute',req)]);
+    both.forEach(r=>assert.equal(r.statusCode,202,r.body));assert.equal(both[0].json().run_id,both[1].json().run_id);
+    assert.equal(both[0].json().billing_mode,'fixed_credits');assert.ok(both[0].json().reservation_id);
+    assert.equal(await count('bb_credit_reservations'),1);assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:P});
+    const id=both[0].json().run_id;
+    const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,id);
+    const prompt=Buffer.from('Synthetic billing prompt'),objectKey=`users/${owner}/projects/${i.project_id}/snapshots/synthetic-billing`;
+    await blobs.put(objectKey,prompt,'text/plain');
+    const promptRef=await saveSnapshotRef(pool,{owner,projectId:i.project_id,runId:id,kind:'model_request',version:1,objectKey,sha256:digest(prompt),redactionVersion:'synthetic_v1',inputRevision:i.input_revision,inputHash:i.input_hash,blobs});
+    const callId=await recordPotentialCall(pool,lease,'synthetic-billing-call',1,{modelId:'synthetic-model',promptSnapshotId:promptRef});
+    const intent={owner_user_id:owner,project_id:i.project_id,run_id:id,job_id:lease.jobId,trace_id:id,logical_call_id:'synthetic-billing-call',call_id:callId,attempt_no:1,model_id:'synthetic-model',model_config_version:'synthetic-v1',prompt_snapshot_ref:promptRef};
+    const validate=(value:unknown)=>!!value&&(value as any).synthetic===true;
+    const result=await persistProviderResultObject({blobs,intent,bytes:Buffer.from('{"synthetic":true}'),resultSchemaVersion:'synthetic-v1',validate});
+    const observation:ProviderCallObservation={...intent,...result,provider_request_id:null,finish_reason:'stop',outcome:'pending_reconcile',error_code:'MODEL_USAGE_PENDING',usage:{status:'unknown',input_tokens:null,cached_input_tokens:null,output_tokens:null,reasoning_tokens:null,total_tokens:null}};
+    const observed=await recordProviderCallObservation(pool,blobs,observation,validate,{lease,source:'provider'});
+    assert.equal(observed.attempt_status,'completed');assert.equal(observed.usage_status,'unknown');
+    assert.deepEqual((await readCheckpointedProviderResult({pool,blobs,lease,logicalCallId:intent.logical_call_id,attemptNo:1,validateResult:validate}))!.value,{synthetic:true});
+    const revised=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic revised'}),blobs,'generated_pair_v1');
+    await assert.rejects(()=>finish(pool,lease,'succeeded',{artifactId:revised.artifactId,artifactVersion:1,blobs}),/Both generated Word/);
+    const clean=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic clean'}),blobs,'generated_pair_v1');
+    await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:revised.artifactId,clean_artifact_id:clean.artifactId});
+    await publishPrices(pool,{id:'test-v2',prices:{...INITIAL_FIXED_PRICES,new_authoring:P+10},effectiveAt:'2026-02-01T00:00:00Z',actor:'synthetic-test',reason:'future-price-test'});
+    await finish(pool,lease,'succeeded',{artifactId:revised.artifactId,artifactVersion:1,blobs});
+    assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
+    assert.equal((await pool.query("SELECT points::int FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].points,P);
+    // Late supplier usage is an internal cost observation, not another task transition.
+    await observeUsage(pool,{owner,attemptId:callId,source:'provider',sourceEventId:'synthetic-late-usage',status:'measured',inputTokens:10,outputTokens:4});
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].n,1);
+    assert.equal((await send('POST','/api/v1/runs/execute',req)).json().run_id,id);
+    assert.equal((await send('POST',`/api/v1/runs/${id}/cancel`,{reason:'late'})).statusCode,409);
+    const next=await newInput(),q2=await quote(next);assert.equal(q2.quote.points,P+10);
+    await publishPrices(pool,{id:'test-v3',prices:{...INITIAL_FIXED_PRICES,new_authoring:P+20},effectiveAt:'2026-03-01T00:00:00Z',actor:'synthetic-test',reason:'stale-preview-test'});
+    const stale=await send('POST','/api/v1/runs/execute',request(next,q2));assert.equal(stale.json().code,'QUOTE_CHANGED',stale.body);
+    const q3=await quote(next);await fund(P+20,'second-funds');
+    const other=await newInput(),otherQuote=await quote(other);
+    const competition=await Promise.all([send('POST','/api/v1/runs/execute',request(next,q3)),send('POST','/api/v1/runs/execute',request(other,otherQuote))]);
+    assert.deepEqual(competition.map(r=>r.statusCode).sort(),[202,402]);
+    const winner=competition.find(r=>r.statusCode===202)!.json();
+    await send('POST',`/api/v1/runs/${winner.run_id}/cancel`,{reason:'user-cancel'});
+    assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
+    const last=await newInput(),lastQuote=await quote(last),lastRun=await send('POST','/api/v1/runs/execute',request(last,lastQuote));assert.equal(lastRun.statusCode,202,lastRun.body);
+    const failedLease=await claim(pool);assert.ok(failedLease);
+    await finish(pool,failedLease,'failed',{errorCode:'DELIVERY_FAILED'});
+    assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
+    const declared=await newInput('historical'),declaredQuote=await quote(declared);
+    assert.equal(declaredQuote.quote.task_type,'interim');
+    const declaredRun=await send('POST','/api/v1/runs/execute',request(declared,declaredQuote));
+    assert.equal(declaredRun.statusCode,202,declaredRun.body);
+    assert.equal(declaredRun.json().billing_mode,'fixed_credits');assert.ok(declaredRun.json().reservation_id);
+    await send('POST',`/api/v1/runs/${declaredRun.json().run_id}/cancel`,{reason:'synthetic-stop'});
+    assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
+    // Seed an immutable snapshot from before required source declarations existed.
+    // New execution/quotation rejects it; an already submitted free task still replays.
+    const legacy=await newInput('historical');
+    const original=(await pool.query('SELECT * FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[legacy.project_id,legacy.input_revision])).rows[0];
+    const manifest=structuredClone(original.manifest);manifest.authoring.source_prospectuses=[];
+    manifest.update_details.source_prospectuses=[];
+    const legacyHash=inputManifestHash(manifest),legacyRevision=legacy.input_revision+1;
+    await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[legacy.project_id,legacyRevision,owner,original.draft_revision,legacyHash,manifest,JSON.stringify(original.material_versions),JSON.stringify(original.requirement_message_ids),original.rule_pack_version,original.template_version]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=$2 WHERE id=$1',[legacy.project_id,legacyRevision]);
+    const oldRequest={execution_request_id:randomUUID(),project_id:legacy.project_id,input_revision:legacyRevision,input_hash:legacyHash,task_kind:'update',input_manifest_ref:legacyHash,storage_origin:'cloud',workspace_id:legacy.project_id};
+    const beforeLegacyRuns=await count('bb_runs'),beforeLegacyHolds=await count('bb_credit_reservations');
+    assert.equal((await send('POST',`/api/v1/projects/${legacy.project_id}/credit-quote`,{input_revision:legacyRevision,input_hash:legacyHash})).statusCode,422);
+    const legacyRejected=await send('POST','/api/v1/runs/execute',oldRequest);
+    assert.equal(legacyRejected.statusCode,422,legacyRejected.body);assert.equal(legacyRejected.json().code,'INPUT_REQUIRED');
+    assert.equal(await count('bb_runs'),beforeLegacyRuns);assert.equal(await count('bb_credit_reservations'),beforeLegacyHolds);
+    const oldRunId=randomUUID(),replayRequest={...oldRequest,execution_request_id:randomUUID()};
+    const {execution_request_id,...identity}=replayRequest;
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor)
+      VALUES($1,$2,$3,$4,$5,$6,'update',$7,'queued',0)`,[oldRunId,owner,legacy.project_id,legacyRevision,legacyHash,execution_request_id,digest(JSON.stringify(identity))]);
+    const replayed=await send('POST','/api/v1/runs/execute',replayRequest);
+    assert.equal(replayed.statusCode,202,replayed.body);assert.equal(replayed.json().run_id,oldRunId);
+    assert.equal(replayed.json().billing_mode,'platform_trial');assert.equal(replayed.json().reservation_id,null);
+    assert.equal(await count('bb_credit_reservations'),beforeLegacyHolds);
+    const rollbackInput=await newInput(),rollbackQuote=await quote(rollbackInput),runsBefore=await count('bb_runs'),holdsBefore=await count('bb_credit_reservations');
+    await pool.query("CREATE FUNCTION synthetic_m2_outbox_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic outbox fault'; END; $$; CREATE TRIGGER synthetic_m2_fault BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION synthetic_m2_outbox_fault()");
+    try{assert.equal((await send('POST','/api/v1/runs/execute',request(rollbackInput,rollbackQuote))).statusCode,500);}
+    finally{await pool.query('DROP TRIGGER synthetic_m2_fault ON bb_outbox');}
+    assert.equal(await count('bb_runs'),runsBefore);assert.equal(await count('bb_credit_reservations'),holdsBefore);
+    assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
+    const corrections=await Promise.all([correctSettlement(pool,{runId:id,actor:'test-operator',reason:'synthetic erroneous debit'}),correctSettlement(pool,{runId:id,actor:'test-operator',reason:'synthetic erroneous debit'})]);
+    assert.deepEqual(corrections[0],corrections[1]);assert.deepEqual(await creditBalance(pool,owner),{available:2*P+20,frozen:0});
+    const expiry=new Date(Date.now()+3000).toISOString(),promo=await fund(50,'synthetic-expiring',expiry);
+    const expiryInput=await newInput(),expiryQuote=await quote(expiryInput);
+    const expiryRun=await send('POST','/api/v1/runs/execute',request(expiryInput,expiryQuote));assert.equal(expiryRun.statusCode,202,expiryRun.body);
+    assert.equal(Number((await pool.query('SELECT frozen FROM bb_credit_lots WHERE id=$1',[promo])).rows[0].frozen),50);
+    await pool.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM $1::timestamptz-clock_timestamp())+0.05))',[expiry]);
+    const expiryLease=await claim(pool);assert.ok(expiryLease);await finish(pool,expiryLease,'failed',{errorCode:'DELIVERY_FAILED'});
+    const compensation=(await pool.query("SELECT original_points,expires_at FROM bb_credit_lots WHERE owner_user_id=$1 AND source='failure_compensation'",[owner])).rows;
+    assert.equal(compensation.length,1);assert.equal(Number(compensation[0].original_points),50);assert.ok(new Date(compensation[0].expires_at).getTime()>Date.now()+6.9*86400000);
+    const raceInput=await newInput(),raceQuote=await quote(raceInput),raceRun=await send('POST','/api/v1/runs/execute',request(raceInput,raceQuote));assert.equal(raceRun.statusCode,202,raceRun.body);
+    const raceLease=await claim(pool);assert.ok(raceLease);
+    const raceRevision=await promoteWordArtifact(pool,raceLease,makeSyntheticDocxFixture({text:'Synthetic revised race'}),blobs,'generated_pair_v1');
+    const raceClean=await promoteWordArtifact(pool,raceLease,makeSyntheticDocxFixture({text:'Synthetic clean race'}),blobs,'generated_pair_v1');
+    await checkpointStage(pool,raceLease,'word_delivery_pair',{revision_artifact_id:raceRevision.artifactId,clean_artifact_id:raceClean.artifactId});
+    await Promise.allSettled([finish(pool,raceLease,'succeeded',{artifactId:raceRevision.artifactId,artifactVersion:1,blobs}),send('POST',`/api/v1/runs/${raceRun.json().run_id}/cancel`,{reason:'synthetic race'})]);
+    const raceFinal=(await pool.query("SELECT kind FROM bb_credit_events WHERE run_id=$1 AND kind IN ('settle','release')",[raceRun.json().run_id])).rows;
+    assert.equal(raceFinal.length,1);assert.equal((await creditBalance(pool,owner)).frozen,0);
+    const audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
+    actor='foreign';assert.equal((await send('GET',`/api/v1/runs/${id}`)).statusCode,404);
+    assert.equal((await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:1,input_hash:i.input_hash})).statusCode,404);
+    assert.deepEqual((await send('GET','/api/v1/credits/balance')).json(),{enabled:true,available:0,frozen:0});
+    await assert.rejects(()=>pool.query("UPDATE bb_credit_events SET reason='changed' WHERE owner_user_id=$1",[owner]),/append only/);
+  }finally{await app.close();await pool.end();}
+});

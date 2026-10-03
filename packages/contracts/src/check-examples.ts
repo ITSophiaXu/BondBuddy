@@ -11,6 +11,13 @@ const data = JSON.parse(readFileSync(file, 'utf8')) as { synthetic: boolean; cas
 const updateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/update-project.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(updateExamples.synthetic, true);
 data.cases.push(...updateExamples.cases);
+const billingExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/billing.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(billingExamples.synthetic, true);
+data.cases.push(...billingExamples.cases);
+for (const path of ['/credits/balance', '/projects/{project_id}/credit-quote', '/credits/recharge-orders']) {
+  const operations = openApiDocument().paths[`/api/v1${path}`] as Record<string, { 'x-implementation-status': string }>;
+  assert.ok(Object.values(operations).every(op => op['x-implementation-status'].includes('implemented')));
+}
 const targetPeriodEvidenceExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/target-period-evidence.json', import.meta.url)), 'utf8')) as { synthetic:boolean;cases:Example[] };
 assert.equal(targetPeriodEvidenceExamples.synthetic,true);
 data.cases.push(...targetPeriodEvidenceExamples.cases);

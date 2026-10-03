@@ -1,9 +1,10 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, reportingWindow, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { Dto } from '../src/api';
 
 // Real Chromium against synthetic, owner-aware HTTP. No model, database or Word acceptance.
@@ -21,6 +22,9 @@ function fixture() {
     media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     byte_size: 1024, sha256: hash(role), state: 'persisted', persisted_at: now, error: null
   }));
+  project.update_details!.source_prospectuses=[{material_id:materials[0].material_id,material_version:1,sha256:materials[0].sha256,
+    issuer_name:'合成发行人',relation:'same_issuer',market:'sse',offering:'private',
+    reporting_periods:reportingWindow('sse','private','2024-12-31'),status:'user_asserted'}];
   const messages: Dto<'ProjectMessage'>[] = [];
   const versions = new Map<string, Dto<'ProjectMessage'>>();
   const requests = new Map<string, { input: Dto<'ProjectMessageSaveRequest'>; response: Dto<'ProjectMessageSaveResponse'> }>();
@@ -175,6 +179,55 @@ async function send(page: Page, text: string) {
   await expect(page.locator('.cowork-message').filter({ hasText: text })).toBeVisible();
 }
 
+for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+  test(`required source information gates every uploaded file and survives reload - ${device}`, async ({ page }) => {
+    await page.setViewportSize({width,height});
+    const f=fixture();f.state.project.update_details!.source_prospectuses=[];
+    f.state.materials.push({...f.state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx',sha256:hash('reference')});
+    await setup(page,f);
+    const button=page.locator('#execute-input');
+    await expect(button).toBeDisabled();
+    await expect(page.locator('#start-disabled-reason')).toContainText('共 2 份原稿待补充');
+    const out=process.env.BB_REQUIRED_SOURCE_EVIDENCE_DIR??join(tmpdir(),'bb-required-source-evidence');await mkdir(out,{recursive:true});
+    const first=page.locator('[data-source-material="synthetic-historical"]');
+    await first.evaluate(el=>el.scrollIntoView({block:'start'}));
+    await page.screenshot({path:join(out,`implementation-source-required-${device}.png`)});
+    for (const [material,relation] of [['synthetic-historical','same_issuer'],['synthetic-reference','similar_business']] as const) {
+      const source=page.locator(`[data-source-material="${material}"]`);
+      await source.getByLabel('原发行人名称',{exact:true}).fill('合成原发行人');
+      await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption(relation);
+      await expect(button).toBeDisabled();
+      await source.getByLabel('原发行市场',{exact:true}).selectOption('szse');
+      await source.getByLabel('原品种',{exact:true}).selectOption('public_all');
+      await source.getByLabel('原稿最新报告期年份',{exact:true}).selectOption('2024');
+      await expect(button).toBeDisabled();
+      await source.getByRole('radio',{name:'9月末',exact:true}).check();
+      await expect(source.locator('[data-source-required-message]')).toHaveText('原稿信息已填写完整。');
+    }
+    await expect(button).toBeEnabled();
+    await expect.poll(()=>f.state.project.update_details!.source_prospectuses!.length).toBe(2);
+    await page.reload();await expect(button).toBeEnabled();
+    expect(f.state.project.update_details!.source_prospectuses!.every(s=>s.reporting_periods.length===4)).toBe(true);
+    expect(f.state.inputs).toHaveLength(0);expect(f.state.executes).toHaveLength(0);
+    const source=page.locator('[data-source-material="synthetic-reference"]');
+    await source.getByLabel('原发行市场',{exact:true}).selectOption('nafmii');
+    await expect(button).toBeDisabled();await expect(source.getByLabel('原品种',{exact:true})).toHaveValue('');
+    await source.getByLabel('原品种',{exact:true}).selectOption('ppn');await expect(button).toBeEnabled();
+    // A replacement cannot reuse declarations for the prior bytes/version.
+    f.state.materials[2]={...f.state.materials[2],material_version:2,sha256:hash('reference-v2')};
+    await page.reload();await expect(button).toBeDisabled();
+    expect(f.state.inputs).toHaveLength(0);expect(f.state.executes).toHaveLength(0);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+  });
+}
+
+test('no uploaded prospectus requires no source fields and can start authoring', async ({page}) => {
+  const f=fixture();f.state.materials.splice(0,1);f.state.project.update_details!.source_prospectuses=[];
+  await setup(page,f);await expect(page.locator('[data-source-material]')).toHaveCount(0);
+  await expect(page.locator('#execute-input')).toBeEnabled();await page.locator('#execute-input').click();
+  await expect.poll(()=>f.state.executes.length).toBe(1);
+});
+
 test('unified source metadata is material-version-bound, survives reopening and never starts on save', async ({page}) => {
   const {state}=await setup(page);
   await expect(page.getByRole('heading',{name:'是否有本发行人的历史募集书？'})).toHaveCount(0);
@@ -275,6 +328,7 @@ test('legacy generation project upgrades to unified input while preserving messa
   f.state.materials[0] = { ...f.state.materials[0], material_id: 'synthetic-reference',
     role: 'reference', filename: 'reference.docx', sha256: hash('reference'),
     parse_snapshot_id: 'synthetic-reference-snapshot' };
+  Object.assign(f.state.project.update_details!.source_prospectuses![0], {material_id:'synthetic-reference',sha256:hash('reference'),relation:'similar_business'});
   const { state } = await setup(page, f);
   await send(page, '生成新稿时保留的用户要求');
   await page.locator('#execute-input').click();

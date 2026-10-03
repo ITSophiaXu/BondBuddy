@@ -1,6 +1,6 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
-import { reportingWindow, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
+import { BILLING_TASKS, reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -74,7 +74,7 @@ export function readinessMessage(reason: string): string {
   if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
-  if (reason === 'authoring_source_information_required') return '旧任务因原稿信息缺失暂停。原稿信息现为选填，请联系支持恢复此任务；无需补齐或重复提交。';
+  if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
   if (reason === 'authoring_issuer_materials_required') return '请补充目标发行人的材料；其他企业的参考稿不能代替目标企业事实。保存后停止本次任务，再以新输入重新编制。';
   if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
   if (reason === 'authoring_material_unreadable') return '有材料无法读取，请查看材料区，替换文件后以新输入重新编制。';
@@ -139,6 +139,8 @@ export class ProjectExecution {
   private materialReady = false;
   private generation = 0;
   private inputRejected = false;
+  private quote?: Dto<'FixedQuoteResponse'>;
+  private charge?: Dto<'RunCreditChargeResponse'>;
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
@@ -220,12 +222,18 @@ export class ProjectExecution {
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return '项目信息尚未保存，请返回上一步处理。';
     if (!this.draft.fields.market || !this.draft.fields.offering) return '请在上一步选择发行市场和发行方式。';
     if (this.run && !this.nextRequested) return '需要再次修改时，请点击上方“继续修改”。';
+    const sourceGaps = sourceProspectusInputGaps(this.eligibleMaterials(), this.draft.fields.update_details.source_prospectuses);
+    if (sourceGaps.length) {
+      const first = sourceGaps[0], material = this.materials.find(m => m.material_id === first.material_id);
+      return `请补齐“${material?.filename ?? '历史／参考募集书'}”的${first.missing.join('、')}后继续${sourceGaps.length > 1 ? `（共 ${sourceGaps.length} 份原稿待补充）` : ''}。`;
+    }
     if (this.conversation.blockReason) return this.conversation.blockReason;
     return '';
   }
   private invalidate() {
     this.generation++; this.selected = false; this.selectedMessages = undefined; this.preflight = undefined;
     this.resumeVerified = false;
+    this.quote = undefined;
     this.inputRejected = false;
     this.render();
   }
@@ -250,8 +258,16 @@ export class ProjectExecution {
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     this.conversation.setEditingVisible(!this.restoring && !activeRun && (!this.run || this.nextRequested));
     const blocked = this.startBlockReason();
-    this.button('execute-input').disabled = Boolean(blocked);
-    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…') : this.nextRequested ? '生成新版' : '开始编制';
+    this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote?.shortage);
+    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…')
+      : this.quote?.enabled && this.quote.quote ? '确认并开始更新'
+      : this.nextRequested ? '生成新版' : '开始编制';
+    let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
+    if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
+    const q=this.quote;
+    quoteHost.hidden=!q?.enabled||!q.quote||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
+    quoteHost.innerHTML=q?.enabled&&q.quote?`<div class="fixed-quote"><h3>${esc(BILLING_TASKS[q.quote.task_type])} · ${q.quote.points.toLocaleString('zh-CN')} 积分</h3><p>${esc(q.quote.reason)}</p><p>可用 ${q.balance.available.toLocaleString('zh-CN')} 积分${q.shortage?`，还差 ${q.shortage.toLocaleString('zh-CN')} 积分`:''}</p><p class="muted">确认后锁定本次价格；双 Word 可下载后扣费，失败或有效取消释放。</p>${q.shortage?`<a class="btn primary" href="#billing?project=${encodeURIComponent(this.id)}">充值积分</a>`:''}<button type="button" class="text-button" id="refresh-quote">刷新报价与余额</button></div>`:'';
+    quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote());});
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -285,6 +301,7 @@ export class ProjectExecution {
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
     this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
+      ${run.billing_mode==='fixed_credits'?`<p class="task-credit-receipt">${this.charge?.quote?`本次固定价 ${this.charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已冻结，交付后扣费',settled:'已扣费',released:'已释放，本次不扣费'}[this.charge.state??'held']}`:'正在读取本次积分状态…'}</p>`:''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
       <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
@@ -316,8 +333,16 @@ export class ProjectExecution {
       if (!this.active || !this.selected || !this.preflight) return;
       // Backend admission is authoritative; uncertainty alone does not add an upload review step.
       if (this.preflight.status === 'blocked') return;
+      if(this.preflight.billing_mode==='fixed_credits'&&!this.quote){await this.action(()=>this.loadQuote());return;}
       await this.execute();
     } finally { this.starting = false; this.render(); }
+  }
+  private async loadQuote() {
+    if(!this.input||!this.selected)return;
+    const generation=this.generation,input=this.input;
+    const quote=await this.api.creditQuote(this.id,{input_revision:input.input_revision,input_hash:input.input_hash},this.controller.signal);
+    if(quote.enabled&&!quote.quote)throw new ApiError(409,'QUOTE_REQUIRED');
+    if(this.active&&generation===this.generation){this.quote=quote;this.render();}
   }
   private async changeRun(action: 'cancel' | 'resume') {
     if (!this.run || action === 'resume' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
@@ -339,6 +364,11 @@ export class ProjectExecution {
     try { await work(); }
     catch (error) {
       if (this.active) {
+        if(error instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED','CREDITS_INSUFFICIENT'].includes(error.code)) {
+          this.quote=undefined;
+          if(error.code==='QUOTE_REQUIRED')this.preflight=undefined;
+          else {try{await this.loadQuote();}catch{/* Explicit retry keeps the task unstarted. */}}
+        }
         const inputMessage = operation !== 'other'
           ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials, this.draft.fields.update_details.authoring_mode === 'unified_v1') : undefined;
         this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
@@ -486,6 +516,7 @@ export class ProjectExecution {
         this.invalidate(); this.message = '已保存的项目补充要求有变化，请核对后重新开始，新消息不会写入旧任务。'; return;
       }
       const request = await executionRequest(input, this.taskKind);
+      if(this.quote?.quote)request.quote_id=this.quote.quote.quote_id;
       if (!this.active || generation !== this.generation) return;
       const run = await this.api.execute(request, this.controller.signal);
       if (!this.active) return;
@@ -495,6 +526,10 @@ export class ProjectExecution {
     }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    const changed=this.run?.run_id!==run.run_id||this.run?.state!==run.state;
+    if(changed){this.charge=undefined;if(run.billing_mode==='fixed_credits')void this.api.runCharge(run.run_id,this.controller.signal).then(charge=>{
+      if(this.active&&this.run?.run_id===run.run_id&&this.run.state===run.state){this.charge=charge;this.render();}
+    }).catch(()=>{});}
     this.runReadVersion++;
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;

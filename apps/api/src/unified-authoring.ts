@@ -2,12 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SourceProspectus, UpdateDetails, ProjectMessageSetPin, Market, Offering } from '@bondbuddy/contracts';
-import { isMarketOffering } from '@bondbuddy/contracts';
+import { isMarketOffering, sourceProspectusInputGaps, type SourceMaterialPin } from '@bondbuddy/contracts';
 import { nafmiiMtnDraftRulePack, nafmiiMtnChapterTemplate, nafmiiCpDraftRulePack, nafmiiCpChapterTemplate, nafmiiScpDraftRulePack, nafmiiScpChapterTemplate } from '@bondbuddy/domain';
-import { conflict, digest } from './data.js';
+import { conflict, digest, Problem } from './data.js';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 export { isUnifiedInput } from '@bondbuddy/contracts';
+export function assertAuthoringSourceInformation(materials: readonly SourceMaterialPin[], sources: readonly SourceProspectus[] = []) {
+  const gaps = sourceProspectusInputGaps(materials, sources);
+  if (gaps.length) throw new Problem(422, 'INPUT_REQUIRED', `请在材料页补齐 ${gaps.length} 份历史／参考募集书的信息：${[...new Set(gaps.flatMap(g => g.missing))].join('、')}，保存后再继续。`);
+}
 export async function lockUnifiedAuthoring(project: { market: Market | null; offering: Offering | null; update_details: UpdateDetails },
   materials: readonly { material_id: string; material_version: number; role: string; sha256: string }[], messages: ProjectMessageSetPin) {
   const sources: SourceProspectus[] = [];

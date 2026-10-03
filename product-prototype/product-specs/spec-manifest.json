@@ -1,14 +1,14 @@
 {
   "spec_version": "1.5",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-10-03T00:38:18.440Z",
+  "assembled_at": "2026-10-03T13:26:05.693Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
     {
       "file": "00-产品边界与需求决策.md",
       "title": "00 产品边界与需求决策",
-      "sha256": "8a7ec19148aaa0cdd7a1f2765653cb8bb7e70411ee02200f44504bec60c81450"
+      "sha256": "b7093ceeabf8010f2ff8e6968a5af3084f7e0ceb5a5d28d863655767142d0ab4"
     },
     {
       "file": "01-Windows客户端与运行架构.md",
@@ -33,7 +33,7 @@
     {
       "file": "05-更新募集书.md",
       "title": "05 募集书编制与更新",
-      "sha256": "e7164a1aed29f674729b6648bc1211f1caa49fae7faebc1043895e135c277780"
+      "sha256": "a0436ca61fab6b841a998a5dd138b3142fe588d7a205a2ff7d3713232ca0e0bf"
     },
     {
       "file": "06-复核募集书.md",
@@ -78,7 +78,7 @@
     {
       "file": "14-积分充值与结算.md",
       "title": "14 积分充值与结算",
-      "sha256": "5cafd8ba194d7e3e0b64816d2e6ab1aa8f37a3693ae2d41faedead0479fb8f40"
+      "sha256": "798bcdf703577f0f30efa7adf33e2182581d3d3faa298d09c81f949d4e54bd97"
     },
     {
       "file": "15-后台规则模板及数据接入.md",
@@ -88,12 +88,12 @@
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "8281aff14bd9f1062affb0ffaa12dbd1cf4a7d4b396ced5e03a2760aae10a6f6"
+      "sha256": "ba2a2bd31dddf0a35adee7c04367f8ae47591bf284b0bdd6b6cfef4f80adbdf6"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "85668ac6cf7c8e6ebc93a875ca238460acbdc289537ef951a4ddb147a37dcf0c"
+      "sha256": "a462cd7f25e9fa33edc188404bd872986284448c28b448bb64ca63dc4a1a41a0"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -105,52 +105,52 @@
     {
       "relative_path": "product-prototype/product-specs/references/BondBuddy详细积分方案-v1.1-来源快照.md",
       "sha256": "76ff33f66847742d330189708ebca104d5e55e958f0546795a5ce33a56482066",
-      "observed_mtime": "2026-10-02T10:44:51.531Z"
+      "observed_mtime": "2026-10-03T00:13:43.998Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/积分参数-v1.1-来源快照.json",
       "sha256": "db50cd1335c5dd6112e661e514ae25c31b5af84a94edf6e22e4768308123b787",
-      "observed_mtime": "2026-10-02T10:44:51.533Z"
+      "observed_mtime": "2026-10-03T00:13:44.000Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/本地规格来源指纹-v1.1.json",
       "sha256": "51b69c0545b1b9ce4a2ea7687827a9ce20a36587998df65c5d0458977c4b3d01",
-      "observed_mtime": "2026-10-02T10:44:51.532Z"
+      "observed_mtime": "2026-10-03T00:13:43.999Z"
     },
     {
       "relative_path": "product-prototype/package.json",
       "sha256": "979fe857fe0cf376f5acf182b52747b21c6e1a7989e2dff310a9d4ea7340635c",
-      "observed_mtime": "2026-10-02T10:44:51.425Z"
+      "observed_mtime": "2026-10-03T00:13:43.876Z"
     },
     {
       "relative_path": "product-prototype/server.mjs",
       "sha256": "be63308d49de645458491314aa3b98f380041acb88edda668f48c79371a25a50",
-      "observed_mtime": "2026-10-02T10:44:51.601Z"
+      "observed_mtime": "2026-10-03T00:13:44.055Z"
     },
     {
       "relative_path": "product-prototype/docs/PROJECT-WORKSPACE.md",
       "sha256": "5a50f4c1bade760d6d44b5613695073c24bb724ace804b231e971bb67f391463",
-      "observed_mtime": "2026-10-02T10:44:51.350Z"
+      "observed_mtime": "2026-10-03T00:13:43.798Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-pricing.mjs",
       "sha256": "f52ed2bbde736786f9953e494bbf645de90d7c88b9c0805f45cfae767ac5bc9b",
-      "observed_mtime": "2026-10-02T10:44:51.411Z"
+      "observed_mtime": "2026-10-03T00:13:43.862Z"
     },
     {
       "relative_path": "product-prototype/public/markets.js",
       "sha256": "ff91310b57160c4521ec46f58d3f625c9bc76f5d4bab6c21b89f00d2305d4851",
-      "observed_mtime": "2026-10-02T10:44:51.546Z"
+      "observed_mtime": "2026-10-03T00:13:44.016Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-wallet.mjs",
       "sha256": "4e6cd1564665476ae5a175a7cf10855abb7a8f561b9fc2613ff938d4b8561b21",
-      "observed_mtime": "2026-10-02T10:44:51.413Z"
+      "observed_mtime": "2026-10-03T00:13:43.863Z"
     },
     {
       "relative_path": "product-prototype/public/credit-account.js",
       "sha256": "b4ddbe0736d40e81a6b1b39c3035f4d5b2c0056bfb37cd770eb5cf93fa4b7d66",
-      "observed_mtime": "2026-10-02T10:44:51.540Z"
+      "observed_mtime": "2026-10-03T00:13:44.008Z"
     }
   ],
   "acceptance_ids": [
@@ -367,34 +367,11 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 87235,
-    "local_links_checked": 280,
+    "han_characters": 88069,
+    "local_links_checked": 302,
     "tables_checked": 141,
     "json_examples_checked": 4,
-    "errors": [
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/exchange-bonds/intake/2026-09-26-archives/README.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/exchange-bonds/intake/2026-09-26-archives/READING-GUIDE.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/exchange-bonds/intake/2026-09-26-archives/ISSUE-HANDOFF.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/nafmii/README.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/nafmii/APPLICABILITY.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/nafmii/ISSUE-HANDOFF.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/exchange-bonds/verification/2026-09-26/README.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md",
-      "15-后台规则模板及数据接入.md: missing file ../../knowledge/exchange-bonds/verification/2026-09-27-companion/README.md",
-      "18-当前实现与来源索引.md: missing file ../../knowledge/nafmii/README.md",
-      "18-当前实现与来源索引.md: missing file ../../knowledge/nafmii/ISSUE-HANDOFF.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/exchange-bonds/intake/2026-09-26-archives/README.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/exchange-bonds/intake/2026-09-26-archives/READING-GUIDE.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/exchange-bonds/intake/2026-09-26-archives/ISSUE-HANDOFF.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/nafmii/README.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/nafmii/APPLICABILITY.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/nafmii/ISSUE-HANDOFF.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/exchange-bonds/verification/2026-09-26/README.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/exchange-bonds/verification/2026-09-27-companion/README.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/nafmii/README.md",
-      "BondBuddy产品开发说明书.md: missing file ../../knowledge/nafmii/ISSUE-HANDOFF.md"
-    ]
+    "errors": []
   },
   "limitations": [
     "Document builder checks structure and links only; chapter 18 records local-source DFI regressions, not tests of this documentation-only repository commit.",
