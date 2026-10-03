@@ -11,6 +11,7 @@ import { emptyUpdateDetails, type SourceProspectus } from '@bondbuddy/contracts'
 import { isolatedTestDatabase } from './test-database.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
+import { runDocumentParser } from './document-parser.js';
 import { inputLockStage, materialsReadyStage, runPipelineOnce, type StageContext } from './run-pipeline.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
@@ -57,7 +58,8 @@ test(`unified API → real parsing → ${live?'real provider on synthetic materi
             relation,market:'szse',offering:'public_all',reporting_periods:periods,status:'user_asserted'};
           if(scenario==='absent_metadata')source=undefined;
           if(scenario==='partial_metadata'&&source)source={...source,issuer_name:null,relation:null,market:null,offering:null,reporting_periods:[]};
-          assert.equal(await runMaterialParseOnce({pool,material:{pool,blobs:{getPrivate:key=>blobs.getIfExists(key)}}}),'succeeded');
+          assert.equal(await runMaterialParseOnce({pool,material:{pool,blobs:{getPrivate:key=>blobs.getIfExists(key)},
+            parser:request=>runDocumentParser(request,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})}}),'succeeded');
         }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
         const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});

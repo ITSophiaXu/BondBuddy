@@ -15,7 +15,7 @@ export interface ReviewRuleAssessment {
 }
 export interface ReviewFormattingRequirement {
   check_id: string; record_ids: string[]; rule_ref: ReviewRuleRef;
-  property: 'latin_font' | 'east_asia_font' | 'half_points' | 'rendered_layout';
+  property: 'latin_font' | 'east_asia_font' | 'half_points' | 'outline_level' | 'rendered_layout';
   expected: string;
 }
 /** Taken from the actual parser record after its response/hash is verified. */
@@ -34,16 +34,17 @@ function ruleBelongsToPack(ref: ReviewRuleRef, pack: RulePack | undefined): bool
     && source.effective_from === ref.effective_from && source.effective_to === ref.effective_to;
 }
 
-export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: ReviewEvidenceContext): ReviewEvaluation {
+export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: ReviewEvidenceContext,selection?:{rule_keys:readonly string[];formatting_check_ids:readonly string[]}): ReviewEvaluation {
   if (input.assessments.length > 10000 || input.formatting_requirements.length > 10000) throw new Error('REVIEW_COMPLIANCE_INPUT_LIMIT');
   if (new Set([...input.assessments,...input.formatting_requirements].map(c => c.check_id)).size !== input.assessments.length + input.formatting_requirements.length)
     throw new Error('REVIEW_COMPLIANCE_DUPLICATE_CHECK');
   const result: ReviewEvaluation = { findings:[],coverage:[],limitations:[] };
   const eligible = new Map<string, Set<string>>();
   const gatedPacks = new Map<string, string>();
-  if (!input.context) result.coverage.push(reviewCoverage(ctx,'rules:context-missing','compliance','uncovered',
+  if (!input.context && (!selection || selection.rule_keys.length)) result.coverage.push(reviewCoverage(ctx,'rules:context-missing','compliance','uncovered',
     '市场、品种、适用日期或发行阶段缺失，不能推测规则适用性。',[]));
   for (const pack of input.packs) {
+    if (selection && !selection.rule_keys.some(key => key.startsWith(`${pack.pack_id}:`))) continue;
     if (eligible.has(pack.pack_id) || gatedPacks.has(pack.pack_id)) throw new Error('REVIEW_RULE_PACK_AMBIGUOUS');
     try {
       if (!input.context) { gatedPacks.set(pack.pack_id,'rule_context_missing'); continue; }
@@ -58,10 +59,11 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     } catch { gatedPacks.set(pack.pack_id,'rule_pack_invalid');
       result.coverage.push(reviewCoverage(ctx,`rules:${pack.pack_id}:applicability`,'compliance','uncovered','规则包结构或来源校验未通过，不能生成正式合规结论。',[])); }
   }
-  if (!input.packs.length) result.coverage.push(reviewCoverage(ctx,'rules:missing','compliance','uncovered',
+  if (!input.packs.length && (!selection || selection.rule_keys.length)) result.coverage.push(reviewCoverage(ctx,'rules:missing','compliance','uncovered',
     '没有针对当前市场、品种及阶段的有效规则包，不套用其他市场或小公募规则。',[]));
   const assessed = new Set<string>();
   for (const assessment of input.assessments) {
+    if (selection && !selection.rule_keys.includes(`${assessment.pack_id}:${assessment.rule_id}`)) continue;
     const ids = eligible.get(assessment.pack_id);
     if (!ids?.has(assessment.rule_id)) {
       // A persisted source may be supplied as reading material while project applicability is
@@ -107,12 +109,14 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
       assessment.rule_refs.filter(ref => validateReviewRule(ref,ctx).length === 0)));
   }
   for (const [packId,ids] of eligible) for (const ruleId of ids) if (!assessed.has(`${packId}:${ruleId}`)) {
+    if (selection && !selection.rule_keys.includes(`${packId}:${ruleId}`)) continue;
     result.coverage.push(reviewCoverage(ctx,`rules:${packId}:${ruleId}:not-run`,'compliance','uncovered',
       '该适用规则没有实际检查记录，不能因无 finding 视为通过。',[],[],ctx.rules.filter(rule => rule.pack_id === packId && rule.rule_id === ruleId)));
   }
-  if (!input.formatting_requirements.length) result.coverage.push(reviewCoverage(ctx,'formatting:requirements-missing','compliance','uncovered',
+  if (!input.formatting_requirements.length && !selection) result.coverage.push(reviewCoverage(ctx,'formatting:requirements-missing','compliance','uncovered',
     '尚未提供明确的适用格式或模板要求，本轮不声称字体、字号、间距、分页或视觉版式已检查。',[]));
   for (const requirement of input.formatting_requirements) {
+    if (selection && !selection.formatting_check_ids.includes(requirement.check_id)) continue;
     const ruleErrors = validateReviewRule(requirement.rule_ref,ctx);
     const applicable = requirement.rule_ref.applicability === 'applicable' && (requirement.rule_ref.authority !== 'regulatory'
       || eligible.get(requirement.rule_ref.pack_id)?.has(requirement.rule_ref.rule_id)
@@ -131,6 +135,12 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     }
     const bad: ReviewEvidenceRef[] = [], unknown: ReviewEvidenceRef[] = [];
     for (const record of records) {
+      if(requirement.property==='outline_level'){
+        const value=record.formatting.outline_level;
+        if(typeof value!=='string'||!/^(?:[1-9]|body)$/.test(value)||!/^[1-9]$/.test(requirement.expected))unknown.push(record.ref);
+        else if(value!==requirement.expected)bad.push(record.ref);
+        continue;
+      }
       const runs = record.formatting.runs;
       if (!Array.isArray(runs) || !runs.length) { unknown.push(record.ref); continue; }
       for (const run of runs) {
@@ -143,15 +153,15 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     }
     const findings = bad.length ? normalizeReviewFindings([{
       stable_key:`format:${requirement.check_id}`,dimension:'compliance',conclusion:'error',severity:'P3',
-      title:requirement.rule_ref.authority === 'regulatory' ? '文档格式与适用规则不一致' : '文档格式与指定模板要求不一致',
-      description:`实际继承后的 ${requirement.property} 不符合要求 ${requirement.expected}；仅核对文档属性，不表示实际字体环境或视觉分页已验证。`,
+      title:requirement.rule_ref.authority === 'regulatory' ? '文档格式与适用规则不一致' : requirement.rule_ref.authority==='internal_method'?'文档格式与用户指定要求不一致':'文档格式与指定模板要求不一致',
+      description:requirement.property==='outline_level'?`已定位段落的实际大纲级别不符合指定的 ${requirement.expected} 级；依据文档属性核对，不从样式名称或外观推断。`:`实际继承后的 ${requirement.property} 不符合要求 ${requirement.expected}；仅核对文档属性，不表示实际字体环境或视觉分页已验证。`,
       target_refs:uniqueEvidence(bad),evidence_refs:uniqueEvidence(bad),rule_refs:[requirement.rule_ref],
-      suggested_change:`将已定位范围的 ${requirement.property} 调整为 ${requirement.expected}。`,
-      verification:'deterministic',can_revise:true,
+      suggested_change:requirement.property==='outline_level'?`将已定位段落的大纲级别调整为 ${requirement.expected} 级；需使用支持样式修改的文档编辑器。`:`将已定位范围的 ${requirement.property} 调整为 ${requirement.expected}。`,
+      verification:'deterministic',can_revise:false,limitations:['formatting_edit_requires_ooxml_writer'],
     }],ctx) : [];
     result.findings.push(...findings);
     result.coverage.push(reviewCoverage(ctx,requirement.check_id,'compliance',unknown.length ? 'uncovered' : bad.length ? 'issue' : 'pass',
-      unknown.length ? '部分 run 为主题字体或属性缺失；已确认差异仍保留，不能声称全范围格式已核。'
+      unknown.length ? requirement.property==='outline_level'?'部分段落缺少可确定的大纲级别（含旧解析快照或未解析的样式继承）；已确认差异仍保留，不能声称全范围层级已核。':'部分 run 为主题字体或属性缺失；已确认差异仍保留，不能声称全范围格式已核。'
         : bad.length ? '已定位真实 DOCX 属性差异。' : '指定范围的已解析 DOCX 属性与明确要求一致；不包含视觉渲染检查。',refs,findings,[requirement.rule_ref]));
   }
   result.limitations = [...new Set(result.findings.flatMap(f => f.limitations).concat(result.coverage.filter(c => ['uncovered','manual','needs_evidence'].includes(c.outcome)).map(c => c.reason)))];

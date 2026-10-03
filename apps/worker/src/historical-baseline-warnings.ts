@@ -1,5 +1,5 @@
 import type { HistoricalBaseline } from '@bondbuddy/domain/historical-update';
-import { DOCX_AUXILIARY_TARGETS_PARSER_VERSION, type DocumentParseResponse, type DocxAuxiliaryTarget } from './document-parser.js';
+import { supportsDocxAuxiliaryTargets, type DocumentParseResponse, type DocxAuxiliaryTarget } from './document-parser.js';
 
 export const HISTORICAL_TEST_BASELINE_POLICY = 'localized-auxiliary-user-asserted-v1' as const;
 const hash = (value: string | null) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -27,7 +27,7 @@ function preservedObject(target: DocxAuxiliaryTarget): boolean {
 /** Called only after full parser response/hash validation; no text or warning is removed. */
 export function localizedHistoricalWarnings(response: DocumentParseResponse): HistoricalBaseline['localizedWarnings'] {
   const targets = response.document.auxiliary_targets;
-  if (response.parser_version !== DOCX_AUXILIARY_TARGETS_PARSER_VERSION || response.status !== 'needs_confirmation' ||
+  if (!supportsDocxAuxiliaryTargets(response.parser_version) || response.status !== 'needs_confirmation' ||
     !response.records.length || !targets?.length || !targets.every(preservedObject) ||
     response.warnings.some(w => !['DOCX_DRAWINGS', 'DOCX_AUXILIARY_PARTS'].includes(w.code))) return [];
   const byStableRef = new Map(response.records.filter(r => typeof r.locator.stable_ref === 'string').map(r => [r.locator.stable_ref, r.record_id]));

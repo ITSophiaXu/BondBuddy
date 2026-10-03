@@ -1,0 +1,821 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "clean-revision.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": false,
+      "observed_normalizations": [
+        "Word added exactly one empty terminal paragraph after the final table."
+      ],
+      "source_sha256": "0993e83aee6acd6c914b721c9b73e46998321cc97a6fb90825e94a8d4aa4da37",
+      "word_saved_sha256": "14d98d3303014de5836b75ec4d6214c95b9601c5fdf2557d6c0a32ae0d44370f",
+      "before": {
+        "body": [
+          [
+            "未改动的风险说明。【待人工确认】",
+            "截至2024年末净资产120万元。",
+            "项目",
+            "2024年度",
+            "2025年1-9月",
+            "净资产",
+            "100",
+            "120"
+          ],
+          [
+            [
+              3,
+              [
+                [
+                  "项目",
+                  "2024年度",
+                  "2025年1-9月"
+                ],
+                [
+                  "净资产",
+                  "100",
+                  "120"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": true,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": null,
+            "paragraphs": [
+              "待人工确认：缺少说明材料"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 9,
+                "end": 16
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "未改动的风险说明。【待人工确认】",
+            "截至2024年末净资产120万元。",
+            "项目",
+            "2024年度",
+            "2025年1-9月",
+            "净资产",
+            "100",
+            "120",
+            ""
+          ],
+          [
+            [
+              3,
+              [
+                [
+                  "项目",
+                  "2024年度",
+                  "2025年1-9月"
+                ],
+                [
+                  "净资产",
+                  "100",
+                  "120"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": true,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": null,
+            "paragraphs": [
+              "待人工确认：缺少说明材料"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 9,
+                "end": 16
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    },
+    {
+      "name": "comments-existing-revision.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": true,
+      "observed_normalizations": [],
+      "source_sha256": "450a3f91b5cfb6a9cd70c74525f74507814f5daa03d5bccfa85adb14bcd4d470",
+      "word_saved_sha256": "a2780807bc07cddcbeaf21131f61dfc6b42155ccaa2bb34dea50bf55108372e9",
+      "before": {
+        "body": [
+          [
+            "100万元"
+          ],
+          []
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 0,
+                "end": 5
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [
+          {
+            "kind": "ins",
+            "author": "Original",
+            "date": "2026-10-02T00:00:00Z",
+            "text": "100万元"
+          }
+        ],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "100万元"
+          ],
+          []
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 0,
+                "end": 5
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [
+          {
+            "kind": "ins",
+            "author": "Original",
+            "date": "2026-10-02T00:00:00Z",
+            "text": "100万元"
+          }
+        ],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    },
+    {
+      "name": "existing-comments.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": false,
+      "observed_normalizations": [
+        "Word added exactly one empty terminal paragraph after the final table."
+      ],
+      "source_sha256": "b5822679ecf4eace8cf1964c019bf8c06f4934c6b66fae625aa581eac12794c3",
+      "word_saved_sha256": "84ef25295a49f939e4f19c8dcf4ca0adb506fcf45ec16053083f9727d8174718",
+      "before": {
+        "body": [
+          [
+            "合计金额为100万元。",
+            "期末余额90万元"
+          ],
+          [
+            [
+              1,
+              [
+                [
+                  "期末余额90万元"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": true,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          },
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          },
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F002 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "合计金额为100万元。",
+            "期末余额90万元",
+            ""
+          ],
+          [
+            [
+              1,
+              [
+                [
+                  "期末余额90万元"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": true,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          },
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          },
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F002 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    },
+    {
+      "name": "native-comments.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": false,
+      "observed_normalizations": [
+        "Word added exactly one empty terminal paragraph after the final table."
+      ],
+      "source_sha256": "38f8e9faffa828ea7036dbe1301ab578ef5341614b2517735c39652621b704ca",
+      "word_saved_sha256": "a52dd3bbdd1ca4cd575438a8ef32eb5a27bc2fd42b5f900dcf0c9e69f3802732",
+      "before": {
+        "body": [
+          [
+            "合计金额为100万元。",
+            "期末余额90万元"
+          ],
+          [
+            [
+              1,
+              [
+                [
+                  "期末余额90万元"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": true,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          },
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:t001:r001:c001:p0001",
+                "start": 4,
+                "end": 8
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "合计金额为100万元。",
+            "期末余额90万元",
+            ""
+          ],
+          [
+            [
+              1,
+              [
+                [
+                  "期末余额90万元"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": true,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 5,
+                "end": 10
+              }
+            ],
+            "references": 1
+          },
+          {
+            "author": "BondBuddy",
+            "date": "2026-10-02T00:00:00Z",
+            "paragraphs": [
+              "F001 · P1 · 合计不一致",
+              "核对合计与原表",
+              "建议：补充证据或人工确认",
+              "说明：修改、异议或补证不代表复核通过。"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:t001:r001:c001:p0001",
+                "start": 4,
+                "end": 8
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    },
+    {
+      "name": "review-report.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": true,
+      "observed_normalizations": [],
+      "source_sha256": "0128c0cb2a2908f9dce72dcf99bfe24f0b1978b4671d54a27789bdaaa5df4f84",
+      "word_saved_sha256": "a261279de877ca00584907e256a5bcfa8afd3185c238db006b3184c1d1a3bc4a",
+      "before": {
+        "body": [
+          [
+            "募集书复核报告",
+            "报告 synthetic-report · 版本 1\n完成时间 2026-10-02T00:00:00Z",
+            "复核结果用于辅助判断；零发现不保证合规。已修改、异议和补证不等于复核通过。",
+            "范围与来源",
+            "{\"source_material\": {\"material_id\": \"source\", \"material_version\": 1, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"scope\": {\"mode\": \"full_review\", \"finding_ids\": []}, \"input_revision\": 1}",
+            "实际覆盖",
+            "F001 · 合计不一致",
+            "F001 · P1 · 合计不一致\n核对合计与原表\n建议：补充证据或人工确认\n说明：修改、异议或补证不代表复核通过。",
+            "结论：error；状态：rechecked；来源报告：synthetic-report",
+            "原文定位：{\"stable_ref\": \"docx:p0001\"}\n100万元",
+            "原文定位：{\"stable_ref\": \"docx:t001:r001:c001:p0001\"}\n90万元",
+            "未覆盖与定位限制"
+          ],
+          []
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "募集书复核报告",
+            "报告 synthetic-report · 版本 1\n完成时间 2026-10-02T00:00:00Z",
+            "复核结果用于辅助判断；零发现不保证合规。已修改、异议和补证不等于复核通过。",
+            "范围与来源",
+            "{\"source_material\": {\"material_id\": \"source\", \"material_version\": 1, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"scope\": {\"mode\": \"full_review\", \"finding_ids\": []}, \"input_revision\": 1}",
+            "实际覆盖",
+            "F001 · 合计不一致",
+            "F001 · P1 · 合计不一致\n核对合计与原表\n建议：补充证据或人工确认\n说明：修改、异议或补证不代表复核通过。",
+            "结论：error；状态：rechecked；来源报告：synthetic-report",
+            "原文定位：{\"stable_ref\": \"docx:p0001\"}\n100万元",
+            "原文定位：{\"stable_ref\": \"docx:t001:r001:c001:p0001\"}\n90万元",
+            "未覆盖与定位限制"
+          ],
+          []
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [],
+        "revisions": [],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    },
+    {
+      "name": "tracked-revision.docx",
+      "checks": {
+        "comments": true,
+        "revisions": true,
+        "body_content_and_table_shape": true,
+        "native_relationship": true,
+        "content_type": true,
+        "source_unchanged": true
+      },
+      "pass": true,
+      "body_exact": false,
+      "observed_normalizations": [
+        "Word added exactly one empty terminal paragraph after the final table."
+      ],
+      "source_sha256": "06944ecb4958a35187146058dbda872173ced8d8e8c1e4fe2bbf87798c391e08",
+      "word_saved_sha256": "1d78b6b28e329b3780c384f0c466662d048aa416eda7705ab7d9d68218117478",
+      "before": {
+        "body": [
+          [
+            "未改动的风险说明。【待人工确认】",
+            "截至2024年末净资产120万元。",
+            "项目",
+            "2024年度",
+            "2025年1-9月",
+            "净资产",
+            "100",
+            "120"
+          ],
+          [
+            [
+              3,
+              [
+                [
+                  "项目",
+                  "2024年度",
+                  "2025年1-9月"
+                ],
+                [
+                  "净资产",
+                  "100",
+                  "120"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": true,
+        "ends_in_table_and_empty_paragraph": false,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": null,
+            "paragraphs": [
+              "待人工确认：缺少说明材料"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 9,
+                "end": 16
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [
+          {
+            "kind": "cellIns",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": ""
+          },
+          {
+            "kind": "cellIns",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": ""
+          },
+          {
+            "kind": "del",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "100"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "120"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "120"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "2025年1-9月"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "【待人工确认】"
+          }
+        ],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      },
+      "after": {
+        "body": [
+          [
+            "未改动的风险说明。【待人工确认】",
+            "截至2024年末净资产120万元。",
+            "项目",
+            "2024年度",
+            "2025年1-9月",
+            "净资产",
+            "100",
+            "120",
+            ""
+          ],
+          [
+            [
+              3,
+              [
+                [
+                  "项目",
+                  "2024年度",
+                  "2025年1-9月"
+                ],
+                [
+                  "净资产",
+                  "100",
+                  "120"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "ends_in_table": false,
+        "ends_in_table_and_empty_paragraph": true,
+        "comments": [
+          {
+            "author": "BondBuddy",
+            "date": null,
+            "paragraphs": [
+              "待人工确认：缺少说明材料"
+            ],
+            "ranges": [
+              {
+                "locator": "docx:p0001",
+                "start": 9,
+                "end": 16
+              }
+            ],
+            "references": 1
+          }
+        ],
+        "revisions": [
+          {
+            "kind": "cellIns",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": ""
+          },
+          {
+            "kind": "cellIns",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": ""
+          },
+          {
+            "kind": "del",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "100"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "120"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "120"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "2025年1-9月"
+          },
+          {
+            "kind": "ins",
+            "author": "BondBuddy",
+            "date": "2026-09-25T13:00:00Z",
+            "text": "【待人工确认】"
+          }
+        ],
+        "native_comments_relationship": true,
+        "native_comments_content_type": true
+      }
+    }
+  ]
+}

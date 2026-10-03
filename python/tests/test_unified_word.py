@@ -85,3 +85,63 @@ class UnifiedWordTests(unittest.TestCase):
         result=render(request,self.source,self.tracked,self.clean,self.baseline)
         self.assertEqual(result['baseline_kind'],'reconstructed_pdf')
         self.assertEqual(Document(self.clean).paragraphs[0].text,'新文120万元。')
+
+    def revision_request(self, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'):
+        if media_type == 'application/pdf':
+            self.source.write_bytes(b'%PDF-synthetic-revision-baseline')
+            records = [{'id': 'source/p1', 'text': '原文100万元。', 'locator': {'page': 1}}]
+        else:
+            doc = Document(); doc.add_paragraph('原文100万元。'); doc.add_paragraph('未选条款保留。'); doc.save(self.source)
+            parsed, _, _ = _parse_docx(self.source, {})
+            records = [{'id': 'source/' + r['record_id'], 'text': r['literal_quote'], 'locator': r['locator']} for r in parsed]
+        source_hash = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        raw_id = records[0]['id'].split('/', 1)[1]
+        handling = {'version': 'review-revision-handling-v1', 'source_report': {'report_id': 'report-1', 'sha256': 'b' * 64},
+                    'accepted_plan': {'plan_id': 'accepted-plan-1', 'version': 1, 'sha256': 'c' * 64},
+                    'source_material': {'material_id': 'source', 'material_version': 1, 'sha256': source_hash},
+                    'review_passed': False, 'limitations': [], 'items': [
+                        {'finding_id': 'F-1', 'report_id': 'report-1', 'status': 'modified', 'reason': '依据已锁定的合成证据修订。',
+                         'locations': [{'record_id': raw_id, 'locator': records[0]['locator']}], 'evidence_refs': ['audit/a1'], 'review_passed': False},
+                        {'finding_id': 'F-2', 'report_id': 'report-1', 'status': 'not_modified', 'reason': '用户明确排除本项。',
+                         'locations': [], 'evidence_refs': [], 'review_passed': False}]}
+        request = self.request()
+        request.update(source_sha256=source_hash, media_type=media_type, records=records,
+                       edits=[{'record_id': records[0]['id'], 'after': '修订文120万元。', 'evidence': ['audit/a1'], 'pending': []}],
+                       revision_handling=handling, revision_allowed_record_ids=[records[0]['id']])
+        return request
+
+    def test_report_driven_revision_keeps_original_and_independent_handling_with_dual_word(self):
+        request = self.revision_request(); original = self.source.read_bytes(); handling = copy.deepcopy(request['revision_handling'])
+        result = render(request, self.source, self.tracked, self.clean, self.baseline)
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertEqual(result['revision_handling'], handling)
+        self.assertFalse(result['review_passed'])
+        self.assertEqual(Document(self.clean).paragraphs[0].text, '修订文120万元。')
+        self.assertEqual(Document(self.clean).paragraphs[1].text, '未选条款保留。')
+        self.assertTrue(list(self.xml(self.tracked).iter(Q('ins'))))
+        accepted = copy.deepcopy(self.xml(self.tracked)); accept_own_revisions(accepted)
+        self.assertEqual(document_signature(accepted), document_signature(self.xml(self.clean)))
+
+    def test_report_revision_preserves_explicit_pdf_reconstruction_baseline(self):
+        request = self.revision_request('application/pdf'); original = self.source.read_bytes()
+        result = render(request, self.source, self.tracked, self.clean, self.baseline)
+        self.assertEqual(result['baseline_kind'], 'reconstructed_pdf')
+        self.assertEqual(result['source_sha256'], hashlib.sha256(original).hexdigest())
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertFalse(result['revision_handling']['review_passed'])
+
+    def test_report_revision_rejects_scope_expansion_and_fabricated_review_pass(self):
+        for change in ('scope', 'passed', 'handling', 'empty', 'baseline'):
+            request = self.revision_request()
+            if change == 'scope':
+                request['edits'][0]['record_id'] = request['records'][1]['id']
+            elif change == 'passed':
+                request['revision_handling']['items'][0]['review_passed'] = True
+            elif change == 'handling':
+                request['revision_handling']['items'][0]['status'] = 'not_modified'
+            elif change == 'empty':
+                request['edits'] = []
+            else:
+                request['revision_handling']['source_material']['sha256'] = '0' * 64
+            with self.assertRaisesRegex(ValueError, 'WORD_REVISION_SCOPE_MISMATCH'):
+                render(request, self.source, self.tracked, self.clean, self.baseline)

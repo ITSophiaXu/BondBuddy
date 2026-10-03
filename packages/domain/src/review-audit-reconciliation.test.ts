@@ -22,7 +22,7 @@ function fixture() {
       material_sha256:source ? f.ctx.source_material.sha256 : reviewContentHash('synthetic-audit'),
       parse_snapshot_id:source ? 'synthetic-disclosure-snapshot' : 'synthetic-audit-snapshot',
       parse_response_sha256:reviewContentHash(source ? 'synthetic-disclosure-snapshot' : 'synthetic-audit-snapshot')}));
-    return {observation_id:id,source_kind,entity_id:'synthetic-issuer',metric,accounting_scope:'consolidated',basis:'original',
+    return {observation_id:id,source_kind,entity_id:'synthetic-issuer',metric,accounting_scope:'consolidated',basis:'original',context_verification:'trusted_structured',
       period,currency:'CNY',unit:'万元',value,value_literal:options.value_literal ?? value,value_refs:[ref],
       context_refs:{entity:[ref],period:[ref],accounting_scope:[ref],currency:[ref],unit:[ref],basis:[ref]},...rest};
   };
@@ -48,6 +48,16 @@ test('all 40 internal rules retain explicit uncovered coverage and source hash w
   const f=fixture(),result=reviewAuditReconciliation([],f.ctx);
   assert.equal(result.coverage.length,40);assert(result.coverage.every(c => c.outcome === 'uncovered' && c.rule_refs.length === 0));
   assert(result.limitations.some(l => l.includes(pack.version) && l.includes(pack.source_sha256) && l.includes('internal_method')));
+});
+test('CLI audit selection executes only requested methods and keeps contextual operands outside differential targets',()=>{
+  const f=fixture(),r=rule(1),input=f.build(r,'300.00',['100.00','200.00']);
+  assert.deepEqual(reviewAuditReconciliation(input.observations,f.ctx,[]).coverage,[]);
+  const selected=reviewAuditReconciliation(input.observations,f.ctx,[r.id],['d']);
+  assert.equal(selected.coverage.length,1);assert.equal(selected.coverage[0]!.outcome,'pass');
+  const noTarget=reviewAuditReconciliation(input.observations,f.ctx,[r.id],[]);
+  assert.equal(noTarget.coverage.length,1);assert.equal(noTarget.coverage[0]!.outcome,'uncovered');
+  assert.throws(()=>reviewAuditReconciliation(input.observations,f.ctx,['unknown']));
+  assert.throws(()=>reviewAuditReconciliation(input.observations,f.ctx,[r.id,r.id]));
 });
 test('synthetic missing digit yields exact repairable fixed formula with only disclosure targets',()=>{
   const f=fixture(),r=rule(1),input=f.build(r,'30.00',['100.00','200.00']);

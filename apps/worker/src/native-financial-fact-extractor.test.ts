@@ -26,6 +26,7 @@ const SUPPORTED_SAMPLE_PARSER_VERSIONS = new Set([
   'bondbuddy-document-parser-1.0.5',
   'bondbuddy-document-parser-1.0.6',
   'bondbuddy-document-parser-1.0.7',
+  'bondbuddy-document-parser-1.0.8',
 ]);
 
 function evidence(recordId: string, sheet: string, cell: string, literalQuote: string, sheetState = 'visible'): DocumentParseRecord {
@@ -129,8 +130,8 @@ test('maps only the exact consolidated 2023 operating revenue row and keeps pare
   assert.ok(result.facts[0]!.evidence_refs.every((id) => !id.startsWith('parent-')));
 });
 
-test('accepts the explicitly supported parser 1.0.5/1.0.6/1.0.7 and rejects unknown parser versions', async () => {
-  for (const parserVersion of ['bondbuddy-document-parser-1.0.5', 'bondbuddy-document-parser-1.0.6', 'bondbuddy-document-parser-1.0.7']) {
+test('accepts the explicitly supported parser 1.0.5/1.0.6/1.0.7/1.0.8 and rejects unknown parser versions', async () => {
+  for (const parserVersion of ['bondbuddy-document-parser-1.0.5', 'bondbuddy-document-parser-1.0.6', 'bondbuddy-document-parser-1.0.7', 'bondbuddy-document-parser-1.0.8']) {
     const versionedRecords = sampleRecords().map((record) => ({ ...record, extractor_version: parserVersion }));
     const result = await extractor.extract(request(versionedRecords, parserVersion));
     assert.equal(result.facts.length, 1, `${parserVersion} should reach the native mapper`);

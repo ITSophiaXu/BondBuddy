@@ -81,12 +81,18 @@ export async function killSwitchState(db: Db, config: TrialConfig) {
 
 const ACTIVE_RUN_STATES = "('preparing','queued','running','validating','delivering')";
 
-/** Measured tokens plus a conservative charge for every sent attempt whose usage is not measured. */
+/** Platform safety budget only: observed tokens plus a conservative allowance for unknown usage. */
 export async function tokensSince(db: Db, config: TrialConfig, userId: string, since: Date) {
-  const q = await db.query(`SELECT COALESCE(sum(CASE WHEN a.status='confirmed_not_sent' THEN 0
-      WHEN e.usage_status='measured' THEN e.input_tokens+e.output_tokens ELSE $3::bigint END),0)::bigint AS tokens
+  const q = await db.query(`SELECT COALESCE(sum(tokens),0)::bigint AS tokens FROM (
+    SELECT CASE WHEN a.status='confirmed_not_sent' THEN 0
+      WHEN e.usage_status='measured' THEN e.input_tokens+e.output_tokens ELSE $3::bigint END AS tokens
     FROM bb_model_call_attempts a JOIN bb_call_usage_effective e ON e.attempt_id=a.id
-    WHERE a.owner_user_id=$1 AND a.created_at>=$2`, [userId, since, config.unknown_usage_tokens_per_attempt]);
+    WHERE a.owner_user_id=$1 AND a.created_at>=$2
+    UNION ALL
+    SELECT CASE WHEN status='confirmed_not_sent' THEN 0
+      WHEN usage_status='measured' THEN input_tokens+output_tokens ELSE $3::bigint END AS tokens
+    FROM bb_review_assistant_attempts WHERE owner_user_id=$1 AND created_at>=$2
+  ) usage_budget`, [userId, since, config.unknown_usage_tokens_per_attempt]);
   return Number(q.rows[0].tokens);
 }
 

@@ -4,6 +4,9 @@ import { listArtifactHistory } from './artifact-history.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
+import { registerReviewRoutes } from './review-workspace.js';
+import { Value } from '@sinclair/typebox/value';
+import { ReviewRevisionHandlingSchema } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
@@ -158,6 +161,7 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
+  registerReviewRoutes(app, db, owner);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
     schema:{body:schemas.TargetPeriodEvidenceDecisionRequest,response:{200:schemas.TargetPeriodEvidenceDecisionResponse}}},async request=>{
     const user=await owner(request),projectId=param(request,'project_id');
@@ -1353,6 +1357,7 @@ export function createServer(settings: Settings = {}) {
         ['TEST_GRANT_EXPIRED','TEST_GRANT_INVALID','INPUT_REQUIRED','CAPABILITY_NOT_READY','MATERIAL_UNREADABLE'].includes(rejected.error_code);
       if(rejected&&!retiredBusinessRejection)return {rejection:await priorRejection(client,rejected)};
       const currentProject=await project(client,user,b.project_id,true);
+      if(currentProject.kind==='review')throw new Problem(422,'VALIDATION_FAILED','Use the review execution endpoint to confirm the report, scope and input version');
       if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
@@ -1434,6 +1439,7 @@ export function createServer(settings: Settings = {}) {
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
     const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
     const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
+    if (pair?.revision_handling && (!Value.Check(ReviewRevisionHandlingSchema,pair.revision_handling) || pair.review_passed !== false)) throw new Problem(503,'DATA_UNAVAILABLE','Revision handling snapshot is invalid');
     const variant=pair?.revision_artifact_id===a.id?'revision':pair?.clean_artifact_id===a.id?'clean':pair?.baseline_artifact_id===a.id?'baseline':null;
     const wordDelivery=variant ? {variant,revision_artifact_id:pair!.revision_artifact_id,clean_artifact_id:pair!.clean_artifact_id,
       baseline_artifact_id:pair!.baseline_artifact_id,writer_version:pair!.writer_version,
@@ -1442,6 +1448,7 @@ export function createServer(settings: Settings = {}) {
       replacements:pair!.replacements,columns:pair!.columns,pending_review_count:pair!.pending,
       pending_review:pair!.pending_review,
       ...(pair!.delivery_policy==='generated_pair_v1' ? {delivery_policy:'generated_pair_v1',content_review:'not_performed'} : {}),
+      ...(pair!.revision_handling ? {revision_handling:pair!.revision_handling,review_passed:false} : {}),
       ...(pair!.baseline_kind ? {baseline_kind:pair!.baseline_kind, source_issuer:pair!.source_issuer ?? null, authoring_summary:pair!.authoring_summary ?? []} : {})} : undefined;
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
     await transaction(db(),async client=>{

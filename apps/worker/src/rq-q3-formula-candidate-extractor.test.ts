@@ -79,11 +79,12 @@ test('RQ Q3 formula mapper emits only eight external needs-confirmation cache ca
     assert.equal(fact.identity.currency, 'CNY');
     assert.equal(fact.identity.unit, 'yuan');
   }
-  const parser107Request=request({parser_version:'bondbuddy-document-parser-1.0.7',
-    records:req.records.map(record=>({...record,extractor_version:'bondbuddy-document-parser-1.0.7'}))});
-  const parser107Result=await extractor.extract(parser107Request);
-  assert.deepEqual(parser107Result.facts,result.facts);
-  assert.deepEqual(parser107Result.needs_review,result.needs_review);
+  for(const version of ['bondbuddy-document-parser-1.0.7','bondbuddy-document-parser-1.0.8']){
+    const versionedRequest=request({parser_version:version,records:req.records.map(record=>({...record,extractor_version:version}))});
+    const versionedResult=await extractor.extract(versionedRequest);
+    assert.deepEqual(versionedResult.facts,result.facts);
+    assert.deepEqual(versionedResult.needs_review,result.needs_review);
+  }
 });
 
 test('RQ Q3 formula mapper fails closed on a source hash mismatch and an unrecognized formula cache', async () => {

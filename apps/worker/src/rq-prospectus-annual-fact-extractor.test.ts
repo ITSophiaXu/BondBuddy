@@ -108,6 +108,9 @@ test('parser 1.0.7 auxiliary warnings preserve the body-only extractor result an
     snapshot_id: 'rq-parse-snapshot', response_sha256: 'c'.repeat(64), parser_version: 'bondbuddy-document-parser-1.0.7',
     material_id: 'rq-historical-material-001', material_version: 1, content_sha256: sampleHash,
   });
+  const current108=await extractor107.extract({...request(records.map(item=>({...item,extractor_version:'bondbuddy-document-parser-1.0.8'}))),parser_version:'bondbuddy-document-parser-1.0.8'});
+  assert.deepEqual(current108.facts,current.facts);assert.deepEqual(current108.needs_review,current.needs_review);
+  assert.equal(current108.parse_snapshot.parser_version,'bondbuddy-document-parser-1.0.8');
 });
 
 test('uncertain direct cells remain needs-review and do not become facts', async () => {
@@ -183,7 +186,7 @@ test('authorized rq-202509 historical prospectus tables map through the real par
   };
   const parsed = await runDocumentParser(parseRequest, { pythonExecutable: parserPython, repoRoot: repositoryRoot, timeoutMs: 300_000,
     maxOutputBytes: 128 * 1024 * 1024 });
-  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.7');
+  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.8');
   assert.ok(parsed.status === 'parsed' || parsed.status === 'needs_confirmation');
   assert.ok(parsed.warnings.every((warning) => ['DOCX_DRAWINGS', 'DOCX_AUXILIARY_PARTS'].includes(warning.code)));
   const semanticRequest = request(parsed.records, parseRequest.material.material_id);

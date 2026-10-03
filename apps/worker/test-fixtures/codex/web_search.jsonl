@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"synthetic-web-thread"}
+{"type":"item.started","item":{"id":"search-1","type":"web_search","query":"synthetic official source"}}
+{"type":"item.completed","item":{"id":"search-1","type":"web_search","query":"synthetic official source","results":[{"url":"https://example.invalid/source","title":"Synthetic source","text":"Synthetic entity is registered."}]}}
+{"type":"item.completed","item":{"id":"answer-1","type":"agent_message","text":"{\"answer\":\"OK\",\"n\":16}"}}
+{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":8}}

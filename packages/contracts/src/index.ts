@@ -6,6 +6,7 @@ export * from './platform-processing-cost.js';
 export * from './ocr.js';
 export * from './ocr-v2.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import { ReviewRevisionHandlingSchema } from './review-revision.js';
 import { RUN_CHANNELS, RUN_BILLING_MODES, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 export * from './run-channel.js';
 import { TestUncoveredItemsSchema } from './test-coverage.js';
@@ -258,6 +259,7 @@ export const schemas = {
       delivery_policy: Type.Optional(Type.Literal('generated_pair_v1')), content_review: Type.Optional(Type.Literal('not_performed')),
       baseline_kind: Type.Optional(Type.Union([Type.Literal('none'), Type.Literal('uploaded_source'), Type.Literal('reconstructed_pdf'), Type.Literal('project_output')])),
       source_issuer: Type.Optional(nullable(Type.String())), authoring_summary: Type.Optional(Type.Array(Type.String())),
+      revision_handling: Type.Optional(ReviewRevisionHandlingSchema), review_passed: Type.Optional(Type.Literal(false)),
       replacements: nullable(Type.Integer({ minimum: 0 })), columns: nullable(Type.Integer({ minimum: 0 })), pending_review_count: nullable(Type.Integer({ minimum: 0 })),
       pending_review: Type.Array(obj({ record_id: id, message: Type.String({ minLength: 1 }) })) })) }),
   ConversationMessageRequest: obj({ message_id: id, project_id: id, body: Type.String({ minLength: 1 }), prompt_version: revision, attachment_material_ids: Type.Array(id) }),
@@ -521,3 +523,7 @@ export function openApiDocument() {
 }
 
 export { reportingWindow } from './reporting-window.js';
+
+export * from './review-results.js';
+export * from './review-workspace.js';
+export * from './review-revision.js';

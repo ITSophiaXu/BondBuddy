@@ -128,7 +128,7 @@ function periodMatches(o: ReviewFinancialObservation,observed: ReviewFinancialOb
 }
 
 /** Fixed internal identities only; this pack cannot supply missing facts or released regulatory references. */
-export function reviewAuditReconciliation(observations: readonly ReviewFinancialObservation[],ctx: ReviewEvidenceContext): ReviewEvaluation {
+export function reviewAuditReconciliation(observations: readonly ReviewFinancialObservation[],ctx: ReviewEvidenceContext,selectedRuleIds?:readonly string[],targetObservationIds?:readonly string[]): ReviewEvaluation {
   if (observations.length > 10000) throw new Error('REVIEW_AUDIT_RECONCILIATION_INPUT_LIMIT');
   if (new Set(observations.map(o => o.observation_id)).size !== observations.length) throw new Error('REVIEW_AUDIT_RECONCILIATION_DUPLICATE_ID');
   const metadata = `internal_method:${pack.version}; source:${pack.source_name}; sha256:${pack.source_sha256}`;
@@ -137,7 +137,7 @@ export function reviewAuditReconciliation(observations: readonly ReviewFinancial
   const labelEvidence=new Map<string,ReviewEvidenceRef[]>();
   const validation = new Map(observations.map(o => [o.observation_id,[...validateReviewFinancialObservation(o,ctx),
     ...([o.entity_id,o.accounting_scope,o.basis,o.currency].some(unresolvedContext) ? ['audit_context_unresolved'] : [])]]));
-  const disclosure = observations.filter(o => o.source_kind === 'disclosure');
+  const disclosure = observations.filter(o => o.source_kind === 'disclosure' && (!targetObservationIds || targetObservationIds.includes(o.observation_id)));
   const emit = (rule: Rule,observed: ReviewFinancialObservation,finding: ReviewFindingCandidate | null,support: ReviewEvidenceRef[],reason: string) => {
     const findings = finding ? normalizeReviewFindings([finding],ctx) : [];
     result.findings.push(...findings);
@@ -150,7 +150,8 @@ export function reviewAuditReconciliation(observations: readonly ReviewFinancial
     stable_key:`audit-reconciliation:${rule.id}:${o.observation_id}`,dimension:'financial',conclusion,severity:conclusion === 'error' ? 'P1' : 'P2',
     title:`${rule.title}：${conclusion === 'error' ? '勾稽不一致' : '勾稽待核对'}`,description,target_refs:o.value_refs,evidence_refs:support,limitations,verification:'deterministic',
   });
-  for (const rule of pack.rules) {
+  if (selectedRuleIds && (new Set(selectedRuleIds).size !== selectedRuleIds.length || selectedRuleIds.some(id => !pack.rules.some(rule => rule.id === id)))) throw new Error('REVIEW_AUDIT_RECONCILIATION_RULE_SELECTION_INVALID');
+  for (const rule of pack.rules.filter(rule => !selectedRuleIds || selectedRuleIds.includes(rule.id))) {
     const results = disclosure.filter(o => matchesMetric(o,rule.result_metric,rule.result_aliases));
     if (!results.length) {
       result.coverage.push(reviewCoverage(ctx,`audit-reconciliation:${rule.id}`,'financial','uncovered',

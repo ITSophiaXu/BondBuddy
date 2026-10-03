@@ -4,6 +4,8 @@
 //   npm run -w apps/worker probe:codex -- --prompt-file x.txt [--schema-file s.json] [--material-file m.txt] [--timeout-ms 60000]
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { Ajv } from 'ajv';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { composeContainedPrompt, loadCodexAdapterConfig, runContainedModelCall } from './codex-adapter.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 
@@ -13,13 +15,15 @@ const config = loadCodexAdapterConfig({ ...process.env, ...(values['timeout-ms']
 const instructions = readFileSync(values['prompt-file'], 'utf8');
 const prompt = values['material-file'] ? composeContainedPrompt({ instructions, materials: [{ ref: 'probe-material-1', text: readFileSync(values['material-file'], 'utf8') }] }) : instructions;
 const schema = values['schema-file'] ? JSON.parse(readFileSync(values['schema-file'], 'utf8')) as Record<string, unknown> : null;
+const validateSchema = schema ? (schema.$schema === 'https://json-schema.org/draft/2020-12/schema'
+  ? new Ajv2020({ strict: false }) : new Ajv({ strict: false })).compile(schema) : null;
 const journal = new MemoryCodexJournal();
 const id = `probe-${Date.now().toString(36)}`;
 const result = await runContainedModelCall({
   owner_user_id: 'probe-owner', project_id: 'probe-project', job_id: `${id}-job`, run_id: `${id}-run`, trace_id: `${id}-run`, logical_call_id: `${id}-call`,
   prompt_snapshot_ref: `${id}-prompt`, prompt, result_schema_version: 'probe-v1',
-  // The CLI has no JSON Schema validator; Codex enforces --output-schema and we require a JSON object.
-  output: schema ? { kind: 'json', schema, validate: v => typeof v === 'object' && v !== null && !Array.isArray(v) } : { kind: 'text' },
+  // Provider dialect normalization may omit constraints; validate the original schema locally.
+  output: schema ? { kind: 'json', schema, validate: v => typeof v === 'object' && v !== null && !Array.isArray(v) && !!validateSchema?.(v) } : { kind: 'text' },
 }, journal, config);
 process.stdout.write(JSON.stringify({
   label: 'bb-codex-probe (in-memory journal, not durable)', status: result.status, error_code: result.error_code,

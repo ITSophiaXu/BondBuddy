@@ -5,6 +5,7 @@ import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
 import { ProjectConversation } from './project-conversation';
+import { ReviewWorkspace, renderNewReview, reviewProjectFields, bindReviewProjectFields } from './review-workspace';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -45,6 +46,7 @@ let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
 let projectConversation: ProjectConversation | undefined;
+let reviewWorkspace: ReviewWorkspace | undefined;
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
@@ -75,6 +77,7 @@ const accountPage: AccountContext = {
 
 function clearPrivateState() {
   clearSourceSelections();
+  reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
@@ -235,9 +238,9 @@ function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review',true)}${nav('generate','spark','材料生成',section === 'generate',true)}${nav('qa','chat','项目问答',section === 'qa',true)}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}${nav('billing','shield','积分与充值',section === 'billing',true)}</nav>
+    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate',true)}${nav('qa','chat','项目问答',section === 'qa',true)}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}${section==='review'?'':nav('billing','shield','积分与充值',section === 'billing',true)}</nav>
     <div class="sidebar-bottom"><nav aria-label="账号">${nav('/account','settings','账号设置',section === 'account')}<a class="nav-item" href="#/data-policy">${prototypeIcon('lock')}数据保存与删除</a></nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : '全部项目'}</span></div><div class="top-actions"><span class="trial">受控试用 · 平台承担成本</span><a href="#/data-policy">${prototypeIcon('help')}使用说明</a></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : '全部项目'}</span></div><div class="top-actions"><span class="trial">受控试用 · 平台承担成本</span><a href="#/data-policy">${prototypeIcon('help')}使用说明</a></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
@@ -254,6 +257,7 @@ async function logout() {
   const button = document.querySelector<HTMLButtonElement>('#logout');
   if (!button) return;
   if (creating) return;
+  if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
   if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
@@ -275,6 +279,10 @@ async function renderRoute() {
   const raw = location.hash.slice(1);
   const requested = !raw || raw === 'dashboard' ? '/dashboard' : raw === 'update' ? '/new' : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
+  if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
+    history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
+  }
+  if (!identity || location.hash.slice(1) !== raw) return;
   if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？')) ||
       nextRoute !== currentRoute && projectConversation?.hasUnsent &&
       !window.confirm('还有未发送或保存结果未确认的消息。离开后本页输入将无法恢复，是否继续？')) {
@@ -296,11 +304,13 @@ async function renderRoute() {
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
+  reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   currentRoute = nextRoute;
   if (requested === '/dashboard') { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
-  if (['review','generate','qa','billing'].includes(requested)) {
+  if (requested === 'review') { renderNewReview(api, shell, () => token === epoch); return; }
+  if (['generate','qa','billing'].includes(requested)) {
     const labels: Record<string,string> = { review:'复核募集书',generate:'材料生成',qa:'项目问答',billing:'积分与充值' };
     shell(`<div class="page-head"><div class="eyebrow">BOND WORKSPACE</div><h1>${labels[requested]}</h1></div><section class="panel unavailable-panel"><h2>这项功能尚未开放</h2><p>你可以先创建募集书更新项目，准备材料和发行安排。</p><a class="btn primary" href="#update">更新募集书</a><a class="btn secondary" href="#dashboard">返回工作台</a></section>`, requested); return;
   }
@@ -312,13 +322,25 @@ async function renderRoute() {
   if (artifactMatch) { artifactPage = new ArtifactPage(api, shell, () => token === epoch); await artifactPage.render(decodeURIComponent(artifactMatch[1])); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
   if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
-  const match = requested.match(/^\/projects\/([^/?]+)(?:\?step=(details|materials))?$/);
+  const reviewMatch = requested.match(/^\/projects\/([^/?]+)\/review(?:\?(.*))?$/);
+  if (reviewMatch) {
+    const query = new URLSearchParams(reviewMatch[2]);
+    reviewWorkspace = new ReviewWorkspace(api, identity, decodeURIComponent(reviewMatch[1]), shell, () => token === epoch, query.get('report_id') || undefined, query.get('tab') || undefined);
+    await reviewWorkspace.render(); return;
+  }
+  const match = requested.match(/^\/projects\/([^/?]+)(?:\?(.*))?$/);
   if (!match) { location.hash = '/'; return; }
   shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', 'projects');
   try {
     const project = await api.project(decodeURIComponent(match[1]));
     if (token !== epoch) return;
-    renderProject(project, match[2] === 'details' ? 'details' : 'materials');
+    const projectQuery = new URLSearchParams(match[2]);
+    if (project.kind === 'review') {
+      if (projectQuery.get('step') === 'details') { renderReviewProjectDetails(project, projectQuery); return; }
+      reviewWorkspace = new ReviewWorkspace(api, identity!, project.project_id, shell, () => token === epoch);
+      await reviewWorkspace.render(); return;
+    }
+    renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials');
   } catch (error) {
     if (token !== epoch) return;
     shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, 'projects');
@@ -350,6 +372,21 @@ function renderNew() {
       newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
+  });
+}
+
+function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLSearchParams) {
+  draft = new Draft(project, api, updateSaveState);
+  const returnQuery = new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' });
+  const reportId = query.get('review_report_id'); if (reportId) returnQuery.set('report_id', reportId);
+  const returnHref = `#/projects/${encodeURIComponent(project.project_id)}/review?${returnQuery}`;
+  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header><form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">只需项目名称、发行人和市场品种。已开始任务、旧报告、材料与讨论草稿保持原版本；填写信息本身不会开始复核。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, 'review');
+  const form = document.querySelector<HTMLFormElement>('#draft-form')!;
+  bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }));
+  form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
+  document.querySelector('#reload-draft')!.addEventListener('click', () => {
+    if (!window.confirm('加载最新资料会放弃当前未保存的项目信息，是否继续？')) return;
+    draft?.dispose(); draft = undefined; void renderRoute();
   });
 }
 
@@ -859,7 +896,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
-  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }

@@ -22,7 +22,7 @@ export function reviewFixture() {
   const observation = (id: string, value: string, options: Partial<ReviewFinancialObservation> = {}): ReviewFinancialObservation => {
     const source_kind = options.source_kind ?? 'disclosure';
     const ref = referenceFor(addRecord(id,`合成甲公司 合并 原始报表 2025-01-01至2025-12-31 CNY ${options.unit ?? '万元'} 营业收入 ${options.value_literal ?? value}`,source_kind === 'disclosure'));
-    return { observation_id:id,source_kind,entity_id:'synthetic-issuer',metric:'revenue',accounting_scope:'consolidated',basis:'original',
+    return { observation_id:id,source_kind,entity_id:'synthetic-issuer',metric:'revenue',accounting_scope:'consolidated',basis:'original',context_verification:'trusted_structured',
       period:{start:'2025-01-01',end:'2025-12-31',as_of:null},currency:'CNY',unit:'万元',value,value_literal:value,
       value_refs:[ref],context_refs:{entity:[ref],period:[ref],accounting_scope:[ref],currency:[ref],unit:[ref],basis:[ref]},...options };
   };

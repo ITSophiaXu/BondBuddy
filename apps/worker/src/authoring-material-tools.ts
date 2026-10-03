@@ -1,7 +1,8 @@
 /** Run-local, read-only material tools. No arbitrary paths, commands, network or database access. */
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { callReviewTool, reviewToolDefinitions, validateReviewToolTrace, type ReviewToolData, type ReviewToolTrace } from './review-tools.js';
 
 export type MaterialToolRecord = { id: string; text: string; uncertainty: string[]; locator?: Record<string, unknown> };
 export type MaterialToolData = { materials: { id: string; filename: string; context: unknown; records: MaterialToolRecord[] }[] };
@@ -38,24 +39,36 @@ export function callMaterialTool(data: MaterialToolData, name: string, args: Rec
   }
   return {material_id:material.id,filename:material.filename,context:material.context,records,next_offset:i<material.records.length?i:null,total_records:material.records.length};
 }
-async function serve(path:string){
-  const data=JSON.parse(await readFile(path,'utf8')) as MaterialToolData;
+async function serve(path:string,reviewTraceFile?:string){
+  const data=JSON.parse(await readFile(path,'utf8')) as MaterialToolData|ReviewToolData;
+  const review='input' in data;
+  let trace:ReviewToolTrace|undefined;
+  if(review){
+    if(!reviewTraceFile)throw Error('REVIEW_TOOL_TRACE_REQUIRED');
+    const saved=JSON.parse(await readFile(reviewTraceFile,'utf8'));
+    if(!validateReviewToolTrace(data,saved))throw Error('REVIEW_TOOL_TRACE_INVALID');trace=saved;
+  }else if(reviewTraceFile)throw Error('REVIEW_TOOL_MODE_INVALID');
   for await(const line of createInterface({input:process.stdin,crlfDelay:Infinity})){
-    if(Buffer.byteLength(line)>65536)continue;
+    if(Buffer.byteLength(line)>(review?2*1024*1024:65536))continue;
     let request:any;try{request=JSON.parse(line);}catch{continue;}
     if(!request||request.id===undefined)continue;
     let result:unknown;
     try{
       if(request.method==='initialize')result={protocolVersion:request.params?.protocolVersion??'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'bb-materials',version:'1.0.0'}};
       else if(request.method==='ping')result={};
-      else if(request.method==='tools/list')result={tools:materialToolDefinitions};
+      else if(request.method==='tools/list')result={tools:review?reviewToolDefinitions:materialToolDefinitions};
       else if(request.method==='tools/call'){
         const args=request.params?.arguments;
         if(args===null||typeof args!=='object'||Array.isArray(args))throw Error('Invalid arguments');
-        result={content:[{type:'text',text:JSON.stringify(callMaterialTool(data,request.params.name,args))}]};
+        // Failed persistence must not make an unseen result count as a read or receipt.
+        // Commit the candidate in memory only after its durable write succeeds.
+        const candidate=review?structuredClone(trace!):undefined;
+        const output=review?callReviewTool(data as ReviewToolData,request.params.name,args,candidate!):callMaterialTool(data as MaterialToolData,request.params.name,args);
+        if(review){await writeFile(reviewTraceFile!,JSON.stringify(candidate),{mode:0o600});trace=candidate;}
+        result={content:[{type:'text',text:JSON.stringify(output)}]};
       }else throw Error('Unsupported method');
       process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result})+'\n');
     }catch(error){process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{isError:true,content:[{type:'text',text:error instanceof Error?error.message:'Invalid request'}]}})+'\n');}
   }
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)await serve(process.argv[2]);
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)await serve(process.argv[2],process.argv[3]);
