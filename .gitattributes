@@ -43,3 +43,6 @@
 /knowledge/exchange-bonds/verification/2026-09-27-companion/industry-comparison.json text eol=lf
 
 /knowledge/audit-reconciliation/METHODS.md text eol=lf
+
+# Runtime M3 skills are loaded from and verified against exact repository bytes.
+/apps/worker/skills/** text eol=lf

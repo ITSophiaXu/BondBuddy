@@ -12,6 +12,7 @@ import { reviewPromptRecordId } from './review-record-context.js';
 import { normalizeModelReviewAnalysis, reviewPromptRuleId, ReviewAnalysisInvalid, type ReviewAnalysisInput, type ReviewAnalysisResult, type ModelReviewAnalysis } from './review-analysis-protocol.js';
 import { loadReviewAuditKnowledge, REVIEW_AUDIT_KNOWLEDGE_PIN } from './review-knowledge.js';
 import { reviewToolDataHash, validateReviewToolTrace, type ReviewToolData, type ReviewToolTrace } from './review-tools.js';
+import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
 
 // Existing evidence helpers remain available to public review and targeted calculation tools.
 export { reviewPromptRecordId } from './review-record-context.js';
@@ -236,7 +237,13 @@ export function reviewModelStage(options: {
     const input = await options.loadInput(ctx); validateInput(input, ctx);
     const saved = ctx.checkpoint.model_generation;
     const legacy = Object.keys(ctx.checkpoint).some(k => k.startsWith('review_v1_extract_'));
-    if (legacy || saved && saved.execution_mode !== 'cli-led-v2') return { kind: 'pause', stage: 'capability_not_ready', reason: 'review_execution_mode_changed' };
+    const oldCli = saved?.execution_mode === 'cli-led-v2' || Object.keys(ctx.checkpoint).some(k => k.startsWith('review_cli_v2_'));
+    const newCli = saved?.execution_mode === 'cli-led-v3' || Object.keys(ctx.checkpoint).some(k => k.startsWith('review_cli_v3_'));
+    if (legacy || oldCli && newCli || saved && !['cli-led-v2','cli-led-v3'].includes(saved.execution_mode as string))
+      return { kind: 'pause', stage: 'capability_not_ready', reason: 'review_execution_mode_changed' };
+    const skill = oldCli ? null : loadM3RuntimeSkill('m3-review');
+    if (saved && skill && (saved.skill_sha256 !== skill.sha256 || saved.skill_version !== skill.version))
+      return { kind: 'pause', stage: 'capability_not_ready', reason: 'review_skill_version_changed' };
     if (saved && (saved.audit_knowledge_sha256 !== reviewAuditKnowledgePin || saved.audit_knowledge_version !== REVIEW_AUDIT_KNOWLEDGE_PIN.version))
       return { kind: 'pause', stage: 'capability_not_ready', reason: 'review_audit_knowledge_version_changed' };
     const mappings = mapDifferentialReviewTargets(input);
@@ -251,20 +258,23 @@ export function reviewModelStage(options: {
         .flatMap(m => m.current_target_refs).map(reviewPromptRecordId))]]));
       data.allowed_target_ids_by_dimension.formatting = [...data.allowed_target_ids_by_dimension.compliance ?? []];
     }
-    const dataHash = reviewToolDataHash(data), prompt = buildCliReviewPrompt(input, mappings, dataHash);
+    const dataHash = reviewToolDataHash(data), basePrompt = buildCliReviewPrompt(input, mappings, dataHash);
+    const prompt = skill ? `Runtime skill ${skill.id}@${skill.version}; SHA-256 ${skill.sha256}\n${skill.content}\n\n${basePrompt}` : basePrompt;
     if (saved && saved.tool_data_sha256 !== dataHash) return { kind: 'pause', stage: 'capability_not_ready', reason: 'review_cli_snapshot_changed' };
     const callKey = reviewContentHash(prompt).slice(0, 24);
+    const cliVersion = oldCli ? 'v2' : 'v3';
     // Even interrupted calls have durable prompt checkpoints. Never switch data/prompt and resend.
-    if (Object.keys(ctx.checkpoint).some(k => k.startsWith('review_cli_v2_') && k.endsWith('_prompt') && k !== `review_cli_v2_${callKey}_prompt`))
+    if (Object.keys(ctx.checkpoint).some(k => /^review_cli_v[23]_/.test(k) && k.endsWith('_prompt') && k !== `review_cli_${cliVersion}_${callKey}_prompt`))
       return { kind: 'pause', stage: 'capability_not_ready', reason: 'review_cli_snapshot_changed' };
     if (Buffer.byteLength(prompt) > 500000) fail('review_prompt_context_too_large');
     let modelCalls = 0, raw: CliReview | null = null, trace: ReviewToolTrace | null = null;
     let result: ReturnType<typeof assembleCliReview> = { findings: [], coverage: [], limitations: [], summary: '本轮所选非公开问题未能定位到当前源稿，保留历史出处待核。' };
     if (input.scope.mode === 'full_review' || targets.length) {
       if (ctx.signal.aborted) return { kind: 'stopped' };
-      const stage = (options.model ?? codexModelStage)({ name: `review_cli_v2_${callKey}`, logicalCallId: `review-cli-v2-${callKey}`,
+      const stage = (options.model ?? codexModelStage)({ name: `review_cli_${cliVersion}_${callKey}`, logicalCallId: `review-cli-${cliVersion}-${callKey}`,
         config: options.config ?? loadCodexAdapterConfig, buildPrompt: async () => prompt, schema: CliReviewSchema,
-        validate: value => validateCliOutput(input, value, new Set(data.allowed_target_ids), data.allowed_target_ids_by_dimension), resultSchemaVersion: 'review-cli-v2', templateVersion: reviewAnalysisTemplateVersion, reviewTools: data });
+        validate: value => validateCliOutput(input, value, new Set(data.allowed_target_ids), data.allowed_target_ids_by_dimension), resultSchemaVersion: `review-cli-${cliVersion}`,
+        templateVersion: skill ? `m3-review-${skill.sha256.slice(0,16)}-${reviewAuditKnowledgePin.slice(0,16)}` : reviewAnalysisTemplateVersion, reviewTools: data });
       const called = await stage.run(ctx); modelCalls++;
       if (called.kind !== 'done') return called;
       const envelope = called.value as { output?: unknown; tool_trace?: ReviewToolTrace } | undefined;
@@ -280,7 +290,8 @@ export function reviewModelStage(options: {
         'CLI负责组织复核；后台仅校验引用、实际工具结果和交付。未阅读、未请求工具或缺证事项不视为通过。'])], created_at: input.created_at };
     if (!isReviewReport(report)) return { kind: 'fail', code: 'VALIDATION_FAILED' };
     const value: ReviewAnalysisResult = { version: 'review-analysis-v1', input_hash: input.input_hash, report, model_calls: modelCalls, input, anchor_mappings: mappings };
-    return { kind: 'done', value, checkpoint: { version: value.version, execution_mode: 'cli-led-v2', report_id: report.report_id, report_sha256: reviewContentHash(report), model_calls: modelCalls,
+    return { kind: 'done', value, checkpoint: { version: value.version, execution_mode: `cli-led-${cliVersion}`, report_id: report.report_id, report_sha256: reviewContentHash(report), model_calls: modelCalls,
+      ...(skill ? { skill_sha256: skill.sha256, skill_version: skill.version } : {}),
       audit_knowledge_version: knowledge.version, audit_knowledge_sha256: knowledge.contentSHA, tool_data_sha256: dataHash, tool_trace_sha256: trace ? reviewContentHash(trace) : null } };
   } };
 }

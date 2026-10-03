@@ -8,6 +8,7 @@ import { test, type TestContext } from 'node:test';
 import { Pool } from 'pg';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import type { ReviewContext, ReviewDraft, ReviewReport } from '@bondbuddy/contracts';
 import type { ProviderCallIntent } from '@bondbuddy/api/provider-results';
 import { assertModelCallAllowed, configureTrialGuard, tokensSince, trialGuardConfig } from '@bondbuddy/api/trial-guard';
@@ -16,6 +17,7 @@ import { claimReviewAssistant, ReviewAssistantJournal, reviewAssistantSnapshot, 
 import { persistParseSnapshot } from './parse-evidence-repository.js';
 import type { DocumentParseRecord, DocumentParseResponse } from './document-parser.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
 
 const sha='a'.repeat(64);
 const draft:ReviewDraft={version:0,source_material_ref:null,material_versions:[],requirements:['合成输入要求：保留原始证据。'],as_of:null};
@@ -227,6 +229,9 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       assert.equal(digest(await f.blobs.get(attempt.result_ref)),String(attempt.result_sha256).trim());
       const snap=(await pool.query('SELECT * FROM bb_snapshot_refs WHERE id=$1',[user.prompt_snapshot_id])).rows[0];
       const prompt=(await f.blobs.get(snap.object_key)).toString('utf8');
+      const skill=loadM3RuntimeSkill('m3-project-assistant');
+      assert.ok(prompt.includes(skill.content));assert.ok(prompt.includes(skill.sha256));
+      assert.ok(snap.template_version.endsWith(skill.sha256.slice(0,16)));
       assert.equal(snap.run_id,null);assert.equal(digest(prompt),String(snap.content_sha256).trim());assert.ok(prompt.includes(prior.id));
       assert.ok(prompt.includes('普通发送不会修改'));assert.ok(prompt.includes(draft.requirements[0]!));
       const events=(await pool.query('SELECT event FROM bb_observability_events WHERE owner_user_id=$1 AND kind LIKE $2',[f.owner,'model.%'])).rows;
@@ -240,6 +245,19 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       await assert.rejects(pool.query("UPDATE bb_review_messages SET context_snapshot='{}' WHERE id=$1",[m.id]),/immutable/);
       await assert.rejects(pool.query('UPDATE bb_review_assistant_attempts SET input_tokens=84 WHERE id=$1',[attempt.id]),/immutable/);
       assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'idle');assert.equal(await f.sends(),1);
+    });
+
+    await t.test('existing assistant prompt snapshots replay byte-for-byte without injecting a newer skill',async ctx=>{
+      const f=await fixture(ctx),m=await f.queue(),body='SYNTHETIC legacy assistant prompt without runtime skill';
+      const snapshotId=await savePromptSnapshot(pool,f.blobs,{owner:f.owner,projectId:f.project,kind:'model_request',version:1,body,templateVersion:'review-assistant-v1'});
+      await pool.query('UPDATE bb_review_messages SET prompt_snapshot_id=$2 WHERE id=$1',[m.id,snapshotId]);
+      const model:typeof runContainedModelCall=async(input,journal,config)=>{
+        assert.equal(input.prompt,body);assert.equal(input.prompt_snapshot_ref,snapshotId);
+        return runContainedModelCall(input,journal,config);
+      };
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(),model}),'completed');
+      assert.equal((await f.row(m.id)).prompt_snapshot_id,snapshotId);assert.equal(await f.sends(),1);
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2',[f.owner,f.project])).rows[0].n),1);
     });
 
     await t.test('same-millisecond history created after Send remains invalid before any model call',async ctx=>{

@@ -2,7 +2,7 @@ name: M3 CLI review integration
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, master]
 
 permissions:
   contents: read
@@ -73,10 +73,13 @@ jobs:
           DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs
       - name: CLI tools, durable replay, differential review and real Word downloads
         run: |
+          mapfile -t review_tests < <(find apps/worker/dist -maxdepth 1 -name 'review-*.test.js' ! -name 'review-revision-cli-native.test.js' | sort)
           node --test --test-concurrency=1 --test-reporter=tap \
-            apps/worker/dist/review-*.test.js \
+            "${review_tests[@]}" \
             apps/worker/dist/m3-review-*.test.js \
             apps/worker/dist/authoring-material-tools.test.js \
+            apps/worker/dist/material-tool-trace.test.js \
+            apps/worker/dist/m3-runtime-skills.test.js \
             apps/worker/dist/codex-adapter.test.js \
             apps/worker/dist/codex-durable.test.js \
             apps/worker/dist/model-generation-router.test.js \
@@ -109,6 +112,7 @@ jobs:
             --cpus 2 --memory 2g --memory-swap 2g --pids-limit 256 \
             --tmpfs /tmp:rw,nosuid,nodev,size=512m \
             -e BB_TEST_DATABASE_URL -e BB_TEST_AZURITE_CONNECTION_STRING \
+            -e BB_TEST_M3_CLI_REVISION=1 -e BB_REVIEW_WEB_SEARCH_ENABLED=0 \
             -e BB_PYTHON=/opt/venv/bin/python \
             -e BONDBUDDY_TEST_PYTHON=/opt/venv/bin/python \
             -e BONDBUDDY_WORD_PYTHON=/opt/venv/bin/python \
@@ -116,13 +120,15 @@ jobs:
             --entrypoint node bondbuddy-m3-cli-native:ci \
             --test --test-concurrency=1 --test-reporter=tap \
             apps/worker/dist/codex-file-authoring.test.js apps/worker/dist/file-authoring.pg.test.js \
+            apps/worker/dist/review-revision-cli-native.test.js apps/worker/dist/m3-runtime-skills.test.js \
+            apps/worker/dist/m3-review-pipeline.pg.integration.test.js \
             | tee "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# fail 0$' "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m3-cli-native.tap"
       - name: Native Word and parser regressions
-        run: python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery test_file_authoring
+        run: python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery test_file_authoring test_revision_cli
       - name: Stop private Blob test service
         if: always()
         run: |

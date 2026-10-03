@@ -3,6 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { callReviewTool, reviewToolDefinitions, validateReviewToolTrace, type ReviewToolData, type ReviewToolTrace } from './review-tools.js';
+import { recordMaterialToolRead, validateMaterialToolTrace, type MaterialToolTrace } from './material-tool-trace.js';
+export { materialToolDataHash, createMaterialToolTrace, validateMaterialToolTrace, isMaterialModelEnvelope, type MaterialToolTrace, type MaterialModelEnvelope } from './material-tool-trace.js';
 
 export type MaterialToolRecord = { id: string; text: string; uncertainty: string[]; locator?: Record<string, unknown> };
 export type MaterialToolData = { materials: { id: string; filename: string; context: unknown; records: MaterialToolRecord[] }[] };
@@ -43,11 +45,16 @@ async function serve(path:string,reviewTraceFile?:string){
   const data=JSON.parse(await readFile(path,'utf8')) as MaterialToolData|ReviewToolData;
   const review='input' in data;
   let trace:ReviewToolTrace|undefined;
+  let materialTrace:MaterialToolTrace|undefined;
   if(review){
     if(!reviewTraceFile)throw Error('REVIEW_TOOL_TRACE_REQUIRED');
     const saved=JSON.parse(await readFile(reviewTraceFile,'utf8'));
     if(!validateReviewToolTrace(data,saved))throw Error('REVIEW_TOOL_TRACE_INVALID');trace=saved;
-  }else if(reviewTraceFile)throw Error('REVIEW_TOOL_MODE_INVALID');
+  }else if(reviewTraceFile){
+    const saved:unknown=JSON.parse(await readFile(reviewTraceFile,'utf8'));
+    if(!validateMaterialToolTrace(data,saved))throw Error('MATERIAL_TOOL_TRACE_INVALID');
+    materialTrace=saved;
+  }
   for await(const line of createInterface({input:process.stdin,crlfDelay:Infinity})){
     if(Buffer.byteLength(line)>(review?2*1024*1024:65536))continue;
     let request:any;try{request=JSON.parse(line);}catch{continue;}
@@ -65,6 +72,12 @@ async function serve(path:string,reviewTraceFile?:string){
         const candidate=review?structuredClone(trace!):undefined;
         const output=review?callReviewTool(data as ReviewToolData,request.params.name,args,candidate!):callMaterialTool(data as MaterialToolData,request.params.name,args);
         if(review){await writeFile(reviewTraceFile!,JSON.stringify(candidate),{mode:0o600});trace=candidate;}
+        else if(materialTrace){
+          const candidate=structuredClone(materialTrace);
+          recordMaterialToolRead(candidate,request.params.name,output);
+          await writeFile(reviewTraceFile!,JSON.stringify(candidate),{mode:0o600});
+          materialTrace=candidate;
+        }
         result={content:[{type:'text',text:JSON.stringify(output)}]};
       }else throw Error('Unsupported method');
       process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result})+'\n');

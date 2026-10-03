@@ -26,6 +26,7 @@ import { loadReviewInput } from './review-input.js';
 import { reviewModelStage } from './review-model-stage.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
+import { reviewRevisionCliStage, REVIEW_REVISION_CLI_CHECKPOINT, REVIEW_REVISION_CLI_METHOD } from './review-revision-cli-stage.js';
 import { runReviewAssistantOnce } from './review-assistant.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -36,9 +37,11 @@ const repo=resolve(fileURLToPath(import.meta.url),'../../../..');
 const run=promisify(execFile);
 const docx='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const fake=fileURLToPath(new URL('../test-fixtures/codex/review-pipeline.mjs',import.meta.url));
+const cliRevision=process.env.BB_TEST_M3_CLI_REVISION==='1';
 
 test('M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history',
-  {skip:!database||!connection||!python,timeout:180000},async()=>{
+  {skip:!database||!connection||!python,timeout:cliRevision?240000:180000},async()=>{
+    if(cliRevision)assert.equal(process.platform,'linux','BB_TEST_M3_CLI_REVISION requires the worker image and real native sandbox');
     const pool=new Pool({connectionString:database});
     const root=await mkdtemp(join(tmpdir(),'bb-m3-pipeline-')),marker=join(root,'synthetic-calls.jsonl');
     const container=`bb-m3-${randomUUID().replaceAll('-','')}`,blobs=azureBlobs(connection!,container);
@@ -49,7 +52,7 @@ test('M3 real upload/parse → synthetic contained CLI with explicit tools → r
     process.env.BONDBUDDY_WORD_PYTHON=python;process.env.BB_REVIEW_WEB_SEARCH_ENABLED='0';
     const config:CodexAdapterConfig={command:[process.execPath,fake,`--m3-marker=${marker}`],model_id:'deepseek-flash',model_provider:'deepseek',
       base_url:'https://api.deepseek.com',wire_api:'responses',model_config_version:'synthetic-m3-integration',reasoning_effort:null,
-      credential:{kind:'env',name:'BB_SYNTHETIC_M3_KEY'},work_root:join(root,'contained'),timeout_ms:5000,kill_grace_ms:200,
+      credential:{kind:'env',name:'BB_SYNTHETIC_M3_KEY'},work_root:join(root,'contained'),timeout_ms:cliRevision?60000:5000,kill_grace_ms:200,
       max_output_bytes:1024*1024,max_schema_reasks:0,disabled_features:DEFAULT_DISABLED_FEATURES,path_env:process.env.PATH??''};
     const send=(method:string,url:string,payload?:unknown,headers:Record<string,string>={})=>app.inject({method:method as any,url,headers:{origin,...headers},payload:payload as any});
     const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));}
@@ -119,7 +122,8 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       assert.equal(overlap.statusCode,409,overlap.body);
       const nextInput={...input,requirements:['合成下一版要求：保留未选问题。']};
       const next=await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:1,input:nextInput});assert.equal(next.statusCode,200,next.body);
-      const router=modelGenerationRouter({reviewStage:reviewModelStage({loadInput:loadReviewInput,config})});
+      const router=modelGenerationRouter({reviewStage:reviewModelStage({loadInput:loadReviewInput,config}),
+        ...(cliRevision?{revisionStage:reviewRevisionCliStage({config})}:{})});
       const execute=(model:RunStage,afterStage?:RunPipelineDependencies['afterStage'])=>runPipelineOnce({pool,blobs,leaseSeconds:60,
         stages:[inputLockStage,materialsReadyStage,model,historicalWordDeliveryStage()],afterStage,onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
       await assert.rejects(execute(router,async stage=>{if(stage==='word_promoted')throw new Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
@@ -192,7 +196,17 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       const revisionRun=revisionStart.json();
       const latestInput={...nextInput,requirements:['合成运行中追加：只能下轮生效。']};
       assert.equal((await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:2,input:latestInput})).statusCode,200);
-      assert.equal(await execute(unifiedModelGenerationStage({config})),'succeeded');
+      if(cliRevision){
+        await assert.rejects(execute(router,async stage=>{if(stage==='word_promoted')throw new Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
+        const beforeRevisionReplay=await calls();
+        assert.equal(beforeRevisionReplay.filter(call=>call.operation==='revision').length,1);
+        const job=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2',[owner,revisionRun.run_id])).rows[0];
+        assert.equal(job.checkpoint.stages[REVIEW_REVISION_CLI_CHECKPOINT].version,REVIEW_REVISION_CLI_METHOD);
+        assert.equal(job.checkpoint.stages.model_generation.execution_mode,REVIEW_REVISION_CLI_METHOD);
+        assert.equal((await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE owner_user_id=$1 AND run_id=$2 AND state='running'",[owner,revisionRun.run_id])).rowCount,1);
+        assert.equal(await execute(router),'succeeded');
+        assert.deepEqual(await calls(),beforeRevisionReplay,'new file revision recovery reuses its durable model result and artifacts');
+      }else assert.equal(await execute(unifiedModelGenerationStage({config})),'succeeded');
       const revisionRow=(await send('GET',`/api/v1/runs/${revisionRun.run_id}`)).json();assert.equal(revisionRow.state,'succeeded');
       const revisionFile=await download(revisionRow.artifact_id),summary=revisionFile.metadata.word_delivery;
       assert.equal(summary.review_passed,false);assert.equal(summary.revision_handling.review_passed,false);
@@ -206,6 +220,16 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       assert.equal(baselineView.visible,sourceView.visible);
       const revisionCalls=(await calls()).filter(call=>call.operation==='revision');assert.equal(revisionCalls.length,1);
       assert.deepEqual(revisionCalls[0].requirements,[...nextInput.requirements,...planRequirements]);assert.equal(revisionCalls[0].source_report.sha256,originalHash);
+      if(cliRevision){
+        assert.equal(revisionCalls[0].method,REVIEW_REVISION_CLI_METHOD);assert.equal(revisionCalls[0].native_writer,true);
+        const locked=(await pool.query('SELECT input_hash FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[revisionRun.run_id,owner])).rows[0];
+        assert.equal(revisionCalls[0].workspace_input_hash,locked.input_hash.trim());
+        // Execution identity belongs to the durable checkpoint; the public artifact
+        // DTO intentionally exposes only delivery metadata and revision handling.
+        const delivery=(await pool.query("SELECT checkpoint#>'{stages,word_delivery_pair}' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[owner,revisionRun.run_id])).rows[0].pair;
+        assert.equal(delivery.method,REVIEW_REVISION_CLI_METHOD);
+        for(const key of ['revision_artifact_id','clean_artifact_id','baseline_artifact_id'])assert.equal(delivery[key],summary[key]);
+      }
       const afterRevision=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json();
       assert.equal(inputManifestHash(afterRevision.selected_report),originalHash);assert.deepEqual(afterRevision.artifacts.map((a:any)=>a.kind).sort(),['baseline','clean','revision']);
       assert.equal(afterRevision.artifact_run.run_id,revisionRun.run_id);
@@ -215,11 +239,27 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       assert.equal(history.length,2);assert.equal(history[0].operation,'revision');assert.equal(history[0].source_report_id,report.report_id);
       assert.deepEqual(history[0].input.requirements,nextInput.requirements);assert.deepEqual(history[0].plan.requirements,planRequirements);
       assert.deepEqual(history[1].input.requirements,input.requirements);assert.equal(history[1].report_id,report.report_id);
+      let differentialInputVersion=3,revisionSource:ReviewMaterialPin|undefined;
+      if(cliRevision){
+        // Feed the exact downloaded clean artifact back through the normal upload /
+        // parse boundary, so differential review tests the new document version.
+        revisionSource=await upload(clean.bytes,'historical');assert.equal(revisionSource.sha256,clean.metadata.sha256);
+        const revisedInput={...latestInput,source_material_ref:revisionSource,material_versions:[revisionSource,audit]};
+        const revised=await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:3,input:revisedInput});
+        assert.equal(revised.statusCode,200,revised.body);differentialInputVersion=revised.json().draft.version;
+      }
       const differential=await send('POST',`/api/v1/projects/${project}/review-executions`,{execution_request_id:randomUUID(),operation:'differential_review',
-        expected_input_version:3,source_report_id:report.report_id,expected_plan_version:null,finding_ids:[selected.finding_id]});
+        expected_input_version:differentialInputVersion,source_report_id:report.report_id,expected_plan_version:null,finding_ids:[selected.finding_id]});
       assert.equal(differential.statusCode,200,differential.body);assert.equal(await execute(router),'succeeded');
       const afterDiff=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json().selected_report as ReviewReport;
       assert.equal(afterDiff.scope.mode,'differential_review');assert.deepEqual(afterDiff.scope.finding_ids,[selected.finding_id]);
+      if(cliRevision){
+        assert.deepEqual(afterDiff.source_material,revisionSource);
+        const selectedCoverage=afterDiff.coverage.find(c=>c.check_id===`scope:${selected.finding_id}`);
+        assert(selectedCoverage,'differential review must explicitly account for the selected finding');
+        assert.equal(selectedCoverage.outcome,'uncovered',
+          'changed source text without an exact current anchor must remain explicitly uncovered');
+      }
       assert.equal(afterDiff.findings.find(f=>f.finding_id===excluded.finding_id)?.check_status,'carried_forward');
       assert.equal(afterDiff.findings.find(f=>f.finding_id===excluded.finding_id)?.origin_report_id,report.report_id);
       assert.equal(inputManifestHash((await pool.query('SELECT report FROM bb_review_reports WHERE id=$1',[report.report_id])).rows[0].report),originalHash);

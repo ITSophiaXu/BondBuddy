@@ -15,6 +15,7 @@ import { composeContainedPrompt, loadCodexAdapterConfig, runContainedModelCall, 
   type CodexJournal, type PriorAttempt } from './codex-adapter.js';
 import { getParseSnapshotForMaterialJob } from './parse-evidence-repository.js';
 import type { DocumentParseRecord } from './document-parser.js';
+import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
 
 const logicalCallId = 'review-assistant-v1';
 const resultVersion = 'review-assistant-reply-v1';
@@ -209,10 +210,11 @@ async function promptSnapshot(pool:Pool,blobs:PrivateBlobs,lease:ReviewAssistant
     const payload={project:snapshot.project,input:snapshot.input,source_report:snapshot.report,material_refs:snapshot.material_refs,
       context:lease.context,...verified,current_message:lease.content};
     if (Buffer.byteLength(JSON.stringify(payload))>750000) fail('ASSISTANT_CONTEXT_TOO_LARGE');
-    const body=composeContainedPrompt({instructions:assistantRules,materials:[{ref:'review-context',text:JSON.stringify(payload)}]});
+    const skill=loadM3RuntimeSkill('m3-project-assistant');
+    const body=composeContainedPrompt({instructions:`Runtime skill ${skill.id}@${skill.version}; SHA-256 ${skill.sha256}\n${skill.content}\n\n${assistantRules}`,materials:[{ref:'review-context',text:JSON.stringify(payload)}]});
     for(let attempt=0;!id;attempt++) {
       const version=Number((await pool.query("SELECT COALESCE(max(version),0)::int+1 AS version FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'",[lease.owner_user_id,lease.project_id])).rows[0].version);
-      try { id=await savePromptSnapshot(pool,blobs,{owner:lease.owner_user_id,projectId:lease.project_id,kind:'model_request',version,body,templateVersion:logicalCallId}); }
+      try { id=await savePromptSnapshot(pool,blobs,{owner:lease.owner_user_id,projectId:lease.project_id,kind:'model_request',version,body,templateVersion:`${logicalCallId}-${skill.sha256.slice(0,16)}`}); }
       catch(error) {if((error as {code?:string}).code!=='23505'||attempt>=3)throw error;}
     }
     await transaction(pool,async client=>{
