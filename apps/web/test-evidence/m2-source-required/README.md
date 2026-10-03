@@ -24,3 +24,5 @@
 浏览器命令：在 `apps/web`，设置 `BB_E2E_BASE_URL=http://127.0.0.1:5178`，执行 `playwright test tests/project-conversation.spec.ts tests/project-execution.spec.ts`；失败场景修正后按用例名定向复跑。
 
 API PostgreSQL 的新提交拒绝、旧缺项输入拒绝及原免费任务幂等重放测试已加入本 PR 的 Linux CI；结果以 PR 当前提交的检查记录为准。未部署生产；正式支付及上线验收仍归 #40／#46。
+
+`d555911` 的 [固定积分 Linux CI](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37126348459) 13 passed、0 failed、0 skipped，包含上述 API 场景。共享 Linux 与文件 CLI 回归首次运行发现 `unified-authoring.pg.test.ts` 和 `file-authoring.pg.test.ts` 仍要求缺项新任务成功；已更新为验证缺项拒绝、草稿补齐后继续原有执行路径及真实 Word 生成与下载，保留无原稿、四类关系、输入不可变及归属隔离场景。文件 CLI 流程仍直接接收原始文件，不增加材料预解析。该测试修正后的结果见 PR 最新检查，不将初次失败隐藏为通过。
