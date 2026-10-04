@@ -11,7 +11,7 @@ import { mapDifferentialReviewTargets, retainUnmappedHistoricalFinding, type Dif
 import { reviewPromptRecordId } from './review-record-context.js';
 import { normalizeModelReviewAnalysis, reviewPromptRuleId, ReviewAnalysisInvalid, type ReviewAnalysisInput, type ReviewAnalysisResult, type ModelReviewAnalysis } from './review-analysis-protocol.js';
 import { loadReviewAuditKnowledge, REVIEW_AUDIT_KNOWLEDGE_PIN } from './review-knowledge.js';
-import { reviewToolDataHash, validateReviewToolTrace, type ReviewToolData, type ReviewToolTrace } from './review-tools.js';
+import { reviewToolDataHash, validateReviewToolTrace, validateReviewToolTraceAsync, type ReviewToolData, type ReviewToolTrace } from './review-tools.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
 import { withReviewFollowUp } from './review-follow-up.js';
 
@@ -160,6 +160,13 @@ function validateCliOutput(input: ReviewAnalysisInput, raw: unknown, allowed: Re
 /** Validate facts and import only CLI-requested tool results; do not initiate any business checks here. */
 export function assembleCliReview(input: ReviewAnalysisInput, raw: CliReview, data: ReviewToolData, trace: ReviewToolTrace) {
   if (!validateReviewToolTrace(data, trace)) fail('review_tool_trace_invalid');
+  return assembleValidatedCliReview(input,raw,data,trace);
+}
+export async function assembleCliReviewAsync(input: ReviewAnalysisInput, raw: CliReview, data: ReviewToolData, trace: ReviewToolTrace, signal?:AbortSignal) {
+  if (!await validateReviewToolTraceAsync(data,trace,signal)) fail('review_tool_trace_invalid');
+  return assembleValidatedCliReview(input,raw,data,trace);
+}
+function assembleValidatedCliReview(input: ReviewAnalysisInput, raw: CliReview, data: ReviewToolData, trace: ReviewToolTrace) {
   if (!trace.knowledge_read_complete) fail('review_knowledge_not_read');
   const read = new Set(trace.read_record_ids), allowed = new Set(data.allowed_target_ids);
   if (!validateCliOutput(input, raw, allowed, data.allowed_target_ids_by_dimension) || raw.reviewed_record_count !== read.size) fail('review_cli_output_invalid');
@@ -329,7 +336,7 @@ export function reviewModelStage(options: {
       const envelope = called.value as { output?: unknown; tool_trace?: ReviewToolTrace } | undefined;
       if (!envelope?.tool_trace || !validateCliOutput(input, envelope.output, new Set(data.allowed_target_ids), data.allowed_target_ids_by_dimension)) return { kind: 'fail', code: 'VALIDATION_FAILED' };
       raw = envelope.output; trace = envelope.tool_trace;
-      try { result = assembleCliReview(input, raw, data, trace); } catch (error) { if (error instanceof ReviewAnalysisInvalid) return { kind: 'fail', code: 'VALIDATION_FAILED' }; throw error; }
+      try { result = await assembleCliReviewAsync(input, raw, data, trace,ctx.signal); } catch (error) { if (error instanceof ReviewAnalysisInvalid) return { kind: 'fail', code: 'VALIDATION_FAILED' }; throw error; }
     }
     retainDifferential(input, raw, trace, mappings, result);
     const report: ReviewReport = withReviewFollowUp({ report_id: input.evidence.report_id, project_id: ctx.run.project_id, run_id: ctx.run.id, input_revision: ctx.run.input_revision,

@@ -84,6 +84,8 @@ jobs:
             apps/worker/dist/codex-durable.test.js \
             apps/worker/dist/model-generation-router.test.js \
             apps/api/dist/review-workspace.test.js \
+            apps/api/dist/provider-result-validation.test.js \
+            apps/api/dist/provider-runtime-locks.pg.integration.test.js \
             packages/domain/dist/review-*.test.js \
             packages/domain/dist/audit-reconciliation-knowledge.test.js \
             | tee "$RUNNER_TEMP/m3-cli-review.tap"

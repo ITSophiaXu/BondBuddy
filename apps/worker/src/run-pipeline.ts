@@ -24,7 +24,7 @@ import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput } from './codex-adapter.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
 import { isMaterialModelEnvelope } from './material-tool-trace.js';
-import { isReviewModelEnvelope, type ReviewToolData } from './review-tools.js';
+import { reviewModelEnvelopeAsync, type ReviewToolData } from './review-tools.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
 import { markTestWord } from './test-word-marking.js';
@@ -500,7 +500,10 @@ export function codexModelStage(options: {
       const bytes = await blobs.getIfExists(ref.object_key);
       if (!bytes || digest(bytes) !== ref.content_sha256.trim()) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
       const config = typeof options.config === 'function' ? options.config() : options.config;
-      const validateResult = options.reviewTools ? (value:unknown) => isReviewModelEnvelope(value,options.reviewTools!) && options.validate(value.output)
+      const validateResult = options.reviewTools ? async (value:unknown) => {
+        const envelope = await reviewModelEnvelopeAsync(value,options.reviewTools!,ctx.signal);
+        return !!envelope && options.validate(envelope.output);
+      }
         : options.materialToolsTrace ? (value:unknown) => isMaterialModelEnvelope(value,options.materialTools!) && options.validate(value.model_output) : options.validate;
       const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult });
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;

@@ -1,11 +1,11 @@
 import type { Pool } from 'pg';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
-import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference } from '@bondbuddy/api/provider-results';
+import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
 import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import { Problem, transaction } from '@bondbuddy/api/data';
+import { Problem, transaction, run as getRun } from '@bondbuddy/api/data';
 import { guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
 
 // This is an internal worker seam. It never accepts a browser principal and is not
@@ -15,7 +15,7 @@ export class DurableProbeJournal implements ProbeJournal {
     pool: Pool;
     blobs: PrivateBlobs;
     lease: Lease;
-    validateResult: (value: unknown) => boolean;
+    validateResult: ProviderResultValidator;
   }) {}
 
   private assertLeaseIdentity(intent: ProviderCallIntent) {
@@ -53,6 +53,11 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
     const { pool, lease } = this.codexInput;
     if (intent.owner_user_id !== lease.owner || intent.job_id !== lease.jobId || intent.run_id !== lease.runId) throw new Error('PROVIDER_ATTEMPT_SCOPE_MISMATCH');
     await guardEvidenceWrite(pool,'web_search_evidence_not_persisted',()=>transaction(pool,async client=>{
+      // The evidence INSERT has a run foreign key. Take its run lock before the
+      // job/attempt locks, matching renewal, cancellation and runtime evidence.
+      const run=await getRun(client,lease.owner,lease.runId,true);
+      if(run.project_id!==intent.project_id || ['failed','cancelled','rejected','succeeded','test_completed'].includes(run.state))
+        throw new Problem(409,'CAPABILITY_NOT_READY','Web search evidence lease or attempt is no longer valid');
       const active=await client.query(`SELECT 1 FROM bb_jobs j JOIN bb_model_call_attempts a ON a.job_id=j.id AND a.owner_user_id=j.owner_user_id
         JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
         WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND r.project_id=$4 AND j.lease_token=$5
