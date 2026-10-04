@@ -27,7 +27,7 @@ Codex CLI 仍是唯一 AI 引擎；API、worker、PostgreSQL 队列和私有 Blo
 | worker | `node --test --test-concurrency=1` 后接下列十个测试文件 | 110 pass，0 fail，0 skip |
 | 完整文件链 | `BB_TEST_M3_CLI_REVISION=1 node --test apps/worker/dist/m3-review-pipeline.pg.integration.test.js` | 1 pass，0 fail，0 skip |
 | web 单元 | `npm run test:unit -w @bondbuddy/web` | 61 pass，0 fail，0 skip |
-| web E2E | `apps/web/tests/review-workspace.spec.ts`，Microsoft Edge Chromium | 28 pass，0 fail，0 skip；最终 58.1s，exit 0 |
+| web E2E | `apps/web/tests/review-workspace.spec.ts`，Microsoft Edge Chromium | 28 pass，0 fail，0 skip；最终约 1.0m，exit 0 |
 
 worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assistant`、`review-model-stage`、`review-public-stage`、`review-tools`、`review-reassembly`、`review-word-registration.pg.integration`、`review-revision-cli-stage`、`review-revision`（均为 `apps/worker/dist/*.test.js`）。相关工程测试共 218 项；公共契约 40 项测试和 182 个样例另列，重复的 Windows worker 测试不累加。
 
@@ -57,6 +57,8 @@ worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assista
 按用户已确认决定，顶部发行人／市场占位元信息已移除；正式项目标题来自真实项目名。可见任务阶段来自 host 事件，不展示模拟思考文本；真实失败／未覆盖项如实显示。桌面发送区已针对初次进入时 panel top 修正高度。
 
 较矮桌面窗口根据实际可用高度启用紧凑布局，压缩说明／上下文／输入区，保留完整绑定与功能；1280×720 的时间线高约 228px，任务卡、发送和补证入口均可见。新增 E2E 验证 resize、草稿与真实任务投影的可读高度。
+
+历史聊天气泡显式隔离全局账号 `.user` 的横排样式；时间、正文、引用上下文和安全中断提示按纵向阅读顺序展示，正文宽度与气泡保持一致。720px E2E 直接校验排版与宽度，不仅断言文案存在。
 
 助手上下文显示真实项目、输入与讨论对象；回形针复用材料上传并保留原草稿／引用。快捷修订计划用一次明确确认直接执行，固定确认时的来源和计划版本；丢响应重试复用请求，刷新确认已提交任务后关闭对应执行窗口。已采纳 V2 要求转新的快捷计划仍保留要求，执行来源明确为新的 quick_action；旧提议及执行不改写。
 

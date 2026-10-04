@@ -1,5 +1,29 @@
 {
   "kind": "synthetic UI geometry",
+  "message": {
+    "display": "block",
+    "width": 303.828125,
+    "header": {
+      "top": 343.53125,
+      "bottom": 357.53125,
+      "width": 277.828125
+    },
+    "body": {
+      "top": 365.53125,
+      "bottom": 414.90625,
+      "width": 277.828125
+    },
+    "context": {
+      "top": 421.90625,
+      "bottom": 438.90625,
+      "width": 277.828125
+    },
+    "error": {
+      "top": 438.90625,
+      "bottom": 488.28125,
+      "width": 277.828125
+    }
+  },
   "viewport": {
     "width": 1280,
     "height": 720
@@ -23,8 +47,8 @@
     "width": 329.828125
   },
   "task": {
-    "top": 333.53125,
-    "bottom": 547.53125,
+    "top": 313.28125,
+    "bottom": 527.28125,
     "height": 214,
     "width": 303.828125
   },

@@ -1,7 +1,7 @@
 {
   "kind": "synthetic UI validation receipt",
   "workspace": "C:/Users/lezhai/Downloads/Bondbuddy/m3-linked-runtime-20261004",
-  "completed_at_utc": "2026-10-04T06:13:10Z",
+  "completed_at_utc": "2026-10-04T06:25:59Z",
   "scope": "Production M3 ReviewWorkspace and ReviewAssistant rendered against synthetic owner-aware HTTP responses. These checks do not prove live provider execution or professional report accuracy.",
   "checks": [
     {
@@ -11,10 +11,10 @@
       "pass": 1,
       "fail": 0,
       "skipped": 0,
-      "completion_confirmed_at_utc": "2026-10-04T06:12:21Z",
+      "completion_confirmed_at_utc": "2026-10-04T06:25:12Z",
       "outputs": [
-        "apps/web/dist/assets/index-B-ZHz1BQ.js",
-        "apps/web/dist/assets/index-B2YM_pqI.css"
+        "apps/web/dist/assets/index-lBGtkDSy.js",
+        "apps/web/dist/assets/index-Dex7iYtL.css"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "fail": 0,
       "skipped": 0,
       "cancelled": 0,
-      "completion_confirmed_at_utc": "2026-10-04T06:12:57Z"
+      "completion_confirmed_at_utc": "2026-10-04T06:25:05Z"
     },
     {
       "name": "web M3 E2E",
@@ -34,10 +34,10 @@
       "pass": 28,
       "fail": 0,
       "skipped": 0,
-      "completion_confirmed_at_utc": "2026-10-04T06:13:10Z",
-      "reported_duration_seconds": 58.1,
+      "completion_confirmed_at_utc": "2026-10-04T06:25:59Z",
       "browser": "Microsoft Edge Chromium",
-      "server_command": "npm.cmd run dev -w @bondbuddy/web -- --port 5173"
+      "server_command": "npm.cmd run dev -w @bondbuddy/web -- --port 5173",
+      "reported_duration_display": "1.0m"
     }
   ],
   "prior_e2e_attempt": {
@@ -52,14 +52,16 @@
     "Paperclip evidence upload reuses the persisted upload path, retains the original chat draft and finding target, and does not execute a task.",
     "Shortcut revision shows complete input/source/requirements and executes with one explicit confirmation; response-loss retries retain the saved plan version and execution identity.",
     "A fresh quick-action revision plan preserves already adopted V2 requirements without using a V2 proposal ID in the legacy plan endpoint.",
-    "Desktop windows with viewport height at most 800px or available assistant height below 620px use a compact header, ID-based context, deduplicated requirements summary and smaller composer. The 1280x720 running-task timeline is 228.47px high, its 214px task card is fully visible, and send/evidence controls remain in the viewport."
+    "Desktop windows with viewport height at most 800px or available assistant height below 620px use a compact header, ID-based context, deduplicated requirements summary and smaller composer. The 1280x720 running-task timeline is 228.47px high; the latest 214px task card exposes 203.75px within the timeline after scrolling to the bottom, and send/evidence controls remain in the viewport.",
+    "Historical user messages are isolated from the global account .user flex style: header, full-width body, context and interruption notice are vertically ordered. Known interruption codes render a friendly notice without exposing raw errors; saved explanations and business-task state remain separate."
   ],
   "screenshots": [
     "synthetic-runtime-desktop-1360x900.png",
+    "synthetic-message-desktop-1280x720.png",
     "synthetic-runtime-desktop-1280x720.png",
     "synthetic-runtime-narrow-581x753.png"
   ],
-  "visual_inspection": "1360x900, 1280x720 and 581x753 runtime images inspected; composer and paperclip are visible, with no horizontal overflow. The new 720px test verifies at least 180px of readable timeline, a visible running-task card and preserved draft/context across resizing. Fresh Playwright contexts leave user browser storage unchanged.",
+  "visual_inspection": "1360x900, historical-message 1280x720, bottom-task 1280x720 and 581x753 runtime images inspected; composer and paperclip are visible, with no horizontal overflow. The existing 720px test now verifies block message layout, 277.83px body width within a 303.83px bubble, vertical header/body/context/error ordering, a readable 228.47px timeline and latest running-task visibility. Fresh Playwright contexts leave user browser storage unchanged.",
   "text_source_format": "All four modified web source/test text files were normalized to LF before the final build, unit and E2E runs. No web source was edited afterward.",
   "web_source_sha256": {
     "package.json": "c0c7feb53a1b6e4963bb14ce8c08b140a89f99c41efc6481b2f3f6c93d8652b1",
@@ -107,7 +109,7 @@
     "src/reporting-cutoff.ts": "bbdffa8f4b09bc0fcd524dd1ed2611d861fd62ef9d3cc534ac02371a461e5b60",
     "src/reporting-window.test.ts": "08690d1e3ff368790833e2c5b782dccb94b156d7c08a81e2695abe16ad53f982",
     "src/review-api.ts": "689cc683a742e4548bc0e0b617699a60ebd7fe021dfdc37c4caa9c1c88b90efe",
-    "src/review-assistant.ts": "9103015c1692dfdeed0580e44c439c1785054beb9d2fbedb324ce1045864017a",
+    "src/review-assistant.ts": "e64e9ee1652aa65703bf007f3ee3e0407445564bd87ba02e9bcec77f0d98ef24",
     "src/review-history.ts": "e7ec877224c58497f059ae23a4456fdc7a7c934804b41a6c9d2ef5ed5bdd60f3",
     "src/review-presentation.ts": "52f15a2a298909dabef468699c3e91cd9a2c6d83d545b4c893c8a620398871a7",
     "src/review-revision-handling.ts": "0d53875f7054afa7d8acf6f820ab847147b4b96f906938dff15c519306c2f92b",
@@ -115,7 +117,7 @@
     "src/review-state.ts": "1a444f59a0612e470ce9a47653ff433efe845febea20c0c702f4039d1d4332b2",
     "src/review-timeline.test.ts": "30e73b035a54bc3701820320b18e95af5d6aac98f206df9ef086ee0658c66d75",
     "src/review-timeline.ts": "71b653611908effebed720bb4958075585babfe5ecf3597ec1ac2453ab6b1e06",
-    "src/review-workspace.css": "fded672bffef52e764af261a5ef514556dcdf1c19699548555a22c88a2aaf3b1",
+    "src/review-workspace.css": "4e31817eef4340aa552f882cff84348e2f4aac11b15c138d3065ae3b24dc4009",
     "src/review-workspace.ts": "af28b7102a00a89488c63e7fb34077609638f15ddf5b671323fa4d8569b13848",
     "src/source-prospectus.ts": "373699d3e95a95ebdbc18f2a4e5fb84da8b13471a03ba6a59a72659fc1b47ceb",
     "src/style.css": "3da559bc4efa30ce3a99e6583592cc59cf3215191bb60fa7ee4aefb48696a746",
@@ -145,7 +147,7 @@
     "tests/prototype-workflow.spec.ts": "11023db20c9c7f1d0d7c4af96d4fdadec25ccbe505f23b330cd9d7af6881f40a",
     "tests/register-live.spec.ts": "bbcc7c34c00b18e718d04ce700cdfdb11767b1d7a111fefb1026c40d9667386b",
     "tests/register.spec.ts": "0344a46365ce3125c6950c310f003f84f5fc851fd27ac2233616ca6545d7535e",
-    "tests/review-workspace.spec.ts": "9cdc10ada643028527c9631ed243dcc229908ee748fabe4737790ecf0d2a8754",
+    "tests/review-workspace.spec.ts": "c9db1ca968745d50af0391a46c41c37226574a8728d0fde86c68fa69155adac4",
     "tests/update-form.integration.spec.ts": "a8008e77c5bb7e32138f4e2da861e47fd2ccf83ab1204ff1ea6a174879a58533",
     "tests/upload.spec.ts": "d44b27790d8bb5b9026004e189651e448adf0bacf56f713ea643a005a154bf19",
     "tsconfig.json": "3e7c028688127da4a0b4cea42d60f8297bbc5a9105d97726fa1b9c6b24a910e2",
