@@ -8,7 +8,7 @@ import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
-import { reconcilePausedCall, recoverUnifiedTimeout, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
+import { reconcilePausedCall, recoverUnifiedTimeout, releaseLease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
@@ -47,6 +47,8 @@ export type WorkerRuntimeOptions = {
   pool: Pool; blobs: PrivateBlobs;
   concurrency?: number; parseSlots?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
+  /** Private scheduling filter; task kinds come from the shared contract. */
+  runKinds?: readonly RunKind[];
   runStages?: RunStage[];
   /** Trusted #15 producer binding. With runStages, only the environment factory's materials stage may be replaced. */
   factCandidateProducer?: ParsedFactProducer;
@@ -100,11 +102,12 @@ export class WorkerRuntime {
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
-    this.o = { concurrency: 2, parseSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
+    this.o = { concurrency: 2, parseSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
+    this.o.runKinds = checkedRunKinds(this.o.runKinds);
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
     if (options.factCandidateProducer && options.runStages) {
@@ -131,7 +134,7 @@ export class WorkerRuntime {
     this.loops.push(this.heartbeatLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
     if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
-    if (this.o.reviewAssistant && this.o.kinds.includes('run')) this.loops.push(this.assistantLoop(this.o.reviewAssistant));
+    if (this.o.reviewAssistant && this.o.kinds.includes('run') && this.o.runKinds.includes('review')) this.loops.push(this.assistantLoop(this.o.reviewAssistant));
     return this;
   }
 
@@ -147,7 +150,7 @@ export class WorkerRuntime {
         try {
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
-              reviewedContextLoader: this.o.reviewedContextLoader,
+              runKinds: this.o.runKinds, reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
@@ -222,32 +225,34 @@ export class WorkerRuntime {
   async sweep() {
     const { pool } = this.o;
     this.counters.sweeps++;
-    for (const r of await pausedRuns(pool, 'awaiting_materials')) {
-      const run = (await pool.query(`SELECT owner_user_id,project_id,input_revision,input_hash,
-        (SELECT payload->>'reason' FROM bb_run_events WHERE run_id=bb_runs.id AND state='paused' ORDER BY seq DESC LIMIT 1) AS pause_reason
-        FROM bb_runs WHERE id=$1 AND owner_user_id=$2`, [r.run_id, r.owner_user_id])).rows[0];
-      if (!run) continue;
-      // Parsed material readiness cannot resolve a model context/output/OCR failure.
-      if(run.pause_reason!=='material_parse_pending')continue;
-      const readiness = await materialsReadiness(pool, run);
-      // A failed material is decided on the next claim (the stage fails the run with its code).
-      if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
+    if (this.o.kinds.includes('run')) {
+      for (const r of await pausedRuns(pool, 'awaiting_materials', 20, this.o.runKinds)) {
+        const run = (await pool.query(`SELECT owner_user_id,project_id,input_revision,input_hash,
+          (SELECT payload->>'reason' FROM bb_run_events WHERE run_id=bb_runs.id AND state='paused' ORDER BY seq DESC LIMIT 1) AS pause_reason
+          FROM bb_runs WHERE id=$1 AND owner_user_id=$2`, [r.run_id, r.owner_user_id])).rows[0];
+        if (!run) continue;
+        // Parsed material readiness cannot resolve a model context/output/OCR failure.
+        if(run.pause_reason!=='material_parse_pending')continue;
+        const readiness = await materialsReadiness(pool, run);
+        // A failed material is decided on the next claim (the stage fails the run with its code).
+        if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
+      }
+      for (const r of await pausedRuns(pool, 'provider_reconcile', 20, this.o.runKinds)) await this.reconcileRun(r.owner_user_id, r.run_id, r.job_id);
+      for (const r of await pausedRuns(pool, 'trial_limit', 20, this.o.runKinds)) {
+        const client = await pool.connect();
+        let ready = false;
+        try {
+          await assertModelCallAllowed(client, trialGuardConfig(), r.owner_user_id);
+          ready = true;
+        } catch (error) {
+          // A later deny override is terminal. Re-claim once so the normal run path records it.
+          if (error instanceof TrialLimitProblem) ready = error.limit === 'operator_deny';
+          else throw error;
+        } finally { client.release(); }
+        if (ready) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'trial_limit_cleared');
+      }
     }
-    for (const r of await pausedRuns(pool, 'provider_reconcile')) await this.reconcileRun(r.owner_user_id, r.run_id, r.job_id);
-    for (const r of await pausedRuns(pool, 'trial_limit')) {
-      const client = await pool.connect();
-      let ready = false;
-      try {
-        await assertModelCallAllowed(client, trialGuardConfig(), r.owner_user_id);
-        ready = true;
-      } catch (error) {
-        // A later deny override is terminal. Re-claim once so the normal run path records it.
-        if (error instanceof TrialLimitProblem) ready = error.limit === 'operator_deny';
-        else throw error;
-      } finally { client.release(); }
-      if (ready) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'trial_limit_cleared');
-    }
-    if (this.o.ocrEnabled && this.o.parse?.ocr) await requeueAwaitingOcrParseJobs(pool, { minPausedSeconds: this.o.ocrRetrySeconds });
+    if (this.o.kinds.includes('parse') && this.o.ocrEnabled && this.o.parse?.ocr) await requeueAwaitingOcrParseJobs(pool, { minPausedSeconds: this.o.ocrRetrySeconds });
     if (this.o.logSink) await forwardLogs(pool, this.o.logSink);
   }
 
@@ -301,6 +306,9 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   ocr?: (pool: Pool, blobs: PrivateBlobs) => MaterialParseJobDependencies['ocr']): WorkerRuntimeOptions {
   const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
+  const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);
+  const group = env.BB_WORKER_GROUP;
+  if (group !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(group)) throw new Error('Invalid BB_WORKER_GROUP');
   const ocrEnabled = env.BB_OCR_ENABLED === '1';
   const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions(env)) : undefined;
   let platformProbe: WorkerRuntimeOptions['platformProbe'];
@@ -323,7 +331,9 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   const materials = runStages.find(stage => stage.name === 'materials_ready')!;
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
-    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages, reviewAssistant: {},
+    pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
+    ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
+    ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: {} } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
     ...(targetPeriodCandidateProducer ? { produceTargetPeriodCandidates: async request =>
@@ -355,7 +365,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, concurrency: options.concurrency, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;

@@ -21,13 +21,13 @@ fi
 [ -f "$dir/db.dump" ] || { echo "no db.dump in $dir" >&2; exit 2; }
 want="$(sed -n 's/^db_sha256=//p' "$dir/manifest.txt" 2>/dev/null || true)"
 [ -z "$want" ] || [ "$(sha256sum "$dir/db.dump" | cut -d' ' -f1)" = "$want" ] || { echo "db.dump sha256 mismatch in $dir" >&2; exit 3; }
-compose stop web worker api
+compose stop web worker worker-review worker-parse ops api
 compose exec -T postgres psql -U bondbuddy -d postgres -v ON_ERROR_STOP=1 \
   -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='bondbuddy' AND pid<>pg_backend_pid()" \
   -c 'DROP DATABASE IF EXISTS bondbuddy' -c 'CREATE DATABASE bondbuddy OWNER bondbuddy' >/dev/null
 compose exec -T postgres pg_restore -U bondbuddy -d bondbuddy --no-owner --exit-on-error < "$dir/db.dump"
 compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$dir/blobs:/backup:ro" api \
   node deploy/m1/scripts/blob-snapshot.mjs import /backup
-compose up -d --wait api worker web
+compose up -d --wait api worker worker-review worker-parse ops web
 log_release restore "$src"
 echo "restored from $src"

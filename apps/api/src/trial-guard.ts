@@ -177,16 +177,28 @@ export async function recordWorkerHeartbeat(pool: Pool, input: { workerId: strin
     ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=now(),kinds=EXCLUDED.kinds,concurrency=EXCLUDED.concurrency,stopped_at=EXCLUDED.stopped_at`,
   [input.workerId, input.startedAt, [...input.kinds], input.concurrency, !!input.stopped]);
 }
-async function newestHeartbeatAge(db: Db) {
+export function workerGroupsFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (env.BB_READY_WORKER_GROUPS === undefined) return [];
+  const groups = env.BB_READY_WORKER_GROUPS.split(',').map(v => v.trim());
+  if (groups.some(v => !/^[a-z][a-z0-9-]{0,31}$/.test(v)) || new Set(groups).size !== groups.length) throw new Error('Invalid BB_READY_WORKER_GROUPS');
+  return groups;
+}
+async function newestHeartbeatAge(db: Db, groups: readonly string[] = []) {
+  if (groups.length) {
+    const q = await db.query(`SELECT CASE WHEN count(seen) = cardinality($1::text[]) THEN EXTRACT(EPOCH FROM now()-min(seen))::int END age
+      FROM (SELECT g, max(h.last_seen_at) seen FROM unnest($1::text[]) g
+        LEFT JOIN bb_worker_heartbeats h ON split_part(h.worker_id, '_', 1)=g AND h.stopped_at IS NULL GROUP BY g) groups`, [groups]);
+    return q.rows[0].age === null ? null : Math.max(0, Number(q.rows[0].age));
+  }
   const q = await db.query('SELECT EXTRACT(EPOCH FROM now()-max(last_seen_at))::int age FROM bb_worker_heartbeats WHERE stopped_at IS NULL');
   return q.rows[0].age === null ? null : Math.max(0, Number(q.rows[0].age));
 }
 
 // ---- readiness and alerts -----------------------------------------------------------
 
-export type ReadinessOptions = { heartbeatMaxAgeSeconds: number; timeoutMs: number };
+export type ReadinessOptions = { workerGroups?: readonly string[]; heartbeatMaxAgeSeconds: number; timeoutMs: number };
 export function readinessOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): ReadinessOptions {
-  return { heartbeatMaxAgeSeconds: intEnv(env, 'BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS', 90, 86400), timeoutMs: intEnv(env, 'BB_READY_TIMEOUT_MS', 2000, 60000) };
+  return { workerGroups: workerGroupsFromEnv(env), heartbeatMaxAgeSeconds: intEnv(env, 'BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS', 90, 86400), timeoutMs: intEnv(env, 'BB_READY_TIMEOUT_MS', 2000, 60000) };
 }
 const withTimeout = <T>(work: Promise<T>, ms: number) => Promise.race([work, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms).unref())]);
 
@@ -200,7 +212,7 @@ export async function readiness(pool: Pool, blobs: PrivateBlobs | null, options:
     checks.database = 'ok';
     const gate = await withTimeout(gateState(pool), options.timeoutMs);
     checks.evidence_gate = gate.state === 'paused' || gate.process_state === 'paused' ? 'paused' : 'ok';
-    age = await withTimeout(newestHeartbeatAge(pool), options.timeoutMs);
+    age = await withTimeout(newestHeartbeatAge(pool, options.workerGroups), options.timeoutMs);
     checks.worker_heartbeat = age === null ? 'missing' : age > options.heartbeatMaxAgeSeconds ? 'stale' : 'ok';
   } catch { /* remaining checks stay failed */ }
   if (blobs) {
@@ -210,18 +222,18 @@ export async function readiness(pool: Pool, blobs: PrivateBlobs | null, options:
   return { status: ready ? 'ready' as const : 'not_ready' as const, checks, worker_heartbeat_age_seconds: age, checked_at: new Date().toISOString() };
 }
 
-export type TrialHealthThresholds = { heartbeatMaxAgeSeconds: number; queueBacklogMaxAgeSeconds: number; errorWindowSeconds: number; errorRateThreshold: number; errorMinSample: number };
+export type TrialHealthThresholds = { workerGroups?: readonly string[]; heartbeatMaxAgeSeconds: number; queueBacklogMaxAgeSeconds: number; errorWindowSeconds: number; errorRateThreshold: number; errorMinSample: number };
 export function trialHealthThresholdsFromEnv(env: NodeJS.ProcessEnv = process.env): TrialHealthThresholds {
   const rate = env.BB_ALERT_ERROR_RATE === undefined ? 0.5 : Number(env.BB_ALERT_ERROR_RATE);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 1) throw new Error('Invalid BB_ALERT_ERROR_RATE');
-  return { heartbeatMaxAgeSeconds: intEnv(env, 'BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS', 90, 86400), queueBacklogMaxAgeSeconds: intEnv(env, 'BB_ALERT_QUEUE_BACKLOG_SECONDS', 600, 86400 * 7),
+  return { workerGroups: workerGroupsFromEnv(env), heartbeatMaxAgeSeconds: intEnv(env, 'BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS', 90, 86400), queueBacklogMaxAgeSeconds: intEnv(env, 'BB_ALERT_QUEUE_BACKLOG_SECONDS', 600, 86400 * 7),
     errorWindowSeconds: intEnv(env, 'BB_ALERT_ERROR_WINDOW_SECONDS', 900, 86400), errorRateThreshold: rate, errorMinSample: intEnv(env, 'BB_ALERT_ERROR_MIN_SAMPLE', 5, 100000) };
 }
 
 /** One health pass: appends deduplicated #79 alerts and returns the kinds that fired. */
 export async function checkTrialHealth(pool: Pool, config: TrialConfig, t: TrialHealthThresholds) {
   const fired: string[] = [];
-  const age = await newestHeartbeatAge(pool);
+  const age = await newestHeartbeatAge(pool, t.workerGroups);
   if (age === null || age > t.heartbeatMaxAgeSeconds) {
     await raiseAlert(pool, { kind: 'worker_heartbeat_stale', severity: 'critical', scope: 'workers', detail: { age_seconds: age ?? -1, threshold_seconds: t.heartbeatMaxAgeSeconds } });
     fired.push('worker_heartbeat_stale');
