@@ -76,6 +76,8 @@ worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assista
 
 2026-10-04 08:04–08:06 UTC 对一致的部署输入重新执行完整 build、worker 58 项、API 6 项和 contracts 40 项检查，均通过且无失败／跳过。源输入 digest 为 `5927c1440debaf9b65f81b1559a1d1c56f2c3bdbda5600e94d31e6a2ee619b40`，完整候选 digest 为 `bc5b6b20985917ae34730609354c5f18a143aecac76a98fde152cdf07cde0146`。旧 web 61／28 计数属于上文初始实现，不能据此声称新增暂停修复已包含在那些用例内。
 
+08:37 UTC 在 Windows／Edge 上单独执行两项新增暂停状态 E2E：`review-workspace.spec.ts --grep "paused review|paused recheck"`，2 passed、0 failed／skipped／flaky。测试前后 1,464 个输入文件 hash 不变且匹配上述源 digest；使用临时 Vite 和合成 API 拦截，没有模型或线上调用。精简收据为 `apps/web/test-evidence/m3-linked/paused-state-e2e-2026-10-04.json`，之前未启动测试的 launcher 失败保留在宿主诊断，不计入通过结果。
+
 合成 DOCX 与 XLSX 另经真实 Copilot Enterprise／Codex CLI 调用完成一次复核：首次 schema 校验失败，第二次尝试生成 32 项发现、82 项检查覆盖及两份 Word；失败调用与真实用量保留。宿主校验报告、私有成果字节与 hash，页面验证同项目任务→报告→问题讨论的联动及授权下载触发。没有取得浏览器落盘路径，不声称下载文件已保存到用户磁盘。
 
 该样例有融资额／用途表和资产负债率的数字矛盾，报告识别相关问题，但独立数值计算验收没有通过，不能据此自动修改金额或宣称财务通过。真实长文档、后续解释／差异复核／修订及 Word/WPS 显示仍须真实案例端到端验收；本地公开检索关闭，现行规则和材料缺口在报告中如实显示。
