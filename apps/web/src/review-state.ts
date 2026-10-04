@@ -28,7 +28,8 @@ export const isActiveRun = (run: Run | null | undefined): boolean => Boolean(run
 
 export function executionIdentity(input: Omit<ReviewExecutionRequest, 'execution_request_id'>): string {
   return JSON.stringify({ operation: input.operation, input: input.expected_input_version, source: input.source_report_id,
-    plan: input.expected_plan_version, findings: [...input.finding_ids].sort() });
+    plan: input.expected_plan_version, findings: [...input.finding_ids].sort(), origin: input.entrypoint??'quick_action',
+    accepted: input.accepted_proposal_id??null, context: input.context_report_ref??null });
 }
 
 export const runStateLabel: Record<Run['state'], string> = {

@@ -22,9 +22,9 @@ const combinedName = 'BondBuddy产品开发说明书.md';
 const combined = [
   '# BondBuddy 产品开发说明书',
   '',
-  '版本 1.5｜范围修订 2026-10-03｜面向产品、设计、开发、行业审核、测试与运营',
+  '版本 1.6｜范围修订 2026-10-04｜面向产品、设计、开发、行业审核、测试与运营',
   '',
-  '本合订版由同目录 19 个模块汇编。按最新要求先 Web、最后 Windows，依五个里程碑逐步上线；M3 本次为无用户收费的募集书复核、结果修订与按需项目助手，由 Codex CLI 统一业务执行，平台保留权限、任务、版本及成果校验；募集书库和商业接口不是 M3 前置。M1 统一编制，原稿可不上传，上传后必填原发行人、市场、品种、企业关系和最新报告期；目标信息独立，原对话区改补充要求，材料及知识 MD 直接交 worker；M2 取消余额退款/消费记录页。目标与现有实现状态在第 17、18 章明确区分，认领任务见 [开发任务清单](delivery-plan/README.md)。',
+  '本合订版由同目录 19 个模块汇编。按最新要求先 Web、最后 Windows，依五个里程碑逐步上线；M3 本次为无用户收费的募集书复核、结果修订、桌面常驻项目助手与统一任务时间线，#537/#538 负责安全任务事件及明确提议/执行来源，与既有 M3 任务联动；由 Codex CLI 统一业务执行，平台保留权限、任务、版本及成果校验；募集书库和商业接口不是 M3 前置。M1 统一编制，原稿可不上传，上传后必填原发行人、市场、品种、企业关系和最新报告期；目标信息独立，原对话区改补充要求，材料及知识 MD 直接交 worker；M2 取消余额退款/消费记录页。目标与现有实现状态在第 17、18 章明确区分，认领任务见 [开发任务清单](delivery-plan/README.md)。',
   '',
   '已确认首发包含大公募、PPN/MTN/CP/SCP 及 DFI 储架发行；启信宝、Wind、企业预警通为后续可选接入。上传券商模板默认仅本人复用。已启用收费的阶段采用用户指定 v1.1 方案，本次 M3 不包含用户收费。',
   '',
@@ -112,8 +112,9 @@ const sources = sourcePaths.map(relative => {
   return { relative_path: relative, sha256: sha256(data), observed_mtime: fs.statSync(absolute).mtime.toISOString() };
 });
 const manifest = {
-  spec_version: '1.5',
+  spec_version: '1.6',
   requirements_date: '2026-09-22',
+  scope_revision_date: '2026-10-04',
   assembled_at: new Date().toISOString(),
   scope: 'Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements',
   pricing_version: pricing.version,
@@ -130,7 +131,7 @@ const manifest = {
 fs.writeFileSync(path.join(out, 'spec-manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 const report = [
   '# 文档校验记录', '',
-  '规格版本：1.5；范围修订：2026-10-03。', '',
+  '规格版本：1.6；范围修订：2026-10-04。', '',
   '| 检查 | 结果 |', '|---|---|',
   '| 连续模块 | ' + files.length + ' 个，00–18 |',
   '| 模块正文中文字符 | ' + hanCount.toLocaleString('en-US') + ' |',
@@ -140,7 +141,8 @@ const report = [
   '| JSON 示例解析（含合订版） | ' + jsonExamples + ' |',
   '| 定价源版本与关键规则 | ' + pricing.version + ' |',
   '| 错误 | ' + errors.length + ' |', '',
-  '人工交叉检查覆盖：首发大公募、四类银行间品种及 DFI 储架安排、三家数据源、私有模板、展开表单、固定材料分区、全文更新、对话路由、计价流程、收费与失败状态的一致性。', '',
+  '此前记录的人工交叉检查覆盖：首发大公募、四类银行间品种及 DFI 储架安排、三家数据源、私有模板、展开表单、固定材料分区、全文更新、对话路由、计价流程、收费与失败状态的一致性。本轮只同步当前 M3 交互与联动需求，不重新验收其他阶段；第 18 章历史运行记录未改。', '',
+  '本次记录 M3 文档结构、链接及官方汇编生成验证。synthetic CUA 的桌面/窄屏、提议确认、同一任务时间线及历史保持结果另见 product-prototype/docs/m3-review-workspace-design.md；这些原型结果不是实际 AI/CLI/API、后台持久化、专业复核、Word 或生产 runtime 验收。', '',
   '本记录仅证明文档结构与交叉检查结果，不证明应用功能、真实支付、模型接口、供应商授权或行业准确率已验收。文件指纹及验收标识见 spec-manifest.json。', '',
   ...(errors.length ? ['## 待修复', '', ...errors.map(e=>'- '+e)] : [])
 ].join('\n');

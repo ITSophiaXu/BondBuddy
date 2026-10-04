@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { friendlyError, parseApiError } from './api.js';
+import { createHash } from 'node:crypto';
+import { test, type TestContext } from 'node:test';
+import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
 import { uploadErrorMessage } from './upload-error.js';
 
 test('public inspection detail is carried from Error.field_errors to the upload row', () => {
@@ -48,4 +49,64 @@ test('unknown start failures retain reference and distinguish transient from per
   assert.match(permanent, /尚未满足执行条件/);
   assert.match(permanent, /错误编号：synthetic-start-409/);
   assert.doesNotMatch(permanent, /稍后重试/);
+});
+
+const sourceBytes = new TextEncoder().encode('Synthetic original source: 原始材料 100.00\n');
+function sourceMaterial(): Dto<'MaterialResponse'> {
+  return { material_id:'material/source',material_version:2,upload_id:'upload-source',role:'audit',filename:'source.txt',
+    media_type:'text/plain',byte_size:sourceBytes.byteLength,sha256:createHash('sha256').update(sourceBytes).digest('hex'),
+    state:'persisted',persisted_at:'2026-10-03T00:00:00Z',error:null };
+}
+function stubDownload(t:TestContext, reply:()=>Response) {
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'document');
+  Object.defineProperty(globalThis,'document',{configurable:true,value:{cookie:''}});
+  t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'document',descriptor);else Reflect.deleteProperty(globalThis,'document');});
+  const calls:{url:string;init:RequestInit}[]=[];
+  t.mock.method(globalThis,'fetch',async(input:RequestInfo|URL,init?:RequestInit)=>{
+    calls.push({url:String(input),init:init??{}});return reply();
+  });
+  return {api:new ApiClient(()=>assert.fail('download must not lose the session')),calls};
+}
+
+test('material download returns exact verified Blob bytes through the same-origin project route',async t=>{
+  const material=sourceMaterial(),signal=new AbortController().signal;
+  const {api,calls}=stubDownload(t,()=>new Response(sourceBytes,{status:200,headers:{'Content-Type':'text/plain; charset=utf-8'}}));
+  const blob=await api.materialBytes('project a',material,signal);
+  assert(blob instanceof Blob);assert.equal(blob.type,material.media_type);assert.equal(blob.size,sourceBytes.byteLength);
+  assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),sourceBytes);
+  assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/project%20a/materials/material%2Fsource/download');
+  assert.equal(calls[0]!.init.method,'GET');assert.equal(calls[0]!.init.credentials,'same-origin');
+  assert.equal(calls[0]!.init.cache,'no-store');assert.equal(calls[0]!.init.signal,signal);
+});
+
+test('material download rejects same-length corrupted bytes whose hash differs',async t=>{
+  const corrupted=sourceBytes.slice();corrupted[corrupted.length-2]^=1;
+  const {api}=stubDownload(t,()=>new Response(corrupted,{status:200,headers:{'Content-Type':'text/plain'}}));
+  await assert.rejects(()=>api.materialBytes('project a',sourceMaterial()),error=>error instanceof ApiError&&error.code==='DATA_UNAVAILABLE');
+});
+
+test('material download rejects truncated and empty responses',async t=>{
+  for(const bytes of [sourceBytes.slice(0,-1),new Uint8Array()])await t.test(`received ${bytes.byteLength} bytes`,async sub=>{
+    const {api}=stubDownload(sub,()=>new Response(bytes,{status:200,headers:{'Content-Type':'text/plain'}}));
+    await assert.rejects(()=>api.materialBytes('project a',sourceMaterial()),error=>error instanceof ApiError&&error.code==='DATA_UNAVAILABLE');
+  });
+});
+
+test('material download preserves a server denial for a material outside the requested project',async t=>{
+  const {api,calls}=stubDownload(t,()=>new Response(JSON.stringify({code:'NOT_FOUND'}),{status:404,headers:{'Content-Type':'application/json'}}));
+  await assert.rejects(()=>api.materialBytes('other project',sourceMaterial()),error=>error instanceof ApiError&&error.status===404);
+  assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/other%20project/materials/material%2Fsource/download');
+});
+
+test('material download never requests bytes for an upload that has not been persisted',async t=>{
+  const {api,calls}=stubDownload(t,()=>{throw Error('unpersisted material must not be requested');});
+  await assert.rejects(()=>api.materialBytes('project a',{...sourceMaterial(),state:'uploading'}),error=>error instanceof ApiError&&error.code==='DATA_UNAVAILABLE');
+  assert.equal(calls.length,0);
+});
+
+test('material download rejects a partial response or a substituted content type',async t=>{
+  for(const [status,type] of [[206,'text/plain'],[200,'text/html']] as const)await t.test(`${status} ${type}`,async sub=>{
+    const {api}=stubDownload(sub,()=>new Response(sourceBytes,{status,headers:{'Content-Type':type}}));
+    await assert.rejects(()=>api.materialBytes('project a',sourceMaterial()),error=>error instanceof ApiError&&error.code==='DATA_UNAVAILABLE');
+  });
 });

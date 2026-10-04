@@ -2,7 +2,8 @@ import { Pool, type PoolClient } from 'pg';
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs, run as getRun } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
 import { errorDiagnostic } from './error-diagnostics.js';
-import type { ModelAdapterErrorCode } from '@bondbuddy/contracts';
+import { MODEL_ADAPTER_ERROR_CODES, type ModelAdapterErrorCode, type RunEvent } from '@bondbuddy/contracts';
+import { runEventPayloadDto } from './run-event-dto.js';
 import type { Lease } from './queue.js';
 export type { PrivateBlobs } from './data.js';
 
@@ -179,12 +180,18 @@ async function assertObservationScope(pool: Pool, observation: ProviderCallObser
   }else if(row.state!=='paused' || row.job_state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting provider reconciliation');
 }
 
-async function appendRunEvent(client: PoolClient, r: any, state: string, stage: string, reason: string, type='run.progress') {
+/** Retain only public codes; supplier text and unknown runtime fields never enter task events. */
+export function providerRunEventPayload(reason: string, errorCode?: ModelAdapterErrorCode | null): RunEvent['payload'] {
+  return runEventPayloadDto({ reason, ...(errorCode ? { error_code: errorCode } : {}) });
+}
+
+async function appendRunEvent(client: PoolClient, r: any, state: string, stage: string, reason: string, type='run.progress', errorCode?: ModelAdapterErrorCode | null) {
   const seq = r.event_cursor + 1;
   const eventId = uid();
+  const payload = providerRunEventPayload(reason, errorCode);
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
-  await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[eventId,r.owner_user_id,r.id,seq,r.id,type,state,stage,{reason}]);
-  await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:eventId,seq,state,stage,reason}]);
+  await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[eventId,r.owner_user_id,r.id,seq,r.id,type,state,stage,payload]);
+  await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:eventId,seq,state,stage,...payload}]);
   const job = await client.query('SELECT id FROM bb_jobs WHERE run_id=$1',[r.id]);
   await emitInternal(client,internalEvent({kind:'job.state_changed',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.rows[0]?.id,traceId:r.id,status:state as any,stage}));
   r.state=state;r.stage=stage;r.event_cursor=seq;
@@ -234,6 +241,7 @@ export async function recordProviderCallObservation(
   options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean } = {}
 ): Promise<ProviderObservationResult> {
   assertObservation(observation);
+  const eventErrorCode = MODEL_ADAPTER_ERROR_CODES.find(code => code === observation.error_code);
   await assertObservationScope(pool,observation,options.lease);
   await verifyObservationResult(blobs,observation,validateResult);
   const hash=observationHash(observation);
@@ -318,16 +326,16 @@ export async function recordProviderCallObservation(
       await emitInternal(client,internalEvent({kind:'error.recorded',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.id,
         traceId:r.id,stage:'provider_reconcile',error:{error_id:errorId,code,category:'model_provider',retryable:false}}));
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
-      await appendRunEvent(client,r,'paused','provider_reconcile',reason,'run.state_changed');
+      await appendRunEvent(client,r,'paused','provider_reconcile',reason,'run.state_changed',eventErrorCode);
       await appendCallFinished(client,observation,'paused');
     } else if (failed && options.retryable && options.lease) {
       // A settled, measured failure (for example schema-invalid output) may be re-asked
       // as the next attempt number under the same lease; the job keeps running.
-      await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_call_retrying');
+      await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_call_retrying','run.progress',eventErrorCode);
       await appendCallFinished(client,observation,'running');
     } else if (failed) {
       await client.query("UPDATE bb_jobs SET state='failed',stage='failed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
-      await appendRunEvent(client,r,'failed','failed','provider_call_failed','run.state_changed');
+      await appendRunEvent(client,r,'failed','failed','provider_call_failed','run.state_changed',eventErrorCode);
       await appendCallFinished(client,observation,'failed');
     } else if (notSent) {
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);

@@ -13,6 +13,7 @@ import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput, UnifiedInputPending } from './unified-input.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
+import { isReviewInput, validReviewExecutionOrigin } from './review-input.js';
 
 export const REVIEW_REVISION_CLI_METHOD = 'review-revision-cli-v1';
 export const REVIEW_REVISION_CLI_CHECKPOINT = 'review_revision_cli_method';
@@ -102,6 +103,15 @@ export function reviewRevisionCliStage(options: {
       const pin = input.manifest.authoring.review_revision;
       if (!isReviewRevisionPin(pin) || pin.owner_user_id !== ctx.run.owner_user_id || pin.project_id !== ctx.run.project_id)
         return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if (Object.hasOwn(input.manifest,'review')) {
+        if (!isReviewInput(input.manifest) || input.manifest.review.operation !== 'revision'
+          || !validReviewExecutionOrigin(input.manifest.review,ctx.run.project_id)
+          || input.manifest.review.source_report_id !== pin.source_report.report_id
+          || input.manifest.review.source_report_sha256 !== pin.source_report.sha256
+          || inputManifestHash([...input.manifest.review.finding_ids].sort()) !== inputManifestHash(pin.selected_findings.map(f=>f.finding_id).sort())
+          || input.manifest.review.origin?.accepted_proposal?.requirements.some(r=>!input.requirements.includes(r)&&!pin.requirements.includes(r)))
+          return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      }
       const source = input.materials.find(m => m.pin.material_id === pin.source_material.material_id
         && m.pin.material_version === pin.source_material.material_version && m.pin.sha256 === pin.source_material.sha256);
       if (!source) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };

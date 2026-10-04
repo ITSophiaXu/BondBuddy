@@ -59,6 +59,27 @@ export function validateReviewEvidence(ref: unknown, ctx: ReviewEvidenceContext,
   if (!validReviewLocator(ref)) return ['evidence_locator_invalid'];
   const matches = ctx.records.filter(record => record.owner_user_id === ctx.owner_user_id && record.project_id === ctx.project_id
     && evidenceKey(record) === evidenceKey(ref));
+  return validateMatchedEvidence(ref, ctx, matches, target);
+}
+
+/** Synchronous batch boundary: build one scope-bound index, retaining ambiguous pins.
+ * No index survives the call, so a later mutation cannot reuse stale validation.
+ */
+export function validateReviewEvidenceBatch(refs: readonly unknown[], ctx: ReviewEvidenceContext, target = false): string[][] {
+  const indexed = new Map<string, TrustedReviewRecord[]>();
+  for (const record of ctx.records) {
+    if (record.owner_user_id !== ctx.owner_user_id || record.project_id !== ctx.project_id) continue;
+    const key = evidenceKey(record), matches = indexed.get(key);
+    if (matches) matches.push(record); else indexed.set(key, [record]);
+  }
+  return refs.map(ref => {
+    if (!Value.Check(ReviewEvidenceRefSchema, ref)) return ['evidence_schema_invalid'];
+    if (!validReviewLocator(ref)) return ['evidence_locator_invalid'];
+    return validateMatchedEvidence(ref, ctx, indexed.get(evidenceKey(ref)) ?? [], target);
+  });
+}
+
+function validateMatchedEvidence(ref: ReviewEvidenceRef, ctx: ReviewEvidenceContext, matches: readonly TrustedReviewRecord[], target: boolean): string[] {
   if (matches.length !== 1) return ['evidence_pin_missing_or_ambiguous'];
   const record = matches[0]!;
   const problems: string[] = [];

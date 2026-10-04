@@ -1,9 +1,10 @@
 import { Value } from '@sinclair/typebox/value';
-import { ReviewMessageRequestSchema, type ReviewContext, type ReviewMessageDraft, type ReviewMessageRequest, type ReviewProposal, type ReviewWorkspace } from '@bondbuddy/contracts';
+import { ReviewMessageRequestSchema, type ReviewContext, type ReviewMessage, type ReviewMessageDraft, type ReviewMessageRequest, type ReviewProposal, type ReviewWorkspace } from '@bondbuddy/contracts';
 import { ReviewApi } from './review-api';
 import { ApiError, friendlyError } from './api';
 import { contextKey, readDraftCache, saveDraftCache } from './review-state';
 import { date, esc } from './ui';
+import { isTypedReviewProposal, reviewOperationLabels, reviewTaskHtml, uniqueReviewTimeline } from './review-timeline';
 
 export class ReviewAssistant {
   private host?: HTMLElement;
@@ -21,7 +22,8 @@ export class ReviewAssistant {
   private disposed = false;
   private readonly pendingKey: string;
 
-  constructor(private api: ReviewApi, private owner: string, private refresh: () => Promise<void>, private acceptProposal: (proposal: ReviewProposal) => void) {
+  constructor(private api: ReviewApi, private owner: string, private refresh: () => Promise<void>, private acceptProposal: (proposal: ReviewProposal) => void,
+    private navigateReport: (reportId: string, findingId?: string) => void, private attachEvidence: (context: ReviewContext) => void) {
     this.context = { project_id: api.projectId, report_id: null, finding_ids: [], material_refs: [] };
     this.pendingKey = `bb-review-message-request:${owner}:${api.projectId}`;
     for (const draft of readDraftCache(localStorage, owner, api.projectId)) this.drafts.set(contextKey(draft.context), draft);
@@ -57,6 +59,18 @@ export class ReviewAssistant {
       if (action === 'send') void this.send();
       else if (action === 'retry-save') void this.flush();
       else if (action === 'project') this.focus({ project_id: this.api.projectId, report_id: null, finding_ids: [], material_refs: [] });
+      else if (action === 'attach-evidence') this.attachEvidence(structuredClone(this.context));
+      else if (action === 'suggest') {
+        const suggestion = target.dataset.suggestion;
+        if (suggestion) {
+          if (target.dataset.suggestionScope === 'project') this.context = { project_id: this.api.projectId, report_id: null, finding_ids: [], material_refs: [] };
+          const key = contextKey(this.context), previous = this.current();
+          this.drafts.set(key, { ...previous, content: previous.content.trim() ? `${previous.content}\n${suggestion}` : suggestion, updated_at: new Date().toISOString() });
+          this.dirty.add(key); this.persistCache(); this.render();
+          this.host?.querySelector<HTMLTextAreaElement>('#review-message-input')?.focus();
+          clearTimeout(this.timer); this.timer = setTimeout(() => void this.flush(), 500);
+        }
+      }
       else if (action === 'draft') {
         const saved = this.drafts.get(target.dataset.draftKey ?? '');
         if (saved) this.focus(saved.context);
@@ -65,6 +79,10 @@ export class ReviewAssistant {
       } else if (action === 'proposal') {
         const proposal = this.workspace?.messages.find(message => message.proposal?.proposal_id === target.dataset.proposalId)?.proposal;
         if (proposal) this.acceptProposal(structuredClone(proposal));
+      } else if (action === 'report' && target.dataset.reportId) {
+        this.navigateReport(target.dataset.reportId,target.dataset.findingId);
+      } else if (action === 'notes') {
+        const notes=this.host?.querySelector<HTMLDetailsElement>('.review-saved-requirements');if(notes)notes.open=!notes.open;
       }
     });
   }
@@ -95,6 +113,31 @@ export class ReviewAssistant {
     if (initial) { this.dirty.add(key); this.persistCache(); clearTimeout(this.timer); this.timer = setTimeout(()=>void this.flush(),500); }
     this.status = this.pending ? '有一条发送结果尚未确认的说明，可恢复原请求重试。' : '不同问题的草稿分别保留，切换不会改变引用。';
     this.render(); this.host?.querySelector<HTMLTextAreaElement>('#review-message-input')?.focus({preventScroll:true});
+  }
+
+  focusTask(runId: string) {
+    const card = this.host?.querySelector<HTMLElement>(`[data-task-run="${CSS.escape(runId)}"]`);
+    card?.scrollIntoView({block:'center',behavior:'smooth'});card?.focus({preventScroll:true});
+  }
+
+  private messageHtml(message: ReviewMessage) {
+    const metadata=message.reply_metadata;
+    const refs=metadata?.context_report_ref?metadata.cited_finding_ids.map(id=>`<button class="text-btn review-message-reference" data-assistant-action="report" data-report-id="${esc(metadata.context_report_ref!.report_id)}" data-finding-id="${esc(id)}">查看 ${esc(id)}</button>`).join(''):'';
+    const proposal=message.proposal;
+    const accepted=proposal&&this.workspace?.accepted_proposals?.find(item=>item.proposal.proposal_id===proposal.proposal_id);
+    const typed=proposal&&isTypedReviewProposal(proposal);
+    const label=proposal?typed?reviewOperationLabels[proposal.operation]:'修订提议':'';
+    const replyFailure=['ASSISTANT_PROCESS_INTERRUPTED','MODEL_STREAM_BROKEN'].includes(message.error??'')?'助手回复中断。说明已保存；已提交业务任务的状态单独保留。':'助手回复未完成。说明已保存；已提交业务任务的状态单独保留。';
+    return `<article class="review-message ${message.role}" data-message-id="${esc(message.message_id)}"><header>${message.role==='user'?'你':'项目助手'} · ${esc(date(message.created_at))}</header><p>${esc(message.content)}</p><small title="${esc([message.context.report_id??'',...message.context.finding_ids].join(' · '))}">${esc(this.contextLabel(message.context))}</small>${refs?`<div class="review-message-links">${refs}</div>`:''}${message.role==='user'&&['queued','running'].includes(message.reply_status)?'<small role="status">说明已保存，等待助手回复…</small>':''}${['failed','unknown'].includes(message.reply_status)?`<p class="review-warning">${esc(replyFailure)}</p>`:''}${proposal?`<div class="review-proposal"><p><strong>${accepted?'已采纳要求':'待核对的'+label}</strong><br>${esc(proposal.explanation)}<br>${typed&&proposal.operation==='full_review'?'完整三个维度':`${proposal.finding_ids.length+(typed?proposal.related_finding_ids.length:0)} 项及关联范围`}</p><button class="btn secondary small" data-assistant-action="proposal" data-proposal-id="${esc(proposal.proposal_id)}">${accepted?'查看已采纳范围':typed?'核对范围':'查看并采纳计划'}</button><small>采纳只保存要求；明确确认才执行。</small></div>`:''}</article>`;
+  }
+
+  private contextLabel(context: ReviewContext): string {
+    const report = this.workspace?.reports.find(item => item.report_id === context.report_id);
+    const selected = this.workspace?.selected_report;
+    const findings = selected?.report_id === context.report_id
+      ? context.finding_ids.map(id => selected.findings.find(item => item.finding_id === id)?.title ?? '引用问题')
+      : context.finding_ids.map(id => `问题 ${id.length > 18 ? `${id.slice(0,12)}…` : id}`);
+    return [context.report_id ? report ? `报告 R${report.version}` : '历史报告' : '项目级说明', ...findings].join(' · ');
   }
 
   private current(): ReviewMessageDraft {
@@ -193,9 +236,16 @@ export class ReviewAssistant {
     const scroll=chat?{top:chat.scrollTop,bottom:chat.scrollHeight-chat.scrollTop-chat.clientHeight<32}:undefined;
     const context = this.context, draft = this.current();
     const otherDrafts = [...this.drafts.entries()].filter(([key,d])=>key!==contextKey(context)&&d.content.trim());
-    this.host.innerHTML = `<div class="review-agent-header"><span class="review-agent-icon" aria-hidden="true">✦</span><div><h2 id="review-agent-title">项目助手</h2><p>补充背景 · 澄清口径 · 讨论异议</p></div><button class="review-agent-close" data-review-action="close-agent" aria-label="收起项目助手">×</button></div><p class="review-agent-purpose">常规处理直接在复核结果中完成。有特殊情况或不同意见，再补充说明。</p><div class="review-agent-context"><span class="review-tag">${context.report_id ? `${esc(context.report_id)}${context.finding_ids.length ? ` · ${context.finding_ids.map(esc).join('、')}` : ''}` : '项目级说明'}</span>${context.material_refs.length ? `<span>${context.material_refs.length} 份材料引用</span>` : ''}<button class="text-btn" data-assistant-action="project">项目级说明</button></div>
-      <div class="review-chat" role="log" aria-label="项目对话" aria-live="polite">${this.workspace?.messages.length ? this.workspace.messages.map(message=>`<article class="review-message ${message.role}"><header>${message.role==='user'?'你':'项目助手'} · ${esc(date(message.created_at))}</header><p>${esc(message.content)}</p><small>${message.context.report_id ? `${esc(message.context.report_id)} · ${message.context.finding_ids.map(esc).join('、') || '报告说明'}` : '项目级说明'}</small>${message.role==='user'&&['queued','running'].includes(message.reply_status)?'<small role="status">说明已保存，等待助手回复…</small>':''}${['failed','unknown'].includes(message.reply_status)?`<p class="review-warning">${message.error ? esc(message.error) : '助手回复未完成。说明已保存，任务未启动。'}</p>`:''}${message.proposal?`<div class="review-proposal"><p><strong>待核对的修订提议</strong><br>${esc(message.proposal.explanation)}<br>${message.proposal.finding_ids.map(esc).join('、')}</p><button class="btn secondary small" data-assistant-action="proposal" data-proposal-id="${esc(message.proposal.proposal_id)}">查看并采纳计划</button><small>采纳仅调整计划，执行仍需单独点击。</small></div>`:''}</article>`).join(''):'<p class="review-muted">在这里补充业务口径、解释材料或讨论某项结果。发送说明不会直接执行任务。</p>'}</div>
-      <div class="review-composer">${otherDrafts.length?`<details><summary class="review-muted">另有 ${otherDrafts.length} 份未发送草稿</summary>${otherDrafts.map(([key,d])=>`<button class="text-btn" data-assistant-action="draft" data-draft-key="${esc(key)}">继续 ${esc(d.context.report_id??'项目')} ${d.context.finding_ids.map(esc).join('、')} 的草稿</button>`).join('')}</details>`:''}<label for="review-message-input">${context.finding_ids.length?'补充此项说明':'补充项目说明'}</label><textarea id="review-message-input" maxlength="12000" rows="4" placeholder="例如：旧名称属于历史沿革，请保留当时名称。">${esc(draft.content)}</textarea><div class="review-composer-actions"><span class="review-muted">保存说明 · 不自动执行</span><button class="btn primary small" data-assistant-action="send">发送说明</button></div><p id="review-assistant-status" class="review-status" role="status">${esc(this.status)}</p>${this.pending?'<button class="text-btn" data-assistant-action="restore-pending">重试待确认原请求</button>':''}${this.dirty.size?'<button class="text-btn" data-assistant-action="retry-save">重试同步草稿</button>':''}</div>`;
+    const reportNames=Object.fromEntries((this.workspace?.reports??[]).map(report=>[report.report_id,`R${report.version}`]));
+    const timeline=uniqueReviewTimeline(this.workspace?.timeline??(this.workspace?.messages??[]).map(message=>({kind:'message' as const,entry_id:`message:${message.message_id}`,created_at:message.created_at,message})));
+    const timelineHtml=timeline.map(entry=>entry.kind==='task'?reviewTaskHtml(entry.task,entry.created_at,reportNames):this.messageHtml(entry.message)).join('');
+    const requirements=this.workspace?.draft.requirements??[];
+    const selectedReport=this.workspace?.selected_report,hasBindings=Boolean(context.report_id||context.finding_ids.length||context.material_refs.length);
+    const boundReport=this.workspace?.reports.find(report=>report.report_id===context.report_id);
+    this.host.innerHTML = `<div class="review-agent-header"><span class="review-agent-icon" aria-hidden="true">✦</span><div><h2 id="review-agent-title">项目助手</h2><p><span class="review-context-full">补充背景 · 澄清口径 · 讨论异议</span><span class="review-context-compact">对话与快捷操作共用记录</span></p></div><button class="review-agent-close" data-review-action="close-agent" aria-label="收起项目助手">×</button></div><p class="review-agent-purpose">快捷操作与对话共用任务记录。补充口径或异议后，先确认范围，再重新核验。</p><div class="review-agent-context ${hasBindings?'has-binding':'project-context'}"><strong class="review-context-project" title="${esc(this.workspace?.project.name??'当前项目')}">${esc(this.workspace?.project.name??'当前项目')}</strong><span class="review-context-input">下一输入 V${this.workspace?.draft.version??0}${selectedReport?` · 左侧报告 R${selectedReport.version}`:' · 尚无复核报告'}</span><span class="review-tag" title="${esc([context.report_id??'',...context.finding_ids].join(' · '))}"><span class="review-context-full">${hasBindings?'讨论引用：':''}${esc(this.contextLabel(context))}${context.finding_ids.length?` · ${context.finding_ids.map(esc).join('、')}`:''}</span><span class="review-context-compact">${context.report_id?boundReport?`讨论 R${boundReport.version}`:'讨论历史报告':'项目说明'}${context.finding_ids.length?` · ${context.finding_ids.map(esc).join('、')}`:''}</span></span>${context.material_refs.length?`<span>${context.material_refs.length} 份材料引用</span>`:''}${hasBindings?'<button class="text-btn" data-assistant-action="project">回到项目说明</button>':''}</div>
+      <details class="review-saved-requirements"><summary>✓ 已记录 ${requirements.length} 项要求</summary><ul>${requirements.map(item=>`<li>${esc(item)}</li>`).join('')||'<li>尚无已采纳要求。对话内容不会自动成为执行依据。</li>'}</ul></details>
+      <div class="review-chat" role="log" aria-label="项目对话与任务" aria-live="polite" aria-relevant="additions text">${timelineHtml||'<p class="review-muted">快捷开始后，真实任务过程和结果会显示在这里。发送说明不会直接执行任务。</p>'}</div>
+      <div class="review-composer">${otherDrafts.length?`<details><summary class="review-muted">另有 ${otherDrafts.length} 份未发送草稿</summary>${otherDrafts.map(([key,d])=>`<button class="text-btn" data-assistant-action="draft" data-draft-key="${esc(key)}" title="${esc([d.context.report_id??'',...d.context.finding_ids].join(' · '))}">继续 ${esc(this.contextLabel(d.context))} 的草稿</button>`).join('')}</details>`:''}<div class="review-agent-suggestions" aria-label="常见说明场景"><button data-assistant-action="suggest" data-suggestion="这里需要说明统计口径：">说明口径</button><button data-assistant-action="suggest" data-suggestion="这里有一项特殊情况需要说明：">解释特殊情况</button><button data-assistant-action="suggest" data-suggestion-scope="project" data-suggestion="以下要求适用于多个复核问题：">跨项要求</button></div><label for="review-message-input">${context.finding_ids.length?'补充此项说明':'补充项目说明'}</label><textarea id="review-message-input" maxlength="12000" rows="3" placeholder="例如：旧名称属于历史沿革，请保留当时名称。">${esc(draft.content)}</textarea><div class="review-composer-actions"><button class="review-attach-evidence" data-assistant-action="attach-evidence" aria-label="添加补充依据" title="添加补充依据"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 17 19 7a3 3 0 0 0-4-4L4 14a5 5 0 0 0 7 7L21 11M8 14l8-8"/></svg></button><span class="review-muted">保存说明 · 不自动执行</span><button class="btn primary small" data-assistant-action="send">发送说明</button></div><p id="review-assistant-status" class="review-status" role="status">${esc(this.status)}</p>${this.pending?'<button class="text-btn" data-assistant-action="restore-pending">重试待确认原请求</button>':''}${this.dirty.size?'<button class="text-btn" data-assistant-action="retry-save">重试同步草稿</button>':''}</div>`;
     this.updateStatus();
     if (focused && selection) { const next=this.host.querySelector<HTMLTextAreaElement>('#review-message-input')!; next.focus({preventScroll:true});next.setSelectionRange(selection[0],selection[1]); }
     const nextChat=this.host.querySelector<HTMLElement>('.review-chat');if(nextChat&&scroll)nextChat.scrollTop=scroll.bottom?nextChat.scrollHeight:scroll.top;

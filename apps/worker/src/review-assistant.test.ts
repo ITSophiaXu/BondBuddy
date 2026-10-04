@@ -9,7 +9,7 @@ import { Pool } from 'pg';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
-import type { ReviewContext, ReviewDraft, ReviewReport } from '@bondbuddy/contracts';
+import { isReviewProposalV2, type ReviewContext, type ReviewDraft, type ReviewReport } from '@bondbuddy/contracts';
 import type { ProviderCallIntent } from '@bondbuddy/api/provider-results';
 import { assertModelCallAllowed, configureTrialGuard, tokensSince, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
@@ -210,6 +210,46 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
         assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'completed');
         assert.equal(await f.sends(),1);assert.equal((await f.attempt(m.id)).id,first.id);assert.equal((await f.replies(m.id))[0].content,plainReply.content);
       } finally {await evidenceGate('open');await killSwitch('released');}
+    });
+
+    await t.test('v2 replies preserve typed host pins and citation metadata through completed-result recovery with one send',async ctx=>{
+      const f=await fixture(ctx,true),m=await f.queue({mutate:m=>Object.assign(m.context_snapshot,
+        {version:'review-assistant-context-v2',reply_schema_version:'review-assistant-reply-v2',report_catalog_version:1})});
+      const reply={...proposedReply,proposal:{...proposedReply.proposal,operation:'differential_review',related_finding_ids:[],excluded_findings:[]}};
+      await assert.rejects(runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(reply),afterCall:async()=>{throw new Error('SYNTHETIC_CRASH');}}),/SYNTHETIC_CRASH/);
+      const first=await f.attempt(m.id);assert.equal(first.logical_call_id,'review-assistant-v2');assert.equal(first.result_schema_version,'review-assistant-reply-v2');
+      await f.expire(m.id);assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(reply)}),'completed');
+      assert.equal(await f.sends(),1);assert.equal((await f.attempt(m.id)).id,first.id);
+      const replies=await f.replies(m.id);assert.equal(replies.length,1);const stored=replies[0];assert.equal(isReviewProposalV2(stored.proposal),true);
+      assert.equal(stored.proposal.operation,'differential_review');assert.equal(stored.proposal.project_id,f.project);
+      assert.equal(stored.proposal.source_report_id,f.source!.report_id);assert.equal(stored.proposal.source_report_sha256,inputManifestHash(f.source));
+      const {version:_version,...input}=draft;assert.equal(stored.proposal.input_sha256,inputManifestHash(input));
+      assert.deepEqual(stored.reply_metadata,{version:'review-reply-metadata-v1',context_report_ref:{report_id:f.source!.report_id,sha256:inputManifestHash(f.source)},cited_finding_ids:['F1']});
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_executions WHERE owner_user_id=$1',[f.owner])).rows[0].n),0);
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_revision_plans WHERE owner_user_id=$1',[f.owner])).rows[0].n),0);
+    });
+
+    await t.test('a pinned v2 message with recorded v1 identity refuses before any new model send',async ctx=>{
+      const f=await fixture(ctx),m=await f.queue({mutate:m=>Object.assign(m.context_snapshot,
+        {version:'review-assistant-context-v2',reply_schema_version:'review-assistant-reply-v2',report_catalog_version:0})});
+      const prompt=await savePromptSnapshot(pool,f.blobs,{owner:f.owner,projectId:f.project,kind:'model_request',version:1,
+        body:'Synthetic recorded legacy call',templateVersion:'synthetic-recorded-v1'}),attemptId=randomUUID();
+      await pool.query(`INSERT INTO bb_review_assistant_attempts(id,owner_user_id,project_id,message_id,logical_call_id,attempt_no,intent,intent_sha256,prompt_snapshot_id)
+        VALUES($1,$2,$3,$4,'review-assistant-v1',1,'{}',$5,$6)`,[attemptId,f.owner,f.project,m.id,inputManifestHash({}),prompt]);
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'unknown');
+      assert.equal((await f.row(m.id)).error,'ASSISTANT_PROTOCOL_CHANGED');assert.equal(await f.sends(),0);
+      assert.equal((await f.attempt(m.id)).id,attemptId);assert.equal((await f.replies(m.id)).length,0);
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_assistant_attempts WHERE message_id=$1',[m.id])).rows[0].n),1);
+    });
+
+    await t.test('v2 unknown usage stays pending and never starts a replacement reply',async ctx=>{
+      const f=await fixture(ctx),m=await f.queue({mutate:m=>Object.assign(m.context_snapshot,
+        {version:'review-assistant-context-v2',reply_schema_version:'review-assistant-reply-v2',report_catalog_version:0})});
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(plainReply,'missing')}),'unknown');
+      const attempt=await f.attempt(m.id);assert.equal(attempt.logical_call_id,'review-assistant-v2');assert.equal(attempt.status,'pending_reconcile');
+      assert.equal(attempt.usage_status,'unknown');assert.equal(attempt.result_schema_version,'review-assistant-reply-v2');
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'idle');assert.equal(await f.sends(),1);
+      assert.equal((await f.replies(m.id)).length,0);assert.equal((await f.attempt(m.id)).id,attempt.id);
     });
 
     await t.test('concurrent workers claim once with same-millisecond history; prompt snapshot, measured usage and proposal are durable without plan/task/billing writes',async ctx=>{

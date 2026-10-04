@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewFindingSchema, ReviewCheckCoverageSchema } from '../../../packages/contracts/dist/review-results.js';
-import { canonical, evidenceKey, referenceFor, reviewContentHash, validateReviewEvidence } from '../../../packages/domain/dist/review-evidence.js';
+import { canonical, evidenceKey, referenceFor, reviewContentHash, validateReviewEvidenceBatch } from '../../../packages/domain/dist/review-evidence.js';
 import { reviewFinancialEvidence } from '../../../packages/domain/dist/review-financial-checks.js';
 import { reviewAuditReconciliation } from '../../../packages/domain/dist/review-audit-reconciliation.js';
 import { AUDIT_RECONCILIATION_KNOWLEDGE } from '../../../packages/domain/dist/audit-reconciliation-knowledge.js';
@@ -42,11 +42,10 @@ export function validateReviewToolData(data:ReviewToolData):void {
     || !data.knowledge || !data.knowledge.id?.trim() || !data.knowledge.version?.trim() || !data.knowledge.markdown?.trim()
     || !hashPattern.test(data.knowledge.sourceSHA) || data.knowledge.contentSHA!==hashText(data.knowledge.markdown))throw Error('REVIEW_TOOL_DATA_INVALID');
   const records=new Map(data.input.evidence.records.map(r=>[reviewPromptRecordId(r),r]));
-  // Uniqueness is established once across the full dataset. A singleton context then
-  // validates each record's owner, pins/schema and locator without rescanning all records.
+  // Validate the immutable dataset with a local index; never rescan all records per reference.
   if(records.size!==data.input.evidence.records.length || new Set(data.input.evidence.records.map(evidenceKey)).size!==data.input.evidence.records.length
     || new Set(data.allowed_target_ids).size!==data.allowed_target_ids.length
-    || data.input.evidence.records.some(r=>validateReviewEvidence(referenceFor(r),{...data.input.evidence,records:[r]}).length)
+    || validateReviewEvidenceBatch(data.input.evidence.records.map(r=>referenceFor(r)),data.input.evidence).some(errors=>errors.length)
     || data.allowed_target_ids.some(id=>{const r=records.get(id);return !r||r.source_kind!=='disclosure'
       || r.material_id!==data.input.evidence.source_material.material_id || r.material_version!==data.input.evidence.source_material.material_version
       || r.material_sha256!==data.input.evidence.source_material.sha256;})
@@ -76,14 +75,19 @@ export function validateReviewToolTrace(data:ReviewToolData,value:unknown):value
       || t.knowledge_read_ranges.some(r=>!Number.isSafeInteger(r.offset)||!Number.isSafeInteger(r.end)||r.offset<0||r.end<=r.offset||r.end>data.knowledge.markdown.length)
       || t.knowledge_read_complete!==completeKnowledge(data,t.knowledge_read_ranges)||new Set(t.receipts.map(r=>r.receipt_id)).size!==t.receipts.length)return false;
     const read=new Set(t.read_record_ids);
+    if(t.receipts.some(r=>!r?.evaluation||!Array.isArray(r.evaluation.findings)||!Array.isArray(r.evaluation.coverage)
+      || r.evaluation.findings.some(f=>!Value.Check(ReviewFindingSchema,f))
+      || r.evaluation.coverage.some(c=>!Value.Check(ReviewCheckCoverageSchema,c))))return false;
+    const refs=t.receipts.flatMap(r=>[...r.evaluation.findings.flatMap(f=>[...f.target_refs,...f.evidence_refs]),...r.evaluation.coverage.flatMap(c=>c.evidence_refs)]);
+    if(validateReviewEvidenceBatch(refs,data.input.evidence).some(errors=>errors.length))return false;
     return t.receipts.every(r=>/^receipt-[a-f0-9-]{36}$/.test(r.receipt_id)&&['check_financial','check_compliance'].includes(r.tool)&&hashPattern.test(r.arguments_sha256)
       && Array.isArray(r.audit_rule_ids)&&r.audit_rule_ids.every(id=>AUDIT_RECONCILIATION_KNOWLEDGE.rules.some(rule=>rule.id===id))
       && !!r.evaluation&&Array.isArray(r.evaluation.findings)&&Array.isArray(r.evaluation.coverage)&&Array.isArray(r.evaluation.limitations)
       && r.evaluation.limitations.every(s=>typeof s==='string')&&r.evaluation.findings.every(f=>Value.Check(ReviewFindingSchema,f)
         &&f.report_id===data.input.evidence.report_id&&f.target_refs.every(ref=>targetIds(data,f.dimension).has(reviewPromptRecordId(ref)))
-        &&[...f.target_refs,...f.evidence_refs].every(ref=>read.has(reviewPromptRecordId(ref))&&!validateReviewEvidence(ref,data.input.evidence).length))
+        &&[...f.target_refs,...f.evidence_refs].every(ref=>read.has(reviewPromptRecordId(ref))))
       &&r.evaluation.coverage.every(c=>Value.Check(ReviewCheckCoverageSchema,c)&&c.finding_ids.every(id=>r.evaluation.findings.some(f=>f.finding_id===id))
-        &&c.evidence_refs.every(ref=>read.has(reviewPromptRecordId(ref))&&!validateReviewEvidence(ref,data.input.evidence).length))
+        &&c.evidence_refs.every(ref=>read.has(reviewPromptRecordId(ref))))
       && Array.isArray(r.read_record_ids)&&new Set(r.read_record_ids).size===r.read_record_ids.length&&r.read_record_ids.every(id=>read.has(id))
       && !!r.arguments&&typeof r.arguments==='object'&&!Array.isArray(r.arguments)&&r.arguments_sha256===reviewContentHash(r.arguments)
       && (()=>{const {receipt_id,...actual}=r;return canonical(actual)===canonical(evaluateReviewCheck(data,r.tool,r.arguments,r.read_record_ids));})());

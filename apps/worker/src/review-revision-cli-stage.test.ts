@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import type { ReviewExecutionOrigin, ReviewProposalV2 } from '@bondbuddy/contracts';
+import type { ReviewManifest } from './review-input.js';
 import { reviewRevisionCliStage, reviewRevisionCliDeliveryStage, REVIEW_REVISION_CLI_CHECKPOINT,
   validReviewRevisionCliResult, type ReviewRevisionCliResult } from './review-revision-cli-stage.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -16,6 +18,38 @@ const execute = promisify(execFile);
 const config = { ...loadCodexAdapterConfig({}), work_root: tmpdir() };
 
 const persist: NonNullable<Parameters<typeof reviewRevisionCliStage>[0]>['checkpoint'] = async (_pool, _lease, _name, _value) => {};
+
+test('revision consumes the explicitly adopted input and refuses lineage or unconsumed requirement drift before a CLI send',async()=>{
+  const f=await fixture();let calls=0;
+  try{
+    const adoptedRequirement='Synthetic explicit instruction: retain the other paragraph.';
+    const draft={source_material_ref:f.pin.source_material,material_versions:f.input.materials.map(m=>({material_id:m.pin.material_id,material_version:m.pin.material_version,sha256:m.pin.sha256})),requirements:[adoptedRequirement],as_of:null};
+    const proposal:ReviewProposalV2={version:'review-proposal-v2',proposal_id:'proposal',project_id:f.ctx.run.project_id,operation:'revision',
+      source_report_id:f.pin.source_report.report_id,source_report_sha256:f.pin.source_report.sha256,
+      context_report_ref:{report_id:f.pin.source_report.report_id,sha256:f.pin.source_report.sha256},
+      input_version:1,input_sha256:inputManifestHash({...draft,requirements:[]}),source_material_ref:draft.source_material_ref,material_versions:draft.material_versions,
+      finding_ids:f.pin.selected_findings.map(p=>p.finding_id),related_finding_ids:[],excluded_findings:f.pin.excluded_findings,requirements:[adoptedRequirement],explanation:'Synthetic confirmed revision'};
+    const origin:ReviewExecutionOrigin={version:'review-execution-origin-v1',entrypoint:'assistant_proposal',context_report_ref:proposal.context_report_ref,
+      accepted_proposal:{acceptance_id:'acceptance',proposal,proposal_sha256:inputManifestHash(proposal),adoption:'as_proposed',accepted_at:'2026-10-04T00:00:00Z',
+        input_version:2,input_sha256:inputManifestHash(draft),report_catalog_version:1,finding_ids:proposal.finding_ids,excluded_findings:proposal.excluded_findings,requirements:proposal.requirements}};
+    const review:ReviewManifest['review']={version:'review_v1',operation:'revision',report_id:'next-report',version_number:2,input:draft,
+      source_report_id:proposal.source_report_id,source_report_sha256:proposal.source_report_sha256,finding_ids:proposal.finding_ids,draft_version:2,origin};
+    f.input.manifest.review=review;f.input.requirements.push(adoptedRequirement);f.ctx.run.input_hash=inputManifestHash(f.input.manifest);
+    const stage=reviewRevisionCliStage({load:async()=>f.input,config,checkpoint:persist,model:options=>({name:options.name,run:async()=>{
+      calls++;const cwd=join(f.root,'accepted-model');await mkdir(cwd);await options.fileWorkspace!.prepare(cwd);
+      const locked=JSON.parse(await readFile(join(cwd,'input.json'),'utf8'));assert.ok(locked.requirements.includes(adoptedRequirement));
+      return {kind:'pause',stage:'provider_reconcile',reason:'synthetic_no_provider_send'};
+    }})});
+    assert.equal((await stage.run(f.ctx)).kind,'pause');assert.equal(calls,1);
+    for(const mutate of [
+      (r:typeof review)=>{r.source_report_id='foreign';},
+      (r:typeof review)=>{r.finding_ids=['foreign'];},
+      (r:typeof review)=>{r.input.requirements.push('Never adopted into the actual CLI input');r.origin!.accepted_proposal!.requirements.push('Never adopted into the actual CLI input');
+        r.origin!.accepted_proposal!.input_sha256=inputManifestHash(r.input);r.origin!.accepted_proposal!.adoption='user_adjusted';},
+    ]){const bad=structuredClone(review);mutate(bad);f.input.manifest.review=bad;
+      assert.deepEqual(await stage.run(f.ctx),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});assert.equal(calls,1);}
+  }finally{await rm(f.root,{recursive:true,force:true});}
+});
 
 test('one CLI owns revision generation; collector verifies and delivery only reads durable artifacts', async () => {
   const f = await fixture(); let calls = 0;

@@ -8,6 +8,7 @@ import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY
 import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
+import { inputManifestHash } from './production-rule-pin.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -119,7 +120,11 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
   await ensureExternalCallsAllowed(pool);
   await guardEvidenceWrite(pool,'call_intent_not_persisted',()=>transaction(pool,async client=>{
     await assertGateOpen(client);
-    const {r}=await lockedLease(client,lease);
+    const {r,j}=await lockedLease(client,lease);
+    // A private review reassembly may only read its completed durable call. This
+    // check uses the locked database checkpoint, never a caller's stale lease copy.
+    if(j.checkpoint?.review_assembly_recovery)
+      throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
     if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
     // #35: kill switch, deny override and the daily token quota are re-checked before every call.
     await assertModelCallAllowed(client,trialGuardConfig(),lease.owner);
@@ -581,6 +586,88 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
 }
 const operatorField = /^[A-Za-z0-9_.@-]{1,128}$/;
 const operatorReason = /^[a-z][a-z0-9_]{1,63}$/;
+
+/** Private recovery of a failed full-review assembler, using the exact completed
+ * CLI result. No public failed-run resume, new input, provider call or usage rewrite.
+ * The worker still validates its pinned tools/schema and delivers through its normal pipeline.
+ */
+export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,input:{runId:string;attemptId:string;resultSha256:string;actor:string}) {
+  if(![input.runId,input.attemptId,input.actor].every(v=>operatorField.test(v))||!/^[a-f0-9]{64}$/.test(input.resultSha256))
+    throw new Problem(422,'VALIDATION_FAILED','Invalid review recovery identity');
+  return transaction(pool,async client=>{
+    // Share project -> run -> job lock order with submission and report registration.
+    // This first read is scope only; the immutable run is re-read under its lock.
+    const scope=(await client.query('SELECT project_id,owner_user_id FROM bb_runs WHERE id=$1',[input.runId])).rows[0];
+    if(!scope)throw missing();
+    const project=(await client.query('SELECT kind,deleted_at FROM bb_projects WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[scope.project_id,scope.owner_user_id])).rows[0];
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[input.runId])).rows[0];
+    if(!r)throw missing();
+    if(r.project_id!==scope.project_id||r.owner_user_id!==scope.owner_user_id)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Review recovery scope changed');
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
+    if(!j)throw missing();
+    const prior=j.checkpoint?.review_assembly_recovery;
+    if(prior){
+      if(prior.policy!=='review_assembly_v1'||prior.reuse_only!==true||prior.attempt_id!==input.attemptId||prior.result_sha256!==input.resultSha256||prior.actor!==input.actor)
+        throw new Problem(409,'IDEMPOTENCY_CONFLICT','Review recovery already has another identity');
+      return {run_id:r.id,attempt_id:input.attemptId,result_sha256:input.resultSha256,idempotent:true};
+    }
+    const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','No recoverable completed full-review result');
+    if(r.channel!=='production'||r.task_kind!=='review'||r.state!=='failed'||j.state!=='failed'||j.error_code!=='VALIDATION_FAILED'||j.lease_token||j.lease_until||r.artifact_id)
+      throw refuse();
+    // Serialize with submissions and other recoveries; the M3 database mutex remains in force.
+    if(!project||project.kind!=='review'||project.deleted_at)throw refuse();
+    const active=await client.query("SELECT 1 FROM bb_runs WHERE project_id=$1 AND owner_user_id=$2 AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')",[r.project_id,r.owner_user_id]);
+    const artifacts=await client.query('SELECT 1 FROM bb_review_reports WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_review_artifacts WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_artifact_versions WHERE run_id=$1',[r.id]);
+    if(active.rowCount||artifacts.rowCount||await providerCallNeedsReconciliation(client,j.id))throw refuse();
+    const last=(await client.query('SELECT payload FROM bb_run_events WHERE run_id=$1 AND seq=$2',[r.id,r.event_cursor])).rows[0]?.payload;
+    const failure=(await client.query("SELECT id FROM bb_observability_errors WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND trace_id=$4 AND code='VALIDATION_FAILED' AND stage='model_generation' AND recovery_status='terminal' ORDER BY created_at DESC LIMIT 1",[r.owner_user_id,r.project_id,j.id,r.id])).rows[0];
+    if(last?.reason!=='processor_failed'||last?.error_code!=='VALIDATION_FAILED'||!failure)throw refuse();
+    const locked=(await client.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[r.owner_user_id,r.project_id,r.input_revision])).rows[0];
+    const execution=(await client.query('SELECT version,operation,snapshot FROM bb_review_executions WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[r.owner_user_id,r.project_id,r.id])).rows[0];
+    const review=locked?.manifest?.review;
+    if(!locked||locked.input_hash.trim()!==r.input_hash.trim()||inputManifestHash(locked.manifest)!==r.input_hash.trim()||locked.manifest.project_kind!=='review'
+      ||review?.version!=='review_v1'||review.operation!=='full_review'||!execution||execution.operation!==review.operation||execution.version!==review.version_number
+      ||inputManifestHash(execution.snapshot.input)!==inputManifestHash(review.input))throw refuse();
+    const a=(await client.query(`SELECT a.*,u.usage_status AS measured_usage,u.conflicting_measurements FROM bb_model_call_attempts a
+      JOIN bb_call_usage u ON u.attempt_id=a.id WHERE a.id=$1 AND a.owner_user_id=$2 AND a.job_id=$3 FOR UPDATE OF a`,[input.attemptId,r.owner_user_id,j.id])).rows[0];
+    const identity=a&&/^review-cli-(v[23])-([a-f0-9]{24})$/.exec(a.logical_call_id);
+    if(!identity||a.status!=='completed'||a.measured_usage!=='measured'||Number(a.conflicting_measurements)!==0)throw refuse();
+    const latest=(await client.query('SELECT max(attempt_no)::int AS n FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3',[r.owner_user_id,j.id,a.logical_call_id])).rows[0];
+    const promptStage=`review_cli_${identity[1]}_${identity[2]}_prompt`,stages=j.checkpoint?.stages;
+    if(latest.n!==a.attempt_no||stages?.[promptStage]?.snapshot_id!==a.prompt_snapshot_id||stages?.model_generation
+      ||Object.keys(stages??{}).filter(k=>/^review_cli_v[23]_.*_prompt$/.test(k)).length!==1)throw refuse();
+    const results=(await client.query('SELECT * FROM bb_provider_result_refs WHERE attempt_id=$1',[a.id])).rows;
+    const p=results[0],refs=j.checkpoint?.provider_results;
+    const checkpoints=Array.isArray(refs)?refs.filter(p=>p.logical_call_id===a.logical_call_id&&p.attempt_no===a.attempt_no):[];
+    const ref=checkpoints[0];
+    if(results.length!==1||!p||p.owner_user_id!==r.owner_user_id||p.project_id!==r.project_id||p.job_id!==j.id||p.run_id!==r.id||p.trace_id!==r.id
+      ||p.call_id!==a.id||p.logical_call_id!==a.logical_call_id||p.attempt_no!==a.attempt_no||p.prompt_snapshot_ref!==a.prompt_snapshot_id||p.model_id!==a.model_id
+      ||p.result_sha256.trim()!==input.resultSha256||p.result_schema_version!==`review-cli-${identity[1]}`||Number(p.byte_size)<1||Number(p.byte_size)>10485760
+      ||p.result_ref!==`users/${r.owner_user_id}/projects/${r.project_id}/provider-results/${a.id}-${input.resultSha256}.json`
+      ||checkpoints.length!==1||ref.call_id!==a.id||ref.result_id!==p.id||ref.result_ref!==p.result_ref||ref.result_sha256!==input.resultSha256||ref.result_schema_version!==p.result_schema_version)throw refuse();
+    const observation=await client.query(`SELECT 1 FROM bb_provider_call_observations WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND run_id=$4
+      AND attempt_id=$5 AND result_id=$6 AND prompt_snapshot_ref=$7 AND outcome='completed' AND usage_status='measured' AND finish_reason='stop' AND error_code IS NULL`,
+      [r.owner_user_id,r.project_id,j.id,r.id,a.id,p.id,a.prompt_snapshot_id]);
+    const prompt=(await client.query(`SELECT * FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4
+      AND snapshot_kind='model_request' AND input_revision=$5 AND input_hash=$6`,[a.prompt_snapshot_id,r.owner_user_id,r.project_id,r.id,r.input_revision,r.input_hash])).rows[0];
+    if(!observation.rowCount||!prompt||!prompt.object_key.startsWith(`users/${r.owner_user_id}/projects/${r.project_id}/snapshots/`))throw refuse();
+    let resultBytes:Buffer|null,promptBytes:Buffer|null;
+    try {
+      resultBytes=await blobs.getIfExistsBounded(p.result_ref,10485760);
+      promptBytes=await blobs.getIfExistsBounded(prompt.object_key,10485760);
+    }catch{throw new Problem(409,'CAPABILITY_NOT_READY','Review recovery Blob evidence is unavailable');}
+    if(!resultBytes||resultBytes.length!==Number(p.byte_size)||digest(resultBytes)!==input.resultSha256||!promptBytes||digest(promptBytes)!==prompt.content_sha256.trim())
+      throw new Problem(409,'CAPABILITY_NOT_READY','Review recovery Blob evidence is missing or changed');
+    const audit={actor:input.actor,policy:'review_assembly_v1',attempt_id:a.id,attempt_no:String(a.attempt_no),logical_call_id:a.logical_call_id,
+      result_id:p.id,result_sha256:input.resultSha256,prompt_snapshot_id:prompt.id,prompt_sha256:prompt.content_sha256.trim(),
+      input_revision:String(r.input_revision),input_hash:r.input_hash.trim(),failure_event_seq:String(r.event_cursor),failure_error_id:failure.id};
+    await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',error_code=NULL,updated_at=now(),
+      checkpoint=jsonb_set(checkpoint,'{review_assembly_recovery}',$2::jsonb,true) WHERE id=$1`,[j.id,JSON.stringify({...audit,reuse_only:true})]);
+    await event(client,r,'queued','queued','review_assembly_requeued',undefined,'run.state_changed',{...audit,reuse_only:'true'});
+    return {run_id:r.id,attempt_id:a.id,result_sha256:input.resultSha256,idempotent:false};
+  });
+}
 
 /** Private delivery-only recovery under the user-approved generated-pair policy.
  * Preserve failure events, prior evidence, provider result and usage; never rerun the CLI.
