@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
-import { schemas } from '@bondbuddy/contracts';
+import { schemas, type ReviewAction } from '@bondbuddy/contracts';
+import { createReviewActionObserver } from './review-action-progress.js';
 import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
@@ -24,13 +25,22 @@ test('M3 search requires durable tool evidence and retains the ordinary read-onl
     const saved: unknown[] = [];
     const journal = new MemoryCodexJournal() as MemoryCodexJournal & { recordWebSearchEvents: NonNullable<import('./codex-adapter.js').CodexJournal['recordWebSearchEvents']> };
     journal.recordWebSearchEvents = async (_intent, events) => { saved.push(...events); };
-    const result = await runContainedModelCall(call('SCENARIO:web_search'), journal, config);
+    const actions:ReviewAction[]=[],observer=createReviewActionObserver({mode:'public_search',signal:new AbortController().signal,
+      persist:async action=>{actions.push(action);}});
+    const result = await runContainedModelCall(call('SCENARIO:web_search',{onActivity:observer.onEvent}), journal, config);
+    await observer.drain();
     assert.equal(result.status, 'completed'); assert.equal(saved.length, 1);
+    assert.deepEqual(actions.map(action=>[action.code,action.state]),[['search_public','started'],['search_public','completed']]);
+    assert.equal(actions[0]!.action_id,actions[1]!.action_id);
+    assert.equal(JSON.stringify(actions).includes('Synthetic source'),false,'tool text is never published as an action');
     assert.equal((saved[0] as any).item.id, 'search-1');
     const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
     assert.ok(args.includes('web_search="live"')); assert.ok(args.includes('sandbox_mode="read-only"'));
     assert.ok(args.join(' ').includes('--disable shell_tool'));
-    const ordinary = await runContainedModelCall(call('SCENARIO:web_search'), new MemoryCodexJournal(), { ...config, web_search: 'disabled' });
+    const blocked:ReviewAction[]=[],blockedObserver=createReviewActionObserver({mode:'public_search',signal:new AbortController().signal,
+      persist:async action=>{blocked.push(action);}});
+    const ordinary = await runContainedModelCall(call('SCENARIO:web_search',{onActivity:blockedObserver.onEvent}), new MemoryCodexJournal(), { ...config, web_search: 'disabled' });
+    await blockedObserver.drain();assert.deepEqual(blocked,[],'blocked tools never reach the post-containment activity hook');
     assert.equal(ordinary.error_code, 'MODEL_TOOL_ATTEMPT_BLOCKED');
   } finally { await cleanup(); }
 });

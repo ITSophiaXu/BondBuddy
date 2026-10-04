@@ -155,6 +155,7 @@ jobs:
             apps/worker/dist/unified-timeout-recovery.test.js \
             apps/worker/dist/review-anchor-mapping.test.js \
             apps/worker/dist/review-assistant.test.js \
+            apps/worker/dist/review-action-progress.test.js \
             apps/worker/dist/review-formatting-context.test.js \
             apps/worker/dist/review-native-formulas.test.js \
             apps/worker/dist/review-record-context.test.js \
@@ -169,6 +170,8 @@ jobs:
             apps/api/dist/review-workspace.test.js \
             apps/api/dist/provider-result-validation.test.js \
             apps/api/dist/provider-runtime-locks.pg.integration.test.js \
+            apps/api/dist/review-action-events.pg.integration.test.js \
+            apps/api/dist/run-event-dto.test.js \
             apps/api/dist/zz_trial_guard.test.js \
             packages/domain/dist/review-evidence.test.js \
             packages/domain/dist/review-financial-context.test.js \

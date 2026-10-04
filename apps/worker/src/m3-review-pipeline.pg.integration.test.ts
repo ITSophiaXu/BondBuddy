@@ -156,6 +156,12 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       assert.equal(replayCheckpoint.state,'succeeded');assert.deepEqual(replayCheckpoint.checkpoint.stages.review_completion,completion.checkpoint.stages.review_completion);
       const workspaceResponse=await send('GET',`/api/v1/projects/${project}/review-workspace`);assert.equal(workspaceResponse.statusCode,200,workspaceResponse.body);
       const workspace=workspaceResponse.json(),report=workspace.selected_report as ReviewReport;assert(isReviewReport(report));
+      const reviewTask=workspace.timeline.find((entry:any)=>entry.kind==='task'&&entry.task.run.run_id===reviewRun.run_id).task;
+      const actionEvents=reviewTask.events.filter((event:any)=>event.payload.action);
+      assert.ok(actionEvents.length>0,'real contained tool and report-renderer activity reaches the persisted workspace task');
+      for(const code of ['read_materials','check_financial','prepare_report'])assert.ok(actionEvents.some((event:any)=>event.payload.action.code===code&&event.payload.action.state==='completed'),code);
+      for(const event of actionEvents){assert.equal(Value.Check(schemas.RunEvent,event),true);assert.deepEqual(Object.keys(event.payload.action).sort(),['action_id','code','state','version']);}
+      assert.equal(actionEvents.filter((event:any)=>event.payload.action.code==='check_financial').length,2,'reusing the completed CLI call does not replay or fabricate its activity');
       assert.equal(report.run_id,reviewRun.run_id);assert.equal(report.input_revision,1);assert.equal(report.scope.mode,'full_review');
       const repairable=report.findings.filter(executableRevisionFinding);assert.equal(repairable.length,2,JSON.stringify(report.findings));
       const selected=repairable.find(f=>f.calculation?.observed==='100.00')!,excluded=repairable.find(f=>f.calculation?.observed==='10.00')!;

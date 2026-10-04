@@ -8,6 +8,8 @@ export * from './platform-processing-cost.js';
 export * from './ocr.js';
 export * from './ocr-v2.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import { ReviewActionSchema } from './review-action.js';
+export * from './review-action.js';
 import { ReviewRevisionHandlingSchema } from './review-revision.js';
 import { RUN_CHANNELS, RUN_BILLING_MODES, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 export * from './run-channel.js';
@@ -158,7 +160,8 @@ const recognizedField = <T extends TSchema>(value: T) => obj({ value: nullable(v
 const ReportingPeriodSchema = obj({ start: nullable(date), end: nullable(date), period_kind: nullable(enumOf(['annual', 'interim'] as const)), scope: nullable(enumOf(['consolidated', 'parent'] as const)), raw_value: nullable(Type.String()), provenance: ProvenanceSchema, uncertainty: Type.Array(Type.String()), status: recognitionStatus });
 const ReportingPeriodCorrectionSchema = obj({ start: nullable(date), end: nullable(date), period_kind: nullable(enumOf(['annual', 'interim'] as const)), scope: nullable(enumOf(['consolidated', 'parent'] as const)), evidence_refs: Type.Array(id) });
 const SafeEventPayloadSchema = obj({ reason: Type.Optional(safeCode), previous_state: Type.Optional(runState), completed_items: Type.Optional(Type.Integer({ minimum: 0 })), total_items: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), uploaded_bytes: Type.Optional(Type.Integer({ minimum: 0 })), total_bytes: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), processed_pages: Type.Optional(Type.Integer({ minimum: 0 })), total_pages: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), material_id: Type.Optional(id), artifact_id: Type.Optional(id), profile_version: Type.Optional(revision), clarification_ref: Type.Optional(id), required_fields: Type.Optional(Type.Array(safeCode)), evidence_refs: Type.Optional(Type.Array(id)), error_code: Type.Optional(enumOf([...ERROR_CODES, ...MODEL_ADAPTER_ERROR_CODES] as const)) });
-const RunEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, run_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, stage: nullable(Type.String()), type: runEventType, state: runState, payload: SafeEventPayloadSchema });
+const RunEventPayloadSchema = obj({ ...SafeEventPayloadSchema.properties, action: Type.Optional(ReviewActionSchema) });
+const RunEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, run_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, stage: nullable(Type.String()), type: runEventType, state: runState, payload: RunEventPayloadSchema });
 const ProjectEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, project_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, type: projectEventType, payload: SafeEventPayloadSchema });
 const UsageObservationSchema = obj({ status: usageStatus, input_tokens: nullable(Type.Integer({ minimum: 0 })), output_tokens: nullable(Type.Integer({ minimum: 0 })), cached_input_tokens: nullable(Type.Integer({ minimum: 0 })), reasoning_tokens: nullable(Type.Integer({ minimum: 0 })), evidence_ref: nullable(id) });
 const ObservabilityErrorSchema = obj({ error_id: id, code: enumOf([...ERROR_CODES, ...MODEL_ADAPTER_ERROR_CODES] as const), category: errorCategory, retryable: Type.Boolean(), reason: Type.Optional(safeCode), detail: Type.Optional(safeCode) });

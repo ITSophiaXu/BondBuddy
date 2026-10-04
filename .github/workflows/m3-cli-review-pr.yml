@@ -86,6 +86,8 @@ jobs:
             apps/api/dist/review-workspace.test.js \
             apps/api/dist/provider-result-validation.test.js \
             apps/api/dist/provider-runtime-locks.pg.integration.test.js \
+            apps/api/dist/review-action-events.pg.integration.test.js \
+            apps/api/dist/run-event-dto.test.js \
             packages/domain/dist/review-*.test.js \
             packages/domain/dist/audit-reconciliation-knowledge.test.js \
             | tee "$RUNNER_TEMP/m3-cli-review.tap"
