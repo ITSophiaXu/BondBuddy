@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { filePermissionArgs, verifyFilePermissions } from './codex-file-permissions.js';
 import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import { createMaterialToolTrace, isMaterialModelEnvelope, validateMaterialToolTrace, type MaterialToolTrace, type MaterialModelEnvelope } from './material-tool-trace.js';
-import { REVIEW_TOOLS, createReviewToolTrace, isReviewModelEnvelope, validateReviewToolData, validateReviewToolTrace, type ReviewToolData, type ReviewToolTrace, type ReviewModelEnvelope } from './review-tools.js';
+import { REVIEW_TOOLS, createReviewToolTrace, reviewModelEnvelopeAsync, validateReviewToolData, validateReviewToolTraceAsync, type ReviewToolData, type ReviewToolTrace, type ReviewModelEnvelope } from './review-tools.js';
 import type { ModelAdapterAttemptRecord, ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelAttemptRuntime } from '@bondbuddy/api/provider-results';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
@@ -312,6 +312,9 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const startedAt = new Date();
   const t0 = process.hrtime.bigint();
   const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_error_code: null, stop: null };
+  // Cancellation can win while the durable intent is being written. In that
+  // case do not launch a process, even briefly, with an already-aborted signal.
+  if (o.signal?.aborted) { r.stop = 'cancelled'; return r; }
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
@@ -519,14 +522,18 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
   const newCallId = input.newCallId ?? (() => `call-${randomUUID()}`);
   const attempts: ModelAdapterAttemptRecord[] = [];
   const base = { owner_user_id: input.owner_user_id, project_id: input.project_id, job_id: input.job_id, run_id: input.run_id, trace_id: input.trace_id, logical_call_id: input.logical_call_id, model_id: c.model_id, model_config_version: c.model_config_version, prompt_snapshot_ref: input.prompt_snapshot_ref };
+  if (input.signal?.aborted) return { status:'needs_reconcile',value:null,error_code:'MODEL_CANCELLED',attempts,thread_id:null,codex_home:null };
 
   const prior = await journal.latestAttempt(input.logical_call_id);
   let attemptNo = 1;
   if (prior) {
     if (prior.status === 'completed') {
       const done = await journal.readCompleted(input.logical_call_id, prior.attempt_no);
-      if (done && input.reviewTools && isReviewModelEnvelope(done.value,input.reviewTools) && input.output.kind==='json' && input.output.validate(done.value.output))
-        return { status:'reused',value:done.value.output,reviewToolTrace:done.value.tool_trace,error_code:null,attempts,thread_id:null,codex_home:null };
+      if (done && input.reviewTools && input.output.kind==='json') {
+        const envelope=await reviewModelEnvelopeAsync(done.value,input.reviewTools,input.signal);
+        if(envelope && input.output.validate(envelope.output))
+          return { status:'reused',value:envelope.output,reviewToolTrace:envelope.tool_trace,error_code:null,attempts,thread_id:null,codex_home:null };
+      }
       if (done && input.materialToolsTrace && isMaterialModelEnvelope(done.value,input.materialTools!) && input.output.kind==='json' && input.output.validate(done.value.model_output))
         return {status:'reused',value:done.value,error_code:null,attempts,thread_id:null,codex_home:null};
       if (done && !input.reviewTools && !input.materialToolsTrace) return { status: 'reused', value: done.value, error_code: null, attempts, thread_id: null, codex_home: null };
@@ -552,10 +559,12 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
   let codexHome: string | null = session.mode === 'resume' ? session.codex_home : null;
   let threadId: string | null = session.mode === 'resume' ? session.thread_id : null;
   const persistent = session.mode !== 'ephemeral';
+  const cancelledResult = (): ContainedCallResult => ({ status:'needs_reconcile',value:null,error_code:'MODEL_CANCELLED',attempts,thread_id:threadId,codex_home:persistent?codexHome:null });
   if (!codexHome && persistent) codexHome = await mkdtemp(join(c.work_root, 'session-'));
   let prompt = input.prompt;
   try {
     for (; attemptNo <= maxAttempts; attemptNo++) {
+      if (input.signal?.aborted) return cancelledResult();
       const intent: ProviderCallIntent = { ...base, call_id: newCallId(), attempt_no: attemptNo };
       const attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
       try {
@@ -583,6 +592,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           await verifyFilePermissions(c,cwd,home);
         }
 
+        if (input.signal?.aborted) return cancelledResult();
         await journal.recordIntent(intent); // durable before spawn
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
@@ -606,8 +616,11 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if (input.reviewTools && reviewTraceFile) try {
           reviewTraceJson = await readFile(reviewTraceFile,'utf8');
           const stored:unknown=JSON.parse(reviewTraceJson);
-          if (validateReviewToolTrace(input.reviewTools,stored)) reviewToolTrace=stored;
+          if (await validateReviewToolTraceAsync(input.reviewTools,stored,input.signal)) reviewToolTrace=stored as ReviewToolTrace;
         } catch { /* Missing or corrupt host trace fails local output validation below. */ }
+        // A cancelled local replay is not a schema-invalid supplier response.
+        // Retain the completed turn's real usage and prohibit a schema re-ask.
+        if (input.signal?.aborted && !raw.stop) raw.stop='cancelled';
         const cls = classifyCodexResult(raw, text => {
           if (input.reviewTools && !reviewToolTrace) { invalidCategory = 'review_tool_trace'; return {ok:false}; }
           if (input.materialToolsTrace && !materialToolTrace) { invalidCategory = 'material_tool_trace'; return {ok:false}; }
@@ -633,12 +646,14 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           catch { obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_RESULT_STORE_FAILED' }; }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
+        if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? 'codex-file-authoring-1' : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });
         attempts.push(attemptRecord(intent, c, runtime, obs));
         if (retryable) {
+          if (input.signal?.aborted) return cancelledResult();
           prompt = `${input.prompt}\n\n${REASK_MARKER} Your previous reply was not a single JSON value that satisfies the required output schema. Reply again with only that JSON value.`;
           continue;
         }

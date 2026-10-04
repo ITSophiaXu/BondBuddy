@@ -1,5 +1,6 @@
 /** Fixed run-local review tools. The CLI selects every check; tools never drive a review plan. */
 import { createHash, randomUUID } from 'node:crypto';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewFindingSchema, ReviewCheckCoverageSchema } from '../../../packages/contracts/dist/review-results.js';
 import { canonical, evidenceKey, referenceFor, reviewContentHash, validateReviewEvidenceBatch } from '../../../packages/domain/dist/review-evidence.js';
@@ -64,7 +65,11 @@ function emptyReviewToolTrace(data:ReviewToolData):ReviewToolTrace {
 function completeKnowledge(data:ReviewToolData,ranges:ReviewToolTrace['knowledge_read_ranges']):boolean {
   let end=0;for(const range of [...ranges].sort((a,b)=>a.offset-b.offset)){if(range.offset>end)return false;end=Math.max(end,range.end);}return end>=data.knowledge.markdown.length;
 }
-export function validateReviewToolTrace(data:ReviewToolData,value:unknown):value is ReviewToolTrace {
+/** One complete validation pass. Each receipt is independently replayed, including
+ * its original read scope. The worker can yield between receipts without weakening
+ * any binding or replacing replay with a cached verdict.
+ */
+function* reviewToolTraceValidation(data:ReviewToolData,value:unknown):Generator<void,boolean,void> {
   try{
     validateReviewToolData(data);const t=value as ReviewToolTrace,initial=emptyReviewToolTrace(data);
     if(!t||t.version!==initial.version||t.input_hash!==initial.input_hash||t.data_sha256!==initial.data_sha256||canonical(t.knowledge_pin)!==canonical(initial.knowledge_pin)
@@ -80,7 +85,9 @@ export function validateReviewToolTrace(data:ReviewToolData,value:unknown):value
       || r.evaluation.coverage.some(c=>!Value.Check(ReviewCheckCoverageSchema,c))))return false;
     const refs=t.receipts.flatMap(r=>[...r.evaluation.findings.flatMap(f=>[...f.target_refs,...f.evidence_refs]),...r.evaluation.coverage.flatMap(c=>c.evidence_refs)]);
     if(validateReviewEvidenceBatch(refs,data.input.evidence).some(errors=>errors.length))return false;
-    return t.receipts.every(r=>/^receipt-[a-f0-9-]{36}$/.test(r.receipt_id)&&['check_financial','check_compliance'].includes(r.tool)&&hashPattern.test(r.arguments_sha256)
+    yield;
+    for(const r of t.receipts){
+      if(!(/^receipt-[a-f0-9-]{36}$/.test(r.receipt_id)&&['check_financial','check_compliance'].includes(r.tool)&&hashPattern.test(r.arguments_sha256)
       && Array.isArray(r.audit_rule_ids)&&r.audit_rule_ids.every(id=>AUDIT_RECONCILIATION_KNOWLEDGE.rules.some(rule=>rule.id===id))
       && !!r.evaluation&&Array.isArray(r.evaluation.findings)&&Array.isArray(r.evaluation.coverage)&&Array.isArray(r.evaluation.limitations)
       && r.evaluation.limitations.every(s=>typeof s==='string')&&r.evaluation.findings.every(f=>Value.Check(ReviewFindingSchema,f)
@@ -90,11 +97,40 @@ export function validateReviewToolTrace(data:ReviewToolData,value:unknown):value
         &&c.evidence_refs.every(ref=>read.has(reviewPromptRecordId(ref))))
       && Array.isArray(r.read_record_ids)&&new Set(r.read_record_ids).size===r.read_record_ids.length&&r.read_record_ids.every(id=>read.has(id))
       && !!r.arguments&&typeof r.arguments==='object'&&!Array.isArray(r.arguments)&&r.arguments_sha256===reviewContentHash(r.arguments)
-      && (()=>{const {receipt_id,...actual}=r;return canonical(actual)===canonical(evaluateReviewCheck(data,r.tool,r.arguments,r.read_record_ids));})());
+      && (()=>{const {receipt_id,...actual}=r;return canonical(actual)===canonical(evaluateReviewCheck(data,r.tool,r.arguments,r.read_record_ids));})()))return false;
+      yield;
+    }
+    return true;
+  }catch{return false;}
+}
+/** Synchronous compatibility boundary for the isolated MCP process and callers that
+ * cannot await. Production worker persistence must use the yielding counterpart.
+ */
+export function validateReviewToolTrace(data:ReviewToolData,value:unknown):value is ReviewToolTrace {
+  const validation=reviewToolTraceValidation(data,value);
+  for(;;){const step=validation.next();if(step.done)return step.value;}
+}
+export async function validateReviewToolTraceAsync(data:ReviewToolData,value:unknown,signal?:AbortSignal):Promise<boolean> {
+  try{
+    if(signal?.aborted)return false;
+    const dataHash=reviewToolDataHash(data),traceHash=reviewContentHash(value);
+    const validation=reviewToolTraceValidation(data,value);
+    for(;;){
+      if(signal?.aborted)return false;
+      const step=validation.next();
+      if(step.done)return step.value && !signal?.aborted && dataHash===reviewToolDataHash(data) && traceHash===reviewContentHash(value);
+      // Timers, cancellation and the database lease renewal run between every
+      // receipt. A resolved Promise alone only yields to microtasks, not timers.
+      await yieldToEventLoop();
+    }
   }catch{return false;}
 }
 export function isReviewModelEnvelope(value:unknown,data:ReviewToolData):value is ReviewModelEnvelope {
   const v=value as ReviewModelEnvelope;return !!v&&v.version==='review-model-envelope-v1'&&'output' in v&&validateReviewToolTrace(data,v.tool_trace);
+}
+export async function reviewModelEnvelopeAsync(value:unknown,data:ReviewToolData,signal?:AbortSignal):Promise<ReviewModelEnvelope|null> {
+  const v=value as ReviewModelEnvelope;
+  return v&&typeof v==='object'&&v.version==='review-model-envelope-v1'&&'output' in v&&await validateReviewToolTraceAsync(data,v.tool_trace,signal)?v:null;
 }
 const schema=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object',properties,required,additionalProperties:false});
 const ids={type:'array',items:{type:'string',minLength:1,maxLength:160},maxItems:200,uniqueItems:true};

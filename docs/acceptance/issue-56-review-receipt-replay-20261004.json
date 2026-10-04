@@ -1,0 +1,75 @@
+{
+  "schema_version": "synthetic-review-receipt-replay-diagnostic-v1",
+  "issue": 56,
+  "measurement_date": "2026-10-04",
+  "synthetic": true,
+  "customer_materials_read": false,
+  "supplier_calls": 0,
+  "environment": {
+    "platform": "win32",
+    "shell": "PowerShell",
+    "node_version": "v24.14.0",
+    "execution": "single Node.js event loop; no provider or database connection"
+  },
+  "fixture": {
+    "record_count": 35269,
+    "receipt_count": 40,
+    "receipt_tool": "check_financial",
+    "receipt_arguments": {
+      "observations": [],
+      "calculations": [],
+      "audit_rule_ids": []
+    },
+    "construction": "Generate one valid receipt with the real tool implementation; clone its independently replayable content with a distinct host receipt UUID for each request.",
+    "baseline_snapshot_profile": "The reviewFixture helper gives each synthetic record a distinct parse snapshot ID.",
+    "async_snapshot_profile": "All synthetic records use one shared parse snapshot ID, matching a single parsed source material. This differs from the baseline profile, so these measurements demonstrate timer starvation and yielding rather than an identical-fixture speed comparison."
+  },
+  "baseline": {
+    "validator": "validateReviewToolTrace",
+    "valid": true,
+    "duration_ms": 32162.9427,
+    "yield_count": 0,
+    "production_default_lease_ms": 30000,
+    "source_note": "Measured using m3-linked-runtime-20261004 compiled review-tools, whose source matches current develop after line-ending normalization. Its older single-reference evidence validator is not invoked by this empty-observation, empty-coverage fixture."
+  },
+  "fixed_async": {
+    "validator": "validateReviewToolTraceAsync",
+    "valid": true,
+    "duration_ms": 35425.8967,
+    "heartbeat_interval_ms": 100,
+    "heartbeat_ticks": 40,
+    "max_heartbeat_gap_ms": 3272.6444,
+    "includes_initial_and_final_data_and_trace_hashes": true,
+    "source_base": "a7376fc"
+  },
+  "verification": {
+    "full_repository_build": "passed",
+    "targeted_worker_files": [
+      "review-tools-async.test.js",
+      "review-tools.test.js",
+      "review-model-stage.test.js",
+      "review-cli-citations.test.js",
+      "codex-adapter.test.js",
+      "codex-durable.test.js"
+    ],
+    "targeted_tests": { "total": 67, "passed": 66, "failed": 0, "skipped": 1 },
+    "skip_reason": "The PostgreSQL durable Codex test did not have a test database configured.",
+    "async_fixture_refinement_recheck": { "total": 4, "passed": 4, "failed": 0, "skipped": 0 },
+    "final_targeted_tests": {
+      "total": 75, "passed": 75, "failed": 0, "skipped": 0,
+      "cancelled": 0,
+      "note": "Final API/worker build with cancellation repair and web-evidence lock ordering; includes review-model-stage, citations, tools, async replay, cancellation, codex-adapter and provider-result-validation tests."
+    },
+    "guards": [
+      "All receipts and source bindings are independently replayed on each call.",
+      "Timers run between receipts; yielding is not limited to Promise microtasks.",
+      "Source or trace mutations during yielding are rejected by final content hashes.",
+      "Cancellation prevents a trusted trace or envelope from being returned."
+    ]
+  },
+  "limitations": [
+    "This is a synthetic reproduction of worker event-loop starvation, not a confirmation of the cause of the user's production run.",
+    "No authenticated production task, provider process, real material, report delivery or database lease was exercised in these measurements.",
+    "Separate unverified static risk: the Codex adapter limits cumulative stdout to 4 MiB. If the production CLI includes read_records MCP results in JSON events, lengthy legitimate tool output may reach that limit. The existing fake tool fixture omits completed-item result bodies. This change does not increase the limit or claim that risk is confirmed."
+  ]
+}

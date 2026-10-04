@@ -105,11 +105,14 @@ function assertObservation(observation: ProviderCallObservation) {
   if (observation.outcome === 'confirmed_not_sent' && (hasResult || observation.provider_request_id !== null || u.status !== 'unknown')) throw new Error('Not-sent observation cannot have supplier response or usage evidence');
 }
 
-function parseAndValidate(bytes: Buffer, validate: (value: unknown) => boolean): unknown {
+/** Large result evidence may yield while revalidating; every caller awaits its verdict. */
+export type ProviderResultValidator = (value: unknown) => boolean | Promise<boolean>;
+
+async function parseAndValidate(bytes: Buffer, validate: ProviderResultValidator): Promise<unknown> {
   let value: unknown;
   try { value = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)); }
   catch { throw new Problem(422,'DELIVERY_FAILED','Provider result is not valid UTF-8 JSON'); }
-  if (!validate(value)) throw new Problem(422,'DELIVERY_FAILED','Provider result failed its versioned schema');
+  if (!await validate(value)) throw new Problem(422,'DELIVERY_FAILED','Provider result failed its versioned schema');
   return value;
 }
 
@@ -118,17 +121,20 @@ export async function persistProviderResultObject(input: {
   intent: ProviderCallIntent;
   bytes: Buffer;
   resultSchemaVersion: string;
-  validate: (value: unknown) => boolean;
+  validate: ProviderResultValidator;
 }): Promise<ProviderResultReference> {
   assertIntent(input.intent);
   if (!safeVersion(input.resultSchemaVersion) || input.bytes.length < 1 || input.bytes.length > 10485760) throw new Problem(422,'DELIVERY_FAILED','Invalid provider result size or schema version');
-  parseAndValidate(input.bytes,input.validate);
-  const sha256 = digest(input.bytes);
+  // Validation can yield. Bind the persisted bytes to the exact snapshot checked,
+  // even if the caller subsequently changes its mutable Buffer.
+  const bytes = Buffer.from(input.bytes);
+  await parseAndValidate(bytes,input.validate);
+  const sha256 = digest(bytes);
   const resultRef = providerResultObjectKey(input.intent,sha256);
-  await input.blobs.put(resultRef,input.bytes,'application/json');
+  await input.blobs.put(resultRef,bytes,'application/json');
   const stored = await input.blobs.get(resultRef);
-  if (stored.length !== input.bytes.length || digest(stored) !== sha256) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob verification failed');
-  return {result_ref:resultRef,result_sha256:sha256,result_schema_version:input.resultSchemaVersion,result_byte_size:input.bytes.length};
+  if (stored.length !== bytes.length || digest(stored) !== sha256) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob verification failed');
+  return {result_ref:resultRef,result_sha256:sha256,result_schema_version:input.resultSchemaVersion,result_byte_size:bytes.length};
 }
 
 function observationHash(observation: ProviderCallObservation): string {
@@ -141,13 +147,13 @@ function observationHash(observation: ProviderCallObservation): string {
   }));
 }
 
-async function verifyObservationResult(blobs: PrivateBlobs, observation: ProviderCallObservation, validate: (value: unknown) => boolean) {
+async function verifyObservationResult(blobs: PrivateBlobs, observation: ProviderCallObservation, validate: ProviderResultValidator) {
   if (observation.result_ref === null) return;
   let bytes: Buffer;
   try { bytes = await blobs.get(observation.result_ref); }
   catch { throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob is unavailable; call remains pending'); }
   if (bytes.length !== observation.result_byte_size || digest(bytes) !== observation.result_sha256) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob hash mismatch; call remains pending');
-  parseAndValidate(bytes,validate);
+  await parseAndValidate(bytes,validate);
 }
 
 async function lockIdentity(client: PoolClient, observation: ProviderCallObservation, lease?: Lease) {
@@ -237,7 +243,7 @@ export async function recordProviderCallObservation(
   pool: Pool,
   blobs: PrivateBlobs,
   observation: ProviderCallObservation,
-  validateResult: (value: unknown) => boolean,
+  validateResult: ProviderResultValidator,
   options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean } = {}
 ): Promise<ProviderObservationResult> {
   assertObservation(observation);
@@ -350,7 +356,7 @@ export async function recordProviderCallObservation(
   });
 }
 
-export async function reconcilePausedProviderCall(pool: Pool, blobs: PrivateBlobs, observation: ProviderCallObservation, validateResult: (value: unknown) => boolean) {
+export async function reconcilePausedProviderCall(pool: Pool, blobs: PrivateBlobs, observation: ProviderCallObservation, validateResult: ProviderResultValidator) {
   return recordProviderCallObservation(pool,blobs,observation,validateResult,{source:'reconciliation'});
 }
 
@@ -371,7 +377,7 @@ export async function readCheckpointedProviderResult(input: {
   lease: Lease;
   logicalCallId: string;
   attemptNo: number;
-  validateResult: (value: unknown) => boolean;
+  validateResult: ProviderResultValidator;
 }) {
   if (!safeId(input.logicalCallId) || !Number.isSafeInteger(input.attemptNo) || input.attemptNo<1) throw new Error('Invalid replay identity');
   const activeLease=await input.pool.query("SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[input.lease.owner,input.lease.jobId,input.lease.runId,input.lease.token]);
@@ -410,7 +416,7 @@ export async function readCheckpointedProviderResult(input: {
     await pauseProviderCallForReconciliation(input.pool,input.lease,'provider_result_unavailable');
     throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob hash mismatch; call remains pending');
   }
-  const value=parseAndValidate(bytes,input.validateResult);
+  const value=await parseAndValidate(bytes,input.validateResult);
   return {value,result_ref:result.result_ref,result_sha256:result.result_sha256.trim(),result_schema_version:result.result_schema_version,call_id:result.call_id,attempt_no:result.attempt_no};
 }
 
@@ -442,6 +448,13 @@ export async function recordModelAttemptRuntime(pool: Pool, lease: Lease, intent
       (runtime.error_code!==null && !safeError(runtime.error_code)) || Number.isNaN(Date.parse(runtime.started_at))) throw new Error('Invalid model attempt runtime');
   if (lease.owner!==intent.owner_user_id || lease.jobId!==intent.job_id || lease.runId!==intent.run_id) throw missing();
   return transaction(pool,async client=>{
+    // Match renewal/cancellation's run -> job lock order. The runtime INSERT's
+    // run foreign key otherwise takes a KEY SHARE lock while already holding
+    // the job lock, which can deadlock a renewal holding the run row.
+    const r=await getRun(client,lease.owner,lease.runId,true);
+    if(r.project_id!==intent.project_id)throw missing();
+    if(['succeeded','test_completed','failed','cancelled','rejected'].includes(r.state))
+      throw new Problem(409,'CAPABILITY_NOT_READY','Model attempt runtime lease is no longer active');
     const job=(await client.query('SELECT state,lease_token,lease_until FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 FOR UPDATE',[lease.owner,lease.jobId,lease.runId])).rows[0];
     const a=(await client.query('SELECT id FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4',[intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no])).rows[0];
     if (!job || !a || a.id!==intent.call_id) throw missing();

@@ -160,10 +160,15 @@ jobs:
             apps/worker/dist/review-record-context.test.js \
             apps/worker/dist/review-rule-context.test.js \
             apps/worker/dist/review-model-stage.test.js \
+            apps/worker/dist/review-tools-async.test.js \
+            apps/worker/dist/review-cancellation.test.js \
+            apps/worker/dist/review-web-search-locks.pg.integration.test.js \
             apps/worker/dist/review-public-stage.test.js \
             apps/worker/dist/review-revision.test.js \
             apps/worker/dist/m3-review-pipeline.pg.integration.test.js \
             apps/api/dist/review-workspace.test.js \
+            apps/api/dist/provider-result-validation.test.js \
+            apps/api/dist/provider-runtime-locks.pg.integration.test.js \
             apps/api/dist/zz_trial_guard.test.js \
             packages/domain/dist/review-evidence.test.js \
             packages/domain/dist/review-financial-context.test.js \
