@@ -31,7 +31,7 @@ Codex CLI 仍是唯一 AI 引擎；API、worker、PostgreSQL 队列和私有 Blo
 
 worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assistant`、`review-model-stage`、`review-public-stage`、`review-tools`、`review-reassembly`、`review-word-registration.pg.integration`、`review-revision-cli-stage`、`review-revision`（均为 `apps/worker/dist/*.test.js`）。相关工程测试共 218 项；公共契约 40 项测试和 182 个样例另列，重复的 Windows worker 测试不累加。
 
-**所有模型回复和业务样本均为 synthetic。** 完整文件链实际执行上传解析、受控 CLI 协议／工具、PostgreSQL journal、Blob 下载和 Python 双 Word；它不代表真实供应商或专业结论已验收。日志、测试环境收据与本地部署记录在专用宿主的 `diagnostics/m3-linked-implementation/`，私有备份不提交到仓库。
+**上述自动化的模型回复和业务样本均为 synthetic。** 完整文件链实际执行上传解析、受控 CLI 协议／工具、PostgreSQL journal、Blob 下载和 Python 双 Word；它不代表真实供应商或专业结论已验收。日志、测试环境收据与本地部署记录在专用宿主的 `diagnostics/m3-linked-implementation/`，私有备份不提交到仓库。
 
 ## A01–A22 覆盖与边界
 
@@ -67,3 +67,17 @@ worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assista
 业务入口 `http://localhost:18081`，原型 `http://127.0.0.1:4320/review-v2.html`。更新使用内容 hash test gate，备份现有代码和数据库，保留登录、私有材料、Blob、服务定义和 Copilot／sandbox 配置。新增 schema 可保留，回滚只恢复代码，不能将数据库快照覆盖后来用户工作。
 
 本轮只部署本地测试环境。实际安装的 commit、候选 digest、服务状态、迁移及运行会话 smoke 由宿主的 `deployment-result.json`、`IMPLEMENTATION-ACCEPTANCE.md` 留证。公开网络检索仍未开启，该维度必须显示缺口，不能标为已经完成公开核验。
+
+## 发布前复核兼容性与暂停状态修复
+
+在既有宿主 trace、真实读取、引文及检查范围校验中，允许唯一绑定的解析器 record ID 归一为包含材料版本的证据 ID。歧义、未读、伪造及跨检查范围的引用仍拒绝。该修复通过受控 CLI/MCP 集成测试；旧失败的原始输出没有保留，不能把它断言为所有历史 schema 失败的原因。
+
+拒绝输出的私有诊断默认关闭，只有 `BB_CODEX_RETAIN_INVALID_OUTPUT=1` 才保留有界文件，仍标为未接受结果，不进入成果、重放或公开 API。暂停任务显示实际暂停原因，排队恢复显示等待状态；保持既有任务和输入锁，不建议重复启动本轮。公共事件仅携带安全错误枚举，不包含模型原文或材料内容。
+
+2026-10-04 08:04–08:06 UTC 对一致的部署输入重新执行完整 build、worker 58 项、API 6 项和 contracts 40 项检查，均通过且无失败／跳过。源输入 digest 为 `5927c1440debaf9b65f81b1559a1d1c56f2c3bdbda5600e94d31e6a2ee619b40`，完整候选 digest 为 `bc5b6b20985917ae34730609354c5f18a143aecac76a98fde152cdf07cde0146`。旧 web 61／28 计数属于上文初始实现，不能据此声称新增暂停修复已包含在那些用例内。
+
+合成 DOCX 与 XLSX 另经真实 Copilot Enterprise／Codex CLI 调用完成一次复核：首次 schema 校验失败，第二次尝试生成 32 项发现、82 项检查覆盖及两份 Word；失败调用与真实用量保留。宿主校验报告、私有成果字节与 hash，页面验证同项目任务→报告→问题讨论的联动及授权下载触发。没有取得浏览器落盘路径，不声称下载文件已保存到用户磁盘。
+
+该样例有融资额／用途表和资产负债率的数字矛盾，报告识别相关问题，但独立数值计算验收没有通过，不能据此自动修改金额或宣称财务通过。真实长文档、后续解释／差异复核／修订及 Word/WPS 显示仍须真实案例端到端验收；本地公开检索关闭，现行规则和材料缺口在报告中如实显示。
+
+08:07 UTC 候选后台修复已安装到本地版，保留数据库、材料、登录和预算配置，未新增迁移。08:08 UTC 四个关键后台文件与候选 hash 一致，API／worker／web 及健康／就绪检查正常。本地每日 2M 内部用量上限已被当日真实用量超过，普通新任务仍被拦截；这不是 Copilot 官方余额证据，也不是 M3 用户收费。线上发布须独立记录服务器版本、迁移、有效模型／预算配置、活动任务检查及回滚路径，不能用本地安装冒充公网已更新。

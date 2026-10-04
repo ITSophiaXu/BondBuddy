@@ -102,6 +102,44 @@ function normalizedConcerns(input: ReviewAnalysisInput, raw: CliReview, accessib
     compliance_assessments: [], concerns: raw.concerns.map(c => c.dimension === 'financial' ? { ...c, suggested_change: null } : c),
     limitations: raw.limitations } satisfies ModelReviewAnalysis, accessible).concerns;
 }
+/**
+ * The read tool exposes a material-qualified `id` and a nested parser record_id.
+ * Accept the latter only when it uniquely identifies one record in this input;
+ * never disambiguate repeated parser IDs by guessing from a quoted value.
+ */
+export function normalizeCliReviewCitations(input: ReviewAnalysisInput, value: unknown, trace?: ReviewToolTrace,
+  allowed: ReadonlySet<string> = new Set(input.evidence.records.filter(r => sourceMatches(r, input)).map(reviewPromptRecordId)),
+  byDimension?: ReviewToolData['allowed_target_ids_by_dimension']): unknown {
+  if (!Value.Check(CliReviewSchema, value)) return value;
+  const records = new Map(input.evidence.records.map(r => [reviewPromptRecordId(r), r]));
+  const aliases = new Map<string, ReviewAnalysisInput['evidence']['records'][number][]>();
+  for (const record of input.evidence.records) {
+    const group = aliases.get(record.record_id) ?? [];
+    group.push(record); aliases.set(record.record_id, group);
+  }
+  const read = trace && trace.input_hash === input.input_hash ? new Set(trace.read_record_ids) : null;
+  const citation = (ref: { record_id: string; quote: string }, dimension: 'financial' | 'compliance', target: boolean) => {
+    let record = records.get(ref.record_id);
+    if (!record) {
+      const candidates = aliases.get(ref.record_id);
+      if (!candidates || candidates.length !== 1) fail('review_cli_alias_not_unique');
+      if (!read) fail('review_cli_alias_host_trace_missing');
+      record = candidates![0]!;
+    }
+    const qualified = reviewPromptRecordId(record);
+    if (read && !read.has(qualified)) fail('review_cli_unread_citation');
+    if (target && !(byDimension ? new Set(byDimension[dimension] ?? []) : allowed).has(qualified)) fail('review_cli_alias_target_out_of_scope');
+    if (validateReviewEvidence(referenceFor(record, ref.quote), input.evidence).length) fail('review_cli_alias_invalid_quote');
+    return { record_id: qualified, quote: ref.quote };
+  };
+  const normalized = structuredClone(value);
+  for (const concern of normalized.concerns) {
+    concern.target_refs = concern.target_refs.map(ref => citation(ref, concern.dimension, true));
+    concern.evidence_refs = concern.evidence_refs.map(ref => citation(ref, concern.dimension, false));
+  }
+  for (const check of normalized.checks) check.evidence_refs = check.evidence_refs.map(ref => citation(ref, check.dimension, false));
+  return normalized;
+}
 function validateCliOutput(input: ReviewAnalysisInput, raw: unknown, allowed: ReadonlySet<string>, byDimension?: ReviewToolData['allowed_target_ids_by_dimension']): raw is CliReview {
   try {
     if (!Value.Check(CliReviewSchema, raw)) return false;
@@ -283,6 +321,7 @@ export function reviewModelStage(options: {
       if (ctx.signal.aborted) return { kind: 'stopped' };
       const stage = (options.model ?? codexModelStage)({ name: `review_cli_${cliVersion}_${callKey}`, logicalCallId: `review-cli-${cliVersion}-${callKey}`,
         config: options.config ?? loadCodexAdapterConfig, buildPrompt: async () => prompt, schema: CliReviewSchema,
+        normalize: (value, context) => normalizeCliReviewCitations(input, value, context.reviewToolTrace, new Set(data.allowed_target_ids), data.allowed_target_ids_by_dimension),
         validate: value => validateCliOutput(input, value, new Set(data.allowed_target_ids), data.allowed_target_ids_by_dimension), resultSchemaVersion: `review-cli-${cliVersion}`,
         templateVersion: skill ? `m3-review-${skill.sha256.slice(0,16)}-${reviewAuditKnowledgePin.slice(0,16)}` : reviewAnalysisTemplateVersion, reviewTools: data });
       const called = await stage.run(ctx); modelCalls++;

@@ -485,3 +485,42 @@ test('workbench alone owns version history and retains stopped/failed snapshots 
   await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await (await openFinding(page,'F01')).getByRole('button',{name:'继续讨论此项'}).click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-review/desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(page.locator('#review-agent')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-review/narrow.png',fullPage:false});await page.getByRole('button',{name:'收起项目助手',exact:true}).last().click();await expect(page.locator('#review-agent')).toBeHidden();
 });
+
+test('paused review shows the actual blocker on both sides, retains execution lock and remains cancellable',async({page})=>{
+  const state=fixture();state.linked=true;state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.artifacts=[];
+  const run={...state.makeRun('run-1','paused'),stage:'trial_limit',event_cursor:6};
+  state.runs.set('old',run);state.workspace.active_run=run;state.history[0]={...state.history[0],run,report_id:null,artifacts:[]};
+  const event:RunEvent={event_id:'retry-event',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:5,occurred_at:'2026-10-02T11:00:00Z',stage:'provider_call',type:'run.progress',state:'running',payload:{reason:'provider_call_retrying',error_code:'MODEL_OUTPUT_SCHEMA_INVALID'}};
+  state.events.set(run.run_id,[event,{...event,event_id:'paused-event',seq:6,state:'paused',stage:'trial_limit',type:'run.state_changed',payload:{reason:'model_tokens_per_user_per_day',error_code:'TRIAL_QUOTA_EXCEEDED'}}]);
+  await setup(page,state);
+  await expect(page.locator('.review-empty')).toContainText('复核已暂停');
+  await expect(page.locator('.review-run')).toContainText('今日处理额度已用完');
+  await expect(page.locator('[data-task-run="run-1"] .review-warning')).toContainText('今日处理额度已用完');
+  await expect(page.locator('#review-results-panel')).not.toContainText('复核正在进行');
+  await expect(page.locator('.review-run')).not.toContainText('可以明确开始下一轮');
+  await expect(page.locator('[data-task-run="run-1"]')).not.toContainText('已记录处理阶段');
+  await page.locator('[data-task-run="run-1"] summary').click();
+  await expect(page.locator('.review-task-events')).toContainText('响应未符合成果格式');
+  await expect(page.locator('.review-task-events')).toContainText('系统已准备重试');
+  await page.getByRole('tab',{name:/材料与要求/}).click();
+  await expect(page.getByRole('button',{name:'已有任务等待恢复',exact:true})).toBeDisabled();
+  expect(state.executes).toHaveLength(0);
+  await page.getByRole('tab',{name:/复核结果/}).click();
+  await page.getByRole('button',{name:'停止本次任务',exact:true}).click();
+  await expect(page.locator('.review-run')).toContainText('已停止');
+  expect(state.workspace.active_run).toBeNull();expect(state.executes).toHaveLength(0);
+});
+
+test('paused recheck retains the report without claiming its findings are currently being processed',async({page})=>{
+  const state=fixture();state.linked=true;
+  const run={...state.makeRun('paused-recheck','paused'),stage:'trial_limit',event_cursor:1};
+  state.workspace.active_run=run;state.runs.set('paused',run);
+  state.history.push({...structuredClone(state.history[0]),run,operation:'differential_review',version:2,report_id:null,source_report_id:'report-v1',finding_ids:['F01'],artifacts:[],created_at:'2026-10-02T11:00:00Z'});
+  state.events.set(run.run_id,[{event_id:'pause',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:1,occurred_at:now,stage:'trial_limit',type:'run.state_changed',state:'paused',payload:{reason:'kill_switch',error_code:'MODEL_CALLS_SUSPENDED'}}]);
+  await setup(page,state);
+  await expect(page.locator('.review-result-hero')).toContainText('R1');
+  await expect(page.locator('.review-run')).toContainText('复核服务暂时停用');
+  await expect(finding(page,'F01')).not.toContainText('正在重新核验');
+  await expect(page.getByRole('button',{name:'再次完整复核',exact:true})).toBeDisabled();
+  expect(state.executes).toHaveLength(0);
+});
