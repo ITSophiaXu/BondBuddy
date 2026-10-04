@@ -298,7 +298,7 @@ export type CodexProcessResult = {
 
 // One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
 // private buffer for status markers, then discarded. It is never logged or persisted.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -378,6 +378,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
         }
         default: break;
       }
+      // Activity callbacks observe only events that passed the existing containment checks.
+      o.onActivity?.(ev);
     };
     child.stdout!.setEncoding('utf8');
     child.stdout!.on('data', (chunk: string) => {
@@ -447,6 +449,8 @@ export type ContainedCallInput = {
     normalize?: (value: unknown, context: CodexOutputNormalizationContext) => unknown } | { kind: 'text' };
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
   onEvent?: (event: Record<string, unknown>) => void;
+  /** Host activity observer after tool containment; separate from existing diagnostic/cancellation hooks. */
+  onActivity?: (event: Record<string, unknown>, intent: ProviderCallIntent) => void;
   /** Immutable, owner-scoped material records prepared by the authoring worker. */
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
@@ -599,7 +603,8 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, signal: input.signal, onEvent: input.onEvent });
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, signal: input.signal, onEvent: input.onEvent,
+          onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         if (!input.fileWorkspace && c.web_search === 'live') await journal.recordWebSearchEvents!(intent, raw.web_search_events ?? []);
         if (raw.thread_id) threadId = raw.thread_id;
         // File delivery is decided by the trusted collector, not a final prose message.

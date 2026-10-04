@@ -87,9 +87,15 @@
 .review-task-card{padding:14px;margin:3px 0 17px;border:1px solid #d5e1c9;border-radius:8px;background:#f7faf1;font-size:12px;overflow-wrap:anywhere}
 .review-task-card.active{border-color:#adca92;background:#f4f9eb}.review-task-card header{display:flex;justify-content:space-between;align-items:center;gap:9px;font-size:10px;color:#748764;margin-bottom:10px}
 .review-task-card h3{font-size:13px;margin:0 0 6px}.review-task-card p{margin:5px 0;font-size:11px;line-height:1.75}.review-task-card small{font-size:10px;color:#7b8d6a}
+.review-progress-bar{display:flex;align-items:center;gap:10px;padding:13px 23px;background:#f1f5e8;border-bottom:1px solid var(--review-line);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.review-progress-state{font-size:10px;color:#6b8256;flex:none}.review-progress-bar strong{font-size:12px;font-weight:550;flex:1;min-width:0}.review-progress-bar .text-btn{font-size:11px;color:var(--review-green);flex:none;padding:2px 0}
+.review-task-current{border-top:1px solid #e1e8d8;padding-top:11px;margin-top:10px}.review-task-current strong{display:block;font-size:12px;font-weight:550;line-height:1.65}.review-task-current p{color:#627652}
+.review-task-card .review-task-notice{color:#97592c}
+.review-task-events{margin-top:12px;color:#73816e;font-size:11px}.review-task-events summary{cursor:pointer;padding:3px 0}.review-task-events ol{list-style:none;padding:0;margin:9px 0 0}.review-task-events li{position:relative;padding:0 0 9px 15px;line-height:1.75}.review-task-events li::before{content:'';position:absolute;left:1px;top:6px;width:5px;height:5px;border-radius:50%;background:#65874d}
+@media(max-width:700px){.review-progress-bar{padding:12px 17px;gap:8px}.review-progress-state{font-size:9px}}
 .review-task-meta{color:#7a8a6c}.review-task-stage{color:#557640}.review-task-boundary{font-size:10px!important;color:#829276;margin-top:10px!important}
 .review-task-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:11px}.review-task-actions .text-btn{font-size:10px}.review-task-events{border-top:1px solid #e0e8d5;margin-top:11px;padding-top:9px;font-size:10px;color:#748a60}
-.review-task-events summary{cursor:pointer}.review-task-events ol{padding-left:18px;margin-bottom:0;line-height:1.8}.review-task-events li span{color:#8e9b7f}
+.review-task-events summary{cursor:pointer}.review-task-events ol{padding-left:0;margin-bottom:0;line-height:1.8}
 .review-message-links{display:flex;gap:9px;flex-wrap:wrap;margin-top:7px}.review-message-reference{font-size:11px!important;border:1px solid #dbe5cc!important;background:#f4f8ee!important;padding:4px 7px;border-radius:4px}
 .review-result-task-link{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:20px;padding:13px 14px;border:1px solid #dde6d3;background:#f8fbf2;border-radius:7px}
 .review-result-task-link strong,.review-result-task-link small{display:block}.review-result-task-link strong{font-size:12px;margin-top:4px}.review-result-task-link small,.review-result-task-link p{font-size:10px;color:#839674;margin:4px 0 0}.review-result-task-link .text-btn{font-size:11px}

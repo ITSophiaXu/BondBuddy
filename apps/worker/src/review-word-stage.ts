@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { isReviewReport, type ReviewReport } from '@bondbuddy/contracts';
+import { isReviewReport, type ReviewReport, type ReviewAction } from '@bondbuddy/contracts';
 import { digest, transaction } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import { checkpointStage } from '@bondbuddy/api/queue';
+import { checkpointStage, recordReviewAction } from '@bondbuddy/api/queue';
 import type { RunStage, StageContext } from './run-pipeline.js';
 
 const runFile = promisify(execFile), repo = resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -57,6 +57,13 @@ export function reviewWordDeliveryStage(): RunStage {
     const material = (await ctx.pool.query('SELECT object_key,sha256,media_type FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [ctx.run.owner_user_id, ctx.run.project_id, pin.material_id, pin.material_version])).rows[0];
     if (!material || material.sha256.trim() !== pin.sha256) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const directory = await mkdtemp(resolve(tmpdir(), 'bb-review-word-'));
+    const action_id=digest(`${ctx.run.id}:${ctx.lease.token}:prepare_report`);
+    let actionStarted=false;
+    const progress=async(state:ReviewAction['state'])=>{
+      if(ctx.signal.aborted)return;
+      try { await recordReviewAction(ctx.pool,ctx.lease,{version:'review-action-v1',action_id,code:'prepare_report',state}); }
+      catch { process.stderr.write('review_action_persist_failed\n'); }
+    };
     try {
       const docx = material.media_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       if (docx) {
@@ -66,17 +73,20 @@ export function reviewWordDeliveryStage(): RunStage {
       }
       const request = resolve(directory, 'request.json'), reportPath = resolve(directory, 'report.docx'), commentsPath = resolve(directory, 'comments.docx');
       await writeFile(request, JSON.stringify({ report }), { mode: 0o600 });
+      await progress('started');actionStarted=true;
       const result = await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3', ['-m', 'bondbuddy_word_delivery.review', request, docx ? resolve(directory, 'source.docx') : '-', reportPath, commentsPath],
         { cwd: repo, env: { ...process.env, PYTHONPATH: resolve(repo, 'python') }, timeout: 300000, maxBuffer: 4 * 1024 * 1024, signal: ctx.signal });
       const summary = JSON.parse(result.stdout.trim());
       const bytes = await readFile(reportPath), comments = docx ? await readFile(commentsPath) : null;
-      if (summary.writer_version !== 'bondbuddy-review-word-1.0.0' || summary.report_sha256 !== digest(bytes) || (comments && summary.comments_sha256 !== digest(comments))) return { kind: 'fail', code: 'WORD_QUALITY_REJECTED' };
+      if (summary.writer_version !== 'bondbuddy-review-word-1.0.0' || summary.report_sha256 !== digest(bytes) || (comments && summary.comments_sha256 !== digest(comments))) {await progress('failed');return { kind: 'fail', code: 'WORD_QUALITY_REJECTED' };}
       if (summary.unanchored.length) report.limitations = [...new Set([...report.limitations, ...summary.unanchored.map((item: Record<string, unknown>) => `批注定位限制：${JSON.stringify(item)}`)])].slice(0, 200);
-      if (!isReviewReport(report)) return { kind: 'fail', code: 'VALIDATION_FAILED' };
-      if(!await registerReviewReport(ctx,report))return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      if (!isReviewReport(report)) {await progress('failed');return { kind: 'fail', code: 'VALIDATION_FAILED' };}
+      if(!await registerReviewReport(ctx,report)){await progress('failed');return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};}
+      await progress('completed');
       return { kind: 'deliver', bytes, ...(comments ? { attachments: [{ kind: 'comments' as const, bytes: comments }] } : {}), wordSummary: summary };
     } catch (error) {
       if (ctx.signal.aborted) return { kind: 'stopped' };
+      if(actionStarted)await progress('failed');
       throw error;
     } finally { await rm(directory, { recursive: true, force: true }); }
   } };

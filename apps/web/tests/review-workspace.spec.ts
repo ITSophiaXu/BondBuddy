@@ -26,7 +26,7 @@ function fixture(){
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
   const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
-  return {...state,linked:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
+  return {...state,linked:false,deferCancellation:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
   await page.route('**/api/v1/**',async route=>{
@@ -109,7 +109,10 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     }
     if(path.startsWith('/runs/')){
       const run=[...state.runs.values()].find(r=>path.includes(`/${r.run_id}`));if(!run)return reply(route,404,{code:'NOT_FOUND'});
-      if(path.endsWith('/cancel')){run.state='cancelled';state.workspace.active_run=null;}return reply(route,200,run);
+      if(path.endsWith('/cancel')){
+        if(state.deferCancellation){run.event_cursor=(run.event_cursor??0)+1;state.events.set(run.run_id,[...(state.events.get(run.run_id)??[]),{event_id:`stop-request-${run.event_cursor}`,schema_version:1,trace_id:'trace',run_id:run.run_id,seq:run.event_cursor,occurred_at:now,stage:run.stage,type:'run.progress',state:run.state,payload:{reason:'user_cancel_requested'}}]);}
+        else{run.state='cancelled';state.workspace.active_run=null;}
+      }return reply(route,200,run);
     }
     const referencedMaterial=state.workspace.materials.find(material=>path===`/projects/${id}/materials/${material.material_id}`||path===`/projects/${id}/materials/${material.material_id}/download`);
     if(referencedMaterial&&method==='GET'){
@@ -235,7 +238,7 @@ test('revision results expose handling reasons and locations without chat or exe
   await expect(dialog).toContainText('执行版本 V2 · revision-run-2');await expect(dialog).toContainText('来源报告：report-v1 · V1');await expect(dialog).toContainText('已修改 1 项 · 未修改 1 项 · 待补证 1 项');
   await expect(dialog.locator('[data-handling-finding="F02"]')).toContainText('缺少更名生效日期依据');await expect(dialog.locator('[data-handling-finding="F03"]')).toContainText('用户未选择此项');await expect(dialog).toContainText('段落：10');await expect(dialog).toContainText('已修改不代表复核通过');await expect(dialog).toContainText('公开信息未重新核验');
   expect(state.artifactReads).toEqual(['/artifacts/revision-2']);expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
-  await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-review/handling-desktop.png'});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-review/handling-narrow.png'});
+  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/handling-desktop.png'});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-agent-progress-review/handling-narrow.png'});
 });
 
 test('workbench handling reads the exact historical revision and returns to its history',async({page})=>{
@@ -263,7 +266,7 @@ test('result buttons explain, download, plan and explicitly execute without chat
   await expect(page.getByRole('button',{name:'再次完整复核'})).toBeDisabled();
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载问题报告'}).click();expect((await download).suggestedFilename()).toBe('合成问题报告.docx');
   await page.getByRole('button',{name:'停止本次任务'}).click();await expect(page.locator('.review-run')).toContainText('已停止');
-  await page.getByRole('button',{name:'再次完整复核'}).click();state.dropExecutionOnce=true;await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(3);await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');expect(state.executes[2].execution_request_id).not.toBe(state.executes[0].execution_request_id);await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('.review-run')).toContainText('排队中');expect(state.executes).toHaveLength(3);
+  await page.getByRole('button',{name:'再次完整复核'}).click();state.dropExecutionOnce=true;await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(3);await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');expect(state.executes[2].execution_request_id).not.toBe(state.executes[0].execution_request_id);await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('#review-progress-bar')).toContainText('排队中');expect(state.executes).toHaveLength(3);
 });
 
 test('separate context drafts survive switching, refresh and failed sync; sending and proposals never execute or change plan until adopted',async({page})=>{
@@ -302,7 +305,7 @@ for(const scenario of [
   expect(state.plans[0].proposal_id).toBe(proposal.proposal_id);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
   if(scenario.edit==='none')expect(state.workspace.plan?.excluded_findings).toContainEqual({finding_id:'F02',reason:report.findings[1].repairability.reason});
   await page.getByRole('button',{name:'核对修订计划',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('当前计划经用户调整，原提议未改变');
-  if(scenario.edit==='none'){await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-review/proposal-adjusted-desktop.png'});}
+  if(scenario.edit==='none'){await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/proposal-adjusted-desktop.png'});}
   await page.getByRole('button',{name:'保存计划',exact:true}).click();await expect.poll(()=>state.plans.length).toBe(2);
   expect(state.plans[1].proposal_id).toBe(proposal.proposal_id);expect(state.executes).toHaveLength(0);
 });
@@ -332,7 +335,7 @@ test('missing review project details can be completed and return to the exact re
   await page.getByRole('tab',{name:'材料与要求'}).click();
   await page.locator('#review-requirements').fill('下一版需要保留的复核要求');
   await expect(page.locator('#review-project-info').getByRole('link',{name:'补充项目信息',exact:true})).toBeVisible();await expect(page.locator('#review-meta')).toHaveCount(0);await expect(page.locator('#review-project-info')).not.toContainText('发行人待填写');
-  await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-review/project-details-entry-desktop.png'});
+  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-agent-progress-review/project-details-entry-desktop.png'});
   await page.getByRole('link',{name:'补充项目信息',exact:true}).click();await expect(page.getByRole('heading',{name:'编辑复核项目信息',exact:true})).toBeVisible();
   await expect(page.locator('#draft-form input')).toHaveCount(2);await expect(page.locator('#draft-form select')).toHaveCount(2);
   state.failProjectPatch=true;await page.locator('#review-issuer').fill('补充后的合成发行人');await page.locator('#review-market').selectOption('nafmii');await page.locator('#review-offering').selectOption('dfi');
@@ -340,7 +343,7 @@ test('missing review project details can be completed and return to the exact re
   state.failProjectPatch=false;await page.locator('#save-draft').click();await expect(page.locator('#save-state')).toContainText('已保存');
   expect(state.workspace.project).toMatchObject({kind:'review',issuer_name:'补充后的合成发行人',market:'nafmii',offering:'dfi'});
   expect(state.workspace.selected_report).toEqual(originalReport);expect(state.workspace.active_run).toEqual(originalRun);expect(state.history).toEqual(originalHistory);expect(state.executes).toHaveLength(0);
-  await page.screenshot({path:'test-evidence/m3-review/project-details-form-desktop.png'});
+  await page.screenshot({path:'test-evidence/m3-agent-progress-review/project-details-form-desktop.png'});
   state.failDrafts=false;await page.getByRole('link',{name:'返回复核工作区',exact:true}).click();await expect(page).toHaveURL(/review\?tab=materials&report_id=report-v1/);
   await expect(page.getByRole('tab',{name:'材料与要求',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.locator('#review-materials-panel')).toBeVisible();await expect(page.locator('#review-results-panel')).toBeHidden();
   await expect(page.locator('#review-requirements')).toHaveValue('下一版需要保留的复核要求');await expect(page.locator('#review-project-info')).toContainText('补充后的合成发行人');
@@ -360,7 +363,7 @@ test('direct report links without a valid explicit tab open results',async({page
 test('typing while a message saves is retained; polling preserves open findings and textarea selection',async({page})=>{
   const state=fixture();state.workspace.active_run=state.makeRun('polling-run','queued');state.delayMessage=true;await setup(page,state);await (await openFinding(page,'F01')).getByRole('button',{name:'继续讨论此项'}).click();
   const input=page.locator('#review-message-input');await input.fill('发送的说明');await page.getByRole('button',{name:'发送说明',exact:true}).click();await expect.poll(()=>state.requests.length).toBe(1);await input.fill('发送中继续输入的新草稿');await expect(page.locator('.review-proposal')).toBeVisible();await expect(input).toHaveValue('发送中继续输入的新草稿');
-  await expect(page.locator('.review-run')).toContainText('排队中');
+  await expect(page.locator('#review-progress-bar')).toContainText('排队中');
   await input.focus();await input.evaluate((node:HTMLTextAreaElement)=>node.setSelectionRange(3,7));const before=state.workspaceReads;await expect.poll(()=>state.workspaceReads).toBeGreaterThan(before);
   await expect(finding(page,'F01')).toHaveAttribute('open','');await expect(input).toHaveValue('发送中继续输入的新草稿');await expect(input).toBeFocused();expect(await input.evaluate((node:HTMLTextAreaElement)=>[node.selectionStart,node.selectionEnd])).toEqual([3,7]);
   await page.getByRole('tab',{name:'材料与要求'}).click();await page.locator('#review-requirements').fill('执行中也能记录下一轮要求');await expect.poll(()=>state.workspace.draft.requirements).toEqual(['执行中也能记录下一轮要求']);await page.reload();await expect(page.locator('#review-requirements')).toHaveValue('执行中也能记录下一轮要求');
@@ -406,18 +409,66 @@ test('linked shortcut uses one real task card without manufacturing chat and pro
   await expect(page.locator('#review-agent')).toBeVisible();await expect(page.locator('.review-task-card')).toHaveCount(1);
   expect(await page.locator('#review-agent').evaluate(panel=>panel.getBoundingClientRect().bottom<=innerHeight)).toBe(true);
   expect(await page.getByRole('button',{name:'发送说明',exact:true}).evaluate(button=>button.getBoundingClientRect().bottom<=innerHeight)).toBe(true);
-  await mkdir('../../../diagnostics/m3-linked-implementation',{recursive:true});await page.screenshot({path:'../../../diagnostics/m3-linked-implementation/synthetic-runtime-desktop-1360x900.png'});
+  await mkdir('../../../diagnostics/m3-agent-progress-implementation',{recursive:true});await page.screenshot({path:'../../../diagnostics/m3-agent-progress-implementation/synthetic-runtime-desktop-1360x900.png'});
   await page.locator('#review-results-panel').getByRole('button',{name:'再次完整复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
   await expect.poll(()=>state.executes.length).toBe(1);await expect(page.locator('.review-task-card')).toHaveCount(2);expect(state.workspace.messages).toHaveLength(0);expect(state.requests).toHaveLength(0);
   await expect(page.locator('[data-task-run="run-2"]')).toContainText('固定输入 V1');await expect(page.locator('[data-task-run="run-2"]')).toContainText('页面快捷操作');
   await page.reload();await expect(page.locator('[data-task-run="run-2"]')).toHaveCount(1);
   await page.locator('#review-result-task-link').getByRole('button',{name:'在助手中查看过程'}).click();await expect(page.locator('[data-task-run="run-1"]')).toBeFocused();
-  await mkdir('test-evidence/m3-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-linked/runtime-desktop.png'});
+  await mkdir('test-evidence/m3-agent-progress-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-agent-progress-linked/runtime-desktop.png'});
   const task=state.history.find(item=>item.run.run_id==='run-2')!;task.run={...task.run,state:'failed',stage:'word_delivery_pair',event_cursor:5};state.workspace.active_run=null;
   state.events.set('run-2',[{event_id:'failed-event',schema_version:1,trace_id:'trace',run_id:'run-2',seq:5,occurred_at:'2026-10-02T11:10:00Z',stage:'word_delivery_pair',type:'run.state_changed',state:'failed',payload:{error_code:'DELIVERY_FAILED'}}]);
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(page.locator('[data-task-run="run-2"]')).toContainText('文档交付失败');await expect(page.locator('.review-run')).toContainText('文档交付失败');
   task.run={...task.run,state:'running',event_cursor:3};state.workspace.active_run=task.run;
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect.poll(()=>state.workspaceReads).toBeGreaterThan(4);await expect(page.locator('[data-task-run="run-2"]')).toContainText('处理失败');await expect(page.locator('.review-run')).toContainText('任务状态：处理失败');await expect(page.locator('.review-task-card')).toHaveCount(2);
+});
+
+test('agent actions stay visible across tabs and polling preserves expanded history, selected text and one task identity',async({page})=>{
+  const state=fixture();state.linked=true;
+  const run=state.makeRun('run-2','running','progress-request');run.stage='review_sources';run.event_cursor=3;
+  state.runs.set('progress-request',run);state.workspace.active_run=run;
+  state.history.push({run,operation:'full_review',version:2,source_report_id:null,report_id:null,input:structuredClone(state.workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:[],created_at:'2026-10-02T11:00:00Z'});
+  const action=(seq:number,code:NonNullable<RunEvent['payload']['action']>['code'],status:NonNullable<RunEvent['payload']['action']>['state']='started',identity=String(seq).padStart(64,'0')):RunEvent=>({event_id:`progress-${seq}`,schema_version:1,trace_id:'trace',run_id:run.run_id,seq,occurred_at:now,stage:run.stage,type:'run.progress',state:'running',payload:{reason:'review_action',action:{version:'review-action-v1',action_id:identity,code,state:status}}});
+  state.events.set(run.run_id,[action(1,'read_materials'),action(2,'read_materials','completed',String(1).padStart(64,'0')),action(3,'check_financial')]);
+  state.workspace.messages.push({message_id:'progress-discussion',role:'assistant',content:'已记录本轮财务核对要求，后续说明进入下一版。',context:{project_id:id,report_id:null,finding_ids:[],material_refs:[]},created_at:now,reply_status:'completed',reply_to:null,proposal:null,error:null});
+  await page.setViewportSize({width:1360,height:900});await setup(page,state);
+  const bar=page.locator('#review-progress-bar'),card=page.locator('[data-task-run="run-2"]');
+  await expect(bar).toContainText('正在核对财务数据');await expect(card.locator('.review-task-stage')).toHaveText('正在核对财务数据');
+  expect(await bar.evaluate(node=>node.nextElementSibling?.classList.contains('review-tabs'))).toBe(true);
+  await page.getByRole('tab',{name:/材料与要求/}).click();await expect(bar).toBeVisible();await expect(bar).toContainText('正在核对财务数据');
+  await bar.getByRole('button',{name:'查看进展',exact:true}).click();await expect(card).toBeFocused();
+  const history=card.locator('.review-task-events');await expect(history).not.toHaveAttribute('open','');await history.locator('summary').click();
+  await page.evaluate(()=>{
+    const card=document.querySelector('[data-task-run="run-2"]')!,message=document.querySelector('[data-message-id="progress-discussion"] p')!;
+    (window as unknown as {progressCard:Element}).progressCard=card;
+    const range=document.createRange();range.selectNodeContents(message);getSelection()!.removeAllRanges();getSelection()!.addRange(range);
+    const chat=document.querySelector('.review-chat')!;chat.scrollTop=0;
+  });
+  const selected=await page.evaluate(()=>getSelection()?.toString());
+  run.event_cursor=5;state.events.get(run.run_id)!.push(action(4,'check_financial','completed',String(3).padStart(64,'0')),action(5,'check_compliance'));
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(bar).toContainText('正在检查合规与格式');await expect(card.locator('.review-task-stage')).toHaveText('正在检查合规与格式');
+  await expect(history).toHaveAttribute('open','');await expect(history.locator('summary')).toHaveText('已完成 2 项动作');
+  expect(await page.evaluate(()=>getSelection()?.toString())).toBe(selected);expect(await page.evaluate(()=>document.querySelector('[data-task-run="run-2"]')===(window as unknown as {progressCard:Element}).progressCard)).toBe(true);
+  expect(await page.locator('.review-chat').evaluate(node=>node.scrollTop)).toBe(0);await expect(card).toHaveCount(1);
+  await expect(page.locator('#review-agent')).not.toContainText(/2026|10:00|心跳|预计|已用时|\d+%/);
+  await page.getByRole('tab',{name:/复核结果/}).click();await expect(bar).toContainText('正在检查合规与格式');
+  await page.evaluate(()=>getSelection()?.removeAllRanges());await history.locator('summary').click();await bar.getByRole('button',{name:'查看进展',exact:true}).click();await page.evaluate(()=>window.scrollTo(0,0));
+  await mkdir('test-evidence/m3-agent-progress',{recursive:true});await page.screenshot({path:'test-evidence/m3-agent-progress/runtime-desktop-1360x900.png'});
+  await page.setViewportSize({width:1280,height:720});await bar.getByRole('button',{name:'查看进展',exact:true}).click();await expect(page.getByRole('button',{name:'发送说明',exact:true})).toBeVisible();await page.screenshot({path:'test-evidence/m3-agent-progress/runtime-desktop-1280x720.png'});
+  await page.setViewportSize({width:581,height:753});await expect(bar).toBeVisible();await bar.getByRole('button',{name:'查看进展',exact:true}).click();await expect(card).toBeFocused();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-agent-progress/runtime-narrow-581x753.png'});
+  state.workspace.active_run=null;run.state='succeeded';state.history.at(-1)!.report_id='report-v1';
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(bar).toContainText('本轮任务已完成');await expect(card.locator('.review-task-stage')).toHaveText('本轮任务已完成');
+  await card.getByRole('button',{name:'查看本轮结果',exact:true}).click();await expect(page).toHaveURL(/report_id=report-v1/);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
+});
+
+test('narrow progress opens the same cancellable task and stopping waits for the confirmed terminal state',async({page})=>{
+  const state=fixture();state.linked=true;state.deferCancellation=true;
+  const run=state.makeRun('run-1','running');run.stage='review_sources';run.event_cursor=1;state.runs.set('old',run);state.workspace.active_run=run;state.history[0].run=run;state.history[0].report_id=null;
+  state.events.set(run.run_id,[{event_id:'material-start',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:1,occurred_at:now,stage:run.stage,type:'run.progress',state:'running',payload:{reason:'review_action',action:{version:'review-action-v1',action_id:'a'.repeat(64),code:'read_materials',state:'started'}}}]);
+  await page.setViewportSize({width:581,height:753});await setup(page,state);await page.locator('#review-progress-bar').getByRole('button',{name:'查看进展'}).click();
+  const card=page.locator('[data-task-run="run-1"]');await card.getByRole('button',{name:'停止本次任务',exact:true}).click();await expect(card.locator('.review-task-stage')).toHaveText('正在停止本轮任务');await expect(page.locator('#review-progress-bar')).toContainText('正在停止本轮任务');expect(state.workspace.active_run?.state).toBe('running');
+  run.state='cancelled';state.workspace.active_run=null;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(card.locator('.review-task-stage')).toHaveText('本轮任务已停止');await expect(page.locator('#review-progress-bar')).toContainText('本轮任务已停止');expect(state.executes).toHaveLength(0);
 });
 
 test('720px desktop keeps the running-task timeline readable and the evidence/send controls visible',async({page})=>{
@@ -428,13 +479,13 @@ test('720px desktop keeps the running-task timeline readable and the evidence/se
   const message=page.locator('[data-message-id="synthetic-history-user"]');await expect(message).toHaveCSS('display','block');await expect(message.locator('.review-warning')).toContainText('助手回复中断');await expect(message).not.toContainText('ASSISTANT_PROCESS_INTERRUPTED');
   const messageGeometry=await message.evaluate(node=>{const box=(selector:string)=>{const bounds=node.querySelector(selector)!.getBoundingClientRect();return{top:bounds.top,bottom:bounds.bottom,width:bounds.width};};return{display:getComputedStyle(node).display,width:node.getBoundingClientRect().width,header:box('header'),body:box('p:not(.review-warning)'),context:box('small'),error:box('.review-warning')};});
   expect(messageGeometry.body.width).toBeGreaterThanOrEqual(220);expect(messageGeometry.body.width/messageGeometry.width).toBeGreaterThan(0.8);expect(messageGeometry.header.bottom).toBeLessThanOrEqual(messageGeometry.body.top);expect(messageGeometry.body.bottom).toBeLessThanOrEqual(messageGeometry.context.top);expect(messageGeometry.context.bottom).toBeLessThanOrEqual(messageGeometry.error.top);
-  await mkdir('../../../diagnostics/m3-linked-implementation',{recursive:true});await page.screenshot({path:'../../../diagnostics/m3-linked-implementation/synthetic-message-desktop-1280x720.png'});await mkdir('test-evidence/m3-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-linked/runtime-message-desktop-1280x720.png'});await page.locator('.review-chat').evaluate(log=>log.scrollTop=log.scrollHeight);
+  await mkdir('../../../diagnostics/m3-agent-progress-implementation',{recursive:true});await page.screenshot({path:'../../../diagnostics/m3-agent-progress-implementation/synthetic-message-desktop-1280x720.png'});await mkdir('test-evidence/m3-agent-progress-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-agent-progress-linked/runtime-message-desktop-1280x720.png'});await page.locator('.review-chat').evaluate(log=>log.scrollTop=log.scrollHeight);
   const geometry=await page.evaluate(()=>{
     const box=(selector:string)=>{const node=document.querySelector(selector)!;const bounds=node.getBoundingClientRect();return{top:bounds.top,bottom:bounds.bottom,height:bounds.height,width:bounds.width};};
     return{viewport:{width:innerWidth,height:innerHeight},assistant:box('#review-agent'),timeline:box('.review-chat'),composer:box('.review-composer'),task:box('[data-task-run="run-1"]'),send:box('[data-assistant-action="send"]'),evidence:box('[data-assistant-action="attach-evidence"]'),horizontal_overflow:document.documentElement.scrollWidth>innerWidth};
   });
   expect(geometry.viewport).toEqual({width:1280,height:720});expect(geometry.timeline.height).toBeGreaterThanOrEqual(180);expect(geometry.assistant.bottom).toBeLessThanOrEqual(720);expect(geometry.send.bottom).toBeLessThanOrEqual(720);expect(geometry.evidence.bottom).toBeLessThanOrEqual(720);expect(Math.min(geometry.task.bottom,geometry.timeline.bottom)-Math.max(geometry.task.top,geometry.timeline.top)).toBeGreaterThanOrEqual(140);expect(geometry.horizontal_overflow).toBe(false);
-  await page.screenshot({path:'../../../diagnostics/m3-linked-implementation/synthetic-runtime-desktop-1280x720.png'});await writeFile('../../../diagnostics/m3-linked-implementation/synthetic-runtime-desktop-1280x720.geometry.json',JSON.stringify({kind:'synthetic UI geometry',message:messageGeometry,...geometry},null,2)+'\n');await page.screenshot({path:'test-evidence/m3-linked/runtime-desktop-1280x720.png'});
+  await page.screenshot({path:'../../../diagnostics/m3-agent-progress-implementation/synthetic-runtime-desktop-1280x720.png'});await writeFile('../../../diagnostics/m3-agent-progress-implementation/synthetic-runtime-desktop-1280x720.geometry.json',JSON.stringify({kind:'synthetic UI geometry',message:messageGeometry,...geometry},null,2)+'\n');await page.screenshot({path:'test-evidence/m3-agent-progress-linked/runtime-desktop-1280x720.png'});
   expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);expect(state.workspace.active_run).toEqual(run);
 });
 
@@ -473,17 +524,17 @@ test('validated finding links pin old reports and new results do not replace a h
   await setup(page,state);await expect(page.locator('.review-follow-up')).toContainText('本轮已重新核验');await expect(page.locator('.review-follow-up')).toContainText('沿用原报告');
   await page.locator('.review-message-links').getByRole('button',{name:'查看 F02',exact:true}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(finding(page,'F02')).toHaveAttribute('open','');await expect(page.locator('.review-result-hero')).toContainText('R1');await expect(page.locator('.review-notice')).toContainText('本轮有新结果 R2');
   await page.reload();await expect(page.locator('.review-result-hero')).toContainText('R1');await page.getByRole('button',{name:'查看本轮新结果',exact:true}).click();await expect(page.locator('.review-result-hero')).toContainText('R2');expect(state.executes).toHaveLength(0);
-  await page.setViewportSize({width:581,height:753});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(page.locator('#review-agent')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await mkdir('test-evidence/m3-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-linked/runtime-narrow.png'});
-  await page.screenshot({path:'../../../diagnostics/m3-linked-implementation/synthetic-runtime-narrow-581x753.png'});
+  await page.setViewportSize({width:581,height:753});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(page.locator('#review-agent')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await mkdir('test-evidence/m3-agent-progress-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-agent-progress-linked/runtime-narrow.png'});
+  await page.screenshot({path:'../../../diagnostics/m3-agent-progress-implementation/synthetic-runtime-narrow-581x753.png'});
 });
 
 test('workbench alone owns version history and retains stopped/failed snapshots and exact report navigation',async({page})=>{
   const state=fixture();for(const [index,status]of(['failed','cancelled'] as const).entries())state.history.push({...structuredClone(state.history[0]),version:index+2,run:state.makeRun(`run-${index+2}`,status),report_id:null,input:{...structuredClone(state.workspace.draft),requirements:[`保留的${status}版本要求`]},created_at:`2026-10-02T1${index+1}:00:00Z`});
   await setup(page,state,'#dashboard');await expect(page.locator('.review-project-card')).toBeVisible();await page.getByRole('button',{name:'版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
-  await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-review/history-desktop.png'});
+  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
   await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(2);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
-  await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await (await openFinding(page,'F01')).getByRole('button',{name:'继续讨论此项'}).click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-review/desktop.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(page.locator('#review-agent')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-review/narrow.png',fullPage:false});await page.getByRole('button',{name:'收起项目助手',exact:true}).last().click();await expect(page.locator('#review-agent')).toBeHidden();
+  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await (await openFinding(page,'F01')).getByRole('button',{name:'继续讨论此项'}).click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-agent-progress-review/desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(page.locator('#review-agent')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-agent-progress-review/narrow.png',fullPage:false});await page.getByRole('button',{name:'收起项目助手',exact:true}).last().click();await expect(page.locator('#review-agent')).toBeHidden();
 });
 
 test('paused review shows the actual blocker on both sides, retains execution lock and remains cancellable',async({page})=>{

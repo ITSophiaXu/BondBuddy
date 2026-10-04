@@ -1,7 +1,8 @@
 import { Pool, type PoolClient } from 'pg';
+import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent, recordOperation } from './observability.js';
-import { ERROR_CODES, RUN_PAUSE_STAGES, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
+import { ERROR_CODES, RUN_PAUSE_STAGES, ReviewActionSchema, type ReviewAction, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
@@ -101,6 +102,30 @@ async function lockedLease(client:PoolClient, lease:Lease) {
 
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
   await transaction(pool,async client=>{await lockedLease(client,lease);await client.query("UPDATE bb_jobs SET lease_until=now()+($2::integer * interval '1 second'),updated_at=now() WHERE id=$1",[lease.jobId,leaseSeconds]);});
+}
+
+/** Progress is an owner/lease-checked projection; it never advances the execution stage. */
+export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAction):Promise<boolean> {
+  if (!Value.Check(ReviewActionSchema, action)) throw new Problem(422,'VALIDATION_FAILED','Invalid review action');
+  return transaction(pool,async client=>{
+    let locked;
+    try { locked=await lockedLease(client,lease); }
+    catch(error) { if(error instanceof Problem && ['ALREADY_TERMINAL','NOT_FOUND'].includes(error.code))return false;throw error; }
+    const {r}=locked;
+    if(r.state!=='running')return false;
+    const previous=(await client.query(`SELECT payload->'action' AS action FROM bb_run_events
+      WHERE owner_user_id=$1 AND run_id=$2 AND type='run.progress' AND payload->'action'->>'action_id'=$3
+      ORDER BY seq DESC LIMIT 1`,[lease.owner,lease.runId,action.action_id])).rows[0]?.action as ReviewAction|undefined;
+    // Replays cannot reopen a finished action or bind its identity to another kind of work.
+    if(previous && (previous.code!==action.code || previous.state===action.state || previous.state!=='started'))return false;
+    const seq=Number(r.event_cursor??0)+1,id=uid(),payload={reason:'review_action',action};
+    await client.query('UPDATE bb_runs SET event_cursor=$2,updated_at=now() WHERE id=$1',[r.id,seq]);
+    await client.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload)
+      VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)`,[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
+    await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+      VALUES($1,$2,'run',$3,'run.progress',$4)`,[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
+    return true;
+  });
 }
 
 export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Record<string,unknown>) {
