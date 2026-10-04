@@ -6,12 +6,14 @@ import { test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, uid } from '@bondbuddy/api/data';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
+import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
 import { claim, jobSnapshot, pauseRun } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
@@ -51,7 +53,8 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     return { projectId, runId, promptRef, lease };
   }
   const callFor = (f: Awaited<ReturnType<typeof fixture>>, prompt: string) => ({ owner_user_id: owner, project_id: f.projectId, job_id: f.lease.jobId, run_id: f.runId, trace_id: f.runId, logical_call_id: 'synthetic-codex-call', prompt_snapshot_ref: f.promptRef, prompt, result_schema_version: 'answer-v1', output: { kind: 'json' as const, schema, validate: isAnswer } });
-  const journalFor = (f: Awaited<ReturnType<typeof fixture>>) => new CodexDurableJournal({ pool, blobs, lease: f.lease, validateResult: isAnswer });
+  const journalFor = (f: Awaited<ReturnType<typeof fixture>>) => new CodexDurableJournal({ pool, blobs, lease: f.lease,
+    validateResult: async value => { await yieldToEventLoop(); return isAnswer(value); } });
   try {
     const active = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE state IN ('queued','running')");
     assert.equal(active.rows[0].count, 0, 'requires a dedicated database');
@@ -75,7 +78,14 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
 
     // Schema-invalid first answer is re-asked under the same lease; both attempts are durable.
     const ok = await fixture('reask');
-    const r = await runContainedModelCall(callFor(ok, 'SCENARIO:invalid_json REASK_SCENARIO:structured'), journalFor(ok), config);
+    const okJournal = journalFor(ok);
+    let completedObservation!: Parameters<CodexDurableJournal['recordObservation']>[0];
+    const observe = okJournal.recordObservation.bind(okJournal);
+    okJournal.recordObservation = async (observation,options) => {
+      await observe(observation,options);
+      if (observation.outcome==='completed') completedObservation=observation;
+    };
+    const r = await runContainedModelCall(callFor(ok, 'SCENARIO:invalid_json REASK_SCENARIO:structured'), okJournal, config);
     assert.equal(r.status, 'completed', JSON.stringify(r.attempts));
     const rows = (await pool.query(`SELECT a.attempt_no,a.status,a.usage_status,a.model_id,a.prompt_snapshot_id,o.outcome,o.error_code,o.finish_reason,o.input_tokens,o.cached_input_tokens,o.output_tokens,o.reasoning_tokens,o.total_tokens,o.model_config_version,
         t.duration_ms,t.framework_thread_id,t.provider_request_id_status,t.pricing_status,t.adapter_version,t.trace_id
@@ -91,6 +101,17 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     // A second invocation with the same logical call reuses the checkpointed result.
     const again = await runContainedModelCall(callFor(ok, 'SCENARIO:structured'), journalFor(ok), config);
     assert.equal(again.status, 'reused'); assert.deepEqual(again.value, { answer: 'OK', n: 16 });
+    // A Promise is not a schema verdict. Replaying or observing a stored result
+    // with an asynchronously false validator must not accept it as truthy.
+    const invalidValidator = async()=>{await yieldToEventLoop();return false;};
+    const invalidJournal = new CodexDurableJournal({pool,blobs,lease:ok.lease,validateResult:invalidValidator});
+    await assert.rejects(readCheckpointedProviderResult({pool,blobs,lease:ok.lease,
+      logicalCallId:'synthetic-codex-call',attemptNo:2,validateResult:invalidValidator}),{code:'DELIVERY_FAILED'});
+    assert.equal(await invalidJournal.readCompleted('synthetic-codex-call',2),null,'invalid async replay remains unavailable');
+    assert.ok(completedObservation);
+    const observationsBefore = (await pool.query('SELECT count(*)::int n FROM bb_provider_call_observations WHERE job_id=$1',[ok.lease.jobId])).rows[0].n;
+    await assert.rejects(invalidJournal.recordObservation(completedObservation,{retryable:false}),{code:'DELIVERY_FAILED'});
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_provider_call_observations WHERE job_id=$1',[ok.lease.jobId])).rows[0].n,observationsBefore);
     await pauseRun(pool,ok.lease,'awaiting_materials','synthetic_test_complete');
 
     // Timeout: recorded with unknown usage and the job pauses for reconciliation.
