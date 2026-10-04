@@ -1,0 +1,44 @@
+{
+  "kind": "synthetic UI geometry",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "assistant": {
+    "top": 178.9375,
+    "bottom": 700,
+    "height": 521.0625,
+    "width": 331.828125
+  },
+  "timeline": {
+    "top": 323.53125,
+    "bottom": 552,
+    "height": 228.46875,
+    "width": 329.828125
+  },
+  "composer": {
+    "top": 552,
+    "bottom": 699,
+    "height": 147,
+    "width": 329.828125
+  },
+  "task": {
+    "top": 333.53125,
+    "bottom": 547.53125,
+    "height": 214,
+    "width": 303.828125
+  },
+  "send": {
+    "top": 657,
+    "bottom": 689,
+    "height": 32,
+    "width": 66
+  },
+  "evidence": {
+    "top": 658,
+    "bottom": 688,
+    "height": 30,
+    "width": 30
+  },
+  "horizontal_overflow": false
+}

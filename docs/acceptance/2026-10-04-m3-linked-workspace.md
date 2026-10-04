@@ -27,9 +27,9 @@ Codex CLI 仍是唯一 AI 引擎；API、worker、PostgreSQL 队列和私有 Blo
 | worker | `node --test --test-concurrency=1` 后接下列十个测试文件 | 110 pass，0 fail，0 skip |
 | 完整文件链 | `BB_TEST_M3_CLI_REVISION=1 node --test apps/worker/dist/m3-review-pipeline.pg.integration.test.js` | 1 pass，0 fail，0 skip |
 | web 单元 | `npm run test:unit -w @bondbuddy/web` | 61 pass，0 fail，0 skip |
-| web E2E | `apps/web/tests/review-workspace.spec.ts`，Microsoft Edge Chromium | 27 pass，0 fail，0 skip；最终 50.2s，exit 0 |
+| web E2E | `apps/web/tests/review-workspace.spec.ts`，Microsoft Edge Chromium | 28 pass，0 fail，0 skip；最终 58.1s，exit 0 |
 
-worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assistant`、`review-model-stage`、`review-public-stage`、`review-tools`、`review-reassembly`、`review-word-registration.pg.integration`、`review-revision-cli-stage`、`review-revision`（均为 `apps/worker/dist/*.test.js`）。相关工程测试共 217 项；公共契约 40 项测试和 182 个样例另列，重复的 Windows worker 测试不累加。
+worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assistant`、`review-model-stage`、`review-public-stage`、`review-tools`、`review-reassembly`、`review-word-registration.pg.integration`、`review-revision-cli-stage`、`review-revision`（均为 `apps/worker/dist/*.test.js`）。相关工程测试共 218 项；公共契约 40 项测试和 182 个样例另列，重复的 Windows worker 测试不累加。
 
 **所有模型回复和业务样本均为 synthetic。** 完整文件链实际执行上传解析、受控 CLI 协议／工具、PostgreSQL journal、Blob 下载和 Python 双 Word；它不代表真实供应商或专业结论已验收。日志、测试环境收据与本地部署记录在专用宿主的 `diagnostics/m3-linked-implementation/`，私有备份不提交到仓库。
 
@@ -52,9 +52,11 @@ worker 文件：`review-assistant-linked`、`review-follow-up`、`review-assista
 
 ## 原型对照
 
-基准 `review-v2` commit `3d72bafc662d27659981154032a9cce1981f5be9`。对照尺寸 1360×900、581×753；新建浏览器上下文，不改变用户原型 localStorage。`apps/web/test-evidence/m3-linked/` 保留实际生产组件的 synthetic 截图和同尺寸原型截图；数据和真实覆盖数量按 API 展示，不复制演示结论。
+基准 `review-v2` commit `3d72bafc662d27659981154032a9cce1981f5be9`。对照尺寸 1360×900、1280×720、581×753；新建浏览器上下文，不改变用户原型 localStorage。`apps/web/test-evidence/m3-linked/` 保留实际生产组件的 synthetic 截图和同尺寸原型截图；数据和真实覆盖数量按 API 展示，不复制演示结论。
 
 按用户已确认决定，顶部发行人／市场占位元信息已移除；正式项目标题来自真实项目名。可见任务阶段来自 host 事件，不展示模拟思考文本；真实失败／未覆盖项如实显示。桌面发送区已针对初次进入时 panel top 修正高度。
+
+较矮桌面窗口根据实际可用高度启用紧凑布局，压缩说明／上下文／输入区，保留完整绑定与功能；1280×720 的时间线高约 228px，任务卡、发送和补证入口均可见。新增 E2E 验证 resize、草稿与真实任务投影的可读高度。
 
 助手上下文显示真实项目、输入与讨论对象；回形针复用材料上传并保留原草稿／引用。快捷修订计划用一次明确确认直接执行，固定确认时的来源和计划版本；丢响应重试复用请求，刷新确认已提交任务后关闭对应执行窗口。已采纳 V2 要求转新的快捷计划仍保留要求，执行来源明确为新的 quick_action；旧提议及执行不改写。
 

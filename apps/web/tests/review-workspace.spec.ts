@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { Value } from '@sinclair/typebox/value';
 import { schemas, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
@@ -189,6 +189,7 @@ test('desktop assistant stays available without stealing focus; mobile drawer pr
   state.failDrafts=true;await (await openFinding(page,'F01')).getByRole('button',{name:'继续讨论此项'}).click();await input.fill('F01 / R1 在不同屏幕宽度保留的草稿');
   await expect(page.locator('.review-agent-context .review-tag')).toHaveAttribute('title','report-v1 · F01');
   await expect(page.locator('.review-agent-context')).toContainText('讨论引用：报告 R1');await expect(page.locator('.review-agent-context')).toContainText('F01');await expect(page.getByRole('button',{name:'回到项目说明',exact:true})).toBeVisible();
+  await page.setViewportSize({width:1280,height:720});await expect(assistant).toHaveClass(/review-agent-compact/);expect(await page.locator('.review-chat').evaluate(log=>log.getBoundingClientRect().height)).toBeGreaterThanOrEqual(175);expect(await page.getByRole('button',{name:'发送说明',exact:true}).evaluate(button=>button.getBoundingClientRect().bottom<=innerHeight)).toBe(true);await expect(page.locator('.review-context-compact').filter({hasText:'讨论 R1 · F01'})).toBeVisible();await expect(input).toHaveValue('F01 / R1 在不同屏幕宽度保留的草稿');
   await page.setViewportSize({width:390,height:844});await expect(assistant).toBeHidden();await expect(floating).toBeVisible();await expect(floating).toBeFocused();
   await floating.click();await expect(assistant).toBeVisible();await expect(assistant).toHaveAttribute('role','dialog');await expect(assistant).toHaveAttribute('aria-modal','true');await expect(input).toHaveValue('F01 / R1 在不同屏幕宽度保留的草稿');await expect(input).toBeFocused();
   await page.setViewportSize({width:1440,height:1000});await expect(assistant).toBeVisible();await expect(assistant).toHaveAttribute('role','complementary');await expect(assistant).not.toHaveAttribute('aria-modal','true');await expect(input).toBeFocused();
@@ -417,6 +418,19 @@ test('linked shortcut uses one real task card without manufacturing chat and pro
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(page.locator('[data-task-run="run-2"]')).toContainText('文档交付失败');await expect(page.locator('.review-run')).toContainText('文档交付失败');
   task.run={...task.run,state:'running',event_cursor:3};state.workspace.active_run=task.run;
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect.poll(()=>state.workspaceReads).toBeGreaterThan(4);await expect(page.locator('[data-task-run="run-2"]')).toContainText('处理失败');await expect(page.locator('.review-run')).toContainText('任务状态：处理失败');await expect(page.locator('.review-task-card')).toHaveCount(2);
+});
+
+test('720px desktop keeps the running-task timeline readable and the evidence/send controls visible',async({page})=>{
+  const state=fixture();state.linked=true;state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.artifacts=[];state.workspace.draft.requirements=[];
+  const run=state.makeRun('run-1','running');state.runs.set('old',run);state.workspace.active_run=run;state.history[0]={...state.history[0],run,report_id:null,artifacts:[]};
+  await page.setViewportSize({width:1280,height:720});await setup(page,state);await expect(page.locator('#review-agent')).toHaveClass(/review-agent-compact/);await expect(page.locator('[data-task-run="run-1"]')).toContainText('处理中');
+  const geometry=await page.evaluate(()=>{
+    const box=(selector:string)=>{const node=document.querySelector(selector)!;const bounds=node.getBoundingClientRect();return{top:bounds.top,bottom:bounds.bottom,height:bounds.height,width:bounds.width};};
+    return{viewport:{width:innerWidth,height:innerHeight},assistant:box('#review-agent'),timeline:box('.review-chat'),composer:box('.review-composer'),task:box('[data-task-run="run-1"]'),send:box('[data-assistant-action="send"]'),evidence:box('[data-assistant-action="attach-evidence"]'),horizontal_overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  expect(geometry.viewport).toEqual({width:1280,height:720});expect(geometry.timeline.height).toBeGreaterThanOrEqual(180);expect(geometry.assistant.bottom).toBeLessThanOrEqual(720);expect(geometry.send.bottom).toBeLessThanOrEqual(720);expect(geometry.evidence.bottom).toBeLessThanOrEqual(720);expect(Math.min(geometry.task.bottom,geometry.timeline.bottom)-Math.max(geometry.task.top,geometry.timeline.top)).toBeGreaterThanOrEqual(140);expect(geometry.horizontal_overflow).toBe(false);
+  await mkdir('../../../diagnostics/m3-linked-implementation',{recursive:true});await page.screenshot({path:'../../../diagnostics/m3-linked-implementation/synthetic-runtime-desktop-1280x720.png'});await writeFile('../../../diagnostics/m3-linked-implementation/synthetic-runtime-desktop-1280x720.geometry.json',JSON.stringify({kind:'synthetic UI geometry',...geometry},null,2)+'\n');await mkdir('test-evidence/m3-linked',{recursive:true});await page.screenshot({path:'test-evidence/m3-linked/runtime-desktop-1280x720.png'});
+  expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);expect(state.workspace.active_run).toEqual(run);
 });
 
 test('typed proposal cancel executes nothing; adoption response loss reuses its identity and binds the confirmed range',async({page})=>{

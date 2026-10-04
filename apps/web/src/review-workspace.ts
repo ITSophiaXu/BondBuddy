@@ -177,7 +177,9 @@ export class ReviewWorkspace {
   private syncAgentHeight(){
     const panel=this.page?.querySelector<HTMLElement>('#review-agent');if(!panel||this.agentMedia.matches||panel.hidden)return;
     const top=Math.max(16,panel.getBoundingClientRect().top);
-    panel.style.setProperty('--review-agent-height',`${Math.max(120,Math.min(820,innerHeight-top-20))}px`);
+    const available=Math.max(120,Math.min(820,innerHeight-top-20));
+    panel.style.setProperty('--review-agent-height',`${available}px`);
+    panel.classList.toggle('review-agent-compact',available<620||innerHeight<=800);
   }
   private materialNames(){return Object.fromEntries((this.workspace?.materials??[]).map(m=>[m.material_id,m.filename]));}
   private projectInfo(){
