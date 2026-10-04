@@ -257,6 +257,7 @@ export class ProjectExecution {
     if (!this.active) return;
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     this.conversation.setEditingVisible(!this.restoring && !activeRun && (!this.run || this.nextRequested));
+    this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote?.shortage);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…')

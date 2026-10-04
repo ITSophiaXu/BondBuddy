@@ -416,7 +416,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
-        <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
+        <div class="form-footer authoring-actions"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
       </div></div></div>`, 'workspace');
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;

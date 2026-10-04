@@ -76,13 +76,12 @@ export class ProjectConversation {
     if (this.controller.signal.aborted) return;
     const legacy = value?.update_details?.supplementary_notes ?? this.host.dataset.legacy ?? '';
     this.host.dataset.legacy = legacy;
-    this.host.innerHTML = `<section class="panel project-cowork supplement-panel" aria-label="补充要求"><div class="cowork-heading">${icon('file')}<div><h2>募集书更新补充说明</h2></div></div>
+    this.host.innerHTML = `<section class="panel project-cowork supplement-panel" aria-label="补充要求"><div class="cowork-heading">${icon('file')}<h2>募集书更新补充说明 <span class="optional">选填</span></h2></div>
       <div class="cowork-messages" aria-live="polite">${this.items.length ? this.items.map(item => `<article class="cowork-message" data-message-id="${esc(item.message_id)}"><p>${esc(item.body).replaceAll('\n', '<br>')}</p><small>已保存 · 版本 ${item.message_version} · ${esc(date(item.created_at))}</small><div class="cowork-message-actions"><button type="button" data-edit-message="${esc(item.message_id)}">修改</button>${item.message_version > 1 ? `<button type="button" data-message-version="${esc(item.message_id)}" data-version="${item.message_version - 1}">查看旧版本</button>` : ''}</div></article>`).join('') : `<p class="cowork-guidance">${this.loading ? '正在读取项目补充要求…' : this.ref ? '' : '补充要求尚未读取，请重试。'}</p>`}</div>
       ${this.cursor ? '<button id="more-project-messages" class="text-button" type="button">加载更多补充要求</button>' : ''}
       ${this.history ? `<section class="message-history" aria-label="补充要求历史版本"><h3>历史版本 ${this.history.message_version} · 用户提供（未核验）</h3><p>${esc(this.history.body).replaceAll('\n', '<br>')}</p><small>${esc(date(this.history.created_at))} · ${this.history.material_versions.length} 份精确材料引用</small><div class="cowork-message-actions">${this.history.message_version > 1 ? `<button type="button" data-message-version="${esc(this.history.message_id)}" data-version="${this.history.message_version - 1}">更早版本</button>` : ''}<button type="button" id="close-message-history">关闭</button></div></section>` : ''}
       ${legacy ? `<article class="cowork-message cowork-initial"><p>${esc(legacy).replaceAll('\n', '<br>')}</p><small>已保存</small><div class="cowork-message-actions"><button id="edit-initial-note" type="button">修改创建时的补充说明</button></div></article>` : ''}
-      <div class="cowork-composer"><label for="project-message">补充募集书更新说明 <span class="optional">选填</span></label><textarea id="project-message" maxlength="${this.editingInitial ? 6000 : 12000}" rows="4" placeholder="请输入额外的募集书更新说明">${esc(this.composer)}</textarea><button class="btn primary cowork-save" id="send-project-message" type="button">保存补充说明</button>${(this.edit || this.editingInitial) && !this.pending ? '<button class="text-button" id="cancel-message-edit" type="button">取消编辑</button>' : ''}${this.pending ? '<button class="text-button" id="restore-message-request" type="button">恢复原请求以重试</button>' : ''}
-      <p id="conversation-status" role="status"></p><button id="reload-project-messages" class="text-button" type="button">重新读取补充要求</button></div></section>`;
+      <div class="cowork-composer"><textarea id="project-message" aria-label="补充募集书更新说明" maxlength="${this.editingInitial ? 6000 : 12000}" rows="3" placeholder="如有额外的募集书更新要求，可在此补充">${esc(this.composer)}</textarea><div class="supplement-footer"><div class="supplement-feedback"><p id="conversation-status" role="status"></p><button id="reload-project-messages" class="text-button" type="button">重新读取补充要求</button></div><div class="supplement-save-actions">${(this.edit || this.editingInitial) && !this.pending ? '<button class="text-button" id="cancel-message-edit" type="button">取消编辑</button>' : ''}${this.pending ? '<button class="text-button" id="restore-message-request" type="button">恢复原请求以重试</button>' : ''}<button class="btn secondary small cowork-save" id="send-project-message" type="button">保存补充说明</button></div></div></div></section>`;
     this.controls();
   }
   setEditingVisible(visible: boolean) { if (this.host) this.host.hidden = !visible; }
@@ -104,7 +103,9 @@ export class ProjectConversation {
     this.host.querySelector<HTMLButtonElement>('#restore-message-request')?.toggleAttribute('disabled', this.saving);
     this.host.querySelector<HTMLButtonElement>('#restore-message-request')?.toggleAttribute('hidden', this.composer.trim() === this.pending?.body);
     this.host.querySelector<HTMLButtonElement>('#more-project-messages')?.toggleAttribute('disabled', this.loading);
-    this.host.querySelector<HTMLButtonElement>('#reload-project-messages')!.disabled = this.loading || this.saving;
+    const reload = this.host.querySelector<HTMLButtonElement>('#reload-project-messages')!;
+    reload.disabled = this.loading || this.saving;
+    reload.hidden = !!this.ref && !this.pending && !this.items.length && !this.status.includes('失败');
   }
   private async page(cursor?: string) {
     const page = await this.api.projectMessages(this.projectId, cursor, this.controller.signal);
