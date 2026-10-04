@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewConclusionSchema, isReviewReport, type ReviewEvidenceRef, type ReviewReport } from '../../../packages/contracts/dist/review-results.js';
-import { evidenceKey, referenceFor, reviewContentHash, uniqueEvidence, validateReviewEvidence } from '../../../packages/domain/dist/review-evidence.js';
+import { evidenceKey, referenceFor, reviewContentHash, uniqueEvidence, validateReviewEvidence, validateReviewEvidenceBatch } from '../../../packages/domain/dist/review-evidence.js';
 import { AUDIT_RECONCILIATION_KNOWLEDGE } from '../../../packages/domain/dist/audit-reconciliation-knowledge.js';
 import { carryForwardReviewFindings, normalizeReviewFindings, reviewCoverage } from '../../../packages/domain/dist/review-finding-normalization.js';
 import { guardFinancialRepairConflicts } from '../../../packages/domain/dist/review-financial-repair-conflicts.js';
@@ -13,6 +13,7 @@ import { normalizeModelReviewAnalysis, reviewPromptRuleId, ReviewAnalysisInvalid
 import { loadReviewAuditKnowledge, REVIEW_AUDIT_KNOWLEDGE_PIN } from './review-knowledge.js';
 import { reviewToolDataHash, validateReviewToolTrace, type ReviewToolData, type ReviewToolTrace } from './review-tools.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
+import { withReviewFollowUp } from './review-follow-up.js';
 
 // Existing evidence helpers remain available to public review and targeted calculation tools.
 export { reviewPromptRecordId } from './review-record-context.js';
@@ -86,7 +87,8 @@ function mergeToolCoverage(checks: ReviewReport['coverage']): ReviewReport['cove
 function validateInput(input: ReviewAnalysisInput, ctx: StageContext): void {
   if (input.input_hash !== ctx.run.input_hash.trim() || input.evidence.owner_user_id !== ctx.run.owner_user_id || input.evidence.project_id !== ctx.run.project_id) fail('review_input_binding_mismatch');
   if (!Number.isInteger(input.report_version) || input.report_version < 1 || !input.evidence.report_id.trim()) fail('review_report_identity_invalid');
-  if (input.evidence.records.some(r => validateReviewEvidence(referenceFor(r), input.evidence).length || (r.source_kind === 'disclosure') !== sourceMatches(r, input))) fail('review_record_binding_invalid');
+  if (validateReviewEvidenceBatch(input.evidence.records.map(r=>referenceFor(r)), input.evidence).some(errors => errors.length)
+    || input.evidence.records.some(r => (r.source_kind === 'disclosure') !== sourceMatches(r, input))) fail('review_record_binding_invalid');
   if (new Set(input.evidence.records.map(reviewPromptRecordId)).size !== input.evidence.records.length) fail('review_analysis_records_ambiguous');
   if (input.scope.mode === 'differential_review') {
     const prev = input.previous_report;
@@ -130,6 +132,7 @@ export function assembleCliReview(input: ReviewAnalysisInput, raw: CliReview, da
   const byKey = new Map(raw.concerns.map((c, i) => [c.stable_key, normalizeReviewFindings([concerns[i]!], input.evidence)[0]!]));
   let findings = [...new Map([...trace.receipts.flatMap(r => r.evaluation.findings), ...semantic].map(f => [f.finding_id, f])).values()];
   let coverage = mergeToolCoverage(trace.receipts.flatMap(r => r.evaluation.coverage));
+  let correctedReceiptOutcomes = 0;
   const records = new Map(input.evidence.records.map(r => [reviewPromptRecordId(r), r]));
   const rules = new Map(input.evidence.rules.map(r => [reviewPromptRuleId(r), r]));
   for (const check of raw.checks) {
@@ -141,12 +144,16 @@ export function assembleCliReview(input: ReviewAnalysisInput, raw: CliReview, da
     const linked = check.concern_keys.map(k => byKey.get(k)!);
     const receipt = check.receipt_id ? receipts.get(check.receipt_id) : undefined;
     const issued = receipt?.evaluation.coverage.find(c => c.check_id === check.receipt_check_id);
-    if (check.receipt_id && (!issued || issued.dimension !== check.dimension || issued.outcome !== check.outcome)) fail('review_cli_receipt_mismatch');
+    if (check.receipt_id && (!issued || issued.dimension !== check.dimension)) fail('review_cli_receipt_mismatch');
     const trusted = issued ? coverage.find(c => c.check_id === issued.check_id)! : undefined;
     if (check.check_id.startsWith('cli-method:') && trusted) {
       const method = check.check_id.slice('cli-method:'.length);
       if (receipt?.tool !== 'check_financial' || !receipt.audit_rule_ids.includes(method) || !(trusted.check_id === `audit-reconciliation:${method}` || trusted.check_id.startsWith(`audit-reconciliation:${method}:`))) fail('review_cli_method_receipt_mismatch');
     }
+    // The trace was independently replayed above. A model's summary cannot replace
+    // its bound tool result, including a conservative merge of repeated checks.
+    const correctedOutcome = !!trusted && trusted.outcome !== check.outcome;
+    if (correctedOutcome) correctedReceiptOutcomes++;
     if (check.outcome === 'issue' && !trusted && !linked.length) fail('review_cli_issue_without_finding');
     const unverified = !trusted && ['pass', 'not_applicable'].includes(check.outcome);
     if (coverage.some(c => c.check_id === check.check_id)) {
@@ -154,7 +161,7 @@ export function assembleCliReview(input: ReviewAnalysisInput, raw: CliReview, da
       continue;
     }
     coverage.push(reviewCoverage(input.evidence, check.check_id, check.dimension, trusted?.outcome ?? (unverified ? 'manual' : check.outcome),
-      unverified ? `${check.reason}；CLI判断尚无独立工具证明，保留人工核对。` : trusted && trusted.outcome !== check.outcome ? `${check.reason}；同一检查其他工具结果：${trusted.reason}` : check.reason,
+      unverified ? `${check.reason}；CLI判断尚无独立工具证明，保留人工核对。` : correctedOutcome ? `检查概述与实际核验记录不一致，本项按核验记录保留结论：${trusted!.reason}` : check.reason,
       trusted ? trusted.evidence_refs : refs, trusted ? findings.filter(f => trusted.finding_ids.includes(f.finding_id)) : linked,
       trusted ? trusted.rule_refs : rr));
   }
@@ -170,7 +177,10 @@ export function assembleCliReview(input: ReviewAnalysisInput, raw: CliReview, da
   }
   const guarded = guardFinancialRepairConflicts({ findings, coverage, limitations: [] }, input.evidence);
   findings = guarded.findings; coverage = guarded.coverage;
-  return { findings, coverage, limitations: [...raw.limitations, ...trace.receipts.flatMap(r => r.evaluation.limitations), ...guarded.limitations], summary: raw.summary };
+  const summary = correctedReceiptOutcomes
+    ? `本轮复核已读取 ${read.size} 条记录，形成 ${findings.length} 项待处理事项。${correctedReceiptOutcomes} 项检查概述与实际核验记录不一致，报告已按核验记录整理；未核实或未覆盖的事项仍保留为待处理，详见逐项结果。`
+    : raw.summary;
+  return { findings, coverage, limitations: [...raw.limitations, ...trace.receipts.flatMap(r => r.evaluation.limitations), ...guarded.limitations], summary };
 }
 
 function retainDifferential(input: ReviewAnalysisInput, raw: CliReview | null, trace: ReviewToolTrace | null, mappings: DifferentialFindingMapping[], result: ReturnType<typeof assembleCliReview>) {
@@ -283,11 +293,11 @@ export function reviewModelStage(options: {
       try { result = assembleCliReview(input, raw, data, trace); } catch (error) { if (error instanceof ReviewAnalysisInvalid) return { kind: 'fail', code: 'VALIDATION_FAILED' }; throw error; }
     }
     retainDifferential(input, raw, trace, mappings, result);
-    const report: ReviewReport = { report_id: input.evidence.report_id, project_id: ctx.run.project_id, run_id: ctx.run.id, input_revision: ctx.run.input_revision,
+    const report: ReviewReport = withReviewFollowUp({ report_id: input.evidence.report_id, project_id: ctx.run.project_id, run_id: ctx.run.id, input_revision: ctx.run.input_revision,
       version: input.report_version, source_material: input.evidence.source_material, scope: input.scope, findings: result.findings, coverage: result.coverage,
       limitations: [...new Set([`CLI复核概述：${result.summary}`, ...input.limitations, ...result.limitations,
         `审计勾稽Markdown ${knowledge.version}；内容SHA-256 ${knowledge.contentSHA}；附件SHA-256 ${knowledge.sourceSHA}。方法知识不代表项目审计事实或已核实监管依据。`,
-        'CLI负责组织复核；后台仅校验引用、实际工具结果和交付。未阅读、未请求工具或缺证事项不视为通过。'])], created_at: input.created_at };
+        'CLI负责组织复核；后台仅校验引用、实际工具结果和交付。未阅读、未请求工具或缺证事项不视为通过。'])], created_at: input.created_at },input);
     if (!isReviewReport(report)) return { kind: 'fail', code: 'VALIDATION_FAILED' };
     const value: ReviewAnalysisResult = { version: 'review-analysis-v1', input_hash: input.input_hash, report, model_calls: modelCalls, input, anchor_mappings: mappings };
     return { kind: 'done', value, checkpoint: { version: value.version, execution_mode: `cli-led-${cliVersion}`, report_id: report.report_id, report_sha256: reviewContentHash(report), model_calls: modelCalls,

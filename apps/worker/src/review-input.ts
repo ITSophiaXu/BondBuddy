@@ -1,4 +1,5 @@
-import { type ReviewDraftInput, type ReviewReport, type ReviewMessage } from '@bondbuddy/contracts';
+import { isReviewProposalV2, ReviewExecutionOriginSchema, type ReviewDraftInput, type ReviewReport, type ReviewMessage, type ReviewExecutionOrigin } from '@bondbuddy/contracts';
+import { Value } from '@sinclair/typebox/value';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { checkpointStage } from '@bondbuddy/api/queue';
@@ -13,18 +14,50 @@ export type ReviewManifest = Record<string, unknown> & {
   issuer_name: string | null; market: string | null; offering: string | null;
   materials: { material_id: string; material_version: number; sha256: string; role: string }[];
   review: { version: 'review_v1'; operation: 'full_review' | 'differential_review' | 'revision'; report_id: string; version_number: number; input: ReviewDraftInput;
-    source_report_id: string | null; source_report_sha256: string | null; finding_ids: string[]; context_messages?: ReviewMessage[] };
+    source_report_id: string | null; source_report_sha256: string | null; finding_ids: string[]; context_messages?: ReviewMessage[];
+    draft_version?:number; origin?:ReviewExecutionOrigin };
 };
 export function isReviewInput(value: unknown): value is ReviewManifest {
   return !!value && typeof value === 'object' && (value as ReviewManifest).review?.version === 'review_v1';
+}
+/** Discussion is never an execution requirement. Only validated adopted input supplies instructions. */
+export function validReviewExecutionOrigin(review:ReviewManifest['review'],projectId:string):boolean {
+  try {
+    if(review.operation==='full_review'&&(review.source_report_id!==null||review.source_report_sha256!==null||review.finding_ids.length))return false;
+    if(!review.origin)return true; // Immutable legacy executions keep their original protocol.
+    const origin=review.origin,accepted=origin.accepted_proposal;
+    if(!Value.Check(ReviewExecutionOriginSchema,origin)||!['quick_action','assistant_proposal'].includes(origin.entrypoint))return false;
+    if(origin.entrypoint==='quick_action')return accepted===null;
+    if(!accepted||!isReviewProposalV2(accepted.proposal)||accepted.proposal.project_id!==projectId
+      ||accepted.proposal_sha256!==inputManifestHash(accepted.proposal)||accepted.input_sha256!==inputManifestHash(review.input)
+      ||accepted.input_version!==review.draft_version||!Number.isSafeInteger(accepted.input_version)||accepted.input_version<1
+      ||!Number.isSafeInteger(accepted.report_catalog_version)||accepted.report_catalog_version<0
+      ||accepted.proposal.operation!==review.operation||accepted.proposal.source_report_id!==review.source_report_id
+      ||accepted.proposal.source_report_sha256!==review.source_report_sha256
+      ||inputManifestHash(origin.context_report_ref)!==inputManifestHash(accepted.proposal.context_report_ref)
+      ||!Array.isArray(accepted.finding_ids)||inputManifestHash([...accepted.finding_ids].sort())!==inputManifestHash([...review.finding_ids].sort())
+      ||!Array.isArray(accepted.requirements)||accepted.requirements.some(r=>typeof r!=='string'||!r.trim()||!review.input.requirements.includes(r))
+      ||inputManifestHash(accepted.proposal.source_material_ref)!==inputManifestHash(review.input.source_material_ref)
+      ||inputManifestHash(accepted.proposal.material_versions)!==inputManifestHash(review.input.material_versions))return false;
+    if(accepted.adoption==='as_proposed'&&(inputManifestHash([...accepted.finding_ids].sort())!==inputManifestHash([...accepted.proposal.finding_ids,...accepted.proposal.related_finding_ids].sort())
+      ||inputManifestHash(accepted.excluded_findings)!==inputManifestHash(accepted.proposal.excluded_findings)
+      ||inputManifestHash(accepted.requirements)!==inputManifestHash(accepted.proposal.requirements)))return false;
+    return new Set(accepted.finding_ids).size===accepted.finding_ids.length
+      &&new Set(accepted.excluded_findings.map(f=>f.finding_id)).size===accepted.excluded_findings.length
+      &&accepted.excluded_findings.every(f=>!accepted.finding_ids.includes(f.finding_id)&&!!f.reason.trim())
+      &&(review.operation==='full_review'||accepted.finding_ids.length>0);
+  }catch{return false;}
 }
 export async function reviewInputGate(pool: Pool, run: RunRow, input: InputRevisionRow): Promise<Extract<StageOutcome, { kind: 'fail' }> | null> {
   const invalid = { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' } as const;
   if (!isReviewInput(input.manifest) || inputManifestHash(input.manifest) !== run.input_hash.trim() || input.input_hash.trim() !== run.input_hash.trim()) return invalid;
   const m = input.manifest;
+  if(!validReviewExecutionOrigin(m.review,run.project_id))return invalid;
   if (!m.review.input.source_material_ref || !Array.isArray(m.materials) || !m.materials.some(p => p.material_id === m.review.input.source_material_ref!.material_id && p.material_version === m.review.input.source_material_ref!.material_version && p.sha256 === m.review.input.source_material_ref!.sha256)) return invalid;
   const execution = (await pool.query('SELECT version,operation,snapshot FROM bb_review_executions WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3', [run.owner_user_id, run.project_id, run.id])).rows[0];
-  if (!execution || execution.version !== m.review.version_number || execution.operation !== m.review.operation || inputManifestHash(execution.snapshot.input) !== inputManifestHash(m.review.input)) return invalid;
+  if (!execution || execution.version !== m.review.version_number || execution.operation !== m.review.operation
+    || inputManifestHash(execution.snapshot.input) !== inputManifestHash(m.review.input)
+    || inputManifestHash(execution.snapshot.origin??null)!==inputManifestHash(m.review.origin??null)) return invalid;
   for (const pin of m.materials) {
     const row = (await pool.query('SELECT sha256,role FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [run.owner_user_id, run.project_id, pin.material_id, pin.material_version])).rows[0];
     if (!row || row.sha256.trim() !== pin.sha256 || row.role !== pin.role) return invalid;

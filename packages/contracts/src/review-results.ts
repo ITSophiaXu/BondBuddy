@@ -69,6 +69,16 @@ export const ReviewCheckCoverageSchema = strict({
 });
 export type ReviewCheckCoverage = Static<typeof ReviewCheckCoverageSchema>;
 
+/** Links each source finding to actual current coverage, including an explicit incomplete outcome. */
+export const ReviewFollowUpSchema = strict({
+  version: Type.Literal('review-follow-up-v1'), source_report_id: id, source_report_sha256: hash,
+  findings: Type.Array(strict({ source_finding_id: id, current_finding_ids: ids, coverage_check_ids: ids,
+    status: Type.Union([Type.Literal('rechecked'), Type.Literal('carried_forward'), Type.Literal('uncompleted')]),
+    outcome: Type.Union(['issue','resolved','needs_evidence','manual','uncovered','carried_forward'].map(v => Type.Literal(v))), reason: text,
+  }), { maxItems: 10000 }),
+});
+export type ReviewFollowUp = Static<typeof ReviewFollowUpSchema>;
+
 export const ReviewReportSchema = strict({
   report_id: id, project_id: id, run_id: id, input_revision: Type.Integer({ minimum: 1 }),
   version: Type.Integer({ minimum: 1 }),
@@ -76,6 +86,7 @@ export const ReviewReportSchema = strict({
   scope: strict({ mode: Type.Union([Type.Literal('full_review'), Type.Literal('differential_review')]), finding_ids: ids }),
   findings: Type.Array(ReviewFindingSchema, { maxItems: 10000 }),
   coverage: Type.Array(ReviewCheckCoverageSchema, { maxItems: 10000 }), limitations: strings,
+  follow_up: Type.Optional(ReviewFollowUpSchema),
   created_at: timestamp,
 });
 export type ReviewReport = Static<typeof ReviewReportSchema>;
@@ -88,6 +99,21 @@ export function isReviewReport(value: unknown): value is ReviewReport {
   const validDay = (date: string | null) => date === null || Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0,10) === date;
   const validTime = (date: string) => Number.isFinite(Date.parse(date)) && validDay(date.slice(0,10));
   if (!validTime(value.created_at)) return false;
+  if (value.follow_up) {
+    const follow = value.follow_up, checks = new Map(value.coverage.map(c => [c.check_id,c]));
+    if (value.scope.mode !== 'differential_review' || follow.source_report_id === value.report_id
+      || new Set(follow.findings.map(f => f.source_finding_id)).size !== follow.findings.length
+      || value.scope.finding_ids.some(id => !follow.findings.some(f => f.source_finding_id === id))
+      || follow.findings.some(f => f.current_finding_ids.some(id => !ids.has(id)) || f.coverage_check_ids.some(id => !checks.has(id))
+        || (f.status === 'carried_forward') !== (f.outcome === 'carried_forward')
+        || (f.status === 'carried_forward') === value.scope.finding_ids.includes(f.source_finding_id)
+        || f.status === 'carried_forward' && (!f.current_finding_ids.includes(f.source_finding_id)
+          || f.current_finding_ids.some(id => value.findings.find(v => v.finding_id === id)!.check_status !== 'carried_forward')
+          || f.coverage_check_ids.some(id => checks.get(id)!.check_status !== 'carried_forward'))
+        || f.outcome === 'resolved' && (f.status !== 'rechecked' || f.current_finding_ids.length > 0
+          || !f.coverage_check_ids.some(id => { const c=checks.get(id)!;return c.check_id===`scope:${f.source_finding_id}`&&c.check_status==='rechecked'&&c.outcome==='pass'
+            && (c.evidence_refs.length>0||c.rule_refs.length>0||(c.public_sources?.length??0)>0); })))) return false;
+  }
   const allRefs = [...value.findings,...value.coverage];
   if (allRefs.some(item => (item.rule_refs ?? []).some(ref => !validDay(ref.effective_from) || !validDay(ref.effective_to))
     || (item.public_sources ?? []).some(ref => !validTime(ref.retrieved_at) || !validDay(ref.published_at) || !validDay(ref.as_of)))) return false;

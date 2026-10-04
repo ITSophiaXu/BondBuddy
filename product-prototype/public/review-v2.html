@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#173e33">
+  <meta name="description" content="BondBuddy 复核工作区设计预览：材料、复核结果与项目助手在同一工作区。">
+  <title>复核工作区 · BondBuddy</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/review-v2.css">
+  <script type="module" src="/review-v2.js"></script>
+</head>
+<body>
+  <a href="#main" class="skip-link">跳至复核工作区</a>
+  <aside class="sidebar" aria-label="主导航">
+    <a class="brand" href="/dashboard-v2.html"><img src="/favicon.svg" width="32" height="32" alt=""><span>bondbuddy<small>BETA</small></span></a><button class="icon-button mobile-menu" data-action="toggle-nav" aria-label="展开导航菜单"><span data-icon="grid"></span></button>
+    <div class="workspace-chip"><span class="workspace-symbol">澄</span><div>我的工作空间<small>PERSONAL WORKSPACE</small></div></div>
+    <nav>
+      <a class="nav-item" href="/dashboard-v2.html"><span data-icon="grid"></span>工作台</a>
+      <div class="nav-label">开始工作</div>
+      <a class="nav-item" href="/#update"><span data-icon="file-edit"></span>更新募集书</a>
+      <a class="nav-item active" href="/review-v2.html" aria-current="page"><span data-icon="shield"></span>复核募集书<span class="nav-dot"></span></a>
+      <a class="nav-item" href="/#generate"><span data-icon="sparkles"></span>材料生成</a>
+      <a class="nav-item" href="/#qa"><span data-icon="message"></span>项目问答</a>
+      <div class="nav-label">工作空间</div>
+      <a class="nav-item" href="/#tasks"><span data-icon="folder"></span>全部项目</a>
+    </nav>
+    <div class="sidebar-bottom"><span class="avatar">L</span><div>Leizhai<small>个人工作空间</small></div><span data-icon="chevron-right"></span></div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="breadcrumbs"><a href="/dashboard-v2.html">工作台</a><span data-icon="chevron-right"></span><span>复核工作区</span></div>
+      <div class="topbar-actions"><span class="prototype-pill">交互原型 · 示例数据</span><button class="text-button" data-action="design-info">设计说明<span data-icon="arrow-up-right"></span></button></div>
+    </header>
+    <main class="workspace" id="main" tabindex="-1">
+      <header class="project-header">
+        <div>
+          <div class="eyebrow">PROSPECTUS REVIEW <span>项目 001</span></div>
+          <div class="project-title-row"><h1>澄川科技 · 募集书复核</h1><span id="phase-badge" class="badge success">复核完成</span></div>
+          <div class="project-meta"><span>上交所 · 普通私募公司债</span><span>报告期 2025 年末</span><span id="project-version">募集书 V1</span></div>
+        </div>
+        <div class="header-actions"><button class="button secondary small" data-action="prepare"><span data-icon="play"></span>从准备开始体验</button></div>
+      </header>
+      <div class="workspace-grid">
+        <section class="work-panel" aria-label="复核内容">
+          <nav class="work-tabs" aria-label="项目内容"><button class="tab" data-tab="materials">材料与要求<span class="tab-count">4</span></button><button class="tab active" data-tab="results">复核结果<span class="tab-count">6</span></button></nav>
+          <div id="work-content"></div>
+        </section>
+        <aside class="agent-panel" id="agent-panel" aria-label="项目助手">
+          <header class="agent-header"><span class="agent-avatar" data-icon="sparkles"></span><div class="agent-title"><h2>项目助手</h2><span class="agent-status"><i></i>补充背景 · 澄清口径 · 讨论异议</span></div><button class="icon-button agent-close" aria-label="收起项目助手" data-action="close-agent"><span data-icon="close"></span></button></header>
+          <p class="agent-purpose">快捷操作与对话共用任务记录。补充口径或异议后，先确认范围，再重新核验。</p>
+          <div class="agent-context" id="agent-context"></div>
+          <button class="saved-notes-button" data-action="notes"><span data-icon="check-circle"></span><span id="notes-count">已记录 2 项要求</span><span data-icon="chevron-right"></span></button>
+          <div class="chat-log" id="chat-log" role="log" aria-label="本项目对话与演示任务" aria-live="polite" aria-relevant="additions text"></div>
+          <div class="agent-footer">
+            <div id="reference-chip"></div>
+            <div id="suggestions" class="suggestion-row"></div>
+            <form id="chat-form" class="composer">
+              <label class="sr-only" for="chat-input">向项目助手发送消息</label>
+              <textarea id="chat-input" rows="3" maxlength="4000" placeholder="例如：这段应使用母公司口径，请保留历史名称…"></textarea>
+              <div class="composer-bottom"><button type="button" class="icon-button" data-action="attach-evidence" aria-label="添加补充依据"><span data-icon="paperclip"></span></button><span class="composer-hint" id="save-status">保存在此浏览器</span><button class="send-button" type="submit" aria-label="发送消息"><span data-icon="arrow-up"></span></button></div>
+            </form>
+            <p class="agent-footnote">明确确认才执行 · 任务与回复均为演示，不调用模型</p>
+          </div>
+        </aside>
+      </div>
+      <p class="preview-footnote">M3 交互设计预览 · 示例发行人与材料 · 不调用模型，不产生费用 <a href="/#review">对照原复核页<span data-icon="arrow-up-right"></span></a></p>
+    </main>
+  </div>
+  <button class="mobile-agent-toggle" data-action="open-agent" aria-controls="agent-panel" aria-expanded="false"><span data-icon="sparkles"></span>项目助手<span id="mobile-message-count"></span></button>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal" class="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
+  <input type="file" id="local-file" accept=".docx,.pdf,.xlsx,.csv,.txt" multiple hidden aria-label="添加本地文件信息">
+</body>
+</html>

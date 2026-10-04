@@ -170,8 +170,8 @@ test('repeated CLI tool checks merge coverage while preserving findings and ever
   assert(isReviewReport(report));assert.equal(report.findings.length,1);assert.equal(report.coverage.filter(c=>c.check_id.startsWith('compare:')).length,1);
 });
 
-test('fake, omitted, tampered and mismatched receipts or reading claims cannot produce a report',async()=>{
-  for(const mutate of ['fake','omit','duplicate','tamper','count','mismatch','no-knowledge'] as const){const {input,ctx}=fixture();
+test('fake, omitted, tampered and incorrectly bound receipts or reading claims cannot produce a report',async()=>{
+  for(const mutate of ['fake','omit','duplicate','tamper','count','dimension','receipt-id','check-id','method-id','citation','no-knowledge'] as const){const {input,ctx}=fixture();
     const result=await reviewModelStage({loadInput:async()=>input,model:o=>({name:o.name,run:async()=>{
       const value=syntheticCliReview(o.reviewTools!,{financial:{observations:input.evidence.records.map((r,i)=>observation(r,i?'1000.00':'100.00',`o${i}`)),calculations:[]}});
       if(mutate==='fake')value.output.receipt_ids=['receipt-not-issued'];
@@ -183,9 +183,58 @@ test('fake, omitted, tampered and mismatched receipts or reading claims cannot p
       if(mutate==='tamper')value.tool_trace.receipts[0]!.evaluation.findings[0]!.suggested_change='9999.00';
       if(mutate==='count')value.output.reviewed_record_count++;
       if(mutate==='no-knowledge'){value.tool_trace.knowledge_read_ranges=[];value.tool_trace.knowledge_read_complete=false;}
-      if(mutate==='mismatch')value.output.checks=[{check_id:'made-up-pass',dimension:'financial',outcome:'pass',reason:'Pretending an issue passed.',evidence_refs:[],rule_keys:[],concern_keys:[],receipt_id:value.output.receipt_ids[0]!,receipt_check_id:value.tool_trace.receipts[0]!.evaluation.coverage.find(c=>c.outcome==='issue')!.check_id,resolves_finding_ids:[]}];
+      if(['dimension','receipt-id','check-id','method-id','citation'].includes(mutate)){
+        value.output.checks=[{check_id:'reported-check',dimension:'financial',outcome:'pass',reason:'Pretending an issue passed.',evidence_refs:[],rule_keys:[],concern_keys:[],receipt_id:value.output.receipt_ids[0]!,receipt_check_id:value.tool_trace.receipts[0]!.evaluation.coverage.find(c=>c.outcome==='issue')!.check_id,resolves_finding_ids:[]}];
+        const check=value.output.checks[0]!;
+        if(mutate==='dimension')check.dimension='compliance';
+        if(mutate==='receipt-id')check.receipt_id='receipt-not-issued';
+        if(mutate==='check-id')check.receipt_check_id='check-not-issued';
+        if(mutate==='method-id')check.check_id='cli-method:audit-reconciliation-32';
+        if(mutate==='citation')check.evidence_refs=[{record_id:reviewPromptRecordId(input.evidence.records[0]!),quote:'Fabricated quotation.'}];
+      }
       return {kind:'done',value};
     }})}).run(ctx);assert.deepEqual(result,{kind:'fail',code:'VALIDATION_FAILED'},mutate);
+  }
+});
+
+test('a copied pass cannot erase a receipt-backed issue or its findings, including an identical check ID',async()=>{
+  for(const sameId of [false,true]){
+    const {input,ctx}=fixture();let envelope:ReturnType<typeof syntheticCliReview>|undefined,original='';
+    let issued:ReviewReport['coverage'][number]|undefined;
+    const result=await reviewModelStage({loadInput:async()=>input,model:o=>({name:o.name,run:async()=>{
+      envelope=syntheticCliReview(o.reviewTools!,{financial:{observations:input.evidence.records.map((r,i)=>observation(r,i?'1000.00':'100.00',`o${i}`)),calculations:[]}});
+      issued=envelope.tool_trace.receipts[0]!.evaluation.coverage.find(c=>c.outcome==='issue')!;
+      envelope.output.summary='Misleading summary: there are no issues.';
+      envelope.output.checks=[{check_id:sameId?issued.check_id:'reported-check',dimension:'financial',outcome:'pass',reason:'Misleading reason: everything passed.',evidence_refs:[],rule_keys:[],concern_keys:[],receipt_id:envelope.output.receipt_ids[0]!,receipt_check_id:issued.check_id,resolves_finding_ids:[]}];
+      original=JSON.stringify(envelope);return {kind:'done',value:envelope};
+    }})}).run(ctx);
+    assert.equal(result.kind,'done');if(result.kind!=='done')continue;assert(issued);assert(envelope);
+    const report=(result.value as ReviewAnalysisResult).report,check=report.coverage.find(c=>c.check_id===(sameId?issued!.check_id:'reported-check'))!;
+    assert(isReviewReport(report));assert.equal(check.outcome,'issue');assert.deepEqual(check.finding_ids,issued.finding_ids);
+    assert.deepEqual(check.evidence_refs,issued.evidence_refs);assert(check.reason.includes(issued.reason));
+    assert(issued.finding_ids.every(id=>report.findings.some(f=>f.finding_id===id&&f.conclusion==='error'&&f.suggested_change==='1000.00')));
+    assert(!JSON.stringify(report).includes('Misleading'));assert(report.limitations.some(l=>l.includes('1 项检查概述与实际核验记录不一致')));
+    assert.equal(JSON.stringify(envelope),original,'the saved provider output and trace remain unchanged');
+  }
+});
+
+test('method 32 missing tool evidence remains uncovered when the model calls it inapplicable or passed',async()=>{
+  for(const outcome of ['not_applicable','pass'] as const){
+    const {input,ctx}=fixture();let envelope:ReturnType<typeof syntheticCliReview>|undefined,original='',reason='';
+    const result=await reviewModelStage({loadInput:async()=>input,model:o=>({name:o.name,run:async()=>{
+      envelope=syntheticCliReview(o.reviewTools!,{financial:{observations:[],calculations:[],audit_rule_ids:['audit-reconciliation-32']}});
+      const receipt=envelope.tool_trace.receipts[0]!,issued=receipt.evaluation.coverage.find(c=>c.check_id==='audit-reconciliation:audit-reconciliation-32')!;
+      assert.equal(issued.outcome,'uncovered');reason=issued.reason;
+      envelope.output.summary='Misleading summary: method 32 requires no further checking.';
+      envelope.output.checks=[{check_id:'cli-method:audit-reconciliation-32',dimension:'financial',outcome,reason:'Misleading reason: no check needed.',evidence_refs:[],rule_keys:[],concern_keys:[],receipt_id:receipt.receipt_id,receipt_check_id:issued.check_id,resolves_finding_ids:[]}];
+      original=JSON.stringify(envelope);return {kind:'done',value:envelope};
+    }})}).run(ctx);
+    assert.equal(result.kind,'done');if(result.kind!=='done')continue;assert(envelope);
+    const report=(result.value as ReviewAnalysisResult).report,check=report.coverage.find(c=>c.check_id==='cli-method:audit-reconciliation-32')!;
+    assert(isReviewReport(report));assert.equal(check.outcome,'uncovered');assert(check.reason.includes(reason));
+    assert(report.coverage.every(c=>c.outcome==='uncovered'));assert(!JSON.stringify(report).includes('Misleading'));
+    assert(report.limitations.some(l=>l.includes('未核实或未覆盖的事项仍保留为待处理')));
+    assert.equal(JSON.stringify(envelope),original,'the saved provider output and trace remain unchanged');
   }
 });
 

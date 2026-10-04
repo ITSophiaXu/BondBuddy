@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#173e33">
+  <meta name="description" content="BondBuddy 工作台设计预览：继续项目、回看复核与修订记录。">
+  <title>工作台 · BondBuddy</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/review-v2.css">
+  <link rel="stylesheet" href="/dashboard-v2.css">
+  <script type="module" src="/dashboard-v2.js"></script>
+</head>
+<body class="dashboard-page">
+  <a href="#main" class="skip-link">跳至工作台</a>
+  <aside class="sidebar" aria-label="主导航">
+    <a class="brand" href="/dashboard-v2.html"><img src="/favicon.svg" width="32" height="32" alt=""><span>bondbuddy<small>BETA</small></span></a>
+    <button class="icon-button mobile-menu" data-action="toggle-nav" aria-label="展开导航菜单" aria-expanded="false"><span data-icon="grid"></span></button>
+    <div class="workspace-chip"><span class="workspace-symbol">澄</span><div>我的工作空间<small>PERSONAL WORKSPACE</small></div></div>
+    <nav>
+      <a class="nav-item active" href="/dashboard-v2.html" aria-current="page"><span data-icon="grid"></span>工作台<span class="nav-dot"></span></a>
+      <div class="nav-label">开始工作</div>
+      <a class="nav-item" href="/#update"><span data-icon="file-edit"></span>更新募集书</a>
+      <a class="nav-item" href="/review-v2.html"><span data-icon="shield"></span>复核募集书</a>
+      <a class="nav-item" href="/#generate"><span data-icon="sparkles"></span>材料生成</a>
+      <a class="nav-item" href="/#qa"><span data-icon="message"></span>项目问答</a>
+      <div class="nav-label">工作空间</div>
+      <a class="nav-item" href="/#tasks"><span data-icon="folder"></span>全部项目</a>
+    </nav>
+    <div class="sidebar-bottom"><span class="avatar">L</span><div>Leizhai<small>个人工作空间</small></div><span data-icon="chevron-right"></span></div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="breadcrumbs"><span>工作台</span></div>
+      <div class="topbar-actions"><span class="prototype-pill">交互原型 · 示例数据</span><a href="/#dashboard">对照原工作台<span data-icon="arrow-up-right"></span></a></div>
+    </header>
+    <main class="dashboard-workspace" id="main" tabindex="-1">
+      <header class="dashboard-heading"><div><p class="eyebrow">MY WORKSPACE</p><h1>工作台</h1><p>继续项目，回看每次复核与修订。</p></div><span class="workspace-date">个人工作空间</span></header>
+      <div id="storage-notice" class="storage-notice" role="status" hidden></div>
+      <div id="dashboard-content"></div>
+      <p class="dashboard-footnote">M3 交互设计预览 · 仅展示澄川科技示例项目 · 此浏览器保存演示记录 · 不调用模型，不产生费用</p>
+    </main>
+  </div>
+  <dialog id="history-modal" class="modal" aria-labelledby="history-modal-title"><div id="history-modal-content"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

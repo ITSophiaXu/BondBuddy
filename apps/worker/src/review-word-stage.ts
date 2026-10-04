@@ -5,12 +5,39 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isReviewReport, type ReviewReport } from '@bondbuddy/contracts';
-import { digest } from '@bondbuddy/api/data';
+import { digest, transaction } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage } from '@bondbuddy/api/queue';
-import type { RunStage } from './run-pipeline.js';
+import type { RunStage, StageContext } from './run-pipeline.js';
 
 const runFile = promisify(execFile), repo = resolve(fileURLToPath(import.meta.url), '../../../..');
+/** Shares the project lock with adoption/execution so a cancelled old writer cannot change the catalog behind a new acceptance. */
+export async function registerReviewReport(ctx:Pick<StageContext,'pool'|'run'|'lease'>,report:ReviewReport):Promise<boolean> {
+  if(!isReviewReport(report)||report.run_id!==ctx.run.id||report.project_id!==ctx.run.project_id||report.input_revision!==ctx.run.input_revision
+    ||ctx.lease.owner!==ctx.run.owner_user_id||ctx.lease.runId!==ctx.run.id)return false;
+  return transaction(ctx.pool,async client=>{
+    const project=(await client.query(`SELECT id FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL FOR UPDATE`,
+      [ctx.run.project_id,ctx.run.owner_user_id])).rows[0];
+    if(!project)return false;
+    const run=(await client.query(`SELECT state,input_hash,input_revision FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 FOR UPDATE`,
+      [ctx.run.id,ctx.run.owner_user_id,ctx.run.project_id])).rows[0];
+    // The queue sets claimed and checkpointed jobs to running. Paused, stop/cancelled
+    // and every terminal state must obtain a new normal claim before publication.
+    if(!run||run.state!=='running'||String(run.input_hash).trim()!==ctx.run.input_hash.trim()||run.input_revision!==report.input_revision)return false;
+    const job=(await client.query(`SELECT id FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running'
+      AND lease_token=$4 AND lease_until>clock_timestamp() FOR UPDATE`,[ctx.lease.jobId,ctx.run.owner_user_id,ctx.run.id,ctx.lease.token])).rows[0];
+    if(!job)return false;
+    const hash=inputManifestHash(report),saved=await client.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report)
+      VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id) DO NOTHING RETURNING id`,
+      [report.report_id,ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id,report.version,hash,report]);
+    if(saved.rowCount)return true;
+    const previous=(await client.query(`SELECT id,version,content_sha256,report FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3`,
+      [ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id])).rows[0];
+    return !!previous&&previous.id===report.report_id&&previous.version===report.version
+      &&String(previous.content_sha256).trim()===hash&&inputManifestHash(previous.report)===hash;
+  });
+}
+
 export function reviewWordDeliveryStage(): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
     const value = ctx.values.get('model_generation') as { report?: ReviewReport; input_hash?: string } | undefined;
@@ -46,14 +73,7 @@ export function reviewWordDeliveryStage(): RunStage {
       if (summary.writer_version !== 'bondbuddy-review-word-1.0.0' || summary.report_sha256 !== digest(bytes) || (comments && summary.comments_sha256 !== digest(comments))) return { kind: 'fail', code: 'WORD_QUALITY_REJECTED' };
       if (summary.unanchored.length) report.limitations = [...new Set([...report.limitations, ...summary.unanchored.map((item: Record<string, unknown>) => `批注定位限制：${JSON.stringify(item)}`)])].slice(0, 200);
       if (!isReviewReport(report)) return { kind: 'fail', code: 'VALIDATION_FAILED' };
-      const hash = inputManifestHash(report);
-      const saved = await ctx.pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report)
-        SELECT $1,$2,$3,$4,$5,$6,$7 FROM bb_jobs WHERE id=$8 AND owner_user_id=$2 AND run_id=$4 AND state='running' AND lease_token=$9
-        ON CONFLICT(run_id) DO NOTHING RETURNING id`, [report.report_id, ctx.run.owner_user_id, ctx.run.project_id, ctx.run.id, report.version, hash, report, ctx.lease.jobId, ctx.lease.token]);
-      if (!saved.rowCount) {
-        const previous = (await ctx.pool.query('SELECT content_sha256 FROM bb_review_reports WHERE owner_user_id=$1 AND run_id=$2', [ctx.run.owner_user_id, ctx.run.id])).rows[0];
-        if (!previous || previous.content_sha256.trim() !== hash) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-      }
+      if(!await registerReviewReport(ctx,report))return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
       return { kind: 'deliver', bytes, ...(comments ? { attachments: [{ kind: 'comments' as const, bytes: comments }] } : {}), wordSummary: summary };
     } catch (error) {
       if (ctx.signal.aborted) return { kind: 'stopped' };

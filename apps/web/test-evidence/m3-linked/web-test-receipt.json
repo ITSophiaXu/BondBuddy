@@ -1,0 +1,61 @@
+{
+  "kind": "synthetic UI validation receipt",
+  "workspace": "C:/Users/lezhai/Downloads/Bondbuddy/m3-linked-runtime-20261004",
+  "completed_at_utc": "2026-10-04T05:56:54Z",
+  "scope": "Production M3 ReviewWorkspace and ReviewAssistant rendered against synthetic owner-aware HTTP responses. These checks do not prove live provider execution or professional report accuracy.",
+  "checks": [
+    {
+      "name": "web build",
+      "command": "npm.cmd run build -w @bondbuddy/web",
+      "exit_code": 0,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0,
+      "completion_confirmed_at_utc": "2026-10-04T05:55:56Z",
+      "outputs": [
+        "apps/web/dist/assets/index-BtwnB698.js",
+        "apps/web/dist/assets/index-CPLkUJzI.css"
+      ]
+    },
+    {
+      "name": "web unit",
+      "command": "npm.cmd run test:unit -w @bondbuddy/web",
+      "exit_code": 0,
+      "pass": 61,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "completion_confirmed_at_utc": "2026-10-04T05:56:26Z"
+    },
+    {
+      "name": "web M3 E2E",
+      "command": "set BB_E2E_BROWSER_CHANNEL=msedge&& set BB_E2E_BASE_URL=http://127.0.0.1:5173&& npm.cmd test -w @bondbuddy/web -- review-workspace.spec.ts",
+      "exit_code": 0,
+      "pass": 27,
+      "fail": 0,
+      "skipped": 0,
+      "completion_confirmed_at_utc": "2026-10-04T05:56:54Z",
+      "reported_duration_seconds": 50.2,
+      "browser": "Microsoft Edge Chromium",
+      "server_command": "npm.cmd run dev -w @bondbuddy/web -- --port 5173"
+    }
+  ],
+  "prior_e2e_attempt": {
+    "pass": 26,
+    "fail": 1,
+    "skipped": 0,
+    "exit_code": 1,
+    "resolution": "A refresh that acknowledged the exact pending run now closes only its matching execution confirmation dialog. Same-request retry and refresh acknowledgement are both verified by the final passing run."
+  },
+  "final_ux_changes": [
+    "Assistant shows actual project name, next-input version, visible report and immutable discussion report/finding bindings; the redundant project-level return control is removed.",
+    "Paperclip evidence upload reuses the persisted upload path, retains the original chat draft and finding target, and does not execute a task.",
+    "Shortcut revision shows complete input/source/requirements and executes with one explicit confirmation; response-loss retries retain the saved plan version and execution identity.",
+    "A fresh quick-action revision plan preserves already adopted V2 requirements without using a V2 proposal ID in the legacy plan endpoint."
+  ],
+  "screenshots": [
+    "synthetic-runtime-desktop-1360x900.png",
+    "synthetic-runtime-narrow-581x753.png"
+  ],
+  "visual_inspection": "Both matched-size runtime images inspected; composer and paperclip are visible, with no horizontal overflow. Fresh Playwright contexts leave user browser storage unchanged."
+}
