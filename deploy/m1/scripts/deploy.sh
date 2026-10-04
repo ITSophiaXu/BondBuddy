@@ -85,7 +85,7 @@ fi
 bash "$(dirname "$0")/install-codex-file-sandbox.sh"
 compose up -d postgres $( [ "$(env_value COMPOSE_PROFILES)" = staging-blob ] && echo azurite )
 compose run --rm migrate
-compose up -d --remove-orphans --wait api worker ops egress web
+compose up -d --remove-orphans --wait api worker worker-review worker-parse ops egress web
 echo "$tag" > "$BB_STATE/current"
 [ -n "$previous" ] && echo "$previous" > "$BB_STATE/previous"
 log_release deploy "$tag (previous ${previous:-none})"

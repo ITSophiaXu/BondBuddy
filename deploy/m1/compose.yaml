@@ -1,5 +1,5 @@
 # BondBuddy M1 stack: PostgreSQL 16, private Blob (Azurite in staging), migrate job, api, worker,
-# allow-list egress proxy and nginx. Sized for a 2 vCPU / 3 GB VM. Secrets come only from the
+# allow-list egress proxy and nginx. Production capacity is in compose.prod.yaml. Secrets come only from the
 # untracked .env next to this file (see .env.example for names). Images are built by scripts/deploy.sh.
 name: ${COMPOSE_PROJECT_NAME:-bb-m1}
 
@@ -7,6 +7,7 @@ x-db-url: &db-url postgresql://bondbuddy:${POSTGRES_PASSWORD:?set in .env}@postg
 x-blob: &blob ${AZURE_STORAGE_CONNECTION_STRING:?set in .env}
 
 x-bb-policy-env: &bb-policy-env
+  BB_READY_WORKER_GROUPS: authoring,review,parse
   BB_DEPLOYMENT_TIER: ${BB_DEPLOYMENT_TIER:-production}
   BB_NON_PRODUCTION_TEST_CHANNEL: ${BB_NON_PRODUCTION_TEST_CHANNEL:-disabled}
   # Trial guard (#35, docs/runbooks/m1-trial-operations.md). NODE_ENV=production in the image turns the guard on.
@@ -103,10 +104,10 @@ services:
     cap_drop: [ALL]
     deploy: {resources: {limits: {cpus: '1.0', memory: 512M}}}
 
-  worker:
+  worker: &worker-service
     image: bondbuddy-m1-worker:${BB_IMAGE_TAG:?set by deploy.sh}
     restart: unless-stopped
-    environment:
+    environment: &worker-env
       <<: *bb-policy-env
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
@@ -114,9 +115,12 @@ services:
       # #17: stage materials on disk; the /tmp tmpfs is charged to the worker memory limit and a
       # 100 MiB DOCX staged there OOM-killed the parser on the 320M production profile.
       BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
-      # #17 WorkerRuntime: general slots claim run/parse; dedicated slots claim parse only.
-      BB_WORKER_CONCURRENCY: ${BB_WORKER_CONCURRENCY:-2}
-      BB_WORKER_PARSE_SLOTS: ${BB_WORKER_PARSE_SLOTS:-1}
+      # Capacity is reserved per process; reviews cannot consume authoring slots.
+      BB_WORKER_JOB_KINDS: run
+      BB_WORKER_RUN_KINDS: update,generation,qa
+      BB_WORKER_GROUP: authoring
+      BB_WORKER_CONCURRENCY: ${BB_WORKER_CONCURRENCY:-1}
+      BB_WORKER_PARSE_SLOTS: '0'
       BB_WORKER_DRAIN_MS: ${BB_WORKER_DRAIN_MS:-20000}
       # #15/#31 fact evidence review guard: off unless explicitly enabled. When on, #31 generation
       # consumes only exact current fact_evidence_reviewer decisions and excludes every other fact.
@@ -165,6 +169,30 @@ services:
     security_opt: [no-new-privileges:true, "seccomp=./security/codex-seccomp.json", "apparmor=bondbuddy-codex-v1"]
     cap_drop: [ALL]
     deploy: {resources: {limits: {cpus: '1.0', memory: 768M}}}
+
+  worker-review:
+    <<: *worker-service
+    environment:
+      <<: *worker-env
+      BB_WORKER_RUN_KINDS: review
+      BB_WORKER_GROUP: review
+      BB_WORKER_CONCURRENCY: ${BB_REVIEW_WORKER_CONCURRENCY:-1}
+      BB_PLATFORM_PROBE_ENABLED: '0'
+    volumes:
+      - reviewstaging:/var/lib/bondbuddy/parse-staging
+      - ${BB_COPILOT_OAUTH_HOST_FILE:-/dev/null}:/run/secrets/bb-copilot-oauth:ro
+
+  worker-parse:
+    <<: *worker-service
+    environment:
+      <<: *worker-env
+      BB_WORKER_JOB_KINDS: parse
+      BB_WORKER_GROUP: parse
+      BB_WORKER_CONCURRENCY: ${BB_PARSE_WORKER_CONCURRENCY:-1}
+      BB_PLATFORM_PROBE_ENABLED: '0'
+    volumes:
+      - materialstaging:/var/lib/bondbuddy/parse-staging
+      - ${BB_COPILOT_OAUTH_HOST_FILE:-/dev/null}:/run/secrets/bb-copilot-oauth:ro
 
   # #79/#35 ops scheduler: log forwarding + health, storage/deletion purge, trial-guard health and
   # worker heartbeat staleness, each under a PostgreSQL lease (0028) so extra replicas never double-run.
@@ -256,3 +284,5 @@ volumes:
   logsink:
   uploadspool:
   parsestaging:
+  reviewstaging:
+  materialstaging:

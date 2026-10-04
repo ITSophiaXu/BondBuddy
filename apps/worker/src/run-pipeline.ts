@@ -19,7 +19,7 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { createReviewActionObserver, reviewActionMode } from './review-action-progress.js';
@@ -74,6 +74,7 @@ export type RunStage = {
 export type RunPipelineOutcome = 'idle' | 'succeeded' | 'test_completed' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
 export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
+  runKinds?: readonly RunKind[];
   signal?: AbortSignal; reviewedContextLoader?: ReviewedContextLoader;
   testRuleCapabilityLoader?: TestRuleCapabilityLoader;
   /** #33 pinned issuer binding re-verification call point; absent = unchanged. */
@@ -558,7 +559,7 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' | 
 export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
   const { pool, blobs } = deps;
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
-  const lease = await claim(pool, leaseSeconds);
+  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds });
   deps.onLease?.(lease);
   if (!lease) return 'idle';
   const abort = new AbortController();
