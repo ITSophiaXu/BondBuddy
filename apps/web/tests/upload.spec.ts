@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { MaterialParseJob, Recognition } from '@bondbuddy/contracts';
 
@@ -148,7 +148,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
-  for (const partition of ['本发行人历史募集书 / 相似募集书', '审计报告 / 财务报表及附注', '募投项目与权证材料', '其他项目材料']) {
+  for (const partition of ['历史／参考募集书（选填）', '审计报告 / 财务报表及附注', '募投项目与权证材料', '其他项目材料']) {
     await expect(page.getByRole('heading', { name: partition, exact: true })).toBeVisible();
   }
   await expect(page.locator('#material-partitions select')).toHaveCount(0);
@@ -233,17 +233,45 @@ test('uncertain completion keeps the support reference and reconciles before res
   expect(fixture.byteAttempts.filter(name=>name==='uncertain.pdf')).toHaveLength(1);
 });
 
-test('lost completion response reconciles the original upload without resending bytes', async ({ page }) => {
+test('lost completion response automatically reconciles the original upload without resending bytes', async ({ page }) => {
   const fixture = state(); fixture.dropNextComplete.add('lost.pdf'); await installApi(page, fixture);
   await login(page, 'owner_a');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'lost.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic lost response') });
   const row = page.locator('.material-file-row').filter({ hasText: 'lost.pdf' });
-  await expect(row).toContainText('保存结果尚未确认');
-  await row.getByRole('button', { name: '核对并继续保存' }).click();
   await expect(row).toContainText('服务器已确认保存');
   expect(fixture.uploads.size).toBe(1);
   expect(fixture.putNames).toEqual(['lost.pdf']);
   expect(fixture.materials.size).toBe(1);
+});
+
+test('server refresh reconciles a delayed receipt but never matches only a filename', async ({ page }) => {
+  const fixture = state(); fixture.unavailableNextComplete.set('delayed.pdf', 'synthetic-delayed-503');
+  await installApi(page, fixture); await login(page, 'owner_a');
+  const buffer = Buffer.from('%PDF synthetic delayed receipt');
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'delayed.pdf', mimeType:'application/pdf', buffer});
+  const row = page.locator('[data-upload-phase="uncertain"]').filter({hasText:'delayed.pdf'});
+  await expect(row).toContainText('保存结果尚未确认');
+  const material: Material = {material_id:'delayed-material', material_version:1, upload_id:[...fixture.uploads.keys()][0], role:'audit', filename:'delayed.pdf', media_type:'application/pdf', byte_size:buffer.length, sha256:'a'.repeat(64), state:'persisted', persisted_at:now, error:null};
+  fixture.materials.set(material.material_id,material);
+  for (const invalid of [
+    {sha256:'a'.repeat(64)},
+    {sha256:createHash('sha256').update(buffer).digest('hex'),role:'other'},
+    {role:'audit',byte_size:buffer.length + 1},
+    {byte_size:buffer.length,media_type:'text/plain'},
+  ]) {
+    Object.assign(material,invalid);
+    await page.getByRole('button',{name:'刷新已保存材料'}).click();
+    await expect(page.locator('#material-recovery-status')).toContainText('已恢复 1 份材料');
+    await expect(row).toBeVisible();
+    await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeDisabled();
+  }
+  // A renamed, deduplicated receipt may have another upload ID, but its bytes and role must agree.
+  Object.assign(material,{media_type:'application/pdf',upload_id:'prior-deduplicated-upload',filename:'renamed.pdf'});
+  await page.getByRole('button',{name:'刷新已保存材料'}).click();
+  await expect(row).toHaveCount(0);
+  await expect(page.locator('.material-file-row')).toHaveCount(1);
+  await expect(page.locator('.material-file-row')).toContainText('服务器已确认保存');
+  expect(fixture.putNames).toEqual(['delayed.pdf']); expect(fixture.uploads.size).toBe(1);
 });
 
 test('renamed equal-content uploads display one saved material and survive reload', async ({ page }) => {

@@ -905,6 +905,40 @@ test('operator denial remains a failed task without automatic-recovery guidance'
 
 
 for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+  test(`lost upload acknowledgement restores start without resending ${label}`, async ({ page, context }) => {
+    const state = fixture();
+    const puts: string[] = [];
+    let completes = 0, creates = 0;
+    await page.setViewportSize({ width, height });
+    await page.route('**/api/v1/**/materials/uploads**', async route => {
+      const request = route.request(), path = new URL(request.url()).pathname;
+      if (path.endsWith('/uploads')) {
+        creates++;
+        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:now, max_bytes:100_000_000 });
+      }
+      if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
+      if (path.endsWith('/complete')) {
+        completes++;
+        const body = request.postDataJSON();
+        state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
+        return route.abort('connectionreset');
+      }
+      return route.fallback();
+    });
+    await setup(page, state);
+    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'lost.pdf', mimeType:'application/pdf', buffer:Buffer.from('%PDF synthetic lost acknowledgement')});
+    const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText('服务器已确认保存');
+    await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeEnabled();
+    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:1, puts:1});
+    expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
+    if (process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR) {
+      const output = resolve(process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR); await mkdir(output, {recursive:true});
+      await page.screenshot({path:join(output,`recovered-${label}.png`),fullPage:true});
+    }
+  });
+
   test(`material workflow ${label}: upload, retry, pending evidence, one-click execution and reopen`, async ({ page, context }) => {
     const state = fixture(); state.materials = []; state.checkStatus = 'needs_confirmation';
     state.runState = 'running'; state.runStage = 'model_generation'; state.runReason = '';
