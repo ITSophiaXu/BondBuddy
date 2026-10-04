@@ -17,6 +17,22 @@ test('models cannot erase OCR uncertainty or alter extraction method',()=>{
   const f=reviewFixture(),r=f.addRecord('ocr','100',true,{extraction_method:'ocr',uncertainty:['uncertain-digit']});const ref=referenceFor(r);
   assert.deepEqual(validateReviewEvidence(ref,f.ctx),[]);assert(validateReviewEvidence({...ref,uncertainty:[]},f.ctx).length);assert(validateReviewEvidence({...ref,extraction_method:'native_text'},f.ctx).length);
 });
+test('long review citations do not serialize unrelated pins and still recheck mutations and ambiguity',()=>{
+  const f=reviewFixture(),record=f.addRecord('selected','Synthetic quotation'),ref=referenceFor(record);
+  let unrelatedPinReads=0;
+  for(let i=0;i<35000;i++){
+    const unrelated={...record,record_id:`unrelated-${i}`};
+    Object.defineProperty(unrelated,'record_sha256',{enumerable:true,get(){unrelatedPinReads++;return record.record_sha256;}});
+    f.records.push(unrelated);
+  }
+  for(let i=0;i<100;i++)assert.deepEqual(validateReviewEvidence(ref,f.ctx,true),[]);
+  assert.equal(unrelatedPinReads,0,'unrelated records must not incur full pin serialization per citation');
+  const duplicate={...record};f.records.push(duplicate);
+  assert.deepEqual(validateReviewEvidence(ref,f.ctx),['evidence_pin_missing_or_ambiguous']);
+  duplicate.project_id='another-project';assert.deepEqual(validateReviewEvidence(ref,f.ctx),[]);
+  record.literal_quote='Changed source';assert.deepEqual(validateReviewEvidence(ref,f.ctx),['evidence_quote_mismatch']);
+  record.record_sha256='0'.repeat(64);assert.deepEqual(validateReviewEvidence(ref,f.ctx),['evidence_pin_missing_or_ambiguous']);
+});
 test('batch verification retains scope, exact pins, OCR warnings, duplicate ambiguity and quote failures',()=>{
   const f=reviewFixture(),a=f.addRecord('batch-a','Synthetic literal 100'),b=f.addRecord('batch-b','Synthetic OCR 200',true,{extraction_method:'ocr',uncertainty:['uncertain-digit']});
   const refs=[referenceFor(a),referenceFor(b),null,{...referenceFor(a),record_sha256:'f'.repeat(64)},
