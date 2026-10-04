@@ -4,7 +4,7 @@
 
 历史发布时已读取 GitHub 核对标题、标签、里程碑、正文和父子关系；该记录不表示后续范围修改已发布或实现。本文保留链接，认领与完成状态以 GitHub 为准。
 
-2026-10-02 当前 M3 仅 #47／#48／#49／#55／#145／#56，见[范围决定](../../../docs/product-decisions/2026-10-02-m3-review-scope.md)。常规操作由结果页按钮完成、助手按需展开、版本记录归工作台；本次无用户报价、余额校验、充值、冻结、扣费或结算，保留真实 usage／内部成本。#77／#78 和 #50／#52／#53／#54 移出 M3，#51 独立检索服务不再计划；M2 账务与 M4 独立 QA 均非 M3 前置。
+2026-10-04 当前 M3 为 #47／#48／#49／#55／#145／#56／#537／#538 八项，交互与 A01–A22 见[联动工作区决定](../../../docs/product-decisions/2026-10-04-review-assistant-linked-workspace.md)。常规操作无需聊天文本即可通过按钮完成，桌面大于 900px 右侧助手常驻、小于或等于 900px 唯一抽屉；快捷／对话统一任务时间线，真实阶段安全摘要、双向结果定位和历史回看保持，明确采纳提议后绑定不可变输入再执行。完整复核无差异来源报告，讨论引用另存，版本记录归工作台。本次无用户报价、余额校验、充值、冻结、扣费或结算，保留真实 usage／内部成本。#77／#78 和 #50／#52／#53／#54 移出 M3，#51 独立检索服务不再计划；M2 账务与 M4 独立 QA 均非 M3 前置。
 
 | 阶段 | 里程碑 | 跟踪 issue |
 |---|---|---|
@@ -61,7 +61,7 @@
 | M2-09 实现邀请、每日活跃与活动风控 | [#44](https://github.com/ITSophiaXu/BondBuddy/issues/44) |
 | M2-10 上线账务运营、价格条款与真实成本校准 | [#45](https://github.com/ITSophiaXu/BondBuddy/issues/45) |
 | M2-11 完成积分支付上线及更新任务商业闭环验收 | [#46](https://github.com/ITSophiaXu/BondBuddy/issues/46) |
-| M3-01 完成复核工作区、按需项目助手与工作台版本记录 | [#47](https://github.com/ITSophiaXu/BondBuddy/issues/47) |
+| M3-01 完成复核工作区、常驻项目助手与统一任务时间线 | [#47](https://github.com/ITSophiaXu/BondBuddy/issues/47) |
 | M3-02 实现审计证据财务复核与确定性勾稽 | [#48](https://github.com/ITSophiaXu/BondBuddy/issues/48) |
 | M3-03 实现市场合规、披露完整性和真实格式复核 | [#49](https://github.com/ITSophiaXu/BondBuddy/issues/49) |
 | M3-04 建立公开数据适配、授权与主体匹配契约（移出 M3，后续可选） | [#50](https://github.com/ITSophiaXu/BondBuddy/issues/50) |
@@ -72,6 +72,8 @@
 | M3-09 编排三维复核并导出有来源的问题报告与 Word 批注 | [#55](https://github.com/ITSophiaXu/BondBuddy/issues/55) |
 | M3-11 实现复核结果驱动的修订计划与明确执行 | [#145](https://github.com/ITSophiaXu/BondBuddy/issues/145) |
 | M3-10 完成复核与结果修订的集成及上线验收 | [#56](https://github.com/ITSophiaXu/BondBuddy/issues/56) |
+| 统一任务与对话时间线投影、事件恢复契约（真实 GitHub 新任务，不新增旧发布 ID） | [#537](https://github.com/ITSophiaXu/BondBuddy/issues/537) |
+| 问题级复核提议的明确采纳与执行来源绑定（真实 GitHub 新任务，不新增旧发布 ID） | [#538](https://github.com/ITSophiaXu/BondBuddy/issues/538) |
 | M4-01 交付材料生成工作区、来源选择和右侧对话 | [#57](https://github.com/ITSophiaXu/BondBuddy/issues/57) |
 | M4-02 建立平台模板及个人券商模板库 | [#58](https://github.com/ITSophiaXu/BondBuddy/issues/58) |
 | M4-03 实现立项报告模板与券商规则适配 | [#59](https://github.com/ITSophiaXu/BondBuddy/issues/59) |
