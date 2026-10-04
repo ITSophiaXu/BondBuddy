@@ -19,3 +19,12 @@ test('known adapter failures retain a safe reason without provider output', () =
   assert.deepEqual(runEventPayloadDto({ error_code: 'MODEL_STREAM_BROKEN', stdout: 'private output',
     provider_error_message: 'private supplier payload', prompt: 'hidden instructions' }), { error_code: 'MODEL_STREAM_BROKEN' });
 });
+
+test('review action projection accepts only the exact versioned enums and drops nested private fields', () => {
+  const action={version:'review-action-v1',action_id:'a'.repeat(64),code:'read_materials',state:'started'};
+  assert.deepEqual(runEventPayloadDto({reason:'review_action',action,stdout:'private'}),{reason:'review_action',action});
+  for(const invalid of [{...action,code:'private CLI output'},{...action,state:'passed'},{...action,version:'future'},
+    {...action,action_id:'/private/path'},{...action,prompt:'hidden reasoning'}, {...action,result:{token:'secret'}},null,'raw text']){
+    assert.deepEqual(runEventPayloadDto({reason:'review_action',action:invalid}),{reason:'review_action'});
+  }
+});

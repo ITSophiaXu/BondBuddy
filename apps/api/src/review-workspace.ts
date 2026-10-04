@@ -4,7 +4,7 @@ import { Value } from '@sinclair/typebox/value';
 import {
   ReviewDraftRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, ReviewExecutionRequestSchema,
   ReviewProposalAdoptionRequestSchema, ReviewReplyMetadataSchema, ReviewAcceptedProposalSchema, ReviewExecutionOriginSchema, isReviewProposalV2,
-  executableRevisionFinding, isReviewReport, isReviewRevisionPin, emptyUpdateDetails, RUN_PIPELINE_SUBTYPE,
+  executableRevisionFinding, isReviewReport, isReviewRevisionPin, emptyUpdateDetails, RUN_PIPELINE_SUBTYPE, REVIEW_ACTION_CODES,
   type ReviewContext, type ReviewDraftInput, type ReviewDraftRequest, type ReviewMessageRequest, type ReviewPlanRequest,
   type ReviewExecutionRequest, type ReviewPlan, type ReviewReport, type ReviewMaterialPin, type ReviewRevisionPin,
   type ReviewMessage, type ReviewReplyMetadata, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal,
@@ -114,9 +114,22 @@ async function reportCatalogVersion(db: Db, user: string, id: string): Promise<n
 async function timeline(db: Db, user: string, id: string, messages: ReviewMessage[]): Promise<ReviewTimelineEntry[]> {
   const rows = await executionRows(db, user, id);
   // Snapshot state is authoritative. Event sequence only supplies durable progress history.
-  const eventRows = (await db.query(`SELECT * FROM (SELECT ev.*,row_number() OVER(PARTITION BY ev.run_id ORDER BY ev.seq DESC) AS position
+  // Keep a bounded recent stream and one genuine completion per action category. Long
+  // tool-reading sequences must not erase early financial/compliance work from the card.
+  const eventRows = (await db.query(`WITH scoped AS (
+    SELECT ev.*,row_number() OVER(PARTITION BY ev.run_id ORDER BY ev.seq DESC) AS position
     FROM bb_run_events ev JOIN bb_runs r ON r.id=ev.run_id AND r.owner_user_id=ev.owner_user_id
-    WHERE ev.owner_user_id=$1 AND r.project_id=$2) recent WHERE position<=60 ORDER BY run_id,seq`, [user, id])).rows;
+    WHERE ev.owner_user_id=$1 AND r.project_id=$2
+  ), completed AS (
+    SELECT DISTINCT ON(run_id,payload #>> '{action,code}') id FROM scoped
+    WHERE type='run.progress' AND payload #>> '{action,version}'='review-action-v1'
+      AND payload #>> '{action,state}'='completed' AND payload #>> '{action,code}'=ANY($3::text[])
+      AND payload #>> '{action,action_id}' ~ '^[a-f0-9]{64}$'
+      AND payload->'action'=jsonb_build_object('version',payload #>> '{action,version}',
+        'action_id',payload #>> '{action,action_id}','code',payload #>> '{action,code}','state','completed')
+    ORDER BY run_id,payload #>> '{action,code}',seq DESC
+  ) SELECT scoped.* FROM scoped WHERE position<=60 OR id IN(SELECT id FROM completed)
+    ORDER BY run_id,seq`, [user, id, REVIEW_ACTION_CODES])).rows;
   const times = (await db.query(`SELECT ev.run_id,min(ev.occurred_at) FILTER(WHERE ev.state='running') AS started_at,
     max(ev.occurred_at) FILTER(WHERE ev.state=ANY($3::text[])) AS completed_at
     FROM bb_run_events ev JOIN bb_runs r ON r.id=ev.run_id AND r.owner_user_id=ev.owner_user_id

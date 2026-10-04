@@ -19,9 +19,10 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
-import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput } from './codex-adapter.js';
+import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
+import { createReviewActionObserver, reviewActionMode } from './review-action-progress.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
 import { isMaterialModelEnvelope } from './material-tool-trace.js';
 import { reviewModelEnvelopeAsync, type ReviewToolData } from './review-tools.js';
@@ -509,9 +510,17 @@ export function codexModelStage(options: {
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
       const callGate = await ctx.validateBeforeModelCall?.();
       if (callGate) return callGate;
-      const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
+      const mode=reviewActionMode(options.logicalCallId);
+      const observed=mode && ((mode==='review'&&options.reviewTools) || (mode==='public_search'&&config.web_search==='live')
+        || (mode==='public_compare'&&options.materialTools) || (mode==='revision'&&options.fileWorkspace));
+      const progress=observed?createReviewActionObserver({mode,signal:ctx.signal,
+        persist:action=>recordReviewAction(pool,lease,action),onError:()=>{process.stderr.write('review_action_persist_failed\n');}}):undefined;
+      let result:ContainedCallResult;
+      try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
+        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
+        ...(progress?{onActivity:progress.onEvent}:{}) }, journal, config);
+      } finally { await progress?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       if(result.status==='needs_reconcile'&&run.billing_mode==='fixed_credits'&&!options.reviewTools){
