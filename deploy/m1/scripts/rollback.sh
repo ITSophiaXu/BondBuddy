@@ -5,7 +5,7 @@
 source "$(dirname "$0")/lib.sh"
 target="${1:?usage: rollback.sh <previous-sha>}"
 # Old images ignore the new filters and would run three shared queues. Their own Compose is required.
-if ! git -C "$BB_REPO" show "$target:apps/worker/src/runtime.ts" | grep -q BB_WORKER_RUN_KINDS; then
+if ! git -C "$BB_REPO" show "$target:apps/worker/src/runtime.ts" | grep BB_WORKER_RUN_KINDS >/dev/null; then
   echo 'rollback across worker isolation requires the target checkout/Compose; do not run old images with the three-worker topology' >&2
   exit 3
 fi

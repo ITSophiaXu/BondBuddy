@@ -27,7 +27,7 @@ test('worker filters reject invalid configuration and isolate review assistants'
   const opts = workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run', BB_WORKER_RUN_KINDS: 'update,generation,qa', BB_WORKER_GROUP: 'authoring' });
   assert.deepEqual(opts.runKinds, ['update', 'generation', 'qa']);
   assert.equal(opts.reviewAssistant, undefined);
-  assert.match(opts.workerId!, /^authoring:/);
+  assert.match(opts.workerId!, /^authoring_[A-Za-z0-9_-]+$/);
   assert.ok(workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run', BB_WORKER_RUN_KINDS: 'review' }).reviewAssistant);
   assert.equal(workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'parse', BB_PARSE_CACHE_OCR_VERSION: 'synthetic-ocr', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic-basis' }).reviewAssistant, undefined);
   assert.throws(() => workerGroupsFromEnv({ BB_READY_WORKER_GROUPS: 'authoring,,review' }), /BB_READY_WORKER_GROUPS/);
@@ -98,15 +98,15 @@ test('readiness requires fresh authoring, review and parsing groups independentl
   const pool = new Pool({ connectionString: connection });
   const options = { heartbeatMaxAgeSeconds: 90, timeoutMs: 2000, workerGroups: ['authoring', 'review', 'parse'] };
   const check = async () => (await readiness(pool, { exists: async () => true } as unknown as PrivateBlobs, options)).checks.worker_heartbeat;
-  const beat = async (group: string) => recordWorkerHeartbeat(pool, { workerId: `${group}:synthetic`, startedAt: new Date(), kinds: ['run'], concurrency: 1 });
+  const beat = async (group: string) => recordWorkerHeartbeat(pool, { workerId: `${group}_synthetic`, startedAt: new Date(), kinds: ['run'], concurrency: 1 });
   try {
     await beat('authoring'); await beat('parse');
     assert.equal(await check(), 'missing', 'healthy update/parser must not hide a missing review process');
     await beat('review'); assert.equal(await check(), 'ok');
-    await pool.query("UPDATE bb_worker_heartbeats SET last_seen_at=now()-interval '2 minutes' WHERE worker_id='review:synthetic'");
+    await pool.query("UPDATE bb_worker_heartbeats SET last_seen_at=now()-interval '2 minutes' WHERE worker_id='review_synthetic'");
     assert.equal(await check(), 'stale');
     await beat('review');
-    await pool.query("UPDATE bb_worker_heartbeats SET stopped_at=now() WHERE worker_id='review:synthetic'");
+    await pool.query("UPDATE bb_worker_heartbeats SET stopped_at=now() WHERE worker_id='review_synthetic'");
     assert.equal(await check(), 'missing');
     await beat('review'); assert.equal(await check(), 'ok');
   } finally { await pool.end(); }

@@ -180,14 +180,14 @@ export async function recordWorkerHeartbeat(pool: Pool, input: { workerId: strin
 export function workerGroupsFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
   if (env.BB_READY_WORKER_GROUPS === undefined) return [];
   const groups = env.BB_READY_WORKER_GROUPS.split(',').map(v => v.trim());
-  if (groups.some(v => !/^[a-z][a-z0-9_-]{0,31}$/.test(v)) || new Set(groups).size !== groups.length) throw new Error('Invalid BB_READY_WORKER_GROUPS');
+  if (groups.some(v => !/^[a-z][a-z0-9-]{0,31}$/.test(v)) || new Set(groups).size !== groups.length) throw new Error('Invalid BB_READY_WORKER_GROUPS');
   return groups;
 }
 async function newestHeartbeatAge(db: Db, groups: readonly string[] = []) {
   if (groups.length) {
     const q = await db.query(`SELECT CASE WHEN count(seen) = cardinality($1::text[]) THEN EXTRACT(EPOCH FROM now()-min(seen))::int END age
       FROM (SELECT g, max(h.last_seen_at) seen FROM unnest($1::text[]) g
-        LEFT JOIN bb_worker_heartbeats h ON split_part(h.worker_id, ':', 1)=g AND h.stopped_at IS NULL GROUP BY g) groups`, [groups]);
+        LEFT JOIN bb_worker_heartbeats h ON split_part(h.worker_id, '_', 1)=g AND h.stopped_at IS NULL GROUP BY g) groups`, [groups]);
     return q.rows[0].age === null ? null : Math.max(0, Number(q.rows[0].age));
   }
   const q = await db.query('SELECT EXTRACT(EPOCH FROM now()-max(last_seen_at))::int age FROM bb_worker_heartbeats WHERE stopped_at IS NULL');

@@ -308,7 +308,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
   const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);
   const group = env.BB_WORKER_GROUP;
-  if (group !== undefined && !/^[a-z][a-z0-9_-]{0,31}$/.test(group)) throw new Error('Invalid BB_WORKER_GROUP');
+  if (group !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(group)) throw new Error('Invalid BB_WORKER_GROUP');
   const ocrEnabled = env.BB_OCR_ENABLED === '1';
   const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions(env)) : undefined;
   let platformProbe: WorkerRuntimeOptions['platformProbe'];
@@ -332,7 +332,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
-    ...(group ? { workerId: `${group}:${defaultWorkerId()}` } : {}),
+    ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
     ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: {} } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
