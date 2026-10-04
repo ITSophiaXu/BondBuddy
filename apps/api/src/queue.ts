@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent, recordOperation } from './observability.js';
-import { ERROR_CODES, RUN_PAUSE_STAGES, ReviewActionSchema, type ReviewAction, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
+import { ERROR_CODES, RUN_PAUSE_STAGES, TASK_KINDS, ReviewActionSchema, type ReviewAction, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
@@ -13,6 +13,12 @@ import { inputManifestHash } from './production-rule-pin.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
+export type RunKind = typeof TASK_KINDS[number];
+export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
+  if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)
+    throw new Error('Invalid worker run kinds');
+  return [...kinds];
+}
 
 async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string>={}) {
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
@@ -65,10 +71,11 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
 
 // Run jobs and #79/#16 platform probes share the lease model but are claimed separately, so the
 // run pipeline never picks up a probe and the probe worker never picks up a user run.
-export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean}={}):Promise<Lease|null> {
+export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]}={}):Promise<Lease|null> {
+  const runKinds = checkedRunKinds(options.runKinds);
   return transaction(pool,async client=>{
     // Lock order is run then job in every transition, including cancellation.
-    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true]);
+    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds]);
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
@@ -544,8 +551,8 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
 }
 
 /** Paused runs at a stage, oldest first; the runtime sweeps them after their blocker may have cleared. */
-export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20) {
-  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND r.state='paused' ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit]);
+export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20,runKinds?:readonly RunKind[]) {
+  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND r.state='paused' AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 

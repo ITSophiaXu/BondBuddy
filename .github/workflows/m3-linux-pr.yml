@@ -98,6 +98,7 @@ jobs:
         run: |
           npm run build
           npm run check:contracts
+          node --test deploy/m1/scripts/worker-isolation.test.mjs
 
       - name: Start disposable Azurite
         run: |
@@ -162,6 +163,8 @@ jobs:
             apps/worker/dist/review-rule-context.test.js \
             apps/worker/dist/review-model-stage.test.js \
             apps/worker/dist/review-tools-async.test.js \
+            apps/worker/dist/runtime-isolation.test.js \
+            apps/worker/dist/runtime-parse-slots.test.js \
             apps/worker/dist/review-cancellation.test.js \
             apps/worker/dist/review-web-search-locks.pg.integration.test.js \
             apps/worker/dist/review-public-stage.test.js \
