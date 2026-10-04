@@ -57,8 +57,14 @@ export function validReviewLocator(ref: Pick<ReviewEvidenceRef, 'locator_type' |
 export function validateReviewEvidence(ref: unknown, ctx: ReviewEvidenceContext, target = false): string[] {
   if (!Value.Check(ReviewEvidenceRefSchema, ref)) return ['evidence_schema_invalid'];
   if (!validReviewLocator(ref)) return ['evidence_locator_invalid'];
+  const key = evidenceKey(ref);
+  // Parser IDs and material IDs are required string pins. Exclude unrelated records
+  // before canonicalizing the full pin; long reviews otherwise serialize the entire
+  // material set for every citation and can starve the worker lease heartbeat.
+  // Still collect all matching pins, so duplicates remain ambiguous. No cached index
+  // survives this call: later owner, pin, quote and locator mutations are rechecked.
   const matches = ctx.records.filter(record => record.owner_user_id === ctx.owner_user_id && record.project_id === ctx.project_id
-    && evidenceKey(record) === evidenceKey(ref));
+    && record.record_id === ref.record_id && record.material_id === ref.material_id && evidenceKey(record) === key);
   return validateMatchedEvidence(ref, ctx, matches, target);
 }
 
