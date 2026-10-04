@@ -467,6 +467,7 @@ export function codexModelStage(options: {
   name: string; logicalCallId: string; config: CodexAdapterConfig | (() => CodexAdapterConfig);
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
+  normalize?: Extract<ContainedCallInput['output'], { kind: 'json' }>['normalize'];
   materialTools?: MaterialToolData;
   materialToolsTrace?: true;
   fileWorkspace?: ContainedCallInput['fileWorkspace'];
@@ -507,7 +508,7 @@ export function codexModelStage(options: {
       if (callGate) return callGate;
       const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
+        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal }, journal, config);
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       if(result.status==='needs_reconcile'&&run.billing_mode==='fixed_credits'&&!options.reviewTools){

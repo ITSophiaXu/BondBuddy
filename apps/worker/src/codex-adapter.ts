@@ -3,8 +3,8 @@
 // Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
 // scratch/output, no command network or credentials. Unapproved tool items fail closed.
 import { spawn } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,8 @@ export type CodexAdapterConfig = {
   kill_grace_ms: number;
   max_output_bytes: number;
   max_schema_reasks: number;
+  /** Local opt-in diagnostics only. Rejected bytes are never accepted provider results. */
+  retain_invalid_output?: boolean;
   disabled_features: string[];
   path_env: string;
   /** Enabled only by the M3 public-information stage, never by material content. */
@@ -144,6 +146,7 @@ export class CodexAdapterError extends Error {
 // Server-side configuration. Credentials are referenced by env var name or file path only;
 // the adapter never reads or logs their values.
 export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): CodexAdapterConfig {
+  if (env.BB_CODEX_RETAIN_INVALID_OUTPUT && !['0', '1'].includes(env.BB_CODEX_RETAIN_INVALID_OUTPUT)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const commandMode = env.BB_CODEX_AUTH_MODE === 'copilot_enterprise';
   if (env.BB_CODEX_AUTH_MODE && !commandMode) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (commandMode && (env.BB_CODEX_AUTH_FILE || env.BB_CODEX_CREDENTIAL_ENV)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -165,6 +168,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     kill_grace_ms: 2000,
     max_output_bytes: 4 * 1024 * 1024,
     max_schema_reasks: Number(env.BB_CODEX_MAX_SCHEMA_REASKS ?? 1),
+    retain_invalid_output: env.BB_CODEX_RETAIN_INVALID_OUTPUT === '1',
     disabled_features: DEFAULT_DISABLED_FEATURES,
     path_env: env.BB_CODEX_PATH ?? '/usr/local/bin:/usr/bin:/bin',
     proxy_env: codexProxyEnv(env),
@@ -184,7 +188,7 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     count(c.timeout_ms) && c.timeout_ms > 0 && c.timeout_ms <= 2147483647 &&
     (c.authoring_timeout_ms === undefined || (count(c.authoring_timeout_ms) && c.authoring_timeout_ms > 0 && c.authoring_timeout_ms <= 2147483647)) &&
     count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
-    count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
+    count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
 }
@@ -432,9 +436,12 @@ export interface CodexJournal extends ProbeJournal {
 }
 
 export type CodexSession = { mode: 'ephemeral' } | { mode: 'start' } | { mode: 'resume'; thread_id: string; codex_home: string };
+/** Host evidence only; a normalizer cannot accept model-authored read receipts. */
+export type CodexOutputNormalizationContext = { reviewToolTrace?: ReviewToolTrace };
 export type ContainedCallInput = {
   owner_user_id: string; project_id: string; job_id: string; run_id: string; trace_id: string; logical_call_id: string;
-  prompt_snapshot_ref: string; prompt: string; output: { kind: 'json'; schema: Record<string, unknown>; validate: (v: unknown) => boolean } | { kind: 'text' };
+  prompt_snapshot_ref: string; prompt: string; output: { kind: 'json'; schema: Record<string, unknown>; validate: (v: unknown) => boolean;
+    normalize?: (value: unknown, context: CodexOutputNormalizationContext) => unknown } | { kind: 'text' };
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
   onEvent?: (event: Record<string, unknown>) => void;
   /** Immutable, owner-scoped material records prepared by the authoring worker. */
@@ -453,6 +460,33 @@ export type ContainedCallResult = {
 };
 
 function within(root: string, path: string) { const rel = relative(resolve(root), resolve(path)); return !!rel && !rel.startsWith('..') && !isAbsolute(rel); }
+
+type InvalidOutputCategory = 'missing_message' | 'json_parse' | 'review_tool_trace' | 'material_tool_trace' | 'normalizer' | 'validator';
+/** Best-effort private evidence capture; its failure cannot change the original failed observation. */
+async function retainInvalidCodexOutput(c: CodexAdapterConfig, input: ContainedCallInput, intent: ProviderCallIntent,
+  raw: CodexProcessResult, category: InvalidOutputCategory, reviewTraceJson: string | null) {
+  if (!c.retain_invalid_output || !/^call-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(intent.call_id)
+    || !Number.isSafeInteger(intent.attempt_no) || intent.attempt_no < 1) return;
+  const directory = join(c.work_root, 'rejected-output');
+  const file = join(directory, `${intent.call_id}-attempt-${intent.attempt_no}.json`);
+  if (!within(c.work_root, file)) return;
+  const sha = (value: string | null) => value === null ? null : createHash('sha256').update(value).digest('hex');
+  const metadata = { version: 'codex-rejected-output-v1', accepted: false, category, result_schema_version: input.result_schema_version,
+    call_id: intent.call_id, attempt_no: intent.attempt_no, owner_user_id: input.owner_user_id, project_id: input.project_id,
+    run_id: input.run_id, job_id: input.job_id, logical_call_id: input.logical_call_id, prompt_snapshot_ref: input.prompt_snapshot_ref,
+    input_pin: input.reviewTools ? { input_hash: input.reviewTools.input.input_hash, source_material: input.reviewTools.input.evidence.source_material } : null,
+    exit_code: raw.exit_code, turn_completed: raw.turn_completed, usage_status: raw.usage.status,
+    last_message_sha256: sha(raw.last_message), review_tool_trace_sha256: sha(reviewTraceJson) };
+  let bytes = Buffer.from(JSON.stringify({ ...metadata, last_message: raw.last_message, review_tool_trace_json: reviewTraceJson }));
+  if (bytes.length > c.max_output_bytes) bytes = Buffer.from(JSON.stringify({ ...metadata, payload_omitted: 'max_output_bytes' }));
+  if (bytes.length > c.max_output_bytes) return;
+  try {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const entry = await lstat(directory);
+    if (!entry.isDirectory() || entry.isSymbolicLink()) return;
+    await writeFile(file, bytes, { mode: 0o600, flag: 'wx' });
+  } catch { /* Never expose rejected content or replace the provider failure with a diagnostics failure. */ }
+}
 
 export function attemptRecord(intent: ProviderCallIntent, c: CodexAdapterConfig, runtime: ModelAttemptRuntime, obs: ProviderCallObservation): ModelAdapterAttemptRecord {
   return {
@@ -563,20 +597,31 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         const output = input.output;
         let reviewToolTrace:ReviewToolTrace|undefined;
         let materialToolTrace:MaterialToolTrace|undefined;
+        let reviewTraceJson: string | null = null;
+        let invalidCategory: InvalidOutputCategory = 'missing_message';
         if(input.materialToolsTrace && materialTraceFile)try{
           const stored:unknown=JSON.parse(await readFile(materialTraceFile,'utf8'));
           if(validateMaterialToolTrace(input.materialTools!,stored))materialToolTrace=stored;
         }catch{ /* Missing host evidence is not an agent-authored read receipt. */ }
         if (input.reviewTools && reviewTraceFile) try {
-          const stored:unknown=JSON.parse(await readFile(reviewTraceFile,'utf8'));
+          reviewTraceJson = await readFile(reviewTraceFile,'utf8');
+          const stored:unknown=JSON.parse(reviewTraceJson);
           if (validateReviewToolTrace(input.reviewTools,stored)) reviewToolTrace=stored;
         } catch { /* Missing or corrupt host trace fails local output validation below. */ }
         const cls = classifyCodexResult(raw, text => {
-          if (input.reviewTools && !reviewToolTrace) return {ok:false};
-          if (input.materialToolsTrace && !materialToolTrace) return {ok:false};
+          if (input.reviewTools && !reviewToolTrace) { invalidCategory = 'review_tool_trace'; return {ok:false}; }
+          if (input.materialToolsTrace && !materialToolTrace) { invalidCategory = 'material_tool_trace'; return {ok:false}; }
           if (output.kind === 'text') return { ok: true, value: { text } };
-          try { const v = JSON.parse(text); return output.validate(v) ? { ok: true, value: v } : { ok: false }; } catch { return { ok: false }; }
+          try {
+            invalidCategory = 'json_parse';
+            const parsed: unknown = JSON.parse(text);
+            invalidCategory = 'normalizer';
+            const value = output.normalize ? output.normalize(parsed, { reviewToolTrace }) : parsed;
+            invalidCategory = 'validator';
+            return output.validate(value) ? { ok: true, value } : { ok: false };
+          } catch { return { ok: false }; }
         });
+        if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
           try {

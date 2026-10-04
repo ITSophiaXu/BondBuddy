@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,6 +94,78 @@ test('Copilot schema omits unsupported uniqueness while the local contract still
     assert.equal(result.value,null);
     assert.equal(result.attempts[0]?.usage.status,'measured');
   } finally {await cleanup();}
+});
+
+test('JSON output normalization runs before strict validation and failures still fail closed', async () => {
+  const { config, cleanup } = await setup({ max_schema_reasks: 0 });
+  try {
+    let calls = 0;
+    const normalized = await runContainedModelCall(call('SCENARIO:structured', { output: { kind: 'json', schema: answerSchema,
+      normalize: (value, context) => { calls++; assert.equal(context.reviewToolTrace, undefined); return { ...(value as object), n: 17 }; },
+      validate: value => isAnswer(value) && (value as { n: number }).n === 17 } }), new MemoryCodexJournal(), config);
+    assert.equal(normalized.status, 'completed'); assert.equal(calls, 1);
+    assert.equal((normalized.value as { n: number }).n, 17);
+    const rejected = await runContainedModelCall(call('SCENARIO:structured', { output: { kind: 'json', schema: answerSchema,
+      normalize: () => { throw Error('Synthetic invalid alias'); }, validate: isAnswer } }), new MemoryCodexJournal(), config);
+    assert.equal(rejected.error_code, 'MODEL_OUTPUT_SCHEMA_INVALID'); assert.equal(rejected.value, null);
+  } finally { await cleanup(); }
+});
+
+test('invalid-output diagnostics are off by default and environment opt-in is explicit', async () => {
+  assert.equal(loadCodexAdapterConfig({}).retain_invalid_output, false);
+  assert.equal(loadCodexAdapterConfig({ BB_CODEX_RETAIN_INVALID_OUTPUT: '1' }).retain_invalid_output, true);
+  assert.equal(loadCodexAdapterConfig({ BB_CODEX_RETAIN_INVALID_OUTPUT: '0' }).retain_invalid_output, false);
+  assert.throws(() => loadCodexAdapterConfig({ BB_CODEX_RETAIN_INVALID_OUTPUT: 'yes' }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+  const { config, cleanup } = await setup({ max_schema_reasks: 0 });
+  try {
+    const result = await runContainedModelCall(call('SCENARIO:invalid_json'), new MemoryCodexJournal(), config);
+    assert.equal(result.error_code, 'MODEL_OUTPUT_SCHEMA_INVALID'); assert.deepEqual(await readdir(config.work_root), []);
+  } finally { await cleanup(); }
+});
+
+test('opted-in rejected evidence is private, bounded, immutable and never an accepted result', async () => {
+  const { config, cleanup } = await setup({ max_schema_reasks: 0, retain_invalid_output: true });
+  const callId = 'call-01234567-89ab-cdef-0123-456789abcdef';
+  try {
+    const journal = new MemoryCodexJournal();
+    const rejected = await runContainedModelCall(call('SCENARIO:invalid_json', { newCallId: () => callId }), journal, config);
+    assert.equal(rejected.status, 'failed'); assert.equal(rejected.error_code, 'MODEL_OUTPUT_SCHEMA_INVALID');
+    assert.equal(journal.results.size, 0);
+    const directory = join(config.work_root, 'rejected-output'), filename = `${callId}-attempt-1.json`;
+    assert.deepEqual(await readdir(config.work_root), ['rejected-output']);
+    assert.deepEqual(await readdir(directory), [filename]);
+    const bytes = await readFile(join(directory, filename)); assert(bytes.length <= config.max_output_bytes);
+    const diagnostic = JSON.parse(bytes.toString('utf8'));
+    assert.equal(diagnostic.accepted, false); assert.equal(diagnostic.category, 'json_parse');
+    assert.equal(diagnostic.run_id, 'run-synthetic'); assert.equal(diagnostic.project_id, 'project-synthetic');
+    assert.equal(diagnostic.result_schema_version, 'answer-v1'); assert.equal(typeof diagnostic.last_message, 'string');
+    assert.equal(diagnostic.review_tool_trace_json, null);
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(directory)).mode & 0o777, 0o700);
+      assert.equal((await stat(join(directory, filename))).mode & 0o777, 0o600);
+    }
+    await runContainedModelCall(call('SCENARIO:structured', { newCallId: () => callId,
+      output: { kind: 'json', schema: answerSchema, validate: () => false } }), new MemoryCodexJournal(), config);
+    assert.deepEqual(await readFile(join(directory, filename)), bytes, 'an original rejection cannot be overwritten');
+    const accepted = await runContainedModelCall(call('SCENARIO:structured'), new MemoryCodexJournal(), config);
+    assert.equal(accepted.status, 'completed'); assert.deepEqual(await readdir(directory), [filename], 'success is not retained as rejected evidence');
+  } finally { await cleanup(); }
+});
+
+test('diagnostics reject unsafe call IDs and distinguish normalizer from validator failures', async () => {
+  const { config, cleanup } = await setup({ max_schema_reasks: 0, retain_invalid_output: true });
+  try {
+    await runContainedModelCall(call('SCENARIO:invalid_json', { newCallId: () => '../../unsafe' }), new MemoryCodexJournal(), config);
+    assert.deepEqual(await readdir(config.work_root), []);
+    for (const [suffix, category] of [['000000000001', 'normalizer'], ['000000000002', 'validator']] as const) {
+      const callId = `call-01234567-89ab-cdef-0123-${suffix}`;
+      await runContainedModelCall(call('SCENARIO:structured', { newCallId: () => callId,
+        output: { kind: 'json', schema: answerSchema, validate: () => false,
+          ...(category === 'normalizer' ? { normalize: () => { throw Error('Synthetic invalid alias'); } } : {}) } }), new MemoryCodexJournal(), config);
+      const diagnostic = JSON.parse(await readFile(join(config.work_root, 'rejected-output', `${callId}-attempt-1.json`), 'utf8'));
+      assert.equal(diagnostic.category, category); assert.equal(diagnostic.accepted, false);
+    }
+  } finally { await cleanup(); }
 });
 
 async function setup(overrides: Partial<CodexAdapterConfig> = {}) {

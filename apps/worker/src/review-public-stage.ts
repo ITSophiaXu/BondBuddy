@@ -8,6 +8,7 @@ import { chunkReviewRecords, reviewPromptRecordId, type ReviewAnalysisInput } fr
 import { mapDifferentialReviewTargets, retainUnmappedHistoricalFinding } from './review-anchor-mapping.js';
 import { materialToolDataHash, validateMaterialToolTrace, type MaterialToolData, type MaterialModelEnvelope } from './authoring-material-tools.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
+import { withReviewFollowUp } from './review-follow-up.js';
 
 const categories = ['entity_control','bonds_credit','litigation_penalties','material_events'] as const;
 const text = Type.String({ maxLength: 12000 });
@@ -116,8 +117,9 @@ export function mergePublicReview(report: ReviewReport, analysis: PublicAnalysis
   }
   if (next.coverage.some(c => c.dimension === 'public' && c.outcome === 'uncovered')) next.limitations.push('公开信息维度存在未覆盖；本报告不能视为完整三维核验通过。');
   next.limitations = [...new Set(next.limitations)].slice(0,200);
-  if (!isReviewReport(next)) throw new Error('PUBLIC_REVIEW_REPORT_INVALID');
-  return next;
+  const linked=withReviewFollowUp(next,input);
+  if (!isReviewReport(linked)) throw new Error('PUBLIC_REVIEW_REPORT_INVALID');
+  return linked;
 }
 
 type PublicStageOptions = { model?: typeof codexModelStage; config?: typeof loadCodexAdapterConfig };

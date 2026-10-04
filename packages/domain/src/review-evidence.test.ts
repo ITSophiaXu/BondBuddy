@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isReviewReport, type ReviewReport } from '../../contracts/dist/review-results.js';
-import { referenceFor, validateReviewEvidence, validReviewLocator } from './review-evidence.js';
+import { referenceFor, validateReviewEvidence, validateReviewEvidenceBatch, validReviewLocator } from './review-evidence.js';
 import { carryForwardReviewFindings, normalizeReviewFindings, reviewCoverage, type ReviewFindingCandidate } from './review-finding-normalization.js';
 import { reviewFixture } from './review-test-fixtures.js';
 
@@ -16,6 +16,31 @@ test('evidence is pinned to owner, project, material, parser response, record, q
 test('models cannot erase OCR uncertainty or alter extraction method',()=>{
   const f=reviewFixture(),r=f.addRecord('ocr','100',true,{extraction_method:'ocr',uncertainty:['uncertain-digit']});const ref=referenceFor(r);
   assert.deepEqual(validateReviewEvidence(ref,f.ctx),[]);assert(validateReviewEvidence({...ref,uncertainty:[]},f.ctx).length);assert(validateReviewEvidence({...ref,extraction_method:'native_text'},f.ctx).length);
+});
+test('batch verification retains scope, exact pins, OCR warnings, duplicate ambiguity and quote failures',()=>{
+  const f=reviewFixture(),a=f.addRecord('batch-a','Synthetic literal 100'),b=f.addRecord('batch-b','Synthetic OCR 200',true,{extraction_method:'ocr',uncertainty:['uncertain-digit']});
+  const refs=[referenceFor(a),referenceFor(b),null,{...referenceFor(a),record_sha256:'f'.repeat(64)},
+    {...referenceFor(a),quote:'not present'},{...referenceFor(b),uncertainty:[]},
+    {...referenceFor(a),locator:{stable_ref:'wrong',path:[{paragraph:1}]}},
+    {...referenceFor(a),locator:{stable_ref:'invalid',path:[{paragraph:0}]}}];
+  assert.deepEqual(validateReviewEvidenceBatch(refs,f.ctx),refs.map(ref=>validateReviewEvidence(ref,f.ctx)));
+  f.records.push({...a});
+  assert.deepEqual(validateReviewEvidenceBatch([referenceFor(a)],f.ctx),[['evidence_pin_missing_or_ambiguous']]);
+  assert.deepEqual(validateReviewEvidenceBatch([referenceFor(b)],{...f.ctx,owner_user_id:'another'}),[['evidence_pin_missing_or_ambiguous']]);
+  const supporting=f.addRecord('batch-support','Synthetic support',false);
+  assert.deepEqual(validateReviewEvidenceBatch([referenceFor(supporting)],f.ctx,true),[['target_material_mismatch']]);
+});
+test('batch verification rebuilds its index after trusted input changes',()=>{
+  const f=reviewFixture(),record=f.addRecord('batch-changing','Synthetic 100'),ref=referenceFor(record);
+  assert.deepEqual(validateReviewEvidenceBatch([ref],f.ctx),[[]]);
+  record.record_sha256='f'.repeat(64);
+  assert.deepEqual(validateReviewEvidenceBatch([ref],f.ctx),[['evidence_pin_missing_or_ambiguous']]);
+});
+test('large document evidence verification completes as one indexed batch',{timeout:10000},()=>{
+  const f=reviewFixture();
+  for(let i=0;i<12000;i++)f.addRecord(`large-${i}`,`Synthetic document line ${i}`);
+  const result=validateReviewEvidenceBatch(f.ctx.records.map(record=>referenceFor(record)),f.ctx);
+  assert.equal(result.length,12000);assert(result.every(errors=>errors.length===0));
 });
 test('actual DOCX column paths and native PDF bbox objects are accepted; malformed positions are rejected',()=>{
   assert(validReviewLocator({locator_type:'docx_block',locator:{stable_ref:'t1r1c1',path:[{table:1},{row:1,column:1}]}}));

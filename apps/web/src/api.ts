@@ -220,6 +220,22 @@ export class ApiClient {
   material(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, signal);
   }
+  async materialBytes(projectId: string, material: Dto<'MaterialResponse'>, signal?: AbortSignal): Promise<Blob> {
+    const activeSignal = signal ?? this.controller.signal;
+    // The owner-scoped route authorizes this project/material pair; the caller
+    // has compared freshly fetched metadata with the report's immutable pin.
+    if (material.state !== 'persisted') throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const response = await this.response('GET', `/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/download`, undefined, {}, activeSignal);
+    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== material.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const bytes = await response.arrayBuffer();
+    activeSignal.throwIfAborted();
+    if (!bytes.byteLength || bytes.byteLength !== material.byte_size) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    activeSignal.throwIfAborted();
+    const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    if (sha256 !== material.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    return new Blob([bytes], { type: material.media_type });
+  }
   materialParseJob(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialParseJobResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/parse-job`, undefined, {}, signal);
   }
