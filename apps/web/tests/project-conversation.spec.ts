@@ -413,6 +413,14 @@ test('create and material conversation use the prototype desktop and mobile work
   await setup(page);
   const evidence = process.env.BB_UX_EVIDENCE_DIR;
   if (evidence) await mkdir(evidence, { recursive: true });
+  if(evidence){
+    for(const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+      await page.setViewportSize({width,height});
+      await expect(page.locator('#execute-input')).toBeEnabled();
+      await page.locator('#project-conversation-root').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(evidence,`implementation-ready-${device}.png`)});
+    }
+  }
   const capture = async (name: string) => {
     await page.evaluate(() => { document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0, 0); });
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
@@ -436,6 +444,14 @@ test('create and material conversation use the prototype desktop and mobile work
   await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
   await expect(page.locator('#conversation-status')).toBeEmpty();
   await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('');
+  if(evidence){
+    for(const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+      await page.setViewportSize({width,height});
+      await page.locator('#project-conversation-root').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(evidence,`implementation-empty-${device}.png`)});
+    }
+    await page.setViewportSize({width:1440,height:960});
+  }
   await send(page,'合成补充：授信口径待核对。');
   expect(await page.locator('#project-conversation-root').evaluate(el=>!!el.closest('#project-materials-details'))).toBe(true);
   await capture('materials');
