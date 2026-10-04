@@ -775,6 +775,9 @@ async function performUpload(upload: LocalUpload) {
       ? `保存结果尚未确认。服务器可能已收到文件，但当前会话未取得保存凭证。请刷新服务器记录；请勿盲目重传。${error instanceof ApiError ? errorReference(error) : ''}`
       : uploadErrorMessage(error);
     updateMaterialWorkspace(upload.projectId);
+    // A completion response can be lost after the server commits the material.
+    // Re-read metadata once; this never resends bytes or starts a run.
+    if (uncertain) void refreshProjectMaterials(upload.projectId, epoch);
   } finally {
     if (upload.controller === controller) upload.controller = undefined;
   }
@@ -814,6 +817,17 @@ async function refreshProjectMaterials(projectId: string, token: number) {
     if (controller.signal.aborted || token !== epoch || owner !== identity) return;
     const current = fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined);
     recoveredMaterials.set(projectId, current);
+    for (const upload of localUploads.get(projectId) ?? []) {
+      if (upload.owner !== owner || upload.projectId !== projectId || upload.phase !== 'uncertain' || !upload.hash) continue;
+      // Match the content and partition, including server-side duplicate reuse.
+      // A matching filename or upload ID alone is not a persistence receipt.
+      const matches = current.filter(material => material.state === 'persisted'
+        && material.sha256 === upload.hash && material.byte_size === upload.file.size
+        && material.role === upload.role && material.media_type === declaredMediaType(upload.file, upload.role));
+      if (matches.length !== 1) continue;
+      upload.material = matches[0]; upload.phase = 'persisted'; upload.error = undefined;
+      upload.sentBytes = upload.file.size;
+    }
     const currentIds = new Set(current.map(item => item.material_id));
     localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted' || !!upload.material && currentIds.has(upload.material.material_id)));
     recoveryStates.set(projectId, { state: 'ready' });
