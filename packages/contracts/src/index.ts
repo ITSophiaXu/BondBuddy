@@ -11,6 +11,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { ReviewActionSchema } from './review-action.js';
 export * from './review-action.js';
 import { ReviewRevisionHandlingSchema } from './review-revision.js';
+import { ReviewReadableReportSchema } from './review-readable.js';
 import { RUN_CHANNELS, RUN_BILLING_MODES, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 export * from './run-channel.js';
 import { TestUncoveredItemsSchema } from './test-coverage.js';
@@ -169,6 +170,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
+  ReviewReadableReport: ReviewReadableReportSchema,
   ...billingSchemas,
   ...browserErrorSchemas,
   ...targetPeriodEvidenceSchemas,
@@ -458,6 +460,14 @@ export function openApiDocument() {
       ? Object.entries(schemas.ArtifactHistoryQuery.properties).map(([name, schema]) => ({ name, in: 'query', required: false, schema })) : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...messageQueryParameters, ...historyQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
+  paths['/api/v1/projects/{project_id}/review-executions/{run_id}/readable-report'] = { get: {
+    summary: 'Read a delivered private review report for display without executing a task',
+    'x-implementation-status': 'implemented; owner-scoped; read-only; private-no-store', security: [{ sessionCookie: [] }],
+    parameters: parameters('/projects/{project_id}/review-executions/{run_id}/readable-report'),
+    responses: { 200: { description: 'Saved report text or optional preview unavailable; Word delivery is independent',
+      content: { 'application/json': { schema: ref('ReviewReadableReport') } } },
+      404: { description: 'Unknown, foreign, deleted or undelivered review' } },
+  } };
   const reviewMutation = (summary: string, request: string, response: string, status: string) => ({
     summary, 'x-implementation-status': status, security: [{ sessionCookie: [] }],
     parameters: [{ name: 'Origin', in: 'header', required: true, schema: { type: 'string' } },
@@ -542,5 +552,6 @@ export function openApiDocument() {
 export { reportingWindow } from './reporting-window.js';
 
 export * from './review-results.js';
+export * from './review-readable.js';
 export * from './review-workspace.js';
 export * from './review-revision.js';
