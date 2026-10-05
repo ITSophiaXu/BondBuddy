@@ -84,6 +84,7 @@ jobs:
             apps/worker/dist/codex-durable.test.js \
             apps/worker/dist/model-generation-router.test.js \
             apps/api/dist/review-workspace.test.js \
+            apps/api/dist/review-readable.test.js \
             apps/api/dist/provider-result-validation.test.js \
             apps/api/dist/provider-runtime-locks.pg.integration.test.js \
             apps/api/dist/review-action-events.pg.integration.test.js \
