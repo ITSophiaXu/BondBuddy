@@ -50,7 +50,7 @@ test('public verification gaps use business language and preserve unverified sco
 });
 
 test('legacy source ranges and code formatting do not obscure business comparisons', () => {
-  const doc = businessReport('## 范围\n**A，审阅对象：** materials/m0.docx，上传名《合成募集书.docx》。\n## 发现\n### 1. 财务期间冲突\nA封面 `docx/t/28/1,28/2` 写 `**2025年1—6月**`，对照 `2025年1—9月`。');
+  const doc = businessReport('## 范围\n**A，审阅对象：** materials/m0.docx，上传名《合成募集书.docx》。\n## 发现\n### 1. 财务期间冲突\nA封面 `docx/t/28/1—2,28/2` 写 `**2025年1—6月**`，对照 `2025年1—9月`。');
   const html = businessContent(doc, 'financial', '', new Set());
   assert.doesNotMatch(html, /docx\/|28\/2|A封面|\*\*|<code>/);
   assert.match(html, /合成募集书\.docx封面/);

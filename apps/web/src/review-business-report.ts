@@ -12,7 +12,7 @@ export type BusinessReport = { dimensions: BusinessSection[]; other: BusinessSec
 // This is a presentation filter, not evidence validation or a change to the saved report.
 const metadata = /(?:input\.json|input_hash|输入锁|输入哈希|SHA[- ]?256|\b(?:run_id|call_id|receipt_id|full_review|differential_review)\b|哈希(?:值|一致)|校验(?:输入|通过)|(?:scratch|output)\/)/i;
 export function businessText(value: string): string {
-  const text = value.replace(/`(?:docx|pdf)\/(?:p|t|page)\/[\w/.,、，\s-]+`/g, '')
+  const text = value.replace(/`(?:docx|pdf)\/(?:p|t|page)\/[\w/.,、，\s—–-]+`/g, '')
     .split(/(?<=[。；;\n])/).filter(part => !metadata.test(part))
     .join('').replace(/`?(?:materials|knowledge)\/[\w./-]+`?/g, '所提供材料')
     .replace(/\b[a-f0-9]{64}\b/gi, '')
@@ -20,7 +20,7 @@ export function businessText(value: string): string {
     .replace(/\bweb[_ -]?search\b/gi, '公开信息检索')
     .replace(/\b(?:Codex CLI|Codex|worker|provider)\b/gi, '系统')
     .replace(/\b(?:P[0-9]{4,}|paragraph_[\w-]+|receipt_[\w-]+)\b/g, '')
-    .replace(/`?(?:docx|pdf)\/(?:p|t|page)\/[\w/.-]+`?/g, '')
+    .replace(/`?(?:docx|pdf)\/(?:p|t|page)\/[\w/.—–-]+`?/g, '')
     .replace(/`/g, '')
     .replace(/^\s*[；;，,。]+/, '').trim();
   // Filtering technical sentences can remove half of a Markdown emphasis pair.
