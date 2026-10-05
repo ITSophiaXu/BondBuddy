@@ -1,3 +1,4 @@
+import { ReviewResultPinSchema, type ReviewResultPin } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
   type ReviewRevisionPin, type ReviewEvidenceRef, type UnifiedAuthoringInput, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
@@ -62,12 +63,31 @@ export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: Revi
     && inputManifestHash(content.requirements) === inputManifestHash(pin.requirements);
 }
 
+/** Reload the exact successful report and its immutable source input on every recovery. */
+export async function reviewResultArtifact(pool:Pool,run:RunRow,pin:ReviewResultPin){
+  if(!Value.Check(ReviewResultPinSchema,pin))return null;
+  const row=(await pool.query(`SELECT a.object_key,a.sha256,i.input_hash,i.manifest,e.snapshot FROM bb_artifact_versions a
+    JOIN bb_review_artifacts ra ON ra.artifact_id=a.id AND ra.artifact_version=a.version AND ra.owner_user_id=a.owner_user_id AND ra.run_id=a.run_id AND ra.kind='report'
+    JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id AND r.project_id=ra.project_id
+    JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
+    JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
+    WHERE a.id=$1 AND a.version=$2 AND r.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND r.input_revision=$6
+      AND r.state='succeeded' AND r.channel='production' AND e.operation IN ('full_review','differential_review')
+      AND a.quality_status='passed' AND a.delivery_status='available'`,[pin.artifact_id,pin.artifact_version,run.owner_user_id,run.project_id,pin.run_id,pin.input_revision])).rows[0];
+  return row&&row.sha256.trim()===pin.sha256&&row.input_hash.trim()===pin.input_hash&&inputManifestHash(row.manifest)===pin.input_hash
+    && inputManifestHash(row.snapshot.input?.source_material_ref??null)===inputManifestHash(pin.source_material)?row:null;
+}
+
 export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevisionRow): Promise<Extract<StageOutcome, { kind: 'pause' | 'fail' }> | null> {
   const fail = { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' } as const;
   if (!isUnifiedInput(input.manifest) || inputManifestHash(input.manifest) !== input.input_hash.trim() || input.input_hash.trim() !== run.input_hash.trim()) return fail;
   const m = input.manifest as UnifiedManifest;
   if (!Value.Check(UpdateDetailsSchema, m.update_details) || m.update_details.authoring_mode !== 'unified_v1' ||
       !Array.isArray(m.materials) || !Array.isArray(m.authoring.source_prospectuses) || !Array.isArray(m.authoring.knowledge) || !Array.isArray(m.authoring.requirements)) return fail;
+  const result=m.authoring.review_result;
+  const report=result?await reviewResultArtifact(pool,run,result):null;
+  if(Object.hasOwn(m.authoring,'review_result')&&(!report||m.authoring.review_revision||m.authoring.previous_output))return fail;
+  if(report&&inputManifestHash(report.manifest.materials)!==inputManifestHash(m.materials))return fail;
   const revision = m.authoring.review_revision;
   if (Object.hasOwn(m.authoring,'review_revision') && !isReviewRevisionPin(revision)) return fail;
   if (revision && (!await reviewRevisionInputGate(pool, run, revision) || m.authoring.previous_output)) return fail;
@@ -75,7 +95,7 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
     return { kind: 'pause', stage: 'capability_not_ready', reason: 'revision_no_executable_changes' };
   // A finding revision already pins its verified source/report/evidence. Optional project
   // labels cannot impose M1 whole-document authoring prerequisites on that accepted scope.
-  if (!revision && (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || !m.update_details.target_reporting_periods?.length))
+  if (!revision && !result && (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || !m.update_details.target_reporting_periods?.length))
     return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_target_information_required' };
   if (!m.materials.length) return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };
   for (const pin of m.materials) {
@@ -88,7 +108,7 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
         && pin.material_version === ref.material_version && pin.sha256 === ref.material_sha256)))) return fail;
   // Source metadata is optional context. The worker resolves gaps from the uploaded
   // material and labels uncertainty; an unfilled relationship is never a same-issuer assertion.
-  if (!revision && !m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
+  if (!revision && !result && !m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
   if (m.authoring.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) return fail;
   if (m.authoring.previous_output && !await previousArtifact(pool, run, m.authoring.previous_output)) return fail;
   return null;
@@ -181,7 +201,14 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     } finally { await rm(directory,{recursive:true,force:true}); }
     }
   }
-  const requirements: string[] = [];
+  const reviewResult=manifest.authoring.review_result;
+  if(reviewResult){
+    if(!options.originalFiles)throw Error('INPUT_REVISION_CONFLICT');
+    const stored=await reviewResultArtifact(ctx.pool,ctx.run,reviewResult);
+    if(!stored||inputManifestHash(stored.manifest.materials)!==inputManifestHash(manifest.materials))throw Error('INPUT_REVISION_CONFLICT');
+    materials.push({pin:{material_id:reviewResult.artifact_id,material_version:reviewResult.artifact_version,sha256:reviewResult.sha256,role:'review_report'},filename:'本次复核报告.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:stored.object_key,records:[]});
+  }
+  const requirements: string[] = reviewResult ? ["根据所附复核报告，结合本轮原募集书与证据材料更新文稿。有充分依据的建议才应用；待确认或缺证事项保留，不将未执行的检查写为通过。保留原稿结构，输出修订版和清洁版。",reviewResult.requirements].filter(Boolean) : [];
   // The review input's requirements and the accepted plan remain separately pinned.
   // Neither later chat messages nor the project's current mutable draft are loaded here.
   if (revision && manifest.review && typeof manifest.review === 'object') {

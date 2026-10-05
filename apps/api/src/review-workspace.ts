@@ -1,3 +1,5 @@
+import { ReviewUpdateRequestSchema, type ReviewUpdateRequest, type ReviewResultPin } from '@bondbuddy/contracts';
+import { loadAuthoringKnowledge } from './unified-authoring.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
@@ -161,7 +163,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
     const reports = (await db().query('SELECT id AS report_id,version,run_id,created_at FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 ORDER BY version DESC', [user, id])).rows.map(r => ({ ...r, created_at: date(r.created_at) }));
     const requestedReport = (request.query as { report_id?: string }).report_id;
     const requested = requestedReport ? await readReviewReport(db(), user, id, requestedReport) : null;
-    const artifactRun = (await db().query(`SELECT e.run_id,e.version,e.operation,e.source_report_id FROM bb_review_executions e
+    const artifactRun = (await db().query(`SELECT e.run_id,e.version,e.operation,e.source_report_id,e.snapshot->>'source_run_id' AS source_run_id FROM bb_review_executions e
       JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id AND r.project_id=e.project_id
       WHERE e.owner_user_id=$1 AND e.project_id=$2 AND r.state IN ('succeeded','test_completed')
       AND ($3::text IS NULL OR e.run_id=$3) ORDER BY e.version DESC LIMIT 1`, [user, id, requested?.run_id ?? null])).rows[0] ?? null;
@@ -395,6 +397,48 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       await recordOperation(client, { owner: user, projectId: id, runId, requestId: request.id, traceId: runId, kind: 'execute', status: 'submitted', inputRevision, inputHash });
       await enqueue(client, r, RUN_PIPELINE_SUBTYPE);
       return runDto({ ...r, stage: 'queued', event_cursor: 1 });
+    });
+  });
+  // File-result revision reuses the reviewed inputs and the existing update worker. M3 stays unbilled.
+  app.post('/api/v1/projects/:project_id/review-updates', {schema:{body:ReviewUpdateRequestSchema}}, async request => {
+    const user=await owner(request),id=projectId(request),b=request.body as ReviewUpdateRequest;
+    return transaction(db(),async client=>{
+      const p=await requireReview(client,user,id,true),requestHash=inputManifestHash({project_id:id,review_update:b});
+      const key=executionKeyStorage(b.execution_request_id);
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
+      const prior=(await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,key])).rows[0];
+      if(prior){if(prior.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Execution key already used');return runDto(prior);}
+      if((await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) LIMIT 1',[user,id,finalStates])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','A project task is still active');
+      const source=(await client.query(`SELECT r.input_revision,r.input_hash,e.snapshot,e.source_report_id,i.manifest,a.artifact_id,a.artifact_version,v.sha256
+        FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
+        JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
+        JOIN bb_review_artifacts a ON a.run_id=r.id AND a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.kind='report'
+        JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=r.id
+        WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state='succeeded' AND r.channel='production'
+        AND e.operation IN ('full_review','differential_review') AND v.quality_status='passed' AND v.delivery_status='available'`,[user,id,b.source_run_id])).rows[0];
+      if(!source)throw missing();
+      const original=source.snapshot.input as ReviewDraftInput;
+      if(!original?.source_material_ref||inputManifestHash(source.manifest)!==source.input_hash.trim())throw conflict('INPUT_REVISION_CONFLICT','Review input is unavailable');
+      const materialRows=await pins(client,user,id,original.material_versions);
+      if(!original.material_versions.some(m=>same(m,original.source_material_ref)))invalid('Reviewed source is absent');
+      const pin:ReviewResultPin={version:'review-result-v1',run_id:b.source_run_id,input_revision:source.input_revision,input_hash:source.input_hash.trim(),artifact_id:source.artifact_id,artifact_version:source.artifact_version,sha256:source.sha256.trim(),source_material:original.source_material_ref,requirements:b.requirements.trim()};
+      const version=Number((await client.query('SELECT COALESCE(max(version),0)+1 next FROM bb_review_executions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
+      const revision=Number((await client.query('SELECT COALESCE(max(revision),0)+1 next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
+      const sourceProject={issuer_name:source.manifest.issuer_name,market:source.manifest.market,offering:source.manifest.offering};
+      const input={...original,requirements:pin.requirements?[pin.requirements]:[]};
+      const manifest={project_kind:'review',draft_revision:p.draft_revision,...sourceProject,
+        update_details:{...emptyUpdateDetails(),...source.manifest.update_details,authoring_mode:'unified_v1',supplementary_notes:pin.requirements||null},
+        materials:materialRows.map(m=>({material_id:m.id,material_version:m.version,sha256:m.sha256.trim(),role:m.role})),
+        authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:await loadAuthoringKnowledge(sourceProject),knowledge_status:'authoring_reference_not_compliance_approval',review_result:pin}};
+      const inputHash=inputManifestHash(manifest),runId=uid();
+      await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,'[]')`,[id,revision,user,p.draft_revision,inputHash,manifest,JSON.stringify(manifest.materials)]);
+      await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
+      const run=(await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$6,'update',$7,'queued') RETURNING *`,[runId,user,id,revision,inputHash,key,requestHash])).rows[0];
+      const report=(await client.query('SELECT id FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[user,id,b.source_run_id])).rows[0];
+      const origin:ReviewExecutionOrigin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
+      await client.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,'revision',$5,$6)`,[runId,user,id,version,report?.id??null,{input,input_version:source.snapshot.input_version,finding_ids:[],plan:null,origin,context_messages:[],source_run_id:b.source_run_id}]);
+      await recordOperation(client,{owner:user,projectId:id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:revision,inputHash});
+      await enqueue(client,run,RUN_PIPELINE_SUBTYPE);return runDto({...run,stage:'queued',event_cursor:1});
     });
   });
   app.get('/api/v1/projects/:project_id/review-history', async request => {

@@ -1,3 +1,5 @@
+> 复核工作区及报告后修订接线见 [2026-10-05 统一工作区决定](product-decisions/2026-10-05-unified-workspace-ux.md)：新契约与接口复用文件编制 worker，保留原报告输入和成果版本，无数据库迁移。
+
 # M1 统一技术栈与四人协作基线
 
 2026-10-05[可读结果投影](product-decisions/2026-10-05-review-readable-results.md)：API按账号/项目/run读取已交付报告的私有Markdown并核对输入/hash；前端只读整理为财务/合规披露/公开核验三维业务结果，过滤工程元数据、保留缺项和不确定性，不生成可执行finding，不写run，不触发模型。读取异常只影响正文，Word交付独立。无需数据库迁移。

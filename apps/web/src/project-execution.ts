@@ -8,6 +8,7 @@ import { referencePin, selectedReference, type ReferenceSnapshotResolver, type U
 import type { ProjectConversation } from './project-conversation';
 import { date, esc } from './ui';
 import './project-execution.css';
+import { taskProgress } from './task-progress';
 
 type Input = Dto<'InputRevisionResponse'>;
 type Material = Dto<'MaterialResponse'>;
@@ -300,7 +301,7 @@ export class ProjectExecution {
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对编制服务响应；已保存材料会保留，无需重新上传。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
-    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
+    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update')}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       ${run.billing_mode==='fixed_credits'?`<p class="task-credit-receipt">${this.charge?.quote?`本次固定价 ${this.charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已冻结，交付后扣费',settled:'已扣费',released:'已释放，本次不扣费'}[this.charge.state??'held']}`:'正在读取本次积分状态…'}</p>`:''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
