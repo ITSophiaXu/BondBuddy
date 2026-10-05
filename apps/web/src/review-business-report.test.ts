@@ -28,3 +28,11 @@ test('business filtering preserves material business facts and safe source links
   const html=businessContent(doc,'public','',new Set());
   assert.ok(!html.includes('<script>'));assert.match(html,/noopener noreferrer/);assert.match(html,/核对变更日期/);
 });
+
+test('legacy internal material aliases use business names, and public limitations remain visible', () => {
+  const doc=businessReport('## 范围\n**A，审阅对象：** materials/m0.docx，上传名《合成募集书.docx》。\n**B，财务比对：** materials/m1.xlsx。\n本轮未执行公开信息检索，诉讼情况尚未核实。\n## 发现\n### 1. 现金流差异\n**位置和比较：** A `docx/p/27`写100万元，B写120万元。');
+  const html=businessContent(doc,'financial','',new Set());
+  assert.match(html,/合成募集书\.docx/);assert.match(html,/财务报表写120万元/);assert.doesNotMatch(html,/docx\/p\/27|materials\//);
+  assert.match(businessContent(doc,'public','',new Set()),/未执行公开信息检索/);
+  assert.equal(dimensionStatus(doc.dimensions[2]),'有待核实事项');
+});

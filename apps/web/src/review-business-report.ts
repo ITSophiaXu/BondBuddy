@@ -18,6 +18,7 @@ export function businessText(value: string): string {
     .replace(/\bweb[_ -]?search\b/gi, '公开信息检索')
     .replace(/\b(?:Codex CLI|Codex|worker|provider)\b/gi, '系统')
     .replace(/\b(?:P[0-9]{4,}|paragraph_[\w-]+|receipt_[\w-]+)\b/g, '')
+    .replace(/`?(?:docx|pdf)\/(?:p|t|page)\/[\w/.-]+`?/g, '')
     .replace(/^\s*[；;，,。]+/, '').trim();
 }
 function cleanBlock(block: ReportBlock): ReportBlock | undefined {
@@ -51,6 +52,16 @@ function itemDimension(item: ReportItem, sectionTitle: string): Dimension | unde
 
 /** Three business dimensions. Missing findings never mean a dimension passed. */
 export function businessReport(markdown: string): BusinessReport {
+  // Legacy reports define A/B/C in a technical inventory. Use their business names
+  // throughout findings without showing that inventory or inventing source locations.
+  const sources = new Map<string, string>();
+  for (const line of markdown.split('\n')) {
+    const source = /\*\*([A-Z])[,，]\s*(审阅对象|财务比对|中期附注)[：:]\*\*/.exec(line);
+    if (source) { const filename = /(?:上传名|文件名)[^《\n]*《([^》]+)》/.exec(line);
+      sources.set(source[1], filename?.[1] ?? ({审阅对象:'待复核募集书',财务比对:'财务报表',中期附注:'财务附注'}[source[2]]!));
+    }
+  }
+  if (sources.size) markdown = markdown.replace(/(?<![A-Za-z0-9])([A-Z])(?=[^A-Za-z0-9]|$)/g, (value, key) => sources.get(key) ?? value);
   const document = reportDocument(markdown);
   const dimensions: BusinessSection[] = reviewDimensions.map(d => ({ ...d, blocks: [], items: [] }));
   const other: BusinessSection = { id: 'other', title: '其他需确认事项', description: '', blocks: [], items: [] };
@@ -77,6 +88,14 @@ export function businessReport(markdown: string): BusinessReport {
   // Unstructured legacy reports must remain visible, without a fabricated all-clear.
   if (!dimensions.some(d => d.items.length || d.blocks.length) && !other.items.length && !other.blocks.length)
     other.blocks = clean(document.sections.flatMap(s => s.blocks));
+  // A legacy report may describe unperformed public verification in its general
+  // limitations instead of giving it a separate section. Preserve that limitation.
+  const publicSection = dimensions.find(d => d.id === 'public')!;
+  if (!publicSection.blocks.length) {
+    const statements = markdown.split(/\n|(?<=[。；])/).filter(text => /公开|联网|检索|web.?search/i.test(text)
+      && /未|无法|没有|不能|不具备|不可用|关闭/.test(text));
+    publicSection.blocks.push(...clean(statements.map(text => ({ kind:'paragraph' as const, text }))));
+  }
   return { dimensions, other, actions };
 }
 
