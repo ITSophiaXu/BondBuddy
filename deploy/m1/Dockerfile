@@ -24,6 +24,7 @@ COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
 COPY knowledge/exchange-bonds/共通方法与差异.md knowledge/exchange-bonds/冲突与未覆盖项.md knowledge/exchange-bonds/
 COPY knowledge/nafmii/APPLICABILITY.md knowledge/nafmii/APPLICABILITY.md
 COPY knowledge/nafmii/drafts/ knowledge/nafmii/drafts/
+COPY product-prototype/knowledge/*-review.md product-prototype/knowledge/
 COPY knowledge/audit-reconciliation/METHODS.md knowledge/audit-reconciliation/METHODS.md
 RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
  && npm prune --omit=dev --no-audit --no-fund \
@@ -75,6 +76,7 @@ COPY --from=build --chown=root:root /app/apps/api apps/api
 COPY --from=build --chown=root:root /app/apps/worker apps/worker
 COPY --from=build --chown=root:root /app/db db
 COPY --from=build --chown=root:root /app/knowledge knowledge
+COPY --from=build --chown=root:root /app/product-prototype/knowledge product-prototype/knowledge
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/blob-snapshot.mjs
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-offhost.mjs
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/backup-stream.mjs

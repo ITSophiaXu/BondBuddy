@@ -633,3 +633,5 @@ button.evidence-source:hover { color: #527b38; text-decoration: underline; text-
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.file-result{text-align:center;padding:45px 20px}.file-result h2{font-size:20px;margin:20px 0 10px}.file-result p{font-size:12px;color:var(--muted);margin-bottom:18px}.file-result-download{display:flex;justify-content:center;margin:20px 0 8px}

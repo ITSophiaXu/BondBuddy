@@ -1,6 +1,9 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
+export type ReviewFileDeliveryPin = { version: 'review-file-v1'; knowledge: { path: string; sha256: string; markdown: string }[] };
+export type GeneratedWordDeliveryPolicy = 'generated_pair_v1' | 'generated_review_v1';
+
 const id = Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' });
 const text = Type.String({ minLength: 1, maxLength: 12000, pattern: '\\S' });
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });

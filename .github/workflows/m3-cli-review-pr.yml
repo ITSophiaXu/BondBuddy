@@ -73,7 +73,7 @@ jobs:
           DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs
       - name: CLI tools, durable replay, differential review and real Word downloads
         run: |
-          mapfile -t review_tests < <(find apps/worker/dist -maxdepth 1 -name 'review-*.test.js' ! -name 'review-revision-cli-native.test.js' | sort)
+          mapfile -t review_tests < <(find apps/worker/dist -maxdepth 1 -name 'review-*.test.js' ! -name 'review-revision-cli-native.test.js' ! -name 'review-file-delivery.pg.test.js' | sort)
           node --test --test-concurrency=1 --test-reporter=tap \
             "${review_tests[@]}" \
             apps/worker/dist/m3-review-*.test.js \
@@ -125,6 +125,7 @@ jobs:
             --test --test-concurrency=1 --test-reporter=tap \
             apps/worker/dist/codex-file-authoring.test.js apps/worker/dist/file-authoring.pg.test.js \
             apps/worker/dist/review-revision-cli-native.test.js apps/worker/dist/m3-runtime-skills.test.js \
+            apps/worker/dist/review-file-delivery.pg.test.js \
             apps/worker/dist/m3-review-pipeline.pg.integration.test.js \
             | tee "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m3-cli-native.tap"
