@@ -1,0 +1,79 @@
+{
+  "viewport": 1360,
+  "update": {
+    ".sidebar": {
+      "font": "14px",
+      "padding": "24px 18px 16px",
+      "width": 236,
+      "left": 0
+    },
+    ".brand": {
+      "font": "24px",
+      "padding": "0px 8px 22px",
+      "width": 199,
+      "left": 18
+    },
+    ".nav-item": {
+      "font": "13px",
+      "padding": "11px 14px",
+      "width": 196,
+      "left": 18
+    },
+    ".topbar": {
+      "font": "13px",
+      "padding": "0px 42px",
+      "width": 1109,
+      "left": 236
+    },
+    "main": {
+      "font": "14px",
+      "padding": "34px 42px",
+      "width": 1109,
+      "left": 236
+    },
+    "h1": {
+      "font": "31px",
+      "padding": "0px",
+      "width": null,
+      "left": 278
+    }
+  },
+  "review": {
+    ".sidebar": {
+      "font": "14px",
+      "padding": "24px 18px 16px",
+      "width": 236,
+      "left": 0
+    },
+    ".brand": {
+      "font": "24px",
+      "padding": "0px 8px 22px",
+      "width": 199,
+      "left": 18
+    },
+    ".nav-item": {
+      "font": "13px",
+      "padding": "11px 14px",
+      "width": 196,
+      "left": 18
+    },
+    ".topbar": {
+      "font": "13px",
+      "padding": "0px 42px",
+      "width": 1109,
+      "left": 236
+    },
+    "main": {
+      "font": "14px",
+      "padding": "34px 42px",
+      "width": 1109,
+      "left": 236
+    },
+    "h1": {
+      "font": "31px",
+      "padding": "0px",
+      "width": null,
+      "left": 278
+    }
+  }
+}

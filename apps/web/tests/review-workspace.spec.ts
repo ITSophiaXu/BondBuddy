@@ -448,7 +448,7 @@ test('file report update pins source and optional requirements, survives respons
  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
 });
 
-test('review creation uses the shared quarter form and preserves review kind on edits',async({page})=>{
+test('compact review creation preserves quarter, review kind and existing optional details on edits',async({page})=>{
  const state=fixture();await setup(page,state,'#review');
  await expect(page.locator('#review-create-form input[type=date]')).toHaveCount(0);
  await page.locator('#name').fill('合成复核项目');
@@ -456,11 +456,15 @@ test('review creation uses the shared quarter form and preserves review kind on 
  await page.locator('#market').selectOption('sse');await page.locator('#offering').selectOption('private');
  await page.locator('#reporting-year').selectOption('2025');await page.getByLabel('9月末',{exact:true}).check();
  await page.route('**/api/v1/projects',async route=>{if(route.request().method()==='POST'){const body=route.request().postDataJSON();expect(body.kind).toBe('review');expect(body.update_details.reporting_cutoff).toBe('2025-09-30');state.workspace.project={...state.workspace.project,...body};return reply(route,201,state.workspace.project);}return route.fallback();});
+ await expect(page.getByRole('heading',{name:'发行规模与债券安排'})).toHaveCount(0);
  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+ state.workspace.project.update_details!.bond_terms='以前保存的债券安排，简洁表单不应清空';
  await expect(page.getByRole('heading',{name:'提供复核材料'})).toBeVisible();
  await page.getByRole('link',{name:'编辑项目信息'}).click();await page.locator('#issuer').fill('合成发行人更新');
  await expect.poll(()=>state.projectPatches.length).toBeGreaterThan(0);expect(state.workspace.project.kind).toBe('review');
  expect(state.workspace.project.issuer_name).toBe('合成发行人更新');
+ expect(state.workspace.project.update_details?.bond_terms).toBe('以前保存的债券安排，简洁表单不应清空');
+ expect(state.workspace.project.update_details?.reporting_cutoff).toBe('2025-09-30');
 });
 
 test('synthetic workspace design scenes',async({page})=>{
@@ -472,7 +476,7 @@ test('synthetic workspace design scenes',async({page})=>{
  const capture=async(name:string)=>{
    if(['results','progress','updating'].includes(name))await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
    scenes[name]=await page.locator('#app').innerHTML();
-   const output='../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
+   const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
    for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:output+'/implementation-'+name+'-'+width+'.png',fullPage:true});}
    await page.setViewportSize({width:1360,height:900});
  };
@@ -491,14 +495,35 @@ test('synthetic workspace design scenes',async({page})=>{
 
 test('workspace prototype parity at desktop and narrow widths',async({page})=>{
  test.skip(!process.env.BB_WORKSPACE_DESIGN,'Dedicated synthetic design comparison only.');
- const output='../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
+ const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
  for(const name of ['create','materials','results','progress','updating']){
   for(const width of [1360,390]){
    await page.setViewportSize({width,height:width===1360?900:844});
-   await page.goto('http://127.0.0.1:4330/workspace-ux.html?scene='+name);await expect(page.locator('.prototype-app')).toBeVisible();
+   await page.goto((process.env.BB_PROTOTYPE_URL??'http://127.0.0.1:4330')+'/workspace-ux.html?scene='+name);await expect(page.locator('.prototype-app')).toBeVisible();
    await page.locator('#design-controls').evaluate(el=>(el as HTMLElement).style.display='none');
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
    await page.screenshot({path:output+'/prototype-'+name+'-'+width+'.png',fullPage:true});
   }
+ }
+});
+
+
+test('review navigation retains the app scale while keeping its own layout',async({page})=>{
+ const state=fixture();await setup(page,state,'#update');
+ const measure=()=>page.evaluate(()=>Object.fromEntries(['.sidebar','.brand','.nav-item','.topbar','main','h1'].map(selector=>{
+   const el=document.querySelector(selector)!,css=getComputedStyle(el),rect=el.getBoundingClientRect();
+   return [selector,{font:css.fontSize,padding:css.padding,width:selector==='h1'?null:rect.width,left:rect.left}];
+ })));
+ for(const width of [1360,820,390]){
+  await page.setViewportSize({width,height:width===390?844:900});await page.goto('/#update');
+  await expect(page.getByRole('heading',{name:'更新募集说明书',exact:true})).toBeVisible();const update=await measure();
+  const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
+  if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+  await page.getByRole('link',{name:'复核募集书',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
+  if(output){await page.screenshot({path:`${output}/review-entry-${width}.png`,fullPage:true});await writeFile(`${output}/scale-${width}.json`,JSON.stringify({viewport:width,update,review},null,2)+'\n');}
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await expect(page.locator('.stepper')).toHaveCount(0);
+  if(width===390){await page.getByRole('button',{name:'打开菜单'}).click();await expect(page.locator('#sidebar')).toBeVisible();await page.locator('#close-menu').click();}
  }
 });
