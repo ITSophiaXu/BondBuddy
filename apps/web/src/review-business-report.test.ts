@@ -37,3 +37,23 @@ test('legacy internal material aliases use business names, and public limitation
   assert.equal(dimensionStatus(doc.dimensions[2]),'有待核实事项');
   assert.match(html,/信用评级为 A，信用等级 B。A 类份额，选项 B。/);
 });
+
+test('public verification gaps use business language and preserve unverified scope', () => {
+  const doc = businessReport('## 公开信息核验\n本轮无可用模型网页搜索工具，**未开展公开登记、诉讼的在线核验；input_hash 仅为执行记录。**\n请补充实际公开来源后确认。');
+  const html = businessContent(doc, 'public', '', new Set());
+  assert.doesNotMatch(html, /模型|工具|input_hash|\*\*/);
+  assert.match(html, /本次公开信息尚未核验/);
+  assert.match(html, /未开展公开登记、诉讼的在线核验/);
+  assert.match(html, /请补充实际公开来源后确认/);
+  assert.equal(dimensionStatus(doc.dimensions[2]), '有待核实事项');
+  assert.equal(dimensionStatus(businessReport('## 公开信息核验\n本轮无可用模型网页搜索工具。').dimensions[2]), '有待核实事项');
+});
+
+test('legacy source ranges and code formatting do not obscure business comparisons', () => {
+  const doc = businessReport('## 范围\n**A，审阅对象：** materials/m0.docx，上传名《合成募集书.docx》。\n## 发现\n### 1. 财务期间冲突\nA封面 `docx/t/28/1—2,28/2` 写 `**2025年1—6月**`，对照 `2025年1—9月`。');
+  const html = businessContent(doc, 'financial', '', new Set());
+  assert.doesNotMatch(html, /docx\/|28\/2|A封面|\*\*|<code>/);
+  assert.match(html, /合成募集书\.docx封面/);
+  assert.match(html, /2025年1—6月/);
+  assert.match(html, /2025年1—9月/);
+});

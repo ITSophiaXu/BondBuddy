@@ -12,14 +12,20 @@ export type BusinessReport = { dimensions: BusinessSection[]; other: BusinessSec
 // This is a presentation filter, not evidence validation or a change to the saved report.
 const metadata = /(?:input\.json|input_hash|输入锁|输入哈希|SHA[- ]?256|\b(?:run_id|call_id|receipt_id|full_review|differential_review)\b|哈希(?:值|一致)|校验(?:输入|通过)|(?:scratch|output)\/)/i;
 export function businessText(value: string): string {
-  return value.split(/(?<=[。；;\n])/).filter(part => !metadata.test(part))
+  const text = value.replace(/`(?:docx|pdf)\/(?:p|t|page)\/[\w/.,、，\s—–-]+`/g, '')
+    .split(/(?<=[。；;\n])/).filter(part => !metadata.test(part))
     .join('').replace(/`?(?:materials|knowledge)\/[\w./-]+`?/g, '所提供材料')
     .replace(/\b[a-f0-9]{64}\b/gi, '')
+    .replace(/(?:本轮|本次)?(?:无可用|没有可用的?|未提供)(?:模型)?(?:网页搜索|网络搜索|公开信息检索)工具[，,；;。]?\s*/g, '本次公开信息尚未核验。')
     .replace(/\bweb[_ -]?search\b/gi, '公开信息检索')
     .replace(/\b(?:Codex CLI|Codex|worker|provider)\b/gi, '系统')
     .replace(/\b(?:P[0-9]{4,}|paragraph_[\w-]+|receipt_[\w-]+)\b/g, '')
-    .replace(/`?(?:docx|pdf)\/(?:p|t|page)\/[\w/.-]+`?/g, '')
+    .replace(/`?(?:docx|pdf)\/(?:p|t|page)\/[\w/.—–-]+`?/g, '')
+    .replace(/`/g, '')
     .replace(/^\s*[；;，,。]+/, '').trim();
+  // Filtering technical sentences can remove half of a Markdown emphasis pair.
+  // Keep all remaining business words without displaying orphan formatting marks.
+  return (text.match(/\*\*/g)?.length ?? 0) % 2 ? text.replace(/\*\*/g, '') : text;
 }
 function cleanBlock(block: ReportBlock): ReportBlock | undefined {
   if (block.kind === 'rule') return undefined;
@@ -66,7 +72,7 @@ export function businessReport(markdown: string): BusinessReport {
     // A/B may also be credit grades, share classes or options. Only expand an
     // explicit document reference; leave other business facts byte-for-byte.
     if (/评级|等级|级别|类别|选项|股权|份额/.test(before)) return value;
-    const reference = /^\s*(?:[`「《]|docx\/|pdf\/|已经注明|关键|有期间|写|载明|注明|披露|列示|记载|显示|所列|对应)/.test(after)
+    const reference = /^\s*(?:[`「《]|docx\/|pdf\/|已经注明|关键|有期间|写|载明|注明|披露|列示|记载|显示|所列|对应|封面|目录|财表|主表|附注|表格|第[一二三四五六七八九十\d]+[章节])/.test(after)
       || /(?:材料|源稿|附件|参见|对照文件)[：:\s]*$/.test(before);
     return reference ? sources.get(key) ?? value : value;
   });
@@ -110,7 +116,7 @@ export function businessReport(markdown: string): BusinessReport {
 
 export function dimensionStatus(section: BusinessSection): string {
   const text = section.blocks.map(reportBlockText).join('\n');
-  if (/未(?:执行|开展|完成|进行|核实|覆盖|启用)|无法(?:检索|核验)|不具备.*检索|没有.*检索工具/.test(text)) return '有待核实事项';
+  if (/未(?:执行|开展|完成|进行|核实|核验|覆盖|启用)|无法(?:检索|核验)|不具备.*检索|没有.*检索工具/.test(text)) return '有待核实事项';
   if (section.items.length) return `${section.items.length} 项需关注`;
   return section.blocks.length ? '查看核对结论' : '暂无明确核验结论';
 }
