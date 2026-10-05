@@ -93,7 +93,8 @@ export function businessReport(markdown: string): BusinessReport {
   const publicSection = dimensions.find(d => d.id === 'public')!;
   if (!publicSection.blocks.length) {
     const statements = markdown.split(/\n|(?<=[。；])/).filter(text => /公开|联网|检索|web.?search/i.test(text)
-      && /未|无法|没有|不能|不具备|不可用|关闭/.test(text));
+      && /未|无法|没有|不能|不具备|不可用|关闭/.test(text)
+      && !/不提供未经|不得编造|不以模型记忆/.test(text));
     publicSection.blocks.push(...clean(statements.map(text => ({ kind:'paragraph' as const, text }))));
   }
   return { dimensions, other, actions };
