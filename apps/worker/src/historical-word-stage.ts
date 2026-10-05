@@ -1,6 +1,7 @@
 import { fileAuthoringDeliveryStage } from './file-authoring-stage.js';
 import { createHash } from 'node:crypto';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
+import { reviewFileDeliveryStage } from './review-file-stage.js';
 import { reviewWordDeliveryStage } from './review-word-stage.js';
 import { REVIEW_REVISION_CLI_METHOD, reviewRevisionCliDeliveryStage } from './review-revision-cli-stage.js';
 import { execFile } from 'node:child_process';
@@ -84,6 +85,7 @@ async function writeHistoricalWord(ctx: StageContext, plan: HistoricalGeneration
 /** Native revision generation is a replayable, deterministic stage; only checked bytes may become artifacts. */
 export function historicalWordDeliveryStage(options: { writer?: typeof writeHistoricalWord } = {}): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
+    if ((ctx.values.get('model_generation') as {version?:string})?.version === 'codex-review-file-v1') return reviewFileDeliveryStage().run(ctx);
     if ((ctx.values.get('model_generation') as {version?:string})?.version===REVIEW_REVISION_CLI_METHOD) return reviewRevisionCliDeliveryStage().run(ctx);
     if ((ctx.values.get('model_generation') as {version?:string})?.version==='codex-file-word-v1') return fileAuthoringDeliveryStage().run(ctx);
     if ((ctx.values.get('model_generation') as { version?: string })?.version === 'unified-plan-v1') return unifiedWordDeliveryStage().run(ctx);

@@ -575,3 +575,21 @@ test('paused recheck retains the report without claiming its findings are curren
   await expect(page.getByRole('button',{name:'再次完整复核',exact:true})).toBeDisabled();
   expect(state.executes).toHaveLength(0);
 });
+
+for(const viewport of [{width:1360,height:900},{width:581,height:753}])test(`file-only report downloads without structured findings ${viewport.width}`,async({page})=>{
+  await page.setViewportSize(viewport);
+  const state=fixture();state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.plan=null;
+  state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};
+  state.history[0].report_id=null;
+  await setup(page,state);
+  await expect(page.getByRole('heading',{name:'复核报告已生成'})).toBeVisible();
+  await expect(page.locator('.review-findings')).toHaveCount(0);
+  await expect(page.locator('.review-filters')).toHaveCount(0);
+  const button=page.getByRole('button',{name:'下载复核报告（Word）'});
+  await expect(button).toBeVisible();
+  const download=page.waitForEvent('download');await button.click();
+  expect((await download).suggestedFilename()).toBe('合成问题报告.docx');
+  await page.reload();await expect(button).toBeVisible();
+  const output=process.env.BB_REVIEW_FILE_SCREENSHOTS;
+  if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/review-file-${viewport.width}.png`,fullPage:true});}
+});

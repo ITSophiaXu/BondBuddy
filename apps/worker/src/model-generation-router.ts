@@ -7,6 +7,7 @@ import { createFactEvidenceReviewGuardedLoader, type FactEvidenceReviewGateLoade
 import type { RunStage } from './run-pipeline.js';
 import { loadReviewInput } from './review-input.js';
 import { reviewModelStage } from './review-model-stage.js';
+import { reviewFileStage } from './review-file-stage.js';
 import { reviewPublicStage } from './review-public-stage.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
@@ -57,6 +58,8 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
+      if (!options.reviewStage && (ctx.values.get('input_lock') as { file_delivery?: string })?.file_delivery === 'review-file-v1')
+        return reviewFileStage().run(ctx);
       if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {
         const result = await (options.reviewStage ?? reviewModelStage({ loadInput: loadReviewInput })).run(ctx);
         if (result.kind !== 'done') return result;

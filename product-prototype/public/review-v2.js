@@ -1,3 +1,4 @@
+const fileDeliveryPreview = new URLSearchParams(location.search).get('delivery') === 'files';
 import { STORAGE, findings, freshState, readDemoState, demoRecordText } from './review-demo-data.js';
 /* M3 interaction design. Synthetic data only; no API, model or billing calls. */
 const icons={
@@ -73,7 +74,7 @@ function revisionResult(revision=state.runs.find(r=>r.id===state.latestRevision)
 function renderMain(){
   const viewed=taskById(state.viewedTaskId),historical=viewed?.status==='complete',revision=historical?viewed.kind==='revision':!state.activeRun&&state.phase==='revised'&&state.latestRevision;
   const hash=state.tab==='materials'?'#materials':revision?'#revision':'';
-  if(location.hash!==hash)history.replaceState(null,'',location.pathname+hash);
+  if(location.hash!==hash)history.replaceState(null,'',location.pathname+location.search+hash);
   renderTabs();renderHeader();
   const progressRun=state.activeRun||viewed||state.runs.find(run=>run.id===state.report),bar=$('#review-progress-bar');
   bar.hidden=!progressRun;if(progressRun)bar.innerHTML=`<span>${esc(taskStatus(progressRun))}</span><strong role="status">${esc(taskProgress(progressRun).title)}</strong>${button('查看进展','task-focus',{value:progressRun.id,class:'text-button'})}`;
@@ -82,6 +83,7 @@ function renderMain(){
   if(historical)content=(state.activeRun?`<div class="run-notice">${icon('clock')}<p>${esc(state.activeRun.id)} 正在进行，当前继续查看 ${esc(viewed.id)}。${button('查看进行中任务','task-result',{value:state.activeRun.id,class:'text-button'})}</p></div>`:'')+(revision?revisionResult(viewed):resultsView());
   else if(state.activeRun)content=runningView()+`<div class="run-notice">${icon('history')}<p>已有报告 ${esc(state.report)} 保留。${button('查看已有报告','show-prior-report',{class:'text-button'})}</p></div>`;
   else content=revision?revisionResult():resultsView();
+  if(fileDeliveryPreview&&!state.activeRun&&!revision)content=`<section class="empty-state"><h2>复核报告已生成</h2><p>第 1 次复核 · 下载报告查看完整复核结果。</p>${button('下载复核报告（Word）','download',{class:'primary'})}${button('查看材料与要求','materials',{class:'text-button'})}</section>`;
   $('#work-content').innerHTML=state.tab==='materials'?materialsView():taskLink(linked)+content;
 }
 function messageView(m){return `<article class="message ${m.role==='user'?'user':'assistant'}"><div class="message-avatar">${m.role==='user'?'你':icon('sparkles')}</div><div class="message-content"><div class="message-label">${m.role==='user'?'你':'BondBuddy'}</div>${m.reference?`<span class="message-reference">${esc(m.reference)} · ${esc(m.report||state.report)}</span>`:''}<div class="message-text">${esc(m.text).replaceAll('\n','<br>')}</div>${m.label?`<span class="message-saved">${icon('check')}${esc(!storageOK&&m.label.includes('已保存')?'未保存 · 仅当前页面':m.label)}</span>`:''}${m.actions?`<div class="message-actions">${m.actions.filter(a=>a.action!=='versions').map(a=>button(a.label,a.action,{value:a.value,class:'secondary small'})).join('')}</div>`:''}</div></article>`;}
