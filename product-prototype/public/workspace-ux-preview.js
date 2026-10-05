@@ -8,8 +8,8 @@ app.addEventListener('submit',event=>{event.preventDefault();show('materials');}
 app.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement)sessionStorage.setItem('workspace-demo:'+event.target.id,event.target.value);});
 app.addEventListener('click',event=>{
  const target=event.target.closest('button,a');if(!target)return;
- if(target.id==='toggle-menu'){document.querySelector('#sidebar')?.classList.add('open');return;}
- if(target.id==='close-menu'){document.querySelector('#sidebar')?.classList.remove('open');return;}
+ if(target.id==='toggle-menu'){document.querySelector('#sidebar')?.classList.add('mobile-open');return;}
+ if(target.id==='close-menu'){document.querySelector('#sidebar')?.classList.remove('mobile-open');return;}
  if(target.dataset.reviewTab){show(target.dataset.reviewTab);return;}
  if(target.dataset.reviewAction==='review'){show('progress');return;}
  if(target.dataset.reviewAction==='update-from-review'){show('updating');return;}
