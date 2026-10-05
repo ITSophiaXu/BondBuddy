@@ -9,10 +9,10 @@ export function isTypedReviewProposal(proposal: ReviewProposal): proposal is Rev
 }
 
 // Only known host stages are translated. Model output and unknown/raw event payloads never become progress.
-const stageLabels: Record<string, string> = { queued: '等待处理', input_lock: '核对固定输入', materials_ready: '读取材料',
+const stageLabels: Record<string, string> = { queued: '等待处理', input_lock: '准备本次材料', materials_ready: '读取材料',
   review_sources: '读取已固定的材料依据', review_rules: '核对复核依据', review_completion: '核对复核成果完整性',
   review_revision_cli_method: '核对已确认修订范围', review_revision_cli_v1_prompt: '准备修订请求',
-  public_review_prompt: '准备公开信息核验', model_generation: '整理已确认任务成果', provider_call: '执行已确认请求',
+  public_review_prompt: '准备公开信息核验', model_generation: '整理复核结果', provider_call: '正在复核募集书',
   provider_reconcile: '核对先前调用结果', review_file_v1_prompt: '准备复核请求', word_delivery: '准备 Word 成果', word_delivery_pair: '登记 Word 成果',
   completed: '处理完成', capability_not_ready: '等待处理条件', awaiting_materials:'等待材料就绪', trial_limit:'等待处理限制解除' };
 export function reviewStageLabel(stage:string|null|undefined,state?:Run['state']):string|undefined {
@@ -54,9 +54,9 @@ const failureLabels: Record<string, string> = {
 export function reviewEmptyResultText(run: Run | null | undefined): { heading: string; message: string } {
   if (run?.state === 'paused') return { heading:'复核已暂停', message:'本轮仍在等待处理条件恢复，尚未生成有效报告；材料与要求已保留。' };
   if (run?.state === 'awaiting_input') return { heading:'复核等待补充信息', message:'本轮尚未生成有效报告；请根据任务状态核对需要补充的信息。' };
-  if (run && ['preparing','queued'].includes(run.state)) return { heading:'复核等待处理', message:'本轮已提交，尚未生成有效报告；项目助手会继续显示处理状态。' };
+  if (run && ['preparing','queued'].includes(run.state)) return { heading:'复核等待处理', message:'本轮已提交，尚未生成有效报告；页面会自动显示最新进度。' };
   return isActiveRun(run)
-    ? { heading:'复核正在进行', message:'报告生成后可在这里下载，项目助手仍可记录下一版说明。' }
+    ? { heading:'复核正在进行', message:'报告生成后可在这里下载，关闭页面后任务仍会继续。' }
     : { heading:'还没有复核报告', message:'提供材料并开始复核后，在这里下载复核报告。' };
 }
 

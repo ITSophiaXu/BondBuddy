@@ -295,7 +295,7 @@ test('double click and edits during submission preserve the locked request', asy
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
   await expect(page.locator('#execute-input')).toBeDisabled();
   await page.getByLabel('补充募集书更新说明').fill('下一轮的补充'); state.releaseExecute!();
-  await expect(page.locator('#execution-progress')).toContainText('使用材料版本 1');
+  await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','1');
   expect(state.executes).toHaveLength(1); expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
 });
 
@@ -309,7 +309,7 @@ test('editing while preflight is pending discards that result; next action locks
   await prepare(page);
   expect(state.inputs).toHaveLength(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
+  await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
 });
 
 test('409 preserves target input and never submits a run', async ({ page }) => {
@@ -435,7 +435,7 @@ test('v3 recheck restores failed test run v8; explicit new input v9 uses a disti
     state:'failed',stage:'materials_ready',event_cursor:2,billing_mode:'platform_trial',reservation_id:null,
     artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
   await page.locator('#recheck-input').click();
-  await expect(page.locator('#execution-progress')).toContainText('任务状态：任务失败');
+  await expect(page.locator('#execution-progress')).toContainText('本轮未完成');
   await expect(page.locator('#execution-progress')).toContainText('这是内部测试任务');
   await expect(page.locator('#execution-progress')).toContainText('正式更新需保存新输入版本');
   expect(state.preflights).toHaveLength(1);
@@ -644,10 +644,10 @@ test('manual task refresh invalidates a late paused poll without replaying task 
   await expect.poll(()=>Boolean(state.releaseRunRead)).toBe(true);
   const run=[...state.runs.values()][0]; run.state='running';
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
   state.releaseRunRead!();
   await expect.poll(()=>state.runReads).toBeGreaterThanOrEqual(3);
-  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
   await expect(page.locator('#recheck-paused')).toHaveCount(0);
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
   expect(state.runActions).toHaveLength(0); expect(state.runs.size).toBe(1);
@@ -673,7 +673,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   }
   state.checkStatus='ready'; await page.locator('#recheck-paused').click();
   await page.getByRole('button',{name:'继续更新',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
   const run=[...state.runs.values()][0]; run.state='paused'; state.eventSeq=4;
   state.eventHistory=[
     {seq:2,state:'paused',stage:'capability_not_ready',reason:state.runReason},
@@ -704,7 +704,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   run.state='running';
   await expect(page.locator('#cancel-run')).toBeVisible({ timeout: 10000 });
   await page.getByRole('button',{name:'停止本次任务',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('已取消'); expect(state.runs.size).toBe(1);
+  await expect(page.locator('#execution-progress')).toContainText('本轮已停止'); expect(state.runs.size).toBe(1);
 });
 
 test('resumed source-input task shows compilation without a false blocker', async ({ page }) => {
@@ -781,7 +781,7 @@ test('unknown blockers remain explicit; prototype workspace captures all states 
   await page.screenshot({path:join(tmpdir(),'bb361-paused-desktop.png'),fullPage:true});
   for (const [status, file] of [['running','running'],['awaiting_input','awaiting'],['failed','failed']] as const) {
     [...state.runs.values()][0].state=status; await page.getByRole('button',{name:'重新读取',exact:true}).click();
-    await expect(page.locator('#execution-progress')).toContainText(status==='running'?'处理中':status==='awaiting_input'?'待补充信息':'任务失败');
+    await expect(page.locator('#execution-progress')).toContainText(status==='running'?'正在根据材料编制募集书':status==='awaiting_input'?'等待补充信息':'本轮未完成');
     await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),`bb361-${file}-desktop.png`),fullPage:true});
   }
@@ -831,7 +831,7 @@ test('continuing after completion creates a new input and retains the preceding 
   await expect(page.locator('#execution-progress')).toContainText('已生成');
   await page.getByRole('button',{name:'继续修改',exact:true}).click();
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
+  await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
   await expect(page.getByRole('link',{name:'查看此前成功成果'})).toHaveAttribute('href','#/artifacts/first-successful-artifact');
   expect(state.runs.size).toBe(2);
   expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
@@ -864,7 +864,7 @@ for (const [reason, message] of [
     const originalInput = run.input_hash;
     run.state = 'queued'; state.runReason = 'trial_limit_cleared'; state.eventSeq++;
     await expect(page.locator('.execution-summary')).toHaveText('试用限制已解除，任务继续处理。', { timeout: 10000 });
-    await expect(page.locator('#execution-progress')).toContainText('任务状态：排队中');
+    await expect(page.locator('#execution-progress')).toContainText('等待开始');
     await expect(page.locator('#cancel-run')).toBeVisible();
     expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
     expect(state.inputs).toHaveLength(1); expect(run.input_hash).toBe(originalInput);
@@ -887,7 +887,7 @@ test('trial stage stays honest without events; a different paused stage discards
   await page.locator('#recheck-paused').click();
   await expect(page.locator('#resume-run')).toBeVisible();
   await page.locator('#resume-run').click();
-  await expect(page.locator('#execution-progress')).toContainText('任务状态：处理中');
+  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
   expect(state.executes).toHaveLength(1);
 });
@@ -896,7 +896,7 @@ test('operator denial remains a failed task without automatic-recovery guidance'
   const state = fixture(); state.checkStatus = 'ready'; state.runState = 'failed'; state.runStage = 'model_generation';
   state.runReason = ''; state.eventError = 'TRIAL_ACCESS_DENIED';
   await setup(page, state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-progress')).toContainText('任务状态：任务失败');
+  await expect(page.locator('#execution-progress')).toContainText('本轮未完成');
   await expect(page.locator('.execution-summary')).toHaveText('当前账号的试用权限已停用，请联系支持。');
   await expect(page.locator('#execution-progress')).not.toContainText('自动继续');
   await expect(page.locator('#resume-run')).toHaveCount(0);
@@ -1023,3 +1023,14 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
   });
 }
+
+test('all-projects update keeps its list context through progress, edit and refresh',async({page})=>{
+ const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
+ await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
+ await page.goto('/#tasks');await page.getByRole('link',{name:'合成任务项目',exact:true}).click();
+ await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await expect(page).toHaveURL(/from=projects/);await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
+ await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ expect(state.executes).toHaveLength(1);
+});

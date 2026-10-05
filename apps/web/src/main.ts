@@ -1,5 +1,6 @@
 import { Dashboard } from './dashboard';
 import { BillingPage } from './billing-page';
+import { projectListContext, withProjectContext, projectBackLink } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
@@ -385,12 +386,12 @@ function renderNew() {
 
 function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLSearchParams) {
   draft = new Draft(project, api, updateSaveState);
-  const returnQuery = new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' });
+  const returnQuery = withProjectContext(new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' }));
   const reportId = query.get('review_report_id'); if (reportId) returnQuery.set('report_id', reportId);
   const returnHref = `#/projects/${encodeURIComponent(project.project_id)}/review?${returnQuery}`;
-  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header><form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">只需项目名称、发行人和市场品种。已开始任务、旧报告、材料与讨论草稿保持原版本；填写信息本身不会开始复核。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, 'review');
+  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header><form id="draft-form" class="update-form panel form-card"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, projectListContext()?'projects':'review');
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
-  bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }));
+  bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }),project);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的项目信息，是否继续？')) return;
@@ -403,7 +404,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
   materialProcessing.setVisible(document.visibilityState === 'visible');
   const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
+  shell(`${projectListContext()?projectBackLink:''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="workspace-layout authoring-workspace"><div class="workspace-main">
@@ -417,7 +418,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
         <div class="form-footer authoring-actions"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
-      </div></div></div>`, 'workspace');
+      </div></div></div>`, projectListContext()?'projects':'workspace');
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
     const details = { ...draft.fields.update_details, supplementary_notes: text || null };
@@ -432,7 +433,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     document.querySelector<HTMLElement>('#draft-form')!.hidden = next !== 'details';
     document.querySelector<HTMLElement>('#workspace-materials')!.hidden = next !== 'materials';
     document.querySelector('#workspace-steps')!.innerHTML = workspaceSteps(next === 'details' ? 1 : 2);
-    history.replaceState(null, '', `${location.pathname}${location.search}#/projects/${encodeURIComponent(project.project_id)}?step=${next}`);
+    history.replaceState(null, '', `${location.pathname}${location.search}#/projects/${encodeURIComponent(project.project_id)}?${withProjectContext(new URLSearchParams({step:next}))}`);
     document.querySelector('#workspace-steps')!.scrollIntoView({ block: 'start' });
   };
   document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
