@@ -37,3 +37,14 @@ test('legacy internal material aliases use business names, and public limitation
   assert.equal(dimensionStatus(doc.dimensions[2]),'有待核实事项');
   assert.match(html,/信用评级为 A，信用等级 B。A 类份额，选项 B。/);
 });
+
+test('public verification gaps use business language and preserve unverified scope', () => {
+  const doc = businessReport('## 公开信息核验\n本轮无可用模型网页搜索工具，**未开展公开登记、诉讼的在线核验；input_hash 仅为执行记录。**\n请补充实际公开来源后确认。');
+  const html = businessContent(doc, 'public', '', new Set());
+  assert.doesNotMatch(html, /模型|工具|input_hash|\*\*/);
+  assert.match(html, /本次公开信息尚未核验/);
+  assert.match(html, /未开展公开登记、诉讼的在线核验/);
+  assert.match(html, /请补充实际公开来源后确认/);
+  assert.equal(dimensionStatus(doc.dimensions[2]), '有待核实事项');
+  assert.equal(dimensionStatus(businessReport('## 公开信息核验\n本轮无可用模型网页搜索工具。').dimensions[2]), '有待核实事项');
+});
