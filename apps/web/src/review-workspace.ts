@@ -100,7 +100,7 @@ export class ReviewWorkspace {
       const workspace = await this.reviewApi.workspace(this.reportId);
       if(!this.live()||generation!==this.readGeneration)return;
       this.workspace=workspace;this.draftInput=this.inputFrom(workspace);this.run=workspace.active_run??undefined;
-      if(!this.reportId&&!this.requestedTab&&workspace.selected_report)this.tab='results';
+      if(!this.reportId&&!this.requestedTab&&(workspace.selected_report||workspace.artifacts.length))this.tab='results';
       this.restoreInput();this.syncSelections();
       this.page.innerHTML = `<header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1>${esc(workspace.project.name)}</h1></div></header><p class="review-status" id="review-status" role="status"></p><div class="review-grid" id="review-grid"><section class="review-panel"><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div></section><button class="review-backdrop" data-review-action="close-agent" aria-label="收起项目助手" hidden></button><aside class="review-agent" id="review-agent" aria-labelledby="review-agent-title" hidden></aside></div><button class="review-agent-fab" data-review-action="toggle-agent" aria-label="打开项目助手" aria-controls="review-agent" aria-expanded="false"><span aria-hidden="true">✦</span>项目助手</button>`;
       this.assistant.mount(this.page.querySelector('#review-agent')!,workspace);
@@ -162,7 +162,7 @@ export class ReviewWorkspace {
       }
     }
     const report=this.workspace.selected_report;
-    for(const [name,count,unit] of [['materials',this.workspace.materials.length,'份材料'],['results',report?.findings.length??0,'项发现']] as const){
+    for(const [name,count,unit] of [['materials',this.workspace.materials.length,'份材料'],['results',report?report.findings.length:this.workspace.artifacts.filter(a=>a.kind==='report').length,report?'项发现':'份报告']] as const){
       const tab=this.page?.querySelector(`[data-review-tab="${name}"]`),badge=tab?.querySelector('.review-tab-count');
       if(badge)badge.textContent=String(count);tab?.setAttribute('aria-description',`${count} ${unit}`);
     }
@@ -295,6 +295,9 @@ export class ReviewWorkspace {
     const completed=run&&['succeeded','test_completed'].includes(run.state);
     const nextStep=run?.state==='paused'?'<p>本轮输入和状态已保留，处理条件恢复后继续。需要更换本轮材料或要求时，请先停止本次任务。</p>':run?.state==='awaiting_input'?'<p>本轮仍等待补充信息，请先核对任务状态。需要更换本轮输入时，请先停止本次任务。</p>':run&&['failed','cancelled','rejected'].includes(run.state)?'<p>本轮状态已保留。补充材料与要求后，可以明确开始下一轮；原报告保持不变。</p>':'';
     const progress=run&&!completed&&(taskNotice||nextStep)?`<section class="review-run"><h3>任务状态：${runStateLabel[run.state]}</h3>${taskNotice?`<p class="review-warning">${esc(taskNotice)}</p>`:''}${nextStep}</section>`:'';
+    if(!report&&this.workspace.artifact_run&&this.workspace.artifacts.some(a=>a.kind==='report')){
+      host.innerHTML=progress+`<div class="review-empty review-file-result"><h2>复核报告已生成</h2><p class="review-muted">第 ${this.workspace.artifact_run.version} 次复核 · 下载报告查看完整复核结果。</p><div class="review-result-actions review-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report').map(a=>`<button class="btn primary" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">下载复核报告（Word）</button>`).join('')}</div><button class="text-btn" data-review-tab="materials">查看材料与要求</button></div>`+details;return;
+    }
     if(!report){const empty=reviewEmptyResultText(run);host.innerHTML=progress+`<div class="review-empty"><h2>${esc(empty.heading)}</h2><p class="review-muted">${esc(empty.message)}</p><button class="btn secondary" data-review-tab="materials">查看材料与要求</button></div>`+details;return;}
     const scoped=report.findings.filter(f=>this.filters.conclusion==='all'||f.conclusion===this.filters.conclusion);
     const matches=(finding:ReviewFinding,value:string)=>value==='all'||(value==='priority'?finding.severity!=='P3':finding.dimension===value);

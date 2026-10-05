@@ -22,6 +22,13 @@ export async function lockUnifiedAuthoring(project: { market: Market | null; off
       throw conflict('INPUT_REVISION_CONFLICT', 'Source declaration does not match selected material version');
     sources.push(structuredClone(source));
   }
+  const knowledge = await loadAuthoringKnowledge(project);
+  return { version: 'unified_v1' as const, source_prospectuses: sources, requirements: messages.members, knowledge,
+    knowledge_status: 'authoring_reference_not_compliance_approval' as const };
+}
+
+/** Shared source selection; callers persist the returned bytes in their input snapshot. */
+export async function loadAuthoringKnowledge(project: { market: Market | null; offering: Offering | null }) {
   const knowledge: { path: string; sha256: string; markdown: string }[] = [];
   if (project.market && project.offering && isMarketOffering(project.market, project.offering)) {
     const paths = project.market === 'nafmii'
@@ -37,6 +44,5 @@ export async function lockUnifiedAuthoring(project: { market: Market | null; off
       knowledge.push({ path: `packages/domain/src/nafmii-${project.offering}.ts`, sha256: digest(markdown), markdown });
     }
   }
-  return { version: 'unified_v1' as const, source_prospectuses: sources, requirements: messages.members, knowledge,
-    knowledge_status: 'authoring_reference_not_compliance_approval' as const };
+  return knowledge;
 }

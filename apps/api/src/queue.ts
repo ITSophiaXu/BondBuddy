@@ -330,8 +330,8 @@ async function persistAvailableWord(pool:Pool,lease:Lease,inspection:DocxInspect
 
 // Generated pairs use file availability only; legacy processors retain their inspector.
 // Both policies require owned private storage and byte-for-byte readback.
-export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs,policy?:'generated_pair_v1'):Promise<WordPromotionResult> {
-  const inspection=policy==='generated_pair_v1'?inspectGeneratedWord(candidate):inspectDocx(candidate);
+export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs,policy?:import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy):Promise<WordPromotionResult> {
+  const inspection=(policy==='generated_pair_v1'||policy==='generated_review_v1')?inspectGeneratedWord(candidate):inspectDocx(candidate);
   const identity=wordArtifactIdentity(lease,inspection);
   if(inspection.quality_status!=='passed')return persistRejectedWord(pool,lease,inspection,identity);
   await transaction(pool,async client=>{

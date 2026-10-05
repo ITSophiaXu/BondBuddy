@@ -10,12 +10,14 @@ import type { ReviewAnalysisInput, ReviewAnalysisRecord } from './review-model-s
 import { isReviewReport } from '@bondbuddy/contracts';
 import { loadReviewRuleContext } from './review-rule-context.js';
 
+import type { ReviewFileDeliveryPin } from '@bondbuddy/contracts';
+
 export type ReviewManifest = Record<string, unknown> & {
   issuer_name: string | null; market: string | null; offering: string | null;
   materials: { material_id: string; material_version: number; sha256: string; role: string }[];
   review: { version: 'review_v1'; operation: 'full_review' | 'differential_review' | 'revision'; report_id: string; version_number: number; input: ReviewDraftInput;
     source_report_id: string | null; source_report_sha256: string | null; finding_ids: string[]; context_messages?: ReviewMessage[];
-    draft_version?:number; origin?:ReviewExecutionOrigin };
+    draft_version?:number; origin?:ReviewExecutionOrigin; file_delivery?: ReviewFileDeliveryPin };
 };
 export function isReviewInput(value: unknown): value is ReviewManifest {
   return !!value && typeof value === 'object' && (value as ReviewManifest).review?.version === 'review_v1';
@@ -68,6 +70,7 @@ export async function reviewInputGate(pool: Pool, run: RunRow, input: InputRevis
 export async function reviewMaterialsReady(ctx: Pick<StageContext, 'pool' | 'run'>): Promise<StageOutcome> {
   const input = (await ctx.pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!isReviewInput(input?.manifest)) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+  if (input.manifest.review.file_delivery?.version === 'review-file-v1') return { kind: 'done', checkpoint: { review_mode: 'review_v1', delivery: 'review-file-v1' } };
   for (const pin of input.manifest.materials) {
     const job = (await ctx.pool.query("SELECT state,stage FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND subtype='material_parse' AND parser_version=$5", [ctx.run.owner_user_id, ctx.run.project_id, pin.material_id, pin.material_version, documentParserVersion()])).rows[0];
     if (!job || ['queued','running'].includes(job.state)) return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };

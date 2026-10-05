@@ -455,7 +455,7 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent)=>Promise<unknown> };
+  fileWorkspace?: { prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -643,7 +643,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
           try {
-            if(input.fileWorkspace)cls.value=await input.fileWorkspace.collect(cwd,intent);
+            if(input.fileWorkspace)cls.value=await input.fileWorkspace.collect(cwd,intent,{text:raw.last_message??''});
             if(input.materialToolsTrace)cls.value={version:'material-tool-result-v1',model_output:cls.value,tool_trace:materialToolTrace!} satisfies MaterialModelEnvelope;
             const persisted:unknown=input.reviewTools?{version:'review-model-envelope-v1',output:cls.value,tool_trace:reviewToolTrace!} satisfies ReviewModelEnvelope:cls.value;
             obs = { ...obs, ...await journal.storeResult(intent, Buffer.from(JSON.stringify(persisted)), input.result_schema_version) };

@@ -13,6 +13,7 @@ import {
 import { project, projectDto, materialDto, runDto, transaction, uid, date, Problem, conflict, missing, executionKeyStorage } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { enqueue } from './queue.js';
+import { lockReviewFileDelivery } from './review-file-knowledge.js';
 import { recordOperation } from './observability.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 
@@ -379,7 +380,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const inputRevision = Number((await client.query('SELECT COALESCE(max(revision),0)+1 AS next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2', [user, id])).rows[0].next);
       const runId = uid();
       const discussion = (await client.query('SELECT * FROM bb_review_messages WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id', [user, id])).rows.map(messageDto);
-      const review = { version: 'review_v1', operation: b.operation, report_id: uid(), version_number: version, draft_version: inputVersion, input, origin, context_messages: discussion, source_report_id: b.source_report_id, finding_ids: b.finding_ids, source_report_sha256: source?.content_sha256.trim() ?? null };
+      const review = { version: 'review_v1', ...(revision ? {} : { file_delivery: await lockReviewFileDelivery(p) }), operation: b.operation, report_id: uid(), version_number: version, draft_version: inputVersion, input, origin, context_messages: discussion, source_report_id: b.source_report_id, finding_ids: b.finding_ids, source_report_sha256: source?.content_sha256.trim() ?? null };
       const manifest = { project_kind: 'review', draft_revision: p.draft_revision, issuer_name: p.issuer_name, market: p.market, offering: p.offering,
         update_details: { ...emptyUpdateDetails(), ...p.update_details, authoring_mode: 'unified_v1' },
         materials: materialRows.map(m => ({ material_id: m.id, material_version: m.version, sha256: m.sha256.trim(), role: m.role })), review,

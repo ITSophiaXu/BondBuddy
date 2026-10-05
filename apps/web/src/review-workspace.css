@@ -142,3 +142,5 @@
   .review-coverage{grid-template-columns:1fr;gap:6px}.review-coverage-item{grid-template-columns:1fr auto}.review-coverage-item small{grid-column:1/-1}
   .review-filter-advanced{margin-left:0}.review-finding-copy strong{font-size:13px}.review-repair-reason{margin-left:0}
 }
+
+.review-file-result .review-downloads{justify-content:center;margin:20px 0 8px}

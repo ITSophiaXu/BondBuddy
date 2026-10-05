@@ -13,7 +13,7 @@ const stageLabels: Record<string, string> = { queued: '等待处理', input_lock
   review_sources: '读取已固定的材料依据', review_rules: '核对复核依据', review_completion: '核对复核成果完整性',
   review_revision_cli_method: '核对已确认修订范围', review_revision_cli_v1_prompt: '准备修订请求',
   public_review_prompt: '准备公开信息核验', model_generation: '整理已确认任务成果', provider_call: '执行已确认请求',
-  provider_reconcile: '核对先前调用结果', word_delivery: '准备 Word 成果', word_delivery_pair: '登记 Word 成果',
+  provider_reconcile: '核对先前调用结果', review_file_v1_prompt: '准备复核请求', word_delivery: '准备 Word 成果', word_delivery_pair: '登记 Word 成果',
   completed: '处理完成', capability_not_ready: '等待处理条件', awaiting_materials:'等待材料就绪', trial_limit:'等待处理限制解除' };
 export function reviewStageLabel(stage:string|null|undefined,state?:Run['state']):string|undefined {
   if(!stage)return undefined;
@@ -56,8 +56,8 @@ export function reviewEmptyResultText(run: Run | null | undefined): { heading: s
   if (run?.state === 'awaiting_input') return { heading:'复核等待补充信息', message:'本轮尚未生成有效报告；请根据任务状态核对需要补充的信息。' };
   if (run && ['preparing','queued'].includes(run.state)) return { heading:'复核等待处理', message:'本轮已提交，尚未生成有效报告；项目助手会继续显示处理状态。' };
   return isActiveRun(run)
-    ? { heading:'复核正在进行', message:'结果就绪后会在这里显示，项目助手仍可记录下一版说明。' }
-    : { heading:'还没有复核报告', message:'提供材料并明确开始后，在这里查看问题、依据与成果。' };
+    ? { heading:'复核正在进行', message:'报告生成后可在这里下载，项目助手仍可记录下一版说明。' }
+    : { heading:'还没有复核报告', message:'提供材料并开始复核后，在这里下载复核报告。' };
 }
 
 /** Fixed host labels only: an event's raw reason or provider text never becomes UI copy. */
