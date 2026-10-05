@@ -5,6 +5,7 @@ import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
+import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewRevisionHandlingSchema } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
@@ -167,6 +168,7 @@ export function createServer(settings: Settings = {}) {
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   registerReviewRoutes(app, db, owner);
+  registerReadableReview(app, db, owner, blob);
   installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
     schema:{body:schemas.TargetPeriodEvidenceDecisionRequest,response:{200:schemas.TargetPeriodEvidenceDecisionResponse}}},async request=>{

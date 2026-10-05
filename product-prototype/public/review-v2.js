@@ -1,4 +1,5 @@
 const fileDeliveryPreview = new URLSearchParams(location.search).get('delivery') === 'files';
+import { mountReadablePreview } from './review-readable-preview.js';
 import { STORAGE, findings, freshState, readDemoState, demoRecordText } from './review-demo-data.js';
 /* M3 interaction design. Synthetic data only; no API, model or billing calls. */
 const icons={
@@ -84,8 +85,9 @@ function renderMain(){
   else if(state.activeRun)content=runningView()+`<div class="run-notice">${icon('history')}<p>已有报告 ${esc(state.report)} 保留。${button('查看已有报告','show-prior-report',{class:'text-button'})}</p></div>`;
   else content=revision?revisionResult():resultsView();
   const fileResult=fileDeliveryPreview&&!state.activeRun&&!revision;
-  if(fileResult)content=`<section class="file-result"><h2>复核报告已生成</h2><p>第 1 次复核 · 下载报告查看完整复核结果。</p><div class="file-result-download">${button('下载复核报告（Word）','download-file-preview',{class:'primary'})}</div>${button('查看材料与要求','materials',{class:'text-button'})}</section>`;
+  if(fileResult)content=`<section class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 1 次复核 · 按章节阅读结论，逐项查看依据与建议。</p></div><div class="review-result-actions review-downloads">${button('下载复核报告（Word）','download-file-preview',{class:'secondary'})}</div></div><div id="readable-preview"></div></section>`;
   $('#work-content').innerHTML=state.tab==='materials'?materialsView():(fileResult?'':taskLink(linked))+content;
+  if(fileResult&&state.tab!=='materials')mountReadablePreview($('#readable-preview'));
 }
 function messageView(m){return `<article class="message ${m.role==='user'?'user':'assistant'}"><div class="message-avatar">${m.role==='user'?'你':icon('sparkles')}</div><div class="message-content"><div class="message-label">${m.role==='user'?'你':'BondBuddy'}</div>${m.reference?`<span class="message-reference">${esc(m.reference)} · ${esc(m.report||state.report)}</span>`:''}<div class="message-text">${esc(m.text).replaceAll('\n','<br>')}</div>${m.label?`<span class="message-saved">${icon('check')}${esc(!storageOK&&m.label.includes('已保存')?'未保存 · 仅当前页面':m.label)}</span>`:''}${m.actions?`<div class="message-actions">${m.actions.filter(a=>a.action!=='versions').map(a=>button(a.label,a.action,{value:a.value,class:'secondary small'})).join('')}</div>`:''}</div></article>`;}
 function renderAgent(){

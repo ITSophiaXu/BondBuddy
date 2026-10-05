@@ -4,6 +4,7 @@ import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { ArtifactDownloads, artifactError } from './artifact-download';
 import { ReviewApi } from './review-api';
+import { ReadableReview } from './review-readable';
 import { ReviewAssistant } from './review-assistant';
 import { RevisionHandlingDialog } from './review-revision-handling';
 import { dimensionLabels, conclusionLabels, findingHtml, reportSummary, followUpHtml, evidenceHtml, rulesHtml, sourceLocator } from './review-presentation';
@@ -24,6 +25,7 @@ const roleLabels: Partial<Record<Dto<'MaterialResponse'>['role'],string>> = {his
 export class ReviewWorkspace {
   private controller = new AbortController();
   private reviewApi: ReviewApi;
+  private readable: ReadableReview;
   private assistant: ReviewAssistant;
   private workspace?: Workspace;
   private page?: HTMLElement;
@@ -67,6 +69,7 @@ export class ReviewWorkspace {
   constructor(private api: ApiClient, private owner: string, private projectId: string,
     private shell: (html: string, section: string) => void, private current: () => boolean, private reportId?: string, tab?: string) {
     this.reviewApi = new ReviewApi(api,projectId,this.controller.signal);
+    this.readable = new ReadableReview(api,projectId,this.controller.signal);
     this.handling = new RevisionHandlingDialog(api);
     this.assistant = new ReviewAssistant(this.reviewApi,owner,()=>this.refresh(),proposal=>isTypedReviewProposal(proposal)?void this.previewProposal(proposal):void this.previewPlan(proposal),(report,finding)=>void this.viewReport(report,finding),context=>this.uploadDialog(context.report_id&&context.finding_ids.length?context:undefined));
     this.localInputKey = `bb-review-input:${owner}:${projectId}`;
@@ -296,7 +299,8 @@ export class ReviewWorkspace {
     const nextStep=run?.state==='paused'?'<p>本轮输入和状态已保留，处理条件恢复后继续。需要更换本轮材料或要求时，请先停止本次任务。</p>':run?.state==='awaiting_input'?'<p>本轮仍等待补充信息，请先核对任务状态。需要更换本轮输入时，请先停止本次任务。</p>':run&&['failed','cancelled','rejected'].includes(run.state)?'<p>本轮状态已保留。补充材料与要求后，可以明确开始下一轮；原报告保持不变。</p>':'';
     const progress=run&&!completed&&(taskNotice||nextStep)?`<section class="review-run"><h3>任务状态：${runStateLabel[run.state]}</h3>${taskNotice?`<p class="review-warning">${esc(taskNotice)}</p>`:''}${nextStep}</section>`:'';
     if(!report&&this.workspace.artifact_run&&this.workspace.artifacts.some(a=>a.kind==='report')){
-      host.innerHTML=progress+`<div class="review-empty review-file-result"><h2>复核报告已生成</h2><p class="review-muted">第 ${this.workspace.artifact_run.version} 次复核 · 下载报告查看完整复核结果。</p><div class="review-result-actions review-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report').map(a=>`<button class="btn primary" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">下载复核报告（Word）</button>`).join('')}</div><button class="text-btn" data-review-tab="materials">查看材料与要求</button></div>`+details;return;
+      host.innerHTML=progress+`<div class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 ${this.workspace.artifact_run.version} 次复核 · 按章节阅读结论，逐项查看依据与建议。</p></div><div class="review-result-actions review-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report').map(a=>`<button class="btn secondary" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">下载复核报告（Word）</button>`).join('')}</div></div><div data-readable-report></div></div>`+details;
+      this.readable.mount(host.querySelector<HTMLElement>('[data-readable-report]')!,this.workspace.artifact_run.run_id);return;
     }
     if(!report){const empty=reviewEmptyResultText(run);host.innerHTML=progress+`<div class="review-empty"><h2>${esc(empty.heading)}</h2><p class="review-muted">${esc(empty.message)}</p><button class="btn secondary" data-review-tab="materials">查看材料与要求</button></div>`+details;return;}
     const scoped=report.findings.filter(f=>this.filters.conclusion==='all'||f.conclusion===this.filters.conclusion);
