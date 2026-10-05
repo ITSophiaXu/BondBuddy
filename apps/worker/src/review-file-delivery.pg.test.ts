@@ -1,3 +1,5 @@
+import {fileAuthoringStage,fileAuthoringDeliveryStage} from './file-authoring-stage.js';
+import {unifiedInputGate} from './unified-input.js';
 // Synthetic materials/model; real PostgreSQL, private storage, contained process, Word and downloads.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,7 +36,7 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       work_root: join(directory, 'calls'), authoring_timeout_ms: 60000, timeout_ms: 60000 };
     try {
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `rf_${randomUUID().slice(0, 8)}`]);
-      const created = await send('POST', '/api/v1/projects', { kind: 'review', name: 'Synthetic file review', issuer_name: '合成发行人', market: 'sse', offering: 'private' });
+      const created = await send('POST', '/api/v1/projects', { kind: 'review', name: 'Synthetic file review', issuer_name: '合成目标发行人', market: 'sse', offering: 'private' });
       assert.equal(created.statusCode, 201, created.body); const project = created.json().project_id;
       const bytes = makeWorkerDocxFixture({ externalLink: false }), declared = { byte_size: bytes.length, sha256: digest(bytes) };
       const upload = await send('POST', `/api/v1/projects/${project}/materials/uploads`, { ...declared, filename: 'synthetic-source.docx', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', role: 'historical' });
@@ -91,6 +93,38 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       assert.equal((await send('GET', meta.json().download_url)).statusCode, 200, 'optional text failure preserves Word');
       assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [runId])).rows[0].state, 'succeeded');
       assert.equal((await readFile(marker, 'utf8')).trim().split('\n').length, 1, 'reading never re-executes');
+      const updateRequest={execution_request_id:randomUUID(),source_run_id:runId,requirements:'保留历史名称，依据复核报告修改本期金额。'};
+      const updatePath=`/api/v1/projects/${project}/review-updates`;
+      active=randomUUID();assert.equal((await send('POST',updatePath,updateRequest)).statusCode,404);active=owner;
+      assert.equal((await send('POST',updatePath,{...updateRequest,source_run_id:randomUUID()})).statusCode,404);
+      const updates=await Promise.all([send('POST',updatePath,updateRequest),send('POST',updatePath,updateRequest)]);
+      for(const response of updates)assert.equal(response.statusCode,200,response.body);
+      const update=updates[0].json();assert.equal(updates[1].json().run_id,update.run_id);
+      assert.equal(update.billing_mode,'platform_trial');assert.equal(update.reservation_id,null);
+      assert.equal((await send('POST',updatePath,{...updateRequest,requirements:'changed'})).statusCode,409);
+      assert.equal((await send('POST',updatePath,{...updateRequest,execution_request_id:randomUUID()})).statusCode,409);
+      const locked=(await pool.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,update.input_revision])).rows[0];
+      assert.deepEqual(locked.manifest.materials,manifest.materials);
+      assert.equal(locked.manifest.authoring.review_result.artifact_id,artifact.artifact_id);
+      assert.equal(locked.manifest.authoring.review_result.requirements,updateRequest.requirements);
+      assert.equal(locked.manifest.update_details.reporting_cutoff,null,'missing metadata does not invent a date or block a report-scoped revision');
+      const updateRow=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[update.run_id])).rows[0];
+      assert.equal(await unifiedInputGate(pool,updateRow,locked),null);
+      const corrupted=structuredClone(locked);corrupted.manifest.authoring.review_result.artifact_id=randomUUID();
+      assert.deepEqual(await unifiedInputGate(pool,updateRow,corrupted),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+      const updateConfig={...config,command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-review-update.mjs',import.meta.url))]};
+      const updateOnce=(afterStage?:RunPipelineDependencies['afterStage'])=>runPipelineOnce({pool,blobs,leaseSeconds:60,
+        stages:[inputLockStage,materialsReadyStage,fileAuthoringStage({config:updateConfig}),fileAuthoringDeliveryStage()],afterStage,onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
+      await assert.rejects(updateOnce(async stage=>{if(stage==='word_promoted')throw Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
+      await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE run_id=$1 AND owner_user_id=$2",[update.run_id,owner]);
+      assert.equal(await updateOnce(),'succeeded');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id WHERE j.run_id=$1',[update.run_id])).rows[0].n,1);
+      const updatedWorkspace=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json();
+      assert.equal(updatedWorkspace.artifact_run.source_run_id,runId);
+      assert.deepEqual(updatedWorkspace.artifacts.map((a:any)=>a.kind).sort(),['clean','revision']);
+      for(const item of updatedWorkspace.artifacts){const meta=await send('GET',`/api/v1/artifacts/${item.artifact_id}`);assert.equal(meta.statusCode,200,meta.body);const file=await send('GET',meta.json().download_url);assert.equal(file.statusCode,200);assert.equal(digest(file.rawPayload),meta.json().sha256);}
+      assert.equal((await send('POST',updatePath,updateRequest)).json().run_id,update.run_id,'replay after completion returns the same paid-free revision');
+      assert.equal((await send('GET',meta.json().download_url)).statusCode,200,'original report remains downloadable');
       active = randomUUID();
       assert.equal((await send('GET', readablePath)).statusCode, 404);
       assert.equal((await send('GET', `/api/v1/projects/${project}/review-workspace`)).statusCode, 404);

@@ -1,6 +1,7 @@
 import type { ReviewWorkspace, ReviewDraftRequest, ReviewMessageRequest, ReviewMessage, ReviewPlanRequest, ReviewPlan, ReviewExecutionRequest, ReviewHistoryEntry, ReviewProposalAdoptionRequest, ReviewProposalAdoptionResponse, Run } from '@bondbuddy/contracts';
 import { isReviewReport } from '@bondbuddy/contracts';
 import { ApiClient, ApiError } from './api.js';
+import type { ReviewUpdateRequest } from '@bondbuddy/contracts';
 
 /** All M3 endpoint mapping lives here; identity, CSRF and refresh stay in ApiClient. */
 export class ReviewApi {
@@ -23,6 +24,7 @@ export class ReviewApi {
   plan(input: ReviewPlanRequest) { return this.api.request<ReviewPlan>('PUT', this.path('revision-plan'), input, {}, this.signal); }
   adopt(input: ReviewProposalAdoptionRequest) { return this.api.request<ReviewProposalAdoptionResponse>('POST',this.path('review-proposal-adoptions'),input,{},this.signal); }
   execute(input: ReviewExecutionRequest) { return this.api.request<Run>('POST', this.path('review-executions'), input, {}, this.signal); }
+  updateFromReview(input: ReviewUpdateRequest) { return this.api.request<Run>('POST', this.path('review-updates'), input, {}, this.signal); }
   async history() {
     const result = await this.api.request<{ items: ReviewHistoryEntry[] }>('GET', this.path('review-history'), undefined, {}, this.signal);
     if (!Array.isArray(result.items) || result.items.some(item => item.run.project_id !== this.projectId || item.report_id && typeof item.report_id !== 'string')) throw new ApiError(0, 'DATA_UNAVAILABLE');

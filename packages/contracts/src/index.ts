@@ -555,3 +555,5 @@ export * from './review-results.js';
 export * from './review-readable.js';
 export * from './review-workspace.js';
 export * from './review-revision.js';
+
+export * from './review-update.js';

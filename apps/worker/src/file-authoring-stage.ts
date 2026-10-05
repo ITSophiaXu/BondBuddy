@@ -29,7 +29,7 @@ export function validFileResult(value:unknown,ctx:StageContext):value is FileAut
 
 export function editingSource(input:UnifiedInput){
   return [...input.materials].filter(m=>['project_output','historical','reference'].includes(m.pin.role)).sort((a,b)=>{
-    const rank=(m:typeof a)=>m.pin.role==='project_output'?-1:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===m.pin.material_id)?.relation==='same_issuer'?0:1;
+    const rank=(m:typeof a)=>m.pin.material_id===input.manifest.authoring.review_result?.source_material.material_id?-2:m.pin.role==='project_output'?-1:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===m.pin.material_id)?.relation==='same_issuer'?0:1;
     return rank(a)-rank(b)||a.pin.material_id.localeCompare(b.pin.material_id);
   })[0]??null;
 }
@@ -77,7 +77,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         knowledge.push({...k,markdown:undefined,local_path:path});
       }
       const data={version:'codex-file-input-v1',revision_author:`BondBuddy-${ctx.run.input_hash.trim().slice(0,12)}`,input_hash:ctx.run.input_hash.trim(),target:{issuer_name:input.manifest.issuer_name,market:input.manifest.market,offering:input.manifest.offering,details:input.manifest.update_details},
-        requirements:input.requirements,materials,knowledge,previous_output:input.manifest.authoring.previous_output??null,
+        requirements:input.requirements,materials,knowledge,source_review:input.manifest.authoring.review_result??null,previous_output:input.manifest.authoring.previous_output??null,
         baseline_path:materials.find(m=>m.editing_baseline)?.path??null,baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf',
         output:{tracked:'output/tracked.docx',clean:'output/clean.docx',baseline:'output/baseline.docx',delivery:'output/delivery.md'}};
       await writeFile(join(cwd,'input.json'),JSON.stringify(data,null,2),{mode:0o400});
