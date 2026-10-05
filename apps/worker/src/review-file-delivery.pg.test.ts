@@ -118,7 +118,7 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       await assert.rejects(updateOnce(async stage=>{if(stage==='word_promoted')throw Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
       await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE run_id=$1 AND owner_user_id=$2",[update.run_id,owner]);
       assert.equal(await updateOnce(),'succeeded');
-      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE run_id=$1',[update.run_id])).rows[0].n,1);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id WHERE j.run_id=$1',[update.run_id])).rows[0].n,1);
       const updatedWorkspace=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json();
       assert.equal(updatedWorkspace.artifact_run.source_run_id,runId);
       assert.deepEqual(updatedWorkspace.artifacts.map((a:any)=>a.kind).sort(),['clean','revision']);
