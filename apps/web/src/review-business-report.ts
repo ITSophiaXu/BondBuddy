@@ -61,7 +61,15 @@ export function businessReport(markdown: string): BusinessReport {
       sources.set(source[1], filename?.[1] ?? ({审阅对象:'待复核募集书',财务比对:'财务报表',中期附注:'财务附注'}[source[2]]!));
     }
   }
-  if (sources.size) markdown = markdown.replace(/(?<![A-Za-z0-9])([A-Z])(?=[^A-Za-z0-9]|$)/g, (value, key) => sources.get(key) ?? value);
+  if (sources.size) markdown = markdown.replace(/(?<![A-Za-z0-9])([A-Z])(?=[^A-Za-z0-9]|$)/g, (value, key, offset: number) => {
+    const before = markdown.slice(Math.max(0, offset - 16), offset), after = markdown.slice(offset + 1, offset + 25);
+    // A/B may also be credit grades, share classes or options. Only expand an
+    // explicit document reference; leave other business facts byte-for-byte.
+    if (/评级|等级|级别|类别|选项|股权|份额/.test(before)) return value;
+    const reference = /^\s*(?:[`「《]|docx\/|pdf\/|已经注明|关键|有期间|写|载明|注明|披露|列示|记载|显示|所列|对应)/.test(after)
+      || /(?:材料|源稿|附件|参见|对照文件)[：:\s]*$/.test(before);
+    return reference ? sources.get(key) ?? value : value;
+  });
   const document = reportDocument(markdown);
   const dimensions: BusinessSection[] = reviewDimensions.map(d => ({ ...d, blocks: [], items: [] }));
   const other: BusinessSection = { id: 'other', title: '其他需确认事项', description: '', blocks: [], items: [] };
