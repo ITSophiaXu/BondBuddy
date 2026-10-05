@@ -12,7 +12,7 @@ const id='synthetic-review-project',now='2026-10-02T10:00:00Z',mime='application
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
 const reply=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const key=(context:ReviewContext)=>JSON.stringify(context);
-const readableMarkdown='# 合成复核报告\n\n## 复核结论\n发现两项需要处理的事项。**财务差异需要优先核对。**\n\n## 复核范围与依据\n已对照合成募集书与合成审计报告。\n\n## 复核发现\n### 1. 现金流金额与审计报告不一致\n**原文位置：** 第八章，经营现金流表。\n\n**核对依据：** 合成审计报告。\n\n原文值 | 对照值 | 差异\n--- | --- | ---\n100 | 120 | 20\n\n**修改建议：** 确认口径后统一金额。\n\n### 2. 历史名称待补充证据\n**待确认事项：** 缺少名称变更日期依据。\n\n## 待补充与未覆盖事项\n公开信息核验未执行，不能据此判断无风险。\n\n## 建议处理顺序\n1. 核对财务口径\n2. 补充名称变更证据';
+const readableMarkdown='# 合成复核报告\n\n## 复核范围与依据\n本轮按 input.json 的 full_review 执行；输入锁与 input_hash 一致。\n材料路径 materials/m0.docx，SHA-256 为内部校验值。\n\n## 财务核对\n**本次结论：** 发现两项需要处理的事项，财务差异需要优先核对。\n\n**核对范围：** 已对照合成募集书与2025年合成审计报告。\n\n### 1. 现金流金额与审计报告不一致\n**原文位置：** 第八章，经营现金流表。\n\n**核对依据：** 合成审计报告。\n\n原文值 | 对照值 | 差异\n--- | --- | ---\n100 | 120 | 20\n\n**修改建议：** 确认口径后统一金额。\n\n### 2. 财务分析中的单位需核对\n**问题说明：** 原文分析使用元，报表使用万元。\n\n**修改建议：** 统一单位后重新核对分析文字。\n\n## 合规与披露\n**本次结论：** 历史名称披露缺少时间依据。\n\n### 3. 历史名称披露待补充证据\n**原文位置：** 第二章，发行人历史沿革。\n\n**待确认事项：** 缺少名称变更日期依据。\n\n**修改建议：** 补充变更文件及生效日期。\n\n## 公开信息核验\n**本次结论：** 公开信息核验未执行，不能据此判断无风险。\n\n**还需确认：** 发行人名称变更及重大诉讼的最新公开记录。\n\n## 建议处理顺序\n1. 核对财务口径\n2. 补充名称变更证据';
 function fixture(){
   const materials:Dto<'MaterialResponse'>[]=['historical','audit'].map((role,index)=>({material_id:`material-${index}`,material_version:1,upload_id:`upload-${index}`,role:role as 'historical'|'audit',filename:role==='historical'?'合成募集书.docx':'合成审计报告.docx',media_type:mime,byte_size:100,sha256:hash(role),state:'persisted',persisted_at:now,error:null}));
   const pin=(index:number)=>({material_id:materials[index].material_id,material_version:1,sha256:materials[index].sha256});
@@ -601,9 +601,9 @@ for(const viewport of [{width:1360,height:900},{width:581,height:753}])test(`rea
   const state=fixture();state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.plan=null;
   state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};state.history[0].report_id=null;
   await setup(page,state);
-  await expect(page.getByRole('navigation',{name:'报告目录'})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
   await expect(page.locator('.readable-body')).toContainText('财务差异需要优先核对');
-  await page.locator('[data-readable-section]').filter({hasText:'复核发现'}).click();
+  await page.locator('[data-readable-section]').filter({hasText:'财务核对'}).click();
   await expect(page.locator('details.readable-item')).toHaveCount(2);
   await page.locator('details.readable-item summary').first().click();
   await expect(page.locator('.readable-body table')).toBeVisible();
@@ -611,17 +611,20 @@ for(const viewport of [{width:1360,height:900},{width:581,height:753}])test(`rea
   await expect(page.locator('.readable-body')).toContainText('确认口径后统一金额');
   await page.getByRole('button',{name:'展开全部事项',exact:true}).click();
   await expect(page.locator('details.readable-item[open]')).toHaveCount(2);
+  await expect(page.locator('[data-readable-report]')).not.toContainText('input.json');
+  await expect(page.locator('[data-readable-report]')).not.toContainText('SHA-256');
+  await expect(page.locator('[data-readable-section]')).toHaveCount(3);
   const output=process.env.BB_READABLE_SCREENSHOTS;
   if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-${viewport.width}.png`,fullPage:true});}
   await page.getByRole('searchbox').fill('名称变更');
   await expect(page.locator('.readable-body')).toContainText('缺少名称变更日期依据');
   await expect(page.locator('.readable-body')).not.toContainText('现金流金额与审计报告不一致');
   await page.getByRole('searchbox').fill('不存在的关键词');await expect(page.locator('.readable-body')).toContainText('没有找到匹配内容');
-  await page.locator('[data-readable-section]').filter({hasText:'待补充与未覆盖事项'}).click();
+  await page.locator('[data-readable-section]').filter({hasText:'公开信息核验'}).click();
   await expect(page.locator('.readable-body')).toContainText('公开信息核验未执行');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载复核报告（Word）'}).click();await download;
-  await page.reload();await expect(page.getByRole('navigation',{name:'报告目录'})).toBeVisible();
+  await page.reload();await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
   expect(state.executes).toHaveLength(0);
 });
 
@@ -633,5 +636,5 @@ test('readable view failure is retryable, preserves Word, and never re-executes 
   await expect(page.getByText('页面正文暂时无法读取，已生成的 Word 仍可下载。')).toBeVisible();
   await expect(page.getByRole('button',{name:'下载复核报告（Word）'})).toBeEnabled();
   await page.unroute('**/readable-report');await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await expect(page.getByRole('navigation',{name:'报告目录'})).toBeVisible();expect(state.executes).toHaveLength(0);
+  await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();expect(state.executes).toHaveLength(0);
 });

@@ -1,41 +1,23 @@
 // Synthetic design fixture only. No API, model call, report download or project mutation.
 const sections=[
   {
-    "id": "section-1",
-    "title": "复核结论",
-    "items": 0,
-    "html": "<section class=\"readable-section\"><header><p class=\"review-kicker\">复核报告 · 正文</p><h3>复核结论</h3></header><div class=\"readable-prose\"><p>发现两项需要处理的事项。<strong>财务差异需要优先核对。</strong></p></div></section>"
+    "id": "financial",
+    "html": "<section class=\"readable-section\"><header><h3>财务核对</h3><p class=\"readable-meta\">金额、期间、口径与财务分析是否一致</p></header><div class=\"readable-conclusion readable-prose\"><p><strong>本次结论：</strong> 发现两项需要处理的事项，财务差异需要优先核对。</p><p><strong>核对范围：</strong> 已对照合成募集书与2025年合成审计报告。</p></div><details class=\"readable-item\" data-readable-item=\"section-2-item-1\" ><summary><span class=\"readable-item-icon\" aria-hidden=\"true\">＋</span><strong>1. 现金流金额与审计报告不一致</strong><span class=\"readable-item-hint\">查看依据与建议</span></summary><div class=\"readable-prose\"><p><strong>原文位置：</strong> 第八章，经营现金流表。</p><p><strong>核对依据：</strong> 合成审计报告。</p><div class=\"readable-table\" tabindex=\"0\" role=\"region\" aria-label=\"报告表格，可横向滚动\"><table><thead><tr><th scope=\"col\">原文值</th><th scope=\"col\">对照值</th><th scope=\"col\">差异</th></tr></thead><tbody><tr><td data-label=\"原文值\">100</td><td data-label=\"对照值\">120</td><td data-label=\"差异\">20</td></tr></tbody></table></div><p><strong>修改建议：</strong> 确认口径后统一金额。</p></div></details><details class=\"readable-item\" data-readable-item=\"section-2-item-2\" ><summary><span class=\"readable-item-icon\" aria-hidden=\"true\">＋</span><strong>2. 财务分析中的单位需核对</strong><span class=\"readable-item-hint\">查看依据与建议</span></summary><div class=\"readable-prose\"><p><strong>问题说明：</strong> 原文分析使用元，报表使用万元。</p><p><strong>修改建议：</strong> 统一单位后重新核对分析文字。</p></div></details></section>"
   },
   {
-    "id": "section-2",
-    "title": "复核范围与依据",
-    "items": 0,
-    "html": "<section class=\"readable-section\"><header><p class=\"review-kicker\">复核报告 · 正文</p><h3>复核范围与依据</h3></header><div class=\"readable-prose\"><p>已对照合成募集书与合成审计报告。</p></div></section>"
+    "id": "compliance",
+    "html": "<section class=\"readable-section\"><header><h3>合规与披露</h3><p class=\"readable-meta\">披露是否完整，条款与表述是否适当</p></header><div class=\"readable-conclusion readable-prose\"><p><strong>本次结论：</strong> 历史名称披露缺少时间依据。</p></div><details class=\"readable-item\" data-readable-item=\"section-3-item-1\" ><summary><span class=\"readable-item-icon\" aria-hidden=\"true\">＋</span><strong>3. 历史名称披露待补充证据</strong><span class=\"readable-item-hint\">查看依据与建议</span></summary><div class=\"readable-prose\"><p><strong>原文位置：</strong> 第二章，发行人历史沿革。</p><p><strong>待确认事项：</strong> 缺少名称变更日期依据。</p><p><strong>修改建议：</strong> 补充变更文件及生效日期。</p></div></details></section>"
   },
   {
-    "id": "section-3",
-    "title": "复核发现",
-    "items": 2,
-    "html": "<section class=\"readable-section\"><header><p class=\"review-kicker\">复核报告 · 正文</p><h3>复核发现</h3><p class=\"readable-meta\">2 条编号事项 · 点击查看位置、依据及建议</p></header><div class=\"readable-prose\"></div><details class=\"readable-item\"><summary><span class=\"readable-item-icon\">＋</span><strong>1. 现金流金额与审计报告不一致</strong><span class=\"readable-item-hint\">查看详情</span></summary><div class=\"readable-prose\"><p><strong>原文位置：</strong> 第八章，经营现金流表。</p><p><strong>核对依据：</strong> 合成审计报告。</p><div class=\"readable-table\" tabindex=\"0\" role=\"region\" aria-label=\"报告表格，可横向滚动\"><table><thead><tr><th scope=\"col\">原文值</th><th scope=\"col\">对照值</th><th scope=\"col\">差异</th></tr></thead><tbody><tr><td data-label=\"原文值\">100</td><td data-label=\"对照值\">120</td><td data-label=\"差异\">20</td></tr></tbody></table></div><p><strong>修改建议：</strong> 确认口径后统一金额。</p></div></details><details class=\"readable-item\"><summary><span class=\"readable-item-icon\">＋</span><strong>2. 历史名称待补充证据</strong><span class=\"readable-item-hint\">查看详情</span></summary><div class=\"readable-prose\"><p><strong>待确认事项：</strong> 缺少名称变更日期依据。</p></div></details></section>"
-  },
-  {
-    "id": "section-4",
-    "title": "待补充与未覆盖事项",
-    "items": 0,
-    "html": "<section class=\"readable-section\"><header><p class=\"review-kicker\">复核报告 · 正文</p><h3>待补充与未覆盖事项</h3></header><div class=\"readable-prose\"><p>公开信息核验未执行，不能据此判断无风险。</p></div></section>"
-  },
-  {
-    "id": "section-5",
-    "title": "建议处理顺序",
-    "items": 0,
-    "html": "<section class=\"readable-section\"><header><p class=\"review-kicker\">复核报告 · 正文</p><h3>建议处理顺序</h3></header><div class=\"readable-prose\"><ol><li>核对财务口径</li><li>补充名称变更证据</li></ol></div></section>"
+    "id": "public",
+    "html": "<section class=\"readable-section\"><header><h3>公开信息核验</h3><p class=\"readable-meta\">公开事实与募集书披露是否一致</p></header><div class=\"readable-conclusion readable-prose\"><p><strong>本次结论：</strong> 公开信息核验未执行，不能据此判断无风险。</p><p><strong>还需确认：</strong> 发行人名称变更及重大诉讼的最新公开记录。</p></div></section>"
   }
 ];
 export function mountReadablePreview(host){
  if(!host)return;
- host.innerHTML='<div class="readable-toolbar"><label>搜索报告<input type="search" placeholder="搜索问题、章节、金额或建议"></label><div><button class="text-btn" data-expand="all">展开全部事项</button><button class="text-btn" data-expand="none">收起事项</button></div></div><div class="readable-layout"><nav class="readable-nav" aria-label="报告目录"><p>报告目录</p>'+sections.map((s,i)=>'<button data-section="'+s.id+'"><span>'+String(i+1).padStart(2,'0')+'</span><strong>'+s.title+'</strong>'+(s.items?'<small>'+s.items+'</small>':'')+'</button>').join('')+'<button data-section="all"><span>↳</span><strong>阅读完整报告</strong></button></nav><div class="readable-body"></div></div>';
- const draw=id=>{host.querySelector('.readable-body').innerHTML=sections.filter(s=>id==='all'||s.id===id).map(s=>s.html).join('');host.querySelectorAll('[data-section]').forEach(b=>b.setAttribute('aria-current',String(b.dataset.section===id)));};
- host.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.section){host.querySelector('input').value='';draw(b.dataset.section);}if(b.dataset.expand)host.querySelectorAll('details').forEach(d=>d.open=b.dataset.expand==='all');};
+ host.innerHTML="<nav class=\"readable-dimensions\" aria-label=\"三个复核维度\"><button data-readable-section=\"financial\" aria-current=\"true\"><span class=\"dimension-number\">01</span><strong>财务核对</strong><span class=\"dimension-status\">2 项需关注</span><small>金额、期间、口径与财务分析是否一致</small></button><button data-readable-section=\"compliance\" aria-current=\"false\"><span class=\"dimension-number\">02</span><strong>合规与披露</strong><span class=\"dimension-status\">1 项需关注</span><small>披露是否完整，条款与表述是否适当</small></button><button data-readable-section=\"public\" aria-current=\"false\"><span class=\"dimension-number\">03</span><strong>公开信息核验</strong><span class=\"dimension-status\">有待核实事项</span><small>公开事实与募集书披露是否一致</small></button></nav><div class=\"readable-toolbar\"><label>查找复核结果<input type=\"search\" data-readable-search placeholder=\"搜索问题、金额或修改建议\" value=\"\"></label><div><button class=\"text-btn\" data-readable-expand=\"all\">展开全部事项</button><button class=\"text-btn\" data-readable-expand=\"none\">收起事项</button></div></div>"+'<div class="readable-body" tabindex="-1"></div>';
+ const draw=id=>{host.querySelector('.readable-body').innerHTML=sections.filter(s=>s.id===id).map(s=>s.html).join('');host.querySelectorAll('[data-readable-section]').forEach(b=>b.setAttribute('aria-current',String(b.dataset.readableSection===id)));};
+ host.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.readableSection){host.querySelector('input').value='';draw(b.dataset.readableSection);}if(b.dataset.readableExpand)host.querySelectorAll('details').forEach(d=>d.open=b.dataset.readableExpand==='all');};
  host.querySelector('input').oninput=e=>{const term=e.target.value.toLowerCase();host.querySelector('.readable-body').innerHTML=sections.filter(s=>s.html.toLowerCase().includes(term)).map(s=>s.html).join('')||'<div class="readable-notice">没有找到匹配内容，请尝试其他关键词。</div>';};
- draw(sections[0].id);
+ draw('financial');
 }

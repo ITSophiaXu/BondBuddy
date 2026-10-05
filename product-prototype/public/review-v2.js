@@ -85,7 +85,7 @@ function renderMain(){
   else if(state.activeRun)content=runningView()+`<div class="run-notice">${icon('history')}<p>已有报告 ${esc(state.report)} 保留。${button('查看已有报告','show-prior-report',{class:'text-button'})}</p></div>`;
   else content=revision?revisionResult():resultsView();
   const fileResult=fileDeliveryPreview&&!state.activeRun&&!revision;
-  if(fileResult)content=`<section class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 1 次复核 · 按章节阅读结论，逐项查看依据与建议。</p></div><div class="review-result-actions review-downloads">${button('下载复核报告（Word）','download-file-preview',{class:'secondary'})}</div></div><div id="readable-preview"></div></section>`;
+  if(fileResult)content=`<section class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 1 次复核 · 分别查看财务、合规与公开信息的核对结果。</p></div><div class="review-result-actions review-downloads">${button('下载复核报告（Word）','download-file-preview',{class:'secondary'})}</div></div><div id="readable-preview"></div></section>`;
   $('#work-content').innerHTML=state.tab==='materials'?materialsView():(fileResult?'':taskLink(linked))+content;
   if(fileResult&&state.tab!=='materials')mountReadablePreview($('#readable-preview'));
 }
