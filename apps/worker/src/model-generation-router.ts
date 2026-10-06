@@ -12,6 +12,8 @@ import { reviewPublicStage } from './review-public-stage.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
 import { reviewRevisionCliStage } from './review-revision-cli-stage.js';
+import { m4DocumentStage } from './m4-document-stage.js';
+import { m4QaStage } from './m4-qa-stage.js';
 
 export interface ModelGenerationRouterOptions {
   /** Trusted adapters are supplied only after their server-side sources are implemented. */
@@ -24,6 +26,8 @@ export interface ModelGenerationRouterOptions {
   revisionStage?: RunStage;
   legacyRevisionStage?: RunStage;
   fileStage?: RunStage;
+  m4Document?:RunStage;
+  m4Qa?:RunStage;
   /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
   factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
 }
@@ -58,6 +62,9 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
+      const m4=(ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode;
+      if(m4==='document')return (options.m4Document??m4DocumentStage()).run(ctx);
+      if(m4==='qa')return (options.m4Qa??m4QaStage()).run(ctx);
       if (!options.reviewStage && (ctx.values.get('input_lock') as { file_delivery?: string })?.file_delivery === 'review-file-v1')
         return reviewFileStage().run(ctx);
       if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {

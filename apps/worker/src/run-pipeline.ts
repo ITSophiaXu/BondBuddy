@@ -5,12 +5,14 @@
 // `succeeded` only via queue.finish after the Word artifact passed inspection and Blob readback.
 // A stage the pipeline needs but that is not implemented pauses the run (`capability_not_ready`).
 import type { Pool } from 'pg';
-import { isUnifiedInput } from '@bondbuddy/contracts';
+import { isUnifiedInput,type M4AssistantReply } from '@bondbuddy/contracts';
+import { hasM4Manifest,m4InputGate } from './m4-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
 import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
-import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
+import { digest, Problem, transaction, type PrivateBlobs } from '@bondbuddy/api/data';
+import { registerM4Artifacts,settleM4Metering,type M4ArtifactRegistration } from '@bondbuddy/api/m4-workspace';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
@@ -19,7 +21,7 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish,finishM4Qa, pauseRun, promoteWordArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { createReviewActionObserver, reviewActionMode } from './review-action-progress.js';
@@ -62,7 +64,9 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
-  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments'; bytes: Buffer }[]; wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
+  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments'; bytes: Buffer }[];
+      namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
+  | {kind:'qa_deliver';reply:M4AssistantReply}
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
   | { kind: 'stopped' };
 export type RunStage = {
@@ -302,6 +306,7 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    if (hasM4Manifest(manifest)) return (await m4InputGate(pool,run,input)) ?? {kind:'done',value:{m4_mode:manifest?.kind}};
     if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: {
       authoring_mode: 'unified_v1', review_revision: !!(manifest as {authoring?:{review_revision?:unknown}}).authoring?.review_revision } };
     if (isReviewInput(manifest)) return (await reviewInputGate(pool, run, input)) ?? { kind: 'done', value: { review_mode: 'review_v1', ...(manifest.review.file_delivery ? { file_delivery: manifest.review.file_delivery.version } : {}) } };
@@ -393,6 +398,7 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   name: 'materials_ready',
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
+    if ((values.get('input_lock') as {m4_mode?:string})?.m4_mode) return {kind:'done',checkpoint:{original_files:true,m4:true}};
     if ((values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') return reviewMaterialsReady({ pool, run });
     if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
       // New file-authoring runs consume original files. Readability/OCR is handled by Codex
@@ -474,6 +480,7 @@ export function codexModelStage(options: {
   materialToolsTrace?: true;
   fileWorkspace?: ContainedCallInput['fileWorkspace'];
   reviewTools?: ReviewToolData;
+  onActivity?: ContainedCallInput['onActivity'];
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
   wrapJournal?: (journal: CodexJournal) => CodexJournal;
 }): RunStage {
@@ -520,11 +527,11 @@ export function codexModelStage(options: {
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
-        ...(progress?{onActivity:progress.onEvent}:{}) }, journal, config);
+        ...((progress || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
       } finally { await progress?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
-      if(result.status==='needs_reconcile'&&run.billing_mode==='fixed_credits'&&!options.reviewTools){
+      if(result.status==='needs_reconcile'&&['fixed_credits','metered_credits'].includes(run.billing_mode??'')&&!options.reviewTools){
         const attempt=await durable.latestAttempt(options.logicalCallId);
         if(attempt?.status==='completed'){
           const saved=await durable.readCompleted(options.logicalCallId,attempt.attempt_no);
@@ -569,7 +576,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
   let currentStage: string | undefined;
   try {
-    const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind,channel,test_grant_id FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
+    const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind,channel,test_grant_id,billing_mode FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
@@ -579,6 +586,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if (hasM4Manifest(input.manifest)) return m4InputGate(pool,run,input);
       if (isUnifiedInput(input.manifest)) return unifiedInputGate(pool, run, input);
       if (isReviewInput(input.manifest)) return reviewInputGate(pool, run, input);
       const generationGate = await verifyGenerationIssuerBinding(run, input.manifest, deps.loadGenerationIssuerBinding);
@@ -618,6 +626,10 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, safePauseReason(outcome.reason)); return 'paused'; }
       if (outcome.kind === 'fail') { await finish(pool, lease, 'failed', { errorCode: outcome.code, failedStage: stage.name }); return 'failed'; }
       if (outcome.kind === 'stopped') return 'stopped';
+      if (outcome.kind === 'qa_deliver') {
+        const result=await finishM4Qa(pool,lease,outcome.reply);
+        return result.state==='succeeded'?'succeeded':'paused';
+      }
       if ((outcome.deliveryPolicy === 'generated_pair_v1' ? !outcome.cleanBytes : Boolean(outcome.cleanBytes) !== Boolean(outcome.baselineBytes)) ||
         (outcome.cleanBytes && !outcome.wordSummary)) {
         await finish(pool, lease, 'failed', { errorCode: 'VALIDATION_FAILED', failedStage: stage.name });
@@ -627,6 +639,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       let baselineArtifactId: string | undefined;
       const reviewExecution = (await pool.query('SELECT operation FROM bb_review_executions WHERE owner_user_id=$1 AND run_id=$2', [run.owner_user_id, run.id])).rows[0];
       const reviewArtifacts: { id: string; version: number; kind: string }[] = [];
+      const m4Artifacts:M4ArtifactRegistration[]=[];
       const uncovered:TestUncoveredItem[]=run.channel==='non_production_test'
         ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
         : [];
@@ -654,9 +667,29 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         if (extra.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: extra.failureCode, failedStage: stage.name }); return 'failed'; }
         reviewArtifacts.push({ id: extra.artifactId, version: extra.artifactVersion, kind: attachment.kind });
       }
+      for (const extra of outcome.namedArtifacts??[]) {
+        const promoted=await promoteWordArtifact(pool,lease,await wordBytes(extra.bytes),blobs,outcome.deliveryPolicy);
+        if (promoted.status!=='available') {await finish(pool,lease,'failed',{errorCode:promoted.failureCode,failedStage:stage.name});return 'failed';}
+        m4Artifacts.push({kind:extra.kind,artifact_id:promoted.artifactId,artifact_version:promoted.artifactVersion,filename:extra.filename,byte_size:extra.bytes.length,
+          ...(extra.previewContent?{preview_content:extra.previewContent}:{})});
+      }
       const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs, outcome.deliveryPolicy);
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
+      if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document') {
+        m4Artifacts.push({kind:'document',artifact_id:delivered.artifactId,artifact_version:delivered.artifactVersion,filename:'document.docx',byte_size:outcome.bytes.length,
+          ...(typeof outcome.wordSummary?.preview_content==='string'?{preview_content:outcome.wordSummary.preview_content}:{})});
+        if(m4Artifacts.length!==2 || !m4Artifacts.some(a=>a.kind==='preparation_note')) {await finish(pool,lease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE',failedStage:stage.name});return 'failed';}
+        const settled=await transaction(pool,async client=>{
+          const activeRun=(await client.query(`SELECT 1 FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND state='running' FOR UPDATE`,[run.id,run.owner_user_id])).rowCount;
+          const current=activeRun && (await client.query(`SELECT 1 FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 AND id=$3 AND state='running'
+            AND lease_token=$4 AND lease_until>now() FOR UPDATE`,[run.id,run.owner_user_id,lease.jobId,lease.token])).rowCount;
+          if(!current)throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
+          await registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts);
+          return settleM4Metering(client,run.owner_user_id,run.id);
+        });
+        if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
+      }
       if (reviewExecution) {
         reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: reviewExecution.operation === 'revision' ? 'revision' : 'report' });
         for (const artifact of reviewArtifacts) await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
