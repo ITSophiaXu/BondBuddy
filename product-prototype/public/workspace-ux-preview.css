@@ -1,5 +1,6 @@
 /* M3 workspace follows the approved review-v2 design without importing demo data. */
 .review-workspace,.review-history-dialog{--review-ink:#213c33;--review-green:#173e33;--review-muted:#73816e;--review-line:#e1e6dc;--review-soft:#f1f5e8;color:var(--review-ink)}
+.review-upload-summary{padding:10px 12px;margin:0 0 16px;border-radius:6px;background:var(--review-soft);font-size:12px;line-height:1.75}.review-upload-summary:empty{display:none}
 .review-workspace{max-width:1500px;margin:auto}.review-workspace [hidden],.review-history-dialog [hidden]{display:none!important}
 .review-workspace h2{font-size:20px;line-height:1.5}.review-workspace h3{font-size:15px}.review-workspace h4{font-size:12px;margin:0 0 9px;color:var(--review-muted)}
 .review-workspace p{line-height:1.8}.review-workspace button,.review-workspace input,.review-workspace select,.review-workspace textarea{font:inherit}.review-workspace button:disabled{cursor:not-allowed;opacity:.5}

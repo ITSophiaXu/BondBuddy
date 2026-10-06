@@ -1,9 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { Value } from '@sinclair/typebox/value';
 import { schemas, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
-  type ReviewWorkspace, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
+  type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
   type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewProposalAdoptionResponse, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run, type RunEvent } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
 
@@ -27,7 +27,7 @@ function fixture(){
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
   const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
-  return {...state,linked:false,deferCancellation:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
+  return {...state,uploadGates:{} as {bytes?:(id:string)=>Promise<void>;complete?:(id:string)=>Promise<void>;draft?:(input:ReviewDraftInput)=>Promise<void>},linked:false,deferCancellation:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
   await page.route('**/api/v1/**',async route=>{
@@ -57,6 +57,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
         const body=request.postDataJSON();expect(Value.Check(ReviewDraftRequestSchema,body)).toBe(true);
         if(state.failDrafts)return reply(route,503,{code:'DATA_UNAVAILABLE'});
         if(body.kind==='input'){
+          await state.uploadGates.draft?.(body.input);
           if(body.expected_version!==state.workspace.draft.version)return reply(route,409,{code:'INPUT_REVISION_CONFLICT'});
           state.workspace.draft={...body.input,version:body.expected_version+1};
         }else{
@@ -122,12 +123,17 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       state.materialReads.push(referencedMaterial.material_id);return reply(route,200,referencedMaterial);
     }
     if(path.endsWith('/materials/uploads')){
-      const body=request.postDataJSON() as Dto<'UploadCreateRequest'>;state.uploads.push(body);return reply(route,201,{upload_id:'upload-evidence',state:'uploading',upload_url:'/api/v1/synthetic-upload',expires_at:'2027-01-01T00:00:00Z',max_bytes:104857600});
+      const body=request.postDataJSON() as Dto<'UploadCreateRequest'>;state.uploads.push(body);
+      const uploadId='upload-evidence'+(state.uploads.length===1?'':'-'+state.uploads.length);
+      return reply(route,201,{upload_id:uploadId,state:'uploading',upload_url:'/api/v1/synthetic-upload/'+uploadId,expires_at:'2027-01-01T00:00:00Z',max_bytes:104857600});
     }
-    if(path==='/synthetic-upload'){state.uploadBytes++;return route.fulfill({status:204});}
-    if(path.endsWith('/upload-evidence/complete')){
-      const upload=state.uploads[0];let material=state.workspace.materials.find(m=>m.material_id==='evidence-new');
-      if(!material){material={...upload,material_id:'evidence-new',material_version:1,upload_id:'upload-evidence',state:'persisted',persisted_at:now,error:null};state.workspace.materials.push(material);}
+    if(path.startsWith('/synthetic-upload/')){state.uploadBytes++;await state.uploadGates.bytes?.(path.split('/').at(-1)!);return route.fulfill({status:204});}
+    if(/\/upload-evidence(?:-\d+)?\/complete$/.test(path)){
+      const uploadId=path.split('/').at(-2)!,index=Number(uploadId.match(/-(\d+)$/)?.[1]??1)-1;
+      await state.uploadGates.complete?.(uploadId);
+      const materialId='evidence-new'+(index?'-'+(index+1):'');
+      const upload=state.uploads[index];let material=state.workspace.materials.find(m=>m.material_id===materialId);
+      if(!material){material={...upload,material_id:materialId,material_version:1,upload_id:uploadId,state:'persisted',persisted_at:now,error:null};state.workspace.materials.push(material);}
       if(state.dropUploadOnce){state.dropUploadOnce=false;return route.abort('connectionreset');}return reply(route,200,material);
     }
     if(path.startsWith('/artifacts/')&&!path.endsWith('/download')){state.artifactReads.push(path);const artifact=state.artifacts.get(path.split('/').at(-1)!);if(artifact)return reply(route,200,artifact);}
@@ -422,6 +428,78 @@ test('direct upload retries saved bytes without a modal or duplicate upload',asy
  await expect.poll(()=>state.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(true);
 });
 
+for(const width of [1360,390])test(`upload queue keeps other pickers usable through bytes, server save and draft save at ${width}`,async({page})=>{
+ const state=fixture();
+ const gate=()=>{let release!:()=>void;const promise=new Promise<void>(resolve=>release=resolve);return {promise,release};};
+ const bytes=gate(),completion=gate(),draft=gate();
+ state.uploadGates.bytes=async upload=>{if(upload==='upload-evidence')await bytes.promise;};
+ state.uploadGates.complete=async upload=>{if(upload==='upload-evidence')await completion.promise;};
+ state.uploadGates.draft=async input=>{if(input.material_versions.some(m=>m.material_id==='evidence-new'))await draft.promise;};
+ await page.setViewportSize({width,height:width===390?844:900});
+ await setup(page,state,`#/projects/${id}/review?tab=materials`);
+ const first=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-audit.txt'});
+ const other=page.locator('[data-review-upload-role="other"]');
+ const original=await other.elementHandle();
+ const start=page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]');
+ await page.locator('[data-review-upload-role="audit"]').setInputFiles({name:'synthetic-audit.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic audit evidence')});
+ await expect.poll(()=>state.uploadBytes).toBe(1);
+ await expect(start).toBeDisabled();await expect(other).toBeEnabled();
+ const chooserPromise=page.waitForEvent('filechooser');
+ await page.locator('label[for="review-upload-other"]').click();const chooser=await chooserPromise;
+ bytes.release();await expect(first).toContainText('正在保存到服务器');
+ expect(await original!.evaluate(el=>el.isConnected)).toBe(true);
+ await chooser.setFiles({name:'synthetic-other.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic other evidence')});
+ const second=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-other.txt'});
+ await expect(second).toContainText('等待上传');expect(state.uploads).toHaveLength(1);
+ await page.locator('#review-requirements').fill('本次补充要求保留。');
+ completion.release();await expect(first).toContainText('正在保存材料选择');
+ await expect(start).toBeDisabled();await expect(other).toBeEnabled();await expect(second).toContainText('等待上传');
+ const output=process.env.BB_UPLOAD_EVIDENCE;
+ if(output){await mkdir(output,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${output}/implementation-uploading-${width}.png`,fullPage:true});if(width===1360)await writeFile(output+'/uploading-scene.json',JSON.stringify(await page.locator('#app').innerHTML()));}
+ draft.release();
+ await expect(first).toContainText('已保存');await expect(second).toContainText('已保存');await expect(start).toBeEnabled();
+ expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);
+ expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1','evidence-new','evidence-new-2']);
+ expect(state.workspace.draft.requirements).toEqual(['本次补充要求保留。']);
+ expect(state.executes).toHaveLength(0);
+ await page.reload();await expect(page.locator('#review-requirements')).toHaveValue('本次补充要求保留。');
+ await expect(page.locator('[data-review-drop="other"]')).toContainText('synthetic-other.txt');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('one failed upload does not stop the queue and retry preserves its session',async({page})=>{
+ const state=fixture();state.dropUploadOnce=true;
+ await setup(page,state,`#/projects/${id}/review?tab=materials`);
+ await page.locator('[data-review-upload-role="audit"]').setInputFiles([
+  {name:'synthetic-first.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic first evidence')},
+  {name:'synthetic-second.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic second evidence')}
+ ]);
+ const first=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-first.txt'});
+ const second=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-second.txt'});
+ await expect(first.getByRole('button',{name:'重试此文件'})).toBeVisible();
+ await expect(second).toContainText('已保存');expect(state.uploadBytes).toBe(2);
+ await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeDisabled();
+ await first.getByRole('button',{name:'重试此文件'}).click();
+ await expect(page.getByRole('button',{name:'重试此文件'})).toHaveCount(0);
+ expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);
+ await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeEnabled();
+ expect(state.workspace.draft.material_versions.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+});
+
+test('draft-save retry continues saved material and invalid file can be removed',async({page})=>{
+ const state=fixture();state.failDrafts=true;
+ await setup(page,state,`#/projects/${id}/review?tab=materials`);
+ await page.locator('[data-review-upload-role="other"]').setInputFiles({name:'synthetic-saved.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic saved evidence')});
+ const row=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-saved.txt'});
+ await expect(row).toContainText('材料选择尚未保存');await expect(row.getByRole('button',{name:'移除此行'})).toHaveCount(0);
+ state.failDrafts=false;await row.getByRole('button',{name:'重试此文件'}).click();await expect(row).toContainText('已保存');
+ expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);
+ await page.locator('[data-review-upload-role="other"]').setInputFiles({name:'synthetic-invalid.exe',mimeType:'application/octet-stream',buffer:Buffer.from('not executable')});
+ await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeDisabled();
+ await page.getByRole('button',{name:'移除此行'}).click();await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeEnabled();
+ expect(state.executes).toHaveLength(0);
+});
+
 test('real stage, paused state and cancellation appear in the main panel without assistant',async({page})=>{
  const state=fixture();state.linked=true;state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.artifacts=[];
  const run={...state.makeRun('run-1','running'),stage:'provider_call',event_cursor:1};state.workspace.active_run=run;state.history[0]={...state.history[0],run,artifacts:[],report_id:null};state.runs.set('old',run);
@@ -492,6 +570,7 @@ test('synthetic workspace design scenes',async({page})=>{
  state.history.unshift({...structuredClone(state.history[0]),run,artifacts:[],report_id:null,version:2,created_at:'2026-10-05T12:00:00Z'});state.runs.set('progress',run);
  await page.reload();await expect(page.locator('#review-progress-bar')).toContainText('正在复核募集书');await capture('progress');
  state.history[0].operation='revision';run.stage='file_authoring';await page.reload();await capture('updating');
+ if(process.env.BB_UPLOAD_EVIDENCE)scenes.uploading=JSON.parse(await readFile(process.env.BB_UPLOAD_EVIDENCE+'/uploading-scene.json','utf8'));
  const output='../../product-prototype/public';
  await writeFile(output+'/workspace-ux-scenes.json',JSON.stringify(scenes,null,2)+'\n');
  const css=await page.evaluate(()=>[...document.querySelectorAll('style[data-vite-dev-id]')].map(s=>s.textContent).join('\n'));
@@ -501,7 +580,7 @@ test('synthetic workspace design scenes',async({page})=>{
 test('workspace prototype parity at desktop and narrow widths',async({page})=>{
  test.skip(!process.env.BB_WORKSPACE_DESIGN,'Dedicated synthetic design comparison only.');
  const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
- for(const name of ['create','materials','results','progress','updating']){
+ for(const name of ['create','materials','results','progress','updating',...(process.env.BB_UPLOAD_EVIDENCE?['uploading']:[])]){
   for(const width of [1360,390]){
    await page.setViewportSize({width,height:width===1360?900:844});
    await page.goto((process.env.BB_PROTOTYPE_URL??'http://127.0.0.1:4330')+'/workspace-ux.html?scene='+name);await expect(page.locator('.prototype-app')).toBeVisible();
