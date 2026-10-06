@@ -5,6 +5,8 @@ import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { ArtifactDownloads, artifactError } from './artifact-download';
 import { ReviewApi } from './review-api';
+import { ReviewAssistant } from './review-assistant';
+import { carryHandoff, copyHandoffSource, mountBusinessHandoff, type BusinessHandoff } from './business-handoff';
 import { ReadableReview } from './review-readable';
 import { taskProgress } from './task-progress';
 import { projectListContext, withProjectContext, projectBackLink } from './project-navigation';
@@ -40,7 +42,8 @@ export class ReviewWorkspace {
   private dialog?: HTMLDialogElement;
   private downloads = new ArtifactDownloads();
   private handling: RevisionHandlingDialog;
-  private tab: 'materials'|'results' = 'materials';
+  private assistant: ReviewAssistant;
+  private tab: 'materials'|'results'|'making' = 'materials';
   private syncOnReturn = () => { if(this.live()&&document.visibilityState==='visible')void this.refresh(); };
   private filters = {dimension:'all',conclusion:'all'};
   private selections = new Set<string>();
@@ -73,12 +76,15 @@ export class ReviewWorkspace {
   private executionKey: string;
   private adoptionKey: string;
   private adoptionPending?: ReviewProposalAdoptionRequest;
+  private fixedInputs=new Map<string,ReviewDraftInput>();
+  private fixedInputsLoading=false;
 
   constructor(private api: ApiClient, private owner: string, private projectId: string,
-    private shell: (html: string, section: string) => void, private current: () => boolean, private reportId?: string, tab?: string) {
+    private shell: (html: string, section: string) => void, private current: () => boolean, private reportId?: string, tab?: string,private handoffQuery=new URLSearchParams()) {
     this.reviewApi = new ReviewApi(api,projectId,this.controller.signal);
     this.readable = new ReadableReview(api,projectId,this.controller.signal);
     this.handling = new RevisionHandlingDialog(api);
+    this.assistant=new ReviewAssistant(this.reviewApi,owner,()=>this.refresh(),proposal=>{if(isTypedReviewProposal(proposal))void this.previewProposal(proposal);else void this.previewPlan(proposal);},(reportId,findingId)=>{void this.viewReport(reportId,findingId);},context=>this.uploadDialog(context),(context,intent,messageId)=>void this.prepareReportUpdate(context,intent,messageId));
     this.localInputKey = `bb-review-input:${owner}:${projectId}`;
     this.executionKey = `bb-review-execution:${owner}:${projectId}`;
     this.adoptionKey = `bb-review-adoption:${owner}:${projectId}`;
@@ -87,15 +93,16 @@ export class ReviewWorkspace {
     this.requestedTab = tab==='materials'||tab==='results'?tab:undefined;
     this.tab = this.requestedTab ?? (reportId ? 'results' : 'materials');
   }
-  get hasUnconfirmed() { return this.uploadRows.size>0||this.inputDirty||Boolean(this.executionPending)||Boolean(this.adoptionPending); }
+  get hasUnconfirmed() { return this.uploadRows.size>0||this.inputDirty||Boolean(this.executionPending)||Boolean(this.adoptionPending)||this.assistant.hasUnconfirmed; }
   dispose() {
     this.disposed=true; this.readGeneration++; clearTimeout(this.pollTimer);clearTimeout(this.inputTimer);
     document.removeEventListener('visibilitychange',this.syncOnReturn);window.removeEventListener('online',this.syncOnReturn);
-    this.controller.abort();this.downloads.dispose();this.handling.dispose();this.dialog?.remove();
+    this.controller.abort();this.downloads.dispose();this.handling.dispose();this.assistant.dispose();this.dialog?.remove();
   }
   async beforeLeave() {
     if(this.uploading){this.message('材料正在上传，请等待保存结果后离开。',true);return false;}
     this.cacheInput(); if(this.inputDirty) await this.saveInput();
+    await this.assistant.flush();
     return true;
   }
   private live() { return !this.disposed&&this.current(); }
@@ -110,17 +117,17 @@ export class ReviewWorkspace {
       this.workspace=workspace;this.draftInput=this.inputFrom(workspace);this.run=workspace.active_run??undefined;
       if(!this.reportId&&!this.requestedTab&&(workspace.selected_report||workspace.artifacts.length))this.tab='results';
       this.restoreInput();this.syncSelections();
-      this.page.innerHTML = `${this.fromList?projectBackLink:''}<header class="page-head review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><div class="review-project-title"><h1>${esc(workspace.project.name)}</h1><span class="review-tag" id="review-phase-badge"></span></div><div class="review-project-meta" id="review-project-meta"></div></div></header><div id="review-workspace-steps" hidden>${workspaceSteps(2,'复核流程')}</div><p class="review-status" id="review-status" role="status"></p><p class="task-credit-receipt" id="review-credit-receipt" role="status" hidden></p><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><div class="review-grid review-single-column" id="review-grid"><section class="review-panel"><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div></section></div>`;
+      this.page.innerHTML = `${this.fromList?projectBackLink:''}<header class="page-head review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><div class="review-project-title"><h1>${esc(workspace.project.name)}</h1><span class="review-tag" id="review-phase-badge"></span></div><div class="review-project-meta" id="review-project-meta"></div></div></header><div id="review-workspace-steps" hidden>${workspaceSteps(2,'复核流程')}</div><p class="review-status" id="review-status" role="status"></p><p class="task-credit-receipt" id="review-credit-receipt" role="status" hidden></p><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><div id="business-handoff"></div><div class="review-grid review-always-on" id="review-grid"><section class="review-panel"><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-making" role="tab" data-review-tab="making" aria-controls="review-making-panel" hidden>正在制作</button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div><div class="review-tab-panel" id="review-making-panel" role="tabpanel" aria-labelledby="review-tab-making" hidden></div></section><aside class="review-agent review-agent-always-on" id="review-agent" aria-label="项目助手"></aside></div>`;
       document.removeEventListener('visibilitychange',this.syncOnReturn);window.removeEventListener('online',this.syncOnReturn);
       document.addEventListener('visibilitychange',this.syncOnReturn);window.addEventListener('online',this.syncOnReturn);
-      this.bind();this.renderBody();this.schedulePoll();
+      this.assistant.mount(this.page.querySelector<HTMLElement>('#review-agent')!,workspace);this.bind();this.renderBody();this.schedulePoll();void mountBusinessHandoff(this.api,this.page.querySelector<HTMLElement>('#business-handoff')!,this.handoffQuery,()=>this.live(),handoff=>this.adoptExternalHandoff(handoff));
       if(this.inputDirty&&this.inputConflictVersion===undefined)void this.saveInput();
       if(!this.run){
         try {
         const history=await this.reviewApi.history();
         if(!this.live()||generation!==this.readGeneration)return;
         const latest=this.reportId?history.items.find(item=>item.report_id===this.reportId):[...history.items].sort((a,b)=>b.created_at.localeCompare(a.created_at))[0];
-        if(latest){this.run=latest.run;this.renderResults();this.renderMeta();}
+        if(latest){this.run=latest.run;this.renderResults();this.renderMeta();this.renderMaking();}
         } catch(error) { if(this.live())this.message(`本轮状态暂未同步。${friendlyError(error)}`,true); }
       }
     }catch(error){
@@ -151,7 +158,15 @@ export class ReviewWorkspace {
     const report=this.workspace?.selected_report,plan=this.workspace?.plan;
     this.selections=new Set(report&&plan&&plan.source_report_id===report.report_id?plan.finding_ids:[]);
   }
-  private renderBody(){this.renderMeta();this.renderMaterials();this.renderResults();this.setTab(this.tab,false);this.message(this.status,this.statusError);}
+  private renderBody(){this.renderMeta();this.renderMaterials();this.renderResults();this.renderMaking();this.setTab(this.tab,false);if(this.workspace)this.assistant.update(this.workspace);this.message(this.status,this.statusError);}
+  private renderMaking(){
+    const host=this.page?.querySelector<HTMLElement>('#review-making-panel'),tab=this.page?.querySelector<HTMLButtonElement>('#review-tab-making');if(!host||!tab)return;
+    const run=this.workspace?.active_run??this.run;tab.hidden=!run;tab.textContent=run&&isActiveRun(run)?'正在制作':'本轮任务';
+    if(!run){host.innerHTML='<p class="review-muted">暂无本轮任务。</p>';return;}
+    const input=this.fixedInputs.get(run.run_id);
+    if(!input&&!this.fixedInputsLoading){this.fixedInputsLoading=true;void this.reviewApi.history().then(history=>{for(const item of history.items)this.fixedInputs.set(item.run.run_id,item.input);if(this.live())this.renderMaking();}).catch(error=>{if(this.live())this.message(`本轮固定输入暂不可读取。${friendlyError(error)}`,true);}).finally(()=>{this.fixedInputsLoading=false;});}
+    host.innerHTML=`<div class="review-empty"><h2>${isActiveRun(run)?'正在制作':runStateLabel[run.state]}</h2><p>执行过程显示在右侧助手。准备新任务保留下一任务草稿。</p><button class="btn secondary" data-review-action="prepare">准备新任务</button> <button class="btn secondary" data-review-tab="results">查看复核结果</button></div><details class="review-fixed-input" open><summary>本轮固定输入</summary><p>任务 ${esc(run.run_id)} · 输入 V${run.input_revision}<br>SHA-256 ${esc(run.input_hash)}</p>${input?`<p>待复核稿 ${esc(input.source_material_ref?.material_id??'未指定')} · V${input.source_material_ref?.material_version??'—'}</p><ul>${input.requirements.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:''}</details>`;
+  }
   private renderMeta(){
     this.renderCharge();
     if(!this.workspace)return;
@@ -181,7 +196,7 @@ export class ReviewWorkspace {
       if(badge)badge.textContent=String(count);tab?.setAttribute('aria-description',`${count} ${unit}`);
     }
   }
-  private setTab(tab:'materials'|'results',write=true){this.tab=tab;this.page?.querySelectorAll<HTMLButtonElement>('[data-review-tab]').forEach(b=>{const selected=b.dataset.reviewTab===tab;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;});for(const name of ['materials','results']){const panel=this.page?.querySelector<HTMLElement>(`#review-${name}-panel`);if(panel)panel.hidden=name!==tab;}this.renderMeta();if(write){const query=withProjectContext(new URLSearchParams({tab}),this.fromList);if(this.reportId)query.set('report_id',this.reportId);history.replaceState(null,'',`${location.pathname}${location.search}#/projects/${encodeURIComponent(this.projectId)}/review?${query}`);}}
+  private setTab(tab:'materials'|'results'|'making',write=true){this.tab=tab;this.page?.querySelectorAll<HTMLButtonElement>('[data-review-tab]').forEach(b=>{const selected=b.dataset.reviewTab===tab;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;});for(const name of ['materials','results','making']){const panel=this.page?.querySelector<HTMLElement>(`#review-${name}-panel`);if(panel)panel.hidden=name!==tab;}this.renderMeta();if(write){const query=withProjectContext(new URLSearchParams({tab}),this.fromList);if(this.reportId)query.set('report_id',this.reportId);history.replaceState(null,'',`${location.pathname}${location.search}#/projects/${encodeURIComponent(this.projectId)}/review?${query}${carryHandoff(this.handoffQuery)}`);}}
   private materialNames(){return Object.fromEntries((this.workspace?.materials??[]).map(m=>[m.material_id,m.filename]));}
   private projectInfo(){
     if(!this.workspace)return '';
@@ -207,12 +222,12 @@ export class ReviewWorkspace {
     }catch(error){if(!this.live()||generation!==this.readGeneration)return;this.reportId=previous;this.message(`原报告已保留。${friendlyError(error)}`,true);}
   }
 
-  private taskFocus(_runId:string){const bar=this.page?.querySelector<HTMLElement>('#review-progress-bar');bar?.scrollIntoView({block:'start'});bar?.focus({preventScroll:true});}
+  private taskFocus(runId:string){this.assistant.focusTask(runId);}
 
   private bind(){
     this.page!.addEventListener('click',event=>{
       const target=(event.target as HTMLElement).closest<HTMLElement>('[data-review-action],[data-review-tab],[data-review-coverage],[data-review-filter-value]');if(!target)return;
-      if(target.dataset.reviewTab){this.setTab(target.dataset.reviewTab as 'materials'|'results');return;}
+      if(target.dataset.reviewTab){this.setTab(target.dataset.reviewTab as 'materials'|'results'|'making');return;}
       if(target.dataset.reviewCoverage){this.coverage(target.dataset.reviewCoverage);return;}
       if(target.dataset.reviewFilterValue){this.filters.dimension=target.dataset.reviewFilterValue;this.renderResults();this.page?.querySelector<HTMLElement>(`[data-review-filter-value="${CSS.escape(this.filters.dimension)}"]`)?.focus({preventScroll:true});return;}
       const card=target.closest<HTMLElement>('[data-finding-id]');const finding=this.workspace?.selected_report?.findings.find(f=>f.finding_id===card?.dataset.findingId);
@@ -228,7 +243,8 @@ export class ReviewWorkspace {
         case 'evidence':if(finding)this.uploadDialog(this.context(finding));break;
         case 'source':if(finding)this.showSource(finding,target);break;
         case 'explain':if(finding)this.explain(finding);break;
-        case 'discuss':case 'dispute':this.setTab('materials');this.page?.querySelector<HTMLTextAreaElement>('#review-requirements')?.focus();break;
+        case 'discuss':case 'dispute':this.assistant.discussTask(this.context(finding));break;
+        case 'prepare':this.setTab('materials');break;
         case 'download':if(target.dataset.artifactId)void this.download(target.dataset.artifactId);break;
         case 'handling':this.showHandling();break;
         case 'task-focus':if(target.dataset.runId)this.taskFocus(target.dataset.runId);break;
@@ -248,7 +264,6 @@ export class ReviewWorkspace {
       if(target instanceof HTMLSelectElement&&target.id==='review-source'){const source=this.workspace?.materials.find(m=>m.material_id===target.value);if(this.draftInput){this.draftInput.source_material_ref=source?materialPin(source):null;this.changedInput();}return;}
       if(target instanceof HTMLInputElement&&target.id==='review-as-of'&&this.draftInput){this.draftInput.as_of=target.value||null;this.changedInput();}
     });
-    this.page!.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement&&event.target.id==='review-update-notes'){this.updateNotes=event.target.value;try{localStorage.setItem(`bb-review-update-notes:${this.owner}:${this.projectId}:${this.updateNotesRun}`,this.updateNotes);}catch{}return;}if(event.target instanceof HTMLTextAreaElement&&event.target.id==='review-requirements'&&this.draftInput){this.draftInput.requirements=event.target.value.trim()?[event.target.value]:[];this.changedInput();}});
     this.page!.addEventListener('dragover',event=>{if((event.target as HTMLElement).closest('[data-review-drop]'))event.preventDefault();});
     this.page!.addEventListener('drop',event=>{const zone=(event.target as HTMLElement).closest<HTMLElement>('[data-review-drop]');if(zone){event.preventDefault();if(event.dataTransfer?.files.length)void this.upload([...event.dataTransfer.files],zone.dataset.reviewDrop as Dto<'MaterialResponse'>['role']);}});
     this.page!.addEventListener('keydown',event=>{if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&(event.target as HTMLElement).matches('[data-review-tab]')){event.preventDefault();this.setTab(this.tab==='materials'?'results':'materials');this.page?.querySelector<HTMLButtonElement>(`[data-review-tab="${this.tab}"]`)?.focus();}});
@@ -291,16 +306,50 @@ export class ReviewWorkspace {
     ${materials.filter(m=>!groups.some(g=>g.roles.includes(m.role))).length?`<div class="review-section-heading"><h3>已保存的其他材料</h3></div><ul class="material-file-list">${materials.filter(m=>!groups.some(g=>g.roles.includes(m.role))).map(fileRow).join('')}</ul>`:''}
     ${source.length>1?`<label class="review-section-heading" for="review-source"><h3>本次待复核稿</h3></label><select id="review-source" class="review-source-select"><option value="">选择已上传的募集书</option>${source.map(m=>`<option value="${esc(m.material_id)}" ${input.source_material_ref?.material_id===m.material_id?'selected':''}>${esc(m.filename)}</option>`).join('')}</select>`:''}
     <div class="review-scope"><span>财务核对</span><span>合规与披露</span><span>公开信息核验</span></div>
-    ${!running?`<section class="review-optional-requirements"><label for="review-requirements">补充复核要求 <span class="optional">选填</span></label><textarea id="review-requirements" class="review-source-select" rows="3" maxlength="12000" placeholder="如有特别关注的事项，可在此补充。">${esc(input.requirements.join('\n'))}</textarea><p class="review-muted">自动保存，点击“开始复核”后生效。</p></section>`:input.requirements.length?`<details class="review-optional-requirements"><summary>查看已保存的复核要求</summary><p>${esc(input.requirements.join('\n'))}</p></details>`:''}
-    <div class="review-footer-actions"><div><strong>${this.uploadRows.size?'材料保存完成后即可开始':'准备好了，就可以开始。'}</strong><p class="review-muted">${esc(uploadNotice||'确认材料与要求后，点击开始复核。')}</p></div><button class="btn primary" data-review-action="review" ${running||this.uploadRows.size?'disabled':''}>${running?'当前任务进行中':'开始复核'}</button></div>`;
+    <section class="review-optional-requirements"><strong>助手已采纳要求</strong><ul>${input.requirements.map(r=>`<li>${esc(r)}</li>`).join('')||'<li class="review-muted">暂无特别要求，可与右侧助手讨论。</li>'}</ul></section>
+    <div class="review-footer-actions"><div><strong>${this.uploadRows.size?'材料保存完成后即可开始':'准备好了，就可以开始。'}</strong><p class="review-muted">${esc(uploadNotice||'确认材料与要求后，点击开始复核。')}</p></div><button class="btn primary" data-review-action="review" ${running||this.uploadRows.size?'disabled':''}>${running?'当前任务进行中':'开始复核'}</button><button class="btn secondary" data-review-action="discuss">与助手讨论</button></div>`;
     if(editing){const field=host.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(`#${CSS.escape(editing.id)}`);if(field){field.value=editing.value;field.focus({preventScroll:true});if(field instanceof HTMLTextAreaElement&&editing.start!==null&&editing.end!==null)field.setSelectionRange(editing.start,editing.end);}}
   }
-  private updateSourceRun(){return this.workspace?.artifact_run?.source_run_id??this.workspace?.selected_report?.run_id??(this.workspace?.artifact_run?.operation!=='revision'?this.workspace?.artifact_run?.run_id:undefined);}
+  private async adoptExternalHandoff(handoff:BusinessHandoff){
+    if(!this.workspace||!this.draftInput||!await this.saveInput())throw new ApiError(409,'INPUT_REVISION_CONFLICT');
+    const source=await copyHandoffSource(this.api,handoff,this.projectId,this.controller.signal);if(!this.live())return;
+    await this.refresh();if(!this.draftInput)return;
+    if(source){const pin=materialPin(source);this.draftInput.source_material_ref=pin;if(!this.draftInput.material_versions.some(p=>sameMaterial(p,pin)))this.draftInput.material_versions.push(pin);}
+    if(!this.draftInput.requirements.includes(handoff.intent))this.draftInput.requirements.push(handoff.intent);
+    this.changedInput();if(!await this.saveInput())throw new ApiError(409,'INPUT_REVISION_CONFLICT');this.setTab('materials');this.renderMaterials();
+  }
+  private async prepareReportUpdate(context:ReviewContext,intent:string,messageId:string){
+    if(!intent.trim()||!this.workspace)return;
+    const reportId=context.report_id??this.workspace.selected_report?.report_id;if(!reportId){this.message('尚无可用于更新的复核报告，请先选择准确报告；原需求保留。',true);return;}
+    try{
+      const history=await this.reviewApi.history();if(!this.live())return;
+      const source=history.items.find(item=>item.report_id===reportId);if(!source)throw new ApiError(404,'NOT_FOUND');
+      await this.viewReport(reportId);if(!this.live()||this.workspace.selected_report?.report_id!==reportId)return;
+      const pin=source.input.source_material_ref;
+      this.openDialog('核对根据复核报告更新的需求',`<p>原始需求：${esc(intent)}</p><p>项目 ${esc(this.projectId)} · 来源消息 ${esc(messageId)}<br>准确报告 ${esc(reportId)} · 任务 ${esc(source.run.run_id)}<br>原募集书 ${esc(pin?.material_id??'未固定')} · V${pin?.material_version??'—'}${pin?'<br>SHA-256 '+esc(pin.sha256):''}</p><p>本次按这份报告修正其原募集书，保留原报告。采用只准备要求；核对报价并点击更新后才执行。更新到新的报告期需另行准备目标期间与材料。</p>`,[{label:'采用为本报告更新要求',primary:true,action:async()=>{if(this.workspace?.selected_report?.report_id!==reportId){this.dialogStatus('当前报告已改变，请重新核对准确报告；本次未采用。');return;}if(!await this.saveUpdateRequirement(reportId,intent))return;this.updateNotesRun=undefined;this.dialog?.close();this.renderedResults=undefined;this.renderResults();this.message('原需求已准备为本报告更新要求，来源报告与原募集书准确固定，尚未执行。');}}]);
+    }catch(error){if(this.live())this.message(`带入更新需求未完成。${friendlyError(error)} 原消息保留，尚未执行。`,true);}
+  }
+  private async saveUpdateRequirement(reportId:string,intent:string):Promise<boolean>{
+    if(!this.workspace||this.planSaving)return false;
+    const previous=this.workspace.plan;
+    if(previous&&previous.source_report_id!==reportId){this.dialogStatus('另一份报告已有已保存修订计划。请先核对该计划；本次未覆盖它，原需求保留。');return false;}
+    const requirements=[...new Set([...(previous?.requirements??[]),...this.updateNotes.split('\n\n').filter(Boolean),intent])];
+    if(previous&&Value.Equal(previous.requirements,requirements))return true;
+    const origin=previous?.proposal_origin?.proposal;
+    const request:ReviewPlanRequest={expected_version:previous?.version??0,source_report_id:reportId,finding_ids:previous?.finding_ids??[],excluded_findings:previous?.excluded_findings??[],requirements,...(origin&&!isTypedReviewProposal(origin)?{proposal_id:origin.proposal_id}:{})};
+    this.planSaving=true;
+    try{const saved=await this.reviewApi.plan(request);if(!this.live())return false;this.workspace.plan=saved;if(this.workspace.selected_report?.report_id===reportId)this.selections=new Set(saved.finding_ids);return true;}
+    catch(error){this.dialogStatus('更新要求尚未保存。'+friendlyError(error)+' 原需求保留，请刷新准确报告后重试。');return false;}
+    finally{this.planSaving=false;}
+  }
+  private updateSourceRun(){return this.workspace?.selected_report?.run_id??this.workspace?.artifact_run?.source_run_id??(this.workspace?.artifact_run?.operation!=='revision'?this.workspace?.artifact_run?.run_id:undefined);}
   private updateAction(){
     const sourceRun=this.updateSourceRun();if(!sourceRun)return '';
     if(this.updateNotesRun!==sourceRun){this.updateNotesRun=sourceRun;try{this.updateNotes=localStorage.getItem(`bb-review-update-notes:${this.owner}:${this.projectId}:${sourceRun}`)??'';}catch{this.updateNotes='';}}
+    const durable=this.workspace?.plan?.source_report_id===this.workspace?.selected_report?.report_id?this.workspace?.plan?.requirements??[]:[];
+    this.updateNotes=[...new Set([...durable,...this.updateNotes.split('\n\n').filter(Boolean)])].join('\n\n');
     const busy=this.updating||isActiveRun(this.workspace?.active_run);
-    return `<section class="review-update-cta"><h3>根据复核结果更新募集书</h3><p class="review-muted">沿用这份报告对应的募集书和材料，生成修订版与清洁版。原复核结果保留。</p>${busy?'<p class="review-muted">当前任务进行中，完成后可继续更新。</p>':`<label for="review-update-notes">补充更新要求 <span class="optional">选填</span></label><textarea id="review-update-notes" class="review-source-select" rows="3" maxlength="6000" placeholder="补充希望如何修改募集书。">${esc(this.updateNotes)}</textarea>`}<button class="btn primary" data-review-action="update-from-review" ${busy?'disabled':''}>${this.updating?'正在提交…':'根据复核结果更新募集书'}</button><p class="review-muted">有依据的建议才应用；更新完成不代表已通过复核。</p></section>`;
+    return `<section class="review-update-cta"><h3>根据复核结果更新募集书</h3><p class="review-muted">沿用这份报告对应的募集书和材料，生成修订版与清洁版。原复核结果保留。</p>${this.updateNotes.trim()?`<div class="review-optional-requirements"><strong>本次更新已保存要求</strong><p>${esc(this.updateNotes.trim())}</p></div>`:''}${busy?'<p class="review-muted">当前任务进行中，完成后可继续更新。</p>':'<p class="review-muted">如需补充要求，可先与助手讨论，再核对本次更新范围。</p>'}<button class="btn primary" data-review-action="update-from-review" ${busy?'disabled':''}>${this.updating?'正在提交…':'根据复核结果更新募集书'}</button><p class="review-muted">有依据的建议才应用；更新完成不代表已通过复核。</p></section>`;
   }
   private async updateFromReview(confirmed?:ReviewUpdateRequest){
     const sourceRun=this.updateSourceRun();if(!sourceRun||this.updating||isActiveRun(this.workspace?.active_run))return;
@@ -536,7 +585,7 @@ export class ReviewWorkspace {
       const run=await this.reviewApi.execute(request);if(!this.live())return;
       if(run.project_id!==this.projectId||run.execution_request_id!==execution_request_id)throw new ApiError(0,'DATA_UNAVAILABLE');
       this.executionPending=undefined;try{localStorage.removeItem(this.executionKey);}catch{}
-      this.run=run;this.workspace.active_run=isActiveRun(run)?run:null;this.reportId=undefined;this.dialog?.close();this.setTab('results');this.message(isActiveRun(run)?'任务已提交，本次输入已锁定。':`原任务状态已确认：${runStateLabel[run.state]}。新一轮需要重新确认执行。`);this.renderBody();await this.refresh();
+      this.run=run;this.workspace.active_run=isActiveRun(run)?run:null;this.reportId=undefined;this.dialog?.close();if(this.tab==='materials')this.setTab('making');this.message(isActiveRun(run)?'任务已提交，本次输入已锁定。':`原任务状态已确认：${runStateLabel[run.state]}。新一轮需要重新确认执行。`);this.renderBody();await this.refresh();
     }catch(error){
       if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){
         this.executionPending=undefined;try{localStorage.removeItem(this.executionKey);}catch{}this.dialog?.close();await this.refresh();this.message(`${friendlyError(error)} 请重新核对输入与范围后再执行。`,true);
@@ -562,7 +611,7 @@ export class ReviewWorkspace {
   private async cancelRun(){const run=this.workspace?.active_run??this.run;if(!run||!isActiveRun(run))return;try{const saved=await this.api.runAction(run.run_id,'cancel',this.controller.signal);if(!this.live())return;this.run=saved;this.message('停止请求已提交；本轮版本记录会保留。');await this.refresh();}catch(error){this.message(friendlyError(error),true);}}
 
   private explain(finding:ReviewFinding){
-    this.openDialog('问题解释',`<span class="review-tag">${esc(finding.finding_id)}</span><h3>${esc(finding.title)}</h3><p>${esc(finding.description)}</p><h4>核验依据</h4>${evidenceHtml(finding.evidence_refs,'尚无可核实的材料证据。',this.materialNames(),true)}${rulesHtml(finding)}${finding.suggested_change?`<p><strong>建议</strong> ${esc(finding.suggested_change)}</p>`:''}<p>${esc(finding.repairability.reason)}</p>${finding.limitations.length?`<p class="review-warning">${finding.limitations.map(esc).join('；')}</p>`:''}`,[{label:'补充复核要求',action:()=>{this.dialog?.close();this.setTab('materials');this.page?.querySelector<HTMLTextAreaElement>('#review-requirements')?.focus();}}]);
+    this.openDialog('问题解释',`<span class="review-tag">${esc(finding.finding_id)}</span><h3>${esc(finding.title)}</h3><p>${esc(finding.description)}</p><h4>核验依据</h4>${evidenceHtml(finding.evidence_refs,'尚无可核实的材料证据。',this.materialNames(),true)}${rulesHtml(finding)}${finding.suggested_change?`<p><strong>建议</strong> ${esc(finding.suggested_change)}</p>`:''}<p>${esc(finding.repairability.reason)}</p>${finding.limitations.length?`<p class="review-warning">${finding.limitations.map(esc).join('；')}</p>`:''}`,[{label:'补充复核要求',action:()=>{this.dialog?.close();this.assistant.discussTask(this.context(finding));}}]);
     this.dialog?.addEventListener('click',event=>{const target=(event.target as HTMLElement).closest<HTMLElement>('[data-review-action="source"]');if(target)this.showSource(finding,target);});
   }
   private showSource(finding:ReviewFinding,target:HTMLElement){
@@ -711,8 +760,8 @@ export function bindReviewProjectFields(form:HTMLFormElement,changed?:(value:Rev
   form.addEventListener('change',event=>{if((event.target as HTMLSelectElement).name==='reporting_year')periodChanged=true;notify();});
   return read;
 }
-export function renderNewReview(api:ApiClient,shell:(html:string,section:string)=>void,current:()=>boolean){
-  shell(`<div class="review-workspace"><div class="page-head"><div><div class="eyebrow">PROSPECTUS REVIEW</div><h1>复核募集说明书</h1><p>提供复核材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1,'复核流程')}<form id="review-create-form" class="review-panel review-create"><h2>准备复核项目</h2><p class="review-muted">填写待复核募集书的基本信息，再上传募集书和核验材料。</p><div class="review-scope review-create-scope" aria-label="三个复核维度"><span>财务数据核对</span><span>合规与披露</span><span>公开信息核验</span></div>${reviewProjectFields({...blankDraft(),kind:'review'} as ReviewProjectFields)}<p id="review-create-status" class="form-message" role="status"></p><div class="review-form-actions"><button class="btn primary" type="submit">创建项目，继续提供材料</button><a class="btn secondary" href="#dashboard">取消</a></div></form></div>`,'review');
-  const form=document.querySelector<HTMLFormElement>('#review-create-form')!,read=bindReviewProjectFields(form);
-  form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector<HTMLButtonElement>('[type=submit]')!;if(button.disabled)return;const value=read(),status=form.querySelector('#review-create-status')!,errors=validateDraft(value);if(errors.length){status.textContent=errors.join(' ');return;}button.disabled=true;status.textContent='正在创建项目…';try{const project=await api.create(value);if(current())location.hash=`/projects/${encodeURIComponent(project.project_id)}/review?tab=materials`;}catch(error){if(current())status.textContent=friendlyError(error);}finally{button.disabled=false;}});
+export function renderNewReview(api:ApiClient,shell:(html:string,section:string)=>void,current:()=>boolean,handoffQuery=new URLSearchParams()){
+  shell(`<div class="review-workspace"><div class="page-head"><div><div class="eyebrow">PROSPECTUS REVIEW</div><h1>复核募集说明书</h1><p>提供复核材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1,'复核流程')}<div id="business-handoff"></div><form id="review-create-form" class="review-panel review-create"><h2>准备复核项目</h2><p class="review-muted">填写待复核募集书的基本信息，再上传募集书和核验材料。</p><div class="review-scope review-create-scope" aria-label="三个复核维度"><span>财务数据核对</span><span>合规与披露</span><span>公开信息核验</span></div>${reviewProjectFields({...blankDraft(),kind:'review'} as ReviewProjectFields)}<p id="review-create-status" class="form-message" role="status"></p><div class="review-form-actions"><button class="btn primary" type="submit">创建项目，继续提供材料</button><a class="btn secondary" href="#dashboard">取消</a></div></form></div>`,'review');
+  void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,current);const form=document.querySelector<HTMLFormElement>('#review-create-form')!,read=bindReviewProjectFields(form);
+  form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector<HTMLButtonElement>('[type=submit]')!;if(button.disabled)return;const value=read(),status=form.querySelector('#review-create-status')!,errors=validateDraft(value);if(errors.length){status.textContent=errors.join(' ');return;}button.disabled=true;status.textContent='正在创建项目…';try{const project=await api.create(value);if(current())location.hash=`/projects/${encodeURIComponent(project.project_id)}/review?tab=materials${carryHandoff(handoffQuery)}`;}catch(error){if(current())status.textContent=friendlyError(error);}finally{button.disabled=false;}});
 }
