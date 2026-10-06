@@ -16,6 +16,7 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
   const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
   const prices={...INITIAL_FIXED_PRICES,full_review:300,differential_review:100,review_revision:200}; // Synthetic prices, not product pricing.
   try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_paid_review']);
     const p=ok(await send('POST','/api/v1/projects',{kind:'review',name:'Synthetic credit review',issuer_name:null,market:null,offering:null})),base=`/api/v1/projects/${p.project_id}`;
     const upload=uid(),material=uid(),sha=digest('synthetic');
     await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state) VALUES($1,$2,$3,'synthetic.pdf','application/pdf',16,$4,'historical',$5,now()+interval '1 hour','completed')`,[upload,owner,p.project_id,sha,`synthetic/${upload}`]);
@@ -29,7 +30,7 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[p.project_id])).rows[0].n,0);
     assert.equal((await send('POST',`${base}/review-executions`,request)).json().code,'QUOTE_REQUIRED');
     const paid={...request,quote_id:quote.quote.quote_id};
-    assert.equal((await send('POST',`${base}/review-executions`,paid)).statusCode,402);
+    const insufficient=await send('POST',`${base}/review-executions`,paid);assert.equal(insufficient.statusCode,402,insufficient.body);
     const fund=()=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:'synthetic-5000',points:5000,expiresAt:null,actor:'synthetic',reason:'test'}));
     assert.equal(await fund(),await fund());assert.deepEqual(await creditBalance(pool,owner),{available:5000,frozen:0});
     const concurrent=await Promise.all([send('POST',`${base}/review-executions`,paid),send('POST',`${base}/review-executions`,paid)]);

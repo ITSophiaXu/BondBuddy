@@ -21,7 +21,7 @@ BEGIN
   IF NEW.state='succeeded' AND NEW.task_kind='review' THEN
     IF NOT EXISTS(SELECT 1 FROM bb_review_artifacts a JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version
       WHERE a.owner_user_id=NEW.owner_user_id AND a.run_id=NEW.id AND a.project_id=NEW.project_id AND a.kind='report'
-      AND v.owner_user_id=NEW.owner_user_id AND v.run_id=NEW.id AND v.delivery_status='available' AND v.quality_status='passed')
+      AND v.owner_user_id=NEW.owner_user_id AND v.run_id=NEW.id AND v.id=NEW.artifact_id AND v.version=NEW.artifact_version AND v.delivery_status='available' AND v.quality_status='passed')
     THEN RAISE EXCEPTION 'Delivered review report required for settlement' USING ERRCODE='23514'; END IF;
   ELSIF NEW.state='succeeded' THEN
     SELECT checkpoint->'stages'->'word_delivery_pair' INTO pair FROM bb_jobs WHERE run_id=NEW.id AND owner_user_id=NEW.owner_user_id;
@@ -30,7 +30,7 @@ BEGIN
     END IF;
     FOREACH artifact IN ARRAY ARRAY[pair->>'revision_artifact_id',pair->>'clean_artifact_id'] LOOP
       IF NOT EXISTS(SELECT 1 FROM bb_artifact_versions v JOIN bb_word_delivery_evidence e ON e.id=v.word_delivery_evidence_id
-        WHERE v.id=artifact AND v.owner_user_id=NEW.owner_user_id AND v.run_id=NEW.id AND v.delivery_status='available'
+        WHERE v.id=artifact AND v.owner_user_id=NEW.owner_user_id AND v.run_id=NEW.id AND v.id=NEW.artifact_id AND v.version=NEW.artifact_version AND v.delivery_status='available'
         AND e.owner_user_id=v.owner_user_id AND e.run_id=v.run_id AND e.artifact_id=v.id AND e.artifact_version=v.version
         AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=v.sha256 AND e.candidate_sha256=v.sha256)
       THEN RAISE EXCEPTION 'Word delivery unavailable for settlement' USING ERRCODE='23514'; END IF;

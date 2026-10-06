@@ -243,7 +243,7 @@ test('handling remains unavailable on missing metadata, stale artifact associati
 
 test('result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded',async({page})=>{
   const state=await setup(page);await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.getByRole('tab')).toHaveCount(2);
-  await expect(page.locator('#review-workspace')).not.toContainText(/充值|费用|积分|余额/);
+  await expect(page.locator('#review-credit-receipt')).toContainText('未扣积分');
   const card=await openFinding(page,'F01');await card.getByRole('button',{name:'查看解释'}).click();await expect(page.getByRole('dialog')).toContainText('现金流 120');expect(state.requests).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await page.getByRole('button',{name:'核对修订计划'}).click();await page.getByRole('button',{name:'确认范围并执行修订'}).click();await expect(page.getByRole('dialog')).toContainText('请选择至少一项');expect(state.executes).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await card.getByLabel('加入修订').check();await expect.poll(()=>state.workspace.plan?.finding_ids).toEqual(['F01']);await expect(card).toHaveAttribute('open','');
@@ -519,7 +519,7 @@ test('file report update pins source and optional requirements, survives respons
  await page.locator('#review-update-notes').fill('保留本期发行安排。');await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();
  await expect(page.locator('#review-status')).toContainText('尚未确认更新结果');await page.reload();await expect(page.locator('#review-update-notes')).toHaveValue('保留本期发行安排。');
  await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');
- expect(requests).toHaveLength(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('保留本期发行安排。');
+ await expect.poll(()=>requests.length).toBe(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('保留本期发行安排。');
  state.workspace.active_run=null;state.workspace.artifact_run={run_id:'update-run',version:2,operation:'revision',source_report_id:null,source_run_id:'run-1'};
  state.workspace.artifacts=[{artifact_id:'tracked',artifact_version:1,filename:'修订版.docx',kind:'revision'},{artifact_id:'clean',artifact_version:1,filename:'清洁版.docx',kind:'clean'}];
  state.history.unshift({...structuredClone(state.history[0]),run:state.makeRun('update-run','succeeded'),operation:'revision',version:2,artifacts:state.workspace.artifacts,created_at:'2026-10-05T12:00:00Z'});

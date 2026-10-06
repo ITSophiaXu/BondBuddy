@@ -265,7 +265,7 @@ test('unified account has a single entry and preserves security forms beside rea
  await expect(page.locator('#account-credits')).toContainText('充值渠道暂未开放');
  for(const name of ['登录会话','修改密码','注销账号'])await page.locator('summary').filter({hasText:name}).click();
  const output=process.env.BB_ACCOUNT_EVIDENCE;
- if(output){await mkdir(output,{recursive:true});for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:output+`/implementation-account-${width}.png`,fullPage:true});}
+ if(output){await mkdir(output,{recursive:true});for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:output+`/implementation-account-${width}.png`,fullPage:true});}
    const html=await page.locator('#app').innerHTML(),css=await page.evaluate(()=>[...document.querySelectorAll('style')].map(n=>n.textContent).join('\n'));
    await writeFile('../../product-prototype/public/account-credits.html',`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>我的账号 · 合成设计原型</title><style>${css}</style><body><div id="app">${html}</div></body></html>`);
  }

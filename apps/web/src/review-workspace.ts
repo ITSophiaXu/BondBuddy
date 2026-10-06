@@ -1,4 +1,4 @@
-import { BILLING_TASKS, type ReviewUpdateRequest } from '@bondbuddy/contracts';
+import { BILLING_TASKS, ReviewUpdateRequestSchema, type ReviewUpdateRequest } from '@bondbuddy/contracts';
 import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewDraftInputSchema, ReviewExecutionRequestSchema,
   type ReviewWorkspace as Workspace, type ReviewContext, type ReviewDraftInput, type ReviewExecutionRequest,
   ReviewProposalAdoptionRequestSchema, type ReviewMaterialPin, type ReviewFinding, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal, type ReviewPlanRequest, type Run, type Market, type Offering } from '@bondbuddy/contracts';
@@ -305,17 +305,23 @@ export class ReviewWorkspace {
   private async updateFromReview(confirmed?:ReviewUpdateRequest){
     const sourceRun=this.updateSourceRun();if(!sourceRun||this.updating||isActiveRun(this.workspace?.active_run))return;
     this.updating=true;this.renderedResults=undefined;this.renderResults();
+    const pendingKey=`bb-review-update-pending:${this.owner}:${this.projectId}`;
     try{
       const requirements=this.updateNotes.trim();
       const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([this.projectId,sourceRun,requirements])));
       const execution_request_id='review-update-'+[...new Uint8Array(bytes)].map(n=>n.toString(16).padStart(2,'0')).join('');
-      const request=confirmed??{execution_request_id,source_run_id:sourceRun,requirements};
-      if(!confirmed){const quote=await this.reviewApi.quoteUpdate(request);if(!this.live())return;if(quote.enabled){this.confirmCredits(quote,async quoteId=>this.updateFromReview({...request,quote_id:quoteId}));return;}}
+      let pending:ReviewUpdateRequest|undefined;
+      try{const stored:unknown=JSON.parse(localStorage.getItem(pendingKey)??'null');if(Value.Check(ReviewUpdateRequestSchema,stored))pending=stored;}catch{}
+      if(pending&&(pending.source_run_id!==sourceRun||pending.requirements!==requirements)){this.message('原更新请求尚未确认，请先恢复原要求并核对任务状态。',true);return;}
+      const request=confirmed??pending??{execution_request_id,source_run_id:sourceRun,requirements};
+      if(!confirmed&&!pending){const quote=await this.reviewApi.quoteUpdate(request);if(!this.live())return;if(quote.enabled){this.confirmCredits(quote,async quoteId=>this.updateFromReview({...request,quote_id:quoteId}));return;}}
+      try{localStorage.setItem(pendingKey,JSON.stringify(request));}catch{}
       const run=await this.reviewApi.updateFromReview(request);
+      try{localStorage.removeItem(pendingKey);}catch{}
       if(!this.live())return;
       this.run=run;if(this.workspace)this.workspace.active_run=isActiveRun(run)?run:null;
       this.reportId=undefined;this.setTab('results');await this.refresh();this.message(isActiveRun(run)?'更新任务已提交，完成后可下载修订版和清洁版。':run.state==='succeeded'?'相同要求的更新已完成，可下载已有成果。':'已找到同一请求的任务记录，请查看当前状态。');
-    }catch(error){if(this.live())this.message(`尚未确认更新结果。${friendlyError(error)} 再次点击会核对同一请求，不重复执行。`,true);}
+    }catch(error){if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){try{localStorage.removeItem(pendingKey);}catch{}}if(this.live())this.message(`尚未确认更新结果。${friendlyError(error)} 再次点击会核对同一请求，不重复执行。`,true);}
     finally{this.updating=false;if(this.live()){this.renderedResults=undefined;this.renderBody();}}
   }
   private renderResults(){
@@ -548,6 +554,7 @@ export class ReviewWorkspace {
     host.hidden=!run;if(!run)return;
     if(run.billing_mode!=='fixed_credits'){host.textContent='本次任务按提交时的试用规则执行，未扣积分。';return;}
     const key=run.run_id+':'+run.state;
+    if(this.chargeKey===key&&!this.charge?.quote){host.textContent='本次积分记录暂不可用，请刷新后重试。';return;}
     if(this.chargeKey===key&&this.charge?.quote){host.textContent=`本次 ${this.charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已预留，交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[this.charge.state??'held']}`;return;}
     host.textContent='正在读取本次积分状态…';if(this.chargeLoading)return;this.chargeLoading=true;
     void this.api.runCharge(run.run_id,this.controller.signal).then(charge=>{if(this.live()&&(this.workspace?.active_run??this.run)?.run_id===run.run_id){this.charge=charge;this.chargeKey=key;}}).catch(()=>{if(this.live())host.textContent='积分状态暂未同步，刷新页面后可查看。';}).finally(()=>{this.chargeLoading=false;if(this.live()&&this.chargeKey===key)this.renderCharge();});

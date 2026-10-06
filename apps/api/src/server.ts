@@ -127,6 +127,7 @@ export function createServer(settings: Settings = {}) {
   const app = Fastify({ logger: false, genReqId: uid, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
   const paidAuthoring = settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1';
+  const paidReview = settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1';
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
@@ -167,7 +168,7 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
-  registerReviewRoutes(app, db, owner, settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');
+  registerReviewRoutes(app, db, owner, paidReview);
   registerReadableReview(app, db, owner, blob);
   installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
@@ -1390,6 +1391,7 @@ export function createServer(settings: Settings = {}) {
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+      if(paidReview&&currentProject.kind==='review')throw new Problem(409,'QUOTE_REQUIRED','请从复核项目确认本次报价后执行。');
       const lockedKind=input.rows[0].manifest?.kind;
       if(lockedKind!==currentProject.kind)
         throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
