@@ -9,6 +9,7 @@ import { SaxesParser } from 'saxes';
 import { M1_UPLOAD_MIME_TYPES, type SignatureAssessment, type UploadMediaType } from '@bondbuddy/contracts';
 import type { UploadRejectionReason, UploadSafetyCode, UploadStructureDetail, UploadWorkerReply } from './upload-safety.js';
 import { MAX_SIGNED_PDF_BYTES, SignedPdfProfileError, validateSignedPdfProfile } from './signed-pdf-profile.js';
+import { validateMultipageSignedPdf } from './signed-pdf-multipage.js';
 
 type ContentSafetyCode = Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>;
 type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string; reason: UploadRejectionReason; detail?: UploadStructureDetail };
@@ -1260,8 +1261,12 @@ async function inspectPdfDocument(source: Record<string, unknown>, loadSignature
       if (fields && Object.keys(fields).length > 0) unsupported('PDF contains interactive form fields');
       return null;
     }
-    if (widgetCount !== 1) unsupported('PDF contains multiple interactive fields');
-    try { return validateSignedPdfProfile(await loadSignatureBytes()); }
+    try {
+      const bytes = await loadSignatureBytes();
+      return document.numPages > 1
+        ? await validateMultipageSignedPdf(bytes, widgetCount, document.numPages)
+        : validateSignedPdfProfile(bytes);
+    }
     catch (error) {
       if (error instanceof SignedPdfProfileError) unsupported('PDF signature structure is outside the supported profile');
       throw error;

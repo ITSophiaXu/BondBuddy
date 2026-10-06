@@ -343,7 +343,8 @@ async function renderRoute() {
   }
   const match = requested.match(/^\/projects\/([^/?]+)(?:\?(.*))?$/);
   if (!match) { location.hash = '/'; return; }
-  shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', 'projects');
+  const projectSection = projectListContext() ? 'projects' : 'workspace';
+  shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', projectSection);
   try {
     const project = await api.project(decodeURIComponent(match[1]));
     if (token !== epoch) return;
@@ -356,7 +357,7 @@ async function renderRoute() {
     renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials');
   } catch (error) {
     if (token !== epoch) return;
-    shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, 'projects');
+    shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, projectSection);
     document.querySelector('#retry-project')!.addEventListener('click', () => { void renderRoute(); });
   }
 }

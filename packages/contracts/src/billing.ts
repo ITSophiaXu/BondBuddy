@@ -13,12 +13,12 @@ export const INITIAL_FIXED_PRICES: Record<keyof typeof AUTHORING_BILLING_TASKS, 
   migration: 64900, migration_two_years: 85900, migration_three_years: 105900, new_authoring: 159900
 };
 export const RECHARGE_PACKS = [
-  { id: 'cny50', amount_fen: 5000, points: 5000 },
+  { id: 'cny200', amount_fen: 20000, points: 20000 },
   { id: 'cny500', amount_fen: 50000, points: 52500 },
   { id: 'cny2000', amount_fen: 200000, points: 220000 },
   { id: 'cny10000', amount_fen: 1000000, points: 1150000 }
 ] as const;
-export const RECHARGE_PACK_VERSION = 'recharge-20260922-v1';
+export const RECHARGE_PACK_VERSION = 'recharge-20261006-v2';
 const obj = <T extends Record<string, any>>(fields: T) => Type.Object(fields, { additionalProperties: false });
 const id = Type.String({ minLength: 1, maxLength: 128 });
 const points = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });

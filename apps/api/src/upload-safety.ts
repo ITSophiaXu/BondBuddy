@@ -1,5 +1,6 @@
 import { Worker } from 'node:worker_threads';
-import { SIGNED_PDF_PROFILE_VERSION, type ErrorCode, type SignatureAssessment, type UploadMediaType } from '@bondbuddy/contracts';
+import { SignatureAssessmentSchema, type ErrorCode, type SignatureAssessment, type UploadMediaType } from '@bondbuddy/contracts';
+import { Value } from '@sinclair/typebox/value';
 
 export type UploadSafetyCode = Extract<ErrorCode, `MATERIAL_${string}` | 'DATA_UNAVAILABLE'>;
 export const UPLOAD_REJECTION_REASONS = [
@@ -147,9 +148,7 @@ export async function runInspectionWorkerDetailed(workerData: Record<string, unk
     worker.once('message', (reply: UploadWorkerReply) => {
       if (reply?.ok === true) {
         const assessment = reply.signatureAssessment;
-        if (assessment === null || mediaType === 'application/pdf' && assessment?.status === 'signature_unverified'
-          && assessment.profile_version === SIGNED_PDF_PROFILE_VERSION && assessment.signature_count === 1
-          && Object.keys(assessment).length === 3) return finish(undefined, assessment);
+        if (assessment === null || mediaType === 'application/pdf' && Value.Check(SignatureAssessmentSchema, assessment)) return finish(undefined, assessment);
         return finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material inspection returned an invalid assessment', 'inspection_worker_failed'));
       }
       if (reply?.ok === false && (reply.status === 415 || reply.status === 422)) {

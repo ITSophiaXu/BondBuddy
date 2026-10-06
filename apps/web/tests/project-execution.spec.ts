@@ -113,7 +113,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if(path==='/credits/balance')return json(route,200,{enabled:true,available:state.available,frozen:0});
     if(path==='/credits/recharge-config')return json(route,200,{enabled:true,providers:['alipay'],packs:RECHARGE_PACKS,pack_version:'synthetic-v1'});
     if(path==='/credits/recharge-orders'){
-      state.order={order_id:'synthetic-order',provider:'alipay',state:'pending',amount_fen:5000,points:5000,currency:'CNY',checkout_url:'https://synthetic.invalid/pay',project_id:id,expires_at:now,credited_at:null};
+      state.order={order_id:'synthetic-order',provider:'alipay',state:'pending',amount_fen:20000,points:20000,currency:'CNY',checkout_url:'https://synthetic.invalid/pay',project_id:id,expires_at:now,credited_at:null};
       return json(route,201,state.order);
     }
     if(path.startsWith('/credits/recharge-orders/'))return json(route,200,state.order);
@@ -188,9 +188,10 @@ test('M2 shortage preserves inputs, recharge never executes, returning requires 
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-mobile.png')});
   await page.setViewportSize({width:1440,height:960});
-  await page.getByRole('button',{name:'充值 ¥50',exact:true}).click();
+  await expect(page.getByRole('button',{name:'充值 ¥50',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'充值 ¥200',exact:true}).click();
   await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();expect(state.executes).toHaveLength(0);
-  state.order!.state='paid';state.order!.credited_at=now;state.available+=5000;
+  state.order!.state='paid';state.order!.credited_at=now;state.available+=20000;
   await page.getByRole('button',{name:'刷新支付状态'}).click();await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
   expect(state.executes).toHaveLength(0);
   await page.getByRole('link',{name:'返回项目确认开始'}).first().click();
