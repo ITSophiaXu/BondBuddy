@@ -2,6 +2,14 @@
 
 # M1 统一技术栈与四人协作基线
 
+## M4 单文书与基础问答增量（2026-10-06）
+
+按[已确认首发范围](product-decisions/2026-10-06-m4-m5-priority-split.md)实现合并材料与问答入口。公共契约在 `packages/contracts/src/m4-workspace.ts`；`/api/v1/m4` 保存话题共享材料、两文种独立草稿、精确来源／模板／底稿 pins、不可变执行输入、消息及工作区阅读／未发送状态。数据库迁移只新增，不把原型 JSON 接作持久层。
+
+`m4_document_v1` 与 `m4_qa_v1` 为独立 job subtype，不截获旧 M1 generation。现有 worker 租约／检查点、`codexModelStage` 和 contained Codex CLI 接收只读原件、固定受信 Skill 及本轮 scratch/output。立项和普通私募摘要各交付可编辑 DOCX 与独立编制说明，私有 Blob 读回核对后登记；QA 回复在聊天中展示，持久文本只用于恢复和免费导出。准确输入／技能／工具／模型变更不静默重发，未知调用先核对。财务工具固定宿主授权，Decimal 重算并保留期间、单位、口径及精确引用；算术成功不代表来源事实已核。
+
+文书任务按准确来源项目与更新／复核共用互斥，普通 QA 可并行。M4 沿用现有积分批次账本，新增 `metered_credits` 路径：发布成本率与预算后按真实成本 × 100 × K、上限 B 结算，失败释放，usage unknown 保留待核；G01=8／G05=6 是成本系数。没有生产默认成本率，未配置不得开放付费。旧固定价运行不变。交互、工程、真实供应商与最终专业／发布验收分别见[实施记录](acceptance/m4-implementation-2026-10-06.md)。
+
 2026-10-05[可读结果投影](product-decisions/2026-10-05-review-readable-results.md)：API按账号/项目/run读取已交付报告的私有Markdown并核对输入/hash；前端只读整理为财务/合规披露/公开核验三维业务结果，过滤工程元数据、保留缺项和不确定性，不生成可执行finding，不写run，不触发模型。读取异常只影响正文，Word交付独立。无需数据库迁移。
 
 > 2026-10-05 用户决定：新复核直接交付 CLI 报告文件，暂不以页面结构化问题/引用/覆盖展示为前置。见 [复核文件交付](product-decisions/2026-10-05-review-file-delivery.md)；旧运行/报告协议及资源隔离保留。

@@ -1,5 +1,9 @@
 # GitHub 任务入口
 
+> 本轮M4/M5拟拆分，尚未更新远端milestone／正文／标题。M4-04／05／06原#60／61／62拟改归M5，身份不变；新M5-08～12暂无GitHub编号。以[阶段决定](../../../docs/product-decisions/2026-10-06-m4-m5-priority-split.md)为准，旧记录不代表首发范围。
+
+> 2026-10-06 M4 本地review：下面M4标题为拟更新稿，链接／issue身份沿用历史登记；未重新核验或修改远端。M4跟踪#4、子任务#57～#68，当前GitHub正文／状态不代表本稿已发布。新交互／费用按[当前M4决定](../../../docs/product-decisions/2026-10-06-m4-agent-workspace.md)，旧M3段落保留历史记录。
+
 仓库：[ITSophiaXu/BondBuddy](https://github.com/ITSophiaXu/BondBuddy)
 
 历史发布时已读取 GitHub 核对标题、标签、里程碑、正文和父子关系；该记录不表示后续范围修改已发布或实现。本文保留链接，认领与完成状态以 GitHub 为准。
@@ -11,8 +15,8 @@
 | M1 | [M1 · 网页版注册/登录与募集书更新上线](https://github.com/ITSophiaXu/BondBuddy/milestone/1) | [#1](https://github.com/ITSophiaXu/BondBuddy/issues/1) |
 | M2 | [M2 · 积分与付费功能上线](https://github.com/ITSophiaXu/BondBuddy/milestone/2) | [#2](https://github.com/ITSophiaXu/BondBuddy/issues/2) |
 | M3 | [M3 · 募集书复核与结果修订上线](https://github.com/ITSophiaXu/BondBuddy/milestone/3) | [#3](https://github.com/ITSophiaXu/BondBuddy/issues/3) |
-| M4 | [M4 · 材料生成与用户问答上线](https://github.com/ITSophiaXu/BondBuddy/milestone/4) | [#4](https://github.com/ITSophiaXu/BondBuddy/issues/4) |
-| M5 | [M5 · Windows 应用上线](https://github.com/ITSophiaXu/BondBuddy/milestone/5) | [#5](https://github.com/ITSophiaXu/BondBuddy/issues/5) |
+| M4 | [M4 · 材料与问答核心闭环上线（立项＋普通私募摘要，Codex CLI）](https://github.com/ITSophiaXu/BondBuddy/milestone/4) | [#4](https://github.com/ITSophiaXu/BondBuddy/issues/4) |
+| M5 | [M5 · 材料与助手扩展及 Windows 交付](https://github.com/ITSophiaXu/BondBuddy/milestone/5) | [#5](https://github.com/ITSophiaXu/BondBuddy/issues/5) |
 
 | 任务 | Issue |
 |---|---|
@@ -74,22 +78,27 @@
 | M3-10 完成复核与结果修订的集成及上线验收 | [#56](https://github.com/ITSophiaXu/BondBuddy/issues/56) |
 | 统一任务与对话时间线投影、事件恢复契约（真实 GitHub 新任务，不新增旧发布 ID） | [#537](https://github.com/ITSophiaXu/BondBuddy/issues/537) |
 | 问题级复核提议的明确采纳与执行来源绑定（真实 GitHub 新任务，不新增旧发布 ID） | [#538](https://github.com/ITSophiaXu/BondBuddy/issues/538) |
-| M4-01 交付材料生成工作区、来源选择和右侧对话 | [#57](https://github.com/ITSophiaXu/BondBuddy/issues/57) |
-| M4-02 建立平台模板及个人券商模板库 | [#58](https://github.com/ITSophiaXu/BondBuddy/issues/58) |
-| M4-03 实现立项报告模板与券商规则适配 | [#59](https://github.com/ITSophiaXu/BondBuddy/issues/59) |
-| M4-04 实现主承销商核查意见模板 | [#60](https://github.com/ITSophiaXu/BondBuddy/issues/60) |
-| M4-05 实现法律意见书模板和结论证据约束 | [#61](https://github.com/ITSophiaXu/BondBuddy/issues/61) |
-| M4-06 实现推荐函模板及市场/用途适配 | [#62](https://github.com/ITSophiaXu/BondBuddy/issues/62) |
-| M4-07 实现募集说明书摘要的私募/公募分支 | [#63](https://github.com/ITSophiaXu/BondBuddy/issues/63) |
-| M4-08 实现专业 QA 的检索、财务分析和公开查询 | [#64](https://github.com/ITSophiaXu/BondBuddy/issues/64) |
-| M4-09 统一 QA/补充/文书执行路由与按轮计费 | [#65](https://github.com/ITSophiaXu/BondBuddy/issues/65) |
-| M4-10 交付独立问答页面、会话历史、附件和流式反馈 | [#66](https://github.com/ITSophiaXu/BondBuddy/issues/66) |
-| M4-11 实现五模板生成流水线与多轮成果迭代 | [#67](https://github.com/ITSophiaXu/BondBuddy/issues/67) |
-| M4-12 完成五类材料与独立 QA 的上线验收 | [#68](https://github.com/ITSophiaXu/BondBuddy/issues/68) |
-| M5-01 确定桌面壳并建立安全的 Web 复用层 | [#69](https://github.com/ITSophiaXu/BondBuddy/issues/69) |
-| M5-02 实现安装包、依赖分发、签名更新和回滚 | [#70](https://github.com/ITSophiaXu/BondBuddy/issues/70) |
-| M5-03 实现本地账号隔离的项目、材料与缓存存储 | [#71](https://github.com/ITSophiaXu/BondBuddy/issues/71) |
-| M5-04 实现本地任务执行、托盘、断网和崩溃恢复 | [#72](https://github.com/ITSophiaXu/BondBuddy/issues/72) |
-| M5-05 统一 Web/Windows 账号、钱包和跨端任务边界 | [#73](https://github.com/ITSophiaXu/BondBuddy/issues/73) |
-| M5-06 实现 Web 到本地迁移、项目备份和用户支持 | [#74](https://github.com/ITSophiaXu/BondBuddy/issues/74) |
-| M5-07 完成 Windows 安装、升级、安全与业务发布验收 | [#75](https://github.com/ITSophiaXu/BondBuddy/issues/75) |
+| M4-01 交付首批材料生成与问答合并工作区、按文种构建输入及成果联动（归M4） | [#57](https://github.com/ITSophiaXu/BondBuddy/issues/57) |
+| M4-02 接入首发两文种模板、准确版次及私有隔离（归M4） | [#58](https://github.com/ITSophiaXu/BondBuddy/issues/58) |
+| M4-03 实现普通私募立项报告与券商规则适配（归M4） | [#59](https://github.com/ITSophiaXu/BondBuddy/issues/59) |
+| M4-04 实现主承销商核查意见模板（归M5） | [#60](https://github.com/ITSophiaXu/BondBuddy/issues/60) |
+| M4-05 实现法律意见书模板和结论证据约束（归M5） | [#61](https://github.com/ITSophiaXu/BondBuddy/issues/61) |
+| M4-06 实现推荐函模板及市场/用途适配（归M5） | [#62](https://github.com/ITSophiaXu/BondBuddy/issues/62) |
+| M4-07 实现普通私募募集说明书摘要（归M4） | [#63](https://github.com/ITSophiaXu/BondBuddy/issues/63) |
+| M4-08 通过 Codex CLI 实现基础专业问答、材料解读和确定性财务计算（归M4） | [#64](https://github.com/ITSophiaXu/BondBuddy/issues/64) |
+| M4-09 实现首批助手意图路由、任务草稿回填与既有按轮计费（归M4） | [#65](https://github.com/ITSophiaXu/BondBuddy/issues/65) |
+| M4-10 交付常驻助手、首批真实任务时间线、成果标签与完整恢复（归M4） | [#66](https://github.com/ITSophiaXu/BondBuddy/issues/66) |
+| M4-11 通过 Codex CLI 交付首批两文种、真实 Word 与准确底稿的全文迭代（归M4） | [#67](https://github.com/ITSophiaXu/BondBuddy/issues/67) |
+| M4-12 完成立项、普通私募摘要、基础 QA 与真实 Codex CLI 的最终统一验收（归M4） | [#68](https://github.com/ITSophiaXu/BondBuddy/issues/68) |
+| M5-01 确定桌面壳并建立安全的 Web 复用层（归M5） | [#69](https://github.com/ITSophiaXu/BondBuddy/issues/69) |
+| M5-02 实现安装包、依赖分发、签名更新和回滚（归M5） | [#70](https://github.com/ITSophiaXu/BondBuddy/issues/70) |
+| M5-03 实现本地账号隔离的项目、材料与缓存存储（归M5） | [#71](https://github.com/ITSophiaXu/BondBuddy/issues/71) |
+| M5-04 实现本地任务执行、托盘、断网和崩溃恢复（归M5） | [#72](https://github.com/ITSophiaXu/BondBuddy/issues/72) |
+| M5-05 统一 Web/Windows 账号、钱包和跨端任务边界（归M5） | [#73](https://github.com/ITSophiaXu/BondBuddy/issues/73) |
+| M5-06 实现 Web 到本地迁移、项目备份和用户支持（归M5） | [#74](https://github.com/ITSophiaXu/BondBuddy/issues/74) |
+| M5-07 完成 Windows 安装、升级、安全与已开放业务验收（归M5） | [#75](https://github.com/ITSophiaXu/BondBuddy/issues/75) |
+| M5-08 扩展组合材料生成与准确章节/段落改稿（M5） | 待发布，暂无GitHub编号 |
+| M5-09 扩展专业 QA 的实时查询、法规适用检索及深度分析（M5） | 待发布，暂无GitHub编号 |
+| M5-10 承接跨业务自动执行及可编辑 QA 成果（M5） | 待发布，暂无GitHub编号 |
+| M5-11 完成扩展文种、专业 QA、组合与跨业务的统一验收（M5） | 待发布，暂无GitHub编号 |
+| M5-12 扩展模板库管理、公募摘要及市场/机构适用范围（M5） | 待发布，暂无GitHub编号 |
