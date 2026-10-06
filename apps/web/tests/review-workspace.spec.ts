@@ -460,7 +460,12 @@ test('compact review creation preserves quarter, review kind and existing option
  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
  state.workspace.project.update_details!.bond_terms='以前保存的债券安排，简洁表单不应清空';
  await expect(page.getByRole('heading',{name:'提供复核材料'})).toBeVisible();
- await page.getByRole('link',{name:'编辑项目信息'}).click();await page.locator('#issuer').fill('合成发行人更新');
+ await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('材料与要求');
+ await page.reload();await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('材料与要求');
+ await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.getByRole('navigation',{name:'复核流程'})).toBeHidden();
+ await page.getByRole('tab',{name:/材料与要求/}).click();
+ await page.getByRole('link',{name:'编辑项目信息'}).click();
+ await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('创建项目');await page.locator('#issuer').fill('合成发行人更新');
  await expect.poll(()=>state.projectPatches.length).toBeGreaterThan(0);expect(state.workspace.project.kind).toBe('review');
  expect(state.workspace.project.issuer_name).toBe('合成发行人更新');
  expect(state.workspace.project.update_details?.bond_terms).toBe('以前保存的债券安排，简洁表单不应清空');
@@ -514,16 +519,23 @@ test('review navigation retains the app scale while keeping its own layout',asyn
    const el=document.querySelector(selector)!,css=getComputedStyle(el),rect=el.getBoundingClientRect();
    return [selector,{font:css.fontSize,padding:css.padding,width:selector==='h1'?null:rect.width,left:rect.left}];
  })));
- for(const width of [1360,820,390]){
+ for(const width of [1920,1360,820,390]){
   await page.setViewportSize({width,height:width===390?844:900});await page.goto('/#update');
   await expect(page.getByRole('heading',{name:'更新募集说明书',exact:true})).toBeVisible();const update=await measure();
+  const updateCard=await page.locator('.form-panel').boundingBox();
+  const updateSteps=await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}));
   const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
   if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
   await page.getByRole('link',{name:'复核募集书',exact:true}).click();
   await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
-  if(output){await page.screenshot({path:`${output}/review-entry-${width}.png`,fullPage:true});await writeFile(`${output}/scale-${width}.json`,JSON.stringify({viewport:width,update,review},null,2)+'\n');}
+  const reviewCard=await page.locator('#review-create-form').boundingBox();
+  expect(reviewCard!.x).toBeCloseTo(updateCard!.x,0);expect(reviewCard!.width).toBeCloseTo(updateCard!.width,0);
+  // The review-only free badge adds a row to the mobile topbar.
+  if(width>=760)expect(reviewCard!.y).toBeCloseTo(updateCard!.y,0);
+  expect(await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}))).toEqual(updateSteps);
+  if(output){await page.screenshot({path:`${output}/review-entry-${width}.png`,fullPage:true});await writeFile(`${output}/scale-${width}.json`,JSON.stringify({viewport:width,update,review,updateCard,reviewCard},null,2)+'\n');}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await expect(page.locator('.stepper')).toHaveCount(0);
+  await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('创建项目');
   if(width===390){await page.getByRole('button',{name:'打开菜单'}).click();await expect(page.locator('#sidebar')).toBeVisible();await page.locator('#close-menu').click();}
  }
 });
