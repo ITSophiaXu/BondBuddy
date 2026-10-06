@@ -2,7 +2,7 @@ import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
 import { listArtifactHistory } from './artifact-history.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
-import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
+import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
 import { registerReadableReview } from './review-readable.js';
@@ -1163,7 +1163,7 @@ export function createServer(settings: Settings = {}) {
       // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
       const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
       let media:string;
-      let signatureAssessment: { status: 'signature_unverified'; profile_version: string; signature_count: 1 } | null = null;
+      let signatureAssessment: SignatureAssessment | null = null;
       try{
         await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
         const stored=await readBlobToFile(blob(),u.object_key,copy,MAX_BYTES).catch(error=>{if(error instanceof Problem&&error.status===413)return false as const;throw error;});

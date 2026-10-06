@@ -12,6 +12,7 @@ import { createServer } from './server.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 import { inspectMaterialUploadDetailed, runInspectionWorker } from './upload-safety.js';
 import { MAX_SIGNED_PDF_BYTES, SignedPdfProfileError, validateSignedPdfProfile } from './signed-pdf-profile.js';
+import { multipageSignedPdf } from './signed-pdf-multipage.samples.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
@@ -673,7 +674,30 @@ test('signed PDF risk controls remain fail-closed on both inspection paths', asy
   assert.throws(() => validateSignedPdfProfile(Buffer.alloc(MAX_SIGNED_PDF_BYTES + 1)), SignedPdfProfileError, 'restricted profile has a bounded byte budget');
 });
 
-test('authorized qx signed PDF retains its registered hash and stays outside the one-Widget profile', async () => {
+test('multipage signatures retain bytes and reject active, ambiguous or incomplete inputs', async () => {
+  const valid = multipageSignedPdf();
+  assert.deepEqual(await inspectMaterialUploadDetailed(valid,PDF), {
+    mediaType:PDF,signatureAssessment:{status:'signature_unverified',profile_version:'signed-pdf-multipage-v2',signature_count:1}
+  });
+  for (const bytes of [
+    multipageSignedPdf({catalog:'/OpenAction << /S /JavaScript /JS (synthetic) >>'}),
+    multipageSignedPdf({widget:'/J#53 (synthetic)'}),
+    multipageSignedPdf({widget:'/F#54 /Sig'}),
+    multipageSignedPdf({widget:'/V null'}),
+    multipageSignedPdf({fieldType:'Tx'}),
+    multipageSignedPdf({hidden:'<< /S /Launch >>'}),
+    multipageSignedPdf({catalog:'/XFA (synthetic)'}),
+    multipageSignedPdf({catalog:'/Names << /EmbeddedFiles << /Names [] >> >>'}),
+    multipageSignedPdf({recursiveAppearance:true}),
+    multipageSignedPdf({unsignedRevision:true}),
+    Buffer.from(valid.toString('ascii').replace('<01>','<00>'),'ascii'),
+    Buffer.from(valid.toString('ascii').replace('/ByteRange [0 ','/ByteRange [1 '),'ascii')
+  ]) {
+    await assert.rejects(inspectMaterialUploadDetailed(bytes,PDF), (error: unknown) => [415,422].includes((error as {status:number}).status));
+  }
+});
+
+test('authorized qx signed PDF is accepted unchanged by the multipage profile', async () => {
   const sampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25');
   const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as {
     cases: Array<{ case_id: string; files: Array<{ file_id: string; path: string; bytes: number; sha256: string }> }>;
@@ -685,10 +709,9 @@ test('authorized qx signed PDF retains its registered hash and stays outside the
   const bytes = await readFile(path);
   assert.equal(bytes.length, entry.bytes);
   assert.equal(digest(bytes), entry.sha256);
-  await assert.rejects(verifiedMediaFile(path, bytes.length, PDF), (error: unknown) => {
-    const failure = error as { status?: number; code?: string };
-    return failure.status === 415 && failure.code === 'MATERIAL_FORMAT_UNSUPPORTED';
-  });
+  const result = await verifiedMediaFileDetailed(path, bytes.length, PDF);
+  assert.deepEqual(result.signatureAssessment, {status:'signature_unverified',profile_version:'signed-pdf-multipage-v2',signature_count:4});
+  assert.equal(digest(await readFile(path)), entry.sha256);
   assert.throws(() => validateSignedPdfProfile(bytes), SignedPdfProfileError);
 });
 
@@ -787,6 +810,26 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
     assert.equal(signedJobs.rows[0].count, 1, 'accepted signed PDF has one durable parse job');
     assert.deepEqual((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).json().signature_assessment, signedMaterial.signature_assessment);
 
+    const authorizedPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25/qx-202606/5-2-1 杞县豫资城乡发展建设有限公司2024年审计报告.pdf');
+    for (const [bytes, count] of [[multipageSignedPdf(), 1], [await readFile(authorizedPath), 4]] as const) {
+      const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
+        filename:'multipage-audit.pdf',media_type:PDF,byte_size:bytes.length,sha256:digest(bytes),role:'audit'
+      });
+      assert.equal(start.statusCode,201,start.body);
+      const put = await send('PUT',start.json().upload_url,bytes,'application/octet-stream');
+      assert.equal(put.statusCode,204,put.body);
+      const complete = await send('POST',`/api/v1/projects/${projectId}/materials/uploads/${start.json().upload_id}/complete`,{byte_size:bytes.length,sha256:digest(bytes)});
+      assert.equal(complete.statusCode,200,complete.body);
+      const saved = complete.json();
+      assert.deepEqual(saved.signature_assessment,{status:'signature_unverified',profile_version:'signed-pdf-multipage-v2',signature_count:count});
+      assert.deepEqual(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${start.json().upload_id}`),bytes);
+      const jobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND material_id=$2 AND job_type='parse'",[ownerId,saved.material_id]);
+      assert.equal(jobs.rows[0].count,1);
+      ownerId = 'different-owner';
+      assert.equal((await send('GET',`/api/v1/projects/${projectId}/materials/${saved.material_id}`)).statusCode,404);
+      ownerId = originalOwnerId;
+    }
+
     const bad = await docxSample();
     bad.writeUInt32LE(0, bad.length - 22); // Corrupt the end-of-central-directory signature while keeping the request structurally plausible.
     const rejectedStart = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
@@ -809,6 +852,8 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
 
     for (const [name, bytes] of [
       ['blank signature', pdfWidgetSample({ populated: false })],
+      ['multipage blank signature', Buffer.from(multipageSignedPdf().toString('ascii').replace('<01>','<00>'),'ascii')],
+      ['multipage active content', multipageSignedPdf({hidden:'<< /S /JavaScript >>'})],
       ['zero-filled signature contents', Buffer.from(pdfWidgetSample().toString('ascii').replace('/Contents <01>', '/Contents <00>'), 'ascii')],
       ['additional revision', pdfWidgetSample({ appendRevision: true })],
       ['active widget', pdfWidgetSample({ widgetExtra: '/AA << /U << /S /JavaScript /JS (synthetic) >> >>' })],
@@ -827,7 +872,7 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
       const persisted = await pool.query('SELECT count(*)::int AS count FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2', [ownerId, start.json().upload_id]);
       assert.equal(persisted.rows[0].count, 0, `${name}: no material version`);
       const parseJobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND job_type='parse'", [ownerId, projectId]);
-      assert.equal(parseJobs.rows[0].count, 2, `${name}: only the earlier accepted PDFs have parse jobs`);
+      assert.equal(parseJobs.rows[0].count, 4, `${name}: only the earlier accepted PDFs have parse jobs`);
     }
 
     ownerId = `upload-other-${randomUUID()}`;
