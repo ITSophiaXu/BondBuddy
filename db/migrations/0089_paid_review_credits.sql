@@ -19,8 +19,8 @@ BEGIN
     SELECT 1 FROM bb_jobs WHERE run_id=NEW.id AND checkpoint ? 'word_pair_delivery_recovery'
   )) THEN RAISE EXCEPTION 'Credit reservation already finalized' USING ERRCODE='23514'; END IF;
   IF NEW.state='succeeded' AND NEW.task_kind='review' THEN
-    IF NOT EXISTS(SELECT 1 FROM bb_review_artifacts a JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version
-      WHERE a.owner_user_id=NEW.owner_user_id AND a.run_id=NEW.id AND a.project_id=NEW.project_id AND a.kind='report'
+    IF NOT EXISTS(SELECT 1 FROM bb_review_artifacts report JOIN bb_artifact_versions v ON v.id=report.artifact_id AND v.version=report.artifact_version
+      WHERE report.owner_user_id=NEW.owner_user_id AND report.run_id=NEW.id AND report.project_id=NEW.project_id AND report.kind='report'
       AND v.owner_user_id=NEW.owner_user_id AND v.run_id=NEW.id AND v.id=NEW.artifact_id AND v.version=NEW.artifact_version AND v.delivery_status='available' AND v.quality_status='passed')
     THEN RAISE EXCEPTION 'Delivered review report required for settlement' USING ERRCODE='23514'; END IF;
   ELSIF NEW.state='succeeded' THEN

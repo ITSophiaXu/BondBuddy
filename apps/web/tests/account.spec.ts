@@ -272,3 +272,13 @@ test('unified account has a single entry and preserves security forms beside rea
  await page.goto('/#billing');await expect(page.getByRole('heading',{name:'我的账号',exact:true})).toBeVisible();
  await expect(page.locator('#account-credits')).toContainText('5,000');
 });
+
+test('a review payment order returns to the original review workspace',async({page,context})=>{
+ const state=fixture();await installApi(context,state);await openSettings(page,state);
+ await page.route('**/api/v1/credits/recharge-orders/synthetic-review-order',route=>json(route,200,{order_id:'synthetic-review-order',project_id:'synthetic-review',state:'paid',points:5000,amount_fen:5000,provider:'alipay'}));
+ await page.route('**/api/v1/projects/synthetic-review',route=>json(route,200,{project_id:'synthetic-review',kind:'review'}));
+ await page.goto('/#/account?order=synthetic-review-order');
+ await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
+ for(const link of await page.getByRole('link',{name:'返回项目确认开始'}).all())await expect(link).toHaveAttribute('href','#/projects/synthetic-review/review?tab=materials');
+ expect(calls(state,'/review-executions')).toHaveLength(0);
+});

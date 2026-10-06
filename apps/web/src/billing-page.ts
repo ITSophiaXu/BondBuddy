@@ -18,10 +18,10 @@ export class BillingPage {
     this.shell('<p role="status">正在读取积分…</p>','billing');
     try{
       [this.balance,this.config]=await Promise.all([this.api.creditBalance(this.controller.signal),this.api.rechargeConfig(this.controller.signal)]);
+      if(this.orderId){this.order=await this.api.rechargeOrder(this.orderId,this.controller.signal);this.projectId=this.order.project_id??this.projectId;}
       if(this.projectId){const p=await this.api.project(this.projectId,this.controller.signal);
         this.reviewProject=p.kind==='review';
         if(!this.reviewProject&&p.input_revision&&p.input_hash)this.quote=await this.api.creditQuote(p.project_id,{input_revision:p.input_revision,input_hash:p.input_hash},this.controller.signal);}
-      if(this.orderId){this.order=await this.api.rechargeOrder(this.orderId,this.controller.signal);this.projectId=this.order.project_id??this.projectId;}
     }catch(e){this.error=friendlyError(e);}
     if(this.active()){this.draw();this.schedule();}
   }
