@@ -32,6 +32,7 @@ function fixture(){
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
+    if(path.endsWith('/quote'))return reply(route,200,{enabled:false,quote:null,balance:{available:0,frozen:0},shortage:0,reason:null});
     if(path==='/me')return reply(route,200,{user_id:state.owner,session_status:'active'});
     if(path.endsWith('/readable-report'))return reply(route,200,{version:'review-readable-v1',project_id:id,run_id:'run-1',execution_version:1,status:'available',markdown:readableMarkdown,content_sha256:hash(readableMarkdown)});
     if(path==='/projects')return reply(route,200,{items:[{...state.workspace.project,status:state.workspace.active_run?.state??'succeeded',latest_artifact:null,latest_run:null}],page:{next_cursor:null,has_more:false}});
@@ -242,7 +243,7 @@ test('handling remains unavailable on missing metadata, stale artifact associati
 
 test('result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded',async({page})=>{
   const state=await setup(page);await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.getByRole('tab')).toHaveCount(2);
-  await expect(page.locator('#review-workspace')).not.toContainText(/充值|费用|积分|余额/);
+  await expect(page.locator('#review-credit-receipt')).toContainText('未扣积分');
   const card=await openFinding(page,'F01');await card.getByRole('button',{name:'查看解释'}).click();await expect(page.getByRole('dialog')).toContainText('现金流 120');expect(state.requests).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await page.getByRole('button',{name:'核对修订计划'}).click();await page.getByRole('button',{name:'确认范围并执行修订'}).click();await expect(page.getByRole('dialog')).toContainText('请选择至少一项');expect(state.executes).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await card.getByLabel('加入修订').check();await expect.poll(()=>state.workspace.plan?.finding_ids).toEqual(['F01']);await expect(card).toHaveAttribute('open','');
@@ -518,7 +519,7 @@ test('file report update pins source and optional requirements, survives respons
  await page.locator('#review-update-notes').fill('保留本期发行安排。');await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();
  await expect(page.locator('#review-status')).toContainText('尚未确认更新结果');await page.reload();await expect(page.locator('#review-update-notes')).toHaveValue('保留本期发行安排。');
  await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');
- expect(requests).toHaveLength(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('保留本期发行安排。');
+ await expect.poll(()=>requests.length).toBe(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('保留本期发行安排。');
  state.workspace.active_run=null;state.workspace.artifact_run={run_id:'update-run',version:2,operation:'revision',source_report_id:null,source_run_id:'run-1'};
  state.workspace.artifacts=[{artifact_id:'tracked',artifact_version:1,filename:'修订版.docx',kind:'revision'},{artifact_id:'clean',artifact_version:1,filename:'清洁版.docx',kind:'clean'}];
  state.history.unshift({...structuredClone(state.history[0]),run:state.makeRun('update-run','succeeded'),operation:'revision',version:2,artifacts:state.workspace.artifacts,created_at:'2026-10-05T12:00:00Z'});
@@ -617,4 +618,37 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('创建项目');
   if(width===390){await page.getByRole('button',{name:'打开菜单'}).click();await expect(page.locator('#sidebar')).toBeVisible();await page.locator('#close-menu').click();}
  }
+});
+
+test('paid review confirms points before execution and shows shortage without starting',async({page})=>{
+ const state=fixture();await setup(page,state);
+ let available=299;
+ await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:300,reason:'合成价格'},balance:{available,frozen:0},shortage:Math.max(0,300-available),reason:null}));
+ await page.goto(`/#/projects/${id}/review?tab=materials`);
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();
+ await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('还差 1 积分');
+ await expect(page.getByRole('dialog').getByRole('link',{name:'充值积分'})).toHaveAttribute('href',`#/account?project=${id}`);
+ expect(state.executes).toHaveLength(0);
+ await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=5000;
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('确认后可用 4,700 积分');
+ expect(state.executes).toHaveLength(0);
+ await page.getByRole('button',{name:'确认并开始 · 300 积分'}).click();
+ await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('synthetic-quote');
+});
+
+test('review task receipt displays the actual reserved, charged and released points',async({page})=>{
+ const state=fixture();
+ state.workspace.active_run={...state.makeRun('paid-run','running'),billing_mode:'fixed_credits',reservation_id:'synthetic-reservation'};
+ let charge='held',reads=0;
+ await setup(page,state);
+ await page.route('**/credit-charge',route=>{reads++;return reply(route,200,{quote:{points:300},state:charge});});
+ await page.reload();
+ await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已预留，交付后扣费');
+ charge='settled';state.workspace.active_run.state='succeeded';await page.reload();
+ await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已扣费');
+ charge='released';state.workspace.active_run.state='failed';await page.reload();
+ await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已返还，本次不扣费');
+ expect(reads).toBe(3);expect(state.executes).toHaveLength(0);
 });

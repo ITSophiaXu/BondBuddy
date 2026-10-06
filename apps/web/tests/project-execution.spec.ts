@@ -51,6 +51,9 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     const method = request.method();
     if (path === '/auth/logout') { state.loggedOut = true; return route.fulfill({ status: 204 }); }
     if (state.loggedOut) return json(route, 401, { code: 'UNAUTHENTICATED' });
+    if(path==='/account')return json(route,200,{user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,support_contact:null});
+    if(path==='/account/sessions')return json(route,200,{items:[]});
+    if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
     if (path === '/me') return json(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
     if (path === `/projects/${id}`) {
       if (method === 'PATCH') { state.patchRequests++; Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 }); }

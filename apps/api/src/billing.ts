@@ -1,5 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import { BILLING_TASKS, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
+import { BILLING_TASKS, AUTHORING_BILLING_TASKS, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { classifyFixedPrice } from './billing-classification.js';
 import { assertAuthoringSourceInformation, isUnifiedInput } from './unified-authoring.js';
@@ -17,9 +17,10 @@ export async function creditBalance(db: Db, owner: string): Promise<CreditBalanc
   return balance;
 }
 export function validatePrices(prices: unknown): asserts prices is Record<BillingTask, number> {
-  if (!prices || typeof prices !== 'object' || Array.isArray(prices) || Object.keys(prices).length !== Object.keys(BILLING_TASKS).length ||
-    !Object.keys(BILLING_TASKS).every(k => Number.isSafeInteger((prices as any)[k]) && (prices as any)[k] > 0 && (prices as any)[k] <= 1000000000))
-    throw new Problem(422, 'VALIDATION_FAILED', 'Exactly eight positive integer prices required');
+  if (!prices || typeof prices !== 'object' || Array.isArray(prices) || Object.keys(prices).some(k => !(k in BILLING_TASKS)) ||
+    !Object.keys(AUTHORING_BILLING_TASKS).every(k => k in prices) ||
+    !Object.keys(prices).every(k => Number.isSafeInteger((prices as any)[k]) && (prices as any)[k] > 0 && (prices as any)[k] <= 1000000000))
+    throw new Problem(422, 'VALIDATION_FAILED', 'All authoring prices and configured review prices must be positive integers');
 }
 export async function publishPrices(pool: Pool, input: { id: string; prices: unknown; effectiveAt: string; actor: string; reason: string }) {
   validatePrices(input.prices);
@@ -37,7 +38,7 @@ export async function publishPrices(pool: Pool, input: { id: string; prices: unk
       [input.id, input.prices, input.effectiveAt, input.actor, input.reason]);
   });
 }
-async function activePrice(client: PoolClient) {
+export async function activePrice(client: PoolClient) {
   await client.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-fixed-prices',0))");
   const p = (await client.query('SELECT * FROM bb_credit_price_versions WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
   if (!p) throw new Problem(503, 'BILLING_NOT_READY', 'Fixed prices are not configured');
@@ -59,28 +60,28 @@ export async function quoteCredits(pool: Pool, owner: string, projectId: string,
     if (!classification.task) throw new Problem(422, 'INPUT_REQUIRED', `${classification.reason} 请补齐信息并保存当前输入后重新获取报价。`);
     const price = await activePrice(c);
     await c.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(owner_user_id,project_id,input_revision,price_version) DO NOTHING`,
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(owner_user_id,project_id,input_revision,price_version) WHERE intent_hash IS NULL DO NOTHING`,
       [uid(), owner, projectId, revision, hash, price.id, classification.task, price.prices[classification.task], classification.reason]);
-    const row = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4', [owner, projectId, revision, price.id])).rows[0];
+    const row = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4 AND intent_hash IS NULL', [owner, projectId, revision, price.id])).rows[0];
     const quote = quoteDto(row);
     return { enabled: true, quote, balance, shortage: Math.max(0, quote.points - balance.available), reason: null };
   });
 }
 
 /** Called in the same transaction as the new run and queue insertion. No browser price is accepted. */
-export async function reserveCredits(c: PoolClient, owner: string, run: any, quoteId: string | undefined, input: any, currentProject: any) {
+export async function reserveCredits(c: PoolClient, owner: string, run: any, quoteId: string | undefined, input: any, currentProject: any, reviewIntentHash?: string) {
   if (!quoteId) throw new Problem(409, 'QUOTE_REQUIRED', '请确认本次任务报价后开始。');
   const quote = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND id=$2', [owner, quoteId])).rows[0];
-  if (!quote || quote.project_id !== run.project_id || quote.input_revision !== run.input_revision || quote.input_hash.trim() !== run.input_hash.trim())
+  if (!quote || quote.project_id !== run.project_id || (reviewIntentHash ? quote.intent_hash !== reviewIntentHash : quote.intent_hash !== null || quote.input_revision !== run.input_revision || quote.input_hash.trim() !== run.input_hash.trim()))
     throw new Problem(409, 'QUOTE_CHANGED', '项目输入已变化，请查看新报价后确认。');
-  if (currentProject.latest_input_revision !== input.revision || currentProject.draft_revision !== input.manifest.draft_revision)
+  if (!reviewIntentHash && (currentProject.latest_input_revision !== input.revision || currentProject.draft_revision !== input.manifest.draft_revision))
     throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Project changed after quote');
   const price = await activePrice(c);
   if (price.id !== quote.price_version || price.prices[quote.task_type] !== Number(quote.points))
     throw new Problem(409, 'QUOTE_CHANGED', '价格已更新，请查看新报价后确认。');
   await lockCreditAccount(c, owner);
   const balance = await creditBalance(c, owner), points = Number(quote.points);
-  if (balance.available < points) throw new Problem(402, 'CREDITS_INSUFFICIENT', `本次更新需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始更新。`);
+  if (balance.available < points) throw new Problem(402, 'CREDITS_INSUFFICIENT', `本次任务需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始。`);
   if ((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1', [quote.id])).rowCount)
     throw new Problem(409, 'IDEMPOTENCY_CONFLICT', 'Quote already used by another execution');
   const reservation = uid();

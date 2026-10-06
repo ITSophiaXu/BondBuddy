@@ -84,7 +84,7 @@ export const ReviewPlanRequestSchema = strict({ expected_version: Type.Integer({
 export type ReviewPlanRequest = Static<typeof ReviewPlanRequestSchema>;
 export type ReviewPlan = Omit<ReviewPlanRequest, 'expected_version' | 'proposal_id'> & { plan_id: string; version: number; sha256: string; accepted_at: string;
   proposal_origin?: { proposal: ReviewProposal; sha256: string; adoption: 'as_proposed' | 'user_adjusted' } };
-export const ReviewExecutionRequestSchema = strict({ execution_request_id: id, operation: ReviewOperationSchema, expected_input_version: Type.Integer({ minimum: 1 }), source_report_id: nullableId, expected_plan_version: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]), finding_ids: ids,
+export const ReviewExecutionRequestSchema = strict({ execution_request_id: id, quote_id: Type.Optional(id), operation: ReviewOperationSchema, expected_input_version: Type.Integer({ minimum: 1 }), source_report_id: nullableId, expected_plan_version: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]), finding_ids: ids,
   entrypoint: Type.Optional(Type.Union([Type.Literal('quick_action'), Type.Literal('assistant_proposal')])), accepted_proposal_id: Type.Optional(id), context_report_ref: Type.Optional(nullableReportRef) });
 export type ReviewExecutionRequest = Static<typeof ReviewExecutionRequestSchema>;
 export type ReviewArtifact = { artifact_id: string; artifact_version: number; kind: 'report' | 'comments' | 'revision' | 'clean' | 'baseline'; filename: string };

@@ -2,6 +2,8 @@ import { mountRecoveryAccount } from './recovery';
 import type { CLOSURE_RETAINED_RECORDS, RUN_STATES } from '@bondbuddy/contracts';
 import { ApiError, friendlyError, type ApiClient, type Dto } from './api';
 import { date, esc } from './ui';
+import { dataPolicyCopy } from './data-policy-copy';
+import './account.css';
 
 type Account = Dto<'AccountResponse'>;
 type Session = Dto<'AccountSessionListResponse'>['items'][number];
@@ -62,16 +64,21 @@ export async function renderAccount(ctx: AccountContext) {
   }
   if (!live()) return;
   const username = account.username;
-  ctx.shell(`<div class="page-heading"><div><p class="eyebrow">账号与安全</p><h1>账号设置</h1><p class="muted">查看账号信息，管理登录会话、密码和账号数据。</p></div></div>
-    <div class="detail-layout"><div class="settings-stack">
+  ctx.shell(`<div class="page-head"><div><p class="eyebrow">MY ACCOUNT</p><h1>我的账号</h1><p>管理积分、充值和账号安全。</p></div><span class="account-username">${esc(username ?? '我的账号')}</span></div>
+    <div class="account-layout"><div id="account-credits" class="account-credits" aria-label="积分与充值"></div><div class="settings-stack account-security">
     <section class="panel" aria-labelledby="account-info-title"><div class="panel-heading"><h2 id="account-info-title">账号信息</h2></div><dl class="settings-list" id="account-info"></dl></section>
-    <section class="panel" aria-labelledby="sessions-title"><div class="panel-heading sessions-heading"><div><h2 id="sessions-title">登录会话</h2><p class="muted">每次登录会创建一个会话。撤销后，该会话立即无法继续访问账号。</p></div><button class="button secondary" id="revoke-others" type="button">退出其他全部会话</button></div>
-    <p id="sessions-message" class="form-message session-message" role="status" hidden></p><ul class="session-list" id="session-list"></ul></section>
-    <section class="panel form-panel" aria-labelledby="password-title"><h2 id="password-title">修改密码</h2>${username ? passwordForm(username) : legacyNote}</section>
-    <section class="panel form-panel" id="account-recovery"><h2>账号找回</h2><p role="status">正在读取恢复联系方式…</p></section>
-    <section class="panel form-panel danger-panel" aria-labelledby="closure-title"><h2 id="closure-title">注销账号</h2><p class="muted">注销会关闭账号，并停止访问账号下的全部项目、材料和成果。完成后无法恢复。</p><div id="closure-body">${username ? closureStart : legacyNote}</div></section>
-    </div><aside class="context-panel"><h2>数据服务说明</h2><p>上传的材料会在平台服务器保存一份账号隔离的副本，用于核验和你发起的处理；浏览器中的文件不是唯一副本。</p><p>注销账号后，项目、材料和成果会立即停止访问。保存期限、删除时限与备份清理规则见<a href="#/data-policy">数据保存与删除说明</a>。</p><p>下载到本机的 Word 或其他文件由你自行保管，不受平台删除影响。</p>
-    <div class="context-divider"></div><h3>当前为受控试用</h3><p>试用期间不涉及积分、充值或退款。</p></aside></div>`, 'account');
+    <details class="panel account-disclosure"><summary>登录会话</summary><div class="account-disclosure-body"><p class="muted">退出后，该设备需要重新登录。</p><button class="button secondary" id="revoke-others" type="button">退出其他全部会话</button>
+    <p id="sessions-message" class="form-message session-message" role="status" hidden></p><ul class="session-list" id="session-list"></ul></div></details>
+    <details class="panel account-disclosure"><summary>修改密码</summary><div class="account-disclosure-body form-panel">${username ? passwordForm(username) : legacyNote}</div></details>
+    <details class="panel account-disclosure"><summary>账号找回</summary><div class="account-disclosure-body form-panel" id="account-recovery"><p role="status">正在读取恢复联系方式…</p></div></details>
+    <details class="panel account-disclosure" id="account-data"><summary>数据说明</summary><div class="account-disclosure-body" id="account-data-copy"><p>正在读取数据说明…</p></div></details>
+    <details class="panel account-disclosure danger-panel"><summary>注销账号</summary><div class="account-disclosure-body form-panel"><p class="muted">注销会关闭账号，并停止访问账号下的全部项目、材料和成果。完成后无法恢复。</p><div id="closure-body">${username ? closureStart : legacyNote}</div></div></details>
+    </div></div>`, 'account');
+  void ctx.api.dataPolicy().then(policy => {
+    if(!live())return;
+    const copy=dataPolicyCopy(policy),target=document.querySelector('#account-data-copy');
+    if(target)target.innerHTML=[['上传与云端处理',copy.processing],['保存期限',copy.retention],['删除与备份',copy.deletion+' '+copy.backup]].map(([title,text])=>`<h3>${title}</h3><p>${esc(text)}</p>`).join('');
+  }).catch(()=>{if(live()){const target=document.querySelector('#account-data-copy');if(target)target.textContent='数据说明暂未读取，请稍后刷新。';}});
 
   const paintInfo = () => {
     const accepted = account.accepted_terms_version ? `已接受版本 ${esc(account.accepted_terms_version)}` : '暂无接受记录';
@@ -160,7 +167,7 @@ export async function renderAccount(ctx: AccountContext) {
     closureBody.innerHTML = `${message ? `<p class="form-message" role="alert">${esc(message)}</p>` : ''}<div class="closure-summary">
       <h3>将被删除或停止访问</h3><ul><li>${preview.projects} 个项目</li><li>${preview.material_versions} 个材料版本</li><li>${preview.available_artifacts} 份可下载成果（下载权限同时撤销）</li><li>全部登录会话，包括当前页面</li></ul><p>${purgeNote}</p>
       <h3>依规保留的记录</h3><ul>${preview.retained_records.map(record => `<li>${esc(labelOf(retainedLabels, record))}</li>`).join('')}</ul>
-      <h3>本机文件与余额</h3><p>${exportsNote}M1 受控试用不涉及积分余额或退款。</p></div>
+      <h3>本机文件与余额</h3><p>${exportsNote}积分余额不提供现金退款，注销后无法继续使用账号内积分。</p></div>
       ${preview.can_close ? `<form id="closure-form" novalidate><label for="closure-username">输入用户名 <strong>${esc(username)}</strong> 以确认</label><input id="closure-username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" required/>
       <label for="closure-password">输入密码以确认</label><input id="closure-password" type="password" autocomplete="current-password" maxlength="512" required/>
       <label class="check-row" for="closure-ack"><input id="closure-ack" type="checkbox"/><span>我了解注销后无法恢复：项目、材料和成果将无法访问，用户名也不能再次注册。</span></label>
