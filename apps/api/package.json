@@ -4,6 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./m4-workspace": {
+      "types": "./dist/m4-workspace.d.ts",
+      "default": "./dist/m4-workspace.js"
+    },
+    "./m4-billing": {
+      "types": "./dist/m4-billing.d.ts",
+      "default": "./dist/m4-billing.js"
+    },
     ".": {
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"

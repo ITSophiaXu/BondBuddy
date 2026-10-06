@@ -14,7 +14,7 @@ import {
   type ReviewMessage, type ReviewReplyMetadata, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal,
   type ReviewExecutionOrigin, type ReviewReportRef, type ReviewTimelineEntry, type RunEvent,
 } from '@bondbuddy/contracts';
-import { project, projectDto, materialDto, runDto, transaction, uid, date, Problem, conflict, missing, executionKeyStorage } from './data.js';
+import { project, projectDto, materialDto, runDto, transaction, uid, date, Problem, conflict, missing, executionKeyStorage, assertCanonicalBusinessRunIdle } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { enqueue } from './queue.js';
 import { lockReviewFileDelivery } from './review-file-knowledge.js';
@@ -359,6 +359,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const key = executionKeyStorage(b.execution_request_id);
       const prior = (await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2', [user, key])).rows[0];
       if (prior) { if (prior.request_hash.trim() !== requestHash) throw conflict('IDEMPOTENCY_CONFLICT', 'Execution key already used'); return runDto(prior); }
+      await assertCanonicalBusinessRunIdle(client,user,p);
       const active = await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) LIMIT 1', [user, id, finalStates]);
       if (active.rowCount) throw conflict('INPUT_REVISION_CONFLICT', 'A project task is still active; stop it or wait before another execution');
       const current = await draft(client, user, id);
@@ -436,6 +437,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
       const prior=(await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,key])).rows[0];
       if(prior){if(prior.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Execution key already used');return runDto(prior);}
+      await assertCanonicalBusinessRunIdle(client,user,p);
       if((await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) LIMIT 1',[user,id,finalStates])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','A project task is still active');
       const source=(await client.query(`SELECT r.input_revision,r.input_hash,e.snapshot,e.source_report_id,i.manifest,a.artifact_id,a.artifact_version,v.sha256
         FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id

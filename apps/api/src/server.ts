@@ -5,12 +5,13 @@ import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
+import { registerM4Routes } from './m4-workspace.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewRevisionHandlingSchema } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
+import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -169,6 +170,7 @@ export function createServer(settings: Settings = {}) {
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   registerReviewRoutes(app, db, owner, paidReview);
+  registerM4Routes(app, db, owner, blob, queueEnabled);
   registerReadableReview(app, db, owner, blob);
   installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
@@ -1395,8 +1397,9 @@ export function createServer(settings: Settings = {}) {
       const lockedKind=input.rows[0].manifest?.kind;
       if(lockedKind!==currentProject.kind)
         throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
-      if((lockedKind==='generation'||b.task_kind==='generation')&&lockedKind!==b.task_kind)
+      if((['update','generation'].includes(lockedKind)||['update','generation'].includes(b.task_kind))&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
+      if(b.task_kind!=='qa')await assertCanonicalBusinessRunIdle(client,user,currentProject);
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       // Exact replays return above. New runs using older incomplete snapshots must
       // return to materials; running tasks keep their already locked inputs.
