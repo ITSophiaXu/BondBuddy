@@ -277,7 +277,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
 test('renamed equal-content uploads display one saved material and survive reload', async ({ page }) => {
   const fixture = state(); await installApi(page, fixture); await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic same history');
-  await page.getByLabel('为本企业历史募集书选择文件').setInputFiles([
+  await page.getByLabel('为历史／参考募集书选择文件').setInputFiles([
     { name: 'history.pdf', mimeType: 'application/pdf', buffer },
     { name: 'renamed.pdf', mimeType: 'application/pdf', buffer }
   ]);
@@ -383,14 +383,16 @@ test('upload processing stays compact with pending evidence, unchanged targets a
     await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|核对识别内容|原文：|有待确认项|历史稿信息/);
   };
   await login(page, 'owner_a');
-  await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: 'synthetic-history.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic recognition') });
+  await page.getByLabel('为历史／参考募集书选择文件').setInputFiles({ name: 'synthetic-history.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic recognition') });
   const row = page.locator('.material-file-row').filter({ hasText: 'synthetic-history.pdf' });
   await expect(row).toContainText('服务器已确认保存'); await expect(row).toContainText('等待处理');
   await noReview(); await expect(row.getByRole('progressbar')).toHaveCount(0);
   stage = 'running'; await expect(row).toContainText('处理中', { timeout: 15000 }); await noReview();
   stage = 'succeeded'; await expect(row).toContainText('处理完成', { timeout: 15000 }); await noReview();
+  await page.getByRole('button', { name: '编辑项目信息', exact: true }).click();
   await expect(page.getByLabel('发行市场', { exact: true })).toHaveValue('sse');
   await expect(page.getByLabel('发行方式', { exact: true })).toHaveValue('public_all');
+  await page.goto(origin + '/#/projects/' + projectId);
   await page.reload(); await expect(row).toContainText('处理完成'); await noReview();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
@@ -431,7 +433,7 @@ test('duplicate uploads join one status read, and late processing responses cann
   });
   await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic reused parse');
-  await page.getByLabel('为本企业历史募集书选择文件').setInputFiles([{ name: 'one.pdf', mimeType: 'application/pdf', buffer }, { name: 'two.pdf', mimeType: 'application/pdf', buffer }]);
+  await page.getByLabel('为历史／参考募集书选择文件').setInputFiles([{ name: 'one.pdf', mimeType: 'application/pdf', buffer }, { name: 'two.pdf', mimeType: 'application/pdf', buffer }]);
   await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
   await expect.poll(() => pending).toBe(1); expect(reads.length).toBe(0); // The held route supersedes the normal status reader.
   if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
@@ -446,7 +448,7 @@ test('duplicate uploads join one status read, and late processing responses cann
 
 test('material recovery keeps the live file picker attached until its change event arrives', async ({ page }) => {
   const current = state(); await installApi(page, current); await login(page, 'owner_a');
-  const picker = await page.getByLabel('为本企业历史募集书选择文件').elementHandle();
+  const picker = await page.getByLabel('为历史／参考募集书选择文件').elementHandle();
   await page.getByRole('button', { name: '刷新已保存材料' }).click();
   await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
   expect(await picker!.evaluate(input => input.isConnected)).toBe(true);
