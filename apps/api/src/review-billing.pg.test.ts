@@ -4,14 +4,19 @@ import { Pool } from 'pg';
 import { INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
-import { digest, uid, transaction } from './data.js';
+import { digest, uid, transaction, type PrivateBlobs } from './data.js';
 import { creditBalance, grantCredits, publishPrices } from './billing.js';
 import { auditCredits } from './billing-ops.js';
+import { claim, finish, promoteWordArtifact } from './queue.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 
 const connection=await isolatedTestDatabase(undefined,'paid-review');
 test('paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release', {skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection});let owner='synthetic-paid-review';
-  const app=createServer({pool,enablePaidReview:true,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  const bytes=new Map<string,Buffer>();
+  const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
+    getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
+  const app=createServer({pool,blobs,enablePaidReview:true,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
   const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
   const prices={...INITIAL_FIXED_PRICES,full_review:300,differential_review:100,review_revision:200}; // Synthetic prices, not product pricing.
@@ -37,11 +42,11 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     const run=ok(concurrent[0]);assert.equal(ok(concurrent[1]).run_id,run.run_id);assert.equal(run.billing_mode,'fixed_credits');
     assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:300});
     await publishPrices(pool,{id:'review-prices-v2',prices:{...prices,full_review:350},effectiveAt:'2026-01-02T00:00:00Z',actor:'synthetic',reason:'test update'});
-    const artifact=uid();
-    await pool.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status) VALUES($1,1,$2,$3,'text/markdown',$4,$5,'passed','available')`,[artifact,owner,run.run_id,sha,`synthetic/${artifact}`]);
-    await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1",[run.run_id,artifact]),/Delivered review report/);
-    await pool.query("INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename) VALUES($1,$2,$3,$4,1,'report','synthetic.md')",[owner,p.project_id,run.run_id,artifact]);
-    await pool.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1",[run.run_id,artifact]);
+    const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
+    const report=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic review report'}),blobs,'generated_pair_v1');
+    await assert.rejects(()=>finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs}),/Delivered review report/);
+    await pool.query("INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename) VALUES($1,$2,$3,$4,1,'report','synthetic.docx')",[owner,p.project_id,run.run_id,report.artifactId]);
+    await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
     assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:0});
     const receipt=ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`));assert.equal(receipt.state,'settled');assert.equal(receipt.quote.points,300);
     assert.equal(ok(await send('POST',`${base}/review-executions`,paid)).run_id,run.run_id);

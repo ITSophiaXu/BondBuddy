@@ -637,3 +637,18 @@ test('paid review confirms points before execution and shows shortage without st
  await page.getByRole('button',{name:'确认并开始 · 300 积分'}).click();
  await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('synthetic-quote');
 });
+
+test('review task receipt displays the actual reserved, charged and released points',async({page})=>{
+ const state=fixture();
+ state.workspace.active_run={...state.makeRun('paid-run','running'),billing_mode:'fixed_credits',reservation_id:'synthetic-reservation'};
+ let charge='held',reads=0;
+ await setup(page,state);
+ await page.route('**/credit-charge',route=>{reads++;return reply(route,200,{quote:{points:300},state:charge});});
+ await page.reload();
+ await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已预留，交付后扣费');
+ charge='settled';state.workspace.active_run.state='succeeded';await page.reload();
+ await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已扣费');
+ charge='released';state.workspace.active_run.state='failed';await page.reload();
+ await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已返还，本次不扣费');
+ expect(reads).toBe(3);expect(state.executes).toHaveLength(0);
+});
