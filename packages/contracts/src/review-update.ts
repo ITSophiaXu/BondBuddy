@@ -1,6 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 const id=Type.String({minLength:1,maxLength:128});
-export const ReviewUpdateRequestSchema=Type.Object({execution_request_id:id,source_run_id:id,requirements:Type.String({maxLength:6000})},{additionalProperties:false});
+export const ReviewUpdateRequestSchema=Type.Object({execution_request_id:id,quote_id:Type.Optional(id),source_run_id:id,requirements:Type.String({maxLength:6000})},{additionalProperties:false});
 export type ReviewUpdateRequest=Static<typeof ReviewUpdateRequestSchema>;
 /** A completed review file is evidence to consider, never an instruction to blindly apply every finding. */
 export const ReviewResultPinSchema=Type.Object({version:Type.Literal('review-result-v1'),run_id:id,input_revision:Type.Integer({minimum:1}),

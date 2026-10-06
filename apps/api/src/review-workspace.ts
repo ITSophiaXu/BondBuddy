@@ -1,3 +1,5 @@
+import { activePrice, creditBalance, quoteDto, reserveCredits } from './billing.js';
+import { billingSchemas, type BillingTask } from '@bondbuddy/contracts';
 import { ReviewUpdateRequestSchema, type ReviewUpdateRequest, type ReviewResultPin } from '@bondbuddy/contracts';
 import { loadAuthoringKnowledge } from './unified-authoring.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -155,7 +157,7 @@ async function timeline(db: Db, user: string, id: string, messages: ReviewMessag
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.entry_id.localeCompare(b.entry_id));
 }
 
-export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner: (request: FastifyRequest) => Promise<string>) {
+export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner: (request: FastifyRequest) => Promise<string>, paidReview = false) {
   const projectId = (request: FastifyRequest) => (request.params as { project_id: string }).project_id;
   app.get('/api/v1/projects/:project_id/review-workspace', async request => {
     const user = await owner(request), id = projectId(request), p = await requireReview(db(), user, id);
@@ -324,6 +326,31 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       return plan;
     });
   });
+  // A quote locks the user's execution intent before the run's immutable manifest exists.
+  const intentHash = async (client: PoolClient, user: string, id: string, p: any, b: ReviewExecutionRequest | ReviewUpdateRequest) => {
+    const {quote_id, ...intent}=b;
+    return inputManifestHash({project_id:id, draft_revision:p.draft_revision, intent,
+      ...('operation' in b ? {review_draft:await draft(client,user,id)} : {})});
+  };
+  for (const kind of ['review-executions','review-updates'] as const) {
+    app.post(`/api/v1/projects/:project_id/${kind}/quote`, {schema:{body:kind==='review-executions'?ReviewExecutionRequestSchema:ReviewUpdateRequestSchema,response:{200:billingSchemas.FixedQuoteResponse}}}, async request => {
+      const user=await owner(request),id=projectId(request),b=request.body as ReviewExecutionRequest | ReviewUpdateRequest;
+      return transaction(db(),async client=>{
+        const p=await requireReview(client,user,id,true),balance=await creditBalance(client,user);
+        if(!paidReview)return {enabled:false,quote:null,balance,shortage:0,reason:null};
+        if('operation' in b){const d=await draft(client,user,id);if(d.version!==b.expected_input_version)stale();if(!d.source_material_ref)invalid('Select the reviewed source');await pins(client,user,id,d.material_versions);}
+        else {const source=(await client.query("SELECT 1 FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.state='succeeded' AND e.operation IN ('full_review','differential_review')",[b.source_run_id,user,id])).rowCount;if(!source)throw missing();}
+        const task:BillingTask='operation' in b?(b.operation==='revision'?'review_revision':b.operation):'review_revision';
+        const price=await activePrice(client),points=price.prices[task];
+        if(!Number.isSafeInteger(points)||points<=0)throw new Problem(503,'BILLING_NOT_READY','该任务的积分价格尚未配置。');
+        const hash=await intentHash(client,user,id,p,b);
+        const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,price.id,task,points,'按本次已确认的任务范围收取固定积分；系统重试不重复收费。'])).rows[0]
+          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4',[user,id,hash,price.id])).rows[0];
+        return {enabled:true,quote:quoteDto(row),balance,shortage:Math.max(0,points-balance.available),reason:null};
+      });
+    });
+  }
   app.post('/api/v1/projects/:project_id/review-executions', { schema: { body: ReviewExecutionRequestSchema } }, async request => {
     const user = await owner(request), id = projectId(request), b = request.body as ReviewExecutionRequest;
     return transaction(db(), async client => {
@@ -394,12 +421,13 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const r = (await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') RETURNING *`, [runId, user, id, inputRevision, inputHash, key, revision ? 'update' : 'review', requestHash])).rows[0];
       await client.query('INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7)', [runId, user, id, version, b.operation, b.source_report_id, { input, input_version: inputVersion, finding_ids: b.finding_ids, plan, origin, context_messages: discussion }]);
+      if(paidReview)await reserveCredits(client,user,r,b.quote_id,null,p,await intentHash(client,user,id,p,b));
       await recordOperation(client, { owner: user, projectId: id, runId, requestId: request.id, traceId: runId, kind: 'execute', status: 'submitted', inputRevision, inputHash });
       await enqueue(client, r, RUN_PIPELINE_SUBTYPE);
       return runDto({ ...r, stage: 'queued', event_cursor: 1 });
     });
   });
-  // File-result revision reuses the reviewed inputs and the existing update worker. M3 stays unbilled.
+  // File-result revision reuses the reviewed inputs and the existing update worker.
   app.post('/api/v1/projects/:project_id/review-updates', {schema:{body:ReviewUpdateRequestSchema}}, async request => {
     const user=await owner(request),id=projectId(request),b=request.body as ReviewUpdateRequest;
     return transaction(db(),async client=>{
@@ -437,6 +465,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const report=(await client.query('SELECT id FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[user,id,b.source_run_id])).rows[0];
       const origin:ReviewExecutionOrigin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
       await client.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,'revision',$5,$6)`,[runId,user,id,version,report?.id??null,{input,input_version:source.snapshot.input_version,finding_ids:[],plan:null,origin,context_messages:[],source_run_id:b.source_run_id}]);
+      if(paidReview)await reserveCredits(client,user,run,b.quote_id,null,p,await intentHash(client,user,id,p,b));
       await recordOperation(client,{owner:user,projectId:id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:revision,inputHash});
       await enqueue(client,run,RUN_PIPELINE_SUBTYPE);return runDto({...run,stage:'queued',event_cursor:1});
     });

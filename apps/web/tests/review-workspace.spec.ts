@@ -32,6 +32,7 @@ function fixture(){
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
+    if(path.endsWith('/quote'))return reply(route,200,{enabled:false,quote:null,balance:{available:0,frozen:0},shortage:0,reason:null});
     if(path==='/me')return reply(route,200,{user_id:state.owner,session_status:'active'});
     if(path.endsWith('/readable-report'))return reply(route,200,{version:'review-readable-v1',project_id:id,run_id:'run-1',execution_version:1,status:'available',markdown:readableMarkdown,content_sha256:hash(readableMarkdown)});
     if(path==='/projects')return reply(route,200,{items:[{...state.workspace.project,status:state.workspace.active_run?.state??'succeeded',latest_artifact:null,latest_run:null}],page:{next_cursor:null,has_more:false}});
@@ -617,4 +618,22 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('创建项目');
   if(width===390){await page.getByRole('button',{name:'打开菜单'}).click();await expect(page.locator('#sidebar')).toBeVisible();await page.locator('#close-menu').click();}
  }
+});
+
+test('paid review confirms points before execution and shows shortage without starting',async({page})=>{
+ const state=fixture();await setup(page,state);
+ let available=299;
+ await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:300,reason:'合成价格'},balance:{available,frozen:0},shortage:Math.max(0,300-available),reason:null}));
+ await page.goto(`/#/projects/${id}/review?tab=materials`);
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();
+ await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('还差 1 积分');
+ await expect(page.getByRole('dialog').getByRole('link',{name:'充值积分'})).toHaveAttribute('href',`#/account?project=${id}`);
+ expect(state.executes).toHaveLength(0);
+ await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=5000;
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('确认后可用 4,700 积分');
+ expect(state.executes).toHaveLength(0);
+ await page.getByRole('button',{name:'确认并开始 · 300 积分'}).click();
+ await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('synthetic-quote');
 });

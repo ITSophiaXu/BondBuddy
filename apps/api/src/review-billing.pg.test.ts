@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Pool } from 'pg';
+import { INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
+import { createServer } from './server.js';
+import { isolatedTestDatabase } from './test-database.js';
+import { digest, uid, transaction } from './data.js';
+import { creditBalance, grantCredits, publishPrices } from './billing.js';
+import { auditCredits } from './billing-ops.js';
+
+const connection=await isolatedTestDatabase(undefined,'paid-review');
+test('paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release', {skip:!connection},async()=>{
+  const pool=new Pool({connectionString:connection});let owner='synthetic-paid-review';
+  const app=createServer({pool,enablePaidReview:true,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
+  const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
+  const prices={...INITIAL_FIXED_PRICES,full_review:300,differential_review:100,review_revision:200}; // Synthetic prices, not product pricing.
+  try{
+    const p=ok(await send('POST','/api/v1/projects',{kind:'review',name:'Synthetic credit review',issuer_name:null,market:null,offering:null})),base=`/api/v1/projects/${p.project_id}`;
+    const upload=uid(),material=uid(),sha=digest('synthetic');
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state) VALUES($1,$2,$3,'synthetic.pdf','application/pdf',16,$4,'historical',$5,now()+interval '1 hour','completed')`,[upload,owner,p.project_id,sha,`synthetic/${upload}`]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,'historical','synthetic.pdf','application/pdf',16,$5,$6,'persisted')`,[material,owner,p.project_id,upload,sha,`synthetic/${material}`]);
+    const pin={material_id:material,material_version:1,sha256:sha},input={source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null};
+    ok(await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:0,input}));
+    const request={execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
+    await publishPrices(pool,{id:'review-prices-v1',prices,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'test'});
+    const quote=ok(await send('POST',`${base}/review-executions/quote`,request));
+    assert.equal(quote.quote.points,300);assert.equal(quote.shortage,300);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[p.project_id])).rows[0].n,0);
+    assert.equal((await send('POST',`${base}/review-executions`,request)).json().code,'QUOTE_REQUIRED');
+    const paid={...request,quote_id:quote.quote.quote_id};
+    assert.equal((await send('POST',`${base}/review-executions`,paid)).statusCode,402);
+    const fund=()=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:'synthetic-5000',points:5000,expiresAt:null,actor:'synthetic',reason:'test'}));
+    assert.equal(await fund(),await fund());assert.deepEqual(await creditBalance(pool,owner),{available:5000,frozen:0});
+    const concurrent=await Promise.all([send('POST',`${base}/review-executions`,paid),send('POST',`${base}/review-executions`,paid)]);
+    const run=ok(concurrent[0]);assert.equal(ok(concurrent[1]).run_id,run.run_id);assert.equal(run.billing_mode,'fixed_credits');
+    assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:300});
+    await publishPrices(pool,{id:'review-prices-v2',prices:{...prices,full_review:350},effectiveAt:'2026-01-02T00:00:00Z',actor:'synthetic',reason:'test update'});
+    const artifact=uid();
+    await pool.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status) VALUES($1,1,$2,$3,'text/markdown',$4,$5,'passed','available')`,[artifact,owner,run.run_id,sha,`synthetic/${artifact}`]);
+    await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1",[run.run_id,artifact]),/Delivered review report/);
+    await pool.query("INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename) VALUES($1,$2,$3,$4,1,'report','synthetic.md')",[owner,p.project_id,run.run_id,artifact]);
+    await pool.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1",[run.run_id,artifact]);
+    assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:0});
+    const receipt=ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`));assert.equal(receipt.state,'settled');assert.equal(receipt.quote.points,300);
+    assert.equal(ok(await send('POST',`${base}/review-executions`,paid)).run_id,run.run_id);
+    const update={execution_request_id:uid(),source_run_id:run.run_id,requirements:'Synthetic revision'};
+    const uq=ok(await send('POST',`${base}/review-updates/quote`,update));assert.equal(uq.quote.task_type,'review_revision');
+    const updateRun=ok(await send('POST',`${base}/review-updates`,{...update,quote_id:uq.quote.quote_id}));
+    assert.deepEqual(await creditBalance(pool,owner),{available:4500,frozen:200});
+    await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[updateRun.run_id]);
+    assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:0});
+    const next={...request,execution_request_id:uid()};
+    const nq=ok(await send('POST',`${base}/review-executions/quote`,next));assert.equal(nq.quote.points,350);
+    await publishPrices(pool,{id:'review-prices-v3',prices,effectiveAt:'2026-01-03T00:00:00Z',actor:'synthetic',reason:'test update'});
+    assert.equal((await send('POST',`${base}/review-executions`,{...next,quote_id:nq.quote.quote_id})).json().code,'QUOTE_CHANGED');
+    const fresh=ok(await send('POST',`${base}/review-executions/quote`,next));
+    ok(await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:1,input:{...input,requirements:['new requirement']}}));
+    assert.equal((await send('POST',`${base}/review-executions`,{...next,expected_input_version:2,quote_id:fresh.quote.quote_id})).json().code,'QUOTE_CHANGED');
+    owner='synthetic-foreign-review';assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);
+    assert.equal((await send('POST',`${base}/review-executions/quote`,next)).statusCode,404);
+    assert.equal((await auditCredits(pool)).consistent,true);
+  }finally{await app.close();await pool.end();}
+});
