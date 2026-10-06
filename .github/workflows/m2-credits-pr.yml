@@ -60,10 +60,12 @@ jobs:
         run: |
           node --test --test-concurrency=1 \
             packages/contracts/dist/source-prospectus.test.js \
+            packages/contracts/dist/signature-assessment.test.js \
             apps/api/dist/billing-classification.test.js \
             apps/api/dist/billing.pg.test.js \
             apps/api/dist/review-billing.pg.test.js \
             apps/api/dist/payments.pg.test.js \
+            apps/api/dist/upload-safety.test.js \
             apps/worker/dist/m2-paid-worker.test.js \
             apps/worker/dist/provider-reconciliation.test.js \
             apps/api/dist/generated-word-delivery.test.js

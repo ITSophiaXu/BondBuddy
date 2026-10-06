@@ -7,7 +7,7 @@ import type { Dto } from '../src/api';
 import { createHash } from 'node:crypto';
 
 // Synthetic API state; the UI, routing, saves and layouts are real browser code.
-async function setup(page: Page) {
+async function setup(page: Page, options: { beforeProjectRead?: () => Promise<void>; failProjectRead?: boolean } = {}) {
   const projects: Dto<'ProjectResponse'>[] = [];
   const messages: Dto<'ProjectMessage'>[] = [];
   const messageRef = () => ({ version: messages.length + 1, content_sha256: createHash('sha256').update(JSON.stringify(messages)).digest('hex'),
@@ -24,6 +24,10 @@ async function setup(page: Page) {
       projects.push(project); body=project; status=201;
     } else if(path==='/projects') body={items:projects,page:{next_cursor:null,has_more:false}};
     else if(path==='/projects/synthetic-design-project') {
+      if(request.method()==='GET') {
+        await options.beforeProjectRead?.();
+        if(options.failProjectRead) { await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'DATA_UNAVAILABLE'})});return; }
+      }
       if(request.method()==='PATCH') { const input=request.postDataJSON();writes.push(input);Object.assign(projects[0],input,{draft_revision:projects[0].draft_revision+1}); }
       body=projects[0];
     } else if(path==='/projects/synthetic-design-project/messages' && request.method()==='GET') {
@@ -95,9 +99,38 @@ test('prototype dashboard leads through creation to materials with persistent ma
   expect(errors).toEqual([]);
 });
 
+test('creating an update keeps its navigation active while the project loads',async({page})=>{
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release=resolve; });
+  await setup(page,{beforeProjectRead:()=>pending});
+  await page.getByRole('link',{name:'更新募集书',exact:true}).click();
+  await page.getByLabel('项目名称').fill('合成导航验收');
+  await page.getByLabel('发行人全称').fill('合成发行人有限公司');
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+  await expect(page.getByRole('status')).toContainText('正在读取项目');
+  await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
+  release();
+  await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
+  await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
+});
+
+for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目']]) {
+  test(`project loading and error preserve the entry navigation: ${active}`,async({page})=>{
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release=resolve; });
+    await setup(page,{beforeProjectRead:()=>pending,failProjectRead:true});
+    await page.goto(`/#/projects/synthetic-design-project${suffix}`);
+    await expect(page.getByRole('status')).toContainText('正在读取项目');
+    await expect(page.locator('.nav-item.active')).toHaveText(active);
+    release();
+    await expect(page.getByRole('heading',{name:'项目暂时无法打开'})).toBeVisible();
+    await expect(page.locator('.nav-item.active')).toHaveText(active);
+  });
+}
+
 test('unavailable modules retain original navigation but never create demo work',async({page})=>{
   const state=await setup(page);
-  for(const route of ['generate','qa','billing']) {
+  for(const route of ['generate','qa']) {
     await page.goto(`/#${route}`); await expect(page.getByRole('heading',{name:'这项功能尚未开放'})).toBeVisible();
   }
   await page.goto('/#review'); await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();

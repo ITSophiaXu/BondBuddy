@@ -118,11 +118,16 @@ const TargetConfirmationSchema = Type.Union([
 const runState = enumOf(RUN_STATES);
 const materialState = enumOf(MATERIAL_STATES);
 export const SIGNED_PDF_PROFILE_VERSION = 'signed-pdf-classic-v1' as const;
-export const SignatureAssessmentSchema = obj({
+export const MULTIPAGE_SIGNED_PDF_PROFILE_VERSION = 'signed-pdf-multipage-v2' as const;
+export const SignatureAssessmentSchema = Type.Union([obj({
   status: Type.Literal('signature_unverified'),
   profile_version: Type.Literal(SIGNED_PDF_PROFILE_VERSION),
   signature_count: Type.Literal(1)
-});
+}), obj({
+  status: Type.Literal('signature_unverified'),
+  profile_version: Type.Literal(MULTIPAGE_SIGNED_PDF_PROFILE_VERSION),
+  signature_count: Type.Integer({ minimum: 1, maximum: 1500 })
+})]);
 export type SignatureAssessment = Static<typeof SignatureAssessmentSchema>;
 const profileState = enumOf(PROFILE_STATES);
 const errorCode = enumOf(ERROR_CODES);

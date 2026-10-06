@@ -120,7 +120,7 @@
       "valid": true,
       "value": {
         "request_id": "synthetic-request",
-        "pack_id": "cny50",
+        "pack_id": "cny200",
         "provider": "alipay"
       }
     },
@@ -130,13 +130,23 @@
       "valid": false,
       "value": {
         "request_id": "synthetic-request",
-        "pack_id": "cny50",
+        "pack_id": "cny200",
         "provider": "alipay",
         "points": 999999
       }
     },
     {
-      "name": "paid order receipt",
+      "name": "retired recharge pack cannot create new orders",
+      "schema": "RechargeOrderRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-request",
+        "pack_id": "cny50",
+        "provider": "alipay"
+      }
+    },
+    {
+      "name": "historical paid order receipt retains original points",
       "schema": "RechargeOrderResponse",
       "valid": true,
       "value": {

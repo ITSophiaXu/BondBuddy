@@ -29,7 +29,12 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     const order=first.json();assert.equal(order.amount_fen,50000);assert.equal(order.points,52500);
     await assert.rejects(()=>pool.query('UPDATE bb_recharge_orders SET points=1 WHERE id=$1',[order.order_id]),/values are locked/);
     assert.equal((await send('POST','/api/v1/credits/recharge-orders',request)).json().order_id,order.order_id);assert.equal(creates,1);
-    assert.equal((await send('POST','/api/v1/credits/recharge-orders',{...request,pack_id:'cny50'})).statusCode,409);
+    assert.equal((await send('POST','/api/v1/credits/recharge-orders',{...request,pack_id:'cny200'})).statusCode,409);
+    const config=(await send('GET','/api/v1/credits/recharge-config')).json();
+    assert.deepEqual(config.packs[0],{id:'cny200',amount_fen:20000,points:20000});
+    assert.equal(config.pack_version,'recharge-20261006-v2');
+    assert.equal((await send('POST','/api/v1/credits/recharge-orders',{...request,request_id:'retired-pack',pack_id:'cny50'})).statusCode,422);
+    assert.equal(creates,1);
     const paid={...receipts.get(order.order_id)!,state:'paid' as const,transactionId:'synthetic-txn-1'};
     assert.equal((await callback(paid,false)).statusCode,401);
     assert.equal((await callback({...paid,amountFen:1})).statusCode,422);
@@ -39,14 +44,15 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     assert.deepEqual(await creditBalance(pool,actor),{available:52500,frozen:0});
     await callback({...paid,state:'expired'});
     assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).json().state,'paid');
-    const second=(await send('POST','/api/v1/credits/recharge-orders',{...request,request_id:'synthetic-order-2',pack_id:'cny50'})).json();
+    const second=(await send('POST','/api/v1/credits/recharge-orders',{...request,request_id:'synthetic-order-2',pack_id:'cny200'})).json();
+    assert.equal(second.amount_fen,20000);assert.equal(second.points,20000);
     const paid2={...receipts.get(second.order_id)!,state:'paid' as const,transactionId:'synthetic-txn-2'};
     await pool.query("CREATE FUNCTION synthetic_payment_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic ledger failure'; END; $$; CREATE TRIGGER synthetic_payment_fault BEFORE INSERT ON bb_credit_events FOR EACH ROW EXECUTE FUNCTION synthetic_payment_fault()");
     try{assert.equal((await callback(paid2)).statusCode,500);}finally{await pool.query('DROP TRIGGER synthetic_payment_fault ON bb_credit_events');}
     assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${second.order_id}`)).json().state,'pending');
     receipts.set(second.order_id,paid2);
     assert.equal((await send('POST',`/api/v1/credits/recharge-orders/${second.order_id}/refresh`,{})).json().state,'paid');
-    assert.deepEqual(await creditBalance(pool,actor),{available:57500,frozen:0});
+    assert.deepEqual(await creditBalance(pool,actor),{available:72500,frozen:0});
     assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_runs')).rows[0].n),0);
     assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_credit_lots')).rows[0].n),2);
     actor='foreign';assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).statusCode,404);

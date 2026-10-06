@@ -50,7 +50,7 @@ async function installApi(context: BrowserContext, state: Fixture) {
       self_service_recovery: 'unavailable', support_contact: state.supportContact
     });
     if(path==='/credits/balance')return json(route,200,{enabled:true,available:5000,frozen:300});
-    if(path==='/credits/recharge-config')return json(route,200,{enabled:false,providers:[],packs:[{id:'cny50',amount_fen:5000,points:5000},{id:'cny500',amount_fen:50000,points:52500},{id:'cny2000',amount_fen:200000,points:220000},{id:'cny10000',amount_fen:1000000,points:1150000}],pack_version:'synthetic'});
+    if(path==='/credits/recharge-config')return json(route,200,{enabled:false,providers:[],packs:[{id:'cny200',amount_fen:20000,points:20000},{id:'cny500',amount_fen:50000,points:52500},{id:'cny2000',amount_fen:200000,points:220000},{id:'cny10000',amount_fen:1000000,points:1150000}],pack_version:'synthetic'});
     if (path === '/account/sessions') return json(route, 200, { items: state.sessions });
     const revoke = path.match(/^\/account\/sessions\/([^/]+)$/);
     if (revoke && method === 'DELETE') {
@@ -263,6 +263,9 @@ test('unified account has a single entry and preserves security forms beside rea
  await expect(page.locator('#account-credits')).toContainText('5,000');
  await expect(page.locator('#account-credits')).toContainText('300');
  await expect(page.locator('#account-credits')).toContainText('充值渠道暂未开放');
+ await expect(page.locator('.credit-pack').first()).toContainText('20,000');
+ await expect(page.locator('.credit-pack').first().getByRole('button')).toHaveText('充值 ¥200');
+ await expect(page.locator('[data-pack="cny50"]')).toHaveCount(0);
  for(const name of ['登录会话','修改密码','注销账号'])await page.locator('summary').filter({hasText:name}).click();
  const output=process.env.BB_ACCOUNT_EVIDENCE;
  if(output){await mkdir(output,{recursive:true});for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:output+`/implementation-account-${width}.png`,fullPage:true});}
