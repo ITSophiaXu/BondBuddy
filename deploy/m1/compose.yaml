@@ -86,6 +86,7 @@ services:
       BB_RUN_RUNTIME_ENABLED: '1'
       # M2 stays off until the official payment adapter and release acceptance are complete.
       BB_PAID_AUTHORING_ENABLED: ${BB_PAID_AUTHORING_ENABLED:-0}
+      BB_PAID_REVIEW_ENABLED: ${BB_PAID_REVIEW_ENABLED:-0}
       BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
       BB_SUPPORT_CONTACT: ${BB_SUPPORT_CONTACT:-}
       BB_TRUSTED_PROXY_CIDR: ${BB_WEB_IP:-10.231.0.10}/32

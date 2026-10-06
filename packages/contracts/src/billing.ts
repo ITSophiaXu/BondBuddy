@@ -1,12 +1,14 @@
 import { Type, type Static } from '@sinclair/typebox';
 
-export const BILLING_TASKS = {
+export const AUTHORING_BILLING_TASKS = {
   interim: '一期更新', annual: '年度更新', two_years: '两年补更', three_years: '三年补更',
   migration: '模板／市场迁移', migration_two_years: '迁移＋补两年',
   migration_three_years: '迁移＋补三年', new_authoring: '新项目编制'
 } as const;
+export const REVIEW_BILLING_TASKS = { full_review: '完整三维复核', differential_review: '差异复核', review_revision: '根据复核结果修订' } as const;
+export const BILLING_TASKS = {...AUTHORING_BILLING_TASKS, ...REVIEW_BILLING_TASKS} as const;
 export type BillingTask = keyof typeof BILLING_TASKS;
-export const INITIAL_FIXED_PRICES: Record<BillingTask, number> = {
+export const INITIAL_FIXED_PRICES: Record<keyof typeof AUTHORING_BILLING_TASKS, number> = {
   interim: 17900, annual: 27900, two_years: 48900, three_years: 68900,
   migration: 64900, migration_two_years: 85900, migration_three_years: 105900, new_authoring: 159900
 };

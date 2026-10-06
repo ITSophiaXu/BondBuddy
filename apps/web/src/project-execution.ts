@@ -268,7 +268,7 @@ export class ProjectExecution {
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
     quoteHost.hidden=!q?.enabled||!q.quote||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=q?.enabled&&q.quote?`<div class="fixed-quote"><h3>${esc(BILLING_TASKS[q.quote.task_type])} · ${q.quote.points.toLocaleString('zh-CN')} 积分</h3><p>${esc(q.quote.reason)}</p><p>可用 ${q.balance.available.toLocaleString('zh-CN')} 积分${q.shortage?`，还差 ${q.shortage.toLocaleString('zh-CN')} 积分`:''}</p><p class="muted">确认后锁定本次价格；双 Word 可下载后扣费，失败或有效取消释放。</p>${q.shortage?`<a class="btn primary" href="#billing?project=${encodeURIComponent(this.id)}">充值积分</a>`:''}<button type="button" class="text-button" id="refresh-quote">刷新报价与余额</button></div>`:'';
+    quoteHost.innerHTML=q?.enabled&&q.quote?`<div class="fixed-quote"><h3>${esc(BILLING_TASKS[q.quote.task_type])} · ${q.quote.points.toLocaleString('zh-CN')} 积分</h3><p>${esc(q.quote.reason)}</p><p>可用 ${q.balance.available.toLocaleString('zh-CN')} 积分${q.shortage?`，还差 ${q.shortage.toLocaleString('zh-CN')} 积分`:''}</p><p class="muted">确认后锁定本次价格；双 Word 可下载后扣费，失败或有效取消释放。</p>${q.shortage?`<a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a>`:''}<button type="button" class="text-button" id="refresh-quote">刷新报价与余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote());});
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;

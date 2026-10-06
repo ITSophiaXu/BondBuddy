@@ -1,0 +1,11 @@
+.account-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:24px;align-items:start}
+.account-username{padding:8px 14px;border:1px solid var(--line,#dce4eb);border-radius:20px;color:var(--muted,#607080);font-weight:600}
+.account-credits{min-width:0}.account-credits .credit-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.account-credits .credit-overview{margin-bottom:24px}.account-credits .credit-overview h2{font-size:34px}.account-credits .credit-stats{min-width:100px}
+.account-credits .credit-pack{padding:20px}.account-credits .billing-faq{margin-top:24px}.account-credits .simple-payment-wrap{display:block}
+.account-credits .notice{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:20px}
+.account-security{min-width:0}.account-security .settings-list>div{display:block}.account-security .settings-list dd{margin-top:6px;overflow-wrap:anywhere}
+.account-disclosure{padding:0!important}.account-disclosure>summary{padding:20px 24px;cursor:pointer;font-weight:600}.account-disclosure-body{padding:0 24px 24px}.account-disclosure .form-panel{border:0;box-shadow:none}
+.account-disclosure-body p{line-height:1.7}.account-disclosure-body .session-row{flex-wrap:wrap}.account-disclosure-body h3{font-size:14px}
+@media(max-width:1050px){.account-layout{grid-template-columns:1fr}.account-security{display:grid;grid-template-columns:1fr 1fr;gap:16px}.account-security>section{grid-column:1/-1}}
+@media(max-width:600px){.account-security{display:flex}.account-credits .credit-overview{flex-direction:column;align-items:flex-start;gap:16px}.account-credits .credit-pack-grid{grid-template-columns:1fr}.account-credits .credit-stats{width:100%}}

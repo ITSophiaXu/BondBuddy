@@ -14,6 +14,9 @@ async function install(page: Page, calls: string[], options: { blockProject?: bo
   let materialLive = true;
   await page.route('**/api/v1/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname, method = request.method();
+    if(path==='/api/v1/account')return json(route,200,{user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,support_contact:null});
+    if(path==='/api/v1/account/sessions')return json(route,200,{items:[]});
+    if(path==='/api/v1/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
     if (path === '/api/v1/me') return json(route, 200, { user_id: 'user-policy', session_status: 'active', expires_at: now });
     if (path === '/api/v1/data-policy') { calls.push('policy'); return json(route, 200, policy); }
     if (path === '/api/v1/projects' && method === 'GET') return json(route, 200, { items: [], page: { next_cursor: null, has_more: false } });
@@ -30,7 +33,7 @@ async function install(page: Page, calls: string[], options: { blockProject?: bo
   await page.context().addCookies([{ name: 'bb_csrf', value: 'synthetic-csrf', url: origin }]);
 }
 
-test('upload only links to policy; independent page keeps accurate retention and processing details', async ({ page }) => {
+test('upload only links to policy; account disclosure keeps accurate retention and processing details', async ({ page }) => {
   const calls: string[] = []; await install(page, calls);
   await page.goto(`/#/projects/${projectId}`);
   const note = page.locator('#upload-policy-note');
@@ -39,7 +42,7 @@ test('upload only links to policy; independent page keeps accurate retention and
   await expect(page.locator('main')).not.toContainText('自动清理时限尚未配置');
   await expect(note).not.toContainText('模型服务商');
   await note.getByRole('link', { name: '数据保存与删除说明' }).click();
-  await expect(page.getByRole('heading', { name: '数据保存与删除说明' })).toBeVisible();
+  await expect(page.locator('#account-data[open]')).toBeVisible();
   for (const text of ['6 小时', '180 天', '21 天', '删除项目', '浏览器中的文件不是唯一副本']) await expect(page.locator('main')).toContainText(text);
   await expect(page.locator('body')).not.toContainText('只保存在本机');
 });
