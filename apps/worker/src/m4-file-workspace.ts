@@ -6,6 +6,7 @@ import { join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import {validM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import type { StageContext } from './run-pipeline.js';
 import type { M4WorkerInput } from './m4-input.js';
 import type { loadM4RuntimeSkill } from './m4-runtime-skills.js';
@@ -42,7 +43,7 @@ export async function checkedM4File(directory: string, name: string, max = M4_FI
 }
 
 export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, skill: Skill, cwd: string, replySchema?: unknown) {
-  for (const name of ['materials', 'scratch', 'output']) await mkdir(join(cwd, name), {mode: 0o700});
+  for (const name of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, name), {mode: 0o700});
   const originals = new Map<string, string>();
   const material = [], artifacts = [];
   const copy = async (key: string, sha256: string, path: string) => {
@@ -85,7 +86,15 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     } else await copy(file.objectKey, file.pin.sha256, path);
     artifacts.push({...file.pin, filename: file.filename, path, effective_path: await effective(path, `a${i}`)});
   }
-  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,
+  let knowledge=null;
+  if(input.manifest.kind==='document'&&input.manifest.knowledge){
+    const pin=input.manifest.knowledge;
+    if(!validM4Knowledge(pin,input.manifest.market,input.manifest.input.document_type))throw Error('INPUT_REVISION_CONFLICT');
+    const {content,...metadata}=pin,path='knowledge/material-drafting.md';
+    await writeFile(join(cwd,path),content,{mode:0o400});originals.set(path,pin.sha256);
+    knowledge={...metadata,path};
+  }
+  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,
     requirements: input.manifest.kind === 'document' ? input.manifest.input.requirements.map(r => r.text) : [],
     materials: material, artifacts, authorized_sources:m4AuthorizedSources(input), skill: {id: skill.id, version: skill.version, sha256: skill.sha256},
     ...(replySchema ? {reply_schema: replySchema} : {}),

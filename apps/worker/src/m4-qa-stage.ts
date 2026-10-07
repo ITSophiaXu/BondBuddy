@@ -40,9 +40,9 @@ export function constrainM4Reply(reply:M4AssistantReply,manifest:M4QaManifest):M
     content:'M4 当前支持基础概念、已授权材料解读和常用确定性财务计算。实时公开查询、法规效力或适用性检索、深度研究及多期系统分析将在 M5 开放；本轮未执行外部检索，可继续讨论已有材料或准备已开放任务。',
     intent:'clarify',requirements:[],fields:{},document_type:null,target_business:null};
   if(m4UnavailableDocument(content)||m4UnavailableLocalScope(content))return {...reply,
-    content:'M4 首发开放交易所普通私募单承销商的立项报告和募集说明书摘要，以及整份续改。你提出的范围包含尚未开放能力，当前资料与讨论会保留；请确认是否改为已开放的单项整份任务。',
+    content:'M4 首发开放交易所普通私募单承销商的立项报告、主承销商核查意见、法律意见书和募集说明书摘要，以及整份续改。你提出的范围包含尚未开放能力，当前资料与讨论会保留；请确认是否改为已开放的单项整份任务。',
     intent:'clarify',requirements:[],fields:{},document_type:null,target_business:null};
-  const target=reply.document_type==='init'?/立项(?:报告)?/:reply.document_type==='private_summary'?/摘要/:null;
+  const target=reply.document_type==='init'?/立项(?:报告)?/:reply.document_type==='private_summary'?/摘要/:reply.document_type==='underwriter'?/核查意见/:reply.document_type==='legal'?/法律意见/:null;
   // Guard explicit main-action denial/method questions. Local writing restrictions remain requirements.
   const denied=clauses.some(clause=>{
     const denial=/(?:暂时|目前|先)?(?:不要|不需要|先别|别)(?:直接|马上|现在|自动)?(?:生成|制作|执行|启动|复核|改稿)(.*)/.exec(clause);
@@ -58,10 +58,10 @@ export function constrainM4Reply(reply:M4AssistantReply,manifest:M4QaManifest):M
       intent:preparation?'draft':'answer',requirements:preparation?reply.requirements:[],fields:preparation?reply.fields:{},document_type:preparation?reply.document_type:null,target_business:null};
   }
   if(method && reply.intent==='draft')return {...reply,intent:'answer',requirements:[],fields:{},document_type:null,target_business:null};
-  const unavailable=clauses.some(clause=>/(?:法律意见|核查意见|推荐函|公募|DFI|多承销|多券商|组合|仅改.{0,15}(?:章节|段落)|只改.{0,15}(?:章节|段落))/.test(clause)
+  const unavailable=clauses.some(clause=>/(?:推荐函|公募|DFI|多承销|多券商|组合|仅改.{0,15}(?:章节|段落)|只改.{0,15}(?:章节|段落))/.test(clause)
     && /生成|制作|编制|改稿|修改/.test(clause) && !/(?:不要|不需要|先别|别)(?:直接|马上|现在|自动)?(?:生成|制作|编制|改稿|修改)/.test(clause)) && !method;
   if(unavailable && ['execute','draft'].includes(reply.intent))
-    return {...reply,content:'M4 首发开放交易所普通私募单承销商的立项报告和募集说明书摘要，以及整份续改。你提出的范围包含尚未开放能力，当前资料与讨论会保留；请确认是否改为已开放的单项整份任务。',
+    return {...reply,content:'M4 首发开放交易所普通私募单承销商的立项报告、主承销商核查意见、法律意见书和募集说明书摘要，以及整份续改。你提出的范围包含尚未开放能力，当前资料与讨论会保留；请确认是否改为已开放的单项整份任务。',
       intent:'clarify',requirements:[],fields:{},document_type:null,target_business:null};
   return reply;
 }

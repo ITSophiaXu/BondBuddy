@@ -10,8 +10,9 @@ const text = Type.String({ maxLength: 12000 });
 const nonempty = Type.String({ minLength: 1, maxLength: 12000, pattern: '\\S' });
 const nullable = <T extends Parameters<typeof Type.Union>[0][number]>(s: T) => Type.Union([s, Type.Null()]);
 const version = Type.Integer({ minimum: 1 });
-export const M4_DOCUMENT_TYPES = ['init', 'private_summary'] as const;
-export const M4_DOCUMENT_LABELS = { init: '立项报告', private_summary: '普通私募募集说明书摘要' } as const;
+export const M4_DOCUMENT_TYPES = ['init', 'underwriter', 'legal', 'private_summary'] as const;
+export const M4_DOCUMENT_LABELS = { init: '立项报告', underwriter: '主承销商核查意见', legal: '法律意见书', private_summary: '普通私募募集说明书摘要' } as const;
+export const M4_DOCUMENT_BILLING_TASKS = {init:'m4_G01',underwriter:'m4_G02',legal:'m4_G03',private_summary:'m4_G05'} as const;
 export const M4_DOCUMENT_SUBTYPE = 'm4_document_v1';
 export const M4_QA_SUBTYPE = 'm4_qa_v1';
 export const M4DocumentTypeSchema = Type.Union(M4_DOCUMENT_TYPES.map(v => Type.Literal(v)));
@@ -80,17 +81,23 @@ export type M4QuoteRequest = Static<typeof M4QuoteRequestSchema>;
 export const M4ExecuteRequestSchema = obj({ execution_request_id: id, document_type: M4DocumentTypeSchema,
   expected_draft_version: version, quote_id: id, entrypoint: Type.Union([Type.Literal('workspace'), Type.Literal('assistant')]) });
 export type M4ExecuteRequest = Static<typeof M4ExecuteRequestSchema>;
-export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G05: '募集说明书摘要', m4_Q01: '通用解释',
+export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_Q01: '通用解释',
   m4_Q02: '授权资料定位', m4_Q03: '确定性计算', m4_Q04: '基础资料比较', m4_Q05: '基础资料解读' } as const;
 export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
 export type M4Quote = { quote_id: string; topic_id: string; input_hash: string; task_type: M4BillingTask | 'm4_Q00' | 'm4_task_assistance';
   points: number; price_version: string | null; reason: string; created_at: string;
   billing_method: 'metered_capped' | 'free'; multiplier: number; expires_at: string; amount_semantics: 'reservation_cap' };
 export type M4QuoteResponse = { quote: M4Quote; balance: CreditBalance; shortage: number };
+export const M4KnowledgeSnapshotSchema = obj({version:id,document_type:M4DocumentTypeSchema,
+  market:Type.Union([Type.Literal('sse'),Type.Literal('szse')]),title:nonempty,sha256:hash,
+  source_ids:Type.Array(id,{minItems:1,maxItems:20}),content:Type.String({minLength:1,maxLength:500000})});
+export type M4KnowledgeSnapshot = Static<typeof M4KnowledgeSnapshotSchema>;
 export const M4DocumentManifestSchema = obj({ version: Type.Literal('m4-document-input-v1'), kind: Type.Literal('document'),
   topic_id: id, execution_scope_project_id: id, draft_version: version, input: M4DraftInputSchema,
   template_material: nullable(M4MaterialPinSchema), market: Type.Union([Type.Literal('sse'), Type.Literal('szse')]),
-  offering: Type.Literal('private'), billing_task: Type.Union([Type.Literal('m4_G01'), Type.Literal('m4_G05')]) });
+  // Optional only for persisted pre-knowledge v1 tasks; the API pins it on every new task.
+  knowledge:Type.Optional(M4KnowledgeSnapshotSchema),
+  offering: Type.Literal('private'), billing_task: Type.Union(Object.values(M4_DOCUMENT_BILLING_TASKS).map(v=>Type.Literal(v))) });
 export type M4DocumentManifest = Static<typeof M4DocumentManifestSchema>;
 export const M4QaManifestSchema = obj({ version: Type.Literal('m4-qa-input-v1'), kind: Type.Literal('qa'),
   topic_id: id, message_id: id, content: nonempty, context: M4MessageContextSchema,

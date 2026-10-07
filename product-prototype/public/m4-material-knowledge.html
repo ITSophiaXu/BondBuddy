@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>材料生成 · 交易所知识接入原型</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="m4-material-knowledge.css"></head>
+<body><main style="margin:24px auto;width:calc(100% - 48px);max-width:1120px"><div class="m4-page">
+<header class="page-head"><div><div class="eyebrow">BOND WORKSPACE</div><h1>材料生成与问答</h1><p>准备材料与要求，生成可编辑 Word。</p></div></header>
+<div class="m4-grid"><section class="m4-panel" aria-label="任务输入与成果"><nav class="m4-tabs"><button role="tab" aria-selected="true">任务输入</button></nav><div class="m4-content">
+<section class="m4-section">
+<label class="m4-label" for="material-type">材料类型</label><select id="material-type" class="m4-wide"><option value="init">立项报告</option><option value="underwriter" selected>主承销商核查意见</option><option value="legal">法律意见书</option><option value="private_summary">普通私募募集说明书摘要</option></select>
+<label class="m4-label" for="m4-market">交易所</label><select id="m4-market"><option value="">请选择</option><option value="sse" selected>上海证券交易所</option><option value="szse">深圳证券交易所</option></select>
+<p class="m4-knowledge" role="status" id="knowledge"></p>
+<p class="m4-muted">每次制作一份材料，生成可编辑 Word 和独立制作说明。</p>
+<div class="m4-fields"><div><label class="m4-label">发行人</label><input value="合成发行人"></div><div><label class="m4-label">主承销商（单家，选填）</label><input value="合成券商"></div><div><label class="m4-label">报告期截止日（选填）</label><input type="date"></div></div>
+<p class="m4-default">系统默认规则：交易所普通私募 · 全文制作 · 单家主承销商</p></section>
+<section class="m4-section"><h3 id="source-title">来源募集说明书（选填）</h3><p class="m4-muted" id="source-help">可采用募集书，并在下方补充支持本次意见的项目材料。</p><select class="m4-wide"><option>选择已保存的募集说明书</option></select><div class="m4-actions"><button class="btn secondary">上传募集说明书</button><button class="btn secondary">从已有项目选择材料</button></div></section>
+<section class="m4-section"><h3>本次参考材料</h3><p class="m4-muted" id="evidence">可补充尽调记录、内核意见、决议、财务资料及资金用途证明。从共享材料中勾选本次使用范围。</p><label class="m4-material-choice"><input type="checkbox"><span>来源募集书.docx · V3</span></label><div class="m4-actions"><button class="btn secondary">补充参考材料</button></div></section>
+<div class="m4-accepted"><strong>助手已采纳要求</strong><ul><li>保留已采纳要求</li></ul></div><div class="m4-actions"><button class="btn primary">查看报价并制作</button><button class="btn secondary">与助手讨论</button></div>
+</div></section><aside class="m4-agent" aria-label="项目助手"><header class="m4-agent-head"><span class="m4-agent-icon">✦</span><div><h2>项目助手</h2><p>理解需求 · 澄清口径 · 执行任务</p></div></header><div class="m4-context">围绕当前材料讨论，补充写作要求</div><div class="m4-messages"><p class="m4-muted">可以说明写作重点、格式及需要保留的内容。</p></div><div class="m4-composer"><label for="prompt">与项目助手讨论</label><textarea id="prompt" placeholder="例如：保留待核事项，不要生成签署页"></textarea><div class="m4-compose-actions"><button class="btn primary">发送</button></div></div></aside></div>
+<p class="m4-muted">2026-10-07 原型补充。示例内容；按钮不创建任务、不上传材料、不扣费。制作中仍采用现有工作区与成果标签。</p>
+</div></main><script>
+const labels={init:'立项报告',underwriter:'主承销商核查意见',legal:'法律意见书',private_summary:'普通私募募集说明书摘要'};
+function update(){const type=document.querySelector('#material-type').value,market=document.querySelector('#m4-market').value;
+document.querySelector('#knowledge').textContent=market?'已匹配'+(market==='sse'?'上交所':'深交所')+' · '+labels[type]+'编制要求，将与本次材料和写作要求一并使用。':'选择交易所后，自动采用对应材料的编制要求。';
+document.querySelector('#source-title').textContent=type==='init'?'私有立项模板':type==='private_summary'?'来源募集说明书':'来源募集说明书（选填）';
+document.querySelector('#source-help').textContent=type==='init'?'选择当前主承销商对应的私有模板；模板原件和版本独立保存。':type==='private_summary'?'摘要依照选定的准确来源版本制作。':'可采用募集书，并在下方补充支持本次意见的项目材料。';
+document.querySelector('#evidence').textContent=type==='legal'?'可补充章程、决议授权、权属证明、合同、诉讼及律师核查记录。':type==='underwriter'?'可补充尽调记录、内核意见、决议、财务资料及资金用途证明。':'可补充发行人资料、财务报表和发行安排。';}
+document.querySelector('#material-type').onchange=update;document.querySelector('#m4-market').onchange=update;update();
+</script></body></html>

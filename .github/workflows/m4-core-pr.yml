@@ -116,6 +116,7 @@ jobs:
       - name: M4 API, authoring task-kind and billing regressions
         run: |
           node --test --test-concurrency=1 --test-reporter=tap \
+            apps/api/dist/m4-knowledge.test.js \
             apps/api/dist/m4-workspace.pg.test.js \
             apps/api/dist/authoring-task-kind.pg.test.js \
             apps/api/dist/billing.pg.test.js \
