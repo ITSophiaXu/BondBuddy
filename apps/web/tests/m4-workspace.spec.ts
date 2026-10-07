@@ -116,6 +116,19 @@ test('busy source project retains form and does not automatically execute when r
   await expect(page.locator('#m4-status')).toContainText('同一来源项目已有任务');blocked=false;await page.reload();await expect(page.locator('#m4-requirements')).toHaveValue('保留这份草稿');expect(s.executions).toHaveLength(0);
 });
 
+test('another page changing view state can be reconciled on the material form without chat or lost requirements',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  await expect.poll(()=>s.workspace.view.selected_document_type).toBe('private_summary');
+  s.workspace.view={...s.workspace.view,selected_document_type:'legal',version:s.workspace.view.version+1};
+  await page.locator('#m4-requirements').fill('多页面操作仍需保留的要求');
+  await expect(page.getByRole('button',{name:'核对页面状态',exact:true})).toBeVisible();
+  await expect.poll(()=>s.workspace.drafts.private_summary.supplemental_requirements).toBe('多页面操作仍需保留的要求');
+  await page.getByRole('button',{name:'核对页面状态',exact:true}).click();await page.getByRole('button',{name:'保留本页显示',exact:true}).click();
+  await expect(page.getByRole('button',{name:'核对页面状态',exact:true})).toHaveCount(0);await expect.poll(()=>s.workspace.view.selected_document_type).toBe('private_summary');
+  await start(page);expect(s.executions).toHaveLength(1);expect(s.messages).toHaveLength(0);
+  const input=s.workspace.tasks[0].manifest;expect(input.kind==='document'&&input.input.supplemental_requirements).toBe('多页面操作仍需保留的要求');
+});
+
 test('a draft save failure retains direct requirements and retry saves before execution',async({page})=>{
   const s=fixture();await mount(page,s);await choose(page,'private_summary');let fail=true;
   await page.route('**/drafts/private_summary',route=>fail?reply(route,{code:'DATA_UNAVAILABLE'},503):route.fallback());
