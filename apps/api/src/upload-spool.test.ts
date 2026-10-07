@@ -39,7 +39,7 @@ function acrossBoundary(tail: string, offset: number, header = 'name,value\n'): 
   return Buffer.concat([Buffer.from(header), Buffer.from('x,'), filler.subarray(2), Buffer.from(`\n${tail}`)]);
 }
 
-test('spooled-file inspection matches in-memory inspection, including chunk-boundary cases', async () => {
+test('spooled and in-memory originals accept identical bytes without content checks at chunk boundaries', async () => {
   const cases: Array<{ name: string; bytes: Buffer; mediaType: string }> = [
     { name: 'text', bytes: textSample, mediaType: TEXT },
     { name: 'csv', bytes: csvSample, mediaType: CSV },
@@ -60,21 +60,22 @@ test('spooled-file inspection matches in-memory inspection, including chunk-boun
   for (const item of cases) {
     const memory = await outcome(() => verifiedMedia(item.bytes, item.mediaType));
     const file = await withFile(item.bytes, path => outcome(() => verifiedMediaFile(path, item.bytes.length, item.mediaType)));
+    assert.equal(memory, `ok:${item.mediaType}`, item.name);
     assert.equal(file, memory, item.name);
   }
   const quoted = acrossBoundary('"a""b",1\r\n', 3), formula = acrossBoundary('ok,=1+1\n', 2);
   assert.ok(quoted.length > MiB && formula.length > MiB);
   assert.equal(await withFile(quoted, path => outcome(() => verifiedMediaFile(path, quoted.length, CSV))), `ok:${CSV}`);
-  assert.equal(await withFile(formula, path => outcome(() => verifiedMediaFile(path, formula.length, CSV))), '415:MATERIAL_FORMAT_UNSUPPORTED');
+  assert.equal(await withFile(formula, path => outcome(() => verifiedMediaFile(path, formula.length, CSV))), `ok:${CSV}`);
 });
 
-test('spooled PDF inspection finds an active token split across the scan chunk seam', async () => {
+test('spooled PDF stays opaque while a mismatched stored size is rejected', async () => {
   const base = pdfSample();
   const body = Buffer.concat([base.subarray(0, base.length - 6), Buffer.from('\n%'), Buffer.alloc(MiB - base.length - 1, 0x20), Buffer.from('/Launch\n'), base.subarray(base.length - 6)]);
   // "/Launch" starts 3 bytes before the 1 MiB boundary.
   assert.equal(body.indexOf('/Launch') < MiB && body.indexOf('/Launch') + 7 > MiB, true);
-  assert.equal(await withFile(body, path => outcome(() => verifiedMediaFile(path, body.length, PDF))), '415:MATERIAL_FORMAT_UNSUPPORTED');
-  assert.equal(await withFile(base, path => outcome(() => verifiedMediaFile(path, base.length + 1, PDF))), '422:MATERIAL_UNREADABLE', 'declared size must match the file');
+  assert.equal(await withFile(body, path => outcome(() => verifiedMediaFile(path, body.length, PDF))), `ok:${PDF}`);
+  assert.equal(await withFile(base, path => outcome(() => verifiedMediaFile(path, base.length + 1, PDF))), '422:MATERIAL_CONTENT_MISMATCH', 'declared size must match the file');
 });
 
 test('spool stream hashes bytes, rejects overruns and leaves no partial file behind', async () => {
