@@ -246,9 +246,9 @@ function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成与问答',section === 'generate')}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
+    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate')}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
     <div class="sidebar-bottom"><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成与问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
@@ -334,9 +334,9 @@ async function renderRoute() {
     if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){details.open=true;details.scrollIntoView({block:'start'});}}
     return;
   }
-  if (/^(generate|qa)(\?|$)/.test(requested)) {
+  if (/^generate(\?|$)/.test(requested)) {
     const query=new URLSearchParams(requested.split('?')[1]??'');
-    materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.get('new')==='1');
+    materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'));
     await materialWorkspace.render(); return;
   }
   if (/^\/new(\?|$)/.test(requested)) { renderNew(new URLSearchParams(requested.split('?')[1]??'')); return; }

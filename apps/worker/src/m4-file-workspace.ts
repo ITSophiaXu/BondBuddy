@@ -95,7 +95,8 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     knowledge={...metadata,path};
   }
   const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,
-    requirements: input.manifest.kind === 'document' ? input.manifest.input.requirements.map(r => r.text) : [],
+    requirements: input.manifest.kind === 'document' ? [...input.manifest.input.requirements.map(r => r.text),
+      ...(input.manifest.input.supplemental_requirements?.trim() ? [input.manifest.input.supplemental_requirements.trim()] : [])] : [],
     materials: material, artifacts, authorized_sources:m4AuthorizedSources(input), skill: {id: skill.id, version: skill.version, sha256: skill.sha256},
     ...(replySchema ? {reply_schema: replySchema} : {}),
     output: input.manifest.kind === 'document' ? {document: 'output/document.docx', preparation_note: 'output/preparation-note.docx'} : {reply: 'output/reply.json'}};

@@ -35,6 +35,7 @@ export const M4DraftInputSchema = obj({ document_type: M4DocumentTypeSchema,
   template: nullable(M4TemplateRefSchema), edit_base: nullable(M4ArtifactPinSchema), scope: Type.Literal('whole'),
   fields: Type.Record(Type.String({ maxLength: 80 }), Type.String({ maxLength: 2000 })),
   requirements: Type.Array(M4RequirementSchema, { maxItems: 100 }),
+  supplemental_requirements: Type.Optional(text),
 });
 export type M4DraftInput = Static<typeof M4DraftInputSchema>;
 export type M4Draft = M4DraftInput & { version: number; sha256: string; updated_at: string | null };

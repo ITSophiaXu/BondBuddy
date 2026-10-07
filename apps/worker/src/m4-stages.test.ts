@@ -61,7 +61,7 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
   try {
     const manifest=f.input.manifest as M4DocumentManifest;manifest.input.document_type=documentType;manifest.market=market;
     manifest.billing_task=({private_summary:'m4_G05',underwriter:'m4_G02',legal:'m4_G03'} as const)[documentType];
-    manifest.knowledge=loadM4Knowledge(market,documentType);manifest.input.requirements=[{requirement_id:'r',text:'不要生成签署页',message_id:'m',message_version:1}];
+    manifest.knowledge=loadM4Knowledge(market,documentType);manifest.input.requirements=[{requirement_id:'r',text:'不要生成签署页',message_id:'m',message_version:1}];manifest.input.supplemental_requirements='重点说明偿债安排，保留财务表格';
     f.ctx.run.input_hash=inputManifestHash(manifest);
     let calls=0;
     const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
@@ -70,7 +70,7 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
       assert.equal(input.materials[0].path,'materials/m0.txt');assert.equal(input.authorized_sources[0].id,'material');
       assert.equal(input.task.input.scope,'whole');assert.deepEqual(await readFile(join(f.directory,'materials/m0.txt')),f.source);
-      assert.deepEqual(input.requirements,['不要生成签署页']);assert.equal(input.knowledge.market,market);
+      assert.deepEqual(input.requirements,['不要生成签署页','重点说明偿债安排，保留财务表格']);assert.equal(input.knowledge.market,market);
       assert.equal(input.knowledge.document_type,documentType);
       assert.equal(await readFile(join(f.directory,input.knowledge.path),'utf8'),manifest.knowledge!.content);
       assert.equal(input.skill.id,documentType==='private_summary'?'m4-private-summary':`m4-${documentType}`);
