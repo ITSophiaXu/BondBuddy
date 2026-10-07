@@ -1,0 +1,202 @@
+{
+  "version": "material-drafting-2026-10-07-v1",
+  "sources": [
+    {
+      "id": "sse-underwriter-template",
+      "market": "sse",
+      "kind": "underwriter",
+      "name": "上交所-材料编制模板/主承销商核查意见/上交所-主承销商核查意见编制要求.docx",
+      "archive": "上交所-材料编制模板.zip",
+      "original_sha256": "bcea99d321f04e022c9ccf8243eae3ebf0ee506ded164e126f3b63a0757d05b7",
+      "bytes": 156672,
+      "status": "irm_protected_not_read",
+      "replacement": "sse-guide:第四章（按第八章调整）"
+    },
+    {
+      "id": "sse-private_summary-template",
+      "market": "sse",
+      "kind": "private_summary",
+      "name": "上交所-材料编制模板/募集说明书摘要/上交所-募集说明书摘要写作要求.docx",
+      "archive": "上交所-材料编制模板.zip",
+      "original_sha256": "978c0338ca1986c9c46f9c99f49ae2deec5e93b34ea46b6104fb3f50dbbf4351",
+      "bytes": 15556,
+      "status": "extracted",
+      "original_path": "knowledge/material-drafting/2026-10-07/originals/sse-private_summary-template.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/sse-private_summary-template.md",
+      "markdown_sha256": "69895316a23af8dd76a1093342c06b1bf2043c7b7eb0b50b91ad8955cea40cf4"
+    },
+    {
+      "id": "sse-legal-template",
+      "market": "sse",
+      "kind": "legal",
+      "name": "上交所-材料编制模板/法律意见书/上交所-法律意见书编制要求.docx",
+      "archive": "上交所-材料编制模板.zip",
+      "original_sha256": "e245fb98487b300d57f1d5960974bd58a2847970f66aa42f9ba5bdbb541fb571",
+      "bytes": 16880,
+      "status": "extracted",
+      "original_path": "knowledge/material-drafting/2026-10-07/originals/sse-legal-template.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/sse-legal-template.md",
+      "markdown_sha256": "8db063611b3dad93d24162d80066e4b5144b5eb4a4a0c676e9b0ef50c780c49c"
+    },
+    {
+      "id": "szse-underwriter-template",
+      "market": "szse",
+      "kind": "underwriter",
+      "name": "深交所-材料编制模板/深交所-主承销商核查意见.docx",
+      "archive": "深交所-材料编制模板.zip",
+      "original_sha256": "c1911d3921a31d75ea2dd3d749b13d168ff781e4d95c82722bdd566003204acb",
+      "bytes": 16403,
+      "status": "extracted",
+      "original_path": "knowledge/material-drafting/2026-10-07/originals/szse-underwriter-template.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/szse-underwriter-template.md",
+      "markdown_sha256": "669d617bab7f654617a13a057fdcd024631a45de73517efcef75f0a0da7bcfd4"
+    },
+    {
+      "id": "szse-private_summary-template",
+      "market": "szse",
+      "kind": "private_summary",
+      "name": "深交所-材料编制模板/深交所-募集说明书摘要编制要求.docx",
+      "archive": "深交所-材料编制模板.zip",
+      "original_sha256": "f8dc1bc2a63031c217131561d0b7aa4024993cfe46055ce5adba28e67c95ee57",
+      "bytes": 16388,
+      "status": "extracted",
+      "original_path": "knowledge/material-drafting/2026-10-07/originals/szse-private_summary-template.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/szse-private_summary-template.md",
+      "markdown_sha256": "71748a0e0c7fae880d2f8ca66a27420dc09387edbcc1ed5a93e4937b11e8081f"
+    },
+    {
+      "id": "szse-legal-template",
+      "market": "szse",
+      "kind": "legal",
+      "name": "深交所-材料编制模板/深交所-法律意见书.docx",
+      "archive": "深交所-材料编制模板.zip",
+      "original_sha256": "b453c146a661dec4392724b5632ec6cbf4e2bca04eb09a94fcf7b89af68e94c2",
+      "bytes": 15677,
+      "status": "extracted",
+      "original_path": "knowledge/material-drafting/2026-10-07/originals/szse-legal-template.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/szse-legal-template.md",
+      "markdown_sha256": "0ee04653371d8e59d0cb33acc307b536ba61b9ddbd41f517644b7cd2332d8bfc"
+    },
+    {
+      "id": "sse-guide",
+      "market": "sse",
+      "kind": "guide",
+      "name": "材料模板-上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）.docx",
+      "archive": null,
+      "original_sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+      "bytes": 137633,
+      "status": "extracted",
+      "original_path": "knowledge/exchange-bonds/originals/EX001.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/sse-guide.md",
+      "markdown_sha256": "9fe9112c54762a0a3f1a3c913273e9d2c22bf6b3ec86e4aa727cdad5eafdc146"
+    },
+    {
+      "id": "szse-guide",
+      "market": "szse",
+      "kind": "guide",
+      "name": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）.docx",
+      "archive": null,
+      "original_sha256": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "bytes": 59065,
+      "status": "extracted",
+      "original_path": "knowledge/exchange-bonds/originals/EX026.docx",
+      "markdown_path": "knowledge/material-drafting/2026-10-07/sources/szse-guide.md",
+      "markdown_sha256": "837d5cb22123762d13558e7e9b830b0f8ab5eda9a4b25149afdc0fa64927f936"
+    }
+  ],
+  "packs": [
+    {
+      "market": "sse",
+      "document_type": "init",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "上海证券交易所 · 立项报告",
+      "source_ids": [
+        "sse-guide"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/sse-init.md",
+      "sha256": "bf38638a13505f68175bcd569ceb08cdeb0d3df816dc73ce6f7d235b01f0eb04"
+    },
+    {
+      "market": "sse",
+      "document_type": "underwriter",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "上海证券交易所 · 主承销商核查意见",
+      "source_ids": [
+        "sse-guide"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/sse-underwriter.md",
+      "sha256": "aa6e8c62a9309baacb02194841699a8a876bf6e6974a9cefe5233e51cd54c31d"
+    },
+    {
+      "market": "sse",
+      "document_type": "legal",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "上海证券交易所 · 法律意见书",
+      "source_ids": [
+        "sse-guide",
+        "sse-legal-template"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/sse-legal.md",
+      "sha256": "6584ff056eeb41e235d30e501458aab26f401414e8292248fa2f0ab369bcd82b"
+    },
+    {
+      "market": "sse",
+      "document_type": "private_summary",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "上海证券交易所 · 普通私募募集说明书摘要",
+      "source_ids": [
+        "sse-guide",
+        "sse-private_summary-template"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/sse-private_summary.md",
+      "sha256": "9822eee15f3b15793fdc08e62135e745c31f0babcf7e66cd6af3c08544b8ab24"
+    },
+    {
+      "market": "szse",
+      "document_type": "init",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "深圳证券交易所 · 立项报告",
+      "source_ids": [
+        "szse-guide"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/szse-init.md",
+      "sha256": "c8e690786c674cd709895c380255dacb36e31877ab20829ed9afa8c58ee92608"
+    },
+    {
+      "market": "szse",
+      "document_type": "underwriter",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "深圳证券交易所 · 主承销商核查意见",
+      "source_ids": [
+        "szse-guide",
+        "szse-underwriter-template"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/szse-underwriter.md",
+      "sha256": "9c1e1649426e047dde86ad5bd1ce72941b994ef662fb28fe33aeaa12847238c2"
+    },
+    {
+      "market": "szse",
+      "document_type": "legal",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "深圳证券交易所 · 法律意见书",
+      "source_ids": [
+        "szse-guide",
+        "szse-legal-template"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/szse-legal.md",
+      "sha256": "7adc7aef320b44a0b3d49784ac0cc9b4a3b1c0e4be5e8e94349d1036d2faf7c9"
+    },
+    {
+      "market": "szse",
+      "document_type": "private_summary",
+      "version": "material-drafting-2026-10-07-v1",
+      "title": "深圳证券交易所 · 普通私募募集说明书摘要",
+      "source_ids": [
+        "szse-guide",
+        "szse-private_summary-template"
+      ],
+      "path": "knowledge/material-drafting/2026-10-07/packs/szse-private_summary.md",
+      "sha256": "ed8f2119acaa7fd034d9ca75e4705462d6d374361acc382d5c3e09617f968ce2"
+    }
+  ]
+}

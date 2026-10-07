@@ -52,3 +52,10 @@ M4 沿用原按量口径：真实供应商成本（元）×100×K 得 A，预留
 新增 handoff suite 使用另一独立克隆，验证明确采用的 owner／准确消息和来源、无来源／旧 pin／伪 hash／外账号／已删除来源拒绝、绑定无执行和费用、重复幂等、来源生成期间目标更新／复核互斥、真实更新和复核 API 返回冲突、真实 QA 并行、已有任务／其他 canonical 重绑定拒绝、NOWAIT 冲突恢复及采用后的换源分组保护。
 
 这些是合成工程验证。真实 Codex CLI、授权业务样本 Word/WPS、专业内容和发布验收分别记录，不以本测试冒充完成。
+# 2026-10-07 材料知识增量
+
+文种增加 `underwriter`（主承销商核查意见工作稿）、`legal`（法律意见工作稿）；G02/G03 复用既有 K12/K15。新任务必须在 `input.fields.market` 明确选择 sse/szse，服务器按文种与交易所载入 `knowledge/material-drafting/2026-10-07/catalog.json`，把 `knowledge`（版本、来源、完整 MD、哈希、市场及文种）固定到报价及任务 manifest。浏览器不能传入或覆盖知识正文。旧 v1 任务没有 knowledge 时保留原输入；新文种 worker 必须核对知识。运行中新草稿不修改旧任务。
+
+CLI 工作目录新增只读 `knowledge/material-drafting.md`，input.json 指向对应知识，与采用材料、用户要求、Skill 一起进入一次文件编制任务。保持正文和独立编制说明的 Word 交付、准确版本、授权下载与现有费用结算。镜像仅包含目录及编制 MD，不打包全部知识原件。迁移0098只扩展文种约束；不修改任务、不发布新费率。
+
+旧成本配置缺 G02/G03 预算仍可运行已配置任务；新增文种明确返回 BILLING_NOT_READY，不能暗用 G01/G05 报价。可读官方来源与 IRM 未读取记录见知识 README；未专业核验不冒称当前法规已确认。完整决定见 [知识与文种扩展](product-decisions/2026-10-07-material-drafting-knowledge.md)。

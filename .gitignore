@@ -21,11 +21,13 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-04-compact-authoring-notes.md
 !docs/product-decisions/2026-10-06-m4-agent-workspace.md
 !docs/product-decisions/2026-10-06-m4-m5-priority-split.md
+!docs/product-decisions/2026-10-07-material-drafting-knowledge.md
 !docs/acceptance/
 docs/acceptance/*
 !docs/acceptance/m4-implementation-2026-10-06.md
 !docs/acceptance/m4-api-boundary-audit-20261006.md
 !docs/acceptance/m4-workspace-20261006/
+!docs/acceptance/m4-knowledge-20261007/
 docs/acceptance/m4-workspace-20261006/*
 !docs/acceptance/m4-workspace-20261006/*.png
 !docs/acceptance/m4-workspace-20261006/README.md

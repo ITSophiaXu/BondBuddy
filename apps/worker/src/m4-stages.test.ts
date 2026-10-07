@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
+import {loadM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import type { M4AssistantReply,M4DocumentManifest,M4QaManifest } from '@bondbuddy/contracts';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { m4DocumentStage,m4DocumentDeliveryStage,validM4DocumentResult } from './m4-document-stage.js';
@@ -54,9 +55,14 @@ async function outputWords(directory:string) {
 }
 const reply=(overrides:Partial<M4AssistantReply>={}):M4AssistantReply=>({content:'Synthetic answer',citations:[],requirements:[],fields:{},intent:'answer',document_type:null,target_business:null,retrieval:'not_performed',...overrides});
 
-test('M4 one CLI file task receives immutable sources and delivers distinct editable Word plus actual table previews',async()=>{
+for(const documentType of ['private_summary','underwriter','legal'] as const)for(const market of ['sse','szse'] as const)
+test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requirements and delivers editable Word`,async()=>{
   const f=await fixture();
   try {
+    const manifest=f.input.manifest as M4DocumentManifest;manifest.input.document_type=documentType;manifest.market=market;
+    manifest.billing_task=({private_summary:'m4_G05',underwriter:'m4_G02',legal:'m4_G03'} as const)[documentType];
+    manifest.knowledge=loadM4Knowledge(market,documentType);manifest.input.requirements=[{requirement_id:'r',text:'不要生成签署页',message_id:'m',message_version:1}];
+    f.ctx.run.input_hash=inputManifestHash(manifest);
     let calls=0;
     const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
       calls++;assert.ok(options.fileWorkspace);assert.equal(options.materialTools,undefined);assert.equal(options.reviewTools,undefined);
@@ -64,6 +70,10 @@ test('M4 one CLI file task receives immutable sources and delivers distinct edit
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
       assert.equal(input.materials[0].path,'materials/m0.txt');assert.equal(input.authorized_sources[0].id,'material');
       assert.equal(input.task.input.scope,'whole');assert.deepEqual(await readFile(join(f.directory,'materials/m0.txt')),f.source);
+      assert.deepEqual(input.requirements,['不要生成签署页']);assert.equal(input.knowledge.market,market);
+      assert.equal(input.knowledge.document_type,documentType);
+      assert.equal(await readFile(join(f.directory,input.knowledge.path),'utf8'),manifest.knowledge!.content);
+      assert.equal(input.skill.id,documentType==='private_summary'?'m4-private-summary':`m4-${documentType}`);
       await outputWords(f.directory);
       return {kind:'done',value:await options.fileWorkspace.collect(f.directory,{call_id:'synthetic-call'} as never,{text:'Synthetic final text'})};
     }})});
@@ -208,7 +218,7 @@ test('M4 semantic guard distinguishes whole-action denial, method questions and 
     assert.equal(constrainM4Reply(execution,{...manifest,content}).intent,'answer');
   for(const content of ['请生成立项报告，保留待核事项，不要新增风险承诺','补充资料已经上传了，请开始生成立项报告','不要生成法律意见，请生成立项报告'])
     assert.equal(constrainM4Reply(execution,{...manifest,content}).intent,'execute');
-  for(const content of ['请生成法律意见','请生成公募募集书摘要','请生成立项报告和推荐函组合','只改第二章节并生成立项报告'])
+  for(const content of ['请生成公募募集书摘要','请生成立项报告和推荐函组合','只改第二章节并生成立项报告'])
     assert.equal(constrainM4Reply(execution,{...manifest,content}).intent,'clarify');
   const prepared=constrainM4Reply(execution,{...manifest,content:'先不要生成立项报告，请记录要求：保留待核事项'});
   assert.equal(prepared.intent,'draft');assert.deepEqual(prepared.requirements,['保留待核事项']);
@@ -216,10 +226,19 @@ test('M4 semantic guard distinguishes whole-action denial, method questions and 
   assert.deepEqual(constrainM4Reply(pending,{...manifest,content:'先不要生成，记下要求语气正式'}),pending);
 });
 
+test('new opinion types preserve explicit execution and local restrictions, but whole-action denial still wins',()=>{
+  for(const [type,label] of [['underwriter','主承销商核查意见'],['legal','法律意见书']] as const){
+    const execution=reply({intent:'execute',document_type:type,requirements:['不要生成签署页']});
+    assert.equal(constrainM4Reply(execution,{content:`请生成${label}，不要生成签署页`} as M4QaManifest).intent,'execute');
+    assert.equal(constrainM4Reply(execution,{content:`先别生成${label}`} as M4QaManifest).intent,'answer');
+    assert.equal(constrainM4Reply(execution,{content:`如何生成${label}`} as M4QaManifest).intent,'answer');
+  }
+});
+
 test('M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable',()=>{
   const manifest={content:''} as M4QaManifest;
   const invented=reply({content:'模型假称已完成最新检索并已生成法律意见。'});
-  for(const content of ['请生成法律意见书','请出具推荐函','只修改第二章并导出','请联网查询现行法规','请检索最新法规','请开展深度研究']){
+  for(const content of ['请出具推荐函','只修改第二章并导出','请联网查询现行法规','请检索最新法规','请开展深度研究']){
     const guarded=constrainM4Reply(invented,{...manifest,content});assert.equal(guarded.intent,'clarify');assert.doesNotMatch(guarded.content,/已完成最新检索|已生成法律意见/);
   }
   const conceptual=reply({content:'法规效力的基础概念包括生效、失效与适用时间。'});
