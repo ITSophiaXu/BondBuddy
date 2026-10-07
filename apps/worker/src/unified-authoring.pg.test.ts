@@ -23,7 +23,7 @@ const origin = 'http://bondbuddy.test';
 const live=process.env.BB_TEST_LIVE_AUTHORING==='1';
 const periods = [{start:'2025-01-01',end:'2025-12-31',period_kind:'annual' as const,scope:'consolidated' as const,status:'user_asserted' as const,evidence_refs:[]}];
 
-test(`unified API → real parsing → ${live?'real provider on synthetic materials':'synthetic model'} → real Word pair, immutable requirements, previous output and owner isolation`,
+test(`unified raw upload → task-local parsing → ${live?'real provider on synthetic materials':'synthetic model'} → real Word pair, immutable requirements, previous output and owner isolation`,
   {skip:!database || !connection,timeout:live?900000:180000},async()=>{
     const pool = new Pool({connectionString:database});
     const container = `bb-unified-${randomUUID().replaceAll('-','')}`;
@@ -61,8 +61,9 @@ test(`unified API → real parsing → ${live?'real provider on synthetic materi
           }
           if(scenario==='absent_metadata')source=undefined;
           if(scenario==='partial_metadata'&&source)source={...source,issuer_name:null,relation:null,market:null,offering:null,reporting_periods:[]};
+          // Upload stores the original. The explicit authoring task reads it later.
           assert.equal(await runMaterialParseOnce({pool,material:{pool,blobs:{getPrivate:key=>blobs.getIfExists(key)},
-            parser:request=>runDocumentParser(request,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})}}),'succeeded');
+            parser:request=>runDocumentParser(request,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})}}),'idle');
         }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
         const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});
