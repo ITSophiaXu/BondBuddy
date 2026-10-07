@@ -1,3 +1,5 @@
+> 2026-10-07：以下为管理员参考库内容工具和旧实现的记录，**不再描述项目材料上传前置条件**。按[用户决定](../../docs/product-decisions/2026-10-07-pdf-original-upload.md)，所有支持格式的项目文件均作为未受信原件直接保存，只保留权限、会话、大小和精确字节/hash。`data.ts` 通过 `original-material-upload.ts` 校验传输声明与落盘大小，不调用本页的内容检查器。统一编制上传不排独立解析，内容读取由后续 Codex 任务负责。
+
 # M1 upload content safety (bounded implementation slice)
 
 This note records the local, deterministic checks used by the Fastify material upload path. It is a format/readability gate before a material is registered, not OCR, malware detection, professional review, or full #8 acceptance.

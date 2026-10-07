@@ -66,6 +66,8 @@ jobs:
             apps/api/dist/review-billing.pg.test.js \
             apps/api/dist/payments.pg.test.js \
             apps/api/dist/upload-safety.test.js \
+            apps/api/dist/original-material-upload.test.js \
+            apps/api/dist/upload-spool.test.js \
             apps/worker/dist/m2-paid-worker.test.js \
             apps/worker/dist/provider-reconciliation.test.js \
             apps/api/dist/generated-word-delivery.test.js
