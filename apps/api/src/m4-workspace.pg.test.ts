@@ -15,9 +15,90 @@ import { claim, finish, finishM4Qa, promoteWordArtifact, recordPotentialCall, pa
 import { saveSnapshotRef, observeUsage } from './observability.js';
 import { persistProviderResultObject,recordProviderCallObservation,readCheckpointedProviderResult,type ProviderCallObservation } from './provider-results.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { runStorageLifecycle } from './storage-lifecycle.js';
 
 const connection=await isolatedTestDatabase(undefined,'m4-workspace');
 const handoffConnection=await isolatedTestDatabase(undefined,'m4-handoff');
+const retentionConnection=await isolatedTestDatabase(undefined,'m4-retention');
+test('synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes',
+  {skip:!retentionConnection,timeout:180000},async()=>{
+  const pool=new Pool({connectionString:retentionConnection}),user=`m4-retention-${randomUUID()}`,other=`m4-retention-${randomUUID()}`;let actor=user;
+  const bytes=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},
+    getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bounded');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
+  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
+  const seedProject=async(owner=user)=>{const id=randomUUID();await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering)
+    VALUES($1,$2,'Synthetic retention source','update','Synthetic issuer','sse','private')`,[id,owner]);return id;};
+  const seedMaterial=async(projectId:string,version=1,id:string=randomUUID(),owner=user):Promise<M4MaterialPin>=>{
+    const body=makeSyntheticDocxFixture({text:`Synthetic retention ${id} version ${version}`}),upload=randomUUID(),key=`users/${owner}/projects/${projectId}/uploads/${upload}`;bytes.set(key,body);
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic.docx',$4,$5,$6,'other',$7,now()+interval '1 hour','completed')`,[upload,owner,projectId,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',body.length,digest(body),key]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,$2,$3,$4,$5,'other','synthetic.docx',$6,$7,$8,$9,'parsed')`,[id,version,owner,projectId,upload,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',body.length,digest(body),key]);
+    return {source_project_id:projectId,material_id:id,material_version:version,sha256:digest(body)};
+  };
+  const pinned=async(owner:string,p:M4MaterialPin)=>(await pool.query('SELECT bb_material_bytes_pinned($1,$2,$3,$4) AS pinned',
+    [owner,p.source_project_id,p.material_id,p.material_version])).rows[0].pinned;
+  const policy={materialRetentionDays:0,orphanUploadGraceHours:1,ownerScope:user,now:()=>new Date(Date.now()+60_000)};
+  try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)',[user,'synthetic_retention_owner',other,'synthetic_retention_other']);
+    const source=await seedProject(),supportSource=await seedProject(),templateSource=await seedProject(),qaSource=await seedProject(),foreignSource=await seedProject(other);
+    const sourcePin=await seedMaterial(source),newerPin=await seedMaterial(source,2,sourcePin.material_id),supportPin=await seedMaterial(supportSource),templatePin=await seedMaterial(templateSource),qaPin=await seedMaterial(qaSource),foreignPin=await seedMaterial(foreignSource,1,randomUUID(),other);
+    const topic=(await ok('POST','/api/v1/m4/topics',{creation_request_id:randomUUID(),name:'Synthetic retention topic',source_project_id:source})).topic;
+    const path=`/api/v1/m4/topics/${topic.topic_id}`;
+    const template=(await ok('POST','/api/v1/m4/templates',{creation_request_id:randomUUID(),name:'Synthetic retention template',broker:'Synthetic broker',document_type:'private_summary',material:templatePin})).template;
+    await ok('PUT',`${path}/drafts/private_summary`,{expected_version:0,input:{...emptyM4Draft('private_summary'),source_material:sourcePin,materials:[supportPin],
+      template:{template_id:template.template_id,template_version:template.template_version,sha256:template.sha256},fields:{issuer_name:'Synthetic issuer',market:'sse',broker:'Synthetic broker'}}});
+    const config:M4BillingConfig={model_id:'synthetic-codex',rates:{'synthetic-codex':{input_microyuan_per_million:1000000,cached_microyuan_per_million:1000000,output_microyuan_per_million:2000000}},
+      budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
+    await publishM4BillingConfig(pool,{id:`synthetic-retention-${randomUUID()}`,config,effective_at:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
+    await transaction(pool,c=>grantCredits(c,{owner:user,points:10000,key:'synthetic-retention-fund',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    const quote=(await ok('POST',`${path}/quote`,{kind:'document',document_type:'private_summary',expected_draft_version:1})).quote;
+    const documentRun=(await ok('POST',`${path}/execute`,{execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:quote.quote_id,entrypoint:'workspace'})).run;
+    const qaRun=(await ok('POST',`${path}/messages`,{submission_request_id:randomUUID(),content:'请准备材料生成，先不要开始制作',
+      context:{...emptyM4Context(),citations:[{kind:'material',ref:qaPin,locator:'paragraph 1'}]}})).run;
+    assert.equal(qaRun.billing_mode,'platform_trial');
+    const documentLease=await claim(pool,30,{runKinds:['generation']}),qaLease=await claim(pool,30,{runKinds:['qa']});
+    assert.equal(documentLease?.runId,documentRun.run_id);assert.equal(qaLease?.runId,qaRun.run_id);
+    const retained=[sourcePin,supportPin,templatePin,qaPin];
+    for(const pin of retained){assert.equal(await pinned(user,pin),true);assert.equal(await pinned(other,pin),false,'another owner cannot pin this original');
+      assert.equal(await pinned(user,{...pin,source_project_id:topic.project_id}),false,'topic project must not stand in for the exact original project');}
+    assert.equal(await pinned(user,newerPin),false,'the unselected newer version does not inherit an old-version pin');
+    assert.equal(await pinned(other,foreignPin),false,'an unrelated owner material has no reference');
+    // The real owner deletion API remains available while a different topic is executing.
+    for(const pin of retained)assert.equal((await send('DELETE',`/api/v1/projects/${pin.source_project_id}/materials/${pin.material_id}`)).statusCode,204);
+    actor=other;assert.equal((await send('DELETE',`/api/v1/projects/${foreignSource}/materials/${foreignPin.material_id}`)).statusCode,204);actor=user;
+    const keys=(await pool.query('SELECT id,version,object_key FROM bb_material_versions WHERE owner_user_id=$1',[user])).rows;
+    const first=await runStorageLifecycle(pool,blobs,policy);
+    assert.equal(first.failed,0);assert.equal(first.pinned,4);assert.equal(first.purged,1,'only the unselected newer version is eligible');
+    for(const pin of retained){const key=keys.find(r=>r.id===pin.material_id&&r.version===pin.material_version)!.object_key;assert.equal(bytes.has(key),true);}
+    assert.equal(bytes.has(keys.find(r=>r.id===newerPin.material_id&&r.version===2)!.object_key),false);
+    const foreign=await runStorageLifecycle(pool,blobs,{...policy,ownerScope:other});assert.equal(foreign.pinned,0);assert.equal(foreign.purged,1);assert.equal(foreign.failed,0);
+    // Paused tasks can still recover and must retain their immutable input bytes.
+    await pool.query("UPDATE bb_jobs SET state='paused',lease_token=NULL,lease_until=NULL WHERE run_id=ANY($1::text[])",[[documentRun.run_id,qaRun.run_id]]);
+    await pool.query("UPDATE bb_runs SET state='paused' WHERE id=ANY($1::text[])",[[documentRun.run_id,qaRun.run_id]]);
+    const paused=await runStorageLifecycle(pool,blobs,policy);assert.equal(paused.pinned,4);assert.equal(paused.purged,0);assert.equal(paused.failed,0);
+    await pool.query("UPDATE bb_jobs SET state='cancelled' WHERE run_id=ANY($1::text[])",[[documentRun.run_id,qaRun.run_id]]);
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=ANY($1::text[])",[[documentRun.run_id,qaRun.run_id]]);
+    for(const pin of retained)assert.equal(await pinned(user,pin),false,'terminal runs release their cross-project byte pins');
+    const terminal=await runStorageLifecycle(pool,blobs,policy);assert.equal(terminal.pinned,0);assert.equal(terminal.purged,4);assert.equal(terminal.failed,0);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_storage_tombstones WHERE owner_user_id=$1 AND state='purged'",[user])).rows[0].n,5);
+    for(const row of keys)assert.equal(bytes.has(row.object_key),false);
+    // Existing non-M4 local snapshots keep their established retention behavior.
+    const legacyProject=await seedProject(),legacyPin=await seedMaterial(legacyProject),legacyRun=randomUUID(),legacyHash=digest('synthetic legacy input');
+    await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,$4,$5,'[]')`,[legacyProject,user,legacyHash,{materials:[{material_id:legacyPin.material_id,material_version:1}]},JSON.stringify([{material_id:legacyPin.material_id,material_version:1}])]);
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
+      VALUES($1,$2,$3,1,$4,$5,'qa',$4,'queued')`,[legacyRun,user,legacyProject,legacyHash,randomUUID()]);
+    assert.equal(await pinned(user,legacyPin),true);
+    assert.equal((await send('DELETE',`/api/v1/projects/${legacyProject}/materials/${legacyPin.material_id}`)).statusCode,204);
+    const legacyActive=await runStorageLifecycle(pool,blobs,policy);assert.equal(legacyActive.pinned,1);assert.equal(legacyActive.purged,0);assert.equal(legacyActive.failed,0);
+    await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[legacyRun]);
+    assert.equal(await pinned(user,legacyPin),false);
+    const legacyTerminal=await runStorageLifecycle(pool,blobs,policy);assert.equal(legacyTerminal.pinned,0);assert.equal(legacyTerminal.purged,1);assert.equal(legacyTerminal.failed,0);
+  }finally{await app.close();await pool.end();}
+});
 test('synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage',{skip:!handoffConnection,timeout:180000},async()=>{
   const pool=new Pool({connectionString:handoffConnection}),user=`m4-handoff-${randomUUID()}`,other=`m4-handoff-${randomUUID()}`;let actor=user;
   const bytes=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},

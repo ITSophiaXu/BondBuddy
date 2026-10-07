@@ -1,0 +1,163 @@
+name: M4 core integration
+
+on:
+  pull_request:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-core-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  core-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Disposable services and synthetic models only; no provider credentials.
+      BB_TEST_DATABASE_URL: postgresql://bondbuddy:synthetic-ci-only@127.0.0.1:5432/bb_m4_core
+      BB_TEST_AZURITE_CONNECTION_STRING: UseDevelopmentStorage=true
+      BB_TEST_LIVE_AUTHORING: '0'
+      BB_PLATFORM_PROBE_ENABLED: '0'
+      BB_REVIEW_WEB_SEARCH_ENABLED: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    services:
+      postgres:
+        image: postgres:16.10
+        env:
+          POSTGRES_USER: bondbuddy
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: bb_m4_core
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bondbuddy -d bb_m4_core"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - name: Check out the complete PR merge tree
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11.11'
+
+      - name: Install JavaScript and business Python dependencies
+        run: |
+          npm ci
+          python -m pip install -r python/requirements-dev.txt
+          python -m pip check
+          echo "BONDBUDDY_TEST_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "BONDBUDDY_WORD_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "BB_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/python:$GITHUB_WORKSPACE/python/tests" >> "$GITHUB_ENV"
+          command -v flock
+
+      - name: Build all workspaces and check public contracts
+        run: |
+          npm run build
+          npm run check:contracts
+
+      - name: Start the disposable Blob service
+        run: |
+          docker run --detach --name bb-m4-core-azurite --publish 127.0.0.1:10000:10000 \
+            mcr.microsoft.com/azure-storage/azurite:3.35.0 \
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck --disableProductStyleUrl
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { BlobServiceClient } from '@azure/storage-blob';
+          assert.ok(process.env.BB_TEST_AZURITE_CONNECTION_STRING, 'M4 pipeline requires Blob storage');
+          const container = BlobServiceClient.fromConnectionString(process.env.BB_TEST_AZURITE_CONNECTION_STRING)
+            .getContainerClient('bb-m4-core-readiness');
+          for (let attempt = 0; ; attempt++) {
+            try { await container.createIfNotExists(); await container.deleteIfExists(); break; }
+            catch (error) { if (attempt >= 29) throw error; await new Promise(resolve => setTimeout(resolve, 1000)); }
+          }
+          JS
+
+      - name: Migrate and verify the private test template and Python runtime
+        run: |
+          DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { access, readdir } from 'node:fs/promises';
+          import { Pool } from 'pg';
+          assert.equal(process.platform, 'linux');
+          assert.equal(Number(process.versions.node.split('.')[0]), 22);
+          assert.ok(process.env.BB_TEST_DATABASE_URL, 'M4 integration requires a database template');
+          assert.ok(process.env.BONDBUDDY_TEST_PYTHON, 'M4 file preparation requires business Python');
+          assert.equal(process.env.BB_PYTHON, process.env.BONDBUDDY_TEST_PYTHON);
+          assert.equal(process.env.BONDBUDDY_WORD_PYTHON, process.env.BONDBUDDY_TEST_PYTHON);
+          await access(process.env.BONDBUDDY_TEST_PYTHON);
+          const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+          try {
+            const role = (await pool.query('SELECT rolcreatedb, rolsuper FROM pg_roles WHERE rolname=current_user')).rows[0];
+            assert.ok(role.rolcreatedb || role.rolsuper, 'test suites must clone private databases');
+            const migrations = (await readdir('db/migrations')).filter(name => /^\d+_m4_.*\.sql$/.test(name));
+            assert.ok(migrations.length > 0, 'M4 migrations must be present');
+            for (const filename of migrations)
+              assert.equal((await pool.query('SELECT 1 FROM bb_schema_migrations WHERE filename=$1', [filename])).rowCount, 1, filename);
+          } finally { await pool.end(); }
+          JS
+
+      - name: M4 API, authoring task-kind and billing regressions
+        run: |
+          node --test --test-concurrency=1 --test-reporter=tap \
+            apps/api/dist/m4-workspace.pg.test.js \
+            apps/api/dist/authoring-task-kind.pg.test.js \
+            apps/api/dist/billing.pg.test.js \
+            apps/api/dist/review-billing.pg.test.js \
+            | tee "$RUNNER_TEMP/m4-core-api.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-core-api.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m4-core-api.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-api.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-api.tap"
+
+      - name: M4 worker stages, real Word pipeline and model router
+        run: |
+          # These suites inject synthetic model seams; they never spawn a provider CLI.
+          node --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/m4-runtime-skills.test.js \
+            apps/worker/dist/m4-stages.test.js \
+            apps/worker/dist/m4-pipeline.pg.test.js \
+            apps/worker/dist/model-generation-router.test.js \
+            | tee "$RUNNER_TEMP/m4-core-worker.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-core-worker.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m4-core-worker.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-worker.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-worker.tap"
+
+      - name: M4 business Python regressions
+        run: |
+          python -B -m unittest discover -s python/tests -p 'test_m4_*.py' -v \
+            2>&1 | tee "$RUNNER_TEMP/m4-core-python.log"
+          grep -Eq '^Ran [1-9][0-9]* tests? in ' "$RUNNER_TEMP/m4-core-python.log"
+          grep -Eq '^OK$' "$RUNNER_TEMP/m4-core-python.log"
+
+      - name: Web unit regressions
+        run: |
+          npm run test:unit -w @bondbuddy/web | tee "$RUNNER_TEMP/m4-core-web.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-core-web.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m4-core-web.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-web.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-web.tap"
+
+      - name: Stop the disposable Blob service
+        if: always()
+        run: |
+          if docker container inspect bb-m4-core-azurite >/dev/null 2>&1; then
+            docker rm --force bb-m4-core-azurite
+          fi

@@ -2,6 +2,12 @@
 
 状态：用户已确认 M4／M5 分期并要求执行 M4。本记录区分工程实现、合成集成、真实供应商、专业及发布证据；不是 M4 已上线报告。
 
+2026-10-07 发布进展：已恢复原有 `leizhai2025` 仓库授权，成功 fetch；远端 develop 仍为 `3725dd5`，rebase 无变更。上述四个本地提交已推送到 `codex/m4-core-20261006`，实现 PR 为 [#574](https://github.com/ITSophiaXu/BondBuddy/pull/574)。下文“未推送／404”是 10 月 6 日检查时的历史状态。发布前独立复核新增 `0097`，保留非终态 M4 任务引用的准确跨项目原件；Node 22 M4 专用 CI 核验实际 PR merge tree。正式检查结果以 PR 为准。
+
+用户确认先发布工作区，收费执行待配置：不发布 synthetic 成本率／预算，缺正式计费配置继续返回 `BILLING_NOT_READY`。截至本次进展，生产 SSH 在认证前 reset，隔离 Azure 会话未获得目标订阅；已发起目标租户设备码授权，尚未修改生产。线上健康／readiness 为 200，公开 bundle `/assets/index-_42DJKcZ.js` 未包含 M4 路由或合并 tab。本记录不将 master 合并视为实际部署。
+
+发布前修复验证：`npm run build -w @bondbuddy/api` 通过；最终 `node --test --test-concurrency=1 apps/api/dist/m4-workspace.pg.test.js` 在独立 synthetic PostgreSQL 上为 4 pass／0 fail／0 skip（11.257 秒）。新增 `0097_m4_cross_project_material_retention.sql` 的实际删除及清理回归覆盖跨项目来源、辅助材料、模板和 QA 引用：运行／暂停保留准确字节，错 owner／项目／版本不误 pin，终态可清理；非 M4 的本项目 active pin／failed 后清理兼容通过。原有 `0091`～`0096` 未改。
+
 ## 代码与范围
 
 - 实施分支：`codex/m4-core-20261006`，独立 worktree `m4-core-20261006`。
