@@ -10,6 +10,7 @@ docs/*
 !docs/product.md
 !docs/M1-TECH-ARCHITECTURE.md
 !docs/M2-FIXED-CREDITS.md
+!docs/M4-CORE-API.md
 !docs/product-decisions/
 docs/product-decisions/*
 !docs/product-decisions/2026-09-30-m1-simplification.md
@@ -18,6 +19,17 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-03-m2-fixed-credits.md
 !docs/product-decisions/2026-10-03-source-information-required.md
 !docs/product-decisions/2026-10-04-compact-authoring-notes.md
+!docs/product-decisions/2026-10-06-m4-agent-workspace.md
+!docs/product-decisions/2026-10-06-m4-m5-priority-split.md
+!docs/acceptance/
+docs/acceptance/*
+!docs/acceptance/m4-implementation-2026-10-06.md
+!docs/acceptance/m4-api-boundary-audit-20261006.md
+!docs/acceptance/m4-workspace-20261006/
+docs/acceptance/m4-workspace-20261006/*
+!docs/acceptance/m4-workspace-20261006/*.png
+!docs/acceptance/m4-workspace-20261006/README.md
+!docs/acceptance/m4-workspace-20261006/prototype-status.txt
 !docs/ACCOUNT-RECOVERY.md
 outputs/*
 !outputs/上交所私募公司债财务数据更新规则_专家审阅版.md

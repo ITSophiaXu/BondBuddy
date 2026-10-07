@@ -91,6 +91,17 @@ export async function project(pool: Pool | PoolClient, owner: string, id: string
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
+/** Caller holds the target project lock; DB run trigger remains the final race guard. */
+export async function assertCanonicalBusinessRunIdle(client:PoolClient,owner:string,p:{id:string;kind:string;execution_scope_project_id?:string|null}){
+  const scope=p.execution_scope_project_id||p.id;
+  if(!p.execution_scope_project_id&&p.kind!=='review'&&!(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 LIMIT 1',[owner,scope])).rowCount)return;
+  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
+  catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','同一来源项目正在提交任务，请稍后重试。');throw error;}
+  if((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
+    WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'
+    AND r.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected') LIMIT 1`,[owner,scope])).rowCount)
+    throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待完成或停止任务后执行。');
+}
 export async function run(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
   // Runs of a deleted project are owner-safe 404, like the project itself.
   const result = await pool.query(`SELECT r.* FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id

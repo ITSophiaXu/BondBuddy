@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent, recordOperation } from './observability.js';
-import { ERROR_CODES, RUN_PAUSE_STAGES, TASK_KINDS, ReviewActionSchema, type ReviewAction, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
+import { ERROR_CODES, RUN_PAUSE_STAGES, TASK_KINDS, ReviewActionSchema, type ReviewAction, type M4AssistantReply, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
@@ -27,12 +27,12 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
   await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,r.owner_user_id,r.id,seq,trace,type,state,stage,payload]);
   await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:id,seq,state,stage,...payload}]);
   const job=await client.query('SELECT id FROM bb_jobs WHERE run_id=$1',[r.id]);
-  await emitInternal(client,internalEvent({kind:'job.state_changed',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.rows[0]?.id,traceId:trace,status:state as any,stage}));
+  await emitInternal(client,internalEvent({kind:'job.state_changed',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.rows[0]?.id,traceId:trace,status:(state==='settlement_pending'?'paused':state) as any,stage}));
   r.state=state;r.stage=stage;r.event_cursor=seq;
 }
 
 // Used by claim, the operator queue and resolve so no paused attempt is invisible.
-const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND billing_run.billing_mode='fixed_credits')";
+const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')))";
 const needsProviderReconciliation = `(
   a.status='pending_reconcile'
   OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
@@ -449,6 +449,27 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   });
 }
 
+/** M4 QA completes with its persisted text result; legacy Word delivery stays unchanged. */
+export async function finishM4Qa(pool:Pool,lease:Lease,reply:M4AssistantReply) {
+  const {completeM4Qa,settleM4Metering}=await import('./m4-workspace.js');
+  return transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease);
+    if(j.subtype!=='m4_qa_v1' || r.task_kind!=='qa' || r.channel!=='production')throw new Problem(422,'VALIDATION_FAILED','M4 QA lease required');
+    if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','QA provider call needs reconciliation');
+    const artifact=await completeM4Qa(client,lease.owner,lease.runId,reply);
+    const metering=await settleM4Metering(client,lease.owner,lease.runId);
+    await client.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[r.id,artifact.artifactId,artifact.artifactVersion]);
+    if(!metering.ready){
+      await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId]);
+      await event(client,r,'settlement_pending','provider_reconcile','m4_usage_pending');
+      return runDto({...r,artifact_id:artifact.artifactId,artifact_version:artifact.artifactVersion,updated_at:new Date()});
+    }
+    await client.query("UPDATE bb_jobs SET state='succeeded',stage='succeeded',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId]);
+    await event(client,r,'succeeded','succeeded','qa_text_delivered');
+    return runDto({...r,artifact_id:artifact.artifactId,artifact_version:artifact.artifactVersion,updated_at:new Date()});
+  });
+}
+
 /**
  * #79/#16 terminal transition for a platform probe. Success needs a completed attempt with a
  * stored result and measured usage (0027 re-checks it); a failure needs no unresolved attempt.
@@ -542,8 +563,13 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
-    if(!j||r.state!=='paused'||j.state!=='paused')return false;
+    if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
     if(await providerCallNeedsReconciliation(client,j.id))return false;
+    if(r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
+      (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifacts WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rowCount)){
+      const {settleM4Metering}=await import('./m4-billing.js');
+      const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;
+    }
     await client.query("UPDATE bb_jobs SET state='queued',updated_at=now() WHERE id=$1",[j.id]);
     await event(client,r,'queued',j.stage,reason);
     return true;
@@ -552,7 +578,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
 
 /** Paused runs at a stage, oldest first; the runtime sweeps them after their blocker may have cleared. */
 export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20,runKinds?:readonly RunKind[]) {
-  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND r.state='paused' AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
+  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND (r.state='paused' OR r.state='settlement_pending' AND j.subtype IN ('m4_document_v1','m4_qa_v1')) AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 
