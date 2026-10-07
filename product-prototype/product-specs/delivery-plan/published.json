@@ -20,12 +20,12 @@
     "M4": {
       "number": 4,
       "url": "https://github.com/ITSophiaXu/BondBuddy/milestone/4",
-      "title": "M4 · 材料生成与用户问答上线"
+      "title": "M4 · 材料与问答核心闭环上线（立项＋普通私募摘要，Codex CLI）"
     },
     "M5": {
       "number": 5,
       "url": "https://github.com/ITSophiaXu/BondBuddy/milestone/5",
-      "title": "M5 · Windows 应用上线"
+      "title": "M5 · 材料与助手扩展及 Windows 交付"
     }
   },
   "issues": {
@@ -51,13 +51,13 @@
       "number": 4,
       "id": 5537362624,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/4",
-      "bodyHash": "7f048ca97fbcd577457ada68d45314b4a587e904ccfe57740fee612fbdc1c247"
+      "bodyHash": "6b2552904a7696decd2fefc9945055c56036cf14ea6ec57418c964519194ccf5"
     },
     "M5": {
       "number": 5,
       "id": 5537362998,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/5",
-      "bodyHash": "56caa8d402d890272fe0450dd31154a2f37aec3b71e45dd2e7cf0560f9bf9e1c"
+      "bodyHash": "d34906fb10ae22a38fa2033d8cbb3836591ae5e994e380b05d5420e37cfe6013"
     },
     "M1-01": {
       "number": 6,
@@ -420,133 +420,133 @@
       "number": 57,
       "id": 5537383331,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/57",
-      "bodyHash": "7c8ab082a6c7e8674fc234fad5e33f48be6c0a3ac6cccf60410bbb99906729ba",
+      "bodyHash": "fb58a617b739ab07dba75034d9c1e24c398eebbf75302d586ebb63190649e2db",
       "parent": 4
     },
     "M4-02": {
       "number": 58,
       "id": 5537383701,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/58",
-      "bodyHash": "48ba0caf3724be0e7deb390bc8dc064884b5dfa4f613fe178e982da8c7107131",
+      "bodyHash": "5a8509df8fae2e67b096cada97606d02b4f6c995502fb9623d5e0e3408ddbbd0",
       "parent": 4
     },
     "M4-03": {
       "number": 59,
       "id": 5537384065,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/59",
-      "bodyHash": "d5794d8ee15147413bfe08b1162835abeac026c8dc091a36e1014345a0b1b24c",
+      "bodyHash": "7684d32d24f5a4bbb39715dbec42efd04083fb81b34d87fcd69067b66b0336fb",
       "parent": 4
     },
     "M4-04": {
       "number": 60,
       "id": 5537384417,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/60",
-      "bodyHash": "41c0f8c8b177b62dc0d0270f8e8db1b0813ba1dfb8b8304e07aa39a083d6f1a5",
-      "parent": 4
+      "bodyHash": "3e01cff275646de43bdd9c8801052fb97b19afe203683e2b8644c28a77d0b0f7",
+      "parent": 5
     },
     "M4-05": {
       "number": 61,
       "id": 5537384782,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/61",
-      "bodyHash": "dc325f1460c8e5b81e85bd4f767f4c30523be0643cdc8b170c4f45da4fd32c72",
-      "parent": 4
+      "bodyHash": "1e17f8e8c364469feeaf96d4f2c5b73799d134d669c8a59fdba3047eeaffb9a8",
+      "parent": 5
     },
     "M4-06": {
       "number": 62,
       "id": 5537385147,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/62",
-      "bodyHash": "7b97be93a9c8f32121b98f7a0db3e416b839a0d99954a3307bd20968fb33db2d",
-      "parent": 4
+      "bodyHash": "714167a40a078a748c76038ea83b53a056554ceac53e000d56c030743048b439",
+      "parent": 5
     },
     "M4-07": {
       "number": 63,
       "id": 5537385529,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/63",
-      "bodyHash": "31c9e5ce81aa31baada73442c6f8521c0cbf380620c3f755d6dfa750a094e984",
+      "bodyHash": "bd8e878008e5b14587476cfdd424fa5121a1c42f133e08774ad0255637db192a",
       "parent": 4
     },
     "M4-08": {
       "number": 64,
       "id": 5537385883,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/64",
-      "bodyHash": "046c44075dbc3ca952e55799cce3b24daa0466d81b0d5360097f988010e632ab",
+      "bodyHash": "88927fc7940f11f20cd212ef21829ea30b2e69fbb6fd14c1b7703c432b8832d7",
       "parent": 4
     },
     "M4-09": {
       "number": 65,
       "id": 5537386260,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/65",
-      "bodyHash": "27f9f79d2526e3e5f27e8ef76f6b66576fbb4358cdaea2e8c354917662aba801",
+      "bodyHash": "2fec314c0e6194fffd2c6ee193a255caf735aec649637c5aa4eb3ba93d3edee4",
       "parent": 4
     },
     "M4-10": {
       "number": 66,
       "id": 5537386705,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/66",
-      "bodyHash": "e4f5cca6280b24256df0356358ab48a13374a3ef932fc5cf9cf090e799da640a",
+      "bodyHash": "1e1b63dd548934d1049363736c4f1c17fd5d8aa187df04f5cb2d1df26fd98c09",
       "parent": 4
     },
     "M4-11": {
       "number": 67,
       "id": 5537387108,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/67",
-      "bodyHash": "2b97d628cf06a913683b56b0198bc425e17935dc5616a03d4fd1721a15a8342c",
+      "bodyHash": "68335f37e0035993972ae73c51a18bd245aecfeb4befa97450c0724177e2a21e",
       "parent": 4
     },
     "M4-12": {
       "number": 68,
       "id": 5537387457,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/68",
-      "bodyHash": "bbb907ffd27bddf18feb09f8cc667f485a62ed25d8aad762d618d04137a67b0f",
+      "bodyHash": "e4d9efbaad050d5f84bcadad127b21c56f5caa865447ba5ce4d9343ed391d4d3",
       "parent": 4
     },
     "M5-01": {
       "number": 69,
       "id": 5537387875,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/69",
-      "bodyHash": "f11df609b85be297cbaa2f927c9449bc1a146d8792b72cf2fcd1a4f2a6c1a743",
+      "bodyHash": "71358b6970bedd48bef2c3ea10c54b0c7bb3d481fa66f1a73aeffb496d9f939e",
       "parent": 5
     },
     "M5-02": {
       "number": 70,
       "id": 5537388269,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/70",
-      "bodyHash": "79ff75a883d86d864820ec749f2a4b43c09bffbdc05c0dac0ab65194546f1015",
+      "bodyHash": "ddb9d3732581a64f9f463d75adb7c9d227b5e9164c7541d1878973be8d1ce0ce",
       "parent": 5
     },
     "M5-03": {
       "number": 71,
       "id": 5537388600,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/71",
-      "bodyHash": "dd3e011c05fa8f323162a6822c5aeb7c101cba21e7d0320598b482170a0a37a2",
+      "bodyHash": "231954e72f65c318d6d1138a85d67cacff64b24c46e09d7a9dd662ecd67d4920",
       "parent": 5
     },
     "M5-04": {
       "number": 72,
       "id": 5537388939,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/72",
-      "bodyHash": "2f0a3785714e54076c532c27406d30be5f3c119266714939c0f2d33823e9f711",
+      "bodyHash": "e38c74a2468dd117cfaaccfab82d2a2733dff0b874ca547831ce25ea17b7a340",
       "parent": 5
     },
     "M5-05": {
       "number": 73,
       "id": 5537389299,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/73",
-      "bodyHash": "b8d74e1fa7888f379ba71d2d98d30b6c4397abf06975166ef06459f92e0093ca",
+      "bodyHash": "bf11dd6d64ee1f9b3843763d43b2c5799ea73befffb44158e4f0b221cabaf5e4",
       "parent": 5
     },
     "M5-06": {
       "number": 74,
       "id": 5537389669,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/74",
-      "bodyHash": "702fbecca0fdf4dc0c02d7e4b02662a8da9092c1ebff81cfbdc5b89e50644707",
+      "bodyHash": "42c321f75b371c4240ccd541023eb14b9195de6de33863d34860f0ac8510de07",
       "parent": 5
     },
     "M5-07": {
       "number": 75,
       "id": 5537390083,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/75",
-      "bodyHash": "a75fc7dd16e5dcef68c95cdf801a3f3355618718d15ecefa39a099999fbca591",
+      "bodyHash": "cf20fcc4cef448412f11ac0d70fecdc264f2e1909beecd458ac025349157c203",
       "parent": 5
     },
     "M1-31": {
@@ -581,6 +581,41 @@
       "number": 145,
       "id": 5578759147,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/145"
+    },
+    "M5-08": {
+      "number": 575,
+      "id": 5740603714,
+      "url": "https://github.com/ITSophiaXu/BondBuddy/issues/575",
+      "bodyHash": "f4d73904a85f8365b27a9af540bc4107a07c262f6dc2dc11b79f705c792988d9",
+      "parent": 5
+    },
+    "M5-09": {
+      "number": 576,
+      "id": 5740604576,
+      "url": "https://github.com/ITSophiaXu/BondBuddy/issues/576",
+      "bodyHash": "828dc2b3db6fed40cdf87afe27e8ee752a87449859c6e2e0107857deb7b9548e",
+      "parent": 5
+    },
+    "M5-10": {
+      "number": 577,
+      "id": 5740605505,
+      "url": "https://github.com/ITSophiaXu/BondBuddy/issues/577",
+      "bodyHash": "8ea039d91a323acbbeb1d5e399ea49d12324b478b110fd1a52915cde29879104",
+      "parent": 5
+    },
+    "M5-11": {
+      "number": 578,
+      "id": 5740606287,
+      "url": "https://github.com/ITSophiaXu/BondBuddy/issues/578",
+      "bodyHash": "40c53ba75b2d84794db62b54fcbe48157b4317d391586a790ceddffb902f023a",
+      "parent": 5
+    },
+    "M5-12": {
+      "number": 579,
+      "id": 5740607239,
+      "url": "https://github.com/ITSophiaXu/BondBuddy/issues/579",
+      "bodyHash": "4090f6df4c8c9f2e0ffc3735fdbdcce2c0c84baafebc153d06fe7ce0599917f1",
+      "parent": 5
     }
   },
   "verified": true,

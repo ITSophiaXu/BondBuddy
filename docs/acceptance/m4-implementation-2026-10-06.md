@@ -8,6 +8,8 @@
 
 发布前修复验证：`npm run build -w @bondbuddy/api` 通过；最终 `node --test --test-concurrency=1 apps/api/dist/m4-workspace.pg.test.js` 在独立 synthetic PostgreSQL 上为 4 pass／0 fail／0 skip（11.257 秒）。新增 `0097_m4_cross_project_material_retention.sql` 的实际删除及清理回归覆盖跨项目来源、辅助材料、模板和 QA 引用：运行／暂停保留准确字节，错 owner／项目／版本不误 pin，终态可清理；非 M4 的本项目 active pin／failed 后清理兼容通过。原有 `0091`～`0096` 未改。
 
+GitHub 发布同步已完成：M4 跟踪 #4 准确关联 9 个任务，M5 跟踪 #5 准确关联 15 个任务。#60～#62 保留原编号并转入 M5；新增 M5-08～12 为 #575～#579。26 个 issue 的标题、正文、里程碑及标签已回读核对，保留既有 assignees／state／comments，未改 M1～M3；本地 published.json 保存准确编号和 hash。所有 issue 仍 open，未将同步需求当作验收完成。运行源码提交 `a7100469` 的 M2／M3 Linux／原生 CLI／M4 Node22 四项 CI 已全部通过；后续文档及映射提交的最终状态以 PR 检查为准。
+
 ## 代码与范围
 
 - 实施分支：`codex/m4-core-20261006`，独立 worktree `m4-core-20261006`。
