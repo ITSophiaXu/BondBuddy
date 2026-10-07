@@ -232,7 +232,7 @@ export class ApiClient {
   deleteMaterial(id: string, materialId: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }
   project(id: string, signal?: AbortSignal) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`, undefined, {}, signal); }
   material(id: string, materialId: string, signal?: AbortSignal) {
-    return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, signal);
+    return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }
   async materialBytes(projectId: string, material: Dto<'MaterialResponse'>, signal?: AbortSignal): Promise<Blob> {
     const activeSignal = signal ?? this.controller.signal;
@@ -268,13 +268,13 @@ export class ApiClient {
     return this.request<Dto<'RecognitionResponse'>>('PATCH', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/source-profile`, input, { 'If-Match': String(input.profile_version) });
   }
   projectEvents(id: string, after: number, signal?: AbortSignal) {
-    return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
+    return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }
   createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
   }
   completeUpload(id: string, uploadId: string, input: Dto<'UploadCompleteRequest'>, signal?: AbortSignal) {
-    return this.request<Dto<'MaterialResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`, input, {}, signal);
+    return this.request<Dto<'MaterialResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`, input, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }
   uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal) {
     const target = new URL(uploadUrl, window.location.href);
@@ -282,6 +282,12 @@ export class ApiClient {
     const sameOrigin = target.origin === window.location.origin;
     const send = () => new Promise<XMLHttpRequest>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let confirmationTimer: ReturnType<typeof setTimeout> | undefined;
+      // Bound the wait after transfer; a slow transfer itself keeps real progress.
+      xhr.upload.addEventListener('load', () => {
+        confirmationTimer = setTimeout(() => xhr.abort(), 120_000);
+      }, { once: true });
+      xhr.addEventListener('loadend', () => clearTimeout(confirmationTimer), { once: true });
       xhr.open('PUT', target.href);
       xhr.withCredentials = sameOrigin;
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -300,7 +306,7 @@ export class ApiClient {
         signal.removeEventListener('abort', abort);
         reject(new DOMException('Upload aborted', 'AbortError'));
       }, { once: true });
-      if (signal.aborted) { abort(); return; }
+      if (signal.aborted) { signal.removeEventListener('abort', abort); reject(new DOMException('Upload aborted', 'AbortError')); return; }
       xhr.send(file);
     });
     return (async () => {

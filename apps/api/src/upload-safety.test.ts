@@ -5,12 +5,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { BlobServiceClient } from '@azure/storage-blob';
-import { Pool } from 'pg';
-import { azureBlobs, digest, verifiedMedia, verifiedMediaFile, verifiedMediaFileDetailed } from './data.js';
-import { createServer } from './server.js';
+import { digest, Problem } from './data.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
-import { inspectMaterialUploadDetailed, runInspectionWorker } from './upload-safety.js';
+import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed, UploadSafetyError, inspectMaterialUploadDetailed, runInspectionWorker } from './upload-safety.js';
 import { MAX_SIGNED_PDF_BYTES, SignedPdfProfileError, validateSignedPdfProfile } from './signed-pdf-profile.js';
 import { multipageSignedPdf } from './signed-pdf-multipage.samples.js';
 import {
@@ -20,10 +17,17 @@ import {
   XLSX, xlsxSample, xlsxPartNameSample, xlsxRelationshipTargetSample, xlsxDeflatedDirectorySample, pdfWidgetSample
 } from './upload-safety.samples.js';
 
-import { isolatedTestDatabase } from './test-database.js';
-const connection = await isolatedTestDatabase();
-const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
-const origin = 'http://bondbuddy.test';
+// These are legacy content-tool tests, not the project's raw-upload admission policy.
+const legacy = async <T>(work: Promise<T>): Promise<T> => {
+  try { return await work; } catch (error) {
+    if (error instanceof UploadSafetyError) throw new Problem(error.status,error.code,error.message,error.reason,error.detail);
+    throw new Problem(422,'MATERIAL_UNREADABLE','Legacy inspection failed','inspection_worker_failed');
+  }
+};
+const verifiedMedia = (bytes:Buffer,type:string) => legacy(inspectMaterialUpload(bytes,type));
+const verifiedMediaFile = (path:string,size:number,type:string) => legacy(inspectMaterialUploadFile(path,size,type));
+const verifiedMediaFileDetailed = (path:string,size:number,type:string) => legacy(inspectMaterialUploadFileDetailed(path,size,type));
+
 
 test('upload inspection exception requires preprod, an explicit switch and one exact XLSX identity', () => {
   const scopeText = `owner-a:project-a:audit:411637:${'a'.repeat(64)}`;
@@ -38,91 +42,6 @@ test('upload inspection exception requires preprod, an explicit switch and one e
   }
 });
 
-test('preprod exact-byte exception saves one otherwise rejected XLSX and audits both inspections', { skip: !connection || !blobConnection }, async () => {
-  const pool = new Pool({ connectionString: connection });
-  const containerName = `bb-upload-exception-${randomUUID().replaceAll('-', '')}`;
-  const blobs = azureBlobs(blobConnection!, containerName);
-  const ownerId = `exception-${randomUUID()}`;
-  let actingOwner = ownerId;
-  const settings = { pool, blobs, principal: async () => ({ userId: actingOwner, csrfVerified: true }), allowedOrigin: origin };
-  const send = (app: ReturnType<typeof createServer>, method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
-    method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
-  });
-  const linkXml = '<invalidRoot xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/><externalBook r:id="rId1"/></invalidRoot>';
-  const bytes = await externalLinkPartXlsxSample({ linkXml });
-  await expectStructureDetail(bytes, 'external_link_invalid');
-  const setupApp = createServer(settings);
-  let app: ReturnType<typeof createServer> | undefined;
-  try {
-    const created = await send(setupApp, 'POST', '/api/v1/projects', { name: 'Synthetic Exception Scope', kind: 'update', issuer_name: null, market: null, offering: null });
-    assert.equal(created.statusCode, 201, created.body);
-    const projectId = created.json().project_id;
-    const saved = { tier: process.env.BB_DEPLOYMENT_TIER, enabled: process.env.BB_UPLOAD_EXCEPTION_ENABLED, scope: process.env.BB_UPLOAD_EXCEPTION_SCOPE };
-    process.env.BB_DEPLOYMENT_TIER = 'preprod';
-    process.env.BB_UPLOAD_EXCEPTION_ENABLED = '1';
-    process.env.BB_UPLOAD_EXCEPTION_SCOPE = `${ownerId}:${projectId}:audit:${bytes.length}:${digest(bytes)}`;
-    try { app = createServer(settings); }
-    finally {
-      for (const [key, value] of Object.entries({ BB_DEPLOYMENT_TIER: saved.tier, BB_UPLOAD_EXCEPTION_ENABLED: saved.enabled, BB_UPLOAD_EXCEPTION_SCOPE: saved.scope })) {
-        if (value === undefined) delete process.env[key]; else process.env[key] = value;
-      }
-    }
-    const otherProject = await send(app, 'POST', '/api/v1/projects', { name: 'Synthetic Other Scope', kind: 'update', issuer_name: null, market: null, offering: null });
-    assert.equal(otherProject.statusCode, 201, otherProject.body);
-    const begin = async (project: string, file: Buffer, role = 'audit', sha256 = digest(file)) => send(app!, 'POST', `/api/v1/projects/${project}/materials/uploads`, {
-      filename: 'synthetic-external.xlsx', media_type: XLSX, byte_size: file.length, sha256, role
-    });
-    const start = await begin(projectId, bytes);
-    assert.equal(start.statusCode, 201, start.body);
-    const uploadId = start.json().upload_id;
-    actingOwner = `other-${randomUUID()}`;
-    assert.equal((await send(app, 'PUT', start.json().upload_url, bytes, 'application/octet-stream')).statusCode, 404);
-    actingOwner = ownerId;
-    const partial = await begin(projectId, bytes);
-    assert.equal(partial.statusCode, 201, partial.body);
-    assert.equal((await send(app, 'PUT', partial.json().upload_url, bytes.subarray(0, -1), 'application/octet-stream')).statusCode, 422);
-    const changed = Buffer.from(bytes);
-    changed[changed.length - 1] ^= 1;
-    const wrong = await begin(projectId, bytes);
-    assert.equal(wrong.statusCode, 201, wrong.body);
-    assert.equal((await send(app, 'PUT', wrong.json().upload_url, changed, 'application/octet-stream')).json().code, 'MATERIAL_CONTENT_MISMATCH');
-    const other = await begin(otherProject.json().project_id, bytes);
-    assert.equal(other.statusCode, 201, other.body);
-    assert.equal((await send(app, 'PUT', other.json().upload_url, bytes, 'application/octet-stream')).statusCode, 422);
-    const differentBytes = await externalLinkPartXlsxSample({ linkXml: linkXml.replace('rId1"/></invalidRoot>', 'rId2"/></invalidRoot>') });
-    assert.notEqual(digest(differentBytes), digest(bytes));
-    const different = await begin(projectId, differentBytes);
-    assert.equal(different.statusCode, 201, different.body);
-    const differentPut = await send(app, 'PUT', different.json().upload_url, differentBytes, 'application/octet-stream');
-    assert.equal(differentPut.statusCode, 422);
-    assert.equal(differentPut.json().code, 'MATERIAL_UNREADABLE');
-    assert.equal(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${different.json().upload_id}`), null,
-      'a different SHA cannot reach private Blob storage');
-    assert.equal((await send(app, 'PUT', start.json().upload_url, bytes, 'application/octet-stream')).statusCode, 204);
-    const complete = await send(app, 'POST', `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/complete`, { byte_size: bytes.length, sha256: digest(bytes) });
-    assert.equal(complete.statusCode, 200, complete.body);
-    assert.equal(complete.json().material_version, 1);
-    assert.equal(complete.json().sha256, digest(bytes));
-    assert.equal(complete.json().signature_assessment, null, 'the XLSX exception has no PDF signature assessment');
-    const material = await pool.query('SELECT state,byte_size,sha256 FROM bb_material_versions WHERE id=$1 AND owner_user_id=$2', [complete.json().material_id, ownerId]);
-    assert.equal(material.rowCount, 1);
-    assert.equal(material.rows[0].state, 'persisted');
-    assert.equal(Number(material.rows[0].byte_size), bytes.length);
-    assert.equal(material.rows[0].sha256.trim(), digest(bytes));
-    assert.deepEqual(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${uploadId}`), bytes);
-    assert.equal((await pool.query("SELECT 1 FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [complete.json().material_id])).rowCount, 1);
-    const audit = await pool.query("SELECT operation_kind FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND operation_kind LIKE 'material_upload_exception_%' ORDER BY operation_kind", [ownerId, projectId]);
-    assert.deepEqual(audit.rows.map(row => row.operation_kind), ['material_upload_exception_bytes', 'material_upload_exception_complete']);
-  } finally {
-    await app?.close();
-    await setupApp.close();
-    await pool.end();
-    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
-  }
-});
-
-// Every sample is inspected twice: from memory and from a spooled file. The file path must give
-// the same verdict, status, code and message as the in-memory inspection (parity).
 async function spooled<T>(bytes: Buffer, use: (path: string) => Promise<T>): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'bb-inspect-'));
   const path = join(directory, 'sample.part');
@@ -301,79 +220,6 @@ test('XLSX external workbook parts require a book, its relationships part and ev
   await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: duplicateAliases }), 'external_link_invalid');
   const duplicateRels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/a.xlsx" TargetMode="External"/><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/b.xlsx" TargetMode="External"/></Relationships>';
   await expectStructureDetail(await externalLinkPartXlsxSample({ linkRelsXml: duplicateRels }), 'external_link_invalid');
-});
-
-test('rejected passive-link structures create no material or Blob object', { skip: !connection || !blobConnection }, async () => {
-  const pool = new Pool({ connectionString: connection });
-  const containerName = `bb-passive-negative-${randomUUID().replaceAll('-', '')}`;
-  const blobs = azureBlobs(blobConnection!, containerName);
-  const ownerId = `passive-negative-${randomUUID()}`;
-  const app = createServer({ pool, blobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin });
-  const send = (method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
-    method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
-  });
-  try {
-    const project = await send('POST', '/api/v1/projects', { name: 'Synthetic invalid passive links', kind: 'update', issuer_name: null, market: null, offering: null });
-    assert.equal(project.statusCode, 201, project.body);
-    const projectId = project.json().project_id;
-    for (const { name, bytes } of await invalidPassiveLinkSamples()) {
-      const started = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-        filename: 'synthetic.xlsx', media_type: XLSX, byte_size: bytes.length, sha256: digest(bytes), role: 'audit'
-      });
-      assert.equal(started.statusCode, 201, `${name}: ${started.body}`);
-      const upload = started.json();
-      const put = await send('PUT', upload.upload_url, bytes, 'application/octet-stream');
-      assert.equal(put.statusCode, 422, `${name}: ${put.body}`);
-      assert.equal(put.json().code, 'MATERIAL_UNREADABLE', name);
-      assert.ok(put.json().correlation_id, name);
-      assert.equal((await pool.query('SELECT 1 FROM bb_material_versions WHERE upload_id=$1', [upload.upload_id])).rowCount, 0, name);
-      assert.equal(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${upload.upload_id}`), null, name);
-    }
-  } finally {
-    await app.close();
-    await pool.end();
-    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
-  }
-});
-
-test('passive alternate XLSX paths persist one material and queue one parse job without an exception scope', { skip: !connection || !blobConnection }, async () => {
-  const pool = new Pool({ connectionString: connection });
-  const containerName = `bb-passive-links-${randomUUID().replaceAll('-', '')}`;
-  const blobs = azureBlobs(blobConnection!, containerName);
-  const ownerId = `passive-${randomUUID()}`;
-  let actingOwner = ownerId;
-  const app = createServer({ pool, blobs, principal: async () => ({ userId: actingOwner, csrfVerified: true }), allowedOrigin: origin });
-  const send = (method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
-    method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
-  });
-  const linkXml = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"><alternateUrls><alternateUrl r:id="rId2"/></alternateUrls><relativeUrl r:id="rId2"/></externalBook></externalLink>';
-  const linkRelsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/source.xlsx" TargetMode="External"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="https://example.invalid/alternate.xlsx" TargetMode="External"/></Relationships>';
-  const bytes = await externalLinkPartXlsxSample({ linkXml, linkRelsXml });
-  try {
-    const project = await send('POST', '/api/v1/projects', { name: 'Synthetic passive links', kind: 'update', issuer_name: null, market: null, offering: null });
-    assert.equal(project.statusCode, 201, project.body);
-    const projectId = project.json().project_id;
-    const declaration = { filename: 'synthetic.xlsx', media_type: XLSX, byte_size: bytes.length, sha256: digest(bytes), role: 'audit' };
-    const started = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, declaration);
-    assert.equal(started.statusCode, 201, started.body);
-    const upload = started.json();
-    actingOwner = `foreign-${randomUUID()}`;
-    assert.equal((await send('PUT', upload.upload_url, bytes, 'application/octet-stream')).statusCode, 404);
-    actingOwner = ownerId;
-    assert.equal((await send('PUT', upload.upload_url, bytes, 'application/octet-stream')).statusCode, 204);
-    const completed = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${upload.upload_id}/complete`, { byte_size: bytes.length, sha256: digest(bytes) });
-    assert.equal(completed.statusCode, 200, completed.body);
-    assert.equal(completed.json().sha256, digest(bytes));
-    assert.equal(completed.json().material_version, 1);
-    const material = await pool.query('SELECT state,sha256 FROM bb_material_versions WHERE id=$1 AND owner_user_id=$2', [completed.json().material_id, ownerId]);
-    assert.equal(material.rows[0]?.state, 'persisted');
-    assert.equal(material.rows[0]?.sha256.trim(), digest(bytes));
-    assert.equal((await pool.query("SELECT 1 FROM bb_jobs WHERE material_id=$1 AND job_type='parse'", [completed.json().material_id])).rowCount, 1);
-  } finally {
-    await app.close();
-    await pool.end();
-    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
-  }
 });
 
 test('internal relationship targets resolve from package root or source directory without escaping', async () => {
@@ -740,155 +586,4 @@ test('upload inspection is single-flight: extra work queues, and a bounded wait 
     delete process.env.BB_UPLOAD_INSPECTION_QUEUE_MS;
   }
   assert.equal(await verifiedMedia(textSample, TEXT), TEXT, 'capacity is released after use');
-});
-
-test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owner 404 and retry idempotency', { skip: !connection || !blobConnection }, async () => {
-  const pool = new Pool({ connectionString: connection });
-  const originalOwnerId = `upload-${randomUUID()}`;
-  let ownerId = originalOwnerId;
-  const containerName = `bb-upload-${randomUUID().replaceAll('-', '')}`;
-  const blobs = azureBlobs(blobConnection!, containerName);
-  const app = createServer({
-    pool,
-    blobs,
-    principal: async () => ({ userId: ownerId, csrfVerified: true }),
-    allowedOrigin: origin
-  });
-  const send = (method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
-    method: method as any,
-    url,
-    headers: { origin, 'content-type': contentType },
-    payload: payload as any
-  });
-  let projectId = '';
-  try {
-    await pool.query('SELECT 1');
-    const project = await send('POST', '/api/v1/projects', { name: 'Synthetic Upload Safety', kind: 'update', issuer_name: null, market: null, offering: null });
-    assert.equal(project.statusCode, 201, project.body);
-    projectId = project.json().project_id;
-    const pdf = pdfSample();
-    const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-      filename: 'synthetic.pdf', media_type: PDF, byte_size: pdf.length, sha256: digest(pdf), role: 'audit'
-    });
-    assert.equal(start.statusCode, 201, start.body);
-    const uploadUrl = start.json().upload_url;
-    const uploadId = start.json().upload_id;
-    const firstPut = await send('PUT', uploadUrl, pdf, 'application/octet-stream');
-    assert.equal(firstPut.statusCode, 204, firstPut.body);
-    assert.equal((await send('PUT', uploadUrl, pdf, 'application/octet-stream')).statusCode, 204, 'retrying received bytes stays idempotent');
-    const completeUrl = `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/complete`;
-    const complete = await send('POST', completeUrl, { byte_size: pdf.length, sha256: digest(pdf) });
-    assert.equal(complete.statusCode, 200, complete.body);
-    const replay = await send('POST', completeUrl, { byte_size: pdf.length, sha256: digest(pdf) });
-    assert.equal(replay.statusCode, 200, replay.body);
-    assert.equal(replay.json().material_id, complete.json().material_id);
-    assert.equal(complete.json().signature_assessment, null, 'ordinary PDF is not given a signature claim');
-
-    const signed = pdfWidgetSample();
-    const signedStart = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-      filename: 'synthetic-filled-sig.pdf', media_type: PDF, byte_size: signed.length, sha256: digest(signed), role: 'audit'
-    });
-    assert.equal(signedStart.statusCode, 201, signedStart.body);
-    assert.equal((await send('PUT', signedStart.json().upload_url, signed, 'application/octet-stream')).statusCode, 204);
-    const signedCompleteUrl = `/api/v1/projects/${projectId}/materials/uploads/${signedStart.json().upload_id}/complete`;
-    const signedComplete = await send('POST', signedCompleteUrl, { byte_size: signed.length, sha256: digest(signed) });
-    assert.equal(signedComplete.statusCode, 200, signedComplete.body);
-    const signedMaterial = signedComplete.json();
-    assert.deepEqual(signedMaterial.signature_assessment, { status: 'signature_unverified', profile_version: 'signed-pdf-classic-v1', signature_count: 1 });
-    assert.equal(signedMaterial.sha256, digest(signed));
-    assert.equal((await send('POST', signedCompleteUrl, { byte_size: signed.length, sha256: digest(signed) })).json().material_id, signedMaterial.material_id);
-    const signedKey = `users/${ownerId}/projects/${projectId}/uploads/${signedStart.json().upload_id}`;
-    assert.deepEqual(await blobs.getIfExists(signedKey), signed, 'private Blob retains exact signed bytes');
-    const signedRow = await pool.query('SELECT sha256,signature_assessment FROM bb_material_versions WHERE owner_user_id=$1 AND id=$2', [ownerId, signedMaterial.material_id]);
-    assert.equal(signedRow.rows[0].sha256.trim(), digest(signed));
-    assert.deepEqual(signedRow.rows[0].signature_assessment, signedMaterial.signature_assessment);
-    await assert.rejects(pool.query('UPDATE bb_material_versions SET sha256=$1 WHERE owner_user_id=$2 AND id=$3', ['d'.repeat(64), ownerId, signedMaterial.material_id]),
-      (error: unknown) => (error as { code?: string }).code === '23514', 'assessed material hash is immutable');
-    await assert.rejects(pool.query('UPDATE bb_material_versions SET signature_assessment=NULL WHERE owner_user_id=$1 AND id=$2', [ownerId, signedMaterial.material_id]),
-      (error: unknown) => (error as { code?: string }).code === '23514', 'stored assessment is immutable');
-    const signedJobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND job_type='parse'", [ownerId, projectId, signedMaterial.material_id]);
-    assert.equal(signedJobs.rows[0].count, 1, 'accepted signed PDF has one durable parse job');
-    assert.deepEqual((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).json().signature_assessment, signedMaterial.signature_assessment);
-
-    const authorizedPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25/qx-202606/5-2-1 杞县豫资城乡发展建设有限公司2024年审计报告.pdf');
-    for (const [bytes, count] of [[multipageSignedPdf(), 1], [await readFile(authorizedPath), 4]] as const) {
-      const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-        filename:'multipage-audit.pdf',media_type:PDF,byte_size:bytes.length,sha256:digest(bytes),role:'audit'
-      });
-      assert.equal(start.statusCode,201,start.body);
-      const put = await send('PUT',start.json().upload_url,bytes,'application/octet-stream');
-      assert.equal(put.statusCode,204,put.body);
-      const complete = await send('POST',`/api/v1/projects/${projectId}/materials/uploads/${start.json().upload_id}/complete`,{byte_size:bytes.length,sha256:digest(bytes)});
-      assert.equal(complete.statusCode,200,complete.body);
-      const saved = complete.json();
-      assert.deepEqual(saved.signature_assessment,{status:'signature_unverified',profile_version:'signed-pdf-multipage-v2',signature_count:count});
-      assert.deepEqual(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${start.json().upload_id}`),bytes);
-      const jobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND material_id=$2 AND job_type='parse'",[ownerId,saved.material_id]);
-      assert.equal(jobs.rows[0].count,1);
-      ownerId = 'different-owner';
-      assert.equal((await send('GET',`/api/v1/projects/${projectId}/materials/${saved.material_id}`)).statusCode,404);
-      ownerId = originalOwnerId;
-    }
-
-    const bad = await docxSample();
-    bad.writeUInt32LE(0, bad.length - 22); // Corrupt the end-of-central-directory signature while keeping the request structurally plausible.
-    const rejectedStart = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-      filename: 'corrupt.docx', media_type: DOCX,
-      byte_size: bad.length, sha256: digest(bad), role: 'audit'
-    });
-    assert.equal(rejectedStart.statusCode, 201, rejectedStart.body);
-    const rejectedPut = await send('PUT', rejectedStart.json().upload_url, bad, 'application/octet-stream');
-    assert.equal(rejectedPut.statusCode, 422, rejectedPut.body);
-    assert.equal(rejectedPut.json().code, 'MATERIAL_UNREADABLE');
-    assert.equal(rejectedPut.json().reason, undefined);
-    assert.equal(rejectedPut.json().detail, undefined);
-    const rejection = await pool.query("SELECT event FROM bb_observability_events WHERE kind='operation.rejected' AND event->>'request_id'=$1", [rejectedPut.json().correlation_id]);
-    assert.equal(rejection.rowCount, 1);
-    assert.equal(rejection.rows[0].event.error.reason, 'structure_invalid');
-    assert.equal(rejection.rows[0].event.error.detail, 'zip_eocd_missing');
-    assert.equal(rejection.rows[0].event.error.error_id, rejectedPut.json().correlation_id);
-    const blobKey = `users/${ownerId}/projects/${projectId}/uploads/${rejectedStart.json().upload_id}`;
-    assert.equal(await blobs.getIfExists(blobKey), null, 'rejected bytes never reach private Blob storage');
-
-    for (const [name, bytes] of [
-      ['blank signature', pdfWidgetSample({ populated: false })],
-      ['multipage blank signature', Buffer.from(multipageSignedPdf().toString('ascii').replace('<01>','<00>'),'ascii')],
-      ['multipage active content', multipageSignedPdf({hidden:'<< /S /JavaScript >>'})],
-      ['zero-filled signature contents', Buffer.from(pdfWidgetSample().toString('ascii').replace('/Contents <01>', '/Contents <00>'), 'ascii')],
-      ['additional revision', pdfWidgetSample({ appendRevision: true })],
-      ['active widget', pdfWidgetSample({ widgetExtra: '/AA << /U << /S /JavaScript /JS (synthetic) >> >>' })],
-      ['duplicate key', pdfWidgetSample({ widgetExtra: '/FT /Sig' })],
-      ['hidden object', pdfWidgetSample({ extraObject: '<< /Type /Action /S /JavaScript >>' })]
-    ] as const) {
-      const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-        filename: 'synthetic-signed.pdf', media_type: PDF, byte_size: bytes.length, sha256: digest(bytes), role: 'audit'
-      });
-      assert.equal(start.statusCode, 201, `${name}: ${start.body}`);
-      const put = await send('PUT', start.json().upload_url, bytes, 'application/octet-stream');
-      assert.equal(put.statusCode, 415, `${name}: ${put.body}`);
-      assert.equal(put.json().code, 'MATERIAL_FORMAT_UNSUPPORTED');
-      const uploadKey = `users/${ownerId}/projects/${projectId}/uploads/${start.json().upload_id}`;
-      assert.equal(await blobs.getIfExists(uploadKey), null, `${name}: no private Blob bytes`);
-      const persisted = await pool.query('SELECT count(*)::int AS count FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2', [ownerId, start.json().upload_id]);
-      assert.equal(persisted.rows[0].count, 0, `${name}: no material version`);
-      const parseJobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND job_type='parse'", [ownerId, projectId]);
-      assert.equal(parseJobs.rows[0].count, 4, `${name}: only the earlier accepted PDFs have parse jobs`);
-    }
-
-    ownerId = `upload-other-${randomUUID()}`;
-    assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${complete.json().material_id}`)).statusCode, 404);
-    assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${complete.json().material_id}/download`)).statusCode, 404);
-    assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).statusCode, 404);
-    ownerId = originalOwnerId;
-    assert.deepEqual((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).json().signature_assessment, signedMaterial.signature_assessment, 'owner read after session change retains assessment');
-  } finally {
-    if (projectId) {
-      // The completed material now has a retained parse job and append-only #79 operation rows,
-      // so its synthetic owner/project rows stay; suites that need a clean slate TRUNCATE ... CASCADE.
-      await pool.query('DELETE FROM bb_outbox WHERE owner_user_id=$1', [originalOwnerId]);
-    }
-    await app.close();
-    await pool.end();
-    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
-  }
 });

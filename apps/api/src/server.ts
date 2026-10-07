@@ -1008,7 +1008,7 @@ export function createServer(settings: Settings = {}) {
         [uid(),user,id,b.request_key,requestHash,b.source_material_id,b.source_material_version,b.source_sha256,uploadId]);
     });
     const result=await transaction(db(),async client=>{
-      await project(client,user,id,true);
+      const copyProject=await project(client,user,id,true);
       const receipt=(await client.query(`SELECT * FROM bb_material_role_copy_receipts
         WHERE owner_user_id=$1 AND project_id=$2 AND request_key=$3 FOR UPDATE`,[user,id,b.request_key])).rows[0];
       if(!receipt)throw missing();
@@ -1065,7 +1065,8 @@ export function createServer(settings: Settings = {}) {
         VALUES($1,$2,'material',$3,'material.role_copied',$4)`,
         [uid(),user,materialId,{project_id:id,source_material_id:source.id,source_material_version:source.version,material_id:materialId,material_version:1,receipt_id:receipt.id}]);
       await appendProjectMaterialEvent(client,user,id,materialId,Number(source.byte_size));
-      await enqueueMaterialParse(client,{owner:user,projectId:id,materialId,materialVersion:1,sha256:b.source_sha256,traceId});
+      if(copyProject.update_details?.authoring_mode!=='unified_v1')
+        await enqueueMaterialParse(client,{owner:user,projectId:id,materialId,materialVersion:1,sha256:b.source_sha256,traceId});
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_role_copy',status:'submitted'});
       return {receipt_id:receipt.id,source_material_id:source.id,source_material_version:source.version,material:materialDto(saved)};
     });
@@ -1135,15 +1136,18 @@ export function createServer(settings: Settings = {}) {
     const traceId=uid();
     try { return await transaction(db(),async client=>{
       // Same lock order as deletion/snapshot creation; concurrent equal uploads resolve once.
-      await project(client,user,id,true);
+      const uploadProject = await project(client,user,id,true);
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
       if((await client.query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
       const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
       let excepted=false;
-      // The parse job, its outbox/log rows and the #79 operation commit with the verified completion.
+      // The storage receipt and operation commit together. Legacy projects retain auxiliary parsing.
       const accepted=async (m:any)=>{
-        await enqueueMaterialParse(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
+        // Unified authoring reads the original in the Codex task. Do not start an
+        // independent parsing/OCR pass simply because the original has been stored.
+        if (uploadProject.update_details?.authoring_mode !== 'unified_v1')
+          await enqueueMaterialParse(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
         await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_complete',status:'submitted'});
         if(excepted)await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_upload_exception_complete',status:'submitted'});
         return materialDto(m);
@@ -1186,9 +1190,11 @@ export function createServer(settings: Settings = {}) {
         ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,media]);
       if(duplicate.rows[0]){
         const priorAssessment=duplicate.rows[0].signature_assessment;
-        if (signatureAssessment
+        // New PDF uploads do not assess signatures. Reuse an identical old material
+        // with its immutable historical assessment instead of rejecting or erasing it.
+        if (media !== 'application/pdf' && (signatureAssessment
           ? priorAssessment?.status!==signatureAssessment.status || priorAssessment?.profile_version!==signatureAssessment.profile_version || priorAssessment?.signature_count!==signatureAssessment.signature_count
-          : priorAssessment!==null) throw new Problem(503,'DATA_UNAVAILABLE','Stored material inspection metadata is inconsistent');
+          : priorAssessment!==null)) throw new Problem(503,'DATA_UNAVAILABLE','Stored material inspection metadata is inconsistent');
         const m=duplicate.rows[0], result=await checkedMaterial(m);
         await client.query('INSERT INTO bb_upload_reuse_receipts(upload_id,owner_user_id,project_id,material_id,material_version) VALUES($1,$2,$3,$4,$5)',[uploadId,user,id,m.id,m.version]);
         await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.reused',$4)",[uid(),user,uploadId,{project_id:id,material_id:m.id,material_version:m.version}]);

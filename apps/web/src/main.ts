@@ -423,8 +423,10 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
 
 function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'materials' = 'materials',handoffQuery=new URLSearchParams()) {
   draft = new Draft(project, api, updateSaveState);
-  materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
-  materialProcessing.setVisible(document.visibilityState === 'visible');
+  if (project.update_details?.authoring_mode !== 'unified_v1') {
+    materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
+    materialProcessing.setVisible(document.visibilityState === 'visible');
+  }
   const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
   shell(`${projectListContext()?projectBackLink:''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
@@ -557,14 +559,14 @@ function uploadStatus(upload: LocalUpload) {
   const percent = upload.file.size ? Math.min(100, Math.floor(upload.sentBytes / upload.file.size * 100)) : 0;
   switch (upload.phase) {
     case 'queued': return '等待上传，已选文件将依次处理…';
-    case 'hashing': return '正在检查文件…';
-    case 'checking': return '正在核对上次保存结果…';
-    case 'uploading': return percent >= 100 ? '已发送 100%，正在保存和核验…' : `正在传输 ${percent}%（${formatBytes(upload.sentBytes)} / ${formatBytes(upload.file.size)}）`;
-    case 'saving': return '已发送 100%，正在保存和核验…';
+    case 'hashing': return '正在准备上传…';
+    case 'checking': return '正在确认保存结果…';
+    case 'uploading': return percent >= 100 ? '已发送 100%，正在保存…' : `正在传输 ${percent}%（${formatBytes(upload.sentBytes)} / ${formatBytes(upload.file.size)}）`;
+    case 'saving': return '已发送 100%，正在保存…';
     case 'persisted': return `服务器已确认保存 · 材料版本 ${upload.material?.material_version ?? '—'}${upload.session && upload.material?.upload_id !== upload.session.upload_id ? ' · 已复用相同内容' : ''}`;
     case 'failed': return upload.error ?? '文件未保存。可以单独重试。';
     case 'cancelled': return '本次传输已取消；所选文件仍在此页面，可单独重试。';
-    case 'uncertain': return upload.error ?? '保存结果尚未确认。可核对并继续保存，将优先查询原上传记录。';
+    case 'uncertain': return upload.error ?? '保存结果尚未确认。重试保存时会先查询原记录。';
   }
 }
 
@@ -598,9 +600,9 @@ function renderUploadRow(upload: LocalUpload) {
   const controls = upload.phase === 'failed' || upload.phase === 'cancelled'
     ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
     : upload.phase === 'uncertain'
-      ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">核对并继续保存</button>`
+      ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试保存</button>`
       : active
-        ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= upload.file.size ? '停止等待并核对' : '取消此文件'}</button>`
+        ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= upload.file.size ? '停止等待' : '取消此文件'}</button>`
         : '';
   const canRemove = ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
@@ -744,6 +746,7 @@ function pumpUploads() {
 async function performUpload(upload: LocalUpload) {
   const controller = new AbortController(); upload.controller = controller;
   let acceptedByByteEndpoint = false;
+  let byteTransferAttempted = false;
   const isCurrentOwner = () => identity === upload.owner && (localUploads.get(upload.projectId) ?? []).includes(upload);
   try {
     const mediaType = declaredMediaType(upload.file, upload.role);
@@ -771,6 +774,7 @@ async function performUpload(upload: LocalUpload) {
       if (!isCurrentOwner() || controller.signal.aborted) return;
       upload.session = session;
       upload.phase = 'uploading'; upload.sentBytes = 0; updateMaterialWorkspace(upload.projectId);
+      byteTransferAttempted = true;
       await api.uploadBytes(session.upload_url, upload.file, loaded => {
         if (!isCurrentOwner() || controller.signal.aborted) return;
         upload.sentBytes = Math.min(upload.file.size, Math.max(0, loaded));
@@ -793,15 +797,40 @@ async function performUpload(upload: LocalUpload) {
     if (upload.phase === 'cancelled' || upload.phase === 'uncertain') return;
     const aborted = controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError');
     const explicitServerFailure = error instanceof ApiError && error.status > 0;
-    const uncertain = (!explicitServerFailure || error instanceof ApiError && error.status >= 500) && (upload.sentBytes >= upload.file.size || acceptedByByteEndpoint);
+    // A lost PUT response can precede the browser's first progress event.
+    const uncertain = (!explicitServerFailure || error instanceof ApiError && error.status >= 500)
+      && (upload.sentBytes >= upload.file.size || acceptedByByteEndpoint || byteTransferAttempted && !aborted);
     upload.phase = aborted && !uncertain ? 'cancelled' : uncertain ? 'uncertain' : 'failed';
     upload.error = aborted && !uncertain ? undefined : uncertain
-      ? `保存结果尚未确认。服务器可能已收到文件，但当前会话未取得保存凭证。请刷新服务器记录；请勿盲目重传。${error instanceof ApiError ? errorReference(error) : ''}`
+      ? '正在自动确认保存结果，无需重复上传…'
       : uploadErrorMessage(error);
     updateMaterialWorkspace(upload.projectId);
     // A completion response can be lost after the server commits the material.
     // Re-read metadata once; this never resends bytes or starts a run.
-    if (uncertain) void refreshProjectMaterials(upload.projectId, epoch);
+    if (uncertain) {
+      await refreshProjectMaterials(upload.projectId, epoch);
+      // The PUT may have committed without an acknowledgement, leaving only the
+      // idempotent completion outstanding. Never retransmit bytes during recovery.
+      for (let attempt = 0; attempt < 3 && isCurrentOwner() && !controller.signal.aborted && upload.phase === 'uncertain'; attempt++) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 2000));
+        if (!isCurrentOwner() || controller.signal.aborted || upload.phase !== 'uncertain' || !upload.session || !upload.hash) break;
+        try {
+          const material = await api.completeUpload(upload.projectId, upload.session.upload_id, { byte_size: upload.file.size, sha256: upload.hash }, controller.signal);
+          if (!isCurrentOwner() || controller.signal.aborted) return;
+          upload.material = material; upload.phase = 'persisted'; upload.error = undefined;
+          recoveryStates.set(upload.projectId, { state: 'ready' });
+          updateMaterialWorkspace(upload.projectId);
+          void refreshProjectMaterials(upload.projectId, epoch);
+        } catch (confirmationError) {
+          if (confirmationError instanceof ApiError && confirmationError.status > 0 && confirmationError.status < 500
+            && !(confirmationError.status === 422 && confirmationError.code === 'MATERIAL_UNREADABLE')) break;
+        }
+      }
+      if (isCurrentOwner() && upload.phase === 'uncertain' && !controller.signal.aborted) {
+        upload.error = '暂时无法确认保存结果。可稍后重试保存，系统会先查询原记录，避免重复上传。';
+        updateMaterialWorkspace(upload.projectId);
+      }
+    }
   } finally {
     if (upload.controller === controller) upload.controller = undefined;
   }
@@ -915,7 +944,7 @@ function bindMaterialWorkspace(projectId: string) {
       case 'cancel': {
         const uncertain = upload.phase === 'saving' || upload.sentBytes >= upload.file.size;
         upload.phase = uncertain ? 'uncertain' : 'cancelled';
-        upload.error = uncertain ? '已停止等待；服务器是否已完成保存尚未确认。请先核对服务器记录。' : undefined;
+        upload.error = uncertain ? '已停止等待，可稍后重试保存。系统会先查询原记录。' : undefined;
         upload.controller?.abort(); updateMaterialWorkspace(projectId);
         if (uncertain) void refreshProjectMaterials(projectId, epoch);
         break;
