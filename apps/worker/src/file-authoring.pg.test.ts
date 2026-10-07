@@ -62,6 +62,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           if(scenario==='absent_metadata')source=undefined;
           if(scenario==='partial_metadata'&&source)source={...source,issuer_name:null,relation:null,market:null,offering:null,reporting_periods:[]};
           // Deliberately do not run parsing: original bytes must reach the CLI immediately.
+          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE project_id=$1 AND job_type='parse'",[project])).rows[0].n,0);
         }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
         const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});

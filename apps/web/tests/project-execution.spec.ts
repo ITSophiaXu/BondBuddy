@@ -222,6 +222,7 @@ test('M2 a legacy empty quote cannot offer a new free task',async({page})=>{
 });
 test('M2 missing uploaded source metadata blocks the next action before quote or execution',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.available=0;
+  state.project.update_details!.authoring_mode='unified_v1';
   state.project.update_details!.source_prospectuses=[];
   await setup(page,state,false);
   await expect(page.locator('#execute-input')).toBeDisabled();
@@ -911,6 +912,7 @@ test('operator denial remains a failed task without automatic-recovery guidance'
 for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
   test(`lost upload acknowledgement restores start without resending ${label}`, async ({ page, context }) => {
     const state = fixture();
+    state.project.update_details!.authoring_mode='unified_v1';
     const puts: string[] = [];
     let completes = 0, creates = 0;
     await page.setViewportSize({ width, height });
@@ -934,6 +936,8 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('服务器已确认保存');
+    await expect(page.locator('[data-processing-key]')).toHaveCount(0);
+    await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeEnabled();
     expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:1, puts:1});
     expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
@@ -984,7 +988,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await setup(page, state, false);
     await page.getByLabel('为历史／参考募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
-    await expect(history).toContainText('正在保存和核验');
+    await expect(history).toContainText('正在保存');
     expect(releaseSave).toBeDefined(); releaseSave!();
     await expect(history).toContainText('处理中');
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
@@ -1023,7 +1027,8 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await page.getByRole('button', { name: '查看与补充材料' }).click();
-    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
+    await expect(page.locator('.processing-title')).toHaveCount(0);
+    await expect(page.locator('.material-file-row')).toHaveCount(2);
     expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
   });
 }

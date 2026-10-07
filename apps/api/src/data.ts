@@ -5,7 +5,8 @@ import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
 import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, type Market, type Offering } from '@bondbuddy/contracts';
-import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed, UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
+import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
+import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -280,7 +281,7 @@ export async function verifiedMedia(bytes: Buffer, declared: string): Promise<st
     throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected','inspection_worker_failed');
   }
 }
-/** Inspect a spooled upload file; the parser worker reads it in bounded chunks where the format allows. */
+/** Validate the upload declaration and stored size without reading document content. */
 export async function verifiedMediaFile(path: string, byteSize: number, declared: string): Promise<string> {
   try {
     return await inspectMaterialUploadFile(path, byteSize, declared);

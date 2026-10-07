@@ -160,7 +160,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   ]);
   const slowRow = page.locator('.material-file-row').filter({ hasText: 'slow-save.pdf' });
   await expect(slowRow.getByRole('progressbar')).toHaveAttribute('value', '19');
-  await expect(slowRow).toContainText('正在保存和核验');
+  await expect(slowRow).toContainText('正在保存');
   expect(fixture.releaseSlowComplete).toBeDefined();
   fixture.releaseSlowComplete!();
   await expect(slowRow).toContainText('服务器已确认保存');
@@ -219,16 +219,13 @@ test('an unsupported external workbook reference is explained without claiming f
   expect(fixture.byteAttempts.filter(name=>name==='saved.pdf')).toHaveLength(1);
 });
 
-test('uncertain completion keeps the support reference and reconciles before resending bytes', async ({ page }) => {
+test('uncertain completion automatically finishes saving without manual confirmation or resending bytes', async ({ page }) => {
   const fixture=state(); fixture.unavailableNextComplete.set('uncertain.pdf', 'synthetic-completion-503');
   await installApi(page,fixture); await login(page,'owner_a');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({
     name:'uncertain.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic uncertain'),
   });
   const row=page.locator('.material-file-row').filter({hasText:'uncertain.pdf'});
-  await expect(row).toContainText('错误编号：synthetic-completion-503');
-  await expect(row).toContainText('请勿盲目重传');
-  await row.getByRole('button',{name:'核对并继续保存'}).click();
   await expect(row).toContainText('服务器已确认保存');
   expect(fixture.byteAttempts.filter(name=>name==='uncertain.pdf')).toHaveLength(1);
 });
@@ -244,13 +241,31 @@ test('lost completion response automatically reconciles the original upload with
   expect(fixture.materials.size).toBe(1);
 });
 
+test('lost byte acknowledgement automatically completes the received upload without retransmitting', async ({ page }) => {
+  const fixture=state(); await installApi(page,fixture);
+  await page.route('**/materials/uploads/*/bytes', async route => {
+    const uploadId=new URL(route.request().url()).pathname.split('/').at(-2)!;
+    const upload=fixture.uploads.get(uploadId)!;
+    upload.bytes=route.request().postDataBuffer()!.length;
+    fixture.byteAttempts.push(upload.filename);
+    return route.abort('connectionreset');
+  });
+  await login(page,'owner_a');
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'received.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 synthetic')});
+  await expect(page.locator('.material-file-row').filter({hasText:'received.pdf'})).toContainText('服务器已确认保存');
+  expect(fixture.byteAttempts).toEqual(['received.pdf']);
+  expect(fixture.uploads.size).toBe(1); expect(fixture.materials.size).toBe(1);
+});
+
 test('server refresh reconciles a delayed receipt but never matches only a filename', async ({ page }) => {
-  const fixture = state(); fixture.unavailableNextComplete.set('delayed.pdf', 'synthetic-delayed-503');
-  await installApi(page, fixture); await login(page, 'owner_a');
+  const fixture = state();
+  await installApi(page, fixture);
+  await page.route('**/materials/uploads/*/complete', route => json(route,503,{code:'DATA_UNAVAILABLE'}));
+  await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic delayed receipt');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'delayed.pdf', mimeType:'application/pdf', buffer});
   const row = page.locator('[data-upload-phase="uncertain"]').filter({hasText:'delayed.pdf'});
-  await expect(row).toContainText('保存结果尚未确认');
+  await expect(row).toContainText('暂时无法确认保存结果');
   const material: Material = {material_id:'delayed-material', material_version:1, upload_id:[...fixture.uploads.keys()][0], role:'audit', filename:'delayed.pdf', media_type:'application/pdf', byte_size:buffer.length, sha256:'a'.repeat(64), state:'persisted', persisted_at:now, error:null};
   fixture.materials.set(material.material_id,material);
   for (const invalid of [
