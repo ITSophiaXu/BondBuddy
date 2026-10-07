@@ -11,7 +11,15 @@
     },
     "m4-project-qa": {
       "path": "apps/worker/skills/m4-project-qa/SKILL.md",
-      "sha256": "d7866bd7c83eb6524bd284328787a28f8957c80b1c640d041c460c867282d786"
+      "sha256": "ddae8379a24cff4e42afeb5b21b1aace71eedfd293f2c07ad9aa4982b1e95013"
+    },
+    "m4-underwriter": {
+      "path": "apps/worker/skills/m4-underwriter/SKILL.md",
+      "sha256": "9ed73db42882d27d0fd4bd0da4f987d1cce71a278bc95fe143a39baf43419327"
+    },
+    "m4-legal": {
+      "path": "apps/worker/skills/m4-legal/SKILL.md",
+      "sha256": "d06d09be4759a3cdbabb322fa6ef427781da589f773965573f2cffc953af9d29"
     }
   }
 }

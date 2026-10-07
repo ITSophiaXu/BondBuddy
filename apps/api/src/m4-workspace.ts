@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
-import { M4_API_BASE, M4_DOCUMENT_TYPES, M4_DOCUMENT_LABELS, M4_DOCUMENT_SUBTYPE, M4_QA_SUBTYPE, M4DraftRequestSchema, M4ViewRequestSchema,
+import { M4_API_BASE, M4_DOCUMENT_TYPES, M4_DOCUMENT_LABELS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_SUBTYPE, M4_QA_SUBTYPE, M4DraftRequestSchema, M4ViewRequestSchema,
   M4TopicCreateRequestSchema, M4TemplateCreateRequestSchema, M4MessageRequestSchema, M4QuoteRequestSchema, M4ExecuteRequestSchema,
   M4HandoffBindRequestSchema, M4HandoffBindResponseSchema,
   M4AssistantReplySchema, isM4Manifest, type M4Topic, type M4DraftInput, type M4Draft, type M4DocumentType, type M4MaterialPin,
@@ -14,6 +14,7 @@ import { inputManifestHash } from './production-rule-pin.js';
 import { enqueue } from './queue.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 import { quoteM4, reserveM4 } from './m4-billing.js';
+import {loadM4Knowledge} from './m4-knowledge.js';
 export { settleM4Metering } from './m4-billing.js';
 
 type Db = Pool | PoolClient;
@@ -142,10 +143,10 @@ async function documentManifest(db:Db,owner:string,t:any,type:M4DocumentType,exp
   const {version:dv,sha256:_hash,updated_at:_time,...input}=current;await validateDraft(db,owner,t.id,input);
   const p=await project(db,owner,t.project_id),sourceId=input.source_material?.source_project_id||input.edit_base?.source_project_id||t.source_project_id;
   const source=sourceId?await project(db,owner,sourceId):null;
-  const market=input.fields.market||source?.market||p.market;
+  const market=input.fields.market;
   if(input.fields.offering && input.fields.offering!=='private' || input.fields.brokers || input.fields.scope && input.fields.scope!=='whole')
     throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持单承销商、交易所普通私募与全文制作，当前选择需后续能力。');
-  if(!['sse','szse'].includes(market))throw new Problem(422,'INPUT_REQUIRED','请通过助手确认上交所或深交所普通私募目标。');
+  if(!['sse','szse'].includes(market))throw new Problem(422,'INPUT_REQUIRED','请为本次材料选择上海证券交易所或深圳证券交易所。');
   if(source?.offering && source.offering!=='private')throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持交易所普通私募，其他品种后续开放。');
   if(!input.fields.issuer_name?.trim() && !source?.issuer_name?.trim())throw new Problem(422,'INPUT_REQUIRED','请先告诉助手发行人名称。');
   const template=await templateFor(db,owner,input.template);
@@ -156,11 +157,12 @@ async function documentManifest(db:Db,owner:string,t:any,type:M4DocumentType,exp
   if(!input.materials.length && !input.source_material && !input.edit_base)throw new Problem(422,'INPUT_REQUIRED','请先选择本次任务采用的材料。');
   const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name,market,broker:input.fields.broker||template?.broker||''}};
   return {version:'m4-document-input-v1',kind:'document',topic_id:t.id,execution_scope_project_id:source?.execution_scope_project_id||source?.id||t.project_id,
-    draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as 'sse'|'szse',offering:'private',billing_task:type==='init'?'m4_G01':'m4_G05'};
+    draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as 'sse'|'szse',offering:'private',
+    knowledge:loadM4Knowledge(market as 'sse'|'szse',type),billing_task:M4_DOCUMENT_BILLING_TASKS[type]};
 }
 export function m4UnavailableDocument(content:string):boolean{return content.split(/[，。；;\n]/).some(clause=>{
-  if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:生成|制作|起草|编制|撰写|准备|写|出具).{0,30}(?:法律意见书|核查意见|推荐函|公募.{0,8}摘要|DFI)/.test(clause))return false;
-  return /(?:生成|制作|起草|编制|撰写|准备|写一份|出具).{0,30}(?:法律意见书|核查意见|推荐函|公募.{0,8}摘要|DFI)|(?:法律意见书|核查意见|推荐函).{0,15}(?:生成|制作|起草|编制|出具)/.test(clause);
+  if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:生成|制作|起草|编制|撰写|准备|写|出具).{0,30}(?:推荐函|公募.{0,8}摘要|DFI)/.test(clause))return false;
+  return /(?:生成|制作|起草|编制|撰写|准备|写一份|出具).{0,30}(?:推荐函|公募.{0,8}摘要|DFI)|(?:推荐函).{0,15}(?:生成|制作|起草|编制|出具)/.test(clause);
 });}
 export function m4UnavailableLocalScope(content:string):boolean{return content.split(/[，。；;\n]/).some(clause=>{
   if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:只|仅|局部)(?:修改|改|更新)/.test(clause))return false;
@@ -177,7 +179,7 @@ export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingT
   if(m4UnavailableDocument(content)||m4UnavailableResearch(content)||m4UnavailableLocalScope(content))return 'm4_task_assistance';
   const analysis=/解释|解读|查询|分析|计算|比较|对比|概念|条款|有哪些|是否|为什么|是什么意思|是什么|有什么|怎么理解|如何理解|同比|比率|公式/.test(content);
   if(context.document_type && !analysis)return 'm4_task_assistance';
-  if(!analysis && /立项报告|募集说明书摘要|材料生成|任务要求|当前任务|开始制作|开始执行|准备材料|补充材料|采用.*模板|券商.*是|发行人.*是|要求.*(?:保存|记录)|保留|不要(?:生成|新增)|(?:作为|列为).*(?:重点|要求)|重点关注|(?:更新|复核).{0,15}(?:募集说明书|募集书)/.test(content))return 'm4_task_assistance';
+  if(!analysis && /立项报告|募集说明书摘要|主承销商核查意见|法律意见书|材料生成|任务要求|当前任务|开始制作|开始执行|准备材料|补充材料|采用.*模板|券商.*是|发行人.*是|要求.*(?:保存|记录)|保留|不要(?:生成|新增)|(?:作为|列为).*(?:重点|要求)|重点关注|(?:更新|复核).{0,15}(?:募集说明书|募集书)/.test(content))return 'm4_task_assistance';
   if(/比较|对比|两期|两年/.test(content))return 'm4_Q04';
   if(/计算|同比|资产负债率|流动比率|速动比率|公式/.test(content))return 'm4_Q03';
   return context.citations.length||context.source_material||context.reading_artifact?'m4_Q02':'m4_Q01';
@@ -340,7 +342,8 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const templates=(await db.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 ORDER BY created_at DESC',[owner])).rows.map(templateDto);
   const pending_requirements=(await db.query(`SELECT requirement_id,text,message_id,message_version FROM bb_m4_pending_requirements
     WHERE owner_user_id=$1 AND topic_id=$2 AND consumed_document_type IS NULL ORDER BY created_at,requirement_id`,[owner,id])).rows;
-  return {topic:topicDto(t),project:projectDto(p),drafts:{init:await readDraft(db,owner,id,'init'),private_summary:await readDraft(db,owner,id,'private_summary')},
+  const drafts=Object.fromEntries(await Promise.all(M4_DOCUMENT_TYPES.map(async type=>[type,await readDraft(db,owner,id,type)]))) as M4Workspace['drafts'];
+  return {topic:topicDto(t),project:projectDto(p),drafts,
     materials,material_details,templates,messages,tasks,artifacts,pending_requirements,view:{...(view?.view??emptyM4View()),version:view?.version??0},active_run:[...tasks].reverse().find(t=>t.manifest.kind==='document' && !terminal.includes(t.run.state))?.run??null};
 }
 export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,queueEnabled:boolean){

@@ -26,6 +26,8 @@ COPY knowledge/nafmii/APPLICABILITY.md knowledge/nafmii/APPLICABILITY.md
 COPY knowledge/nafmii/drafts/ knowledge/nafmii/drafts/
 COPY product-prototype/knowledge/*-review.md product-prototype/knowledge/
 COPY knowledge/audit-reconciliation/METHODS.md knowledge/audit-reconciliation/METHODS.md
+COPY knowledge/material-drafting/2026-10-07/catalog.json knowledge/material-drafting/2026-10-07/catalog.json
+COPY knowledge/material-drafting/2026-10-07/packs/ knowledge/material-drafting/2026-10-07/packs/
 RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
  && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src

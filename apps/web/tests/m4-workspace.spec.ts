@@ -2,8 +2,8 @@ import { test,expect,type Page,type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
 import { Value } from '@sinclair/typebox/value';
-import { M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
-  type M4Workspace,type M4Draft,type M4Artifact,type M4Task,type M4MessageRequest,type M4ExecuteRequest,type M4QuoteRequest,type Run } from '@bondbuddy/contracts';
+import { M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
+  type M4Workspace,type M4DocumentType,type M4Draft,type M4Artifact,type M4Task,type M4MessageRequest,type M4ExecuteRequest,type M4QuoteRequest,type Run } from '@bondbuddy/contracts';
 
 // Owner-scoped synthetic HTTP fixtures. These verify browser behavior, not model or DOCX quality.
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
@@ -11,11 +11,11 @@ const now='2026-10-06T00:00:00Z',mime='application/vnd.openxmlformats-officedocu
 const reply=(route:Route,body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 function fixture(){
   const source={source_project_id:'source-project',material_id:'source-doc',material_version:3,sha256:hash('source')};
-  const draft=(type:'init'|'private_summary'):M4Draft=>({document_type:type,version:1,sha256:hash(type),updated_at:now,source_material:type==='private_summary'?source:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{issuer_name:'合成发行人',market:'sse',broker:'合成券商'},requirements:[{requirement_id:'req1',text:'保留已采纳要求',message_id:'m0',message_version:1}]});
+  const draft=(type:M4DocumentType):M4Draft=>({document_type:type,version:1,sha256:hash(type),updated_at:now,source_material:type==='private_summary'?source:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{issuer_name:'合成发行人',market:'sse',broker:'合成券商'},requirements:[{requirement_id:'req1',text:'保留已采纳要求',message_id:'m0',message_version:1}]});
   const artifact:M4Artifact={source_project_id:'m4-project',artifact_id:'old-artifact',artifact_version:1,sha256:hash('Synthetic DOCX bytes'),topic_id:'topic-a',run_id:'run-old',document_type:'private_summary',kind:'document',filename:'合成摘要.docx',mime_type:mime,byte_size:Buffer.byteLength('Synthetic DOCX bytes'),created_at:now,base_artifact:null,input_hash:hash('old-input'),revision_number:1};
   const run=(id:string,state:Run['state']='running'):Run=>({run_id:id,project_id:'m4-project',execution_request_id:'execution-'+id,input_revision:1,input_hash:hash(id),state,stage:'m4_document_prompt',channel:'production',test_grant_id:null,uncovered_items:[],event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?artifact.artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
-  const workspace:M4Workspace={topic:{topic_id:'topic-a',project_id:'m4-project',source_project_id:'source-project',name:'合成材料工作区',created_at:now,updated_at:now},project:{project_id:'m4-project',draft_revision:1,input_revision:null,input_hash:null,name:'合成材料工作区',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',updated_at:now},drafts:{init:draft('init'),private_summary:draft('private_summary')},materials:[source],material_details:[{...source,filename:'来源募集书.docx',state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[],pending_requirements:[],artifacts:[artifact],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null};
-  const addDocumentTask=(id:string,type:'init'|'private_summary'='private_summary',version=workspace.drafts[type].version)=>{const current=run(id);workspace.active_run=current;const task:M4Task={run:current,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:'topic-a',execution_scope_project_id:'source-project',draft_version:version,input:structuredClone(workspace.drafts[type]),template_material:null,market:'sse',offering:'private',billing_task:type==='init'?'m4_G01':'m4_G05'},created_at:now,events:[],artifacts:[]};workspace.tasks.push(task);return task;};
+  const workspace:M4Workspace={topic:{topic_id:'topic-a',project_id:'m4-project',source_project_id:'source-project',name:'合成材料工作区',created_at:now,updated_at:now},project:{project_id:'m4-project',draft_revision:1,input_revision:null,input_hash:null,name:'合成材料工作区',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',updated_at:now},drafts:{init:draft('init'),underwriter:draft('underwriter'),legal:draft('legal'),private_summary:draft('private_summary')},materials:[source],material_details:[{...source,filename:'来源募集书.docx',state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[],pending_requirements:[],artifacts:[artifact],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null};
+  const addDocumentTask=(id:string,type:M4DocumentType='private_summary',version=workspace.drafts[type].version)=>{const current=run(id);workspace.active_run=current;const task:M4Task={run:current,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:'topic-a',execution_scope_project_id:'source-project',draft_version:version,input:structuredClone(workspace.drafts[type]),template_material:null,market:'sse',offering:'private',billing_task:M4_DOCUMENT_BILLING_TASKS[type]},created_at:now,events:[],artifacts:[]};workspace.tasks.push(task);return task;};
   return {workspace,artifact,run,addDocumentTask,messages:[] as M4MessageRequest[],executions:[] as M4ExecuteRequest[],quotes:[] as M4QuoteRequest[],startDocumentOnMessage:false,dropMessage:false,charged:0};
 }
 async function mount(page:Page,state:ReturnType<typeof fixture>){
@@ -156,6 +156,46 @@ test('reference material choices exclude the fixed source and use a standard adj
   await mount(page,s);await page.locator('#m4-document-type').selectOption('private_summary');await expect(page.locator('.m4-material-choice')).toHaveCount(1);await expect(page.locator('.m4-material-choice')).toContainText('合成审计报告.pdf');await expect(page.locator('.m4-material-choice')).not.toContainText('来源募集书');
   const choice=page.getByRole('checkbox',{name:'合成审计报告.pdf · V3',exact:true});const box=await choice.boundingBox();expect(box!.width).toBeLessThanOrEqual(18);expect(box!.height).toBeLessThanOrEqual(18);
   await choice.check();await expect.poll(()=>s.workspace.drafts.private_summary.materials).toEqual([reference]);expect(s.workspace.drafts.private_summary.source_material?.material_id).toBe('source-doc');expect(s.executions).toHaveLength(0);
+});
+
+test('material knowledge selection keeps per-type exchange, requirements and the running snapshot',async({page})=>{
+  const s=fixture();await mount(page,s);
+  await page.locator('#m4-document-type').selectOption('underwriter');
+  await expect(page.locator('.m4-knowledge')).toContainText('上交所 · 主承销商核查意见');
+  await expect(page.locator('#m4-template')).toHaveCount(0);
+  await expect(page.locator('#m4-content')).toContainText('尽调记录');
+  await page.locator('#m4-market').selectOption('szse');
+  await expect(page.locator('.m4-knowledge')).toContainText('深交所 · 主承销商核查意见');
+  await page.locator('#m4-document-type').selectOption('legal');
+  await expect(page.locator('#m4-market')).toHaveValue('sse');
+  await expect(page.locator('#m4-content')).toContainText('律师核查记录');
+  await expect(page.locator('#m4-template')).toHaveCount(0);
+  await page.locator('#m4-document-type').selectOption('underwriter');
+  await expect(page.locator('#m4-market')).toHaveValue('szse');
+  await page.getByRole('button',{name:'查看报价并制作'}).click();await page.getByRole('button',{name:'确认并开始制作'}).click();
+  const saved=structuredClone(s.workspace.tasks[0].manifest);
+  expect(saved.kind==='document'&&saved.input.fields.market).toBe('szse');
+  expect(saved.kind==='document'&&saved.input.requirements[0].text).toBe('保留已采纳要求');
+  await page.getByRole('button',{name:'准备新任务'}).click();await page.locator('#m4-market').selectOption('sse');
+  expect(s.workspace.tasks[0].manifest).toEqual(saved);expect(s.executions).toHaveLength(1);
+});
+
+test('synthetic material knowledge prototype and implementation evidence',async({page})=>{
+  test.skip(!process.env.BB_M4_KNOWLEDGE_EVIDENCE,'Explicit screenshot refresh only.');
+  const output=process.env.BB_M4_KNOWLEDGE_EVIDENCE!;await mkdir(output,{recursive:true});
+  const s=fixture();await mount(page,s);
+  const capture=async(prefix:string)=>{for(const width of [1360,390]){
+    await page.setViewportSize({width,height:width===1360?900:844});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await page.screenshot({fullPage:true,path:`${output}/${prefix}-${width}.png`});
+  }};
+  await page.locator('#m4-document-type').selectOption('underwriter');await capture('implementation-sse-underwriter');
+  await page.locator('#m4-document-type').selectOption('legal');await page.locator('#m4-market').selectOption('szse');await capture('implementation-szse-legal');
+  const html=await readFile('../../product-prototype/public/m4-material-knowledge.html','utf8');
+  const styles=await readFile('../../product-prototype/public/styles.css','utf8'),css=await readFile('../../product-prototype/public/m4-material-knowledge.css','utf8');
+  await page.route('**/m4-knowledge-prototype.html',r=>r.fulfill({contentType:'text/html',body:html.replace(/<link[^>]+>/g,'').replace('</head>',`<style>${styles}\n${css}</style></head>`)}));
+  await page.goto('/m4-knowledge-prototype.html');await capture('prototype-sse-underwriter');
+  await page.locator('#material-type').selectOption('legal');await page.locator('#m4-market').selectOption('szse');await capture('prototype-szse-legal');
 });
 
 test('synthetic M4 same-size implementation and schema6 design evidence',async({page})=>{

@@ -307,7 +307,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     actor=other;assert.equal((await send('GET',`/api/v1/m4/artifacts/${qa.artifact_id}/versions/1/bytes`)).statusCode,404);actor=user;
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_executions WHERE owner_user_id=$1',[user])).rows[0].n,4);
     // Unsupported requests receive free capability feedback without a selected document or a paid QA fallback.
-    for(const content of ['请生成法律意见书','请实时查询公开信息','请检索最新法规并判断法规适用性']){
+    for(const content of ['请生成推荐函','请实时查询公开信息','请检索最新法规并判断法规适用性']){
       const capability=(await ok('POST',path(t,'messages'),{submission_request_id:randomUUID(),content,context})).run;
       assert.equal(capability.billing_mode,'platform_trial');const capabilityLease=await claim(pool,30,{runKinds:['qa']});assert.ok(capabilityLease);assert.equal(capabilityLease.runId,capability.run_id);
       await finishM4Qa(pool,capabilityLease,{...reply,content:'Synthetic capability feedback: 此项 M4 尚未开放，没有执行。',intent:'clarify'});
@@ -420,5 +420,28 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     ws=await ok('GET',path(t,'workspace'));const {version:_iv,sha256:_ih,updated_at:_it,...currentInit}=ws.drafts.init;
     await save(t,{...currentInit,edit_base:{source_project_id:doc1.source_project_id,artifact_id:doc1.artifact_id,artifact_version:doc1.artifact_version,sha256:doc1.sha256}},4);
     const doc2=await makePair(await executeDoc(5),2);assert.equal(doc2.base_artifact.artifact_id,doc1.artifact_id);assert.notEqual(doc2.artifact_id,doc1.artifact_id);assert.equal(doc2.artifact_version,1);
+    // New document types use exactly the selected exchange knowledge; later draft edits cannot change a running input.
+    for(const type of ['underwriter','legal'] as const){
+      let version=0,revision=0;
+      for(const market of ['sse','szse'] as const){
+        const d=await save(t,{...emptyM4Draft(type),materials:[pin],fields:{issuer_name:'Synthetic issuer',market}},version);version=d.version;
+        const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:type,expected_draft_version:version});
+        assert.equal(q.quote.task_type,type==='underwriter'?'m4_G02':'m4_G03');assert.equal(q.quote.multiplier,type==='underwriter'?12:15);
+        const request={...exec,execution_request_id:randomUUID(),document_type:type,expected_draft_version:version,quote_id:q.quote.quote_id};
+        const run=(await ok('POST',path(t,'execute'),request)).run;
+        assert.equal((await ok('POST',path(t,'execute'),request)).run.run_id,run.run_id);
+        const snapshot=(await pool.query('SELECT manifest FROM bb_m4_executions WHERE run_id=$1',[run.run_id])).rows[0].manifest;
+        assert.equal(snapshot.knowledge.market,market);assert.equal(snapshot.knowledge.document_type,type);
+        assert.equal(snapshot.knowledge.sha256,digest(snapshot.knowledge.content));
+        assert.match(snapshot.knowledge.content,market==='sse'?/第八章 非公开发行债券/:/第一百一十条 非公开发行/);
+        assert.equal(snapshot.template_material,null);
+        const changed=await save(t,{...emptyM4Draft(type),materials:[pin],fields:{issuer_name:'Synthetic next issuer',market:market==='sse'?'szse':'sse'}},version);version=changed.version;
+        assert.deepEqual((await pool.query('SELECT manifest FROM bb_m4_executions WHERE run_id=$1',[run.run_id])).rows[0].manifest,snapshot);
+        await makePair(run,++revision);
+        assert.equal((await send('POST',path(t,'execute'),{...request,execution_request_id:randomUUID(),expected_draft_version:version})).json().code,'QUOTE_CHANGED');
+      }
+      const d=await save(t,{...emptyM4Draft(type),materials:[pin],fields:{issuer_name:'Synthetic issuer'}},version);
+      assert.equal((await send('POST',path(t,'quote'),{kind:'document',document_type:type,expected_draft_version:d.version})).json().code,'INPUT_REQUIRED');
+    }
   }finally{await app.close();await pool.end();}
 });

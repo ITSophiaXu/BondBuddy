@@ -28,7 +28,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    const skill = loadM4RuntimeSkill(input.manifest.input.document_type === 'init' ? 'm4-init-report' : 'm4-private-summary');
+    const skill = loadM4RuntimeSkill(({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary'} as const)[input.manifest.input.document_type]);
     const config = options.config ?? loadCodexAdapterConfig();
     const modelGate=await m4ModelGate(ctx,config); if(modelGate)return modelGate;
     const pinned=await m4PinnedMethod(ctx,'document',skill,config);if(pinned.gate)return pinned.gate;
@@ -55,7 +55,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
     try {
       return await (options.model ?? codexModelStage)({name: 'm4_document_v1', logicalCallId: 'm4-document-v1',
         config: {...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'm4-documents'), max_output_bytes: 32 * 1024 * 1024},
-        buildPrompt: async () => `${skill.content}\n\n完整阅读 input.json，按准确来源、模板、要求和底稿一次编制完整文书与独立编制说明。必须写出两份真实Word，不能以聊天文字冒充成果。固定方法：${methodHash}。`,
+        buildPrompt: async () => `${skill.content}\n\n完整阅读 input.json 及 knowledge 指定的对应交易所编制知识 MD，按准确来源、模板、用户要求和底稿一次编制完整文书与独立编制说明。必须写出两份真实Word，不能以聊天文字冒充成果。固定方法：${methodHash}。`,
         schema: {}, validate: value => validM4DocumentResult(value, ctx), resultSchemaVersion: 'codex-m4-document-v1', templateVersion: `m4-document-${methodHash}`,
         onActivity: event => observer.onEvent(event), fileWorkspace: {prepare, collect}}).run(ctx);
     } finally { await observer.drain(); }
