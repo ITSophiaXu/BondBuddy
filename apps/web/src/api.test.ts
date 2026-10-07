@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
+
+test('an active source-project run has a safe business message distinct from draft version conflict',()=>{
+  const error=parseApiError(409,{code:'PROJECT_RUN_ACTIVE',message:'Synthetic private worker path or provider detail must not reach the UI'});
+  assert.match(friendlyError(error),/同一来源项目已有任务正在执行/);assert.match(friendlyError(error),/草稿保留/);assert.doesNotMatch(friendlyError(error),/其他页面|worker|provider|Synthetic/);
+  assert.match(friendlyError(new ApiError(409,'INPUT_REVISION_CONFLICT')),/其他页面修改/);
+});
 import { uploadErrorMessage } from './upload-error.js';
 
 test('public inspection detail is carried from Error.field_errors to the upload row', () => {

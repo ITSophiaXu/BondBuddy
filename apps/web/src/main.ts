@@ -8,6 +8,8 @@ import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
 import { ProjectConversation } from './project-conversation';
 import { ReviewWorkspace, renderNewReview, reviewProjectFields, bindReviewProjectFields } from './review-workspace';
+import { MaterialWorkspace } from './material-workspace';
+import { carryHandoff, copyHandoffSource, mountBusinessHandoff } from './business-handoff';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -50,6 +52,7 @@ let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
 let projectConversation: ProjectConversation | undefined;
 let reviewWorkspace: ReviewWorkspace | undefined;
+let materialWorkspace: MaterialWorkspace | undefined;
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
@@ -79,6 +82,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  materialWorkspace?.dispose(); materialWorkspace = undefined;
   clearSourceSelections();
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   dashboard?.dispose(); dashboard = undefined;
@@ -242,9 +246,9 @@ function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate',true)}${nav('qa','chat','项目问答',section === 'qa',true)}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
+    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成与问答',section === 'generate')}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
     <div class="sidebar-bottom"><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成与问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
@@ -262,6 +266,7 @@ async function logout() {
   if (!button) return;
   if (creating) return;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
+  if (materialWorkspace && !await materialWorkspace.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
   if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
@@ -281,9 +286,12 @@ async function logout() {
 async function renderRoute() {
   if (!identity) return;
   const raw = location.hash.slice(1);
-  const requested = !raw || raw === 'dashboard' ? '/dashboard' : raw === 'update' ? '/new' : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
+  const requested = !raw || raw === 'dashboard' ? '/dashboard' : raw === 'update' || raw.startsWith('update?') ? '/new'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
+    history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
+  }
+  if (materialWorkspace && !await materialWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
   if (!identity || location.hash.slice(1) !== raw) return;
@@ -309,11 +317,12 @@ async function renderRoute() {
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
+  materialWorkspace?.dispose(); materialWorkspace = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   currentRoute = nextRoute;
   if (requested === '/dashboard') { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
-  if (requested === 'review') { renderNewReview(api, shell, () => token === epoch); return; }
+  if (/^review(\?|$)/.test(requested)) { renderNewReview(api, shell, () => token === epoch,new URLSearchParams(requested.split('?')[1]??'')); return; }
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
     const project=query.get('project')??undefined;
@@ -325,11 +334,12 @@ async function renderRoute() {
     if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){details.open=true;details.scrollIntoView({block:'start'});}}
     return;
   }
-  if (['generate','qa'].includes(requested)) {
-    const labels: Record<string,string> = { review:'复核募集书',generate:'材料生成',qa:'项目问答',billing:'积分与充值' };
-    shell(`<div class="page-head"><div class="eyebrow">BOND WORKSPACE</div><h1>${labels[requested]}</h1></div><section class="panel unavailable-panel"><h2>这项功能尚未开放</h2><p>你可以先创建募集书更新项目，准备材料和发行安排。</p><a class="btn primary" href="#update">更新募集书</a><a class="btn secondary" href="#dashboard">返回工作台</a></section>`, requested); return;
+  if (/^(generate|qa)(\?|$)/.test(requested)) {
+    const query=new URLSearchParams(requested.split('?')[1]??'');
+    materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.get('new')==='1');
+    await materialWorkspace.render(); return;
   }
-  if (requested === '/new') { renderNew(); return; }
+  if (/^\/new(\?|$)/.test(requested)) { renderNew(new URLSearchParams(requested.split('?')[1]??'')); return; }
   if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch); await projectBrowser.render(); return; }
   const artifactMatch = requested.match(/^\/artifacts\/([^/]+)$/);
   if (artifactMatch) { artifactPage = new ArtifactPage(api, shell, () => token === epoch); await artifactPage.render(decodeURIComponent(artifactMatch[1])); return; }
@@ -338,7 +348,7 @@ async function renderRoute() {
   const reviewMatch = requested.match(/^\/projects\/([^/?]+)\/review(?:\?(.*))?$/);
   if (reviewMatch) {
     const query = new URLSearchParams(reviewMatch[2]);
-    reviewWorkspace = new ReviewWorkspace(api, identity, decodeURIComponent(reviewMatch[1]), shell, () => token === epoch, query.get('report_id') || undefined, query.get('tab') || undefined);
+    reviewWorkspace = new ReviewWorkspace(api, identity, decodeURIComponent(reviewMatch[1]), shell, () => token === epoch, query.get('report_id') || undefined, query.get('tab') || undefined,query);
     await reviewWorkspace.render(); return;
   }
   const match = requested.match(/^\/projects\/([^/?]+)(?:\?(.*))?$/);
@@ -354,7 +364,13 @@ async function renderRoute() {
       reviewWorkspace = new ReviewWorkspace(api, identity!, project.project_id, shell, () => token === epoch);
       await reviewWorkspace.render(); return;
     }
-    renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials');
+    if(project.kind==='generation'){
+      const topics=await api.request<{topics:import('@bondbuddy/contracts').M4Topic[]}>('GET','/m4/topics');
+      if(token!==epoch)return;
+      const topic=topics.topics.find(t=>t.project_id===project.project_id);
+      if(topic){materialWorkspace=new MaterialWorkspace(api,identity!,shell,()=>token===epoch,topic.topic_id);await materialWorkspace.render();return;}
+    }
+    renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials',projectQuery);
   } catch (error) {
     if (token !== epoch) return;
     shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, projectSection);
@@ -362,11 +378,12 @@ async function renderRoute() {
   }
 }
 
-function renderNew() {
+function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section></div></form>`, 'new');
+  const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
   bindUpdateForm(form, () => { newDirty = true; }, value.update_details);
   form.addEventListener('submit', async event => {
@@ -383,7 +400,7 @@ function renderNew() {
     try {
       const project = await api.create(value);
       if (token !== epoch) return;
-      newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
+      newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}${handoffQuery.has('handoff_topic')?'?step=materials'+carryHandoff(handoffQuery):''}`;
     } catch (error) { if (token === epoch) showError(error); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
   });
@@ -404,7 +421,7 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
   });
 }
 
-function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'materials' = 'materials') {
+function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'materials' = 'materials',handoffQuery=new URLSearchParams()) {
   draft = new Draft(project, api, updateSaveState);
   materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
   materialProcessing.setVisible(document.visibilityState === 'visible');
@@ -415,7 +432,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     <div class="workspace-layout authoring-workspace"><div class="workspace-main">
       <form id="draft-form" class="update-form" ${step === 'materials' ? 'hidden' : ''}><section class="panel form-card"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
       <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
-      <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}>
+      <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}><div id="business-handoff"></div>
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
         <div id="workspace-progress"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span>随时查看与补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
@@ -465,6 +482,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
+  const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch,async handoff=>{const targetDraft=draft;if(!targetDraft||!await targetDraft.save())throw new ApiError(409,'INPUT_REVISION_CONFLICT');const source=await copyHandoffSource(api,handoff,project.project_id,new AbortController().signal);if(handoffEpoch!==epoch||draft!==targetDraft)return;const previous=targetDraft.fields.update_details.supplementary_notes?.trim()??'';const details={...targetDraft.fields.update_details,supplementary_notes:previous.includes(handoff.intent)?previous:[previous,handoff.intent].filter(Boolean).join('\n')};targetDraft.edit({...(source?{has_historical_prospectus:true}:{}),update_details:details});retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!,details);if(!await targetDraft.save())throw new ApiError(409,'INPUT_REVISION_CONFLICT');await refreshProjectMaterials(project.project_id,handoffEpoch);});
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); projectConversation?.setContext(value); updateMaterialWorkspace(project.project_id); }, value.update_details);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
@@ -925,7 +943,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
-  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }

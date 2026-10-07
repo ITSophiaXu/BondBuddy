@@ -44,6 +44,7 @@ export function friendlyError(error: unknown): string {
   const reference = errorReference(error);
   switch (error.code) {
     case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
+    case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在全部项目查看任务，等待完成或停止后明确执行。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
@@ -132,6 +133,19 @@ export class ApiClient {
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
     const response = await this.response(method, path, body, headers, signalOverride);
     return response.status === 204 ? undefined as T : response.json();
+  }
+
+  /** Only fixed owner-authorized artifact routes may use this binary seam. */
+  async m4ArtifactBytes(artifact: import('@bondbuddy/contracts').M4Artifact, signal?: AbortSignal): Promise<Blob> {
+    const activeSignal = signal ?? this.controller.signal;
+    const path = `/m4/artifacts/${encodeURIComponent(artifact.artifact_id)}/versions/${artifact.artifact_version}/bytes`;
+    const response = await this.response('GET', path, undefined, {}, activeSignal);
+    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.mime_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const bytes = await response.arrayBuffer(); activeSignal.throwIfAborted();
+    if (!bytes.byteLength || bytes.byteLength !== artifact.byte_size) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const digest = await crypto.subtle.digest('SHA-256', bytes); activeSignal.throwIfAborted();
+    if (Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('') !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    return new Blob([bytes], {type:artifact.mime_type});
   }
 
   me() { return this.request<Dto<'MeResponse'>>('GET', '/me'); }

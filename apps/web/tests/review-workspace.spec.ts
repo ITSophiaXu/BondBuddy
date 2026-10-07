@@ -145,9 +145,52 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
   await page.goto(`/${routePath}`);return state;
 }
 const finding=(page:Page,id:string)=>page.locator(`details.review-finding[data-finding-id="${id}"]`);
+
+test('report-update adoption is durable, retains exact report scope, and never executes on adoption',async({page})=>{
+  const state=fixture(),intent='请依据这份报告修正现金流引用，保留历史名称。';
+  await setup(page,state);await page.locator('#review-message-input').fill(intent);await page.getByRole('button',{name:'发送',exact:true}).click();
+  await page.getByRole('button',{name:'将这条需求用于本报告更新',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'核对根据复核报告更新的需求',exact:true});await expect(dialog).toContainText('report-v1');await expect(dialog).toContainText('run-1');await expect(dialog).toContainText(state.workspace.draft.source_material_ref!.sha256);
+  expect(state.plans).toHaveLength(0);await dialog.getByRole('button',{name:'采用为本报告更新要求',exact:true}).click();
+  await expect(page.locator('.review-update-cta')).toContainText(intent);expect(state.workspace.plan?.source_report_id).toBe('report-v1');expect(state.workspace.plan?.requirements).toEqual([intent]);expect(state.workspace.plan?.finding_ids).toEqual([]);expect(state.executes).toHaveLength(0);
+  await page.evaluate(()=>{for(const key of Object.keys(localStorage))if(key.startsWith('bb-review-update-notes:'))localStorage.removeItem(key);});await page.reload();
+  await expect(page.locator('.review-update-cta')).toContainText(intent);await page.getByRole('button',{name:'将这条需求用于本报告更新',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'采用为本报告更新要求',exact:true}).click();
+  expect(state.plans).toHaveLength(1);expect(state.executes).toHaveLength(0);
+});
+
+test('report-update adoption preserves an existing plan and does not overwrite another report plan',async({page})=>{
+  const state=fixture();state.workspace.plan={plan_id:'existing-plan',version:2,source_report_id:'report-v1',finding_ids:['F01'],excluded_findings:[{finding_id:'F02',reason:'原范围保留待补证'}],requirements:['原已采用要求'],sha256:hash('plan'),accepted_at:now};
+  await setup(page,state);await page.locator('#review-message-input').fill('新增更新口径');await page.getByRole('button',{name:'核对本报告更新',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'采用为本报告更新要求',exact:true}).click();
+  expect(state.workspace.plan!.finding_ids).toEqual(['F01']);expect(state.workspace.plan!.excluded_findings).toEqual([{finding_id:'F02',reason:'原范围保留待补证'}]);await expect.poll(()=>state.workspace.plan!.requirements).toEqual(['原已采用要求','新增更新口径']);expect(state.executes).toHaveLength(0);
+  state.workspace.plan!.source_report_id='another-report';await page.reload();await page.locator('#review-message-input').fill('再新增口径');await page.getByRole('button',{name:'核对本报告更新',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'采用为本报告更新要求',exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText('另一份报告已有已保存修订计划');expect(state.plans).toHaveLength(1);expect(state.workspace.plan!.source_report_id).toBe('another-report');
+});
+
+for(const mode of ['valid','stale','foreign','missing','binding_failed'] as const)test(`explicit cross-business review preparation keeps exact intent and authorized source: ${mode}`,async({page})=>{
+  const state=fixture(),intent='请复核这份募集书并关注金额口径',bytes='Synthetic handoff DOCX',source={source_project_id:'origin-project',material_id:'origin-material',material_version:3,sha256:hash(bytes)};
+  await setup(page,state);const sourceMessage={message_id:'origin-message',version:2,role:'user',content:intent,context:{source_material:mode==='missing'?null:source}};
+  await page.route('**/api/v1/m4/topics/origin-topic/workspace',route=>mode==='foreign'?reply(route,404,{code:'NOT_FOUND'}):reply(route,200,{topic:{topic_id:'origin-topic',project_id:'origin-topic-project',source_project_id:'origin-project'},project:{project_id:'origin-topic-project'},tasks:[],artifacts:[],messages:[sourceMessage]}));
+  await page.route('**/api/v1/projects/origin-project/materials/origin-material',route=>reply(route,200,{...state.workspace.materials[0],material_id:source.material_id,material_version:mode==='stale'?4:source.material_version,sha256:source.sha256,byte_size:Buffer.byteLength(bytes)}));
+  await page.route('**/api/v1/projects/origin-project/materials/origin-material/download',route=>route.fulfill({status:200,contentType:mime,body:bytes}));
+  let bindings=0;await page.route('**/api/v1/m4/topics/origin-topic/handoffs/bind',route=>{bindings++;const b=route.request().postDataJSON();expect(b).toEqual({message_id:'origin-message',message_version:2,target_project_id:id,source_material:source});return mode==='binding_failed'?reply(route,409,{code:'ACTIVE_RUN_CONFLICT'}):reply(route,200,{binding:{topic_id:'origin-topic',...b,execution_scope_project_id:'canonical-origin'}});});
+  await page.route(`**/api/v1/projects/${id}/events*`,route=>reply(route,200,{items:state.workspace.materials.filter(m=>m.material_id.startsWith('evidence-new')).map((m,i)=>({type:'material.upload_progress',seq:i+1,payload:{material_id:m.material_id}})),next_cursor:null}));
+  await page.goto(`/#/projects/${id}/review?tab=materials&handoff_topic=origin-topic&handoff_message=origin-message`);
+  const panel=page.locator('#business-handoff');
+  if(mode==='foreign'){await expect(panel).toContainText('带入需求暂不可读取');expect(state.uploads).toHaveLength(0);return;}
+  await expect(panel).toContainText(intent);expect(state.uploads).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  if(mode==='missing')await expect(panel).toContainText('尚未固定募集书来源');else await expect(panel).toContainText(source.sha256);
+  await panel.getByRole('button').click();
+  if(mode==='stale'||mode==='binding_failed'){await expect(panel).toContainText('原始需求与准确来源保留');expect(state.uploads).toHaveLength(0);expect(state.workspace.draft.requirements).not.toContain(intent);expect(state.executes).toHaveLength(0);return;}
+  await expect.poll(()=>state.workspace.draft.requirements.includes(intent)).toBe(true);expect(state.executes).toHaveLength(0);
+  if(mode==='valid'){expect(state.uploads).toHaveLength(1);expect(state.workspace.draft.source_material_ref?.sha256).toBe(source.sha256);}
+  else expect(state.uploads).toHaveLength(0);
+  expect(bindings).toBe(mode==='valid'?1:0);
+  await page.reload();await expect(panel).toContainText(intent);await expect(page.locator('.review-optional-requirements')).toContainText(intent);await panel.getByRole('button').click();await expect(panel).toContainText('尚未执行');
+  expect(state.workspace.draft.requirements.filter(r=>r===intent)).toHaveLength(1);expect(state.uploads).toHaveLength(mode==='valid'?1:0);expect(state.executes).toHaveLength(0);
+});
 async function openFinding(page:Page,id:string){const card=finding(page,id);if(!await card.getAttribute('open').then(v=>v!==null))await card.locator('summary').click();return card;}
 
-for(const routePath of [`#/projects/${id}`,`#/projects/${id}/review?tab=materials`])test(`new review project opens categorized materials without a report or assistant: ${routePath}`,async({page})=>{
+for(const routePath of [`#/projects/${id}`,`#/projects/${id}/review?tab=materials`])test(`new review project opens categorized materials with the always-on assistant: ${routePath}`,async({page})=>{
   const state=fixture();
   state.workspace.materials=[];
   state.workspace.draft={version:1,source_material_ref:null,material_versions:[],requirements:[],as_of:null,evidence_links:[]};
@@ -159,8 +202,8 @@ for(const routePath of [`#/projects/${id}`,`#/projects/${id}/review?tab=material
   await expect(page.getByRole('tab',{name:'材料与要求',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.getByRole('heading',{name:'提供复核材料',exact:true})).toBeVisible();
   await expect(page.locator('[data-review-upload-role="historical"]')).toHaveCount(1);
-  await expect(page.locator('#review-requirements')).toBeVisible();
-  await expect(page.locator('#review-agent')).toHaveCount(0);
+  await expect(page.locator('#review-requirements')).toHaveCount(0);await expect(page.locator('#review-agent')).toBeVisible();
+  await expect(page.locator('#review-agent')).toBeVisible();
   await page.getByRole('tab',{name:'复核结果',exact:true}).click();
   await expect(page.getByRole('heading',{name:'还没有复核报告',exact:true})).toBeVisible();
   await expect(page.locator('#review-status')).not.toContainText('状态暂未更新');
@@ -242,7 +285,7 @@ test('handling remains unavailable on missing metadata, stale artifact associati
 });
 
 test('result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded',async({page})=>{
-  const state=await setup(page);await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.getByRole('tab')).toHaveCount(2);
+  const state=await setup(page);await expect(page.locator('#review-agent')).toBeVisible();await expect(page.getByRole('tab')).toHaveCount(3);
   await expect(page.locator('#review-credit-receipt')).toContainText('未扣积分');
   const card=await openFinding(page,'F01');await card.getByRole('button',{name:'查看解释'}).click();await expect(page.getByRole('dialog')).toContainText('现金流 120');expect(state.requests).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await page.getByRole('button',{name:'核对修订计划'}).click();await page.getByRole('button',{name:'确认范围并执行修订'}).click();await expect(page.getByRole('dialog')).toContainText('请选择至少一项');expect(state.executes).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
@@ -252,7 +295,7 @@ test('result buttons explain, download, plan and explicitly execute without chat
   expect(state.executes).toHaveLength(2);expect(state.executes[0].execution_request_id).toBe(state.executes[1].execution_request_id);expect(state.runs.size).toBe(2);expect(state.requests).toHaveLength(0);
   await expect(page.getByRole('button',{name:'再次完整复核'})).toBeDisabled();
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载问题报告'}).click();expect((await download).suggestedFilename()).toBe('合成问题报告.docx');
-  await page.getByRole('button',{name:'停止本次任务'}).click();await expect(page.locator('.review-run')).toContainText('已停止');
+  await page.locator('#review-progress-bar').getByRole('button',{name:'停止本次任务'}).click();await expect(page.locator('.review-run')).toContainText('已停止');
   await page.getByRole('button',{name:'再次完整复核'}).click();state.dropExecutionOnce=true;await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(3);await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');expect(state.executes[2].execution_request_id).not.toBe(state.executes[0].execution_request_id);await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');expect(state.executes).toHaveLength(3);
 });
 
@@ -269,10 +312,10 @@ test('direct report links without a valid explicit tab open results',async({page
 
 
 test('input conflicts display both versions and require explicit adoption; foreign owners cannot recover another project draft',async({page})=>{
-  const state=await setup(page);await page.getByRole('tab',{name:'材料与要求'}).click();state.workspace.draft={...state.workspace.draft,version:2,requirements:['另一页面保存的服务器要求']};
-  await page.locator('#review-requirements').fill('本页仍需保留的要求');await expect(page.locator('#review-materials-panel')).toContainText('其他页面已修改材料与要求');expect(state.workspace.draft.requirements).toEqual(['另一页面保存的服务器要求']);
-  await page.getByRole('button',{name:'核对本页内容'}).click();await expect(page.getByRole('dialog')).toContainText('另一页面保存的服务器要求');await expect(page.getByRole('dialog')).toContainText('本页仍需保留的要求');expect(state.workspace.draft.version).toBe(2);await page.getByRole('button',{name:'将本页内容保存为新版'}).click();await expect.poll(()=>state.workspace.draft.version).toBe(3);expect(state.executes).toHaveLength(0);
-  state.failDrafts=true;await page.locator('#review-requirements').fill('仅 owner-a 可见的草稿');state.owner='owner-b';await page.reload();await expect(page.getByRole('heading',{name:'项目暂时无法读取'})).toBeVisible();await expect(page.locator('body')).not.toContainText('仅 owner-a 可见的草稿');
+  const state=fixture();state.workspace.materials.push({...state.workspace.materials[0],material_id:'alternate-source',filename:'合成另稿.docx'});await setup(page,state);await page.getByRole('tab',{name:'材料与要求'}).click();state.workspace.draft={...state.workspace.draft,version:2,requirements:['另一页面保存的服务器要求']};
+  await page.locator('#review-source').selectOption('alternate-source');await expect(page.locator('#review-materials-panel')).toContainText('其他页面已修改材料与要求');expect(state.workspace.draft.requirements).toEqual(['另一页面保存的服务器要求']);
+  await page.getByRole('button',{name:'核对本页内容'}).click();await expect(page.getByRole('dialog')).toContainText('另一页面保存的服务器要求');await expect(page.getByRole('dialog')).toContainText('alternate-source');expect(state.workspace.draft.version).toBe(2);await page.getByRole('button',{name:'将本页内容保存为新版'}).click();await expect.poll(()=>state.workspace.draft.version).toBe(3);expect(state.executes).toHaveLength(0);
+  state.failDrafts=true;await page.locator('#review-message-input').fill('仅 owner-a 可见的草稿');state.owner='owner-b';await page.reload();await expect(page.getByRole('heading',{name:'项目暂时无法读取'})).toBeVisible();await expect(page.locator('body')).not.toContainText('仅 owner-a 可见的草稿');
 });
 
 test('differential report labels carried-forward findings and all-projects history remains reachable',async({page})=>{
@@ -322,7 +365,7 @@ test('workbench alone owns version history and retains stopped/failed snapshots 
   const state=fixture();for(const [index,status]of(['failed','cancelled'] as const).entries())state.history.push({...structuredClone(state.history[0]),version:index+2,run:state.makeRun(`run-${index+2}`,status),report_id:null,input:{...structuredClone(state.workspace.draft),requirements:[`保留的${status}版本要求`]},created_at:`2026-10-02T1${index+1}:00:00Z`});
   await setup(page,state,'#dashboard');await expect(page.locator('.review-project-card')).toBeVisible();await page.getByRole('button',{name:'版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
   await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
-  await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(2);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
+  await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(3);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
   await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('全部项目');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
@@ -403,15 +446,15 @@ test('readable view failure is retryable, preserves Word, and never re-executes 
   await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();expect(state.executes).toHaveLength(0);
 });
 
-for(const viewport of [{width:1360,height:900},{width:390,height:844}])test(`unified review materials and optional requirements ${viewport.width}`,async({page})=>{
+for(const viewport of [{width:1360,height:900},{width:390,height:844}])test(`unified review materials and discussion preserve assistant drafts ${viewport.width}`,async({page})=>{
  await page.setViewportSize(viewport);const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials&from=projects`);
  await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
- await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.locator('.review-agent-fab')).toHaveCount(0);
+ await expect(page.locator('#review-agent')).toBeVisible();await expect(page.locator('.review-agent-fab')).toHaveCount(0);
  await expect(page.getByRole('heading',{name:'提供复核材料'})).toBeVisible();
- await page.locator('#review-requirements').fill('请关注本期现金流。');
- await expect.poll(()=>state.workspace.draft.requirements).toEqual(['请关注本期现金流。']);
+ await page.getByRole('button',{name:'与助手讨论',exact:true}).click();await page.locator('#review-message-input').fill('请关注本期现金流。');
+ await expect.poll(()=>state.workspace.message_drafts.some(d=>d.content==='请关注本期现金流。')).toBe(true);
  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
- await page.reload();await expect(page.locator('#review-requirements')).toHaveValue('请关注本期现金流。');
+ await page.reload();await expect(page.locator('#review-message-input')).toHaveValue('请关注本期现金流。');
  await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
  await page.reload();await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
  await page.getByRole('tab',{name:/材料与要求/}).click();
@@ -452,7 +495,7 @@ for(const width of [1360,390])test(`upload queue keeps other pickers usable thro
  await chooser.setFiles({name:'synthetic-other.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic other evidence')});
  const second=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-other.txt'});
  await expect(second).toContainText('等待上传');expect(state.uploads).toHaveLength(1);
- await page.locator('#review-requirements').fill('本次补充要求保留。');
+ await page.locator('#review-message-input').fill('本次补充要求保留。');
  completion.release();await expect(first).toContainText('正在保存材料选择');
  await expect(start).toBeDisabled();await expect(other).toBeEnabled();await expect(second).toContainText('等待上传');
  const output=process.env.BB_UPLOAD_EVIDENCE;
@@ -461,9 +504,9 @@ for(const width of [1360,390])test(`upload queue keeps other pickers usable thro
  await expect(first).toContainText('已保存');await expect(second).toContainText('已保存');await expect(start).toBeEnabled();
  expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);
  expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1','evidence-new','evidence-new-2']);
- expect(state.workspace.draft.requirements).toEqual(['本次补充要求保留。']);
+ expect(state.workspace.draft.requirements).toEqual(['核对财务摘要引用。']);
  expect(state.executes).toHaveLength(0);
- await page.reload();await expect(page.locator('#review-requirements')).toHaveValue('本次补充要求保留。');
+ await page.reload();await expect(page.locator('#review-message-input')).toHaveValue('本次补充要求保留。');
  await expect(page.locator('[data-review-drop="other"]')).toContainText('synthetic-other.txt');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
@@ -509,17 +552,17 @@ test('real stage, paused state and cancellation appear in the main panel without
  run.state='paused';run.stage='provider_reconcile';run.event_cursor=2;
  await page.reload();await expect(page.locator('#review-progress-bar')).toContainText('任务已暂停');
  await expect(page.locator('[data-review-action="review"]')).toBeDisabled();
- await page.getByRole('button',{name:'停止本次任务',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('本轮已停止');expect(state.executes).toHaveLength(0);
+ await page.locator('#review-progress-bar').getByRole('button',{name:'停止本次任务',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('本轮已停止');expect(state.executes).toHaveLength(0);
 });
 
 test('file report update pins source and optional requirements, survives response loss and shows Word pair',async({page})=>{
  const state=fixture();state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};state.history[0].report_id=null;
  await setup(page,state);const requests:any[]=[];let drop=true;
  await page.route('**/review-updates',async route=>{const body=route.request().postDataJSON();requests.push(body);if(drop){drop=false;return route.abort('connectionreset');}const run={...state.makeRun('update-run','queued',body.execution_request_id),stage:'queued'};state.workspace.active_run=run;return reply(route,200,run);});
- await page.locator('#review-update-notes').fill('保留本期发行安排。');await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();
- await expect(page.locator('#review-status')).toContainText('尚未确认更新结果');await page.reload();await expect(page.locator('#review-update-notes')).toHaveValue('保留本期发行安排。');
+ await expect(page.locator('#review-update-notes')).toHaveCount(0);await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();
+ await expect(page.locator('#review-status')).toContainText('尚未确认更新结果');await page.reload();await expect(page.locator('#review-update-notes')).toHaveCount(0);
  await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');
- await expect.poll(()=>requests.length).toBe(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('保留本期发行安排。');
+ await expect.poll(()=>requests.length).toBe(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('');
  state.workspace.active_run=null;state.workspace.artifact_run={run_id:'update-run',version:2,operation:'revision',source_report_id:null,source_run_id:'run-1'};
  state.workspace.artifacts=[{artifact_id:'tracked',artifact_version:1,filename:'修订版.docx',kind:'revision'},{artifact_id:'clean',artifact_version:1,filename:'清洁版.docx',kind:'clean'}];
  state.history.unshift({...structuredClone(state.history[0]),run:state.makeRun('update-run','succeeded'),operation:'revision',version:2,artifacts:state.workspace.artifacts,created_at:'2026-10-05T12:00:00Z'});
@@ -537,6 +580,7 @@ test('compact review creation preserves quarter, review kind and existing option
  await page.route('**/api/v1/projects',async route=>{if(route.request().method()==='POST'){const body=route.request().postDataJSON();expect(body.kind).toBe('review');expect(body.update_details.reporting_cutoff).toBe('2025-09-30');state.workspace.project={...state.workspace.project,...body};return reply(route,201,state.workspace.project);}return route.fallback();});
  await expect(page.getByRole('heading',{name:'发行规模与债券安排'})).toHaveCount(0);
  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+ await expect.poll(()=>state.workspace.project.update_details).toBeDefined();
  state.workspace.project.update_details!.bond_terms='以前保存的债券安排，简洁表单不应清空';
  await expect(page.getByRole('heading',{name:'提供复核材料'})).toBeVisible();
  await expect(page.getByRole('navigation',{name:'复核流程'}).locator('[aria-current=step]')).toContainText('材料与要求');
@@ -565,7 +609,7 @@ test('synthetic workspace design scenes',async({page})=>{
    await page.setViewportSize({width:1360,height:900});
  };
  await capture('create');
- await page.goto('/#/projects/'+id+'/review?tab=materials&from=projects');await expect(page.locator('#review-requirements')).toBeVisible();await capture('materials');
+ await page.goto('/#/projects/'+id+'/review?tab=materials&from=projects');await expect(page.locator('#review-requirements')).toHaveCount(0);await expect(page.locator('#review-agent')).toBeVisible();await capture('materials');
  await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();await capture('results');
  const run={...state.makeRun('progress-run','running'),stage:'provider_call',event_cursor:1};state.workspace.active_run=run;state.linked=true;
  state.history.unshift({...structuredClone(state.history[0]),run,artifacts:[],report_id:null,version:2,created_at:'2026-10-05T12:00:00Z'});state.runs.set('progress',run);

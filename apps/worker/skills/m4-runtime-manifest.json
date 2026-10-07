@@ -1,0 +1,17 @@
+{
+  "version": "m4-runtime-skills-v1",
+  "skills": {
+    "m4-init-report": {
+      "path": "apps/worker/skills/m4-init-report/SKILL.md",
+      "sha256": "7ee03b20820d8d7e795f6f377d55439843fbe21c9db7398ddfc0070941a9caa8"
+    },
+    "m4-private-summary": {
+      "path": "apps/worker/skills/m4-private-summary/SKILL.md",
+      "sha256": "7a37c856c4179518741bcde705cef10b055004fc5ba1cd5efada8a188be4063c"
+    },
+    "m4-project-qa": {
+      "path": "apps/worker/skills/m4-project-qa/SKILL.md",
+      "sha256": "d7866bd7c83eb6524bd284328787a28f8957c80b1c640d041c460c867282d786"
+    }
+  }
+}

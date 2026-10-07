@@ -1,5 +1,7 @@
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
 import { billingSchemas } from './billing.js';
+import { m4Schemas } from './m4-workspace.js';
+export * from './m4-workspace.js';
 export * from './billing.js';
 export * from './account-recovery.js';
 import { OcrReviewSchema, OcrCorrectionRequestSchema, OcrCorrectionSchema } from './ocr.js';
@@ -69,7 +71,7 @@ export const PROJECT_STATES = ['draft', ...RUN_STATES] as const;
 export const PROJECT_ARCHIVE_VIEWS = ['active', 'archived', 'all'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['BROWSER_ERROR_REPORTED', 'TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'QUOTE_REQUIRED', 'QUOTE_CHANGED', 'BILLING_NOT_READY', 'PAYMENT_UNAVAILABLE', 'PAYMENT_INVALID', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
+export const ERROR_CODES = ['BROWSER_ERROR_REPORTED', 'TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'PROJECT_RUN_ACTIVE', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'QUOTE_REQUIRED', 'QUOTE_CHANGED', 'BILLING_NOT_READY', 'PAYMENT_UNAVAILABLE', 'PAYMENT_INVALID', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -175,6 +177,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
+  ...m4Schemas,
   ReviewReadableReport: ReviewReadableReportSchema,
   ...billingSchemas,
   ...browserErrorSchemas,
