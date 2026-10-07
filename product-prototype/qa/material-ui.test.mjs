@@ -26,7 +26,7 @@ test('update and review use fixed upload sections, optional peer uploads and rea
 test('material studio prompts for a source, offers five templates and submits the selected kind with supporting files',async()=>{
   const state={route:'generate',accountEpoch:0,user:{id:'test'},health:{materialStudioVersion:1,oneClickExecution:true},jobs:[]},location={hash:''},requests=[];
   const studio=materialStudio({state,location,esc,icon:()=>'',bytes:n=>n+'B',head:()=>'',api:async()=>({templates:[]}),upload:async(path,body,{onProgress})=>{requests.push({path,body});onProgress({percent:25});assert(studio.page().includes('25%'));return {job:{id:'generated'}};},render:async()=>{},toast:()=>{},refreshJobs:async()=>{}});
-  let html=studio.page();for(const type of GENERATION_TYPES)assert(html.includes(type.title));assert(html.includes('立项券商全称'));assert(html.includes('立项相关规则'));assert(html.includes('上传最新版募集书'));assert.equal(state.materialDraft.sourceMode,'upload');assert(html.indexOf('value="upload"')<html.indexOf('value="project"'));assert(html.includes('data-studio-upload="prospectus"'));assert(html.includes('补充说明与写作要求'));assert(!html.includes('用自然语言补充写作要求'));
+  let html=studio.page();for(const type of GENERATION_TYPES)assert(html.includes(type.title));assert(html.includes('立项券商全称'));assert(html.includes('立项相关规则'));assert(html.includes('上传最新版募集书'));assert.equal(state.materialDraft.sourceMode,'upload');assert(html.indexOf('value="upload"')<html.indexOf('value="project"'));assert(html.includes('data-studio-upload="prospectus"'));assert(html.includes('材料生成要求与说明'));assert(!html.includes('studio-cowork'));assert(html.includes('data-studio-field="market"'));assert(!html.includes('用自然语言补充写作要求'));
   await studio.change({dataset:{studioField:'type'},value:'summary'});
   assert(!studio.page().includes('立项券商全称'));assert(studio.page().includes('公募债摘要'));
   await assert.rejects(studio.submit({id:'material-studio-form',reportValidity:()=>true}),/最新版募集书/);
@@ -134,7 +134,7 @@ test('upload locks the conversation and a failed upload retains instructions for
   let rejectUpload,entered;const started=new Promise(resolve=>{entered=resolve;}),bodies=[];
   const {studio,state,write,add,generate,source}=studioFixture({upload:async(path,body)=>{bodies.push(body);if(bodies.length===1){entered();return new Promise((resolve,reject)=>{rejectUpload=reject;});}return {job:{id:'retry'}};}});await source();
   write('请保留这条生成要求');const operation=generate();await started;
-  assert(studio.page().split('<aside')[1].includes('<fieldset disabled>'));
+  assert(studio.page().includes('<fieldset disabled>'));assert(!studio.page().includes('<aside'));
   write('上传时不应该被改写');await studio.change({dataset:{studioField:'type'},value:'opinion'});await studio.click('studio-instruction-remove','0');await studio.click('studio-writing-prompt','extra');await add();await generate();
   assert.equal(state.materialDraft.type,'summary');assert.equal(state.materialDraft.instructionMessages[0].text,'请保留这条生成要求');assert.equal(state.materialDraft.instructionDraft,'');assert.equal(bodies.length,1);
   rejectUpload(new Error('连接中断'));await assert.rejects(operation,/连接中断/);assert.equal(state.materialDraft.busy,false);assert.equal(state.materialDraft.files.length,1);

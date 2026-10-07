@@ -148,14 +148,15 @@ async function documentManifest(db:Db,owner:string,t:any,type:M4DocumentType,exp
     throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持单承销商、交易所普通私募与全文制作，当前选择需后续能力。');
   if(!['sse','szse'].includes(market))throw new Problem(422,'INPUT_REQUIRED','请为本次材料选择上海证券交易所或深圳证券交易所。');
   if(source?.offering && source.offering!=='private')throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持交易所普通私募，其他品种后续开放。');
-  if(!input.fields.issuer_name?.trim() && !source?.issuer_name?.trim())throw new Problem(422,'INPUT_REQUIRED','请先告诉助手发行人名称。');
+  // Uploaded prospectuses can carry the issuer. The file task reads that source;
+  // opening a chat to restate it is not a prerequisite for the material form.
   const template=await templateFor(db,owner,input.template);
   if(type==='init' && !template)throw new Problem(422,'INPUT_REQUIRED','立项报告需要先选择本账号券商模板。');
   if(template && (template.market!==market || template.document_type!==type))throw new Problem(422,'INPUT_REQUIRED','当前模板与文种或交易所不匹配。');
   if(template && input.fields.broker && template.broker!==input.fields.broker)throw new Problem(422,'INPUT_REQUIRED','当前券商与已选模板不匹配，请核对准确版本。');
   if(type==='private_summary' && !input.source_material && !input.edit_base)throw new Problem(422,'INPUT_REQUIRED','募集说明书摘要需要准确募集书原文或明确全文改稿底稿。');
   if(!input.materials.length && !input.source_material && !input.edit_base)throw new Problem(422,'INPUT_REQUIRED','请先选择本次任务采用的材料。');
-  const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name,market,broker:input.fields.broker||template?.broker||''}};
+  const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name||'',market,broker:input.fields.broker||template?.broker||''}};
   return {version:'m4-document-input-v1',kind:'document',topic_id:t.id,execution_scope_project_id:source?.execution_scope_project_id||source?.id||t.project_id,
     draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as 'sse'|'szse',offering:'private',
     knowledge:loadM4Knowledge(market as 'sse'|'szse',type),billing_task:M4_DOCUMENT_BILLING_TASKS[type]};
