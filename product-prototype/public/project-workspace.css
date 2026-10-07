@@ -52,3 +52,6 @@
  .authoring-workspace .authoring-actions .primary{min-width:146px;max-width:100%}
 }
 @media(max-height:500px){.authoring-workspace .authoring-actions.is-preparing:not(:has(#fixed-quote:not([hidden]))){position:static}}
+
+/* 2026-10-07: material requirements live in the form; Q&A remains separate. */
+.studio-layout.material-studio-single{grid-template-columns:minmax(0,1fr)}

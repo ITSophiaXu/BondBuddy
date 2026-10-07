@@ -252,8 +252,9 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     const source=await seedProject('Synthetic original project'),different=await seedProject('Synthetic independent source'),pin=await seedMaterial(source,'synthetic.docx');
     const newer=await seedMaterial(source,'synthetic-new.docx',2,pin.material_id),templatePin=await seedMaterial(source,'synthetic-template.docx');
     const t=await createTopic(source),t2=await createTopic(source),t3=await createTopic();
-    const input={...emptyM4Draft('private_summary'),source_material:pin,materials:[pin],fields:{issuer_name:'Synthetic issuer',market:'sse'}};
-    const d1=await save(t,input);assert.equal(d1.version,1);
+    const input={...emptyM4Draft('private_summary'),source_material:pin,materials:[pin],fields:{issuer_name:'Synthetic issuer',market:'sse'},supplemental_requirements:'重点说明偿债安排，保留财务表格'};
+    const d1=await save(t,input);assert.equal(d1.version,1);assert.equal(d1.supplemental_requirements,input.supplemental_requirements);
+    assert.equal((await send('PUT',path(t,'drafts/private_summary'),{expected_version:1,input:{...input,supplemental_requirements:'x'.repeat(12001)}})).statusCode,422);
     assert.equal((await send('PUT',path(t,'drafts/private_summary'),{expected_version:0,input})).statusCode,409);
     assert.equal((await send('PUT',path(t,'drafts/private_summary'),{expected_version:1,input:{...input,source_material:{...pin,sha256:'0'.repeat(64)}}})).statusCode,404);
     await save(t2,input);await save(t3,input); // Source is selected after topic creation; it must share the canonical execution lock.
@@ -267,6 +268,11 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     const config:M4BillingConfig={model_id:'synthetic-codex',rates:{'synthetic-codex':{input_microyuan_per_million:1000000,cached_microyuan_per_million:1000000,output_microyuan_per_million:2000000}},
       budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
     await publishM4BillingConfig(pool,{id:'synthetic-m4-rates-v1',config,effective_at:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
+    // The prototype form supplies files + exchange + optional instructions, without a chat to restate the issuer.
+    const direct=await createTopic(),uploaded=await seedMaterial(direct.project_id,'synthetic-upload.docx');
+    await save(direct,{...emptyM4Draft('private_summary'),source_material:uploaded,fields:{market:'szse'},supplemental_requirements:'从原文核对发行人'});
+    assert.equal((await ok('POST',path(direct,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1})).quote.task_type,'m4_G05');
+    assert.equal((await ok('GET',path(direct,'workspace'))).messages.length,0);
     const comparisonQuote=await ok('POST',path(t,'quote'),{kind:'qa',content:'比较两期资产负债率',context});assert.equal(comparisonQuote.quote.task_type,'m4_Q04');assert.equal(comparisonQuote.quote.multiplier,4);
     const calculationQuote=await ok('POST',path(t,'quote'),{kind:'qa',content:'计算本期资产负债率',context});assert.equal(calculationQuote.quote.task_type,'m4_Q03');assert.equal(calculationQuote.quote.multiplier,3);
     const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});assert.equal(q.quote.amount_semantics,'reservation_cap');assert.equal(q.quote.multiplier,6);assert.ok(q.shortage>0);
@@ -278,8 +284,8 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     assert.equal((await send('POST',path(t2,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote2.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
     const quote3=await ok('POST',path(t3,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
     assert.equal((await send('POST',path(t3,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote3.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
-    await save(t,{...input,source_material:newer,materials:[newer]},1);
-    const pinned=(await pool.query('SELECT manifest,input_hash FROM bb_m4_executions WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(pinned.manifest.input.source_material.material_version,1);assert.equal(inputManifestHash(pinned.manifest),pinned.input_hash.trim());
+    await save(t,{...input,source_material:newer,materials:[newer],supplemental_requirements:'下一轮要求'},1);
+    const pinned=(await pool.query('SELECT manifest,input_hash FROM bb_m4_executions WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(pinned.manifest.input.source_material.material_version,1);assert.equal(pinned.manifest.input.supplemental_requirements,input.supplemental_requirements);assert.equal(inputManifestHash(pinned.manifest),pinned.input_hash.trim());
     // Ordinary product help continues during document execution and produces a real text result.
     const help={submission_request_id:randomUUID(),content:'如何使用材料生成？',context};
     const free=(await ok('POST',path(t,'messages'),help));assert.equal(free.run.billing_mode,'platform_trial');assert.equal((await ok('POST',path(t,'messages'),help)).run.run_id,free.run.run_id);
