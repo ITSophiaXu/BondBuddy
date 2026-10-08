@@ -64,9 +64,10 @@ export async function renderAccount(ctx: AccountContext) {
   }
   if (!live()) return;
   const username = account.username;
-  ctx.shell(`<div class="page-head"><div><p class="eyebrow">MY ACCOUNT</p><h1>我的账号</h1><p>管理积分、充值和账号信息。</p></div></div>
-    <div class="account-layout"><div id="account-credits" class="account-credits" aria-label="积分与充值"></div><div class="settings-stack account-security">
-    <section class="panel" aria-labelledby="account-info-title"><div class="panel-heading"><h2 id="account-info-title">基本信息</h2><button class="text-button" id="open-account-settings" type="button" aria-haspopup="dialog">账号设置</button></div><dl class="settings-list" id="account-info"></dl></section>
+  ctx.shell(`<div class="account-page"><header class="account-page-heading"><div><h1>我的账号</h1><p>账户信息与积分管理</p></div><button class="account-settings-trigger" id="open-account-settings" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z M9 3h6l1 4 4 1v8l-4 1-1 4H9l-1-4-4-1V8l4-1 1-4Z"/></svg>账号设置</button></header>
+    <div class="account-layout">
+    <section class="account-profile" aria-labelledby="account-info-title"><div class="account-profile-heading"><h2 id="account-info-title">基本信息</h2><span class="account-avatar" aria-hidden="true">${esc((username ?? '我').slice(0, 1).toUpperCase())}</span></div><dl class="settings-list" id="account-info"></dl></section>
+    <div id="account-credits" class="account-credits" aria-label="积分与充值"></div>
     </div></div>
     <dialog id="account-settings" class="account-settings-dialog" aria-labelledby="account-settings-title">
     <div class="account-settings-heading"><h2 id="account-settings-title">账号设置</h2><button class="text-button" id="close-account-settings" type="button" autofocus>关闭</button></div>
