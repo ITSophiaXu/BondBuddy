@@ -346,7 +346,12 @@ test('material progress and results match the reference at desktop and mobile si
   for(const state of ['running','failed','succeeded'] as const){
     if(state==='failed'){task.run.state='failed';s.workspace.active_run=null;}if(state==='succeeded')completeTask(s,task);await page.getByRole('button',{name:'刷新状态'}).click();await prototype.goto(`http://prototype.test/material-results.html#${state}`);await prototype.reload();
     for(const [label,viewport] of [['desktop',{width:1440,height:1100}],['mobile',{width:390,height:844}],['narrow',{width:320,height:844}]] as const){await page.setViewportSize(viewport);await prototype.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(page.locator('.task-progress [aria-current=step]')).toHaveCount(1);
-      if(label!=='narrow'){const width=await page.locator('#m4-content').evaluate(node=>node.getBoundingClientRect().width);await prototype.locator('#material-result').evaluate((node,width)=>{(node as HTMLElement).style.width=`${width}px`;},width);await page.locator('#m4-content').screenshot({path:`${output}/implementation-${state}-${label}.png`,style:".topbar{visibility:hidden!important}"});await prototype.locator('#material-result').screenshot({path:`${output}/prototype-${state}-${label}.png`});}
+      if(label!=='narrow'){
+        const shot=await page.locator('#m4-content').screenshot({path:`${output}/implementation-${state}-${label}.png`,style:".topbar{visibility:hidden!important}"});
+        const size={width:shot.readUInt32BE(16),height:shot.readUInt32BE(20)};
+        await prototype.locator('#material-result').evaluate((node,size)=>{Object.assign((node as HTMLElement).style,{width:`${size.width}px`,height:`${size.height}px`,maxWidth:'none',position:'absolute',left:'0',top:'0',margin:'0'});},size);
+        await prototype.locator('#material-result').screenshot({path:`${output}/prototype-${state}-${label}.png`});
+      }
     }
   }await prototype.close();expect(s.executions).toHaveLength(0);
 });
