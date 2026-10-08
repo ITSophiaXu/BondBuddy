@@ -20,14 +20,15 @@ export class CreditWallet {
     void this.refresh();
   }
   private draw() {
-    const amount = this.unavailable ? '—' : this.balance?.available.toLocaleString('zh-CN') ?? '…';
+    // Reserved credits still belong to the user until delivery settles the task.
+    const amount = this.unavailable ? '—' : this.balance ? (this.balance.available + this.balance.frozen).toLocaleString('zh-CN') : '…';
     for (const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')) {
       const compact = host.dataset.creditWallet === 'compact';
       host.innerHTML = compact
-        ? `<a href="#/account" aria-label="可用积分 ${amount}，查看我的账号"><span>积分</span> <strong>${amount}</strong></a>`
-        : `<div class="wallet-heading"><span>可用积分</span><button type="button" class="wallet-refresh" aria-label="刷新积分余额" ${this.loading ? 'disabled' : ''}>刷新</button></div>
+        ? `<a href="#/account" aria-label="积分余额 ${amount}，查看我的账号"><span>积分</span> <strong aria-live="polite">${amount}</strong></a>`
+        : `<div class="wallet-heading"><span>积分余额</span><button type="button" class="wallet-refresh" aria-label="刷新积分余额" ${this.loading ? 'disabled' : ''}>刷新</button></div>
           <div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="#/account" aria-label="查看积分与充值">充值 <span aria-hidden="true">↗</span></a></div>
-          <p class="wallet-note">${this.unavailable ? '余额暂未同步，请刷新重试' : this.balance ? this.balance.frozen ? `任务已预留 ${this.balance.frozen.toLocaleString('zh-CN')} 积分` : '暂无预留积分' : '正在读取余额'}</p>`;
+          <p class="wallet-note">${this.unavailable ? '余额暂未同步，请刷新重试' : this.balance ? this.balance.frozen ? `可用 ${this.balance.available.toLocaleString('zh-CN')} · 任务已预留 ${this.balance.frozen.toLocaleString('zh-CN')} 积分` : '暂无预留积分' : '正在读取余额'}</p>`;
       host.querySelector('button')?.addEventListener('click', () => { void this.refresh(); });
     }
   }

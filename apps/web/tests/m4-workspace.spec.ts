@@ -17,21 +17,21 @@ function fixture(){
   const run=(id:string,state:Run['state']='running'):Run=>({run_id:id,project_id:'m4-project',execution_request_id:'execution-'+id,input_revision:1,input_hash:hash(id),state,stage:'m4_document_prompt',channel:'production',test_grant_id:null,uncovered_items:[],event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?artifact.artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
   const workspace:M4Workspace={topic:{topic_id:'topic-a',project_id:'m4-project',source_project_id:'source-project',name:'合成材料工作区',created_at:now,updated_at:now},project:{project_id:'m4-project',draft_revision:1,input_revision:null,input_hash:null,name:'合成材料工作区',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',updated_at:now},drafts:{init:draft('init'),underwriter:draft('underwriter'),legal:draft('legal'),private_summary:draft('private_summary')},materials:[source],material_details:[{...source,filename:'来源募集书.docx',state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[],pending_requirements:[],artifacts:[artifact],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null};
   const addDocumentTask=(id:string,type:M4DocumentType='private_summary',version=workspace.drafts[type].version)=>{const current=run(id);workspace.active_run=current;const task:M4Task={run:current,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:'topic-a',execution_scope_project_id:'source-project',draft_version:version,input:structuredClone(workspace.drafts[type]),template_material:null,market:'sse',offering:'private',billing_task:M4_DOCUMENT_BILLING_TASKS[type]},created_at:now,events:[],artifacts:[]};workspace.tasks.push(task);return task;};
-  return {workspace,artifact,run,addDocumentTask,messages:[] as M4MessageRequest[],executions:[] as M4ExecuteRequest[],quotes:[] as M4QuoteRequest[],startDocumentOnMessage:false,dropMessage:false,charged:0};
+  return {workspace,artifact,run,addDocumentTask,messages:[] as M4MessageRequest[],executions:[] as M4ExecuteRequest[],quotes:[] as M4QuoteRequest[],startDocumentOnMessage:false,dropMessage:false,dropExecution:false,charged:0,balance:{available:10000,frozen:0},balanceReads:0};
 }
 async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'='generate',fresh=false){
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;
     if(path==='/api/v1/me')return reply(route,{user_id:'owner-a'});
-    if(path==='/api/v1/credits/balance')return reply(route,{enabled:true,available:10000,frozen:0});
+    if(path==='/api/v1/credits/balance'){state.balanceReads++;return reply(route,{enabled:true,...state.balance});}
     if(path==='/api/v1/m4/topics')return reply(route,req.method()==='POST'?{topic:state.workspace.topic}:{topics:[state.workspace.topic]});
     if(path==='/api/v1/projects/source-project')return reply(route,{...state.workspace.project,project_id:'source-project',name:'来源项目'});
     if(path.endsWith('/workspace'))return reply(route,state.workspace);
     if(path.includes('/drafts/')){const body=req.postDataJSON();expect(Value.Check(M4DraftRequestSchema,body)).toBe(true);const d=state.workspace.drafts[body.input.document_type as 'init'|'private_summary'];if(body.expected_version!==d.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);const saved={...body.input,version:d.version+1,sha256:hash(JSON.stringify(body.input)),updated_at:now};state.workspace.drafts[saved.document_type as 'init'|'private_summary']=saved;return reply(route,{draft:saved});}
     if(path.endsWith('/view')){const body=req.postDataJSON();expect(Value.Check(M4ViewRequestSchema,body)).toBe(true);if(body.expected_version!==state.workspace.view.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);state.workspace.view={...body.view,version:body.expected_version+1};return reply(route,{view:state.workspace.view});}
-    if(path.endsWith('/quote')){const body=req.postDataJSON(),fixed=body.kind==='document';state.quotes.push(body);return reply(route,{quote:{quote_id:'quote-a',topic_id:'topic-a',input_hash:hash('quote'),task_type:fixed?M4_DOCUMENT_BILLING_TASKS[body.document_type as M4DocumentType]:'m4_Q01',points:fixed?4500:20,price_version:'synthetic-v1',reason:fixed?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':'合成问答报价，按用量结算',created_at:now,billing_method:fixed?'fixed':'metered_capped',amount_semantics:fixed?'fixed_price':'reservation_cap',multiplier:1,expires_at:'2099-01-01T00:00:00Z'},balance:{available:10000,frozen:0},shortage:0});}
+    if(path.endsWith('/quote')){const body=req.postDataJSON(),fixed=body.kind==='document';state.quotes.push(body);return reply(route,{quote:{quote_id:'quote-a',topic_id:'topic-a',input_hash:hash('quote'),task_type:fixed?M4_DOCUMENT_BILLING_TASKS[body.document_type as M4DocumentType]:'m4_Q01',points:fixed?4500:20,price_version:'synthetic-v1',reason:fixed?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':'合成问答报价，按用量结算',created_at:now,billing_method:fixed?'fixed':'metered_capped',amount_semantics:fixed?'fixed_price':'reservation_cap',multiplier:1,expires_at:'2099-01-01T00:00:00Z'},balance:state.balance,shortage:Math.max(0,(fixed?4500:20)-state.balance.available)});}
     if(path.endsWith('/messages')){const body=req.postDataJSON() as M4MessageRequest;expect(Value.Check(M4MessageRequestSchema,body)).toBe(true);state.messages.push(body);let message=state.workspace.messages.find(m=>m.message_id===body.submission_request_id);if(!message){state.charged++;message={message_id:body.submission_request_id,role:'user',content:body.content,context:body.context,version:1,created_at:now,reply_status:'completed',reply_to:null,run_id:'qa-run',reply:null,error:null};state.workspace.messages.push(message,{...message,message_id:'reply-'+message.message_id,role:'assistant',content:'合成接口回复：原文字与版本已保留。',reply_to:message.message_id});if(state.startDocumentOnMessage&&body.execute)state.addDocumentTask('assistant-document',body.context.document_type??'private_summary',body.context.draft_version);}if(state.dropMessage){state.dropMessage=false;return route.abort('connectionreset');}return reply(route,{message,run:state.run('qa-run','succeeded')});}
-    if(path.endsWith('/execute')){const body=req.postDataJSON() as M4ExecuteRequest;expect(Value.Check(M4ExecuteRequestSchema,body)).toBe(true);state.executions.push(body);const task=state.addDocumentTask('new-run',body.document_type,body.expected_draft_version);return reply(route,{run:task.run});}
+    if(path.endsWith('/execute')){const body=req.postDataJSON() as M4ExecuteRequest;expect(Value.Check(M4ExecuteRequestSchema,body)).toBe(true);state.executions.push(body);let task=state.workspace.tasks.find(t=>t.run.execution_request_id===body.execution_request_id);if(!task){task=state.addDocumentTask('new-run',body.document_type,body.expected_draft_version);task.run.execution_request_id=body.execution_request_id;state.balance.available-=4500;state.balance.frozen+=4500;}if(state.dropExecution){state.dropExecution=false;return route.abort('connectionreset');}return reply(route,{run:task.run});}
     if(path.endsWith('/preview')){const id=path.split('/')[5],a=state.workspace.artifacts.find(a=>a.artifact_id===id);return a?reply(route,{artifact:a,content:'合成正文第一段：原准确版本。\n\n合成正文第二段。'}):reply(route,{code:'NOT_FOUND'},404);}
     if(path.endsWith('/bytes'))return route.fulfill({status:200,contentType:mime,body:'Synthetic DOCX bytes'});
     return reply(route,{code:'NOT_FOUND'},404);
@@ -40,16 +40,70 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
 }
 
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
-const start=async(page:Page)=>{await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();await page.getByRole('button',{name:'确认并生成',exact:true}).click();};
+const start=async(page:Page)=>{await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();await expect(page.getByRole('button',{name:'正在提交…',exact:true})).toHaveCount(0);};
 
-for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`fixed-price document confirmation is explicit at ${viewport.width}px`,async({page})=>{
+for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`one click starts a document without a price panel and balance drops only after success at ${viewport.width}px`,async({page})=>{
   await page.setViewportSize(viewport);const s=fixture();await mount(page,s);await choose(page,'private_summary');
-  await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();
-  const price=page.locator('.m4-price');await expect(price).toContainText('4,500');await expect(price).toContainText('固定价');
-  await expect(price).toContainText('失败或取消全额释放');await expect(price).not.toContainText('预留上限');
-  await expect(price).not.toContainText('按实际用量');expect(s.executions).toHaveLength(0);
-  if(process.env.M4_UX_EVIDENCE){const dir=resolve('../../docs/acceptance/material-generation-feedback-20261008');await mkdir(dir,{recursive:true});await price.scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`implementation-fixed-${viewport.width}.png`)});}
-  await page.getByRole('button',{name:'确认并生成',exact:true}).click();expect(s.executions).toHaveLength(1);
+  const wallet=page.locator(viewport.width>760?'.credit-wallet .wallet-value strong':'.mobile-credit-wallet strong');
+  await expect(wallet).toHaveText('10,000');
+  await expect(page.locator('.m4-price')).toHaveCount(0);await expect(page.getByRole('button',{name:'确认并生成'})).toHaveCount(0);
+  if(process.env.M4_UX_EVIDENCE){const dir=resolve('test-evidence/m4-one-click-20261008');await mkdir(dir,{recursive:true});await page.locator('.form-footer').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`ready-${viewport.width}.png`)});}
+  await start(page);await expect.poll(()=>s.executions.length).toBe(1);expect(s.quotes).toHaveLength(1);
+  await expect(page.getByRole('tab',{name:'正在制作'})).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('.m4-price')).toHaveCount(0);await expect(wallet).toHaveText('10,000');
+  await expect(page.locator('.wallet-note')).toContainText('任务已预留 4,500');
+  const reads=s.balanceReads;s.balance.frozen=0;
+  const fresh={...s.artifact,artifact_id:'new-artifact',revision_number:2,filename:'合成摘要新稿.docx',run_id:'new-run'};
+  s.workspace.artifacts.push(fresh);s.workspace.tasks[0].run=s.run('new-run','succeeded');s.workspace.tasks[0].artifacts=[fresh];s.workspace.active_run=null;
+  // The material poll, not the 30s wallet timer or a manual refresh, updates settlement.
+  await expect(wallet).toHaveText('5,500',{timeout:10000});expect(s.balanceReads).toBeGreaterThan(reads);
+  await expect(page.locator('#m4-status')).toContainText('本次制作已完成');
+  await expect(page.locator('.wallet-note')).toContainText('暂无预留积分');
+  if(process.env.M4_UX_EVIDENCE){await page.screenshot({path:resolve('test-evidence/m4-one-click-20261008',`success-${viewport.width}.png`)});}
+});
+
+test('insufficient credits show a recharge action, retain input and never auto-start',async({page})=>{
+  const s=fixture();s.balance.available=1000;await mount(page,s);await choose(page,'private_summary');
+  await page.locator('#m4-requirements').fill('积分不足时保留这份输入');await start(page);
+  await expect(page.locator('#m4-submit-status [role=alert]')).toContainText('积分不足');
+  await expect(page.locator('#m4-submit-status').getByRole('link',{name:'充值积分'})).toHaveAttribute('href','#/account');
+  expect(s.executions).toHaveLength(0);expect(s.balance.frozen).toBe(0);await expect(page.locator('.m4-price')).toHaveCount(0);
+  s.balance.available=10000;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.wallet-value strong')).toHaveText('10,000');expect(s.executions).toHaveLength(0);
+  await expect(page.locator('#m4-requirements')).toHaveValue('积分不足时保留这份输入');
+  await start(page);expect(s.executions).toHaveLength(1);
+});
+
+test('a double click and a lost acknowledgement retry use the same execution and reserve once',async({page})=>{
+  const s=fixture();s.dropExecution=true;await mount(page,s);await choose(page,'private_summary');
+  let release!:()=>void,quotes=0;const gate=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/quote',async route=>{quotes++;await gate;return route.fallback();});
+  await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).evaluate(el=>{(el as HTMLButtonElement).click();(el as HTMLButtonElement).click();});
+  await expect.poll(()=>quotes).toBe(1);await expect(page.getByRole('button',{name:'正在提交…'})).toBeDisabled();release();
+  await expect(page.getByRole('button',{name:'核对并重试原制作请求'})).toBeVisible();
+  const first=structuredClone(s.executions[0]);expect(s.balance.frozen).toBe(4500);
+  await page.reload();await page.getByRole('button',{name:'核对并重试原制作请求'}).click();
+  await expect.poll(()=>s.executions.length).toBe(2);expect(s.executions[1]).toEqual(first);expect(quotes).toBe(1);expect(s.workspace.tasks).toHaveLength(1);
+  expect(s.balance).toEqual({available:5500,frozen:4500});
+});
+
+test('an input edit while the internal quote is pending cannot submit a stale draft',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  let release!:()=>void,quotes=0;const gate=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/quote',async route=>{quotes++;await gate;return route.fallback();});
+  await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();await expect.poll(()=>quotes).toBe(1);
+  await page.locator('#m4-requirements').fill('报价等待期间的新要求');release();
+  await expect(page.locator('#m4-submit-status [role=alert]')).toContainText('材料或要求已修改');
+  expect(s.executions).toHaveLength(0);await expect(page.locator('#m4-requirements')).toHaveValue('报价等待期间的新要求');
+  await start(page);expect(s.executions).toHaveLength(1);const input=s.workspace.tasks[0].manifest;expect(input.kind==='document'&&input.input.supplemental_requirements).toBe('报价等待期间的新要求');
+});
+
+for(const state of ['failed','cancelled'] as const)test(`a ${state} task releases the reservation without reducing balance`,async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);
+  await expect(page.locator('.wallet-note')).toContainText('任务已预留 4,500');
+  s.balance={available:10000,frozen:0};s.workspace.tasks[0].run=s.run('new-run',state);s.workspace.active_run=null;
+  await expect(page.locator('.wallet-note')).toContainText('暂无预留积分',{timeout:10000});
+  await expect(page.locator('.wallet-value strong')).toHaveText('10,000');expect(s.executions).toHaveLength(1);
 });
 
 test('first form save and concurrent upload share creation and retain entered requirements',async({page})=>{
@@ -187,7 +241,7 @@ for(const [label,width] of [['desktop',1440],['mobile',390]] as const)test(`gene
   await expect(alert).toBeInViewport();await expect(page.locator('#m4-status')).not.toBeInViewport();
   await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toHaveCount(0);
   expect(s.executions).toHaveLength(0);expect(s.charged).toBe(0);expect(s.workspace.drafts.underwriter).toEqual(input);
-  if(process.env.M4_UX_EVIDENCE){const output=resolve('../../docs/acceptance/material-generation-feedback-20261008');await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-error-${label}.png`});}
+  if(process.env.M4_UX_EVIDENCE){const output=resolve('test-evidence/m4-one-click-20261008');await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-error-${label}.png`});}
 });
 
 for(const width of [1440,390,320])test(`material fits viewport ${width}`,async({page})=>{
@@ -216,7 +270,7 @@ test('polling keeps a focused native file input connected',async({page})=>{
 test('same-size original prototype and material implementation screenshots',async({page})=>{
   test.setTimeout(120000);
   test.skip(!process.env.M4_UX_EVIDENCE,'Screenshots are captured explicitly for review.');
-  const output=resolve('test-evidence/m4-form-20261008');await mkdir(output,{recursive:true});
+  const output=resolve('test-evidence/m4-one-click-20261008');await mkdir(output,{recursive:true});
   const s=fixture();s.workspace.materials=[];s.workspace.material_details=[];s.workspace.artifacts=[];
   for(const d of Object.values(s.workspace.drafts)){d.fields={};d.requirements=[];d.source_material=null;}
   await mount(page,s);
@@ -232,6 +286,8 @@ test('same-size original prototype and material implementation screenshots',asyn
     await page.setViewportSize(viewport);await original.setViewportSize(viewport);
     await page.bringToFront();await page.screenshot({path:`${output}/implementation-${label}.png`,fullPage:true});
     await original.bringToFront();await original.screenshot({path:`${output}/prototype-${label}.png`,fullPage:true});
+    await page.bringToFront();await page.locator('.form-footer').scrollIntoViewIfNeeded();await page.screenshot({path:`${output}/implementation-footer-${label}.png`});
+    await original.bringToFront();await original.locator('#material-studio-form .form-footer').scrollIntoViewIfNeeded();await original.screenshot({path:`${output}/prototype-footer-${label}.png`});
   }
   s.workspace.materials=[{source_project_id:'source-project',material_id:'source-doc',material_version:3,sha256:hash('source')}];
   s.workspace.material_details=[{...s.workspace.materials[0],filename:'合成发行人2026年面向专业投资者非公开发行公司债券募集说明书.docx',state:'persisted',media_type:mime}];

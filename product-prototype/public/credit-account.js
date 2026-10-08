@@ -5,7 +5,7 @@ export function accountUI({state,esc,icon,head,api,post,toast,render,document=gl
   const actionName={grant:'积分到账',freeze:'任务冻结',settle:'任务消费',release:'冻结释放',refund:'充值退款'};
   const statusName={pending:'待支付',paid:'演示已支付',cancelled:'已取消',expired:'已过期',partially_refunded:'部分退款',refunded:'已退款'};
   async function refresh(){state.billing=await api('/api/billing');}
-  function topbarBilling(){if(!state.billing?.creditVersion)return '<a class="top-plan-link" href="#billing">积分服务待重启</a>';return `<div class="top-billing"><div class="top-allowance" aria-label="可用积分"><span>可用积分</span><strong>${number(wallet().available)} <small>积分</small></strong></div><a class="top-plan-link" href="#billing">积分明细 ${icon('arrow')}</a><a class="top-add-points" href="#billing">${icon('plus')}充值积分</a></div>`;}
+  function topbarBilling(){if(!state.billing?.creditVersion)return '<a class="top-plan-link" href="#billing">积分服务待重启</a>';return `<div class="top-billing"><div class="top-allowance" aria-label="积分余额"><span>积分余额</span><strong>${number(wallet().available+wallet().frozen)} <small>积分</small></strong></div><a class="top-plan-link" href="#billing">积分明细 ${icon('arrow')}</a><a class="top-add-points" href="#billing">${icon('plus')}充值积分</a></div>`;}
   function billingPage(){
     if(!state.billing?.creditVersion)return head('积分服务等待重启','代码已升级，请关闭原 BondBuddy 启动窗口，重新运行 Start-BondBuddy.cmd，然后刷新页面。项目与原有权益会保留。','UPDATE READY');
     const b=state.billing,w=wallet(),legacy=b.seat.quota.legacy;
