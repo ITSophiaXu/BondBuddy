@@ -18,12 +18,12 @@ test('manual recovery: two real browser accounts bind an original channel, issue
     await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'account_recovery','synthetic-browser','synthetic_test')",[randomUUID(),owner.rows[0].id]);
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));operator.on('pageerror',e=>errors.push(e.message));
     await login(page,user);await login(stale,user);await login(operator,support);
-    await page.getByRole('link',{name:'账号设置',exact:true}).click();
+    await page.getByRole('link',{name:'我的账号',exact:true}).click();await page.getByRole('button',{name:'账号设置',exact:true}).click();await page.locator('summary').filter({hasText:'账号找回'}).click();
     await page.getByLabel('恢复联系方式',{exact:true}).fill('original-channel@example.test');
     await page.getByLabel('验证当前密码',{exact:true}).fill(user.password);
     await page.getByRole('button',{name:'申请绑定或更换',exact:true}).click();
     const binding=await page.locator('#account-recovery code').innerText();
-    await operator.getByRole('link',{name:'账号设置',exact:true}).click();
+    await operator.getByRole('link',{name:'我的账号',exact:true}).click();await operator.getByRole('button',{name:'账号设置',exact:true}).click();await operator.locator('summary').filter({hasText:'账号找回'}).click();
     await operator.getByLabel('绑定编号或工单号').fill(binding);
     await operator.getByRole('button',{name:'读取记录',exact:true}).click();
     await expect(operator.locator('#support-record')).toContainText('original-channel@example.test');
@@ -55,7 +55,7 @@ test('manual recovery: two real browser accounts bind an original channel, issue
     expect((await operator.request.get('/api/v1/me')).status()).toBe(200);
     expect(requestUrls.some(url=>url.includes(token))).toBe(false);
     expect(await page.evaluate(()=>JSON.stringify({local:{...localStorage},session:{...sessionStorage}}))).not.toContain(token);
-    await login(page,{...user,password:newPassword});await page.getByRole('link',{name:'账号设置',exact:true}).click();
+    await login(page,{...user,password:newPassword});await page.getByRole('link',{name:'我的账号',exact:true}).click();await page.getByRole('button',{name:'账号设置',exact:true}).click();await page.locator('summary').filter({hasText:'账号找回'}).click();
     await expect(page.locator('#account-recovery')).toContainText('已绑定邮箱');
     await page.setViewportSize({width:1440,height:960});await page.screenshot({path:join(tmpdir(),'bondbuddy-issue9-desktop.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(tmpdir(),'bondbuddy-issue9-mobile.png'),fullPage:true});
