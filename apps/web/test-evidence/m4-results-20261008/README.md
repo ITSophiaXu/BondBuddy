@@ -23,3 +23,5 @@
 集成基线更新为 `db79fa99`（#594 一键生成、成功后扣费和钱包刷新）。冲突解决仅合并状态显示与充值提示，保留一键执行。对应源码 `39afefb3`，截图已按集成版本重采样。
 
 最终准确集成复验：`m4-workspace.spec.ts` + `project-execution.spec.ts` + `account.spec.ts` 共 **86/86 通过、0 跳过**（含材料 30 场景）。另有此前通过的成果下载 28/28。最新前端 build 通过；契约与后端代码未变，沿用本轮通过的全包 build / contracts。
+
+CI 后续补正：旧单元测试仍断言“正在同步本轮执行状态”，与本次通用进度文案不一致。同步该预期并增加真实 `m4_document_v1_prompt` / `model_generation` 映射断言，`npm run test:unit -w @bondbuddy/web` **83/83，通过、0 跳过**；只更改测试和记录，运行版代码不变。
