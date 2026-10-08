@@ -1099,4 +1099,3 @@ test('credit visibility: an in-flight old receipt is refreshed after the run com
   await expect(page.locator('#execution-progress')).toContainText('文档已生成，可下载',{timeout:12000});
   release();await expect(page.locator('.task-credit-receipt')).toContainText('已扣费');expect(reads).toBeGreaterThan(1);
 });
-
