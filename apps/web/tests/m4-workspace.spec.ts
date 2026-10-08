@@ -61,13 +61,15 @@ test('prototype material navigation, cards, source modes and only one optional r
   const s=fixture();await mount(page,s);
   await expect(page.locator('.sidebar').getByRole('link',{name:'材料生成',exact:true})).toHaveCount(1);
   await expect(page.locator('.sidebar').getByRole('link',{name:'项目问答',exact:true})).toHaveCount(0);
-  await expect(page.locator('#m4-agent,#m4-message,[data-m4-action=discuss]')).toHaveCount(0);
+  await expect(page.locator('#m4-agent,#m4-message,[data-m4-action=discuss],#m4-topic,[data-m4-action=new-topic],#m4-source')).toHaveCount(0);
   await expect(page.locator('[data-m4-type]')).toHaveCount(4);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
   await choose(page,'legal');await expect(page.getByRole('heading',{name:'这份材料依据哪份募集书'})).toBeVisible();
   await expect(page.locator('#m4-content textarea')).toHaveCount(1);await expect(page.locator('#m4-requirements')).toBeVisible();
-  await page.getByRole('radio',{name:'关联募集书项目',exact:true}).check();await expect(page.getByRole('button',{name:'选择募集书项目及版本'})).toBeVisible();
+  await page.getByRole('radio',{name:'关联募集书项目',exact:true}).check();await expect(page.getByRole('button',{name:'选择募集书项目'})).toBeVisible();
   await expect(page.locator('[data-m4-upload=source]')).toHaveCount(0);await page.getByRole('radio',{name:'上传最新版募集书',exact:true}).check();
   await expect(page.locator('[data-m4-upload=source]')).toHaveCount(1);expect(s.executions).toHaveLength(0);expect(s.messages).toHaveLength(0);
+  await page.route('**/projects/m4-project',route=>reply(route,s.workspace.project));
+  await page.goto('/#/projects/m4-project');await expect(page.getByRole('heading',{name:'材料生成',exact:true})).toBeVisible();
 });
 
 test('direct requirements save without a message or charge, remain per type and survive reload',async({page})=>{
@@ -79,6 +81,29 @@ test('direct requirements save without a message or charge, remain per type and 
   await choose(page,'legal');await expect(page.locator('#m4-market')).toHaveValue('szse');await page.reload();
   await expect(page.locator('#m4-requirements')).toHaveValue('请按深交所要求编写，重点说明担保与诉讼。');
   expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);expect(s.quotes).toHaveLength(0);
+});
+
+test('replacing the source adopts only saved bytes and restores that exact file without a version selector',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  const bytes=Buffer.from('Synthetic replacement source');
+  const material={material_id:'replacement-doc',material_version:1,upload_id:'replacement-upload',role:'historical',filename:'替换后的募集书.docx',media_type:mime,byte_size:bytes.length,sha256:hash(bytes.toString()),state:'persisted',persisted_at:now,error:null};
+  let fail=false;
+  await page.route('**/materials/uploads',route=>fail?reply(route,{code:'DATA_UNAVAILABLE'},503):reply(route,{upload_id:material.upload_id,state:'uploading',upload_url:'/api/v1/synthetic-source-bytes',expires_at:'2099-01-01T00:00:00Z',max_bytes:10000}));
+  await page.route('**/synthetic-source-bytes',route=>route.fulfill({status:204}));
+  await page.route('**/materials/uploads/replacement-upload/complete',route=>reply(route,material));
+  await page.route('**/m4/topics/topic-a/materials',route=>{const {material:pin}=route.request().postDataJSON();s.workspace.materials.push(pin);s.workspace.material_details!.push({...pin,filename:material.filename,state:'persisted',media_type:mime});return reply(route,{material:pin});});
+  const file=page.getByLabel('上传最新版募集说明书',{exact:true});
+  await file.setInputFiles({name:material.filename,mimeType:mime,buffer:bytes});
+  await expect.poll(()=>s.workspace.drafts.private_summary.source_material?.material_id).toBe(material.material_id);
+  await expect(page.locator('.m4-source-file')).toContainText(material.filename);
+  await expect(page.locator('#m4-source')).toHaveCount(0);await expect(page.locator('.m4-source-file details')).toHaveCount(0);
+  await page.reload();await expect(page.locator('.m4-source-file')).toContainText(material.filename);
+  expect(s.workspace.drafts.private_summary.source_material?.sha256).toBe(material.sha256);
+  fail=true;await file.setInputFiles({name:'未保存成功.docx',mimeType:mime,buffer:Buffer.from('Failed replacement')});
+  await expect(page.locator('#m4-status')).toHaveClass(/error/);
+  await expect(page.locator('.m4-source-file')).toContainText(material.filename);
+  expect(s.workspace.drafts.private_summary.source_material?.material_id).toBe(material.material_id);
+  expect(s.executions).toHaveLength(0);expect(s.quotes).toHaveLength(0);
 });
 
 test('generation pins direct requirements and progress is on the page; edits never change running input',async({page})=>{
@@ -163,7 +188,7 @@ test('polling keeps a focused native file input connected',async({page})=>{
 test('same-size original prototype and material implementation screenshots',async({page})=>{
   test.setTimeout(120000);
   test.skip(!process.env.M4_UX_EVIDENCE,'Screenshots are captured explicitly for review.');
-  const output=resolve('test-evidence/m4-prototype-20261007');await mkdir(output,{recursive:true});
+  const output=resolve('test-evidence/m4-form-20261008');await mkdir(output,{recursive:true});
   const s=fixture();s.workspace.materials=[];s.workspace.material_details=[];s.workspace.artifacts=[];
   for(const d of Object.values(s.workspace.drafts)){d.fields={};d.requirements=[];d.source_material=null;}
   await mount(page,s);
@@ -179,6 +204,17 @@ test('same-size original prototype and material implementation screenshots',asyn
     await page.setViewportSize(viewport);await original.setViewportSize(viewport);
     await page.bringToFront();await page.screenshot({path:`${output}/implementation-${label}.png`,fullPage:true});
     await original.bringToFront();await original.screenshot({path:`${output}/prototype-${label}.png`,fullPage:true});
+  }
+  s.workspace.materials=[{source_project_id:'source-project',material_id:'source-doc',material_version:3,sha256:hash('source')}];
+  s.workspace.material_details=[{...s.workspace.materials[0],filename:'合成发行人2026年面向专业投资者非公开发行公司债券募集说明书.docx',state:'persisted',media_type:mime}];
+  s.workspace.drafts.private_summary.source_material=s.workspace.materials[0];
+  await page.reload();await choose(page,'private_summary');
+  for(const [label,viewport] of [['desktop',{width:1440,height:960}],['mobile',{width:390,height:844}]] as const){
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    const headings=await page.locator('.form-card>h2').evaluateAll(nodes=>nodes.map(node=>({size:getComputedStyle(node).fontSize,weight:getComputedStyle(node).fontWeight})));
+    expect(new Set(headings.map(h=>`${h.size}:${h.weight}`)).size).toBe(1);
+    await page.screenshot({path:`${output}/saved-file-${label}.png`,fullPage:true});
   }
   await original.close();
 });
