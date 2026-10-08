@@ -9,7 +9,7 @@ import { ReviewAssistant } from './review-assistant';
 import { carryHandoff, copyHandoffSource, mountBusinessHandoff, type BusinessHandoff } from './business-handoff';
 import { ReadableReview } from './review-readable';
 import { taskProgress } from './task-progress';
-import { projectListContext, withProjectContext, projectBackLink } from './project-navigation';
+import { projectListContext, withProjectContext, projectBackLink, projectSection } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { QUARTER_ENDS, cutoffSelection, quarterCutoff } from './reporting-cutoff';
 import { blankDraft, validateDraft } from './form-model';
@@ -69,7 +69,7 @@ export class ReviewWorkspace {
   private disposed = false;
   private readGeneration = 0;
   private localInputKey: string;
-  private requestedTab?: 'materials'|'results';
+  private requestedTab?: 'materials'|'results'|'making';
   private openFindings = new Set<string>();
   private renderedReport?: string;
   private renderedResults?: string;
@@ -90,7 +90,7 @@ export class ReviewWorkspace {
     this.adoptionKey = `bb-review-adoption:${owner}:${projectId}`;
     try{const pending:unknown=JSON.parse(localStorage.getItem(this.executionKey)??'null');if(Value.Check(ReviewExecutionRequestSchema,pending))this.executionPending=pending;}catch{/* Keep server state authoritative. */}
     try{const pending:unknown=JSON.parse(localStorage.getItem(this.adoptionKey)??'null');if(Value.Check(ReviewProposalAdoptionRequestSchema,pending))this.adoptionPending=pending;}catch{/* Preserve server proposal decisions. */}
-    this.requestedTab = tab==='materials'||tab==='results'?tab:undefined;
+    this.requestedTab = tab==='materials'||tab==='results'||tab==='making'?tab:undefined;
     this.tab = this.requestedTab ?? (reportId ? 'results' : 'materials');
   }
   get hasUnconfirmed() { return this.uploadRows.size>0||this.inputDirty||Boolean(this.executionPending)||Boolean(this.adoptionPending)||this.assistant.hasUnconfirmed; }
@@ -108,7 +108,7 @@ export class ReviewWorkspace {
   private live() { return !this.disposed&&this.current(); }
 
   async render() {
-    this.shell(`<div class="review-workspace" id="review-workspace"><p role="status">正在读取复核项目…</p></div>`,this.fromList?'projects':'review');
+    this.shell(`<div class="review-workspace" id="review-workspace"><p role="status">正在读取复核项目…</p></div>`,projectSection('review'));
     this.page=document.querySelector<HTMLElement>('#review-workspace')!;
     const generation=++this.readGeneration;
     try {
@@ -117,7 +117,7 @@ export class ReviewWorkspace {
       this.workspace=workspace;this.draftInput=this.inputFrom(workspace);this.run=workspace.active_run??undefined;
       if(!this.reportId&&!this.requestedTab&&(workspace.selected_report||workspace.artifacts.length))this.tab='results';
       this.restoreInput();this.syncSelections();
-      this.page.innerHTML = `${this.fromList?projectBackLink:''}<header class="page-head review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><div class="review-project-title"><h1>${esc(workspace.project.name)}</h1><span class="review-tag" id="review-phase-badge"></span></div><div class="review-project-meta" id="review-project-meta"></div></div></header><div id="review-workspace-steps" hidden>${workspaceSteps(2,'复核流程')}</div><p class="review-status" id="review-status" role="status"></p><p class="task-credit-receipt" id="review-credit-receipt" role="status" hidden></p><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><div id="business-handoff"></div><div class="review-grid review-always-on" id="review-grid"><section class="review-panel"><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-making" role="tab" data-review-tab="making" aria-controls="review-making-panel" hidden>正在制作</button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div><div class="review-tab-panel" id="review-making-panel" role="tabpanel" aria-labelledby="review-tab-making" hidden></div></section><aside class="review-agent review-agent-always-on" id="review-agent" aria-label="项目助手"></aside></div>`;
+      this.page.innerHTML = `${this.fromList?projectBackLink():''}<header class="page-head review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><div class="review-project-title"><h1>${esc(workspace.project.name)}</h1><span class="review-tag" id="review-phase-badge"></span></div><div class="review-project-meta" id="review-project-meta"></div></div></header><div id="review-workspace-steps" hidden>${workspaceSteps(2,'复核流程')}</div><p class="review-status" id="review-status" role="status"></p><p class="task-credit-receipt" id="review-credit-receipt" role="status" hidden></p><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><div id="business-handoff"></div><div class="review-grid review-always-on" id="review-grid"><section class="review-panel"><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-making" role="tab" data-review-tab="making" aria-controls="review-making-panel" hidden>正在制作</button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div><div class="review-tab-panel" id="review-making-panel" role="tabpanel" aria-labelledby="review-tab-making" hidden></div></section><aside class="review-agent review-agent-always-on" id="review-agent" aria-label="项目助手"></aside></div>`;
       document.removeEventListener('visibilitychange',this.syncOnReturn);window.removeEventListener('online',this.syncOnReturn);
       document.addEventListener('visibilitychange',this.syncOnReturn);window.addEventListener('online',this.syncOnReturn);
       this.assistant.mount(this.page.querySelector<HTMLElement>('#review-agent')!,workspace);this.bind();this.renderBody();this.schedulePoll();void mountBusinessHandoff(this.api,this.page.querySelector<HTMLElement>('#business-handoff')!,this.handoffQuery,()=>this.live(),handoff=>this.adoptExternalHandoff(handoff));

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>状态优先工作台 · 已确认原型 · 合成数据</title><style>body{margin:0;color-scheme:light}.cursor-interaction{cursor:pointer}[hidden]{display:none!important}</style></head><body><script>
+const prototypePaths={grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',update:'M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9 M14 2v7h7 M8 15h8 M12 11v8',review:'M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9 M14 2v7h7 M8 15l3 3 6-6',chat:'M21 11a8 8 0 0 1-8 8H7l-5 3V11a8 8 0 0 1 8-8h3a8 8 0 0 1 8 8Z M7 10h10 M7 14h6',folder:'M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z',book:'M12 5v16 M3 3c4-1 7 0 9 2 2-2 5-3 9-2v16c-4-1-7 0-9 2-2-2-5-3-9-2V3Z',settings:'M9 3h6l1 4 4 1v7l-4 1-1 5H9l-1-5-4-1V8l4-1 1-4Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',arrow:'M4 12h16 M14 6l6 6-6 6',chevron:'M9 5l7 7-7 7',down:'M6 9l6 6 6-6',plus:'M12 5v14 M5 12h14',check:'M5 12l4 4L19 6',shield:'M12 3l8 3v6c0 5-8 10-8 10S4 17 4 12V6l8-3Z M8 12l3 3 5-6',spark:'M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z',upload:'M12 16V3 M7 8l5-5 5 5 M4 15v5h16v-5',download:'M12 3v13 M7 11l5 5 5-5 M4 17v4h16v-4',close:'M6 6l12 12 M18 6L6 18',file:'M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9 M14 2v7h7 M7 13h10 M7 17h7',clock:'M12 7v5l3 2 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',search:'M21 21l-6-6 M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',help:'M9 8a3 3 0 1 1 5 3l-2 2 M12 17h.01 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',link:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2 M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2',globe:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z',building:'M4 21V7l8-4v18 M12 9l8 3v9 M2 21h20 M7 10v1 M7 15v1 M16 14v1 M16 18v1',send:'M22 2L9 15 M22 2l-7 20-6-7-7-6 20-7Z',clip:'M8 12l7-7a4 4 0 1 1 6 6L10 22a6 6 0 0 1-8-8L13 3 M6 16l9-9a1.5 1.5 0 1 1 2 2l-9 9',menu:'M4 6h16 M4 12h16 M4 18h16',stop:'M6 6h12v12H6z',refresh:'M20 7V2 M20 7h-5 M4 17v5 M4 17h5 M4 8a8 8 0 0 1 13-4l3 3 M20 16a8 8 0 0 1-13 4l-3-3',lock:'M6 10V7a6 6 0 0 1 12 0v3 M4 10h16v12H4z M12 15v3'};
+const prototypeNames={'file-pen-line':'update','file-check-2':'review','sparkles':'spark','layout-dashboard':'grid','building-2':'building','folder-open':'folder','user-round':'settings','coins':'clock','arrow-up-right':'arrow','arrow-right':'arrow','arrow-left':'arrow','circle-alert':'help','clock-3':'clock','files':'file','file-text':'file','chevron-right':'chevron','circle-check':'check','loader-circle':'refresh','cloud-check':'check','pencil-line':'update'};
+window.lucide={createIcons(){document.querySelectorAll('i[data-lucide]').forEach(node=>{const key=prototypeNames[node.dataset.lucide]||node.dataset.lucide;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('width','16');svg.setAttribute('height','16');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.6');svg.setAttribute('aria-hidden','true');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',prototypePaths[key]||prototypePaths.file);svg.append(path);node.replaceWith(svg);});}};
+</script><div id="bb-dashboard-design">
+  <div class="approved-dashboard-prototype" aria-label="工作台布局方案" data-previous-label="上一方案" data-next-label="下一方案">
+    <section data-variant="状态优先 · 推荐" aria-label="状态优先工作台"><div class="bb-product" id="bb-state-layout"></div></section>
+  </div>
+</div>
+<style>
+#bb-dashboard-design .bb-product {
+  --bb-bg: light-dark(#f7f8f2,#171e1b); --bb-surface: light-dark(#ffffff,#202924);
+  --bb-ink: light-dark(#203c33,#e3eee6); --bb-muted: light-dark(#69766c,#a6b6aa);
+  --bb-line: light-dark(#e5e9df,#38443c); --bb-green: light-dark(#315c43,#b1d1ac);
+  --bb-soft: light-dark(#edf2e6,#2d3d30); --bb-primary: light-dark(#315c43,#b9d3ad);
+  --bb-on-primary: light-dark(#ffffff,#183421); --bb-warm: light-dark(#f7eddc,#433621);
+  --bb-warm-ink: light-dark(#805823,#edc993); --bb-error: light-dark(#a04c3f,#f3b5a7);
+  --bb-error-bg: light-dark(#fbefe9,#432c27); --bb-hover: light-dark(#fafbf7,#26312a);
+  color:var(--bb-ink); background:var(--bb-bg); font-family:"Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.5; display:grid; grid-template-columns:172px minmax(0,1fr); min-height:900px;
+  text-align:left; border:1px solid var(--bb-line); border-radius:12px; overflow:hidden;
+}
+#bb-dashboard-design .bb-product * {box-sizing:border-box;}
+#bb-dashboard-design .bb-product button,#bb-dashboard-design .bb-product input,#bb-dashboard-design .bb-product select,#bb-dashboard-design .bb-product textarea {font:inherit;}
+#bb-dashboard-design .bb-product button {color:inherit;}
+#bb-dashboard-design .bb-product h1,#bb-dashboard-design .bb-product h2,#bb-dashboard-design .bb-product h3,#bb-dashboard-design .bb-product p {margin:0;}
+#bb-dashboard-design .bb-product button:focus-visible,#bb-dashboard-design .bb-product input:focus-visible,#bb-dashboard-design .bb-product select:focus-visible,#bb-dashboard-design .bb-product textarea:focus-visible {outline:2px solid var(--bb-green);outline-offset:3px;}
+#bb-dashboard-design .bb-side {background:var(--bb-surface);border-right:1px solid var(--bb-line);padding:24px 13px 16px;display:flex;flex-direction:column;gap:22px;min-width:0;}
+#bb-dashboard-design .bb-brand {display:flex;gap:8px;align-items:center;font-size:19px;letter-spacing:-.7px;font-weight:600;}
+#bb-dashboard-design .bb-brand-mark {width:26px;height:28px;display:grid;place-items:center;background:var(--bb-primary);color:var(--bb-on-primary);border-radius:8px 2px 8px 2px;font-size:18px;}
+#bb-dashboard-design .bb-space {display:flex;align-items:center;gap:8px;font-size:12px;padding-bottom:16px;border-bottom:1px solid var(--bb-line);}
+#bb-dashboard-design .bb-space-icon {width:25px;height:25px;display:grid;place-items:center;background:var(--bb-soft);border-radius:6px;}
+#bb-dashboard-design .bb-space small {display:block;color:var(--bb-muted);font-size:11px;}
+#bb-dashboard-design .bb-nav {display:grid;gap:5px;}
+#bb-dashboard-design .bb-nav-label {margin:16px 11px 5px;font-size:11px;color:var(--bb-muted);letter-spacing:1px;}
+#bb-dashboard-design .bb-nav-button {display:flex;gap:9px;align-items:center;width:100%;border:0;border-radius:7px;background:transparent;padding:10px 10px;text-align:left;font-size:12px;}
+#bb-dashboard-design .bb-nav-button[aria-current="page"] {background:var(--bb-soft);color:var(--bb-green);font-weight:600;}
+#bb-dashboard-design .bb-nav-button:hover {background:var(--bb-soft);}
+#bb-dashboard-design .bb-product svg {flex:none;}
+#bb-dashboard-design .bb-side-bottom {margin-top:auto;display:grid;gap:13px;padding-top:24px;}
+#bb-dashboard-design .bb-credit {padding:12px;background:var(--bb-bg);border:1px solid var(--bb-line);border-radius:9px;}
+#bb-dashboard-design .bb-credit-top {font-size:11px;color:var(--bb-muted);display:flex;align-items:center;justify-content:space-between;gap:5px;}
+#bb-dashboard-design .bb-credit-value {font-size:22px;font-weight:600;letter-spacing:-.6px;font-variant-numeric:tabular-nums;margin-top:3px;}
+#bb-dashboard-design .bb-credit-value small {font-size:11px;font-weight:400;margin-left:4px;letter-spacing:0;color:var(--bb-muted);}
+#bb-dashboard-design .bb-credit-action {border:0;background:none;color:var(--bb-green);font-size:11px;padding:4px 0 0;display:flex;align-items:center;gap:4px;}
+#bb-dashboard-design .bb-identity {display:flex;align-items:center;gap:8px;font-size:12px;}
+#bb-dashboard-design .bb-avatar {height:25px;width:25px;display:grid;place-items:center;border-radius:50%;background:var(--bb-soft);font-size:11px;}
+#bb-dashboard-design .bb-identity button {margin-left:auto;padding:5px;border:0;background:transparent;color:var(--bb-muted);font-size:11px;}
+#bb-dashboard-design .bb-content {min-width:0;}
+#bb-dashboard-design .bb-topbar {padding:17px 27px;display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--bb-line);font-size:12px;min-height:57px;}
+#bb-dashboard-design .bb-demo {font-size:11px;color:var(--bb-muted);margin-right:82px;}
+#bb-dashboard-design .bb-mobile-credit {display:none;}
+#bb-dashboard-design .bb-main {padding:28px 27px 22px;}
+#bb-dashboard-design .bb-heading {margin-bottom:23px;}
+#bb-dashboard-design .bb-heading h1 {font-size:27px;letter-spacing:-.8px;font-weight:600;line-height:1.25;margin-bottom:8px;}
+#bb-dashboard-design .bb-heading p {font-size:13px;color:var(--bb-muted);}
+#bb-dashboard-design .bb-overview {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:21px;}
+#bb-dashboard-design .bb-summary {position:relative;display:block;width:100%;padding:17px 16px;background:var(--bb-surface);border:1px solid var(--bb-line);border-radius:10px;text-align:left;}
+#bb-dashboard-design .bb-summary[aria-pressed="true"] {border-color:var(--bb-green);box-shadow:inset 0 -2px var(--bb-green);}
+#bb-dashboard-design .bb-summary:hover {background:var(--bb-hover);}
+#bb-dashboard-design .bb-summary-label {display:flex;align-items:center;gap:7px;font-size:12px;color:var(--bb-muted);}
+#bb-dashboard-design .bb-summary-value {font-size:29px;font-weight:600;line-height:1.25;letter-spacing:-.9px;display:block;margin:9px 0 6px;}
+#bb-dashboard-design .bb-summary-sub {font-size:11px;color:var(--bb-muted);display:block;}
+#bb-dashboard-design .bb-summary-arrow {position:absolute;top:18px;right:13px;color:var(--bb-muted);}
+#bb-dashboard-design .bb-start {display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:25px;}
+#bb-dashboard-design .bb-start-title {font-size:12px;color:var(--bb-muted);margin-right:4px;}
+#bb-dashboard-design .bb-action {border:1px solid var(--bb-line);border-radius:7px;background:var(--bb-surface);padding:8px 11px;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;font-size:12px;}
+#bb-dashboard-design .bb-action:hover {background:var(--bb-soft);}
+#bb-dashboard-design .bb-action.bb-primary {background:var(--bb-primary);color:var(--bb-on-primary);border-color:var(--bb-primary);}
+#bb-dashboard-design .bb-link {display:inline-flex;align-items:center;gap:5px;border:0;padding:5px 0;background:none;font-size:12px;white-space:nowrap;color:var(--bb-green);}
+#bb-dashboard-design .bb-panel {background:var(--bb-surface);border:1px solid var(--bb-line);border-radius:11px;overflow:hidden;}
+#bb-dashboard-design .bb-panel-head {padding:17px 17px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+#bb-dashboard-design .bb-panel-head h2 {font-size:16px;font-weight:600;}
+#bb-dashboard-design .bb-panel-head small {font-size:11px;font-weight:400;color:var(--bb-muted);margin-left:8px;}
+#bb-dashboard-design .bb-toolbar {padding:15px 17px 13px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;}
+#bb-dashboard-design .bb-types {display:flex;gap:3px;flex-wrap:wrap;}
+#bb-dashboard-design .bb-type {border:0;background:transparent;padding:5px 8px;font-size:12px;color:var(--bb-muted);border-radius:5px;white-space:nowrap;}
+#bb-dashboard-design .bb-type[aria-pressed="true"] {color:var(--bb-green);background:var(--bb-soft);font-weight:600;}
+#bb-dashboard-design .bb-select {background:var(--bb-surface);color:var(--bb-muted);border:1px solid var(--bb-line);padding:5px 6px;border-radius:6px;font-size:11px;max-width:100%;}
+#bb-dashboard-design .bb-table-head {display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) 78px;gap:15px;background:var(--bb-bg);border-top:1px solid var(--bb-line);border-bottom:1px solid var(--bb-line);padding:9px 17px;color:var(--bb-muted);font-size:11px;}
+#bb-dashboard-design .bb-row {display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) 78px;gap:15px;padding:var(--bb-row-pad,17px) 17px;align-items:center;border-bottom:1px solid var(--bb-line);}
+#bb-dashboard-design .bb-row:last-child {border-bottom:0;}
+#bb-dashboard-design .bb-row:hover {background:var(--bb-hover);}
+#bb-dashboard-design .bb-task-title {padding:0;border:0;background:none;font-size:13px;font-weight:500;text-align:left;display:block;overflow-wrap:anywhere;}
+#bb-dashboard-design .bb-task-title:hover {text-decoration:underline;text-underline-offset:3px;}
+#bb-dashboard-design .bb-task-meta {display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--bb-muted);margin-top:5px;}
+#bb-dashboard-design .bb-task-type {display:inline-flex;align-items:center;gap:4px;color:var(--bb-green);}
+#bb-dashboard-design .bb-task-type svg {width:12px;height:12px;}
+#bb-dashboard-design .bb-task-time {font-size:11px;color:var(--bb-muted);}
+#bb-dashboard-design .bb-badge {display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 7px;border-radius:5px;background:var(--bb-soft);color:var(--bb-green);}
+#bb-dashboard-design .bb-badge.bb-running {background:var(--bb-soft);}
+#bb-dashboard-design .bb-badge.bb-queued,#bb-dashboard-design .bb-badge.bb-draft {background:var(--bb-warm);color:var(--bb-warm-ink);}
+#bb-dashboard-design .bb-badge.bb-failed {background:var(--bb-error-bg);color:var(--bb-error);}
+#bb-dashboard-design .bb-stage {display:block;color:var(--bb-muted);font-size:11px;margin-top:5px;overflow-wrap:anywhere;}
+#bb-dashboard-design .bb-row-action {font-size:12px;display:flex;align-items:center;gap:3px;justify-content:flex-end;border:0;padding:8px 0;background:none;color:var(--bb-green);white-space:nowrap;}
+#bb-dashboard-design .bb-list-footer {padding:11px 17px;border-top:1px solid var(--bb-line);display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--bb-muted);font-size:11px;}
+#bb-dashboard-design .bb-no-results {padding:42px 18px;text-align:center;color:var(--bb-muted);font-size:13px;}
+#bb-dashboard-design .bb-footnote {color:var(--bb-muted);font-size:11px;margin-top:15px;display:flex;gap:5px;align-items:center;}
+#bb-dashboard-design .bb-status-tabs {display:flex;gap:5px;padding:14px 17px 0;flex-wrap:wrap;}
+#bb-dashboard-design .bb-status-tab {background:transparent;border:0;border-bottom:2px solid transparent;padding:7px 8px;font-size:12px;color:var(--bb-muted);}
+#bb-dashboard-design .bb-status-tab[aria-pressed="true"] {border-bottom-color:var(--bb-green);color:var(--bb-green);font-weight:600;}
+#bb-dashboard-design .bb-status-tab span {font-size:11px;margin-left:5px;}
+#bb-dashboard-design .bb-back {margin-bottom:19px;}
+#bb-dashboard-design .bb-detail-head {display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:21px;}
+#bb-dashboard-design .bb-detail-head h1 {font-size:24px;font-weight:600;line-height:1.4;letter-spacing:-.5px;}
+#bb-dashboard-design .bb-detail-head p {font-size:12px;color:var(--bb-muted);margin-top:7px;}
+#bb-dashboard-design .bb-detail-section {background:var(--bb-surface);border:1px solid var(--bb-line);padding:21px;border-radius:10px;margin-bottom:15px;}
+#bb-dashboard-design .bb-detail-section h2 {font-size:16px;font-weight:600;margin-bottom:15px;}
+#bb-dashboard-design .bb-detail-section p {color:var(--bb-muted);font-size:13px;line-height:1.8;}
+#bb-dashboard-design .bb-file {padding:15px 0;display:flex;align-items:center;justify-content:space-between;gap:13px;border-bottom:1px solid var(--bb-line);}
+#bb-dashboard-design .bb-file:last-child {border-bottom:0;}
+#bb-dashboard-design .bb-file-name {display:flex;align-items:center;gap:10px;min-width:0;}
+#bb-dashboard-design .bb-file-name strong {display:block;font-size:13px;font-weight:500;overflow-wrap:anywhere;}
+#bb-dashboard-design .bb-file-name small {font-size:11px;color:var(--bb-muted);}
+#bb-dashboard-design .bb-report {padding:14px 0;border-bottom:1px solid var(--bb-line);}
+#bb-dashboard-design .bb-report:last-child {border-bottom:0;}
+#bb-dashboard-design .bb-report strong {font-size:13px;display:block;margin-bottom:5px;font-weight:500;}
+#bb-dashboard-design .bb-report p {font-size:12px;}
+#bb-dashboard-design .bb-timeline {list-style:none;padding:0;margin:0;}
+#bb-dashboard-design .bb-timeline li {display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--bb-line);}
+#bb-dashboard-design .bb-timeline li:last-child {border:0;}
+#bb-dashboard-design .bb-timeline small {display:block;color:var(--bb-muted);font-size:11px;margin-top:4px;}
+#bb-dashboard-design .bb-timeline span {font-size:13px;}
+#bb-dashboard-design .bb-timeline svg {margin-top:2px;color:var(--bb-green);}
+#bb-dashboard-design .bb-field {display:block;font-size:12px;margin:14px 0;}
+#bb-dashboard-design .bb-field input,#bb-dashboard-design .bb-field select,#bb-dashboard-design .bb-field textarea {width:100%;display:block;margin-top:7px;padding:10px;border:1px solid var(--bb-line);border-radius:7px;background:var(--bb-bg);color:var(--bb-ink);font-size:13px;}
+#bb-dashboard-design .bb-field textarea {min-height:94px;resize:vertical;}
+#bb-dashboard-design .bb-upload {border:1px dashed var(--bb-line);background:var(--bb-bg);padding:28px 16px;border-radius:8px;text-align:center;margin:16px 0;}
+#bb-dashboard-design .bb-message {background:var(--bb-soft);border-radius:7px;padding:12px 14px;color:var(--bb-green);font-size:12px;margin-top:15px;}
+#bb-dashboard-design .bb-message:empty {display:none;}
+#bb-dashboard-design .bb-split-fields {display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:800px){
+ #bb-dashboard-design .bb-product{grid-template-columns:145px minmax(0,1fr);}
+ #bb-dashboard-design .bb-side{padding:22px 9px 15px;}
+ #bb-dashboard-design .bb-brand{font-size:16px;gap:6px;}
+ #bb-dashboard-design .bb-main{padding:25px 18px 20px;}
+ #bb-dashboard-design .bb-topbar{padding-left:18px;padding-right:18px;}
+ #bb-dashboard-design .bb-overview{gap:8px;}
+ #bb-dashboard-design .bb-summary{padding:14px 11px;}
+ #bb-dashboard-design .bb-summary-sub{font-size:11px;}
+ #bb-dashboard-design .bb-summary-arrow{display:none;}
+ #bb-dashboard-design .bb-row,#bb-dashboard-design .bb-table-head{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) 72px;gap:9px;padding-left:12px;padding-right:12px;}
+}
+@media(max-width:630px){
+ #bb-dashboard-design .bb-product{grid-template-columns:minmax(0,1fr);min-height:1100px;}
+ #bb-dashboard-design .bb-side{display:none;}
+ #bb-dashboard-design .bb-mobile-credit{display:inline-flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;}
+ #bb-dashboard-design .bb-demo{margin-right:0;}
+ #bb-dashboard-design .bb-topbar{flex-wrap:wrap;gap:8px;padding-right:98px;}
+ #bb-dashboard-design .bb-main{padding:24px 14px 18px;}
+ #bb-dashboard-design .bb-heading h1{font-size:24px;}
+ #bb-dashboard-design .bb-start{gap:7px;}
+ #bb-dashboard-design .bb-start-title{width:100%;}
+ #bb-dashboard-design .bb-action{padding:9px 8px;}
+ #bb-dashboard-design .bb-table-head{display:none;}
+ #bb-dashboard-design .bb-row{grid-template-columns:minmax(0,1fr) auto;gap:7px 10px;padding:17px 14px;}
+ #bb-dashboard-design .bb-row-info{grid-column:1 / -1;}
+ #bb-dashboard-design .bb-row-state{grid-column:1;}
+ #bb-dashboard-design .bb-row-action{grid-column:2;align-self:end;}
+ #bb-dashboard-design .bb-summary{padding:14px 9px;}
+ #bb-dashboard-design .bb-summary-label{gap:4px;}
+ #bb-dashboard-design .bb-summary-sub{font-size:11px;line-height:1.6;}
+ #bb-dashboard-design .bb-overview{gap:7px;}
+ #bb-dashboard-design .bb-summary-value{font-size:25px;}
+ #bb-dashboard-design .bb-panel-head{padding:16px 13px 0;}
+ #bb-dashboard-design .bb-panel-head small{display:none;}
+ #bb-dashboard-design .bb-toolbar{padding:12px 10px;}
+ #bb-dashboard-design .bb-type{padding:7px 6px;}
+ #bb-dashboard-design .bb-file{align-items:flex-start;flex-wrap:wrap;}
+ #bb-dashboard-design .bb-file .bb-action{margin-left:26px;}
+ #bb-dashboard-design .bb-detail-head{flex-wrap:wrap;}
+ #bb-dashboard-design .bb-detail-section{padding:17px 14px;}
+ #bb-dashboard-design .bb-split-fields{grid-template-columns:1fr;gap:0;}
+ #bb-dashboard-design .bb-field input,#bb-dashboard-design .bb-field textarea,#bb-dashboard-design .bb-field select{font-size:16px;}
+}
+@media(pointer:coarse){#bb-dashboard-design .bb-product button,#bb-dashboard-design .bb-product select{min-height:44px;}}
+</style>
+<script>
+(() => {
+ const root = document.getElementById('bb-dashboard-design');
+ const taskTypes = {update:{label:'募集书更新',action:'更新募集书',icon:'file-pen-line'},review:{label:'募集书复核',action:'复核募集书',icon:'file-check-2'},generate:{label:'材料生成',action:'生成材料',icon:'sparkles'}};
+ const tasks = [
+  {id:'t1',type:'generate',title:'主承销商核查意见',issuer:'澄川实业',market:'上交所',status:'done',statusText:'已完成',detail:'Word 文档已生成',time:'今天 14:32',material:'主承销商核查意见'},
+  {id:'t2',type:'review',title:'澄川实业 · 募集说明书复核',issuer:'澄川实业',market:'上交所',status:'queued',statusText:'排队中',detail:'等待执行 · 14:25 提交',time:'今天 14:25'},
+  {id:'t3',type:'update',title:'云岚科技 · 2026 年公司债',issuer:'云岚科技',market:'深交所',status:'running',statusText:'编制中',detail:'正在编制正文 · 14:18 开始',time:'今天 14:24'},
+  {id:'t4',type:'update',title:'启源实业 · 三季度更新',issuer:'启源实业',market:'上交所',status:'failed',statusText:'本次未完成',detail:'执行中断，可查看原因',time:'今天 13:58'},
+  {id:'t5',type:'review',title:'云岚科技 · 募集说明书复核',issuer:'云岚科技',market:'深交所',status:'done',statusText:'已完成',detail:'三类复核结果可查看',time:'今天 13:40'},
+  {id:'t6',type:'update',title:'澄川实业 · 三季度更新',issuer:'澄川实业',market:'上交所',status:'done',statusText:'已完成',detail:'修订版、清洁版 Word 已生成',time:'今天 12:26'},
+  {id:'t7',type:'generate',title:'法律意见书',issuer:'启源实业',market:'深交所',status:'draft',statusText:'草稿',detail:'已保存，可继续填写',time:'昨天 17:10',material:'法律意见书'}
+ ];
+ const groups={all:'全部状态',attention:'待处理',active:'进行中',done:'已完成'};
+ const inGroup=(task,group)=>group==='all'||(group==='attention'?['failed','draft'].includes(task.status):group==='active'?['running','queued'].includes(task.status):task.status==='done');
+ const ic=(name)=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
+ const esc=(v)=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const views=[];
+ function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});}
+ function save(){if(!window.openai?.setWidgetState)return;const state=views.map(v=>({type:v.type,group:v.group,selected:v.selected,density:v.density}));window.openai.setWidgetState({modelContent:{design:'BondBuddy 工作台：统一三类任务，按状态给出下一步操作',selectedTasks:views.map(v=>v.selected).filter(Boolean)},privateContent:{version:1,views:state}}).catch(()=>{});}
+ function restore(data){if(data?.privateContent?.version!==1)return;data.privateContent.views?.forEach((s,i)=>{if(!views[i])return;const v=views[i];if(s.type==='all'||taskTypes[s.type])v.type=s.type;if(groups[s.group])v.group=s.group;if(s.selected===null||s.selected==='account'||tasks.some(t=>t.id===s.selected)||['new-update','new-review','new-generate'].includes(s.selected))v.selected=s.selected;if(['舒展','紧凑'].includes(s.density))v.density=s.density;});}
+ function shell(v){
+  v.el.innerHTML=`<aside class="bb-side" aria-label="主导航"><div class="bb-brand"><span class="bb-brand-mark">b</span>bondbuddy</div><div class="bb-space"><span class="bb-space-icon">${ic('building-2')}</span><div>我的工作空间<small>个人空间</small></div></div><nav class="bb-nav"><button class="bb-nav-button cursor-interaction" data-action="home" aria-current="page">${ic('layout-dashboard')}工作台</button><div class="bb-nav-label">开始工作</div>${Object.entries(taskTypes).map(([k,t])=>`<button class="bb-nav-button cursor-interaction" data-new="${k}">${ic(t.icon)}${t.action}</button>`).join('')}<div class="bb-nav-label">工作空间</div><button class="bb-nav-button cursor-interaction" data-action="all">${ic('folder-open')}全部项目</button></nav><div class="bb-side-bottom"><button class="bb-nav-button cursor-interaction" data-action="account">${ic('user-round')}我的账号</button><div class="bb-credit"><div class="bb-credit-top">可用积分${ic('coins')}</div><div class="bb-credit-value">86,000<small>积分</small></div><button class="bb-credit-action cursor-interaction" data-action="account">充值与明细 ${ic('arrow-up-right')}</button></div><div class="bb-identity"><span class="bb-avatar">M</span><span>示例账号</span><button class="cursor-interaction" data-action="logout">退出</button></div></div></aside><div class="bb-content"><div class="bb-topbar"><span class="bb-breadcrumb">工作台</span><span class="bb-mobile-credit">${ic('coins')}86,000 积分</span><span class="bb-demo">设计预览 · 示例数据</span></div><main class="bb-main"></main></div>`;
+  v.main=v.el.querySelector('.bb-main');
+  v.el.addEventListener('click',event=>{const b=event.target.closest('button');if(!b||!v.el.contains(b))return;if(b.dataset.task){v.selected=b.dataset.task;render(v);save();return;}if(b.dataset.group){v.group=v.group===b.dataset.group?'all':b.dataset.group;v.selected=null;render(v);save();return;}if(b.dataset.type){v.type=b.dataset.type;render(v);save();return;}if(b.dataset.new){v.selected='new-'+b.dataset.new;render(v);save();return;}const action=b.dataset.action;if(action==='home'||action==='back'){v.selected=null;render(v);save();}else if(action==='all'){v.selected=null;v.type='all';v.group='all';render(v);announce(v,'这里展示全部 7 项示例任务；正式页面进入“全部项目”，保留三类任务。');save();}else if(action==='download'){announce(v,'当前为设计预览。正式页面将在此下载该任务的 Word 文件。');}else if(action==='account'){v.selected='account';render(v);save();}else if(action==='next'){announce(v,'正式页面继续到材料上传，完成后展示积分报价并明确开始任务。');}else if(action==='retry'){announce(v,'正式页面在此确认输入与费用，再重新提交。本次预览不会运行任务。');}else if(action==='logout'){announce(v,'这是示例账号，未执行真实退出。');}});
+  v.el.addEventListener('change',event=>{if(event.target.matches('[data-status-select]')){v.group=event.target.value;render(v);save();}});
+ }
+ function announce(v,text){let box=v.main.querySelector('.bb-message');if(!box){box=document.createElement('div');box.className='bb-message';box.setAttribute('role','status');v.main.append(box);}box.textContent=text;}
+ function statusBadge(t){const symbol={done:'check',running:'loader-circle',queued:'clock-3',draft:'pencil-line',failed:'circle-alert'}[t.status];return `<span class="bb-badge bb-${t.status}">${ic(symbol)}${t.statusText}</span>`;}
+ function actionLabel(t){return t.status==='done'?'查看结果':['running','queued'].includes(t.status)?'查看进度':t.status==='draft'?'继续填写':'查看原因';}
+ function list(v){
+ const filtered=tasks.filter(t=>(v.type==='all'||t.type===v.type)&&inGroup(t,v.group));
+ return `<section class="bb-panel" aria-label="任务列表"><div class="bb-panel-head"><h2>${v.group==='all'?'最近任务':groups[v.group]}<small>${filtered.length} 项</small></h2><button class="bb-link cursor-interaction" data-action="all">全部项目 ${ic('arrow-right')}</button></div>${v.compact?`<div class="bb-status-tabs" aria-label="按状态筛选">${Object.entries(groups).map(([g,label])=>`<button class="bb-status-tab cursor-interaction" data-group="${g}" aria-pressed="${v.group===g}">${g==='all'?'全部':label}<span>${tasks.filter(t=>inGroup(t,g)).length}</span></button>`).join('')}</div>`:''}<div class="bb-toolbar"><div class="bb-types" aria-label="按任务类型筛选">${[['all','全部类型'],...Object.entries(taskTypes).map(([k,t])=>[k,t.label])].map(([k,label])=>`<button class="bb-type cursor-interaction" data-type="${k}" aria-pressed="${v.type===k}">${label}</button>`).join('')}</div>${v.compact?'':`<select class="bb-select" aria-label="任务状态" data-status-select>${Object.entries(groups).map(([g,label])=>`<option value="${g}" ${g===v.group?'selected':''}>${label}</option>`).join('')}</select>`}</div><div class="bb-table-head"><span>任务 / 项目</span><span>当前状态</span><span style="text-align:right">操作</span></div><div aria-live="polite">${filtered.length?filtered.map(t=>`<article class="bb-row"><div class="bb-row-info"><button class="bb-task-title cursor-interaction" data-task="${t.id}">${esc(t.title)}</button><div class="bb-task-meta"><span class="bb-task-type">${ic(taskTypes[t.type].icon)}${taskTypes[t.type].label}</span><span>· ${esc(t.market)}</span>${t.type==='generate'?`<span>· ${esc(t.issuer)}</span>`:''}</div></div><div class="bb-row-state">${statusBadge(t)}<span class="bb-stage">${esc(t.detail)}</span></div><button class="bb-row-action cursor-interaction" data-task="${t.id}" aria-label="${actionLabel(t)}：${esc(t.title)}">${actionLabel(t)}${ic('chevron-right')}</button></article>`).join(''):'<div class="bb-no-results">没有符合此筛选的任务</div>'}</div><div class="bb-list-footer"><span>按最近更新时间排序</span><span>显示 ${filtered.length} 项</span></div></section>`;
+ }
+ function home(v){
+ return `<header class="bb-heading"><h1>工作台</h1><p>继续手上的任务，查看生成结果。</p></header>${v.compact?'':`<div class="bb-overview" aria-label="任务状态概览">${[['attention','待处理','circle-alert','草稿 1 · 失败 1'],['active','进行中','clock-3','执行 1 · 排队 1'],['done','已完成','files','可查看与下载']].map(([g,title,icon,sub])=>`<button class="bb-summary cursor-interaction" data-group="${g}" aria-pressed="${v.group===g}"><span class="bb-summary-label">${ic(icon)}${title}</span><span class="bb-summary-value">${tasks.filter(t=>inGroup(t,g)).length}</span><span class="bb-summary-sub">${sub}</span><span class="bb-summary-arrow">${ic('arrow-up-right')}</span></button>`).join('')}</div>`}<div class="bb-start"><span class="bb-start-title">开始新任务</span>${Object.entries(taskTypes).map(([k,t])=>`<button class="bb-action cursor-interaction" data-new="${k}">${ic(t.icon)}${t.action}</button>`).join('')}</div>${list(v)}<div class="bb-footnote">${ic('cloud-check')}任务在后台持续执行，离开页面也会继续。</div>`;
+ }
+ function detail(v,t){
+ let content='';
+ if(t.status==='done'){
+  if(t.type==='review')content=`<section class="bb-detail-section"><h2>复核结果</h2><div class="bb-report"><strong>财务数据</strong><p>示例：现金流量表与正文引用金额存在差异，需核对经营活动现金流量净额。</p></div><div class="bb-report"><strong>合规与格式</strong><p>示例：部分章节交叉引用未随目录调整，需同步更新。</p></div><div class="bb-report"><strong>公开信息</strong><p>示例：主体评级披露时间早于最新公告，建议核实后更新。</p></div></section>`;
+  const files=t.type==='update'?['修订版募集说明书.docx','清洁版募集说明书.docx']:t.type==='generate'?[t.material+'.docx']:['募集说明书复核报告.docx'];
+  content+=`<section class="bb-detail-section"><h2>${t.type==='review'?'下载报告':'下载成果'}</h2>${files.map(f=>`<div class="bb-file"><div class="bb-file-name">${ic('file-text')}<div><strong>${esc(f)}</strong><small>${esc(t.issuer)} · ${t.time} 生成</small></div></div><button class="bb-action cursor-interaction" data-action="download">${ic('download')}下载 Word</button></div>`).join('')}</section>`;
+ }else if(['running','queued'].includes(t.status)){
+  content=`<section class="bb-detail-section"><h2>${t.status==='running'?'正在编制正文':'任务已提交，等待执行'}</h2><ol class="bb-timeline"><li>${ic('circle-check')}<div><span>任务已提交</span><small>材料与要求已保存</small></div></li><li>${ic(t.status==='running'?'circle-check':'clock-3')}<div><span>${t.status==='running'?'开始编制':'等待执行'}</span><small>${t.status==='running'?'今天 14:18 开始':'今天 14:25 提交，尚未开始处理'}</small></div></li>${t.status==='running'?`<li>${ic('loader-circle')}<div><span>正在编制正文</span><small>最新进度：今天 14:24</small></div></li>`:''}</ol><p style="margin-top:15px">可以离开本页，任务会继续。完成后在此查看结果。</p></section>`;
+ }else if(t.status==='draft'){
+  content=`<section class="bb-detail-section"><h2>继续填写材料信息</h2><label class="bb-field">材料类型<input value="${esc(t.material)}" readonly></label><label class="bb-field">交易所<select><option>${t.market}</option><option>${t.market==='深交所'?'上交所':'深交所'}</option></select></label><label class="bb-field">补充要求与说明（选填）<textarea placeholder="补充本次材料编制的要求"></textarea></label><button class="bb-action bb-primary cursor-interaction" data-action="next">继续上传材料 ${ic('arrow-right')}</button></section>`;
+ }else{
+  content=`<section class="bb-detail-section"><h2>本次执行中断</h2><p>示例原因：执行服务连接中断，本次尚未生成 Word 成果。已上传材料和补充说明仍保留。</p><div style="margin-top:18px"><button class="bb-action bb-primary cursor-interaction" data-action="retry">查看输入并重新提交 ${ic('arrow-right')}</button></div></section>`;
+ }
+ return `<button class="bb-link bb-back cursor-interaction" data-action="back">${ic('arrow-left')}返回工作台</button><header class="bb-detail-head"><div><h1>${esc(t.title)}</h1><p>${taskTypes[t.type].label} · ${esc(t.issuer)} · ${esc(t.market)} · ${t.time}</p></div>${statusBadge(t)}</header>${content}<div class="bb-message" role="status"></div>`;
+ }
+ function newTask(v,type){const t=taskTypes[type];return `<button class="bb-link bb-back cursor-interaction" data-action="back">${ic('arrow-left')}返回工作台</button><header class="bb-heading"><h1>${t.action}</h1><p>新任务 · 填写信息</p></header><section class="bb-detail-section"><h2>基本信息</h2><label class="bb-field">项目名称<input placeholder="例如：澄川实业 2026 年公司债"></label>${type==='generate'?`<div class="bb-split-fields"><label class="bb-field">材料类型<select><option>主承销商核查意见</option><option>法律意见书</option><option>募集说明书摘要</option><option>立项报告</option></select></label><label class="bb-field">交易所<select><option>上交所</option><option>深交所</option></select></label></div>`:`<label class="bb-field">发行人<input placeholder="填写企业全称"></label>`}<button class="bb-action bb-primary cursor-interaction" data-action="next">下一步：上传材料 ${ic('arrow-right')}</button></section><div class="bb-message" role="status"></div>`;}
+ function account(v){return `<button class="bb-link bb-back cursor-interaction" data-action="back">${ic('arrow-left')}返回工作台</button><header class="bb-heading"><h1>我的账号</h1><p>账号设置、积分与充值集中在这里。</p></header><section class="bb-detail-section"><h2>可用积分</h2><div class="bb-credit-value">86,000 <small>积分 · 示例余额</small></div><p style="margin-top:15px">各任务的积分报价在开始前展示，历史扣费可在积分明细查看。</p></section>`;}
+ function render(v){v.el.style.setProperty('--bb-row-pad',v.density==='紧凑'?'12px':'17px');const t=tasks.find(t=>t.id===v.selected);v.main.innerHTML=t?detail(v,t):v.selected?.startsWith('new-')?newTask(v,v.selected.slice(4)):v.selected==='account'?account(v):home(v);v.el.querySelector('.bb-breadcrumb').textContent=t?`工作台 / ${taskTypes[t.type].label} / ${actionLabel(t)}`:v.selected?.startsWith('new-')?'工作台 / 新任务':v.selected==='account'?'工作台 / 我的账号':'工作台';v.main.querySelectorAll('.bb-row').forEach(row=>{const task=tasks.find(item=>item.id===row.querySelector('[data-task]')?.dataset.task);if(task){const time=document.createElement('span');time.className='bb-task-time';time.textContent='· '+task.time;time.setAttribute('aria-label','最近更新 '+task.time);row.querySelector('.bb-task-meta').append(time);}});icons();}
+ ['bb-state-layout'].forEach((id,i)=>{const v={el:document.getElementById(id),compact:i===1,type:'all',group:'all',selected:null,density:'舒展'};views.push(v);shell(v);});
+ restore(window.openai?.widgetState);views.forEach(render);
+ window.addEventListener('openai:set_globals',event=>{if(event.detail?.globals?.widgetState){restore(event.detail.globals.widgetState);views.forEach(render);}});
+ if(globalThis.Tweak)views.forEach(v=>{const tweak=new Tweak({container:v.el,onChange:()=>{render(v);save();}});tweak.addSelect(v,'density',{label:'列表密度',options:['舒展','紧凑']});});
+})();
+</script>
+</body></html>
