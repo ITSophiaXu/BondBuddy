@@ -30,7 +30,7 @@ export async function renderDataPolicyPage(api: ApiClient, shell: (content: stri
 export function bindDeletionActions(api: ApiClient, projectId: string, done: { material: () => void; project: () => void; error: (error: unknown) => void }) {
   document.querySelector('#materials-title')?.closest('section')?.addEventListener('click', event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-delete-material]');
-    if (!button || !window.confirm('删除后这份材料立即无法访问，原件和衍生内容会按数据说明中的时限清理，无法恢复。确定删除吗？')) return;
+    if (!button || button.matches(':disabled') || !window.confirm('删除后这份材料立即无法访问，原件和衍生内容会按数据说明中的时限清理，无法恢复。确定删除吗？')) return;
     button.disabled = true;
     api.deleteMaterial(projectId, button.dataset.deleteMaterial!).then(done.material, error => { button.disabled = false; done.error(error); });
   });

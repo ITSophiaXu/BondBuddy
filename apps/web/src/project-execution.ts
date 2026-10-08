@@ -76,9 +76,9 @@ export function readinessMessage(reason: string): string {
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
-  if (reason === 'authoring_issuer_materials_required') return '请补充目标发行人的材料；其他企业的参考稿不能代替目标企业事实。保存后停止本次任务，再以新输入重新编制。';
+  if (reason === 'authoring_issuer_materials_required') return '请先停止本次任务并点击“继续修改”，补充目标发行人的材料后重新编制；其他企业的参考稿不能代替目标企业事实。';
   if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
-  if (reason === 'authoring_material_unreadable') return '有材料无法读取，请查看材料区，替换文件后以新输入重新编制。';
+  if (reason === 'authoring_material_unreadable') return '有材料无法读取，请先停止本次任务并点击“继续修改”，替换文件后重新编制。';
   if (reason === 'authoring_no_verified_changes') return '本轮未形成有依据的正文修改，尚未交付新成果。请核对本次材料和更新要求。';
   if (runtimeMessage(reason)) return runtimeMessage(reason)!;
   if (reason === 'TRIAL_ACCESS_DENIED') return '当前账号的试用权限已停用，请联系支持。';
@@ -153,6 +153,9 @@ export class ProjectExecution {
     private initialNotice = '') {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
+  get materialsEditable() {
+    return this.active && !this.restoring && !this.inputReadUncertain && !this.starting && !this.busy && (!this.run || this.nextRequested);
+  }
   /** The persisted project kind decides the task kind, including an explicit server-side conversion. */
   private get taskKind(): ExecutionTaskKind { return executionTaskKind(this.draft.project.kind); }
   mount(host: HTMLElement, actions: HTMLElement) {
@@ -265,6 +268,20 @@ export class ProjectExecution {
   private render() {
     if (!this.active) return;
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
+    const materialsLocked = Boolean(this.run && !this.nextRequested);
+    const materialDetails = document.querySelector<HTMLElement>('#project-materials-details');
+    if (materialDetails) {
+      materialDetails.classList.toggle('materials-readonly', materialsLocked);
+      materialDetails.querySelector<HTMLFieldSetElement>('#material-editing')!.disabled = !this.materialsEditable;
+      materialDetails.querySelector('#materials-state-label')!.textContent = materialsLocked ? '材料已锁定，仅可查看' : this.nextRequested ? '为下一轮补充材料' : '开始编制前可补充';
+      materialDetails.querySelector('#materials-title')!.textContent = materialsLocked ? '查看项目材料' : '提供项目材料';
+      materialDetails.querySelector('#materials-state-description')!.textContent = materialsLocked
+        ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : '本次编制材料已锁定。需要补充材料时，请点击“继续修改”，用于下一轮编制。'
+        : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始编制前补齐材料；开始后材料锁定，仅可查看。';
+      materialDetails.querySelectorAll('.material-subtypes>summary').forEach(summary => {
+        summary.textContent = materialsLocked ? '按细分类别查看材料' : '按细分类别补充材料（选填）';
+      });
+    }
     this.conversation.setEditingVisible(!this.restoring && !activeRun && (!this.run || this.nextRequested));
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const blocked = this.startBlockReason();
@@ -320,10 +337,10 @@ export class ProjectExecution {
         ? this.charge?.quote && this.charge.state ? `本次 ${this.charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已预留，交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[this.charge.state]}`
           : this.chargeError ? '本次积分状态暂未同步。' : '正在读取本次积分状态…'
         : '本次任务按提交时的试用规则执行，不扣积分。'}${run.billing_mode==='fixed_credits' ? '<button type="button" class="text-button" id="refresh-run-charge">刷新积分状态</button>' : ''}</p>
-      <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
+      <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
       <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
-          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
+          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
     this.host.querySelector('#refresh-run-charge')?.addEventListener('click', () => { void this.loadCharge(); });
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume']] as const) {

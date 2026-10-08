@@ -244,6 +244,73 @@ test('ready input saves, preflights and executes through one explicit action', a
   await expect(page.getByRole('button',{name:'检查已保存版本'})).toHaveCount(0);
 });
 
+test('authoring materials stay read-only after starting until an explicit next version', async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runState = 'running'; state.runStage = 'generation';
+  state.project.update_details!.authoring_mode = 'unified_v1';
+  await setup(page, state);
+  const picker = page.locator('#upload-audit');
+  const source = page.locator('[data-source-field="issuer_name"]');
+  const capture = async (name: string) => {
+    if (!process.env.BB_MATERIAL_LOCK_EVIDENCE_DIR) return;
+    const output = resolve(process.env.BB_MATERIAL_LOCK_EVIDENCE_DIR); await mkdir(output, { recursive: true });
+    for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({ width, height });
+      await page.locator('#materials-title').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(output, `${name}-${device}.png`) });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  };
+  await expect(picker).toBeEnabled();
+  await expect(page.locator('#materials-state-description')).toContainText('开始后材料锁定，仅可查看');
+  await capture('preparing');
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#project-materials-details')).toHaveClass(/materials-readonly/);
+  await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await expect(page.locator('#materials-state-label')).toHaveText('材料已锁定，仅可查看');
+  await expect(page.locator('#materials-title')).toHaveText('查看项目材料');
+  await expect(picker).toBeDisabled();
+  await expect(picker.locator('..')).toBeHidden();
+  await expect(source).toBeDisabled();
+  await expect(page.locator('[data-delete-material]').first()).toBeHidden();
+  await expect(page.locator('.material-footnote')).toBeHidden();
+  const writes: string[] = [];
+  page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/v1/')) writes.push(request.method() + ' ' + new URL(request.url()).pathname); });
+  // Refresh replaces material rows; native fieldset locking must survive that replacement.
+  await page.getByRole('button', { name: '刷新已保存材料', exact: true }).click();
+  await expect(page.locator('#material-recovery-status')).toContainText('已恢复');
+  await expect(source).toBeDisabled();
+  await expect(page.locator('[data-delete-material]').first()).toBeDisabled();
+  // A late file-chooser event or a drop must not enqueue a file after the run starts.
+  await picker.setInputFiles({ name: 'late-audit.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic') });
+  await page.locator('.material-picker').first().dispatchEvent('drop');
+  await source.dispatchEvent('change');
+  await page.locator('[data-delete-material]').first().dispatchEvent('click');
+  expect(writes).toEqual([]);
+  await expect(page.locator('#material-partitions')).not.toContainText('late-audit.txt');
+  await capture('running');
+  await page.reload();
+  await expect(page.locator('#project-materials-details')).toHaveClass(/materials-readonly/);
+  await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await expect(picker).toBeDisabled();
+  const run = [...state.runs.values()][0];
+  for (const status of ['paused', 'awaiting_input', 'cancelled'] as const) {
+    run.state = status;
+    await page.getByRole('button', { name: '重新读取', exact: true }).click();
+    await expect(page.locator('#material-editing')).toHaveJSProperty('disabled', true);
+    await expect(picker).toBeDisabled();
+  }
+  await expect(page.locator('#materials-state-description')).toContainText('继续修改');
+  await page.getByRole('button', { name: '继续修改', exact: true }).click();
+  await expect(picker).toBeEnabled();
+  await expect(picker.locator('..')).toBeVisible();
+  await expect(source).toBeEnabled();
+  await expect(page.locator('[data-delete-material]').first()).toBeVisible();
+  await expect(page.locator('#materials-state-label')).toHaveText('为下一轮补充材料');
+  await capture('next-version');
+  expect(state.executes).toHaveLength(1);
+  expect(writes).toEqual([]);
+});
+
 test('blocked preflight keeps backend gates and does not turn five diagnostics into user tasks or runs', async ({ page }) => {
   const state=fixture(); state.parseSucceeded=true; state.blockers=['rule_pack:rule_applicability_overall_review_required',
     'issuer_identity_not_bound:issuer_identity_source_missing_unreviewed_or_conflicting',
@@ -854,7 +921,7 @@ for (const [reason, message] of [
     await setup(page, state); await page.locator('#execute-input').click();
     await expect(page.locator('.execution-summary')).toHaveText(message);
     await expect(page.getByRole('button', { name: '继续更新', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '查看与补充材料', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '查看材料', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '查看此前成功成果' })).toBeVisible();
     if (reason === 'model_tokens_per_user_per_day' && process.env.BB_TRIAL_UX_DIR) {
       for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
@@ -1028,7 +1095,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await page.reload(); await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
-    await page.getByRole('button', { name: '查看与补充材料' }).click();
+    await page.getByRole('button', { name: '查看材料' }).click();
     await expect(page.locator('.processing-title')).toHaveCount(0);
     await expect(page.locator('.material-file-row')).toHaveCount(2);
     expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);

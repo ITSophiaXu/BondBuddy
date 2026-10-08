@@ -466,9 +466,9 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}><div id="business-handoff"></div>
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
         <div id="workspace-progress"></div>
-    <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span>随时查看与补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
-    <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
+    <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span id="materials-state-label">开始编制前可补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted" id="materials-state-description">请在开始编制前补齐材料；开始后材料锁定，仅可查看。</p><p class="muted material-upload-guidance">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
+    <p id="material-recovery-status" class="material-recovery-status" role="status"></p><fieldset id="material-editing" aria-label="项目材料" disabled><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div></fieldset>
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote material-upload-guidance">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
         <div class="form-footer authoring-actions"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
       </div></div></div>`, projectListContext()?'projects':'workspace');
@@ -755,7 +755,7 @@ function sha256(bytes: ArrayBuffer) {
 }
 
 function addUpload(projectId: string, role: UploadRole, file: File) {
-  if (!identity) return;
+  if (!identity || projectExecution && !projectExecution.materialsEditable) return;
   const upload: LocalUpload = { key: crypto.randomUUID(), owner: identity, projectId, role, file, phase: 'queued', sentBytes: 0 };
   const uploads = localUploads.get(projectId) ?? [];
   uploads.push(upload); localUploads.set(projectId, uploads);
@@ -930,6 +930,7 @@ async function refreshProjectMaterials(projectId: string, token: number) {
 function bindMaterialWorkspace(projectId: string) {
   const host = document.querySelector<HTMLElement>('#material-partitions')!;
   host.addEventListener('change', event => {
+    if (projectExecution && !projectExecution.materialsEditable) return;
     const target = event.target as HTMLElement;
     const source = target.closest<HTMLElement>('[data-source-material]');
     if (!source || !draft) return;
@@ -966,7 +967,7 @@ function bindMaterialWorkspace(projectId: string) {
     const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
     if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');
-    if (!button) return;
+    if (!button || projectExecution && !projectExecution.materialsEditable) return;
     const upload = (localUploads.get(projectId) ?? []).find(item => item.key === button.dataset.uploadKey);
     if (!upload) return;
     switch (button.dataset.uploadAction) {

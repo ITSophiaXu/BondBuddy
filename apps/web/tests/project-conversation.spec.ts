@@ -76,6 +76,7 @@ async function setup(page: Page, fixtureState = fixture()) {
       return reply(route, 200, { user_id: state.owner });
     }
     if (path === '/auth/recovery/info') return reply(route, 200, { enabled: false });
+    if (path === '/m4/topics') return reply(route, 200, { topics: [] });
     if (path === '/me') return state.owner ? reply(route, 200, { user_id: state.owner, session_status: 'active' }) : reply(route, 401, { code: 'UNAUTHENTICATED' });
     if (!state.owner) return reply(route, 401, { code: 'UNAUTHENTICATED' });
     if (path === '/projects' && method === 'POST') {
@@ -359,11 +360,11 @@ test('pagination pins all messages, new edit produces a new immutable input with
   expect(state.inputs[0].project_message_set_ref).toEqual(f.ref());
   const oldHash = state.snapshots.get(1)!.input_hash;
   await expect(page.locator('#project-conversation-root')).toBeHidden();
-  await page.getByRole('button',{name:'查看与补充材料'}).click();
+  await page.getByRole('button',{name:'查看材料'}).click();
   await expect(page.locator('#project-message')).toBeHidden();
   expect(state.run?.input_hash).toBe(oldHash);expect(state.executes).toHaveLength(1);
   state.run!.state = 'failed';
-  await page.reload(); await expect(page.locator('#execution-progress')).toContainText('任务失败');
+  await page.reload(); await expect(page.locator('#execution-progress .task-progress [role="status"]')).toHaveText('本轮未完成');
   await page.getByRole('button', { name: '继续修改' }).click();
   await page.getByLabel('补充募集书更新说明').fill('下一轮补充，不能改写旧输入');
   await page.locator('#send-project-message').click();
