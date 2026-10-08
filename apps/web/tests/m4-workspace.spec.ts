@@ -158,8 +158,26 @@ test('a draft save failure retains direct requirements and retry saves before ex
   const s=fixture();await mount(page,s);await choose(page,'private_summary');let fail=true;
   await page.route('**/drafts/private_summary',route=>fail?reply(route,{code:'DATA_UNAVAILABLE'},503):route.fallback());
   await page.locator('#m4-requirements').fill('保存失败也不能丢失');await expect(page.locator('#m4-status')).toContainText('本页草稿已保留');
+  await expect(page.locator('#m4-submit-status [role=alert]')).toContainText('本页草稿已保留');
+  await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toBeVisible();
   await expect(page.locator('#m4-requirements')).toHaveValue('保存失败也不能丢失');expect(s.executions).toHaveLength(0);fail=false;
   await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();await expect.poll(()=>s.workspace.drafts.private_summary.supplemental_requirements).toBe('保存失败也不能丢失');
+  await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toHaveCount(0);
+});
+
+for(const [label,width] of [['desktop',1440],['mobile',390]] as const)test(`generation failure is visible beside the button without a false save retry on ${label}`,async({page})=>{
+  const s=fixture();s.workspace.view.selected_document_type='underwriter';
+  s.workspace.drafts.underwriter.source_material=s.workspace.materials[0];s.workspace.artifacts=[];
+  await page.setViewportSize({width,height:844});await mount(page,s);
+  await page.route('**/quote',route=>reply(route,{code:'BILLING_NOT_READY'},503));
+  const input=structuredClone(s.workspace.drafts.underwriter);
+  await page.getByRole('button',{name:'生成主承销商核查意见',exact:true}).click();
+  const alert=page.locator('#m4-submit-status [role=alert]');
+  await expect(alert).toContainText('积分价格尚未配置');await expect(alert).toContainText('本次未扣费');
+  await expect(alert).toBeInViewport();await expect(page.locator('#m4-status')).not.toBeInViewport();
+  await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toHaveCount(0);
+  expect(s.executions).toHaveLength(0);expect(s.charged).toBe(0);expect(s.workspace.drafts.underwriter).toEqual(input);
+  if(process.env.M4_UX_EVIDENCE){const output=resolve('../../docs/acceptance/material-generation-feedback-20261008');await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-error-${label}.png`});}
 });
 
 for(const width of [1440,390,320])test(`material fits viewport ${width}`,async({page})=>{
