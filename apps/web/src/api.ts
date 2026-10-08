@@ -132,7 +132,13 @@ export class ApiClient {
 
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
     const response = await this.response(method, path, body, headers, signalOverride);
-    return response.status === 204 ? undefined as T : response.json();
+    const value = response.status === 204 ? undefined as T : await response.json();
+    // Refresh the signed-in wallet after charge/quote reads and explicit execution/payment changes.
+    if (typeof window !== 'undefined' && (path.endsWith('/credit-charge') || path.endsWith('/credit-quote') ||
+        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/')))) {
+      window.dispatchEvent(new Event('bondbuddy:credits-changed'));
+    }
+    return value;
   }
 
   /** Only fixed owner-authorized artifact routes may use this binary seam. */

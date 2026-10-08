@@ -30,3 +30,9 @@
 .m4-generate .m4-material-choice{display:flex;gap:9px;align-items:center;margin-top:12px;font-size:13px}
 @media(max-width:800px){.m4-generate .form-card{padding:20px}}
 @media(max-width:520px){.m4-generate .material-type-grid{grid-template-columns:minmax(0,1fr)}.m4-generate .form-footer{flex-direction:column;align-items:stretch}.m4-page .page-head{align-items:start}.m4-page .page-head>.btn{white-space:normal}}
+
+.m4-generate .form-card>h2>label{font:inherit;color:inherit;display:inline;margin:0}
+.m4-generate .material-optional{font-size:12px;font-weight:400;color:var(--m4-muted);margin-left:8px}
+.m4-source-file{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:16px;border:1px solid var(--m4-line);border-radius:8px;background:#fafcf7}
+.m4-source-name{flex:1 1 220px;min-width:0}.m4-source-name strong{display:block;font-size:14px;overflow-wrap:anywhere}.m4-source-name small{display:block;margin-top:5px;font-size:12px;color:var(--m4-muted)}
+.m4-source-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.m4-source-replace{position:relative;cursor:pointer;margin:0}.m4-source-replace input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}.m4-source-replace:focus-within{outline:2px solid var(--m4-green);outline-offset:3px}

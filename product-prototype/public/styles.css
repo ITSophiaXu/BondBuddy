@@ -294,3 +294,5 @@
   .starters-heading>span{display:block;margin-top:4px}
   .starter-option{font-size:11px;gap:6px;padding:9px}
 }
+
+.material-studio-single .form-card>h2>label{font:inherit;color:inherit;display:inline;margin:0}.material-studio-single .form-card .material-optional{font-size:12px;font-weight:400;color:#73816e;margin-left:8px}#studio-requirements{width:100%;min-height:135px;resize:vertical;font:inherit;font-size:14px;line-height:1.8;padding:14px;border:1px solid #ccd7c1;border-radius:7px;background:#fff}
