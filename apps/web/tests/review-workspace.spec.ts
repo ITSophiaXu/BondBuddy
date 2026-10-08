@@ -696,3 +696,9 @@ test('review task receipt displays the actual reserved, charged and released poi
  await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已返还，本次不扣费');
  expect(reads).toBe(3);expect(state.executes).toHaveLength(0);
 });
+
+test('dashboard review progress keeps its collection context through tab changes and reload',async({page})=>{
+ const s=fixture();s.workspace.active_run=s.makeRun('active-run','running');await setup(page,s,`#/projects/${id}/review?tab=making&from=dashboard&dashboard_kind=review&dashboard_status=active`);
+ await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
+ await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.getByRole('link',{name:'返回工作台'})).toHaveAttribute('href','#dashboard?kind=review&status=active');expect(s.executes).toHaveLength(0);
+});

@@ -3,6 +3,7 @@ import { M4_DOCUMENT_LABELS, M4_DOCUMENT_TYPES, M4DraftInputSchema, M4ViewStateS
   type M4MaterialPin, type M4ArtifactPin, type M4Artifact, type M4MessageContext, type M4ViewState,
   type M4MessageRequest, type M4ExecuteRequest, type M4QuoteResponse, type M4Task } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
+import { projectListContext, projectBackLink, projectSection } from './project-navigation';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { M4Api } from './m4-api';
 import { ArtifactDownloads } from './artifact-download';
@@ -55,7 +56,7 @@ export class MaterialWorkspace {
   private cacheKey=''; private pendingCreate?:{creation_request_id:string;name:string;source_project_id?:string};
   private syncOnReturn=()=>{if(this.live()&&document.visibilityState==='visible')void this.refresh();};
   constructor(private api:ApiClient,private owner:string,private shell:(html:string,section:string)=>void,private current:()=>boolean,
-    private topicId?:string,private sourceProjectId?:string,private createNew=false) {this.m4=new M4Api(api,this.controller.signal);this.selected='init';
+    private topicId?:string,private sourceProjectId?:string,private createNew=false,private entryRunId?:string) {this.m4=new M4Api(api,this.controller.signal);this.selected='init';
       for(const type of M4_DOCUMENT_TYPES)this.drafts.set(type,{version:0,input:{document_type:type,source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[]},dirty:false,conflict:false});}
 
   get hasUnconfirmed(){return this.uploading||this.viewDirty||[...this.drafts.values()].some(d=>d.dirty)||Boolean(this.pendingMessage||this.pendingExecution);}
@@ -63,18 +64,28 @@ export class MaterialWorkspace {
   dispose(){this.cache();this.disposed=true;clearTimeout(this.saveTimer);clearTimeout(this.pollTimer);this.controller.abort();this.downloads.dispose();this.dialog?.remove();document.removeEventListener('visibilitychange',this.syncOnReturn);window.removeEventListener('online',this.syncOnReturn);}
   async beforeLeave(){this.cache();if(this.uploading){this.message('材料正在上传，请等待保存结果后离开。',true);return false;}await this.flush();return true;}
   async render(){
-    this.shell('<div class="m4-page m4-generate" id="m4-workspace"><p role="status">正在读取材料生成…</p></div>','generate');
+    this.shell('<div class="m4-page m4-generate" id="m4-workspace"><p role="status">正在读取材料生成…</p></div>',projectSection('generate'));
     this.page=document.querySelector('#m4-workspace')!;
     try{
       this.topics=(await this.m4.topics()).topics;if(!this.live())return;
       if(!this.topicId&&this.sourceProjectId)this.topicId=this.topics.find(t=>t.source_project_id===this.sourceProjectId)?.topic_id;
 
-      if(this.topicId){this.workspace=await this.m4.workspace(this.topicId);if(!this.live())return;this.install(this.workspace,true);this.restore();await this.loadNames();}
+      if(this.topicId){this.workspace=await this.m4.workspace(this.topicId);if(!this.live())return;this.install(this.workspace,true);this.restore();this.openEntryTask();await this.loadNames();}
       this.page.innerHTML=this.frame();this.bind();this.paint();this.schedulePoll();
       document.addEventListener('visibilitychange',this.syncOnReturn);window.addEventListener('online',this.syncOnReturn);
     }catch(error){if(!this.live())return;this.page.innerHTML=`<div class="m4-empty"><h1>材料生成</h1><p role="alert">${esc(friendlyError(error))}</p><button class="btn secondary" data-m4-reload>重新读取</button></div>`;this.page.querySelector('[data-m4-reload]')!.addEventListener('click',()=>void this.render());}
   }
-  private frame(){return `<header class="page-head"><div><div class="eyebrow">MATERIAL STUDIO</div><h1>材料生成</h1><p>上传最新版募集书，或关联已有募集书项目，按对应模板生成材料。</p></div><button class="text-btn" data-m4-action="refresh">刷新状态</button></header><p id="m4-status" class="m4-status" role="status"></p><div id="m4-page-conflict"></div><div class="studio-layout m4-studio-layout"><section aria-label="材料与要求"><nav id="m4-tabs" class="m4-tabs" role="tablist" aria-label="任务与成果"></nav><div id="m4-content" class="m4-content"></div></section></div>`;}
+  /** A task-list link opens that exact run, overriding only the reading tab. */
+  private openEntryTask(){
+    if(!this.entryRunId||!this.workspace)return;
+    const task=this.workspace.tasks.find(t=>t.run.run_id===this.entryRunId&&t.manifest.kind==='document');
+    if(!task){this.message('该任务暂不可读取，请刷新状态或查看已有记录。',true);return;}
+    if(task.manifest.kind==='document')this.selected=task.manifest.input.document_type;
+    this.reading=openWorkspaceTab(this.reading,{key:`run:${task.run.run_id}`,kind:'making',runId:task.run.run_id,title:'生成进度'});
+    const artifact=task.artifacts.find(a=>a.kind==='document');
+    if(artifact)this.reading=taskArtifactAvailable(this.reading,task.run.run_id,artifact.artifact_id,artifact.artifact_version,artifactTitle(artifact));
+  }
+  private frame(){return `${projectListContext()?projectBackLink():''}<header class="page-head"><div><div class="eyebrow">MATERIAL STUDIO</div><h1>材料生成</h1><p>上传最新版募集书，或关联已有募集书项目，按对应模板生成材料。</p></div><button class="text-btn" data-m4-action="refresh">刷新状态</button></header><p id="m4-status" class="m4-status" role="status"></p><div id="m4-page-conflict"></div><div class="studio-layout m4-studio-layout"><section aria-label="材料与要求"><nav id="m4-tabs" class="m4-tabs" role="tablist" aria-label="任务与成果"></nav><div id="m4-content" class="m4-content"></div></section></div>`;}
   private install(w:M4Workspace,initial=false){
     // Read the authoritative wallet when a task starts or changes state, including
     // terminal changes discovered by polling after a reload or a lost response.
