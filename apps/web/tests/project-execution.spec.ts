@@ -32,6 +32,7 @@ function fixture() {
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    chargeState: 'held' as 'held'|'settled'|'released', chargeFailure:false, frozen:0,
     paid:false,freeClassification:false,points:17900,available:17899,priceVersion:'test-v1',
     order:undefined as Dto<'RechargeOrderResponse'>|undefined,
     parseSucceeded: false,
@@ -54,6 +55,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if(path==='/account')return json(route,200,{user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,support_contact:null});
     if(path==='/account/sessions')return json(route,200,{items:[]});
     if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
+    if (path === '/m4/topics') return json(route,200,{topics:[]});
     if (path === '/me') return json(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
     if (path === `/projects/${id}`) {
       if (method === 'PATCH') { state.patchRequests++; Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 }); }
@@ -110,7 +112,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
         blocking_inputs: blocking, advisory_inputs: [], uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: state.paid?'fixed_credits':'platform_trial' });
     }
     if(path.endsWith('/credit-quote'))return json(route,200,{enabled:true,quote:state.freeClassification?null:{quote_id:`quote-${state.priceVersion}`,project_id:id,...request.postDataJSON(),task_type:'interim',points:state.points,price_version:state.priceVersion,reason:'合成一期更新',created_at:now},balance:{available:state.available,frozen:0},shortage:state.freeClassification?0:Math.max(0,state.points-state.available),reason:state.freeClassification?'原稿信息不足，本次保留 M1 免费编制，不补扣。':null});
-    if(path==='/credits/balance')return json(route,200,{enabled:true,available:state.available,frozen:0});
+    if(path==='/credits/balance')return json(route,200,{enabled:state.paid,available:state.available,frozen:state.frozen});
     if(path==='/credits/recharge-config')return json(route,200,{enabled:true,providers:['alipay'],packs:RECHARGE_PACKS,pack_version:'synthetic-v1'});
     if(path==='/credits/recharge-orders'){
       state.order={order_id:'synthetic-order',provider:'alipay',state:'pending',amount_fen:20000,points:20000,currency:'CNY',checkout_url:'https://synthetic.invalid/pay',project_id:id,expires_at:now,credited_at:null};
@@ -126,7 +128,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       if (!run) {
         run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
           input_revision: body.input_revision, input_hash: body.input_hash, state: state.runState, stage: state.runStage, event_cursor: state.eventSeq,
-          channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: 'platform_trial',
+          channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: state.paid?'fixed_credits':'platform_trial',
           reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
         state.runs.set(body.execution_request_id, run);
       }
@@ -137,7 +139,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
-      if(path.endsWith('/credit-charge'))return json(route,200,{quote:null,state:null});
+      if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState});
       if (method === 'POST' && (path.endsWith('/cancel') || path.endsWith('/resume'))) { state.runActions.push(path); run.state = path.endsWith('/cancel') ? 'cancelled' : 'running'; return json(route,200,run); }
       if (path.endsWith('/events')) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
@@ -1043,3 +1045,58 @@ test('all-projects update keeps its list context through progress, edit and refr
  await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  expect(state.executes).toHaveLength(1);
 });
+
+
+test('credit visibility: quote precedes execution and running receipt follows settlement and retry',async({page})=>{
+  const state=fixture(); state.paid=true; state.checkStatus='ready'; state.available=100000; state.runState='running'; state.runStage='provider_call';
+  await page.setViewportSize({width:1440,height:960}); await setup(page,state);
+  await expect(page.locator('#execution-credit-hint')).toContainText('确认报价后');
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#fixed-quote')).toContainText('本次需要 17,900 积分');
+  await expect(page.locator('#fixed-quote')).toContainText('预留后可用 82,100 积分');
+  expect(state.executes).toHaveLength(0);
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;
+  if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-quote.png')});}
+  state.available=82100; state.frozen=17900;
+  await page.locator('#execute-input').click();
+  await expect(page.locator('.task-credit-receipt')).toContainText('17,900 积分 · 已预留');
+  await expect(page.locator('.credit-wallet')).toContainText('82,100');
+  await expect(page.locator('.credit-wallet')).toContainText('任务已预留 17,900');
+  if(evidence){await page.locator('#workspace-progress').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-running.png')});}
+  state.chargeState='settled'; state.frozen=0;
+  [...state.runs.values()][0].state='succeeded';
+  await expect(page.locator('.task-credit-receipt')).toContainText('已扣费',{timeout:12000});
+  await expect(page.locator('.credit-wallet')).toContainText('暂无预留积分');
+  state.chargeFailure=true; await page.locator('#refresh-run-charge').click();
+  await expect(page.locator('.task-credit-receipt')).toContainText('暂未同步');
+  state.chargeFailure=false; state.chargeState='released'; state.available=100000;
+  await page.locator('#refresh-run-charge').click();
+  await expect(page.locator('.task-credit-receipt')).toContainText('已返还，本次不扣费');
+  await expect(page.locator('.credit-wallet')).toContainText('100,000');
+});
+
+test('credit visibility: trial explains zero charge before and during execution',async({page})=>{
+  const state=fixture(); state.checkStatus='ready'; state.runState='running'; state.runStage='provider_call';
+  await setup(page,state);
+  await expect(page.locator('#execution-credit-hint')).toHaveText('当前为试用编制，本次不扣积分。');
+  await page.locator('#execute-input').click();
+  await expect(page.locator('.task-credit-receipt')).toHaveText('本次任务按提交时的试用规则执行，不扣积分。');
+  await expect(page.locator('#fixed-quote')).toBeHidden();
+  expect(state.executes[0].quote_id).toBeUndefined();
+});
+
+
+test('credit visibility: an in-flight old receipt is refreshed after the run completes',async({page})=>{
+  const state=fixture(); state.paid=true;state.checkStatus='ready';state.available=100000;state.runState='running';state.runStage='provider_call';
+  await setup(page,state);let release!:()=>void, reads=0;
+  await page.route('**/credit-charge',async route=>{
+    const first=++reads===1;if(first)await new Promise<void>(resolve=>{release=resolve;});
+    return json(route,200,{quote:{points:17900},state:first?'held':'settled'});
+  });
+  await page.locator('#execute-input').click();await page.locator('#execute-input').click();
+  await expect.poll(()=>reads).toBe(1);
+  [...state.runs.values()][0].state='succeeded';
+  await expect(page.locator('#execution-progress')).toContainText('文档已生成，可下载',{timeout:12000});
+  release();await expect(page.locator('.task-credit-receipt')).toContainText('已扣费');expect(reads).toBeGreaterThan(1);
+});
+
