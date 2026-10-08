@@ -1060,13 +1060,13 @@ test('credit visibility: quote precedes execution and running receipt follows se
   state.available=82100; state.frozen=17900;
   await page.locator('#execute-input').click();
   await expect(page.locator('.task-credit-receipt')).toContainText('17,900 积分 · 已预留');
-  await expect(page.locator('.credit-wallet')).toContainText('82,100');
+  await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('100,000');await expect(page.locator('.credit-wallet')).toContainText('可用 82,100');
   await expect(page.locator('.credit-wallet')).toContainText('任务已预留 17,900');
   if(evidence){await page.locator('#workspace-progress').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-running.png')});}
   state.chargeState='settled'; state.frozen=0;
   [...state.runs.values()][0].state='succeeded';
   await expect(page.locator('.task-credit-receipt')).toContainText('已扣费',{timeout:12000});
-  await expect(page.locator('.credit-wallet')).toContainText('暂无预留积分');
+  await expect(page.locator('.credit-wallet')).toContainText('暂无预留积分');await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('82,100');
   state.chargeFailure=true; await page.locator('#refresh-run-charge').click();
   await expect(page.locator('.task-credit-receipt')).toContainText('暂未同步');
   state.chargeFailure=false; state.chargeState='released'; state.available=100000;

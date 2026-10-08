@@ -290,10 +290,10 @@ test('a review payment order returns to the original review workspace',async({pa
 test('credit visibility: wallet stays pinned, works on mobile, refreshes and clears on logout',async({page,context})=>{
   await page.clock.install();
   const state=fixture(); await installApi(context,state);
-  let available=100000, frozen=17900, fail=false, balanceReads=0;
+  let available=82100, frozen=17900, fail=false, balanceReads=0;
   await context.route('**/api/v1/credits/balance',route=>{balanceReads++;return json(route,fail?503:200,fail?{code:'DATA_UNAVAILABLE'}:{enabled:false,available,frozen});});
   await page.setViewportSize({width:1440,height:960});await openSettings(page,state);
-  const wallet=page.locator('.credit-wallet');await expect(wallet).toContainText('100,000');await expect(wallet).toContainText('17,900');
+  const wallet=page.locator('.credit-wallet');await expect(wallet.locator('.wallet-value strong')).toHaveText('100,000');await expect(wallet).toContainText('可用 82,100');await expect(wallet).toContainText('17,900');
   await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
   const box=await wallet.boundingBox();expect(box!.x).toBeLessThan(236);expect(box!.y+box!.height).toBeLessThan(960);
   await page.getByRole('link',{name:'更新募集书',exact:true}).click();await expect(wallet).toContainText('100,000');

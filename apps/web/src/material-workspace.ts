@@ -47,7 +47,7 @@ export class MaterialWorkspace {
   private pendingMessage?:PendingMessage; private pendingExecution?:M4ExecuteRequest;
   private seenDocumentRuns=new Set<string>();
   private sending=false; private executing=false; private creation?:Promise<boolean>; private disposed=false;
-  private status=''; private statusError=false; private saveFailed=false; private startedRunId?:string;
+  private status=''; private statusError=false; private creditShortage=false; private saveFailed=false; private startedRunId?:string;
   private cacheKey=''; private pendingCreate?:{creation_request_id:string;name:string;source_project_id?:string};
   private syncOnReturn=()=>{if(this.live()&&document.visibilityState==='visible')void this.refresh();};
   constructor(private api:ApiClient,private owner:string,private shell:(html:string,section:string)=>void,private current:()=>boolean,
@@ -72,10 +72,15 @@ export class MaterialWorkspace {
   }
   private frame(){return `<header class="page-head"><div><div class="eyebrow">MATERIAL STUDIO</div><h1>材料生成</h1><p>上传最新版募集书，或关联已有募集书项目，按对应模板生成材料。</p></div><button class="text-btn" data-m4-action="refresh">刷新状态</button></header><p id="m4-status" class="m4-status" role="status"></p><div id="m4-page-conflict"></div><div class="studio-layout m4-studio-layout"><section aria-label="材料与要求"><nav id="m4-tabs" class="m4-tabs" role="tablist" aria-label="任务与成果"></nav><div id="m4-content" class="m4-content"></div></section></div>`;}
   private install(w:M4Workspace,initial=false){
+    // Read the authoritative wallet when a task starts or changes state, including
+    // terminal changes discovered by polling after a reload or a lost response.
+    if(!initial&&w.tasks.some(task=>this.workspace?.tasks.find(old=>old.run.run_id===task.run.run_id)?.run.state!==task.run.state)){
+      window.dispatchEvent(new Event('bondbuddy:credits-changed'));
+    }
     this.workspace=w;this.topicId=w.topic.topic_id;this.cacheKey=`bb-m4:${this.owner}:${w.topic.topic_id}`;this.projectNames.set(w.project.project_id,w.project.name);
     for(const type of M4_DOCUMENT_TYPES){const old=this.drafts.get(type);if(!old||!old.dirty)this.drafts.set(type,{version:w.drafts[type].version,input:this.inputOf(w.drafts[type]),dirty:false,conflict:false});else if(old.version!==w.drafts[type].version)old.conflict=true;}
     if(initial){const {version,...view}=w.view;this.view=structuredClone(view);this.viewVersion=version;this.selected=view.selected_document_type??'init';this.reading=this.readingFrom(view);}
-    const started=w.tasks.find(t=>t.run.run_id===this.startedRunId);if(started&&!isActiveRun(started.run)&&this.status.startsWith('制作任务已开始')){this.status=started.run.state==='succeeded'?'本次制作已完成，可在工作区查看和下载成果。':`本次制作${runStateLabel[started.run.state]}，原固定输入保留。`;this.startedRunId=undefined;}
+    const started=w.tasks.find(t=>t.run.run_id===this.startedRunId);if(started&&!isActiveRun(started.run)){this.status=started.run.state==='succeeded'?'本次制作已完成，可在工作区查看和下载成果。':`本次制作${runStateLabel[started.run.state]}，原固定输入保留。`;this.statusError=started.run.state==='failed';this.creditShortage=false;this.startedRunId=undefined;}
     for(const task of w.tasks){if(task.manifest.kind==='document'&&!this.seenDocumentRuns.has(task.run.run_id)){this.seenDocumentRuns.add(task.run.run_id);if(!initial)this.reading=taskSubmitted(this.reading,task.run.run_id,'正在制作');}const document=task.artifacts.find(a=>a.kind==='document');if(document)this.reading=taskArtifactAvailable(this.reading,task.run.run_id,document.artifact_id,document.artifact_version,artifactTitle(document));}
   }
   private inputOf(draft:M4DraftInput):M4DraftInput{return {document_type:draft.document_type,source_material:structuredClone(draft.source_material),materials:structuredClone(draft.materials),template:structuredClone(draft.template),edit_base:structuredClone(draft.edit_base),scope:'whole',fields:structuredClone(draft.fields),requirements:structuredClone(draft.requirements),...(draft.supplemental_requirements!==undefined?{supplemental_requirements:draft.supplemental_requirements}:{})};}
@@ -93,15 +98,15 @@ export class MaterialWorkspace {
       if(this.viewDirty){if(this.viewConflict){this.message('页面状态版本冲突。本页材料和要求已保留，请核对后继续。',true);return false;}const sent=structuredClone(this.snapshotView());const {view}=await this.m4.view(this.topicId!,{expected_version:this.viewVersion,view:sent});if(!this.live())return false;this.viewVersion=view.version;if(JSON.stringify(this.snapshotView())===JSON.stringify(sent))this.viewDirty=false;}
       this.cache();const remaining=this.viewDirty||[...this.drafts.values()].some(d=>d.dirty);this.message(remaining?'新的草稿修改等待同步，请保存完成后执行。':isActiveRun(this.workspace?.active_run)?'已保存下一任务草稿，当前任务输入保持不变。':'草稿已保存。');if(remaining){this.saveTimer=setTimeout(()=>void this.flush(),100);}return !remaining;
     }catch(error){if(!this.live())return false;if(error instanceof ApiError&&error.status===409){for(const d of this.drafts.values())if(d.dirty)d.conflict=true;if(this.viewDirty)this.viewConflict=true;}this.cache();this.message(`${friendlyError(error)} 本页草稿已保留。`,true);return false;}}
-  private message(text:string,error=false){this.status=text;this.statusError=error;const node=this.page?.querySelector<HTMLElement>('#m4-status');if(node){node.textContent=text;node.classList.toggle('error',error);}this.paintSubmitStatus();const conflict=this.page?.querySelector('#m4-page-conflict');if(conflict)conflict.innerHTML=this.viewConflict?'<p class="m4-warning" role="alert">另一个页面更改了显示状态。本页材料和要求已保留。<button class="text-btn" data-m4-action="resolve-view">核对页面状态</button></p>':'';}
-  private submitStatusHtml(){return `<p class="m4-status ${this.statusError?'error':''}" role="${this.statusError?'alert':'status'}">${esc(this.status)}</p>${this.saveFailed?'<button class="text-btn" data-m4-action="save">重试保存草稿</button>':''}`;}
+  private message(text:string,error=false,recharge=false){this.status=text;this.statusError=error;this.creditShortage=recharge;const node=this.page?.querySelector<HTMLElement>('#m4-status');if(node){node.textContent=text;node.classList.toggle('error',error);}this.paintSubmitStatus();const conflict=this.page?.querySelector('#m4-page-conflict');if(conflict)conflict.innerHTML=this.viewConflict?'<p class="m4-warning" role="alert">另一个页面更改了显示状态。本页材料和要求已保留。<button class="text-btn" data-m4-action="resolve-view">核对页面状态</button></p>':'';}
+  private submitStatusHtml(){return `<p class="m4-status ${this.statusError?'error':''}" role="${this.statusError?'alert':'status'}">${esc(this.status)}</p>${this.creditShortage?'<a class="btn secondary" href="#/account">充值积分</a>':''}${this.saveFailed?'<button class="text-btn" data-m4-action="save">重试保存草稿</button>':''}`;}
   private paintSubmitStatus(){const node=this.page?.querySelector('#m4-submit-status');if(node)node.innerHTML=this.submitStatusHtml();}
   private async loadNames(){if(!this.workspace)return;const projectIds=[...new Set([this.workspace.topic.source_project_id,...this.workspace.materials.map(p=>p.source_project_id)].filter((id):id is string=>Boolean(id)))];const results=await Promise.allSettled(projectIds.filter(id=>!this.projectNames.has(id)).map(async id=>{const p=await this.api.project(id,this.controller.signal);this.projectNames.set(id,p.name);}));for(const r of results)if(r.status==='rejected'&&this.live())this.message('部分来源项目名称暂不可读取，准确引用 ID 与版本保留。',true);}
   private artifactRefTitle(pin:M4ArtifactPin){const a=this.workspace?.artifacts.find(a=>artKey(a)===artKey(pin)&&a.sha256===pin.sha256);return a?artifactTitle(a):pin.artifact_id;}
   private materialName(pin:M4MaterialPin){return this.workspace?.material_details?.find(m=>pinKey(m)===pinKey(pin))?.filename??this.metadata.get(pinKey(pin))?.filename??pin.material_id;}
   private materialHtml(pin:M4MaterialPin,actions=false){return `<li class="m4-file"><header><strong>${esc(this.materialName(pin))}</strong><span>V${pin.material_version}</span></header><p>${esc(this.projectNames.get(pin.source_project_id)??pin.source_project_id)}</p><details><summary>准确引用</summary><p>项目 ${esc(pin.source_project_id)}<br>材料 ${esc(pin.material_id)} · V${pin.material_version}<br>SHA-256 ${esc(pin.sha256)}</p></details>${actions?`<div class="m4-file-actions"><button class="text-btn" data-m4-action="download-material" data-pin="${esc(pinKey(pin))}">下载原材料</button></div>`:''}</li>`;}
   private rememberScroll(){const preview=this.page?.querySelector<HTMLElement>('.m4-preview');if(preview)this.reading.scroll[this.reading.selected]=preview.scrollTop;}
-  private paint(){if(!this.page||!this.live())return;this.message(this.status,this.statusError);this.paintTabs();this.paintContent();this.paintAgent();}
+  private paint(){if(!this.page||!this.live())return;this.message(this.status,this.statusError,this.creditShortage);this.paintTabs();this.paintContent();this.paintAgent();}
   private paintTabs(){const host=this.page?.querySelector('#m4-tabs');if(!host)return;host.innerHTML=this.reading.tabs.map(t=>`<span class="m4-tab-wrap"><button role="tab" aria-selected="${t.key===this.reading.selected}" tabindex="${t.key===this.reading.selected?0:-1}" data-m4-action="tab" data-key="${esc(t.key)}" aria-controls="m4-content">${esc(t.title)}</button>${t.kind!=='input'?`<button class="m4-tab-close" data-m4-action="close-tab" data-key="${esc(t.key)}" aria-label="关闭 ${esc(t.title)}">×</button>`:''}</span>`).join('');}
   private paintContent(){
     const host=this.page?.querySelector<HTMLElement>('#m4-content');if(!host)return;
@@ -124,7 +129,6 @@ export class MaterialWorkspace {
   private inputHtml(){
     if(!this.selected)return this.typeCards()+this.artifactsListHtml();
     const draft=this.drafts.get(this.selected)!,input=draft.input,source=input.source_material;
-    const quote=this.docQuote?.type===this.selected&&this.docQuote.version===draft.version?this.docQuote.response:undefined;
     const applicable=(this.workspace?.templates??[]).filter(t=>t.document_type===this.selected&&t.status==='active'&&t.broker===input.fields.broker?.trim()&&t.market===input.fields.market);
     const busy=isActiveRun(this.workspace?.active_run),sourceMode=input.fields.source_mode??'upload';
     const materials=(this.workspace?.materials??[]).filter(p=>!(source&&pinKey(source)===pinKey(p))&&!(input.template&&(this.workspace?.templates??[]).some(t=>t.template_id===input.template!.template_id&&t.template_version===input.template!.template_version&&pinKey(t.material)===pinKey(p))));
@@ -133,7 +137,7 @@ export class MaterialWorkspace {
     ${this.selected==='init'?`<section class="panel form-card"><h2>按立项券商的要求编写</h2><label class="field" for="m4-broker"><span>立项券商全称 <span class="required">*</span></span><input id="m4-broker" data-m4-field="broker" value="${esc(input.fields.broker??'')}" placeholder="例如：某某证券股份有限公司" maxlength="200"/></label><p class="authoring-help">首次使用该券商时，请提供模板或已完成的立项报告。模板仅在本账号使用。</p><label class="field"><span>已保存的模板</span><select id="m4-template"><option value="">选择对应私有模板</option>${applicable.map(t=>`<option value="${esc(t.template_id)}:${t.template_version}" ${input.template?.template_id===t.template_id&&input.template.template_version===t.template_version?'selected':''}>${esc(t.name)} · V${t.template_version}</option>`).join('')}</select></label>${this.uploadPicker('template','立项模板或已完成的立项报告','.docx')}${this.uploadPicker('material','立项相关规则（选填）','.docx,.pdf,.txt')}</section>`:''}
     <section class="panel form-card"><h2>补充资料</h2><p>${this.selected==='underwriter'?'可补充尽调记录、内核意见、决议、财务资料及资金用途证明。':this.selected==='legal'?'可补充章程、决议授权、权属证明、合同、诉讼及律师核查记录。':'选填 · 发行安排、财务资料、授信、尽调资料等，可按现有情况补充。'}</p>${this.uploadPicker('material','其他支持材料','.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg')}${materials.map(p=>`<label class="m4-material-choice"><input type="checkbox" data-m4-material="${esc(pinKey(p))}" ${input.materials.some(m=>pinKey(m)===pinKey(p))?'checked':''}/><span>${esc(this.materialName(p))} · V${p.material_version}</span></label>`).join('')}${this.uploadsHtml()}</section>
     <section class="panel form-card"><h2><label for="m4-requirements">材料生成要求与说明</label> <small class="material-optional">选填</small></h2><textarea id="m4-requirements" rows="5" maxlength="12000" placeholder="补充材料用途、写作重点、格式要求或其他需要说明的事项。">${esc(input.supplemental_requirements??'')}</textarea><p class="authoring-help">自动保存，点击生成时与本次材料一起提交。</p>${input.requirements.length?`<details class="m4-muted"><summary>此前已保存的要求（继续沿用）</summary><ul>${input.requirements.map(r=>`<li>${esc(r.text)}</li>`).join('')}</ul></details>`:''}</section>
-    ${input.edit_base?`<p class="m4-accepted">本次全文改稿基于 ${esc(this.artifactRefTitle(input.edit_base))}；原成果保留。</p>`:''}${quote?this.quoteHtml(quote):''}<div class="form-footer"><span>生成可编辑 Word 和编制说明。</span><button class="btn primary" data-m4-action="execute" ${busy||this.uploading||this.executing?'disabled':''}>${this.executing?'正在提交…':busy?'当前项目有任务进行中':quote?'确认并生成':'生成'+M4_DOCUMENT_LABELS[this.selected]}</button></div><div id="m4-submit-status">${this.submitStatusHtml()}</div>${this.pendingExecution?'<button class="text-btn" data-m4-action="retry-execution">核对并重试原制作请求</button>':''}${this.artifactsListHtml()}`;
+    ${input.edit_base?`<p class="m4-accepted">本次全文改稿基于 ${esc(this.artifactRefTitle(input.edit_base))}；原成果保留。</p>`:''}<div class="form-footer"><span>生成可编辑 Word 和编制说明。</span><button class="btn primary" data-m4-action="execute" ${busy||this.uploading||this.executing?'disabled':''}>${this.executing?'正在提交…':busy?'当前项目有任务进行中':'生成'+M4_DOCUMENT_LABELS[this.selected]}</button></div><div id="m4-submit-status">${this.submitStatusHtml()}</div>${this.pendingExecution?'<button class="text-btn" data-m4-action="retry-execution">核对并重试原制作请求</button>':''}${this.artifactsListHtml()}`;
   }
   private sourceHtml(source:M4MaterialPin|null,mode:string){
     const projectButton=`<button class="btn secondary" data-m4-action="project-picker">${source?'更换募集书项目':'选择募集书项目'}</button>`;
@@ -222,9 +226,44 @@ export class MaterialWorkspace {
       }
     }finally{this.sending=false;if(this.live())this.paint();}
   }
-  private async execute(entrypoint:'workspace'|'assistant',retry=false){if(this.executing||!this.selected&&!retry)return;this.executing=true;this.paintContent();try{if(!await this.ensureWorkspace(this.selected?M4_DOCUMENT_LABELS[this.selected]:'材料生成'))return;if(!retry){if(this.pendingExecution){this.message('原制作请求结果尚未确认，请先重试原请求核对任务状态。',true);return;}if(!await this.flush())return;const type=this.selected!,d=this.drafts.get(type)!;if(!this.docQuote||this.docQuote.type!==type||this.docQuote.version!==d.version||Date.parse(this.docQuote.response.quote.expires_at)<=Date.now()){this.docQuote={response:await this.m4.quote(this.topicId!,{kind:'document',document_type:type,expected_draft_version:d.version}),version:d.version,type};if(!this.live())return;this.message('本轮制作报价已显示，确认后锁定当前输入。');return;}if(this.docQuote.response.shortage){this.message('积分不足，本次制作尚未开始。',true);return;}this.pendingExecution={execution_request_id:crypto.randomUUID(),document_type:type,expected_draft_version:d.version,quote_id:this.docQuote.response.quote.quote_id,entrypoint};this.cache();}
-      const request=this.pendingExecution;if(!request)return;const {run}=await this.m4.execute(this.topicId!,request);if(!this.live())return;this.pendingExecution=undefined;this.docQuote=undefined;this.reading=taskSubmitted(this.reading,run.run_id,'正在制作');this.changed();this.startedRunId=run.run_id;this.message('制作任务已开始，本轮输入已固定。');await this.refresh();
-    }catch(error){if(this.live()){if(error instanceof ApiError&&[409,422,402,503].includes(error.status)&&error.code!=='DATA_UNAVAILABLE'){this.pendingExecution=undefined;this.docQuote=undefined;}this.cache();this.message(`${friendlyError(error)}${this.pendingExecution?' 原制作请求已保留，请核对并重试。':''}`,true);}}finally{this.executing=false;if(this.live())this.paint();}}
+  private async execute(entrypoint:'workspace'|'assistant',retry=false){
+    if(this.executing||!this.selected&&!retry)return;
+    const type=this.selected;
+    this.executing=true;this.paintContent();
+    try{
+      if(!await this.ensureWorkspace(type?M4_DOCUMENT_LABELS[type]:'材料生成'))return;
+      if(!retry){
+        if(this.pendingExecution){this.message('原制作请求结果尚未确认，请先重试原请求核对任务状态。',true);return;}
+        if(!await this.flush()||!type)return;
+        const draft=this.drafts.get(type)!,version=draft.version;
+        // Quote and execute are one user action. Keep the version and quote ID
+        // pinned internally; never pause for a second price confirmation.
+        const {quote,shortage}=await this.m4.quote(this.topicId!,{kind:'document',document_type:type,expected_draft_version:version});
+        if(!this.live())return;
+        const current=this.drafts.get(type)!;
+        if(this.selected!==type||current.version!==version||current.dirty){
+          this.message('材料或要求已修改，请保存后重新点击生成。',true);return;
+        }
+        if(shortage){this.message('积分不足，本次未开始生成、未扣费。充值后请重新点击生成。',true,true);return;}
+        this.pendingExecution={execution_request_id:crypto.randomUUID(),document_type:type,expected_draft_version:version,quote_id:quote.quote_id,entrypoint};
+        this.cache();
+      }
+      const request=this.pendingExecution;if(!request)return;
+      const {run}=await this.m4.execute(this.topicId!,request);
+      if(!this.live())return;
+      this.pendingExecution=undefined;this.docQuote=undefined;
+      this.reading=taskSubmitted(this.reading,run.run_id,'正在制作');this.changed();this.startedRunId=run.run_id;
+      this.message('制作任务已开始，本轮输入已固定。');await this.refresh();
+    }catch(error){
+      if(this.live()){
+        if(error instanceof ApiError&&[409,422,402,503].includes(error.status)&&error.code!=='DATA_UNAVAILABLE'){
+          this.pendingExecution=undefined;this.docQuote=undefined;
+        }
+        this.cache();
+        this.message(`${friendlyError(error)}${this.pendingExecution?' 原制作请求已保留，请核对并重试。':''}`,true,error instanceof ApiError&&error.code==='CREDITS_INSUFFICIENT');
+      }
+    }finally{this.executing=false;if(this.live())this.paint();}
+  }
   private async refresh(){if(!this.workspace||!this.live())return;if(this.refreshing)return this.refreshing;const p=(async()=>{try{const w=await this.m4.workspace(this.topicId!);if(!this.live())return;this.rememberScroll();this.install(w);await this.loadNames();this.cache();const selection=getSelection();if(selection&&!selection.isCollapsed&&this.page?.contains(selection.anchorNode)){this.paintAgent();this.paintTabs();}else this.paint();}catch(error){if(this.live())this.message(`状态暂未同步。${friendlyError(error)} 原输入与阅读位置保留。`,true);}finally{this.schedulePoll();}})();this.refreshing=p;void p.finally(()=>{if(this.refreshing===p)this.refreshing=undefined;});return p;}
   private schedulePoll(){clearTimeout(this.pollTimer);if(!this.live()||!this.workspace)return;const active=isActiveRun(this.workspace.active_run)||this.workspace.messages.some(m=>['queued','running'].includes(m.reply_status));if(active)this.pollTimer=setTimeout(()=>void this.refresh(),2200);}
   private async cancel(id:string){try{await this.api.runAction(id,'cancel',this.controller.signal);await this.refresh();}catch(error){if(this.live())this.message(friendlyError(error),true);}}
