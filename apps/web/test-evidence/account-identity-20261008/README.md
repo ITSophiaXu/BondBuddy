@@ -2,7 +2,7 @@
 
 用户确认左下角只显示当前用户名和“退出”，删除重复的“我的工作空间 / 已登录”；“我的账号”继续统一管理账号与充值，积分卡保留。关联 #361、#41。
 
-基线 develop：`db79fa99bae61353709f0888e9501e5d8310db25`。原型及实现 commit：`935ee8bc5536a959ea1dd773bb12b0b3b89aad54`。原型 `product-prototype/public/credit-visibility.html`；实现 `apps/web/src/main.ts`、`prototype-adapter.css`。影响所有登录页面的侧栏底部，以及手机展开菜单。
+基线 develop：`2e2c101a334750552433629ae1950e6cbd6ee180`。原型及实现 commit：`b74ba8b9fdac5c90e8a21fbf1ba3af36d2e54351`。原型 `product-prototype/public/credit-visibility.html`；实现 `apps/web/src/main.ts`、`prototype-adapter.css`。影响所有登录页面的侧栏底部，以及手机展开菜单。
 
 | 同尺寸视图 | 原型 | 实现 |
 |---|---|---|
