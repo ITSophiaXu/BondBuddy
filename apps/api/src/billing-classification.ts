@@ -5,10 +5,13 @@ export type Classification = { task: BillingTask; reason: string } | { task: nul
 export function classifyFixedPrice(manifest: any): Classification {
   if (!isUnifiedInput(manifest)) return { task: null, reason: '此输入仍为旧版，请保存当前项目信息后重新获取报价。' };
   const details = manifest.update_details as UpdateDetails;
-  const sources = manifest.authoring.source_prospectuses;
+  const edit = manifest.authoring.edit_baseline;
+  const sources:SourceProspectus[] = edit && manifest.authoring.previous_output ? [{material_id:'selected-output',material_version:1,
+    sha256:manifest.authoring.previous_output.sha256,issuer_name:String(manifest.issuer_name),relation:'same_issuer',market:edit.market,
+    offering:edit.offering,reporting_periods:edit.reporting_periods,status:'user_asserted'}] : manifest.authoring.source_prospectuses;
   const sourceMaterials = (manifest.materials as { material_id: string; role: string }[] ?? [])
     .filter(m => m.role === 'historical' || m.role === 'reference');
-  if (sourceMaterials.some(m => !sources.some(s => s.material_id === m.material_id)) || sources.some(s => !s.relation))
+  if (!edit && (sourceMaterials.some(m => !sources.some(s => s.material_id === m.material_id)) || sources.some(s => !s.relation)))
     return { task: null, reason: '原稿企业关系尚不明确，暂未定价；不会按最高档自动收费。' };
   const own = sources.filter(s => s.relation === 'same_issuer');
   if (!own.length) return { task: 'new_authoring', reason: '没有可直接复用的同企业原稿，依据发行人材料编制。' };

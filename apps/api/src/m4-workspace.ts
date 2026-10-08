@@ -32,7 +32,7 @@ const param=(r:FastifyRequest,k:string)=>(r.params as Record<string,string>)[k];
 export const emptyM4Draft=(type:M4DocumentType):M4DraftInput=>({document_type:type,source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[]});
 export const emptyM4Context=():M4MessageContext=>({document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null});
 export const emptyM4View=():M4ViewState=>({selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:emptyM4Context()});
-const topicDto=(t:any):M4Topic=>({topic_id:t.id,project_id:t.project_id,source_project_id:t.source_project_id,name:t.name,created_at:date(t.created_at),updated_at:date(t.updated_at)});
+const topicDto=(t:any):M4Topic=>({surface:t.surface,topic_id:t.id,project_id:t.project_id,source_project_id:t.source_project_id,name:t.name,created_at:date(t.created_at),updated_at:date(t.updated_at)});
 const templateDto=(t:any):M4Template=>({template_id:t.id,template_version:t.version,sha256:t.sha256.trim(),name:t.name,broker:t.broker,document_type:t.document_type,
   material:t.material,owner_scope:'private',market:t.market,offering:'private',status:t.retired_at?'retired':'active',created_at:date(t.created_at),retired_at:t.retired_at?date(t.retired_at):null});
 const messageDto=(m:any):M4Message=>({message_id:m.id,role:m.role,version:m.version,content:m.content,context:m.context,created_at:date(m.created_at),
@@ -195,7 +195,12 @@ async function qaSnapshot(db:Db,owner:string,t:any,b:{content:string;context:M4M
   const selected=[...await sharedMaterials(db,owner,t.id),...b.context.citations.flatMap(c=>c.kind==='material'?[c.ref]:[]),...(b.context.source_material?[b.context.source_material]:[])];
   const materials=[...new Map(selected.map(p=>[`${p.source_project_id}:${p.material_id}:${p.material_version}`,p])).values()];
   for(const p of materials)await readM4MaterialPin(db,owner,p);
-  return {content:b.content,context:b.context,context_snapshot:{draft:input,messages,quotation},materials,billing_task:classifyM4Qa(b.content,b.context)};
+  const selectedProject=view?.assistant?.project_id?await project(db,owner,view.assistant.project_id):null;
+  const assistant_context=t.surface==='assistant'?{project_id:selectedProject?.id??null,project_name:selectedProject?.name??'',
+    issuer_name:selectedProject?.issuer_name??'',market:selectedProject?.market??'',offering:selectedProject?.offering??'',
+    reporting_cutoff:selectedProject?.update_details?.reporting_cutoff??'',action:view?.assistant?.action??null}:undefined;
+  return {content:b.content,context:b.context,context_snapshot:{draft:input,messages,quotation},materials,
+    ...(assistant_context?{assistant_context}:{}),billing_task:classifyM4Qa(b.content,b.context)};
 }
 async function newRun(c:PoolClient,owner:string,t:any,requestKey:string,requestHash:string,manifest:M4Manifest,quoteId:string|undefined,intentHash:string,queueEnabled:boolean){
   const p=await project(c,owner,t.project_id,true);const rev=Number((await c.query('SELECT COALESCE(max(revision),0)+1 AS next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[owner,t.project_id])).rows[0].next);
@@ -241,7 +246,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
   const active=(await c.query(`SELECT r.id FROM bb_runs r JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id
     WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[])) LIMIT 1`,[owner,manifest.execution_scope_project_id,terminal])).rows[0];
   if(active)throw conflict('PROJECT_RUN_ACTIVE','同一项目已有任务执行中；新要求已保存，请等待完成或停止任务后执行。');
-  await c.query('UPDATE bb_projects SET execution_scope_project_id=$3 WHERE owner_user_id=$1 AND id=$2',[owner,t.project_id,manifest.execution_scope_project_id]);
+  await c.query("UPDATE bb_projects SET execution_scope_project_id=$3,kind=CASE WHEN kind='qa' THEN 'generation' ELSE kind END WHERE owner_user_id=$1 AND id=$2",[owner,t.project_id,manifest.execution_scope_project_id]);
   return newRun(c,owner,t,b.execution_request_id,requestHash,manifest,b.quote_id,inputManifestHash(manifest),queueEnabled);
 }
 async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id FROM bb_m4_artifacts a
@@ -279,6 +284,7 @@ export async function completeM4Qa(db:Db,owner:string,runId:string,reply:M4Assis
   const e=(await db.query('SELECT * FROM bb_m4_executions WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rows[0];
   if(!e || !isM4Manifest(e.manifest) || e.manifest.kind!=='qa')throw missing();const manifest=e.manifest as M4QaManifest;
   const t=await requireTopic(db,owner,e.topic_id,true);
+  if(t.surface==='assistant' && (reply.intent==='execute'||reply.document_type||reply.requirements.length||Object.keys(reply.fields).length))invalid('Global assistant replies only propose a confirmation card');
   for(const citation of reply.citations){if(!manifest.context.citations.some(c=>equal(c,citation))
     && !(citation.kind==='material' && (manifest.materials.some(p=>equal(p,citation.ref)) || equal(manifest.context.source_material,citation.ref)))
     && !(citation.kind==='artifact' && equal(manifest.context.reading_artifact,citation.ref)))invalid('Assistant citation was not in the pinned task input');}
@@ -331,7 +337,7 @@ export async function completeM4Qa(db:Db,owner:string,runId:string,reply:M4Assis
 }
 async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const t=await requireTopic(db,owner,id),p=await project(db,owner,t.project_id),materials=await sharedMaterials(db,owner,id);
-  const material_details=await Promise.all(materials.map(async pin=>{const m=await readM4MaterialPin(db,owner,pin);return {...pin,filename:m.filename,state:m.state,media_type:m.media_type};}));
+  const material_details=await Promise.all(materials.map(async pin=>{const m=await readM4MaterialPin(db,owner,pin);return {...pin,filename:m.filename,state:m.state,media_type:m.media_type,role:m.role};}));
   const messages=(await db.query(`SELECT m.*,r.state AS run_state FROM bb_m4_messages m LEFT JOIN bb_runs r ON r.id=m.run_id AND r.owner_user_id=m.owner_user_id
     WHERE m.owner_user_id=$1 AND m.topic_id=$2 ORDER BY m.created_at,m.id`,[owner,id])).rows.map(messageDto);
   const artifacts=(await artifactRows(db,owner,id)).map(artifactDto);
@@ -358,9 +364,9 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       const source=b.source_project_id?await project(c,user,b.source_project_id,true):null,projectId=uid(),topicId=uid();
       const scope=source?.execution_scope_project_id||source?.id||projectId;
       await c.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,execution_scope_project_id)
-        VALUES($1,$2,$3,'generation',$4,$5,'private',$6)`,[projectId,user,b.name,source?.issuer_name??null,source?.market??null,scope]);
-      const t=(await c.query(`INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash)
-        VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[topicId,user,projectId,source?.id??null,b.name,b.creation_request_id,h])).rows[0];
+        VALUES($1,$2,$3,$7,$4,$5,'private',$6)`,[projectId,user,b.name,source?.issuer_name??null,source?.market??null,scope,b.surface==='assistant'?'qa':'generation']);
+      const t=(await c.query(`INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash,surface)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[topicId,user,projectId,source?.id??null,b.name,b.creation_request_id,h,b.surface??'materials'])).rows[0];
       await topicEvent(c,user,topicId,'m4.topic_created',{project_id:projectId});return {topic:topicDto(t)};});});
   app.get(`${base}/topics/:topic_id/workspace`,async request=>workspace(db(),await owner(request),param(request,'topic_id')));
   app.post(`${base}/topics/:topic_id/handoffs/bind`,{schema:{body:M4HandoffBindRequestSchema,response:{200:M4HandoffBindResponseSchema}}},async request=>{
@@ -375,6 +381,8 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
   app.put(`${base}/topics/:topic_id/view`,{schema:{body:M4ViewRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4ViewRequest;
     return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);const old=(await c.query('SELECT * FROM bb_m4_views WHERE owner_user_id=$1 AND topic_id=$2',[user,id])).rows[0];
       if((old?.version??0)!==b.expected_version)stale();
+      if(b.view.assistant?.project_id)await project(c,user,b.view.assistant.project_id);
+      if(b.view.assistant && t.surface!=='assistant')invalid('Assistant state requires an assistant conversation');
       for(const a of [...b.view.open_tabs,...(b.view.active_tab?[b.view.active_tab]:[])])await readM4ArtifactPin(c,user,a);
       // An unsent old context can be restored as-is; validate its precise references without forcing a newer draft.
       await validateContext(c,user,t,{...b.view.unsent_context,document_type:null,draft_version:0});
@@ -402,6 +410,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
     return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:m4-message:${b.submission_request_id}`]);const h=inputManifestHash({topic_id:id,...b});
       const old=(await c.query('SELECT * FROM bb_m4_messages WHERE owner_user_id=$1 AND submission_request_id=$2',[user,b.submission_request_id])).rows[0];
       if(old){if(old.request_hash.trim()!==h)throw conflict('IDEMPOTENCY_CONFLICT','Message request already used');const r=(await c.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[user,old.run_id])).rows[0];return {message:messageDto(old),run:runDto(r)};}
+      if(b.execute && t.surface==='assistant')invalid('Please confirm the saved task card');
       if(b.execute){
         if(!b.context.document_type || !b.context.draft_version || !b.quote_id)throw new Problem(422,'INPUT_REQUIRED','请先核对本业务工作区的完整任务和当前预留上限，再明确执行。');
         // Extra free text must first become an adopted requirement; an execution flag never discards it.
@@ -425,6 +434,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
           VALUES($1,$2,$3,'assistant',$4,$5,$6,$7,'completed',$8)`,[uid(),user,id,reply.content,b.context,messageId,r.id,reply]);
         await topicEvent(c,user,id,'m4.message_executed',{message_id:messageId,run_id:r.id});return {message:messageDto(row),run:runDto(r)};
       }
+      if(t.surface==='assistant' && b.execute)invalid('Please confirm the saved task card');
       const snapshot=await qaSnapshot(c,user,t,b),messageId=uid();
       const row=(await c.query(`INSERT INTO bb_m4_messages(id,owner_user_id,topic_id,role,content,context,submission_request_id,request_hash,reply_status)
         VALUES($1,$2,$3,'user',$4,$5,$6,$7,'queued') RETURNING *`,[messageId,user,id,b.content,b.context,b.submission_request_id,h])).rows[0];

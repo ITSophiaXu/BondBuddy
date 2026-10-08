@@ -58,7 +58,7 @@ async function context(db: Db, user: string, id: string, value: ReviewContext) {
     if (value.finding_ids.some(f => !r.report.findings.some((v: ReviewReport['findings'][number]) => v.finding_id === f))) invalid('Finding does not belong to the bound report');
   }
 }
-async function draft(db: Db, user: string, id: string) {
+export async function draft(db: Db, user: string, id: string) {
   const r = (await db.query('SELECT version,input FROM bb_review_drafts WHERE owner_user_id=$1 AND project_id=$2', [user, id])).rows[0];
   return r ? { ...r.input, version: r.version } : { ...emptyInput(), version: 0 };
 }

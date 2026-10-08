@@ -1,0 +1,409 @@
+<div id="bb-agent-experience" aria-label="BondBuddy 全站项目助手交互设计">
+  <div class="ba-app">
+    <aside class="ba-sidebar">
+      <div class="ba-brand"><span class="ba-logo">b.</span>BondBuddy</div>
+      <div class="ba-workspace"><i data-lucide="building-2" aria-hidden="true"></i><span>我的工作空间<small>债券业务工作台</small></span></div>
+      <nav aria-label="产品导航">
+        <button data-page="dashboard" aria-current="page"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span>工作台</span></button>
+        <div class="ba-nav-caption">项目工具</div>
+        <button data-page="update"><i data-lucide="file-pen-line" aria-hidden="true"></i><span>更新募集书</span></button>
+        <button data-page="review"><i data-lucide="file-check-2" aria-hidden="true"></i><span>复核募集书</span></button>
+        <button data-page="generate"><i data-lucide="files" aria-hidden="true"></i><span>材料生成</span></button>
+        <button data-page="projects"><i data-lucide="folder-open" aria-hidden="true"></i><span>全部项目</span></button>
+      </nav>
+      <div class="ba-sidebar-bottom">
+        <button class="ba-balance" data-action="account"><span>可用积分<i data-lucide="arrow-up-right" aria-hidden="true"></i></span><strong data-balance>100,000</strong><small>账号与积分</small></button>
+        <div class="ba-user"><span class="ba-avatar">M</span><span>maxy</span><i data-lucide="chevron-down" aria-hidden="true"></i></div>
+      </div>
+    </aside>
+    <div class="ba-workarea">
+      <header class="ba-topbar"><span data-breadcrumb>我的工作空间 / 工作台</span><span class="ba-preview-label">交互原型 · 示例数据</span></header>
+      <nav class="ba-mobile-nav" aria-label="移动端导航"><button data-page="dashboard">工作台</button><button data-page="review">复核项目</button><button data-page="generate">材料生成</button><button data-page="projects">全部项目</button></nav>
+      <main class="ba-main" data-main></main>
+    </div>
+    <section class="ba-assistant" data-assistant aria-label="BondBuddy 项目助手" hidden>
+      <header class="ba-assistant-header">
+        <span class="ba-assistant-mark"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+        <div class="ba-assistant-name">BondBuddy<small>项目助手</small></div>
+        <div class="ba-header-actions">
+          <button data-action="history" class="ba-icon-button" aria-label="最近对话" data-tooltip="最近对话"><i data-lucide="history" aria-hidden="true"></i></button>
+          <button data-action="new-chat" class="ba-icon-button" aria-label="新对话" data-tooltip="新对话"><i data-lucide="square-pen" aria-hidden="true"></i></button>
+          <button data-action="expand" class="ba-icon-button" aria-label="展开为专注视图" data-tooltip="展开 / 收起"><i data-lucide="maximize-2" aria-hidden="true"></i></button>
+          <button data-action="close" class="ba-icon-button" aria-label="收起项目助手" data-tooltip="收起，任务继续运行"><i data-lucide="minus" aria-hidden="true"></i></button>
+        </div>
+      </header>
+      <div class="ba-context-bar"><button data-action="project-picker" class="ba-context-button"><i data-lucide="folder" aria-hidden="true"></i><span data-context>未关联项目</span><i data-lucide="chevron-down" aria-hidden="true"></i></button><button data-action="materials" class="ba-context-materials" data-material-label>选择材料</button></div>
+      <div data-switch-notice></div>
+      <div class="ba-popover-area" data-popover hidden></div>
+      <div class="ba-conversation" data-conversation></div>
+      <form class="ba-composer" data-composer>
+        <div class="ba-attachment-chips" data-attachments></div>
+        <label class="ba-sr-only" for="ba-message">对 BondBuddy 说</label>
+        <textarea id="ba-message" rows="2" placeholder="问一个问题，或交代一项项目任务…"></textarea>
+        <div class="ba-composer-actions"><button class="ba-icon-button" type="button" data-action="attach" aria-label="添加材料" data-tooltip="添加材料"><i data-lucide="paperclip" aria-hidden="true"></i></button><span class="ba-composer-hint">Enter 发送 · Shift + Enter 换行</span><button class="ba-send" type="submit" aria-label="发送消息"><i data-lucide="arrow-up" aria-hidden="true"></i></button></div>
+      </form>
+      <div class="ba-assistant-foot" data-footer>编制、复核和生成任务会先展示积分，由你确认后开始。</div>
+    </section>
+    <button class="ba-launcher" data-action="open" aria-label="展开 BondBuddy 项目助手" aria-expanded="false"><span class="ba-launcher-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="ba-launcher-copy"><strong>BondBuddy</strong><small data-launcher-sub>项目助手</small></span><span class="ba-unread" data-unread hidden>1</span></button>
+    <div class="ba-toast" role="status" data-toast hidden></div>
+    <div class="ba-sr-only" aria-live="polite" data-announcer></div>
+  </div>
+</div>
+<style>
+#bb-agent-experience {
+  --ba-bg:light-dark(#f6f7f1,#171e1a);--ba-surface:light-dark(#ffffff,#222c25);--ba-ink:light-dark(#243d31,#e6efe7);--ba-muted:light-dark(#68776c,#afbeb2);--ba-line:light-dark(#e3e8df,#3c493e);--ba-green:light-dark(#345d43,#b6d6ac);--ba-primary:light-dark(#315b41,#b8d8ae);--ba-on:light-dark(#ffffff,#1b3621);--ba-soft:light-dark(#edf3e7,#2d402f);--ba-hover:light-dark(#f6f8f2,#2a352d);--ba-warm:light-dark(#f6ecd9,#403721);--ba-warm-ink:light-dark(#806026,#edcd96);--ba-shadow:light-dark(#213d3424,#00000055);--ba-error:light-dark(#ad5545,#efb4a8);--ba-panel-width:466px;
+  font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.55;color:var(--ba-ink);text-align:left;
+}
+#bb-agent-experience *{box-sizing:border-box;}
+#bb-agent-experience [hidden]{display:none!important;}
+#bb-agent-experience button,#bb-agent-experience input,#bb-agent-experience textarea,#bb-agent-experience select{font:inherit;color:inherit;}
+#bb-agent-experience button{cursor:var(--cursor-interaction,pointer);}
+#bb-agent-experience button:disabled{cursor:default;opacity:.5;}
+#bb-agent-experience button:focus-visible,#bb-agent-experience input:focus-visible,#bb-agent-experience textarea:focus-visible,#bb-agent-experience select:focus-visible{outline:2px solid var(--ba-green);outline-offset:3px;}
+#bb-agent-experience button{transition:background .12s;}
+#bb-agent-experience h1,#bb-agent-experience h2,#bb-agent-experience h3,#bb-agent-experience p{margin:0;}
+#bb-agent-experience svg{flex:none;width:17px;height:17px;}
+#bb-agent-experience strong{font-weight:600;}
+#bb-agent-experience .ba-app{position:relative;display:grid;grid-template-columns:176px minmax(0,1fr);min-height:840px;background:var(--ba-bg);border:1px solid var(--ba-line);border-radius:14px;isolation:isolate;}
+#bb-agent-experience .ba-sidebar{padding:25px 13px 22px;background:var(--ba-surface);border-right:1px solid var(--ba-line);border-radius:14px 0 0 14px;display:flex;flex-direction:column;min-width:0;}
+#bb-agent-experience .ba-brand{font-weight:600;font-size:19px;letter-spacing:-.6px;display:flex;gap:8px;align-items:center;}
+#bb-agent-experience .ba-logo{width:29px;height:30px;background:var(--ba-primary);color:var(--ba-on);display:grid;place-items:center;border-radius:9px 3px 9px 3px;font-weight:500;font-size:23px;}
+#bb-agent-experience .ba-workspace{display:flex;align-items:center;gap:9px;padding:25px 5px 21px;font-size:12px;}
+#bb-agent-experience .ba-workspace small{display:block;color:var(--ba-muted);font-size:11px;margin-top:2px;}
+#bb-agent-experience .ba-sidebar nav{display:grid;gap:6px;}
+#bb-agent-experience .ba-sidebar nav button{display:flex;align-items:center;gap:10px;background:transparent;border:0;border-radius:7px;text-align:left;padding:11px 10px;font-size:12px;}
+#bb-agent-experience .ba-sidebar nav button[aria-current="page"],#bb-agent-experience .ba-sidebar nav button:hover{background:var(--ba-soft);color:var(--ba-green);}
+#bb-agent-experience .ba-nav-caption{font-size:11px;letter-spacing:1px;color:var(--ba-muted);margin:23px 10px 5px;}
+#bb-agent-experience .ba-sidebar-bottom{margin-top:auto;display:grid;gap:16px;padding-top:35px;}
+#bb-agent-experience .ba-balance{text-align:left;background:var(--ba-bg);border:1px solid var(--ba-line);border-radius:9px;padding:13px;width:100%;}
+#bb-agent-experience .ba-balance>span{font-size:11px;color:var(--ba-muted);display:flex;justify-content:space-between;align-items:center;}
+#bb-agent-experience .ba-balance strong{font-size:25px;display:block;font-variant-numeric:tabular-nums;margin:5px 0 2px;letter-spacing:-.6px;}
+#bb-agent-experience .ba-balance small{font-size:11px;color:var(--ba-green);}
+#bb-agent-experience .ba-user{display:flex;align-items:center;gap:9px;font-size:12px;}
+#bb-agent-experience .ba-user svg{margin-left:auto;width:13px;}
+#bb-agent-experience .ba-avatar{border-radius:50%;display:grid;place-items:center;background:var(--ba-soft);height:27px;width:27px;font-size:11px;}
+#bb-agent-experience .ba-workarea{min-width:0;}
+#bb-agent-experience .ba-topbar{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:20px 25px;border-bottom:1px solid var(--ba-line);min-height:65px;font-size:11px;color:var(--ba-muted);}
+#bb-agent-experience .ba-preview-label{margin-right:75px;white-space:nowrap;}
+#bb-agent-experience .ba-mobile-nav{display:none;}
+#bb-agent-experience .ba-main{padding:31px 27px 128px;}
+#bb-agent-experience .ba-page-head{margin-bottom:27px;}
+#bb-agent-experience .ba-page-head h1{font-size:27px;letter-spacing:-.7px;font-weight:600;}
+#bb-agent-experience .ba-page-head p{font-size:12px;color:var(--ba-muted);margin-top:8px;}
+#bb-agent-experience .ba-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:23px;}
+#bb-agent-experience .ba-stat{padding:17px;background:var(--ba-surface);border:1px solid var(--ba-line);border-radius:10px;}
+#bb-agent-experience .ba-stat span{font-size:12px;color:var(--ba-muted);}
+#bb-agent-experience .ba-stat strong{display:block;font-size:28px;font-weight:500;margin:6px 0;}
+#bb-agent-experience .ba-stat small{font-size:11px;color:var(--ba-muted);}
+#bb-agent-experience .ba-quickstart{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:27px;}
+#bb-agent-experience .ba-quickstart>span{font-size:12px;color:var(--ba-muted);margin-right:4px;}
+#bb-agent-experience .ba-button{padding:8px 12px;border:1px solid var(--ba-line);border-radius:7px;background:var(--ba-surface);font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;max-width:100%;}
+#bb-agent-experience .ba-button:hover,#bb-agent-experience .ba-icon-button:hover{background:var(--ba-soft);}
+#bb-agent-experience .ba-primary{background:var(--ba-primary);color:var(--ba-on);border-color:var(--ba-primary);}
+#bb-agent-experience .ba-primary:hover{background:var(--ba-primary);filter:brightness(.96);}
+#bb-agent-experience .ba-link{border:0;background:transparent;color:var(--ba-green);font-size:12px;display:inline-flex;align-items:center;gap:5px;padding:6px 0;}
+#bb-agent-experience .ba-section{background:var(--ba-surface);border:1px solid var(--ba-line);border-radius:11px;padding:21px;margin-bottom:17px;}
+#bb-agent-experience .ba-section h2{font-size:16px;font-weight:600;margin-bottom:17px;}
+#bb-agent-experience .ba-project-row{padding:19px 0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;border-top:1px solid var(--ba-line);align-items:center;}
+#bb-agent-experience .ba-project-title{font-size:14px;font-weight:500;}
+#bb-agent-experience .ba-project-row small{display:block;color:var(--ba-muted);font-size:11px;margin-top:5px;}
+#bb-agent-experience .ba-row-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+#bb-agent-experience .ba-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 7px;border-radius:5px;background:var(--ba-soft);color:var(--ba-green);}
+#bb-agent-experience .ba-tag-warm{background:var(--ba-warm);color:var(--ba-warm-ink);}
+#bb-agent-experience .ba-subtle{font-size:12px;color:var(--ba-muted);}
+#bb-agent-experience .ba-breadcrumb-link{margin-bottom:12px;}
+#bb-agent-experience .ba-three-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0;}
+#bb-agent-experience .ba-three-results>div{padding:16px;background:var(--ba-bg);border-radius:8px;}
+#bb-agent-experience .ba-three-results strong{font-size:13px;display:block;margin-bottom:7px;}
+#bb-agent-experience .ba-three-results p{font-size:12px;color:var(--ba-muted);}
+#bb-agent-experience .ba-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+#bb-agent-experience .ba-field{font-size:12px;display:block;min-width:0;}
+#bb-agent-experience .ba-field input,#bb-agent-experience .ba-field select,#bb-agent-experience .ba-field textarea{display:block;margin-top:6px;width:100%;max-width:100%;padding:9px 10px;border:1px solid var(--ba-line);background:var(--ba-surface);border-radius:7px;font-size:13px;resize:vertical;}
+#bb-agent-experience .ba-upload-zone{border:1px dashed var(--ba-line);background:var(--ba-bg);border-radius:8px;margin:18px 0;padding:25px;text-align:center;color:var(--ba-muted);font-size:12px;}
+#bb-agent-experience .ba-upload-zone p{margin-top:6px;}
+#bb-agent-experience .ba-launcher{position:absolute;bottom:22px;right:22px;display:flex;align-items:center;gap:10px;border:1px solid var(--ba-primary);border-radius:16px;background:var(--ba-primary);color:var(--ba-on);padding:11px 15px;box-shadow:0 7px 20px var(--ba-shadow);z-index:5;text-align:left;}
+#bb-agent-experience .ba-launcher-icon{display:grid;place-items:center;width:29px;height:32px;}
+#bb-agent-experience .ba-launcher-icon svg{width:24px;height:24px;}
+#bb-agent-experience .ba-launcher-copy strong{font-size:14px;display:block;font-weight:500;letter-spacing:-.1px;}
+#bb-agent-experience .ba-launcher-copy small{display:block;font-size:11px;opacity:.85;}
+#bb-agent-experience .ba-launcher.is-compact .ba-launcher-copy{display:none;}
+#bb-agent-experience .ba-unread{height:20px;min-width:20px;padding:0 5px;background:var(--ba-warm);color:var(--ba-warm-ink);border:2px solid var(--ba-surface);border-radius:20px;position:absolute;top:-6px;right:-6px;font-size:11px;text-align:center;}
+#bb-agent-experience .ba-assistant{position:absolute;right:22px;bottom:22px;width:min(var(--ba-panel-width),calc(100% - 44px));background:var(--ba-surface);border:1px solid var(--ba-line);border-radius:18px;box-shadow:0 16px 50px var(--ba-shadow),0 2px 6px var(--ba-shadow);z-index:6;overflow:visible;}
+#bb-agent-experience .ba-assistant.is-focus{width:calc(100% - 212px);}
+#bb-agent-experience .ba-assistant-header{display:flex;align-items:center;gap:9px;padding:15px 17px;border-bottom:1px solid var(--ba-line);}
+#bb-agent-experience .ba-assistant-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--ba-soft);color:var(--ba-green);}
+#bb-agent-experience .ba-assistant-name{font-size:14px;font-weight:600;letter-spacing:-.2px;}
+#bb-agent-experience .ba-assistant-name small{display:block;font-size:11px;font-weight:400;color:var(--ba-muted);letter-spacing:0;}
+#bb-agent-experience .ba-header-actions{display:flex;gap:2px;margin-left:auto;}
+#bb-agent-experience .ba-icon-button{background:transparent;border:0;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;width:31px;height:32px;padding:0;color:var(--ba-muted);}
+#bb-agent-experience .ba-context-bar{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:10px 19px;background:var(--ba-hover);border-bottom:1px solid var(--ba-line);}
+#bb-agent-experience .ba-context-button{min-width:0;display:flex;align-items:center;gap:7px;background:transparent;border:0;padding:0;font-size:12px;text-align:left;}
+#bb-agent-experience .ba-context-button span{overflow-wrap:anywhere;}
+#bb-agent-experience .ba-context-button svg{width:14px;height:14px;}
+#bb-agent-experience .ba-context-materials{border:0;background:transparent;color:var(--ba-green);font-size:11px;padding:3px 0;white-space:nowrap;}
+#bb-agent-experience .ba-switch-notice{display:flex;flex-wrap:wrap;gap:5px 9px;align-items:center;background:var(--ba-warm);color:var(--ba-warm-ink);font-size:11px;padding:10px 19px;}
+#bb-agent-experience .ba-switch-notice button{font-size:11px;color:inherit;border:0;background:transparent;text-decoration:underline;padding:0;}
+#bb-agent-experience .ba-conversation{padding:22px 22px 18px;min-height:335px;overflow-wrap:anywhere;}
+#bb-agent-experience .ba-welcome{padding:6px 0 4px;}
+#bb-agent-experience .ba-welcome-kicker{color:var(--ba-green);font-size:12px;display:flex;align-items:center;gap:7px;margin-bottom:13px;}
+#bb-agent-experience .ba-welcome h2{font-size:25px;line-height:1.35;letter-spacing:-.6px;font-weight:500;margin-bottom:11px;}
+#bb-agent-experience .ba-welcome>p{color:var(--ba-muted);font-size:13px;max-width:330px;}
+#bb-agent-experience .ba-task-shortcuts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:24px 0 19px;}
+#bb-agent-experience .ba-shortcut{text-align:left;display:flex;flex-direction:column;gap:14px;min-width:0;padding:13px 10px;border:1px solid var(--ba-line);border-radius:10px;background:var(--ba-surface);font-size:12px;}
+#bb-agent-experience .ba-shortcut svg{color:var(--ba-green);width:20px;height:20px;}
+#bb-agent-experience .ba-shortcut:hover{background:var(--ba-soft);border-color:var(--ba-green);}
+#bb-agent-experience .ba-suggestion{border:0;background:transparent;color:var(--ba-muted);font-size:12px;display:flex;align-items:center;gap:8px;padding:6px 0;text-align:left;}
+#bb-agent-experience .ba-suggestion svg{width:13px;height:13px;}
+#bb-agent-experience .ba-suggestion:hover{color:var(--ba-green);}
+#bb-agent-experience .ba-chat-label{font-size:11px;color:var(--ba-muted);margin-bottom:8px;display:flex;gap:7px;align-items:center;}
+#bb-agent-experience .ba-user-message{padding:12px 15px;background:var(--ba-soft);border-radius:13px 13px 4px 13px;max-width:92%;margin:0 0 22px auto;font-size:13px;}
+#bb-agent-experience .ba-response{font-size:13px;line-height:1.75;}
+#bb-agent-experience .ba-response p+p{margin-top:9px;}
+#bb-agent-experience .ba-findings{padding-left:19px;margin:13px 0;display:grid;gap:11px;}
+#bb-agent-experience .ba-citation{border:0;background:var(--ba-bg);color:var(--ba-muted);border-radius:4px;font-size:11px;padding:2px 6px;margin-top:5px;display:inline-flex;align-items:center;gap:4px;}
+#bb-agent-experience .ba-task-card{border:1px solid var(--ba-line);border-radius:11px;margin-top:16px;overflow:hidden;}
+#bb-agent-experience .ba-task-card-header{padding:14px 16px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--ba-hover);}
+#bb-agent-experience .ba-task-card-header strong{font-size:13px;display:flex;align-items:center;gap:7px;}
+#bb-agent-experience .ba-task-card-body{padding:14px 16px;}
+#bb-agent-experience .ba-task-summary{display:grid;grid-template-columns:52px minmax(0,1fr);gap:7px 10px;font-size:12px;margin:0;}
+#bb-agent-experience .ba-task-summary dt{color:var(--ba-muted);}
+#bb-agent-experience .ba-task-summary dd{margin:0;}
+#bb-agent-experience .ba-output-list{display:flex;gap:6px;flex-wrap:wrap;}
+#bb-agent-experience .ba-output-chip{display:inline-flex;gap:4px;align-items:center;font-size:11px;background:var(--ba-bg);border:1px solid var(--ba-line);border-radius:5px;padding:3px 7px;}
+#bb-agent-experience .ba-output-chip svg{width:12px;height:12px;}
+#bb-agent-experience .ba-cost{border-top:1px solid var(--ba-line);padding:13px 16px;background:var(--ba-hover);}
+#bb-agent-experience .ba-cost-row{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:12px;}
+#bb-agent-experience .ba-cost-row strong{font-size:18px;letter-spacing:-.3px;}
+#bb-agent-experience .ba-cost-note{font-size:11px;color:var(--ba-muted);margin-bottom:12px;}
+#bb-agent-experience .ba-confirm-button{width:100%;padding:10px 12px;font-size:13px;}
+#bb-agent-experience .ba-action-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+#bb-agent-experience .ba-popover-area{padding:18px 20px;border-bottom:1px solid var(--ba-line);background:var(--ba-surface);}
+#bb-agent-experience .ba-popover-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:13px;}
+#bb-agent-experience .ba-popover-heading strong{font-size:13px;}
+#bb-agent-experience .ba-project-option,#bb-agent-experience .ba-history-item{display:block;border:1px solid var(--ba-line);background:var(--ba-surface);border-radius:8px;width:100%;text-align:left;padding:11px 12px;margin-top:8px;font-size:12px;}
+#bb-agent-experience .ba-project-option small,#bb-agent-experience .ba-history-item small{font-size:11px;color:var(--ba-muted);display:block;margin-top:4px;}
+#bb-agent-experience .ba-project-option:hover,#bb-agent-experience .ba-history-item:hover{background:var(--ba-soft);}
+#bb-agent-experience .ba-material-check{display:flex;align-items:flex-start;gap:8px;margin:12px 0;font-size:12px;}
+#bb-agent-experience .ba-material-check input{margin-top:4px;accent-color:var(--ba-green);}
+#bb-agent-experience .ba-material-check small{display:block;font-size:11px;color:var(--ba-muted);}
+#bb-agent-experience .ba-material-check input+span{min-width:0;overflow-wrap:anywhere;}
+#bb-agent-experience .ba-file-picker{font-size:12px;display:block;margin-top:15px;color:var(--ba-muted);}
+#bb-agent-experience .ba-file-picker input{display:block;font-size:12px;max-width:100%;margin-top:7px;}
+#bb-agent-experience .ba-help{font-size:11px;color:var(--ba-muted);margin-top:10px;}
+#bb-agent-experience .ba-composer{margin:0 17px;border:1px solid var(--ba-line);border-radius:12px;background:var(--ba-surface);padding:11px 11px 8px;}
+#bb-agent-experience .ba-composer:focus-within{border-color:var(--ba-green);}
+#bb-agent-experience .ba-composer textarea{border:0;background:transparent;resize:vertical;min-height:45px;width:100%;display:block;padding:0;font-size:13px;line-height:1.6;}
+#bb-agent-experience .ba-composer textarea::placeholder{color:var(--ba-muted);}
+#bb-agent-experience .ba-composer-actions{display:flex;align-items:center;gap:8px;margin-top:4px;}
+#bb-agent-experience .ba-composer-hint{font-size:11px;color:var(--ba-muted);}
+#bb-agent-experience .ba-send{margin-left:auto;width:30px;height:30px;border:0;background:var(--ba-primary);color:var(--ba-on);border-radius:8px;display:grid;place-items:center;}
+#bb-agent-experience .ba-assistant-foot{padding:10px 18px 15px;text-align:center;color:var(--ba-muted);font-size:11px;}
+#bb-agent-experience .ba-attachment-chips{display:flex;gap:5px;flex-wrap:wrap;}
+#bb-agent-experience .ba-attachment-chips:not(:empty){margin-bottom:10px;}
+#bb-agent-experience .ba-attachment-chips button{display:flex;align-items:center;gap:4px;border:1px solid var(--ba-line);border-radius:5px;font-size:11px;background:var(--ba-bg);padding:4px 6px;max-width:100%;overflow-wrap:anywhere;text-align:left;}
+#bb-agent-experience .ba-attachment-chips svg{width:12px;height:12px;}
+#bb-agent-experience .ba-run-list{list-style:none;padding:0;margin:0;display:grid;gap:0;}
+#bb-agent-experience .ba-run-list li{padding:7px 0;display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--ba-muted);}
+#bb-agent-experience .ba-run-list svg{margin-top:2px;width:15px;height:15px;}
+#bb-agent-experience .ba-run-list li.is-current{color:var(--ba-green);font-weight:600;}
+#bb-agent-experience .ba-run-list small{font-size:11px;font-weight:400;display:block;color:var(--ba-muted);margin-top:3px;}
+#bb-agent-experience .ba-running-note{background:var(--ba-soft);color:var(--ba-green);font-size:11px;margin:13px 0 0;padding:9px 11px;border-radius:6px;}
+#bb-agent-experience .ba-file-row{display:flex;gap:9px;align-items:center;padding:11px 0;border-bottom:1px solid var(--ba-line);}
+#bb-agent-experience .ba-file-row:last-child{border-bottom:0;}
+#bb-agent-experience .ba-word-icon{display:grid;place-items:center;width:30px;height:36px;border:1px solid var(--ba-line);background:var(--ba-bg);color:var(--ba-green);border-radius:5px;font-size:13px;font-weight:600;}
+#bb-agent-experience .ba-file-copy{min-width:0;flex:1;}
+#bb-agent-experience .ba-file-copy strong{font-size:12px;display:block;font-weight:500;overflow-wrap:anywhere;}
+#bb-agent-experience .ba-file-copy small{font-size:11px;color:var(--ba-muted);}
+#bb-agent-experience .ba-previous{display:block;margin:0 auto 15px;border:0;background:transparent;color:var(--ba-muted);font-size:11px;}
+#bb-agent-experience .ba-more-history{margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid var(--ba-line);font-size:12px;color:var(--ba-muted);}
+#bb-agent-experience .ba-toast{position:absolute;left:195px;right:28px;top:75px;z-index:10;max-width:550px;margin:auto;padding:12px 16px;background:var(--ba-ink);color:var(--ba-surface);border-radius:9px;box-shadow:0 4px 16px var(--ba-shadow);font-size:12px;}
+#bb-agent-experience .ba-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
+#bb-agent-experience .ba-note-row{font-size:12px;color:var(--ba-muted);padding:13px 0;border-bottom:1px solid var(--ba-line);}
+#bb-agent-experience .ba-note-row:last-child{border:0;}
+#bb-agent-experience .ba-validation{font-size:12px;color:var(--ba-error);margin-top:8px;}
+@media(max-width:840px){
+ #bb-agent-experience .ba-app{grid-template-columns:151px minmax(0,1fr);}
+ #bb-agent-experience .ba-sidebar{padding-left:9px;padding-right:9px;}
+ #bb-agent-experience .ba-brand{font-size:17px;gap:5px;}
+ #bb-agent-experience .ba-main{padding-left:19px;padding-right:19px;}
+ #bb-agent-experience .ba-assistant{right:15px;bottom:18px;}
+ #bb-agent-experience .ba-assistant.is-focus{width:calc(100% - 181px);}
+ #bb-agent-experience .ba-preview-label{margin-right:60px;}
+ #bb-agent-experience .ba-overview{gap:8px;}
+ #bb-agent-experience .ba-stat{padding:13px;}
+ #bb-agent-experience .ba-three-results{grid-template-columns:1fr;}
+ #bb-agent-experience .ba-toast{left:167px;}
+}
+@media(max-width:620px){
+ #bb-agent-experience .ba-app{grid-template-columns:minmax(0,1fr);min-height:850px;}
+ #bb-agent-experience .ba-sidebar{display:none;}
+ #bb-agent-experience .ba-topbar{padding:17px 100px 15px 16px;flex-wrap:wrap;gap:5px;}
+ #bb-agent-experience .ba-preview-label{margin:0;}
+ #bb-agent-experience .ba-mobile-nav{display:flex;flex-wrap:wrap;gap:4px;padding:11px 12px;border-bottom:1px solid var(--ba-line);}
+ #bb-agent-experience .ba-mobile-nav button{padding:7px;border:0;border-radius:5px;background:var(--ba-surface);font-size:11px;}
+ #bb-agent-experience .ba-main{padding:24px 15px 115px;}
+ #bb-agent-experience .ba-page-head h1{font-size:24px;}
+ #bb-agent-experience .ba-stat{padding:12px 9px;}
+ #bb-agent-experience .ba-stat small{font-size:11px;}
+ #bb-agent-experience .ba-overview{gap:6px;}
+ #bb-agent-experience .ba-stat strong{font-size:25px;}
+ #bb-agent-experience .ba-section{padding:16px;}
+ #bb-agent-experience .ba-assistant,#bb-agent-experience .ba-assistant.is-focus{right:8px;bottom:8px;width:calc(100% - 16px);border-radius:14px;}
+ #bb-agent-experience .ba-assistant-header{padding:13px 12px;gap:7px;}
+ #bb-agent-experience .ba-assistant-name{font-size:13px;}
+ #bb-agent-experience .ba-assistant-mark{width:29px;height:32px;}
+ #bb-agent-experience .ba-header-actions{gap:1px;}
+ #bb-agent-experience .ba-icon-button{width:29px;height:33px;}
+ #bb-agent-experience .ba-conversation{padding:21px 16px 17px;}
+ #bb-agent-experience .ba-context-bar{padding:10px 14px;}
+ #bb-agent-experience .ba-context-button{font-size:11px;gap:5px;}
+ #bb-agent-experience .ba-context-materials{font-size:11px;}
+ #bb-agent-experience .ba-welcome h2{font-size:24px;}
+ #bb-agent-experience .ba-task-shortcuts{gap:6px;}
+ #bb-agent-experience .ba-shortcut{padding:11px 8px;font-size:11px;}
+ #bb-agent-experience .ba-composer{margin:0 12px;}
+ #bb-agent-experience .ba-composer textarea,#bb-agent-experience .ba-field input,#bb-agent-experience .ba-field textarea,#bb-agent-experience .ba-field select{font-size:16px;}
+ #bb-agent-experience .ba-composer-hint{display:none;}
+ #bb-agent-experience .ba-assistant-foot{font-size:11px;padding:10px 13px 13px;}
+ #bb-agent-experience .ba-form-grid{grid-template-columns:1fr;}
+ #bb-agent-experience .ba-task-card-body,#bb-agent-experience .ba-task-card-header,#bb-agent-experience .ba-cost{padding:13px;}
+ #bb-agent-experience .ba-task-card-header{flex-wrap:wrap;}
+ #bb-agent-experience .ba-project-row{grid-template-columns:1fr;gap:6px;}
+ #bb-agent-experience .ba-project-row>.ba-link{justify-self:start;}
+ #bb-agent-experience .ba-launcher{right:16px;bottom:17px;}
+ #bb-agent-experience .ba-toast{left:12px;right:12px;top:82px;}
+}
+@media(pointer:coarse){#bb-agent-experience button,#bb-agent-experience select{min-height:44px;}#bb-agent-experience .ba-header-actions .ba-icon-button{min-width:32px;}#bb-agent-experience .ba-assistant-header{flex-wrap:wrap;}}
+@media(prefers-reduced-motion:reduce){#bb-agent-experience button{transition:none;}}
+</style>
+<script>
+(() => {
+ const root = document.getElementById('bb-agent-experience');
+ const $ = s => root.querySelector(s);
+ const icon = n => '<i data-lucide="'+n+'" aria-hidden="true"></i>';
+ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const projects = {
+  cheng:{name:'澄川实业 · 2025 三季度',issuer:'澄川实业有限公司',market:'上交所',type:'普通私募',period:'2025 年 9 月',files:[{name:'募集说明书（待更新）.docx',type:'历史募集书 · 同企业 · 2024 年底'},{name:'2024 年审计报告.pdf',type:'审计报告（含报表及附注）'},{name:'2025 年三季度财务报表.xlsx',type:'最新一期财务报表'}]},
+  qing:{name:'青禾产业 · 核查意见',issuer:'青禾产业发展有限公司',market:'深交所',type:'普通私募',period:'2025 年 9 月',files:[{name:'募集说明书.docx',type:'材料编制依据'},{name:'发行人基础资料.docx',type:'其他材料'}]}
+ };
+ const typeNames={update:'更新募集书',review:'复核募集书',generate:'材料生成'};
+ const amounts={update:5000,review:3000,generate:2000};
+ const defaults={page:'dashboard',pageProject:null,open:true,focus:false,chatProject:null,view:'welcome',taskType:'update',job:null,unread:false,draft:'',custom:null,requirement:'优先更新财务数据和风险提示，保留原有章节结构。',userText:'',selectedFiles:[],history:[],balance:100000,materialType:'主承销商核查意见',exchange:'上交所'};
+ let state={...defaults}; let popover=''; let pendingType=null; let toastTimer; let taskTimers=[]; let stateRevision=0;
+ const saved=window.openai?.widgetState?.privateContent;
+ if(saved?.version===1){state={...defaults,...saved.state};stateRevision=saved.revision||0;if(state.job?.status==='running'){state.job={...state.job,status:'done',stage:3};state.view='done';}}
+ const project=()=>state.chatProject==='custom'?state.custom:projects[state.chatProject];
+ const label=()=>project()?.name||'未关联项目';
+ function save(){if(window.openai?.setWidgetState){stateRevision+=1;window.openai.setWidgetState({modelContent:{design:'全站悬浮 BondBuddy 项目助手',mode:state.focus?'专注视图':'悬浮窗口',page:state.page,conversationProject:label(),scenario:state.view,taskType:typeNames[state.taskType],prototypeOnly:true},privateContent:{version:1,revision:stateRevision,state:{...state,draft:$('#ba-message').value,history:state.history.slice(-5)}}}).catch(()=>{});}}
+ function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:17,height:17}});}
+ function announce(t){$('[data-announcer]').textContent=t;}
+ function toast(t){clearTimeout(toastTimer);$('[data-toast]').textContent=t;$('[data-toast]').hidden=false;announce(t);toastTimer=setTimeout(()=>{$('[data-toast]').hidden=true;},4200);}
+ function fit(){requestAnimationFrame(()=>{const h=state.open?$('[data-assistant]').offsetHeight+112:0;$('.ba-app').style.minHeight=Math.max(840,h)+'px';});}
+ function navigate(page,id=null){state.page=page;state.pageProject=id;renderPage();renderAssistant();save();}
+ function renderPage(){
+  const titles={dashboard:'工作台',projects:'全部项目',result:'项目结果',update:'更新募集书',review:'复核募集书',generate:'材料生成',account:'账号与积分'};
+  $('[data-breadcrumb]').textContent='我的工作空间 / '+titles[state.page];
+  root.querySelectorAll('[data-page]').forEach(b=>{if(b.dataset.page===(state.page==='result'?'projects':state.page))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  const overview='<div class="ba-overview"><div class="ba-stat"><span>待处理</span><strong>1</strong><small>继续填写项目</small></div><div class="ba-stat"><span>进行中</span><strong>1</strong><small>募集书正在更新</small></div><div class="ba-stat"><span>已完成</span><strong>2</strong><small>可查看与下载成果</small></div></div>';
+  const rows='<div class="ba-project-row"><div><div class="ba-row-meta"><span class="ba-tag">复核已完成</span><span class="ba-subtle">募集书复核</span></div><div class="ba-project-title">澄川实业 · 2025 三季度</div><small>上交所 · 普通私募　今天 14:32</small></div><button class="ba-link" data-open-project="cheng">查看结果 '+icon('arrow-up-right')+'</button></div><div class="ba-project-row"><div><div class="ba-row-meta"><span class="ba-tag">已完成</span><span class="ba-subtle">材料生成</span></div><div class="ba-project-title">青禾产业 · 核查意见</div><small>深交所 · 主承销商核查意见　今天 11:08</small></div><button class="ba-link" data-open-project="qing">查看结果 '+icon('arrow-up-right')+'</button></div><div class="ba-project-row"><div><div class="ba-row-meta"><span class="ba-tag">正在编制</span><span class="ba-subtle">募集书更新</span></div><div class="ba-project-title">远山建设 · 2025 年度</div><small>正在更新财务分析章节</small></div><button class="ba-link" data-action="sample-progress">查看进度 '+icon('arrow-up-right')+'</button></div>';
+  let h='';
+  if(['dashboard','projects'].includes(state.page))h='<div class="ba-page-head"><h1>'+titles[state.page]+'</h1><p>先处理需要你确认的事项，随时查看正在推进的项目。</p></div>'+overview+'<div class="ba-quickstart"><span>新建任务</span><button class="ba-button" data-page="update">'+icon('file-pen-line')+'更新募集书</button><button class="ba-button" data-page="review">'+icon('file-check-2')+'复核募集书</button><button class="ba-button" data-page="generate">'+icon('files')+'材料生成</button></div><section class="ba-section"><h2>我的项目</h2>'+rows+'</section>';
+  else if(state.pageProject){const p=projects[state.pageProject];h='<button class="ba-link ba-breadcrumb-link" data-page="projects">'+icon('arrow-left')+'全部项目</button><div class="ba-page-head"><h1>'+p.name+'</h1><p>'+p.market+' · '+p.type+' · '+p.period+'</p></div><section class="ba-section"><div class="ba-row-meta"><span class="ba-tag">已完成</span></div><h2>'+(state.pageProject==='cheng'?'复核结果':'主承销商核查意见')+'</h2>'+(state.pageProject==='cheng'?'<div class="ba-three-results"><div><strong>财务数据</strong><p>2 处数据需要核对</p></div><div><strong>合规披露</strong><p>1 项披露建议补充</p></div><div><strong>文本一致性</strong><p>2 处表述需要统一</p></div></div><p class="ba-subtle">可查看问题对应的原文、依据和修改建议。</p><div class="ba-action-row"><button class="ba-button" data-action="ask-results">'+icon('sparkles')+'让 BondBuddy 帮我处理</button></div>':'<div class="ba-file-row"><span class="ba-word-icon">W</span><span class="ba-file-copy"><strong>主承销商核查意见.docx</strong><small>可编辑 Word 文档</small></span><button class="ba-button" data-action="download">下载</button></div>')+'</section><section class="ba-section"><h2>项目材料</h2>'+p.files.map(f=>'<div class="ba-note-row">'+icon('file-text')+' '+f.name+'</div>').join('')+'</section>';}
+  else if(state.page==='account')h='<div class="ba-page-head"><h1>账号与积分</h1><p>管理个人资料、积分余额与消费记录。</p></div><section class="ba-section"><h2>可用积分</h2><div class="ba-page-head"><h1 data-balance>'+state.balance.toLocaleString()+'</h1></div><button class="ba-button" data-action="recharge">充值积分</button></section><section class="ba-section"><h2>任务消费记录</h2><p class="ba-subtle">任务确认时预留积分，交付后结算；执行失败时释放。</p></section>';
+  else h='<div class="ba-page-head"><h1>'+titles[state.page]+'</h1><p>填写项目信息、上传材料，确认后开始'+(state.page==='review'?'复核':'编制')+'。</p></div><section class="ba-section"><h2>项目信息</h2><div class="ba-form-grid"><label class="ba-field">项目名称<input placeholder="例如：2025 年三季度募集书"></label><label class="ba-field">发行人<input placeholder="填写发行人全称"></label><label class="ba-field">交易所<select><option>上海证券交易所</option><option>深圳证券交易所</option></select></label><label class="ba-field">'+(state.page==='generate'?'材料类型':'债券品种')+'<select><option>'+(state.page==='generate'?'主承销商核查意见':'普通私募')+'</option><option>'+(state.page==='generate'?'法律意见书':'小公募')+'</option></select></label></div><div class="ba-upload-zone">'+icon('upload')+'<p>上传项目材料</p><p>Word、PDF、Excel</p></div><label class="ba-field">补充要求 <span class="ba-subtle">（选填）</span><textarea rows="2" placeholder="补充希望重点处理的内容"></textarea></label><div class="ba-action-row"><button class="ba-button ba-primary" data-action="form-continue">保存并继续</button></div></section>';
+  if(state.page==='result'&&state.resultType&&state.resultType!=='review'){
+   const p=state.pageProject==='custom'?state.custom:projects[state.pageProject];
+   const fileNames=state.resultType==='update'?['募集说明书 · 修订版.docx','募集说明书 · 清洁版.docx']:[state.materialType+'.docx'];
+   h='<button class="ba-link ba-breadcrumb-link" data-page="projects">'+icon('arrow-left')+'全部项目</button><div class="ba-page-head"><h1>'+esc(p?.name||'项目结果')+'</h1><p>'+typeNames[state.resultType]+' · 已完成</p></div><section class="ba-section"><h2>本次任务成果</h2>'+fileNames.map(f=>'<div class="ba-file-row"><span class="ba-word-icon">W</span><span class="ba-file-copy"><strong>'+f+'</strong><small>可编辑 Word 文档</small></span><button class="ba-button" data-action="download">下载</button></div>').join('')+'</section>';
+  }
+  $('[data-main]').innerHTML=h;updateBalance();icons();fit();
+ }
+ function updateBalance(){root.querySelectorAll('[data-balance]').forEach(n=>n.textContent=state.balance.toLocaleString());}
+ function userBubble(t){return '<div class="ba-user-message">'+esc(t)+'</div>';}
+ function assistantLabel(){return '<div class="ba-chat-label">'+icon('sparkles')+'BondBuddy</div>';}
+ function welcome(){return '<div class="ba-welcome"><div class="ba-welcome-kicker">'+icon('sparkles')+'随时聊，也能直接做</div><h2>想先处理哪件事？</h2><p>'+(project()?'可以直接讨论这个项目，也可以交给我一项任务。':'说说你的需求。关联项目后，我可以结合项目信息和材料帮你处理。')+'</p><div class="ba-task-shortcuts"><button class="ba-shortcut" data-intent="update">'+icon('file-pen-line')+'更新募集书</button><button class="ba-shortcut" data-intent="review">'+icon('file-check-2')+'复核募集书</button><button class="ba-shortcut" data-intent="generate">'+icon('files')+'生成材料</button></div><button class="ba-suggestion" data-action="ask-sample">这份募集书，哪些地方最需要更新？ '+icon('arrow-up-right')+'</button><button class="ba-suggestion" data-action="my-progress">我的项目现在进展到哪里了？ '+icon('arrow-up-right')+'</button></div>';}
+ function summary(){const p=project();const files=p?.files||[];return '<dl class="ba-task-summary"><dt>项目</dt><dd>'+esc(p?.issuer||'新项目')+'</dd><dt>目标</dt><dd>'+esc(state.taskType==='generate'?state.exchange+' · '+state.materialType:(p?.market||'上交所')+' · '+(p?.type||'普通私募')+' · '+(p?.period||'2025 年 9 月'))+'</dd><dt>材料</dt><dd>'+state.selectedFiles.length+' 份已选材料<button class="ba-link" style="margin-left:8px" data-action="materials">查看</button></dd><dt>要求</dt><dd>'+esc(state.requirement)+'</dd><dt>交付</dt><dd><div class="ba-output-list">'+(state.taskType==='update'?'<span class="ba-output-chip">'+icon('file-text')+'修订版 Word</span><span class="ba-output-chip">'+icon('file-text')+'清洁版 Word</span>':state.taskType==='review'?'<span class="ba-output-chip">三维度复核结果</span><span class="ba-output-chip">可下载复核报告</span>':'<span class="ba-output-chip">'+icon('file-text')+'可编辑 Word</span>')+'</div></dd></dl>';}
+ function quote(){const fee=amounts[state.taskType];return userBubble(state.userText||'请帮我'+typeNames[state.taskType]+'。')+assistantLabel()+'<div class="ba-response"><p>我把这次任务整理好了。你可以修改要求，确认后再开始。</p></div><div class="ba-task-card"><div class="ba-task-card-header"><strong>'+icon(state.taskType==='review'?'file-check-2':'file-pen-line')+typeNames[state.taskType]+'</strong><span class="ba-tag ba-tag-warm">等待你确认</span></div><div class="ba-task-card-body">'+summary()+'<div class="ba-action-row"><button class="ba-link" data-action="edit-task">修改任务要求 '+icon('pencil')+'</button></div></div><div class="ba-cost"><div class="ba-cost-row"><span>本次消耗积分</span><strong>'+fee.toLocaleString()+'</strong></div><p class="ba-cost-note">可用 '+state.balance.toLocaleString()+' 积分。开始时预留，交付后结算；失败释放。</p><button class="ba-button ba-primary ba-confirm-button" data-action="start">'+(state.balance<fee?'积分不足，前往充值':'确认并开始 · '+fee.toLocaleString()+' 积分')+'</button></div></div>';}
+ function running(){const job=state.job;const stages=job.type==='review'?['读取项目材料','开展三维度复核','整理复核结果','交付报告']:['读取项目材料','编制与更新正文','整理 Word 文档','交付成果'];return assistantLabel()+'<div class="ba-response"><p>任务已开始。我会在这里更新进度，完成后把成果交给你。</p></div><div class="ba-task-card"><div class="ba-task-card-header"><strong>'+typeNames[job.type]+'</strong><span class="ba-tag">正在处理</span></div><div class="ba-task-card-body"><ol class="ba-run-list">'+stages.map((s,i)=>'<li class="'+(i===job.stage?'is-current':'')+'">'+icon(i<job.stage?'circle-check':i===job.stage?'circle-dot':'circle')+'<span>'+s+(i===job.stage?'<small>按已确认的任务要求执行</small>':'')+'</span></li>').join('')+'</ol><div class="ba-running-note">可以收起助手、切换页面，任务会继续运行。</div></div><div class="ba-cost"><div class="ba-cost-row"><span>已预留积分</span><span>'+job.fee.toLocaleString()+'</span></div><span class="ba-subtle">原型正在演示任务进度，不执行真实任务。</span></div></div><div class="ba-action-row"><button class="ba-link" data-action="close">收起，继续处理其他项目 '+icon('arrow-up-right')+'</button></div>';}
+ function done(){const t=state.job?.type||state.taskType;const files=t==='update'?['募集说明书 · 修订版.docx','募集说明书 · 清洁版.docx']:t==='review'?['募集说明书复核报告.docx']:[state.materialType+'.docx'];return assistantLabel()+'<div class="ba-response"><p>'+(t==='update'?'两份 Word 已准备好，可以直接下载。':t==='review'?'复核已完成，可以查看问题、依据和修改建议。':'材料已生成，可以下载后继续编辑。')+'</p></div><div class="ba-task-card"><div class="ba-task-card-header"><strong>'+icon('circle-check')+'成果已就绪</strong><span class="ba-tag">已完成</span></div><div class="ba-task-card-body">'+files.map(f=>'<div class="ba-file-row"><span class="ba-word-icon">W</span><div class="ba-file-copy"><strong>'+f+'</strong><small>本次任务成果</small></div><button class="ba-icon-button" data-action="download" aria-label="下载'+f+'">'+icon('download')+'</button></div>').join('')+'</div><div class="ba-cost"><div class="ba-cost-row"><span>已结算积分</span><span>'+(state.job?.fee||amounts[t]).toLocaleString()+'</span></div><div class="ba-action-row"><button class="ba-button ba-primary" data-action="view-result">查看项目结果</button><button class="ba-link" data-action="revise">继续提出修改要求 '+icon('arrow-up-right')+'</button></div></div></div>';}
+ function answer(){return userBubble(state.userText||'这份募集书，哪些地方最需要更新？')+assistantLabel()+'<div class="ba-response"><p>以这个示例项目为例，建议先处理这三处：</p><ol class="ba-findings"><li><strong>财务数据更新到最新一期。</strong><br>将财务分析中的数据口径统一到 2025 年 9 月，并同步核对正文、表格与摘要。<br><button class="ba-citation" data-action="source">'+icon('file-text')+'三季度财务报表</button></li><li><strong>核对偿债能力与风险提示。</strong><br>结合最新负债结构，检查相关分析是否仍然适用。</li><li><strong>检查全篇一致性。</strong><br>统一报告期、金额单位和前后引用。</li></ol><p>需要的话，我可以把这些整理成募集书更新任务。</p><button class="ba-button" data-intent="update" style="margin-top:12px">整理为更新任务 '+icon('arrow-right')+'</button></div>';}
+ function generic(){return userBubble(state.userText)+assistantLabel()+'<div class="ba-response"><p>这是交互预览，你的消息已显示在对话中。正式接入后，BondBuddy 会结合你选定的项目和材料回答。</p><p>你可以继续体验把需求整理成任务，再确认积分、查看进度和成果。</p><div class="ba-action-row"><button class="ba-button" data-intent="update">整理为更新任务</button><button class="ba-link" data-action="project-picker">选择项目</button></div></div>';}
+ function renderAssistant(){
+  const panel=$('[data-assistant]');panel.hidden=!state.open;panel.classList.toggle('is-focus',state.focus);$('[data-action="expand"]').setAttribute('aria-label',state.focus?'恢复悬浮窗口':'展开为专注视图');
+  $('[data-action="open"]').hidden=state.open;$('[data-action="open"]').setAttribute('aria-expanded',String(state.open));
+  $('[data-unread]').hidden=!state.unread;$('[data-launcher-sub]').textContent=state.unread?'成果已就绪':state.job?.status==='running'?'有任务正在进行':'项目助手';
+  $('[data-context]').textContent=label();$('[data-material-label]').textContent=project()?(state.selectedFiles.length+' 份材料'):'选择材料';
+  const mismatch=state.pageProject&&state.pageProject!==state.chatProject;
+  $('[data-switch-notice]').innerHTML=mismatch?'<div class="ba-switch-notice"><span>当前页面：'+esc(projects[state.pageProject].name)+'</span><button data-action="switch-current">为此项目新建对话</button></div>':'';
+  let content=({welcome,quote,running,done,answer,generic})[state.view]?.()||welcome();
+  $('[data-conversation]').innerHTML=content;
+  $('#ba-message').placeholder=state.job?.status==='running'?'继续询问项目问题或查看进度…':'问一个问题，或交代一项项目任务…';
+  $('[data-footer]').textContent=state.job?.status==='running'?'本次任务按已确认要求执行；新增修改会另行确认。':'编制、复核和生成任务会先展示积分，由你确认后开始。';
+  renderPopover();renderAttachments();icons();fit();
+ }
+ function renderAttachments(){const p=project();$('[data-attachments]').innerHTML=state.selectedFiles.length&&p?'<button type="button" data-action="materials">'+icon('files')+'已关联 '+state.selectedFiles.length+' 份项目材料 '+icon('chevron-down')+'</button>':'';}
+ function renderPopover(){const el=$('[data-popover]');el.hidden=!popover;if(!popover)return;let heading='',body='';
+  if(popover==='projects'){heading='选择对话关联的项目';body='<p class="ba-subtle">新的项目会开启独立对话，原对话保留。</p>'+Object.entries(projects).map(([id,p])=>'<button class="ba-project-option" data-select-project="'+id+'">'+p.name+'<small>'+p.market+' · '+p.type+' · '+p.files.length+' 份材料</small></button>').join('')+'<button class="ba-link" data-action="create-project">'+icon('plus')+'创建新项目</button>';
+  }else if(popover==='new-project'){heading='先给新项目一个名称';body='<label class="ba-field">项目名称<input data-new-name placeholder="例如：三季度募集书更新"></label><label class="ba-field" style="margin-top:10px">发行人全称<input data-new-issuer placeholder="填写发行人全称"></label><div class="ba-help">后续根据任务补齐品种、交易所、报告期和材料。</div><div class="ba-validation" data-validation role="alert"></div><button class="ba-button ba-primary" style="margin-top:12px" data-action="save-project">创建并继续</button>';
+  }else if(popover==='materials'){heading='本次对话使用的材料';const p=project();body=p?p.files.map((f,i)=>'<label class="ba-material-check"><input type="checkbox" data-material-index="'+i+'" '+(state.selectedFiles.includes(i)?'checked':'')+'><span>'+f.name+'<small>'+f.type+'</small></span></label>').join('')+'<label class="ba-file-picker">添加其他材料<input type="file" multiple data-file-input accept=".docx,.doc,.pdf,.xlsx,.xls,.txt"></label><p class="ba-help">这里只演示选择文件，不上传文件内容。</p><button class="ba-button" style="margin-top:12px" data-action="close-popover">完成选择</button>':'<p class="ba-subtle">先选择项目，让材料和对话保存在一起。</p><button class="ba-button" style="margin-top:12px" data-action="project-picker">选择项目</button>';
+  }else if(popover==='edit'){heading='调整本次任务';body='<label class="ba-field">补充要求<textarea data-edit-requirement rows="3">'+esc(state.requirement)+'</textarea></label>'+(state.taskType==='generate'?'<div class="ba-form-grid" style="margin-top:12px"><label class="ba-field">交易所<select data-edit-exchange><option '+(state.exchange==='上交所'?'selected':'')+'>上交所</option><option '+(state.exchange==='深交所'?'selected':'')+'>深交所</option></select></label><label class="ba-field">材料类型<select data-edit-type>'+['主承销商核查意见','法律意见书','募集说明书摘要'].map(n=>'<option '+(n===state.materialType?'selected':'')+'>'+n+'</option>').join('')+'</select></label></div>':'')+'<p class="ba-help">修改影响任务范围时，会重新展示报价供你确认。</p><button class="ba-button ba-primary" style="margin-top:12px" data-action="save-edit">保存并查看任务</button>';
+  }else if(popover==='history'){heading='最近对话';body=(state.history.length?state.history.slice().reverse().map((h,i)=>'<button class="ba-history-item" data-restore="'+(state.history.length-1-i)+'">'+esc(h.title)+'<small>'+esc(h.projectName)+' · '+(h.job?.status==='running'?'进行中':h.job?.status==='done'?'已完成':'对话')+'</small></button>').join(''):'<p class="ba-subtle">还没有历史对话。关闭助手不会丢失当前对话。</p>');}
+  el.innerHTML='<div class="ba-popover-heading"><strong>'+heading+'</strong><button class="ba-icon-button" data-action="close-popover" aria-label="关闭面板">'+icon('x')+'</button></div>'+body;
+ }
+ function archive(){if(state.view==='welcome'&&!state.chatProject)return;state.history.push({title:state.userText||typeNames[state.taskType],projectName:label(),chatProject:state.chatProject,view:state.view,taskType:state.taskType,job:state.job,requirement:state.requirement,selectedFiles:state.selectedFiles.slice(),custom:state.custom,userText:state.userText,materialType:state.materialType,exchange:state.exchange});state.history=state.history.slice(-5);}
+ function resetChat(id=null){archive();state.chatProject=id;state.view='welcome';state.userText='';state.job=null;state.selectedFiles=(project()?.files||[]).map((_,i)=>i);state.draft='';$('#ba-message').value='';popover='';}
+ function chooseProject(id){const intent=pendingType;resetChat(id);state.exchange=project()?.market||'上交所';pendingType=null;if(intent==='answer'){state.view='answer';state.userText='这份募集书，哪些地方最需要更新？';}else if(intent)prepareTask(intent);renderAssistant();save();}
+ function prepareTask(type,text){state.open=true;state.taskType=type;if(!project()){pendingType=type;popover='projects';renderAssistant();return;}if(state.job?.status==='running'){toast('这个对话已有任务在运行。可新建对话，独立提交另一项任务。');return;}state.view='quote';state.userText=text||({update:'请结合项目材料，更新到最新一期，并给我修订版和清洁版 Word。',review:'请复核这份募集书，重点关注财务数据、合规披露和文本一致性。',generate:'请根据项目材料，生成一份主承销商核查意见。'}[type]);state.requirement=type==='review'?'重点复核财务数据、合规披露和文本一致性。':type==='generate'?'按所选交易所的编制要求生成，保留需要人工补充的事项。':'优先更新财务数据和风险提示，保留原有章节结构。';state.job=null;popover=type==='generate'?'edit':'';renderAssistant();save();}
+ function startJob(){if(!state.selectedFiles.length){popover='materials';renderAssistant();toast('请先选择本次任务使用的材料。');return;}const fee=amounts[state.taskType];if(state.balance<fee){navigate('account');toast('积分不足。充值后回到任务卡片，再确认开始。');return;}const job={id:Date.now(),type:state.taskType,status:'running',stage:0,fee};state.job=job;state.balance-=fee;state.view='running';state.unread=false;popover='';renderAssistant();updateBalance();save();announce('示例任务已开始，积分已预留。');
+  [1,2,3].forEach((stage,i)=>taskTimers.push(setTimeout(()=>{job.stage=stage;if(stage===3){job.status='done';state.unread=!state.open||state.job?.id!==job.id;if(state.job?.id===job.id)state.view='done';announce('示例成果已准备好。');}if(state.job?.id===job.id)state.job={...job};state.history.forEach(h=>{if(h.job?.id===job.id){h.job={...job};if(stage===3)h.view='done';}});renderAssistant();save();},(i+1)*4200)));
+ }
+ function submit(){const text=$('#ba-message').value.trim();if(!text)return;$('#ba-message').value='';state.draft='';state.userText=text;
+  if(state.job?.status==='running'){toast('本次任务继续执行。新增修改会整理为下一次任务，由你再次确认；不会自动重复扣费。');return;}
+  if(/复核|检查/.test(text))prepareTask('review',text);else if(/生成|法律意见|核查意见|摘要/.test(text))prepareTask('generate',text);else if(/更新|编制|修改/.test(text)&&!/[?？]|哪些|如何|怎么/.test(text))prepareTask('update',text);else{state.view='generic';renderAssistant();save();}
+ }
+ root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!root.contains(b))return;
+  if(b.dataset.page){navigate(b.dataset.page);return;}
+  if(b.dataset.openProject){state.resultType=b.dataset.openProject==='cheng'?'review':'generate';navigate('result',b.dataset.openProject);return;}
+  if(b.dataset.intent){prepareTask(b.dataset.intent);return;}
+  if(b.dataset.selectProject){chooseProject(b.dataset.selectProject);return;}
+  if(b.dataset.restore!==undefined){const h=state.history[Number(b.dataset.restore)];archive();if(h){Object.assign(state,{...h,history:state.history,view:h.job?.status==='done'?'done':h.view});popover='';renderAssistant();save();}return;}
+  const a=b.dataset.action;
+  if(a==='open'){state.open=true;if(state.job?.status==='done')state.view='done';state.unread=false;renderAssistant();save();}
+  else if(a==='close'){state.open=false;popover='';renderAssistant();save();$('[data-action="open"]').focus();}
+  else if(a==='expand'){state.focus=!state.focus;renderAssistant();save();}
+  else if(a==='new-chat'){resetChat(state.pageProject);state.open=true;renderAssistant();save();}
+  else if(a==='history'){popover=popover==='history'?'':'history';renderAssistant();}
+  else if(a==='project-picker'){popover=popover==='projects'?'':'projects';renderAssistant();}
+  else if(a==='materials'||a==='attach'){popover=popover==='materials'?'':'materials';renderAssistant();}
+  else if(a==='close-popover'){popover='';renderAssistant();}
+  else if(a==='switch-current'){chooseProject(state.pageProject);}
+  else if(a==='create-project'){popover='new-project';renderAssistant();}
+  else if(a==='save-project'){const name=$('[data-new-name]').value.trim(),issuer=$('[data-new-issuer]').value.trim();if(!name||!issuer){$('[data-validation]').textContent='请填写项目名称和发行人。';fit();return;}const intent=pendingType;state.custom={name,issuer,market:'上交所',type:'待填写',period:'待填写',files:[]};resetChat('custom');pendingType=intent;popover='materials';renderAssistant();toast('新项目已建立（演示）。可在项目信息页继续补齐，再选择材料。');save();}
+  else if(a==='edit-task'){popover='edit';renderAssistant();}
+  else if(a==='save-edit'){state.requirement=$('[data-edit-requirement]').value.trim()||'按项目材料执行。';if($('[data-edit-exchange]'))state.exchange=$('[data-edit-exchange]').value;if($('[data-edit-type]'))state.materialType=$('[data-edit-type]').value;popover='';renderAssistant();save();}
+  else if(a==='start')startJob();
+  else if(a==='download')toast('这里演示下载入口。当前原型未执行任务，也未生成真实 Word 文件。');
+  else if(a==='source')toast('正式产品会打开所引用的项目材料，并定位对应内容。');
+  else if(a==='recharge')toast('这是充值入口预览，不会发起支付。任务需在充值后再次确认开始。');
+  else if(a==='account')navigate('account');
+  else if(a==='view-result'){state.open=false;state.resultType=state.job?.type||state.taskType;navigate('result',state.chatProject==='qing'?'qing':'cheng');toast('成果在对话和项目结果页都可找到；导航不会跳回工具入口。');}
+  else if(a==='revise'){$('#ba-message').value='请在本次成果基础上，进一步修改：';$('#ba-message').focus();toast('继续写下修改要求。新的任务会单独展示积分，由你确认。');}
+  else if(a==='ask-sample'){if(!project()){pendingType='answer';popover='projects';renderAssistant();}else{state.userText='这份募集书，哪些地方最需要更新？';state.view='answer';renderAssistant();save();}}
+  else if(a==='ask-results'){state.open=true;if(state.chatProject!==state.pageProject)resetChat(state.pageProject);state.userText='这份募集书，哪些地方最需要更新？';state.view='answer';renderAssistant();save();}
+  else if(a==='sample-progress'||a==='my-progress'){state.open=true;state.userText='我的项目现在进展到哪里了？';state.view='generic';renderAssistant();$('[data-conversation]').innerHTML=userBubble(state.userText)+assistantLabel()+'<div class="ba-response"><p>示例项目中，远山建设的募集书正在更新财务分析章节；澄川实业的复核结果和青禾产业的核查意见已经可以查看。</p><button class="ba-button" style="margin-top:14px" data-page="projects">查看全部项目</button></div>';icons();fit();save();}
+  else if(a==='earlier'){b.outerHTML='<div class="ba-more-history">'+state.history.slice(-3).map(h=>'<p>'+esc(h.title)+'<br><small>'+esc(h.projectName)+'</small></p>').join('')+'</div>';fit();}
+  else if(a==='form-continue')toast('常规表单流程继续保留。项目助手可以在任意页面随时唤起。');
+ });
+ root.addEventListener('change',e=>{if(e.target.matches('[data-material-index]')){const i=Number(e.target.dataset.materialIndex);if(e.target.checked&&!state.selectedFiles.includes(i))state.selectedFiles.push(i);else if(!e.target.checked)state.selectedFiles=state.selectedFiles.filter(n=>n!==i);renderAttachments();$('[data-material-label]').textContent=state.selectedFiles.length+' 份材料';icons();save();}
+  if(e.target.matches('[data-file-input]')){toast('已演示选择 '+e.target.files.length+' 个文件。原型不读取、不上传文件内容。');}
+ });
+ $('[data-composer]').addEventListener('submit',e=>{e.preventDefault();submit();});
+ $('#ba-message').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();submit();}});
+ $('#ba-message').addEventListener('input',()=>{state.draft=$('#ba-message').value;});
+ root.addEventListener('keydown',e=>{if(e.key==='Escape'){if(popover){popover='';renderAssistant();}else if(state.open){state.open=false;renderAssistant();save();}}});
+ window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.privateContent;if(s?.version===1&&(!s.revision||s.revision>stateRevision)){stateRevision=s.revision||0;state={...defaults,...s.state};popover='';$('#ba-message').value=state.draft||'';renderPage();renderAssistant();}});
+ $('#ba-message').value=state.draft||'';renderPage();renderAssistant();
+ if(globalThis.ResizeObserver)new ResizeObserver(fit).observe($('[data-assistant]'));
+ if(globalThis.Tweak){const design={panelWidth:466,compactEntry:false};const tweak=new Tweak({container:root,onChange:()=>{root.style.setProperty('--ba-panel-width',design.panelWidth+'px');$('[data-action="open"]').classList.toggle('is-compact',design.compactEntry);fit();}});tweak.addSlider(design,'panelWidth',{label:'悬浮窗口宽度',min:420,max:560,step:10,unit:'px'});tweak.addToggle(design,'compactEntry',{label:'收起时只显示图标'});}
+})();
+</script>

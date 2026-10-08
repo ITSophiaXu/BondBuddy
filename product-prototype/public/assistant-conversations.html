@@ -1,0 +1,209 @@
+<div id="bb-conversation-flows">
+  <div class="viz-carousel viz-dotted-background" aria-label="项目助手的三种对话场景" data-previous-label="上一个场景" data-next-label="下一个场景">
+    <section data-variant="基于成果继续修改" aria-label="基于已有成果继续修改"><div class="bc-product" data-scenario="revise"></div></section>
+    <section data-variant="简单问答" aria-label="简单问答" hidden><div class="bc-product" data-scenario="chat"></div></section>
+    <section data-variant="直接更新募集书" aria-label="通过项目助手更新募集书" hidden><div class="bc-product" data-scenario="create"></div></section>
+  </div>
+</div>
+<style>
+#bb-conversation-flows{font-family:"Segoe UI","Microsoft YaHei",sans-serif;text-align:left;}
+#bb-conversation-flows .bc-product{--bc-bg:light-dark(#f7f8f2,#1c251f);--bc-surface:light-dark(#ffffff,#232e26);--bc-ink:light-dark(#263e31,#e2ede4);--bc-muted:light-dark(#647467,#aec0b1);--bc-line:light-dark(#e0e7dc,#3f4d42);--bc-soft:light-dark(#eef3e8,#304132);--bc-primary:light-dark(#355f43,#b7d5ad);--bc-on:light-dark(#ffffff,#213725);--bc-warm:light-dark(#f6ecda,#443922);--bc-warm-ink:light-dark(#82602d,#eed09e);--bc-red:light-dark(#a65242,#ebb6a8);--bc-red-bg:light-dark(#fbefea,#442f29);--bc-shadow:light-dark(#223c311a,#00000033);color:var(--bc-ink);background:var(--bc-surface);font-size:14px;line-height:1.65;border:1px solid var(--bc-line);border-radius:16px;width:100%;max-width:660px;min-height:830px;margin:0 auto;box-shadow:0 8px 30px var(--bc-shadow);display:flex;flex-direction:column;position:relative;}
+#bb-conversation-flows *{box-sizing:border-box;}
+#bb-conversation-flows [hidden]{display:none!important;}
+#bb-conversation-flows button,#bb-conversation-flows input,#bb-conversation-flows textarea,#bb-conversation-flows select{font:inherit;color:inherit;}
+#bb-conversation-flows button{cursor:var(--cursor-interaction,pointer);}
+#bb-conversation-flows button:disabled{opacity:.5;cursor:default;}
+#bb-conversation-flows button:focus-visible,#bb-conversation-flows input:focus-visible,#bb-conversation-flows textarea:focus-visible,#bb-conversation-flows select:focus-visible{outline:2px solid var(--bc-primary);outline-offset:3px;}
+#bb-conversation-flows p,#bb-conversation-flows h2,#bb-conversation-flows h3{margin:0;}
+#bb-conversation-flows svg{width:16px;height:16px;flex:none;}
+#bb-conversation-flows .bc-head{display:flex;align-items:center;gap:9px;padding:19px 24px 15px;border-bottom:1px solid var(--bc-line);}
+#bb-conversation-flows .bc-logo{height:34px;width:34px;display:grid;place-items:center;background:var(--bc-soft);color:var(--bc-primary);border-radius:10px;}
+#bb-conversation-flows .bc-name{font-size:15px;font-weight:600;letter-spacing:-.2px;}
+#bb-conversation-flows .bc-name small{font-size:11px;font-weight:400;color:var(--bc-muted);display:block;}
+#bb-conversation-flows .bc-preview{font-size:11px;color:var(--bc-muted);margin-left:auto;margin-right:76px;}
+#bb-conversation-flows .bc-context{display:flex;align-items:center;gap:7px;padding:11px 24px;background:var(--bc-bg);border-bottom:1px solid var(--bc-line);font-size:12px;flex-wrap:wrap;}
+#bb-conversation-flows .bc-context span{min-width:0;overflow-wrap:anywhere;}
+#bb-conversation-flows .bc-context button{margin-left:auto;}
+#bb-conversation-flows .bc-body{padding:23px 25px 22px;flex:1;overflow-wrap:anywhere;}
+#bb-conversation-flows .bc-label{display:flex;align-items:center;gap:6px;color:var(--bc-muted);font-size:11px;margin-bottom:9px;}
+#bb-conversation-flows .bc-user{margin:0 0 22px auto;max-width:91%;background:var(--bc-soft);padding:13px 16px;border-radius:13px 13px 4px 13px;font-size:13px;}
+#bb-conversation-flows .bc-answer{font-size:13px;line-height:1.85;}
+#bb-conversation-flows .bc-answer p+p{margin-top:10px;}
+#bb-conversation-flows .bc-answer strong{font-weight:600;}
+#bb-conversation-flows .bc-result{border:1px solid var(--bc-line);border-radius:10px;overflow:hidden;margin-top:15px;}
+#bb-conversation-flows .bc-result-top{background:var(--bc-bg);padding:13px 16px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+#bb-conversation-flows .bc-result-top strong{font-size:13px;display:flex;gap:6px;align-items:center;font-weight:500;}
+#bb-conversation-flows .bc-result-body{padding:15px 16px;}
+#bb-conversation-flows .bc-tag{display:inline-flex;align-items:center;gap:5px;background:var(--bc-soft);color:var(--bc-primary);padding:3px 7px;font-size:11px;border-radius:5px;}
+#bb-conversation-flows .bc-tag-warm{background:var(--bc-warm);color:var(--bc-warm-ink);}
+#bb-conversation-flows .bc-meta{color:var(--bc-muted);font-size:11px;}
+#bb-conversation-flows .bc-text-sample{font-size:13px;line-height:1.85;border-left:2px solid var(--bc-primary);padding-left:13px;margin:13px 0;}
+#bb-conversation-flows .bc-action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:15px;}
+#bb-conversation-flows .bc-button{border:1px solid var(--bc-line);border-radius:7px;padding:8px 12px;background:var(--bc-surface);font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;max-width:100%;}
+#bb-conversation-flows .bc-button:hover{background:var(--bc-soft);}
+#bb-conversation-flows .bc-primary{background:var(--bc-primary);color:var(--bc-on);border-color:var(--bc-primary);}
+#bb-conversation-flows .bc-primary:hover{background:var(--bc-primary);filter:brightness(.96);}
+#bb-conversation-flows .bc-link{border:0;background:transparent;color:var(--bc-primary);padding:3px 0;display:inline-flex;align-items:center;gap:5px;font-size:12px;}
+#bb-conversation-flows .bc-old-result{font-size:12px;color:var(--bc-muted);background:var(--bc-bg);padding:10px 12px;border-radius:8px;margin-bottom:22px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+#bb-conversation-flows .bc-old-result .bc-link{font-size:11px;margin-left:auto;}
+#bb-conversation-flows .bc-file-row{padding:11px 0;border-bottom:1px solid var(--bc-line);display:flex;align-items:center;gap:10px;}
+#bb-conversation-flows .bc-file-row:last-child{border:0;}
+#bb-conversation-flows .bc-word{width:28px;height:34px;border:1px solid var(--bc-line);background:var(--bc-bg);color:var(--bc-primary);display:grid;place-items:center;font-size:12px;border-radius:5px;flex:none;}
+#bb-conversation-flows .bc-file-copy{flex:1;min-width:0;}
+#bb-conversation-flows .bc-file-copy strong{font-size:12px;font-weight:500;display:block;overflow-wrap:anywhere;}
+#bb-conversation-flows .bc-file-copy small{font-size:11px;color:var(--bc-muted);}
+#bb-conversation-flows .bc-icon-button{height:32px;width:32px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:transparent;color:var(--bc-muted);padding:0;}
+#bb-conversation-flows .bc-icon-button:hover{background:var(--bc-soft);}
+#bb-conversation-flows .bc-quote-label{font-size:11px;color:var(--bc-muted);margin-bottom:8px;}
+#bb-conversation-flows .bc-diff{font-size:12px;line-height:1.85;}
+#bb-conversation-flows .bc-diff>div{padding:12px;margin:8px 0;border-radius:7px;}
+#bb-conversation-flows .bc-before{background:var(--bc-red-bg);color:var(--bc-red);}
+#bb-conversation-flows .bc-after{background:var(--bc-soft);}
+#bb-conversation-flows .bc-diff strong{display:block;font-size:11px;margin-bottom:5px;}
+#bb-conversation-flows .bc-list{margin:10px 0;padding-left:18px;display:grid;gap:8px;font-size:13px;}
+#bb-conversation-flows .bc-suggestions{display:flex;gap:7px;flex-wrap:wrap;margin-top:20px;}
+#bb-conversation-flows .bc-suggestions button{padding:7px 10px;border:1px solid var(--bc-line);border-radius:16px;background:var(--bc-surface);color:var(--bc-primary);font-size:11px;}
+#bb-conversation-flows .bc-suggestions button:hover{background:var(--bc-soft);}
+#bb-conversation-flows .bc-composer{margin:0 19px 0;border:1px solid var(--bc-line);background:var(--bc-surface);border-radius:11px;padding:11px 12px 8px;}
+#bb-conversation-flows .bc-composer:focus-within{border-color:var(--bc-primary);}
+#bb-conversation-flows .bc-composer textarea{width:100%;min-height:45px;border:0;background:transparent;resize:vertical;font-size:13px;padding:0;display:block;line-height:1.65;}
+#bb-conversation-flows .bc-composer textarea::placeholder{color:var(--bc-muted);}
+#bb-conversation-flows .bc-composer-bottom{display:flex;align-items:center;gap:8px;}
+#bb-conversation-flows .bc-composer-bottom .bc-meta{font-size:11px;}
+#bb-conversation-flows .bc-send{background:var(--bc-primary);color:var(--bc-on);border:0;border-radius:8px;width:31px;height:31px;display:grid;place-items:center;margin-left:auto;}
+#bb-conversation-flows .bc-footnote{font-size:11px;color:var(--bc-muted);text-align:center;padding:10px 18px 16px;}
+#bb-conversation-flows .bc-bound{font-size:11px;color:var(--bc-primary);display:flex;align-items:center;gap:5px;padding:5px 7px;border-radius:5px;background:var(--bc-soft);margin-bottom:10px;max-width:100%;width:fit-content;}
+#bb-conversation-flows .bc-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:13px 0;}
+#bb-conversation-flows .bc-field{font-size:11px;color:var(--bc-muted);display:block;min-width:0;}
+#bb-conversation-flows .bc-field select,#bb-conversation-flows .bc-field input{display:block;margin-top:5px;width:100%;min-width:0;padding:8px;border:1px solid var(--bc-line);border-radius:6px;background:var(--bc-surface);font-size:12px;color:var(--bc-ink);}
+#bb-conversation-flows .bc-report-period{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+#bb-conversation-flows .bc-divider{border-top:1px solid var(--bc-line);margin:15px 0 12px;padding-top:13px;font-size:12px;}
+#bb-conversation-flows .bc-summary{margin:0;display:grid;grid-template-columns:66px minmax(0,1fr);gap:9px;font-size:12px;}
+#bb-conversation-flows .bc-summary dt{color:var(--bc-muted);}
+#bb-conversation-flows .bc-summary dd{margin:0;}
+#bb-conversation-flows .bc-attachments{display:grid;gap:6px;margin-top:10px;}
+#bb-conversation-flows .bc-attachment{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--bc-primary);padding:7px 9px;border:1px solid var(--bc-line);border-radius:6px;background:var(--bc-bg);}
+#bb-conversation-flows .bc-attachment span{min-width:0;overflow-wrap:anywhere;}
+#bb-conversation-flows .bc-step{display:flex;gap:9px;align-items:flex-start;font-size:12px;padding:9px 0;color:var(--bc-muted);}
+#bb-conversation-flows .bc-step svg{margin-top:2px;}
+#bb-conversation-flows .bc-step.is-current{color:var(--bc-primary);}
+#bb-conversation-flows .bc-status-note{margin-top:13px;padding:10px 12px;border-radius:7px;background:var(--bc-soft);color:var(--bc-primary);font-size:11px;}
+#bb-conversation-flows .bc-inline-notice{font-size:12px;background:var(--bc-warm);color:var(--bc-warm-ink);padding:10px 12px;margin:0 19px 12px;border-radius:7px;}
+#bb-conversation-flows .bc-mini-answer{border-top:1px solid var(--bc-line);padding-top:15px;margin-top:20px;font-size:13px;}
+#bb-conversation-flows .bc-mini-answer .bc-user{margin-bottom:12px;}
+#bb-conversation-flows .bc-file-input{font-size:12px;display:block;max-width:100%;margin-top:8px;}
+#bb-conversation-flows .bc-history{margin-top:14px;padding:12px;border:1px solid var(--bc-line);border-radius:8px;background:var(--bc-bg);}
+@media(max-width:480px){
+ #bb-conversation-flows .bc-product{min-height:830px;border-radius:12px;}
+ #bb-conversation-flows .bc-head{padding:17px 14px 14px;gap:7px;}
+ #bb-conversation-flows .bc-preview{margin-right:72px;font-size:11px;}
+ #bb-conversation-flows .bc-name{font-size:14px;}
+ #bb-conversation-flows .bc-name small{font-size:11px;}
+ #bb-conversation-flows .bc-context{padding:10px 14px;font-size:11px;}
+ #bb-conversation-flows .bc-body{padding:20px 15px;}
+ #bb-conversation-flows .bc-user{max-width:96%;padding:12px 13px;}
+ #bb-conversation-flows .bc-result-body,#bb-conversation-flows .bc-result-top{padding:13px;}
+ #bb-conversation-flows .bc-fields{grid-template-columns:1fr;gap:10px;}
+ #bb-conversation-flows .bc-composer{margin:0 12px;}
+ #bb-conversation-flows .bc-composer textarea,#bb-conversation-flows .bc-field select,#bb-conversation-flows .bc-field input{font-size:16px;}
+ #bb-conversation-flows .bc-composer-bottom .bc-meta{font-size:11px;}
+ #bb-conversation-flows .bc-summary{grid-template-columns:52px minmax(0,1fr);gap:8px;}
+ #bb-conversation-flows .bc-file-row{gap:7px;}
+ #bb-conversation-flows .bc-old-result .bc-link{margin-left:0;}
+}
+@media(pointer:coarse){#bb-conversation-flows button,#bb-conversation-flows select{min-height:44px;}#bb-conversation-flows .bc-icon-button,#bb-conversation-flows .bc-send{min-width:44px;}}
+</style>
+<script>
+(() => {
+ const root=document.getElementById('bb-conversation-flows');
+ const icon=n=>'<i data-lucide="'+n+'" aria-hidden="true"></i>';
+ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const oldText='发行人经营活动受到宏观经济环境、行业发展情况、市场需求、业务拓展进度及项目回款情况等多方面因素影响，未来若相关因素发生不利变化，可能对发行人的收入规模、盈利能力及经营活动现金流量产生不利影响。';
+ const newText='发行人经营表现受宏观经济、行业需求和项目回款进度影响。若经营环境变化或回款不及预期，可能影响盈利及经营现金流。';
+ const files=['募集说明书（2024 年底）.docx','2024 年审计报告.pdf','2025 年三季度财务报表.xlsx'];
+ const defaults={revise:{stage:'suggestion',version:1,showOld:false,showDiff:false,showHistory:false,extra:''},chat:{question:'clean',linked:false,extra:''},create:{stage:'inputs',exchange:'上交所',type:'普通私募',relationship:'同企业',year:'2024',period:'年底',extra:''}};
+ let state=JSON.parse(JSON.stringify(defaults));let revision=0;
+ const initial=window.openai?.widgetState?.privateContent;
+ if(initial?.version===1){Object.keys(defaults).forEach(k=>Object.assign(state[k],initial.state?.[k]||{}));revision=initial.revision||0;}
+ const timers={};
+ function save(){if(window.openai?.setWidgetState){revision++;window.openai.setWidgetState({modelContent:{design:'同一对话中的三种意图',existingResult:state.revise.stage,qa:state.chat.question,directUpdate:state.create.stage,pricing:'追加修改和问答未在此设定价格',prototypeOnly:true},privateContent:{version:1,revision,state}}).catch(()=>{});}}
+ function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});}
+ const panel=k=>root.querySelector('[data-scenario="'+k+'"]');
+ const label=()=>'<div class="bc-label">'+icon('sparkles')+'BondBuddy</div>';
+ const user=t=>'<div class="bc-user">'+esc(t)+'</div>';
+ const download=(version,name='募集说明书')=>'<div class="bc-file-row"><span class="bc-word">W</span><span class="bc-file-copy"><strong>'+name+' · 清洁版 v'+version+'.docx</strong><small>可继续编辑</small></span><button class="bc-icon-button" data-action="download" aria-label="下载清洁版">'+icon('download')+'</button></div><div class="bc-file-row"><span class="bc-word">W</span><span class="bc-file-copy"><strong>'+name+' · 修订版 v'+version+'.docx</strong><small>'+(version>1?'标出相对 v1 的本次改动':'标出相对上传原稿的改动')+'</small></span><button class="bc-icon-button" data-action="download" aria-label="下载修订版">'+icon('download')+'</button></div>';
+ const context=k=>k==='chat'&&!state.chat.linked?'通用对话 · 未关联项目':k==='create'&&state.create.stage==='inputs'?'新任务 · 信息待确认':'澄川实业 · 2025 三季度';
+ const composer=(k)=>'<form class="bc-composer" data-composer><div class="bc-bound">'+icon(k==='chat'?'message-circle':'file-text')+(k==='revise'?'基于：募集说明书 · v'+state.revise.version:k==='chat'?(state.chat.linked?'已引用项目成果 · v1':'可直接提问，无需新建项目'):'已关联 3 份编制材料')+'</div><label for="bc-input-'+k+'" hidden>对 BondBuddy 说</label><textarea id="bc-input-'+k+'" rows="2" placeholder="'+(k==='revise'?'继续提出修改，或问我这份稿子的内容…':k==='chat'?'直接提问，也可以引用项目材料…':'补充募集书更新要求…')+'"></textarea><div class="bc-composer-bottom"><button type="button" class="bc-icon-button" data-action="attach" aria-label="添加材料">'+icon('paperclip')+'</button><span class="bc-meta">Shift + Enter 换行</span><button class="bc-send" type="submit" aria-label="发送">'+icon('arrow-up')+'</button></div></form>';
+ function reviseBody(){const s=state.revise;
+  let h='<div class="bc-old-result">'+icon('file-check-2')+'募集说明书 v1 已完成 · 清洁版 / 修订版<button class="bc-link" data-action="old-version">查看 v1</button></div>';
+  if(s.showOld)h+='<div class="bc-history">'+download(1)+'</div>';
+  if(s.stage==='suggestion')h+=user('经营风险第二段有点冗长，能否压缩到 150 字以内，语气更客观？')+label()+'<div class="bc-answer"><p>可以，建议改成下面这段，保留经营风险的核心含义。</p><div class="bc-text-sample">'+newText+'</div><div class="bc-meta">位置：重大事项提示 › 经营风险 › 第 2 段</div><div class="bc-action-row"><button class="bc-button bc-primary" data-action="apply">应用到 Word '+icon('arrow-right')+'</button><button class="bc-link" data-action="compare">对照原文</button></div></div>';
+  if(s.stage==='working')h+=user('按这个建议修改 Word，其他内容保持不变。')+label()+'<div class="bc-answer"><p>正在基于 v1 修改这一段，并生成 v2。</p></div><div class="bc-result"><div class="bc-result-body"><div class="bc-step">'+icon('circle-check')+'已定位“经营风险”第 2 段</div><div class="bc-step is-current">'+icon('circle-dot')+'应用修改并生成两份 Word</div><div class="bc-status-note">本次只修改确认的段落，v1 会保留。</div></div></div>';
+  if(s.stage==='done')h+=user('按这个建议修改 Word，其他内容保持不变。')+label()+'<div class="bc-answer"><p>已完成，新增 <strong>v2</strong>。经营风险第 2 段已精简，其他内容保持不变。</p></div><div class="bc-result"><div class="bc-result-top"><strong>'+icon('circle-check')+'本次修改 · v2</strong><span class="bc-tag">已完成</span></div><div class="bc-result-body">'+download(2)+'<div class="bc-action-row"><button class="bc-link" data-action="compare">查看本次改动</button><button class="bc-link" data-action="version-history">版本记录</button></div></div></div><div class="bc-suggestions"><button data-prompt="revise-question">这次具体改了什么？</button><button data-prompt="revise-again">再调整一下语气</button></div>';
+  if(s.showDiff)h+='<div class="bc-diff"><div class="bc-before"><strong>v1 · 修改前</strong>'+oldText+'</div><div class="bc-after"><strong>建议 / v2 · 修改后</strong>'+newText+'</div></div>';
+  if(s.showHistory)h+='<div class="bc-history"><div class="bc-meta">版本记录</div><div class="bc-file-row"><span class="bc-file-copy"><strong>v2 · 精简经营风险第 2 段</strong><small>基于 v1 · 当前版本</small></span><span class="bc-tag">当前</span></div><div class="bc-file-row"><span class="bc-file-copy"><strong>v1 · 更新至 2025 年 9 月</strong><small>首次编制成果已保留</small></span><button class="bc-link" data-action="old-version">查看</button></div></div>';
+  return h;
+ }
+ function chatBody(){const s=state.chat;
+  if(s.question==='clean')return user('清洁版和修订版 Word 有什么区别？')+label()+'<div class="bc-answer"><p><strong>清洁版</strong>展示修改后的完整正文，适合继续编辑、排版和阅读。</p><p><strong>修订版</strong>标出相对基准版本的增删改，方便检查改了哪里。</p><p>两份文件对应同一份更新内容。若是在已有成果上继续修改，修订版应注明本轮使用的基准版本。</p></div><div class="bc-suggestions"><button data-prompt="track">修订版能直接编辑吗？</button><button data-prompt="project">我这份稿子更新了哪些内容？</button></div>';
+  if(s.question==='track')return user('修订版能直接编辑吗？')+label()+'<div class="bc-answer"><p>可以，修订版也是可编辑 Word。</p><p>如果希望保留后续修改记录，可以在 Word 中开启“修订”；需要定稿时，再检查并接受或拒绝各项修改。</p></div><div class="bc-suggestions"><button data-prompt="clean">再解释两种版本的区别</button><button data-prompt="project">看看我的项目成果</button></div>';
+  if(s.question==='project'&&!s.linked)return user('我这份稿子更新了哪些内容？')+label()+'<div class="bc-answer"><p>选一下你要讨论的成果，我就可以结合这份稿子回答。</p></div><button class="bc-button" style="margin-top:14px" data-action="link-project">'+icon('folder-open')+'澄川实业 · 募集说明书 v1</button>';
+  return user('我这份稿子更新了哪些内容？')+label()+'<div class="bc-answer"><p>这份成果主要更新了三个部分：</p><ul class="bc-list"><li>财务数据和分析更新到 2025 年 9 月。</li><li>结合最新财务情况调整了偿债能力分析。</li><li>同步修改相关风险提示和正文中的报告期表述。</li></ul><button class="bc-link" data-action="source">'+icon('file-text')+'依据：v1 本次更新记录</button><p style="margin-top:12px">如果你想改其中一处，可以直接告诉我章节和具体要求。</p></div>';
+ }
+ function createBody(){const s=state.create;let h='';
+  if(s.stage==='inputs')h=user('帮澄川实业更新到 2025 年 9 月。这是同企业 2024 年底的原募集书，以及审计报告和最新财务报表。')+label()+'<div class="bc-answer"><p>材料收到了。请补充发行市场和品种，并确认原稿信息。</p></div><div class="bc-attachments">'+files.map(f=>'<div class="bc-attachment">'+icon('file-text')+'<span>'+f+'</span></div>').join('')+'</div><div class="bc-result"><div class="bc-result-body"><dl class="bc-summary"><dt>发行人</dt><dd>澄川实业有限公司</dd><dt>最新一期</dt><dd>2025 年 9 月</dd></dl><div class="bc-fields"><label class="bc-field">发行市场<select data-field="exchange">'+['上交所','深交所'].map(n=>'<option '+(n===s.exchange?'selected':'')+'>'+n+'</option>').join('')+'</select></label><label class="bc-field">品种<select data-field="type">'+['普通私募','小公募','大公募'].map(n=>'<option '+(n===s.type?'selected':'')+'>'+n+'</option>').join('')+'</select></label></div><div class="bc-divider">历史募集书信息</div><div class="bc-meta">原发行人：澄川实业有限公司 · 市场及品种与目标一致</div><div class="bc-fields"><label class="bc-field">与本次发行人的关系<select data-field="relationship">'+['同企业','母公司','子公司','相似业务企业'].map(n=>'<option '+(n===s.relationship?'selected':'')+'>'+n+'</option>').join('')+'</select></label><label class="bc-field">原稿报告期<span class="bc-report-period"><select data-field="year" aria-label="原稿报告年度">'+['2023','2024','2025'].map(n=>'<option '+(n===s.year?'selected':'')+'>'+n+'</option>').join('')+'</select><select data-field="period" aria-label="原稿报告期">'+['3 月','6 月','9 月','年底'].map(n=>'<option '+(n===s.period?'selected':'')+'>'+n+'</option>').join('')+'</select></span></label></div><button class="bc-button bc-primary" data-action="confirm-inputs">确认信息，继续 '+icon('arrow-right')+'</button></div></div>';
+  if(s.stage==='ready')h=label()+'<div class="bc-answer"><p>已整理好编制任务。会使用项目材料和<strong>'+s.exchange+' · '+s.type+'</strong>对应的编制知识，更新到 2025 年 9 月。</p></div><div class="bc-result"><div class="bc-result-top"><strong>'+icon('file-pen-line')+'澄川实业 · 募集书更新</strong><span class="bc-tag bc-tag-warm">待开始</span></div><div class="bc-result-body"><dl class="bc-summary"><dt>项目</dt><dd>澄川实业 · 2025 三季度</dd><dt>原稿</dt><dd>'+s.relationship+' · '+s.year+' 年 '+s.period+'</dd><dt>目标</dt><dd>'+s.exchange+' · '+s.type+' · 2025 年 9 月</dd><dt>材料</dt><dd>3 份材料已关联</dd><dt>交付</dt><dd>修订版 Word + 清洁版 Word</dd><dt>补充要求</dt><dd>'+(s.requirement?esc(s.requirement):'按最新材料更新财务数据及相关披露。')+'</dd></dl><div class="bc-action-row"><button class="bc-link" data-action="edit-inputs">修改信息</button><button class="bc-link" data-action="add-requirement">补充更新要求</button></div><div class="bc-divider"><div class="bc-meta">可用积分 100,000</div><button class="bc-button bc-primary" style="margin-top:10px;width:100%" data-action="start-update">开始更新 · 5,000 积分</button></div></div></div>';
+  if(s.stage==='working')h=label()+'<div class="bc-answer"><p>已开始更新募集书。你可以继续提问，也可以离开这个页面。</p></div><div class="bc-result"><div class="bc-result-top"><strong>募集书更新</strong><span class="bc-tag">进行中</span></div><div class="bc-result-body"><div class="bc-step">'+icon('circle-check')+'已读取项目信息与材料</div><div class="bc-step is-current">'+icon('circle-dot')+'正在更新正文和财务分析</div><div class="bc-step">'+icon('circle')+'生成修订版与清洁版 Word</div><div class="bc-status-note">进度会同步到“全部项目”，完成后可在这里领取成果。</div></div></div>';
+  if(s.stage==='done')h=label()+'<div class="bc-answer"><p>募集书更新完成，两份 Word 都可以下载了。</p></div><div class="bc-result"><div class="bc-result-top"><strong>'+icon('circle-check')+'募集说明书 · v1</strong><span class="bc-tag">已完成</span></div><div class="bc-result-body">'+download(1)+'<div class="bc-action-row"><button class="bc-button" data-action="continue-revise">继续修改这份成果</button><button class="bc-link" data-action="view-project">查看项目</button></div></div></div><div class="bc-suggestions"><button data-prompt="create-question">这次更新了哪些内容？</button></div>';
+  return h;
+ }
+ function render(k){const el=panel(k);const ctx=context(k);el.innerHTML='<header class="bc-head"><span class="bc-logo">'+icon('sparkles')+'</span><span class="bc-name">BondBuddy<small>项目助手</small></span><span class="bc-preview">交互预览</span></header><div class="bc-context">'+icon(k==='chat'&&!state.chat.linked?'message-circle':'folder-open')+'<span>'+ctx+'</span>'+(k==='revise'?'<span class="bc-tag">成果 v'+state.revise.version+'</span>':k==='chat'?'<button class="bc-link" data-action="toggle-link">'+(state.chat.linked?'解除关联':'引用项目')+'</button>':'')+'</div><div class="bc-body">'+({revise:reviseBody,chat:chatBody,create:createBody})[k]()+(state[k].extra?'<div class="bc-mini-answer">'+state[k].extra+'</div>':'')+'</div><div class="bc-inline-notice" role="status" hidden></div>'+composer(k)+'<div class="bc-footnote">'+(k==='revise'?'修改生成新版本，旧版随时可查看。':k==='chat'?'可以连续追问，也可以直接告诉我下一步要做什么。':'项目、对话和成果保存在一起。')+'</div>';icons();}
+ function notice(k,text){const n=panel(k).querySelector('.bc-inline-notice');n.hidden=false;n.textContent=text;}
+ function finishRevise(){clearTimeout(timers.revise);state.revise.stage='working';state.revise.showDiff=false;state.revise.showOld=false;render('revise');save();timers.revise=setTimeout(()=>{state.revise.stage='done';state.revise.version=2;render('revise');save();},2800);}
+ function send(k){const input=panel(k).querySelector('textarea');const text=input.value.trim();if(!text)return;input.value='';
+  if(k==='revise'){
+   if(/(?:修改|应用).*(?:Word|word|文件|这一段)|按.*修改/.test(text)){finishRevise();return;}
+   state.revise.extra=user(text)+label()+'<p>这里演示继续追问与补充要求。正式使用时，助手会结合所选版本回答；明确要求修改文件后，才会生成新版本。</p>';
+  }else if(k==='chat'){
+   if(/修订版.*(?:编辑|能改)/.test(text)){state.chat.question='track';state.chat.extra='';}
+   else if(/区别|清洁版/.test(text)){state.chat.question='clean';state.chat.extra='';}
+   else if(/更新了|哪些内容/.test(text)){state.chat.question='project';state.chat.extra='';}
+   else state.chat.extra=user(text)+label()+'<p>这是对话交互预览。正式使用时会直接回答这个问题，并保留上下文供你继续追问。</p>';
+  }else{
+   if(['ready','inputs'].includes(state.create.stage)){state.create.requirement=text;state.create.extra=user(text)+label()+'<p>已加入本次更新要求。</p>';}
+   else state.create.extra=user(text)+label()+'<p>可以在任务进行中继续提问。若要修改正在执行的任务，我会先说明影响并确认如何处理。</p>';
+  }
+  render(k);save();
+ }
+ root.addEventListener('click',e=>{const b=e.target.closest('button');const el=e.target.closest('[data-scenario]');if(!b||!el)return;const k=el.dataset.scenario,a=b.dataset.action,p=b.dataset.prompt;
+  if(b.classList.contains('bc-send')){e.preventDefault();send(k);}
+  else if(a==='download')notice(k,'这是交互预览，未生成或下载真实 Word。');
+  else if(a==='apply')finishRevise();
+  else if(a==='compare'){state.revise.showDiff=!state.revise.showDiff;render(k);save();}
+  else if(a==='old-version'){state.revise.showOld=!state.revise.showOld;render(k);save();}
+  else if(a==='version-history'){state.revise.showHistory=!state.revise.showHistory;render(k);save();}
+  else if(a==='toggle-link'){state.chat.linked=!state.chat.linked;render(k);save();}
+  else if(a==='link-project'){state.chat.linked=true;render(k);save();}
+  else if(a==='source')notice(k,'正式产品会打开本次更新记录，并定位到相关改动。');
+  else if(a==='attach'){notice(k,k==='chat'?'可引用项目成果，或添加文件后提问。原型不会上传文件。':'材料会关联到本次对话。原型不会上传文件。');}
+  else if(a==='confirm-inputs'){state.create.stage='ready';render(k);save();}
+  else if(a==='edit-inputs'){state.create.stage='inputs';render(k);save();}
+  else if(a==='add-requirement'){el.querySelector('textarea').focus();}
+  else if(a==='start-update'){state.create.stage='working';state.create.extra='';render(k);save();clearTimeout(timers.create);timers.create=setTimeout(()=>{state.create.stage='done';render(k);save();},3500);}
+  else if(a==='continue-revise'){state.create.extra=user('请基于这个成果继续修改。')+label()+'<p>已选定 v1。直接告诉我需要修改的章节和要求即可。</p>';render(k);save();panel(k).querySelector('textarea').placeholder='例如：把经营风险第二段压缩到 150 字以内…';panel(k).querySelector('textarea').focus();}
+  else if(a==='view-project')notice(k,'同一项目的成果页也会展示此版本，后续修改继续保存在这个项目中。');
+  else if(p){
+   if(k==='chat'){state.chat.question=p;state.chat.extra='';}
+   else if(p==='revise-question')state.revise.extra=user('这次具体改了什么？')+label()+'<p>只精简了“经营风险”第 2 段，保留了经营环境及回款风险的含义。其他段落、数据和表格保持不变。</p>';
+   else if(p==='revise-again'){panel(k).querySelector('textarea').value='请基于 v2，将这段语气再调整得更客观：';panel(k).querySelector('textarea').focus();return;}
+   else if(p==='create-question')state.create.extra=user('这次更新了哪些内容？')+label()+'<p>可以在同一个对话里解释本次更新内容，无需再次启动编制。</p>';
+   render(k);save();
+  }
+ });
+ root.addEventListener('change',e=>{if(e.target.dataset.field){state.create[e.target.dataset.field]=e.target.value;save();}});
+ root.addEventListener('submit',e=>{if(e.target.matches('[data-composer]')){e.preventDefault();send(e.target.closest('[data-scenario]').dataset.scenario);}});
+ root.addEventListener('keydown',e=>{if(e.target.tagName==='TEXTAREA'&&e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send(e.target.closest('[data-scenario]').dataset.scenario);}});
+ window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.privateContent;if(s?.version===1&&(!s.revision||s.revision>revision)){revision=s.revision||0;Object.keys(defaults).forEach(k=>{state[k]={...defaults[k],...(s.state?.[k]||{})};render(k);});}});
+ Object.keys(defaults).forEach(k=>{if(state[k].stage==='working')state[k].stage='done';render(k);});
+})();
+</script>
