@@ -37,6 +37,8 @@ test('prepare input preserves artifact tabs and invalid recovered view cannot re
   assert.equal(selectWorkspaceTab(state, 'missing'), state);
 });
 test('progress describes observed public actions and keeps unknown internal stages out of the UI',()=>{
+  assert.equal(m4ProgressLabel('m4_document_v1_prompt'), '正在生成材料正文');
+  assert.equal(m4ProgressLabel('model_generation'), '正在生成材料正文');
   assert.equal(m4ProgressLabel('model_generation','m4_writing_files'),'正在制作可编辑文件');
-  assert.equal(m4ProgressLabel('unrecognized_private_stage','unrecognized_reason'),'正在同步本轮执行状态');
+  assert.equal(m4ProgressLabel('unrecognized_private_stage','unrecognized_reason'),'正在处理本次材料，完成后将自动更新');
 });
