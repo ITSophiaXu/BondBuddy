@@ -104,6 +104,9 @@ async function openSettings(page: Page, state: Fixture) {
   await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.getByRole('link', { name: '我的账号' }).click();
   await expect(page.getByRole('heading', { name: '我的账号', exact: true })).toBeVisible();
+}
+async function openSecurity(page: Page) {
+  await page.getByRole('button', { name: '账号设置', exact: true }).click();
   for(const name of ['登录会话','修改密码','注销账号'])await page.locator('summary').filter({hasText:name}).click();
 }
 const calls = (state: Fixture, path: string) => state.mutations.filter(item => item.path === path);
@@ -116,12 +119,13 @@ test('settings show server account facts as text and revoke only other sessions'
   const info = page.locator('#account-info');
   await expect(info).toContainText('owner_a');
   await expect(info).toContainText('+86138****5678');
-  await expect(info).toContainText('已接受版本 terms-2026-09');
-  await expect(info).toContainText('当前版本 terms-2026-10');
-  await expect(info).toContainText('人工找回需核验事先绑定的联系方式');
-  await expect(info.getByText(state.supportContact, { exact: true })).toBeVisible();
+  await expect(info.locator('dt')).toHaveText(['账户名', '绑定手机号']);
+  await expect(info).not.toContainText('注册时间');
+  await expect(info).not.toContainText('服务协议');
+  await expect(info.getByText(state.supportContact, { exact: true })).toHaveCount(0);
   await expect(info.locator('img')).toHaveCount(0);
 
+  await openSecurity(page);
   const rows = page.locator('.session-row');
   await expect(rows).toHaveCount(3);
   await expect(rows.first()).toContainText('当前会话');
@@ -149,6 +153,7 @@ test('settings show server account facts as text and revoke only other sessions'
 test('password change checks input locally, keeps the session on a wrong password and reports revoked sessions', async ({ page, context }) => {
   const state = fixture(); await installApi(context, state);
   await openSettings(page, state);
+  await openSecurity(page);
   const current = page.getByLabel('当前密码', { exact: true });
   const next = page.getByLabel('新密码 12–128 个字符', { exact: true });
   const repeat = page.getByLabel('再次输入新密码', { exact: true });
@@ -164,7 +169,7 @@ test('password change checks input locally, keeps the session on a wrong passwor
   await current.fill('Wrong-password-000'); await repeat.fill('Synthetic-new-password-456'); await submit.click();
   await expect(message).toHaveText('当前密码不正确。');
   await expect(current).toHaveValue('');
-  await expect(page.getByRole('heading', { name: '我的账号', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '账号设置' })).toBeVisible();
 
   state.rateLimitNext = true;
   await current.fill(state.password); await submit.click();
@@ -174,13 +179,14 @@ test('password change checks input locally, keeps the session on a wrong passwor
   await expect(message).toHaveText('密码已修改。已退出其他 2 个会话，当前页面保持登录。');
   await expect(current).toHaveValue(''); await expect(next).toHaveValue(''); await expect(repeat).toHaveValue('');
   await expect(page.locator('.session-row')).toHaveCount(1);
-  await expect(page.locator('#account-info div').filter({ hasText: '密码最近修改' }).locator('dd')).not.toHaveText('—');
+  expect(state.passwordUpdatedAt).toBe(now);
   expect(calls(state, '/account/password').at(-1)!.body).toEqual({ current_password: 'Synthetic-password-123', new_password: 'Synthetic-new-password-456' });
 });
 
 test('closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab', async ({ page, context }) => {
   const state = fixture(); state.activeRuns = [{ run_id: 'run-active', project_id: 'project-synthetic', state: 'running' }]; await installApi(context, state);
   await openSettings(page, state);
+  await openSecurity(page);
   const other = await context.newPage();
   await other.goto('/');
   await other.getByRole('link', { name: '全部项目', exact: true }).first().click();
@@ -255,7 +261,7 @@ test('a session revoked elsewhere returns to login instead of showing account da
   await expect(page.getByText('+86138****5678')).toHaveCount(0);
 });
 
-test('unified account has a single entry and preserves security forms beside real credit data',async({page,context})=>{
+test('unified account keeps two basic fields and opens security settings only on request',async({page,context})=>{
  const state=fixture();await installApi(context,state);await openSettings(page,state);
  await expect(page.getByRole('navigation',{name:'账号'}).getByRole('link')).toHaveCount(1);
  await expect(page.getByRole('link',{name:'积分与充值',exact:true})).toHaveCount(0);
@@ -266,14 +272,28 @@ test('unified account has a single entry and preserves security forms beside rea
  await expect(page.locator('.credit-pack').first()).toContainText('20,000');
  await expect(page.locator('.credit-pack').first().getByRole('button')).toHaveText('充值 ¥200');
  await expect(page.locator('[data-pack="cny50"]')).toHaveCount(0);
- for(const name of ['登录会话','修改密码','注销账号'])await page.locator('summary').filter({hasText:name}).click();
+ await expect(page.locator('#account-info dt')).toHaveText(['账户名','绑定手机号']);
+ for(const name of ['登录会话','修改密码','账号找回','数据说明','注销账号'])await expect(page.locator('summary').filter({hasText:name})).not.toBeVisible();
+ await expect(page.locator('.credit-reservation')).toContainText('进行中任务预留 300 积分');
+ await expect(page.locator('.credit-reservation')).toContainText('成功后扣除，失败或取消后返还');
+ await expect(page.locator('#account-credits')).not.toContainText('任务占用');
+ const settingsButton=page.getByRole('button',{name:'账号设置',exact:true});
+ await settingsButton.focus();await page.keyboard.press('Enter');
+ await expect(page.getByRole('dialog',{name:'账号设置'})).toBeVisible();
+ await page.keyboard.press('Escape');await expect(settingsButton).toBeFocused();
+ await settingsButton.click();await page.getByRole('button',{name:'关闭',exact:true}).click();
+ await expect(page.locator('#account-settings')).not.toBeVisible();
  const output=process.env.BB_ACCOUNT_EVIDENCE;
  if(output){await mkdir(output,{recursive:true});for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:output+`/implementation-account-${width}.png`,fullPage:true});}
    const html=await page.locator('#app').innerHTML(),css=await page.evaluate(()=>[...document.querySelectorAll('style')].map(n=>n.textContent).join('\n'));
-   await writeFile('../../product-prototype/public/account-credits.html',`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>我的账号 · 合成设计原型</title><style>${css}</style><body><div id="app">${html}</div></body></html>`);
+   await writeFile(output+'/account-preview.html',`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>我的账号 · 合成设计原型</title><style>${css}</style><body><div id="app">${html}</div><script>const settings=document.querySelector('#account-settings');document.querySelector('#open-account-settings').onclick=()=>settings.showModal();document.querySelector('#close-account-settings').onclick=()=>settings.close();</script></body></html>`);
+   await settingsButton.click();await page.screenshot({path:output+'/settings-mobile.png'});await page.keyboard.press('Escape');
  }
+ await context.route('**/api/v1/credits/balance',route=>json(route,200,{enabled:true,available:5300,frozen:0}));
  await page.goto('/#billing');await expect(page.getByRole('heading',{name:'我的账号',exact:true})).toBeVisible();
- await expect(page.locator('#account-credits')).toContainText('5,000');
+ await expect(page.locator('#account-credits')).toContainText('5,300');
+ await expect(page.locator('.credit-reservation')).toHaveCount(0);
+ if(output){await page.setViewportSize({width:1360,height:900});await page.screenshot({path:output+'/implementation-account-zero-1360.png',fullPage:true});}
 });
 
 test('a review payment order returns to the original review workspace',async({page,context})=>{

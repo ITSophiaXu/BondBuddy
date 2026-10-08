@@ -14,9 +14,11 @@ test('real settings: revoked sessions stop working, password change revokes othe
   };
   const laptop = await device();
   await login(page, a);
-  await page.getByRole('link', { name: '账号设置' }).click();
+  await page.getByRole('link', { name: '我的账号' }).click();
   await expect(page.locator('#account-info')).toContainText(a.username);
   await expect(page.locator('.session-row').filter({ hasText: '当前会话' })).toHaveCount(1);
+  await page.getByRole('button', { name: '账号设置', exact: true }).click();
+  for (const name of ['登录会话', '修改密码', '注销账号']) await page.locator('summary').filter({ hasText: name }).click();
   // Registration and the laptop login each left an active session besides this page.
   await expect(page.getByRole('button', { name: /^撤销 .+ 登录的会话$/ })).toHaveCount(2);
   await page.getByRole('button', { name: '退出其他全部会话' }).click();
@@ -31,7 +33,7 @@ test('real settings: revoked sessions stop working, password change revokes othe
   await page.getByRole('button', { name: '修改密码' }).click();
   await expect(page.locator('#password-message')).toHaveText('密码已修改。已退出其他 1 个会话，当前页面保持登录。');
   expect((await phone.get('/api/v1/me')).status()).toBe(401);
-  await expect(page.locator('#account-info div').filter({ hasText: '密码最近修改' }).locator('dd')).not.toHaveText('—');
+  expect((await page.request.get('/api/v1/account')).ok()).toBe(true);
 
   await page.getByRole('button', { name: '查看注销影响' }).click();
   await page.getByLabel(/输入用户名/).fill(a.username);
@@ -53,6 +55,6 @@ test('real settings: revoked sessions stop working, password change revokes othe
   await Promise.all([laptop.dispose(), phone.dispose(), again.dispose()]);
 
   await login(page, b);
-  await page.getByRole('link', { name: '账号设置' }).click();
+  await page.getByRole('link', { name: '我的账号' }).click();
   await expect(page.locator('#account-info')).toContainText(b.username);
 });
