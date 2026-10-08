@@ -1,6 +1,7 @@
 import { Dashboard } from './dashboard';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
+import { ProjectAssistant } from './project-assistant';
 import { projectListContext, withProjectContext, projectBackLink, projectSection } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
@@ -51,6 +52,7 @@ let projectBrowser: ProjectBrowser | undefined;
 let dashboard: Dashboard | undefined;
 let billingPage: BillingPage | undefined;
 let creditWallet: CreditWallet | undefined;
+let globalAssistant: ProjectAssistant | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
@@ -86,6 +88,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  globalAssistant?.dispose(); globalAssistant = undefined;
   accountIdentity = undefined;
   creditWallet?.dispose(); creditWallet = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
@@ -278,6 +281,7 @@ function shell(content: string, section: string) {
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   creditWallet ??= new CreditWallet(api);
   creditWallet.mount();
+  if(identity){ globalAssistant ??= new ProjectAssistant(api,identity); globalAssistant.mount(); }
   mountAccountIdentity();
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;

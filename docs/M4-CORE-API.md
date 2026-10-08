@@ -1,3 +1,13 @@
+## 2026-10-08 全站助手增量
+
+以[全站项目助手决定](product-decisions/2026-10-08-global-project-assistant.md)为最新口径。材料页表单保留，新增登录会话级悬浮助手；旧 M4/M5 排期不限制本次已授权范围。
+
+- `POST /m4/topics` 增加 `surface=assistant`；view 保存明确项目、未提交动作、复制进度与确认版本。旧材料话题仍为 `materials`。
+- `GET /assistant/projects/:id` 返回当前账号的材料与准确已交付正文版本。
+- `GET/POST /assistant/topics/:id/cards` 保存和恢复确认卡；内容来自已锁输入及原报价，模型不能提供金额和资源 ID。卡片本身不执行、不冻结积分。
+- 明确确认后仍调用原 runs/review/M4 执行接口；保留幂等键、原账务和私有下载。
+- 新全站技能只生成 `assistant_action` 建议；旧 M4 自动采用路径不能处理全站回复。真实用量缺失保留原账务状态。
+
 # M4 API 与材料固定价计费
 
 > 2026-10-07 最新用户决定：材料生成恢复原型表单，增加交易所选择和直接保存的补充要求输入框，去掉本页对话；本次不实现项目问答页面。以 docs/product-decisions/2026-10-07-material-studio-prototype.md 为准。下文冲突的合并工作区/常驻助手条款仅作历史记录；后端能力、权限、计费和固定输入继续保留。

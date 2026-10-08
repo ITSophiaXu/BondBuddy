@@ -16,6 +16,7 @@ export type M4QaResult={version:'codex-m4-qa-v1';input_hash:string;skill_sha256:
 const same=(a:unknown,b:unknown)=>inputManifestHash(a)===inputManifestHash(b);
 export function authorizedM4Reply(reply:unknown,input:M4WorkerInput):reply is M4AssistantReply {
   if (!Value.Check(M4AssistantReplySchema,reply) || input.manifest.kind!=='qa') return false;
+  if(reply.assistant_action && !input.manifest.assistant_context)return false;
   if (reply.citations.some(c=>c.kind==='material'?!input.materials.some(m=>same(m.pin,c.ref)):!input.artifacts.some(a=>same(a.pin,c.ref))))return false;
   if (reply.intent==='cross_business' && !reply.target_business || reply.intent!=='cross_business' && reply.target_business!==null)return false;
   if (Object.keys(reply.fields).length && (!reply.document_type || !['draft','execute'].includes(reply.intent)))return false;
@@ -34,6 +35,11 @@ export function validM4QaResult(value:unknown,ctx:StageContext,input?:M4WorkerIn
 
 /** The CLI labels semantic intent; it cannot create/charge a document run or mutate immutable input. */
 export function constrainM4Reply(reply:M4AssistantReply,manifest:M4QaManifest):M4AssistantReply {
+  if(manifest.assistant_context){
+    const discussOnly=/(?:先别|暂时不要|不要|不需要)(?:执行|开始|生成|制作|改稿|更新|复核)(?:[，。！\s]|募集|任务|$)|只是(?:讨论|问)|^(?:如何|怎么|怎样).*(?:生成|制作|更新|复核)/.test(manifest.content);
+    const {assistant_action,...answer}=reply;
+    return {...answer,...(!discussOnly&&assistant_action?{assistant_action}:{}),intent:!discussOnly&&assistant_action?'clarify':'answer',document_type:null,target_business:null,fields:{},requirements:[]};
+  }
   const content=manifest.content;
   const clauses=content.split(/[，。；！？\n]/);
   if(m4UnavailableResearch(content))return {...reply,
@@ -89,7 +95,7 @@ export function m4QaStage(options:{model?:typeof codexModelStage;load?:typeof lo
   return {name:'model_generation',replay:true,run:async ctx=>{
     const input=await (options.load??loadM4WorkerInput)(ctx);if(input.manifest.kind!=='qa')return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
     const manifest=input.manifest;
-    const config=options.config??loadCodexAdapterConfig(),skill=loadM4RuntimeSkill('m4-project-qa');
+    const config=options.config??loadCodexAdapterConfig(),skill=loadM4RuntimeSkill(manifest.assistant_context?'global-project-assistant':'m4-project-qa');
     const gate=await m4ModelGate(ctx,config);if(gate)return gate;
     const pinned=await m4PinnedMethod(ctx,'qa',skill,config);if(pinned.gate)return pinned.gate;
     let originals=new Map<string,string>();const observer=m4ActionObserver(ctx,'qa');

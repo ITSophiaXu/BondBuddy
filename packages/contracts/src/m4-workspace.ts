@@ -1,3 +1,4 @@
+import { AssistantActionSchema, AssistantViewSchema } from './project-assistant.js';
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import type { Project, Run, RunEvent } from './index.js';
@@ -10,13 +11,8 @@ const text = Type.String({ maxLength: 12000 });
 const nonempty = Type.String({ minLength: 1, maxLength: 12000, pattern: '\\S' });
 const nullable = <T extends Parameters<typeof Type.Union>[0][number]>(s: T) => Type.Union([s, Type.Null()]);
 const version = Type.Integer({ minimum: 1 });
-export const M4_DOCUMENT_TYPES = ['init', 'underwriter', 'legal', 'private_summary'] as const;
-export const M4_DOCUMENT_LABELS = { init: '立项报告', underwriter: '主承销商核查意见', legal: '法律意见书', private_summary: '普通私募募集说明书摘要' } as const;
-export const M4_DOCUMENT_BILLING_TASKS = {init:'m4_G01',underwriter:'m4_G02',legal:'m4_G03',private_summary:'m4_G05'} as const;
-export const M4_DOCUMENT_SUBTYPE = 'm4_document_v1';
-export const M4_QA_SUBTYPE = 'm4_qa_v1';
-export const M4DocumentTypeSchema = Type.Union(M4_DOCUMENT_TYPES.map(v => Type.Literal(v)));
-export type M4DocumentType = Static<typeof M4DocumentTypeSchema>;
+export * from './m4-document-types.js';
+import { M4DocumentTypeSchema,M4_DOCUMENT_BILLING_TASKS,type M4DocumentType } from './m4-document-types.js';
 export const M4MaterialPinSchema = obj({ source_project_id: id, material_id: id, material_version: version, sha256: hash });
 export type M4MaterialPin = Static<typeof M4MaterialPinSchema>;
 export const M4ArtifactPinSchema = obj({ source_project_id: id, artifact_id: id, artifact_version: version, sha256: hash });
@@ -43,7 +39,7 @@ export const M4MessageContextSchema = obj({ document_type: nullable(M4DocumentTy
   draft_version: Type.Integer({ minimum: 0 }), source_material: nullable(M4MaterialPinSchema),
   citations: Type.Array(M4CitationSchema, { maxItems: 60 }), reading_artifact: nullable(M4ArtifactPinSchema) });
 export type M4MessageContext = Static<typeof M4MessageContextSchema>;
-export const M4ViewStateSchema = obj({ selected_document_type: nullable(M4DocumentTypeSchema),
+export const M4ViewStateSchema = obj({ assistant: Type.Optional(AssistantViewSchema), selected_document_type: nullable(M4DocumentTypeSchema),
   open_tabs: Type.Array(M4ArtifactPinSchema, { maxItems: 30 }), active_tab: nullable(M4ArtifactPinSchema),
   unsent_content: text, unsent_context: M4MessageContextSchema,
   workspace_tab: Type.Optional(Type.String({ maxLength: 200 })), making_run_ids: Type.Optional(Type.Array(id, { maxItems: 30 })),
@@ -51,7 +47,7 @@ export const M4ViewStateSchema = obj({ selected_document_type: nullable(M4Docume
   quotation: Type.Optional(nullable(obj({ citation: M4CitationSchema, original_text: text, anchor: nullable(text) }))) });
 export type M4ViewState = Static<typeof M4ViewStateSchema>;
 export const M4TopicCreateRequestSchema = obj({ creation_request_id: id, name: Type.String({ minLength: 1, maxLength: 200 }),
-  source_project_id: Type.Optional(id) });
+  source_project_id: Type.Optional(id), surface: Type.Optional(Type.Union([Type.Literal('materials'),Type.Literal('assistant')])) });
 export type M4TopicCreateRequest = Static<typeof M4TopicCreateRequestSchema>;
 export const M4DraftRequestSchema = obj({ expected_version: Type.Integer({ minimum: 0 }), input: M4DraftInputSchema });
 export type M4DraftRequest = Static<typeof M4DraftRequestSchema>;
@@ -103,6 +99,7 @@ export const M4DocumentManifestSchema = obj({ version: Type.Literal('m4-document
 export type M4DocumentManifest = Static<typeof M4DocumentManifestSchema>;
 export const M4QaManifestSchema = obj({ version: Type.Literal('m4-qa-input-v1'), kind: Type.Literal('qa'),
   topic_id: id, message_id: id, content: nonempty, context: M4MessageContextSchema,
+  assistant_context: Type.Optional(obj({ project_id: nullable(id), project_name: text, issuer_name: text, market: text, offering: text, reporting_cutoff: text, action: nullable(AssistantActionSchema) })),
   context_snapshot: obj({ draft: nullable(M4DraftInputSchema), messages: Type.Array(obj({ message_id: id, version, role: Type.Union([Type.Literal('user'), Type.Literal('assistant')]), content: text }), { maxItems: 200 }),
     quotation: Type.Optional(nullable(obj({ citation: M4CitationSchema, original_text: text, anchor: nullable(text) }))) }),
   materials: Type.Array(M4MaterialPinSchema, { maxItems: 60 }),
@@ -112,7 +109,7 @@ export type M4QaManifest = Static<typeof M4QaManifestSchema>;
 export const M4ManifestSchema = Type.Union([M4DocumentManifestSchema, M4QaManifestSchema]);
 export type M4Manifest = Static<typeof M4ManifestSchema>;
 export const isM4Manifest = (v: unknown): v is M4Manifest => Value.Check(M4ManifestSchema, v);
-export const M4AssistantReplySchema = obj({ content: nonempty, citations: Type.Array(M4CitationSchema, { maxItems: 60 }),
+export const M4AssistantReplySchema = obj({ assistant_action: Type.Optional(AssistantActionSchema), content: nonempty, citations: Type.Array(M4CitationSchema, { maxItems: 60 }),
   requirements: Type.Array(nonempty, { maxItems: 100 }),
   fields: Type.Record(Type.String({ maxLength: 80 }), Type.String({ maxLength: 2000 })),
   intent: Type.Union([Type.Literal('answer'), Type.Literal('clarify'), Type.Literal('draft'), Type.Literal('execute'), Type.Literal('cross_business')]),
@@ -126,9 +123,9 @@ export type M4Artifact = M4ArtifactPin & { topic_id: string; run_id: string; doc
   kind: 'document' | 'preparation_note' | 'qa_text'; filename: string; mime_type: string; byte_size: number; created_at: string;
   base_artifact: M4ArtifactPin | null; input_hash: string; revision_number: number | null };
 export type M4Task = { run: Run; manifest: M4Manifest; created_at: string; events: RunEvent[]; artifacts: M4Artifact[] };
-export type M4Topic = { topic_id: string; project_id: string; source_project_id: string | null; name: string; created_at: string; updated_at: string };
+export type M4Topic = { surface?: 'materials'|'assistant'; topic_id: string; project_id: string; source_project_id: string | null; name: string; created_at: string; updated_at: string };
 export type M4Workspace = { topic: M4Topic; project: Project; drafts: Record<M4DocumentType, M4Draft>;
-  materials: M4MaterialPin[]; material_details: (M4MaterialPin & {filename: string; state: string; media_type: string})[];
+  materials: M4MaterialPin[]; material_details: (M4MaterialPin & {filename: string; state: string; media_type: string; role?:string})[];
   templates: M4Template[]; messages: M4Message[]; tasks: M4Task[]; artifacts: M4Artifact[];
   pending_requirements: M4Requirement[];
   view: M4ViewState & { version: number }; active_run: Run | null };

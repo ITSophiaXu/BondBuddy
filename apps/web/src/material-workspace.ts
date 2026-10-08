@@ -67,7 +67,7 @@ export class MaterialWorkspace {
     this.shell('<div class="m4-page m4-generate" id="m4-workspace"><p role="status">正在读取材料生成…</p></div>',projectSection('generate'));
     this.page=document.querySelector('#m4-workspace')!;
     try{
-      this.topics=(await this.m4.topics()).topics;if(!this.live())return;
+      this.topics=(await this.m4.topics()).topics.filter(t=>t.surface!=='assistant');if(!this.live())return;
       if(!this.topicId&&this.sourceProjectId)this.topicId=this.topics.find(t=>t.source_project_id===this.sourceProjectId)?.topic_id;
 
       if(this.topicId){this.workspace=await this.m4.workspace(this.topicId);if(!this.live())return;this.install(this.workspace,true);this.restore();this.openEntryTask();await this.loadNames();}
