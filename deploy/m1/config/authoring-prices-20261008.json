@@ -1,0 +1,16 @@
+{
+  "id": "authoring-20261008-v1",
+  "prices": {
+    "interim": 17900,
+    "annual": 27900,
+    "two_years": 48900,
+    "three_years": 68900,
+    "migration": 64900,
+    "migration_two_years": 85900,
+    "migration_three_years": 105900,
+    "new_authoring": 159900
+  },
+  "effectiveAt": "2026-10-08T00:00:00Z",
+  "actor": "ITSophiaXu via Codex",
+  "reason": "2026-10-08 user requested fixing authoring still running as a free trial; activate the eight authoring prices confirmed on 2026-10-03 for new explicitly confirmed tasks only."
+}
