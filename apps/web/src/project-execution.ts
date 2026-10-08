@@ -142,6 +142,11 @@ export class ProjectExecution {
   private inputRejected = false;
   private quote?: Dto<'FixedQuoteResponse'>;
   private charge?: Dto<'RunCreditChargeResponse'>;
+  private chargeRun?: string;
+  private chargeLoading = false;
+  private chargeRefreshPending = false;
+  private chargeError = false;
+  private paidEnabled?: boolean;
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
@@ -180,6 +185,9 @@ export class ProjectExecution {
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
+    void this.api.creditBalance(this.controller.signal).then(balance => {
+      if (this.active) { this.paidEnabled = balance.enabled; this.render(); }
+    }).catch(() => {});
   }
   private node(selector: string) { return this.host.querySelector<HTMLElement>(selector) ?? this.actions.querySelector<HTMLElement>(selector)!; }
   private eligibleMaterials() {
@@ -268,8 +276,13 @@ export class ProjectExecution {
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
     quoteHost.hidden=!q?.enabled||!q.quote||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=q?.enabled&&q.quote?`<div class="fixed-quote"><h3>${esc(BILLING_TASKS[q.quote.task_type])} · ${q.quote.points.toLocaleString('zh-CN')} 积分</h3><p>${esc(q.quote.reason)}</p><p>可用 ${q.balance.available.toLocaleString('zh-CN')} 积分${q.shortage?`，还差 ${q.shortage.toLocaleString('zh-CN')} 积分`:''}</p><p class="muted">确认后锁定本次价格；双 Word 可下载后扣费，失败或有效取消释放。</p>${q.shortage?`<a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a>`:''}<button type="button" class="text-button" id="refresh-quote">刷新报价与余额</button></div>`:'';
+    quoteHost.innerHTML=q?.enabled&&q.quote?`<div class="fixed-quote"><h3>本次需要 ${q.quote.points.toLocaleString('zh-CN')} 积分</h3><p>${esc(BILLING_TASKS[q.quote.task_type])}</p><p>${esc(q.quote.reason)}</p><p>可用 ${q.balance.available.toLocaleString('zh-CN')} 积分${q.shortage?`，还差 ${q.shortage.toLocaleString('zh-CN')} 积分`:`，预留后可用 ${(q.balance.available-q.quote.points).toLocaleString('zh-CN')} 积分`}</p><p class="muted">确认后预留本次积分；修订版和清洁版 Word 可下载后扣费，失败或取消返还。</p>${q.shortage?`<a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a>`:''}<button type="button" class="text-button" id="refresh-quote">刷新报价与余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote());});
+    let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
+    if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
+    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q?.quote);
+    billingHint.textContent = this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
+      : '开始前会展示本次所需积分，确认报价后才会启动付费任务。';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -303,12 +316,16 @@ export class ProjectExecution {
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
     this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update')}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
-      ${run.billing_mode==='fixed_credits'?`<p class="task-credit-receipt">${this.charge?.quote?`本次固定价 ${this.charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已冻结，交付后扣费',settled:'已扣费',released:'已释放，本次不扣费'}[this.charge.state??'held']}`:'正在读取本次积分状态…'}</p>`:''}
+      <p class="task-credit-receipt" role="status">${run.billing_mode==='fixed_credits'
+        ? this.charge?.quote && this.charge.state ? `本次 ${this.charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已预留，交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[this.charge.state]}`
+          : this.chargeError ? '本次积分状态暂未同步。' : '正在读取本次积分状态…'
+        : '本次任务按提交时的试用规则执行，不扣积分。'}${run.billing_mode==='fixed_credits' ? '<button type="button" class="text-button" id="refresh-run-charge">刷新积分状态</button>' : ''}</p>
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
       <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
           : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
+    this.host.querySelector('#refresh-run-charge')?.addEventListener('click', () => { void this.loadCharge(); });
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume']] as const) {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
       if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
@@ -528,10 +545,6 @@ export class ProjectExecution {
     }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
-    const changed=this.run?.run_id!==run.run_id||this.run?.state!==run.state;
-    if(changed){this.charge=undefined;if(run.billing_mode==='fixed_credits')void this.api.runCharge(run.run_id,this.controller.signal).then(charge=>{
-      if(this.active&&this.run?.run_id===run.run_id&&this.run.state===run.state){this.charge=charge;this.render();}
-    }).catch(()=>{});}
     this.runReadVersion++;
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
@@ -542,6 +555,27 @@ export class ProjectExecution {
     if (this.run?.run_id !== run.run_id) this.resumedPause = undefined;
     if (this.run?.run_id !== run.run_id || this.run?.state !== run.state || this.run?.stage !== run.stage) this.resumeVerified = false;
     this.run = run; this.nextRequested = false;
+    void this.loadCharge();
+  }
+  private async loadCharge() {
+    const run = this.run;
+    if (!this.active || !run || run.billing_mode !== 'fixed_credits') return;
+    if (this.chargeLoading) { this.chargeRefreshPending = true; return; }
+    if (this.chargeRun !== run.run_id) { this.charge = undefined; this.chargeRun = run.run_id; }
+    this.chargeLoading = true;
+    try {
+      const charge = await this.api.runCharge(run.run_id, this.controller.signal);
+      if (this.active && this.run?.run_id === run.run_id) {
+        this.charge = charge; this.chargeError = !charge.quote || !charge.state;
+      }
+    } catch { if (this.active && this.run?.run_id === run.run_id) { this.charge = undefined; this.chargeError = true; } }
+    finally {
+      this.chargeLoading = false;
+      if (this.active) {
+        this.render();
+        if (this.chargeRefreshPending) { this.chargeRefreshPending = false; void this.loadCharge(); }
+      }
+    }
   }
   private async restore() {
     if (this.busy) return;
@@ -601,6 +635,8 @@ export class ProjectExecution {
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
       this.run = run;
+      // Billing may settle/release independently of the run state; refresh on every poll.
+      void this.loadCharge();
       // Read all new pages: a reconnect must not lose the actual pause/error reason.
       let cursor = this.eventCursor;
       for (;;) {

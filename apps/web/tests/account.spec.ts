@@ -285,3 +285,28 @@ test('a review payment order returns to the original review workspace',async({pa
  for(const link of await page.getByRole('link',{name:'返回项目确认开始'}).all())await expect(link).toHaveAttribute('href','#/projects/synthetic-review/review?tab=materials');
  expect(calls(state,'/review-executions')).toHaveLength(0);
 });
+
+
+test('credit visibility: wallet stays pinned, works on mobile, refreshes and clears on logout',async({page,context})=>{
+  await page.clock.install();
+  const state=fixture(); await installApi(context,state);
+  let available=100000, frozen=17900, fail=false, balanceReads=0;
+  await context.route('**/api/v1/credits/balance',route=>{balanceReads++;return json(route,fail?503:200,fail?{code:'DATA_UNAVAILABLE'}:{enabled:false,available,frozen});});
+  await page.setViewportSize({width:1440,height:960});await openSettings(page,state);
+  const wallet=page.locator('.credit-wallet');await expect(wallet).toContainText('100,000');await expect(wallet).toContainText('17,900');
+  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+  const box=await wallet.boundingBox();expect(box!.x).toBeLessThan(236);expect(box!.y+box!.height).toBeLessThan(960);
+  await page.getByRole('link',{name:'更新募集书',exact:true}).click();await expect(wallet).toContainText('100,000');
+  await page.setViewportSize({width:1024,height:500});const short=await wallet.boundingBox();expect(short!.y).toBeGreaterThan(0);expect(short!.y+short!.height).toBeLessThan(500);
+  await page.setViewportSize({width:390,height:844});await expect(page.locator('.mobile-credit-wallet')).toContainText('100,000');
+  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));expect((await page.locator('.mobile-credit-wallet').boundingBox())!.y).toBeLessThan(100);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.screenshot({path:join(evidence,'implementation-mobile.png')});}
+  await page.setViewportSize({width:1440,height:960});
+  available=0;frozen=0;await wallet.getByRole('button',{name:'刷新积分余额'}).click();await expect(wallet.locator('.wallet-value strong')).toHaveText('0');
+  fail=true;await wallet.getByRole('button',{name:'刷新积分余额'}).click();await expect(wallet).toContainText('余额暂未同步');await expect(wallet.locator('.wallet-value strong')).toHaveText('—');
+  fail=false;available=80000;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(wallet).toContainText('80,000');
+  available=70000;await page.clock.fastForward(31000);await expect(wallet).toContainText('70,000');
+  await page.locator('#logout').click();await expect(wallet).toHaveCount(0);const reads=balanceReads;
+  await page.clock.fastForward(31000);expect(balanceReads).toBe(reads);await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();
+});

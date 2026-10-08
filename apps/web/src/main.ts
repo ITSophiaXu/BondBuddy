@@ -1,5 +1,6 @@
 import { Dashboard } from './dashboard';
 import { BillingPage } from './billing-page';
+import { CreditWallet } from './credit-wallet';
 import { projectListContext, withProjectContext, projectBackLink } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
@@ -33,6 +34,7 @@ import '../../../product-prototype/public/styles.css';
 import '../../../product-prototype/public/project-workspace.css';
 import './prototype-adapter.css';
 import './quarter-controls.css';
+import './credit-wallet.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
@@ -47,6 +49,7 @@ let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
 let dashboard: Dashboard | undefined;
 let billingPage: BillingPage | undefined;
+let creditWallet: CreditWallet | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
@@ -82,6 +85,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  creditWallet?.dispose(); creditWallet = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
   clearSourceSelections();
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
@@ -247,9 +251,11 @@ function shell(content: string, section: string) {
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
     <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate')}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
-    <div class="sidebar-bottom"><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span></div></header>
+    <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
+  creditWallet ??= new CreditWallet(api);
+  creditWallet.mount();
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
   document.querySelector('#close-menu')!.addEventListener('click', () => { document.querySelector('#sidebar')!.classList.remove('mobile-open'); menu.setAttribute('aria-expanded','false'); menu.setAttribute('aria-label','打开菜单'); menu.focus(); });
