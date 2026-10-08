@@ -25,7 +25,7 @@ test('global assistant persistence, owner isolation, no implicit execution and c
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.json();};
   try{
-    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)',[user,`s${user.slice(0,12)}`,other,`s${other.slice(0,12)}`]);
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)',[user,`s${user.replaceAll('-','').slice(0,12)}`,other,`s${other.replaceAll('-','').slice(0,12)}`]);
     const input={creation_request_id:randomUUID(),name:'Synthetic assistant project',kind:'update',issuer_name:'Synthetic issuer',market:'sse',offering:'private',
       update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2025-09-30',target_reporting_periods:reportingWindow('sse','private','2025-09-30')}};
     const p=await ok('POST','/api/v1/projects',input);
