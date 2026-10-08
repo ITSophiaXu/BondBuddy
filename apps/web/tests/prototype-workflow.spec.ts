@@ -103,7 +103,7 @@ test('creating an update keeps its navigation active while the project loads',as
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release=resolve; });
   await setup(page,{beforeProjectRead:()=>pending});
-  await page.getByRole('link',{name:'更新募集书',exact:true}).click();
+  await page.locator('.dashboard-start').getByRole('link',{name:'更新募集书',exact:true}).click();
   await page.getByLabel('项目名称').fill('合成导航验收');
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
@@ -114,7 +114,7 @@ test('creating an update keeps its navigation active while the project loads',as
   await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
 });
 
-for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目']]) {
+for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','工作台']]) {
   test(`project loading and error preserve the entry navigation: ${active}`,async({page})=>{
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release=resolve; });

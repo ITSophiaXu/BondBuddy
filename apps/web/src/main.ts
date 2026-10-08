@@ -1,7 +1,7 @@
 import { Dashboard } from './dashboard';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
-import { projectListContext, withProjectContext, projectBackLink } from './project-navigation';
+import { projectListContext, withProjectContext, projectBackLink, projectSection } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
@@ -315,7 +315,7 @@ async function logout() {
 async function renderRoute() {
   if (!identity) return;
   const raw = location.hash.slice(1);
-  const requested = !raw || raw === 'dashboard' ? '/dashboard' : raw === 'update' || raw.startsWith('update?') ? '/new'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
+  const requested = !raw || raw === 'dashboard' || raw.startsWith('dashboard?') ? '/dashboard'+raw.slice(9) : raw === 'update' || raw.startsWith('update?') ? '/new'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
@@ -350,7 +350,7 @@ async function renderRoute() {
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   currentRoute = nextRoute;
-  if (requested === '/dashboard') { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
+  if (requested === '/dashboard' || requested.startsWith('/dashboard?')) { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
   if (/^review(\?|$)/.test(requested)) { renderNewReview(api, shell, () => token === epoch,new URLSearchParams(requested.split('?')[1]??'')); return; }
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
@@ -382,8 +382,8 @@ async function renderRoute() {
   }
   const match = requested.match(/^\/projects\/([^/?]+)(?:\?(.*))?$/);
   if (!match) { location.hash = '/'; return; }
-  const projectSection = projectListContext() ? 'projects' : 'workspace';
-  shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', projectSection);
+  const projectShellSection = projectSection('workspace');
+  shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', projectShellSection);
   try {
     const project = await api.project(decodeURIComponent(match[1]));
     if (token !== epoch) return;
@@ -397,12 +397,12 @@ async function renderRoute() {
       const topics=await api.request<{topics:import('@bondbuddy/contracts').M4Topic[]}>('GET','/m4/topics');
       if(token!==epoch)return;
       const topic=topics.topics.find(t=>t.project_id===project.project_id);
-      if(topic){materialWorkspace=new MaterialWorkspace(api,identity!,shell,()=>token===epoch,topic.topic_id);await materialWorkspace.render();return;}
+      if(topic){materialWorkspace=new MaterialWorkspace(api,identity!,shell,()=>token===epoch,topic.topic_id,undefined,false,projectQuery.get('run')??undefined);await materialWorkspace.render();return;}
     }
     renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials',projectQuery);
   } catch (error) {
     if (token !== epoch) return;
-    shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, projectSection);
+    shell(`${projectBackLink()}<div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, projectShellSection);
     document.querySelector('#retry-project')!.addEventListener('click', () => { void renderRoute(); });
   }
 }
@@ -440,7 +440,7 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
   const returnQuery = withProjectContext(new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' }));
   const reportId = query.get('review_report_id'); if (reportId) returnQuery.set('report_id', reportId);
   const returnHref = `#/projects/${encodeURIComponent(project.project_id)}/review?${returnQuery}`;
-  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header>${workspaceSteps(1,'复核流程')}<form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, projectListContext()?'projects':'review');
+  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header>${workspaceSteps(1,'复核流程')}<form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, projectSection('review'));
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }),project);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
@@ -457,7 +457,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     materialProcessing.setVisible(document.visibilityState === 'visible');
   }
   const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
-  shell(`${projectListContext()?projectBackLink:''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
+  shell(`${projectListContext()?projectBackLink():''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="workspace-layout authoring-workspace"><div class="workspace-main">
@@ -471,7 +471,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote material-upload-guidance">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
         <div class="form-footer authoring-actions"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
-      </div></div></div>`, projectListContext()?'projects':'workspace');
+      </div></div></div>`, projectSection('workspace'));
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
     const details = { ...draft.fields.update_details, supplementary_notes: text || null };

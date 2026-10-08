@@ -1166,3 +1166,14 @@ test('credit visibility: an in-flight old receipt is refreshed after the run com
   await expect(page.locator('#execution-progress')).toContainText('文档已生成，可下载',{timeout:12000});
   release();await expect(page.locator('.task-credit-receipt')).toContainText('已扣费');expect(reads).toBeGreaterThan(1);
 });
+
+
+test('dashboard update preserves filtered workbench context through execution, edit, reload and return',async({page})=>{
+ const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
+ await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
+ await page.goto('/#dashboard?kind=update&status=active');await page.locator('.dashboard-primary-action').click();
+ await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
+ await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('link',{name:'返回工作台'}).click();await expect(page.locator('[data-dashboard-kind=update]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('#dashboard-status')).toHaveValue('active');expect(state.executes).toHaveLength(1);
+});

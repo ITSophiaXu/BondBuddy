@@ -362,3 +362,15 @@ test('refresh preserves an expanded preview and its reading position',async({pag
  await preview.evaluate(node=>{node.scrollTop=400;});await expect.poll(()=>preview.evaluate(node=>node.scrollTop)).toBe(400);
  await page.getByRole('button',{name:'刷新状态'}).click();await expect(preview).toBeVisible();await expect.poll(()=>preview.evaluate(node=>node.scrollTop)).toBe(400);expect(s.executions).toHaveLength(0);
 });
+
+for(const state of ['running','succeeded','failed'] as const)test(`dashboard material link opens exact ${state} run and keeps navigation on refresh`,async({page})=>{
+ const s=fixture(),task=s.addDocumentTask('dashboard-run');task.run=s.run('dashboard-run',state);if(state!=='running')s.workspace.active_run=null;
+ if(state==='succeeded'){task.artifacts=[{...s.artifact,artifact_id:'dashboard-artifact',run_id:'dashboard-run',filename:'本次材料成果.docx'}];s.workspace.artifacts.push(...task.artifacts);}
+ await mount(page,s);
+ await page.route('**/api/v1/projects**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/api/v1/projects')return reply(route,{items:[{...s.workspace.project,status:state,latest_run:{run_id:'dashboard-run',state,updated_at:now}}],page:{has_more:false,next_cursor:null}});if(url.pathname==='/api/v1/projects/m4-project')return reply(route,s.workspace.project);return route.fallback();});
+ await page.goto('/#dashboard');await page.locator('[data-dashboard-kind=generation]').click();await page.locator('.dashboard-primary-action').click();
+ await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ if(state==='succeeded')await expect(page.locator('#m4-content')).toContainText('本次材料成果.docx');else await expect(page.locator('#m4-content')).toContainText(state==='running'?'正在':'本轮未完成');
+ await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await page.getByRole('link',{name:'返回工作台'}).click();await expect(page.locator('[data-dashboard-kind=generation]')).toHaveAttribute('aria-pressed','true');expect(s.executions).toHaveLength(0);
+});
