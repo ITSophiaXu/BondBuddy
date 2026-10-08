@@ -23,13 +23,13 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;
     if(path==='/api/v1/me')return reply(route,{user_id:'owner-a'});
-    if(path==='/api/v1/credits/balance')return reply(route,{enabled:true,available:1000,frozen:0});
+    if(path==='/api/v1/credits/balance')return reply(route,{enabled:true,available:10000,frozen:0});
     if(path==='/api/v1/m4/topics')return reply(route,req.method()==='POST'?{topic:state.workspace.topic}:{topics:[state.workspace.topic]});
     if(path==='/api/v1/projects/source-project')return reply(route,{...state.workspace.project,project_id:'source-project',name:'来源项目'});
     if(path.endsWith('/workspace'))return reply(route,state.workspace);
     if(path.includes('/drafts/')){const body=req.postDataJSON();expect(Value.Check(M4DraftRequestSchema,body)).toBe(true);const d=state.workspace.drafts[body.input.document_type as 'init'|'private_summary'];if(body.expected_version!==d.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);const saved={...body.input,version:d.version+1,sha256:hash(JSON.stringify(body.input)),updated_at:now};state.workspace.drafts[saved.document_type as 'init'|'private_summary']=saved;return reply(route,{draft:saved});}
     if(path.endsWith('/view')){const body=req.postDataJSON();expect(Value.Check(M4ViewRequestSchema,body)).toBe(true);if(body.expected_version!==state.workspace.view.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);state.workspace.view={...body.view,version:body.expected_version+1};return reply(route,{view:state.workspace.view});}
-    if(path.endsWith('/quote')){state.quotes.push(req.postDataJSON());return reply(route,{quote:{quote_id:'quote-a',topic_id:'topic-a',input_hash:hash('quote'),task_type:req.postDataJSON().kind==='qa'?'m4_Q01':'m4_G05',points:20,price_version:'test-v1',reason:'合成报价，用于验证预留上限展示',created_at:now,billing_method:'metered_capped',amount_semantics:'reservation_cap',multiplier:1,expires_at:'2099-01-01T00:00:00Z'},balance:{available:1000,frozen:0},shortage:0});}
+    if(path.endsWith('/quote')){const body=req.postDataJSON(),fixed=body.kind==='document';state.quotes.push(body);return reply(route,{quote:{quote_id:'quote-a',topic_id:'topic-a',input_hash:hash('quote'),task_type:fixed?M4_DOCUMENT_BILLING_TASKS[body.document_type as M4DocumentType]:'m4_Q01',points:fixed?4500:20,price_version:'synthetic-v1',reason:fixed?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':'合成问答报价，按用量结算',created_at:now,billing_method:fixed?'fixed':'metered_capped',amount_semantics:fixed?'fixed_price':'reservation_cap',multiplier:1,expires_at:'2099-01-01T00:00:00Z'},balance:{available:10000,frozen:0},shortage:0});}
     if(path.endsWith('/messages')){const body=req.postDataJSON() as M4MessageRequest;expect(Value.Check(M4MessageRequestSchema,body)).toBe(true);state.messages.push(body);let message=state.workspace.messages.find(m=>m.message_id===body.submission_request_id);if(!message){state.charged++;message={message_id:body.submission_request_id,role:'user',content:body.content,context:body.context,version:1,created_at:now,reply_status:'completed',reply_to:null,run_id:'qa-run',reply:null,error:null};state.workspace.messages.push(message,{...message,message_id:'reply-'+message.message_id,role:'assistant',content:'合成接口回复：原文字与版本已保留。',reply_to:message.message_id});if(state.startDocumentOnMessage&&body.execute)state.addDocumentTask('assistant-document',body.context.document_type??'private_summary',body.context.draft_version);}if(state.dropMessage){state.dropMessage=false;return route.abort('connectionreset');}return reply(route,{message,run:state.run('qa-run','succeeded')});}
     if(path.endsWith('/execute')){const body=req.postDataJSON() as M4ExecuteRequest;expect(Value.Check(M4ExecuteRequestSchema,body)).toBe(true);state.executions.push(body);const task=state.addDocumentTask('new-run',body.document_type,body.expected_draft_version);return reply(route,{run:task.run});}
     if(path.endsWith('/preview')){const id=path.split('/')[5],a=state.workspace.artifacts.find(a=>a.artifact_id===id);return a?reply(route,{artifact:a,content:'合成正文第一段：原准确版本。\n\n合成正文第二段。'}):reply(route,{code:'NOT_FOUND'},404);}
@@ -41,6 +41,16 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
 
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
 const start=async(page:Page)=>{await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();await page.getByRole('button',{name:'确认并生成',exact:true}).click();};
+
+for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`fixed-price document confirmation is explicit at ${viewport.width}px`,async({page})=>{
+  await page.setViewportSize(viewport);const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();
+  const price=page.locator('.m4-price');await expect(price).toContainText('4,500');await expect(price).toContainText('固定价');
+  await expect(price).toContainText('失败或取消全额释放');await expect(price).not.toContainText('预留上限');
+  await expect(price).not.toContainText('按实际用量');expect(s.executions).toHaveLength(0);
+  if(process.env.M4_UX_EVIDENCE){const dir=resolve('../../docs/acceptance/material-generation-feedback-20261008');await mkdir(dir,{recursive:true});await price.scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`implementation-fixed-${viewport.width}.png`)});}
+  await page.getByRole('button',{name:'确认并生成',exact:true}).click();expect(s.executions).toHaveLength(1);
+});
 
 test('first form save and concurrent upload share creation and retain entered requirements',async({page})=>{
   const s=fixture();for(const d of Object.values(s.workspace.drafts)){d.version=0;d.fields={};d.requirements=[];d.source_material=null;}
@@ -158,8 +168,26 @@ test('a draft save failure retains direct requirements and retry saves before ex
   const s=fixture();await mount(page,s);await choose(page,'private_summary');let fail=true;
   await page.route('**/drafts/private_summary',route=>fail?reply(route,{code:'DATA_UNAVAILABLE'},503):route.fallback());
   await page.locator('#m4-requirements').fill('保存失败也不能丢失');await expect(page.locator('#m4-status')).toContainText('本页草稿已保留');
+  await expect(page.locator('#m4-submit-status [role=alert]')).toContainText('本页草稿已保留');
+  await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toBeVisible();
   await expect(page.locator('#m4-requirements')).toHaveValue('保存失败也不能丢失');expect(s.executions).toHaveLength(0);fail=false;
   await page.getByRole('button',{name:'生成普通私募募集说明书摘要',exact:true}).click();await expect.poll(()=>s.workspace.drafts.private_summary.supplemental_requirements).toBe('保存失败也不能丢失');
+  await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toHaveCount(0);
+});
+
+for(const [label,width] of [['desktop',1440],['mobile',390]] as const)test(`generation failure is visible beside the button without a false save retry on ${label}`,async({page})=>{
+  const s=fixture();s.workspace.view.selected_document_type='underwriter';
+  s.workspace.drafts.underwriter.source_material=s.workspace.materials[0];s.workspace.artifacts=[];
+  await page.setViewportSize({width,height:844});await mount(page,s);
+  await page.route('**/quote',route=>reply(route,{code:'BILLING_NOT_READY'},503));
+  const input=structuredClone(s.workspace.drafts.underwriter);
+  await page.getByRole('button',{name:'生成主承销商核查意见',exact:true}).click();
+  const alert=page.locator('#m4-submit-status [role=alert]');
+  await expect(alert).toContainText('积分价格尚未配置');await expect(alert).toContainText('本次未扣费');
+  await expect(alert).toBeInViewport();await expect(page.locator('#m4-status')).not.toBeInViewport();
+  await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toHaveCount(0);
+  expect(s.executions).toHaveLength(0);expect(s.charged).toBe(0);expect(s.workspace.drafts.underwriter).toEqual(input);
+  if(process.env.M4_UX_EVIDENCE){const output=resolve('../../docs/acceptance/material-generation-feedback-20261008');await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-error-${label}.png`});}
 });
 
 for(const width of [1440,390,320])test(`material fits viewport ${width}`,async({page})=>{

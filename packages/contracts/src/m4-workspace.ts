@@ -85,9 +85,10 @@ export type M4ExecuteRequest = Static<typeof M4ExecuteRequestSchema>;
 export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_Q01: '通用解释',
   m4_Q02: '授权资料定位', m4_Q03: '确定性计算', m4_Q04: '基础资料比较', m4_Q05: '基础资料解读' } as const;
 export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
+export const M4_DOCUMENT_FIXED_PRICE = { version: 'm4-document-fixed-20261008-v1', points: 4500 } as const;
 export type M4Quote = { quote_id: string; topic_id: string; input_hash: string; task_type: M4BillingTask | 'm4_Q00' | 'm4_task_assistance';
   points: number; price_version: string | null; reason: string; created_at: string;
-  billing_method: 'metered_capped' | 'free'; multiplier: number; expires_at: string; amount_semantics: 'reservation_cap' };
+  billing_method: 'fixed' | 'metered_capped' | 'free'; multiplier: number; expires_at: string; amount_semantics: 'fixed_price' | 'reservation_cap' };
 export type M4QuoteResponse = { quote: M4Quote; balance: CreditBalance; shortage: number };
 export const M4KnowledgeSnapshotSchema = obj({version:id,document_type:M4DocumentTypeSchema,
   market:Type.Union([Type.Literal('sse'),Type.Literal('szse')]),title:nonempty,sha256:hash,

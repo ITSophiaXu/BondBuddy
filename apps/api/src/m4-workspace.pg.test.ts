@@ -264,7 +264,9 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     const view={...emptyM4View(),selected_document_type:'private_summary',unsent_content:'Synthetic unsent request',unsent_context:{...context,document_type:'private_summary',draft_version:1,source_material:pin,citations:[{kind:'material',ref:pin,locator:'paragraph 1'}]},workspace_tab:'input',tab_scroll:{input:240}};
     await ok('PUT',path(t,'view'),{expected_version:0,view});ws=await ok('GET',path(t,'workspace'));assert.equal(ws.view.unsent_content,view.unsent_content);assert.equal(ws.view.tab_scroll.input,240);
     actor=other;assert.equal((await send('GET',path(t,'workspace'))).statusCode,404);assert.equal((await ok('GET','/api/v1/m4/templates')).templates.length,0);actor=user;
-    assert.equal((await send('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1})).json().code,'BILLING_NOT_READY');
+    const withoutRates=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
+    assert.equal(withoutRates.quote.points,4500);assert.equal(withoutRates.quote.billing_method,'fixed');
+    assert.equal((await send('POST',path(t,'quote'),{kind:'qa',content:'解释资产的概念',context})).json().code,'BILLING_NOT_READY');
     const config:M4BillingConfig={model_id:'synthetic-codex',rates:{'synthetic-codex':{input_microyuan_per_million:1000000,cached_microyuan_per_million:1000000,output_microyuan_per_million:2000000}},
       budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
     await publishM4BillingConfig(pool,{id:'synthetic-m4-rates-v1',config,effective_at:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
@@ -275,11 +277,16 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     assert.equal((await ok('GET',path(direct,'workspace'))).messages.length,0);
     const comparisonQuote=await ok('POST',path(t,'quote'),{kind:'qa',content:'比较两期资产负债率',context});assert.equal(comparisonQuote.quote.task_type,'m4_Q04');assert.equal(comparisonQuote.quote.multiplier,4);
     const calculationQuote=await ok('POST',path(t,'quote'),{kind:'qa',content:'计算本期资产负债率',context});assert.equal(calculationQuote.quote.task_type,'m4_Q03');assert.equal(calculationQuote.quote.multiplier,3);
-    const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});assert.equal(q.quote.amount_semantics,'reservation_cap');assert.equal(q.quote.multiplier,6);assert.ok(q.shortage>0);
+    const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});assert.equal(q.quote.amount_semantics,'fixed_price');assert.equal(q.quote.points,4500);assert.ok(q.shortage>0);
     const exec={execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
     assert.equal((await send('POST',path(t,'execute'),exec)).json().code,'CREDITS_INSUFFICIENT');
-    await transaction(pool,c=>grantCredits(c,{owner:user,points:10000,key:'synthetic-fund',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
-    const run=(await ok('POST',path(t,'execute'),exec)).run;assert.equal(run.billing_mode,'metered_credits');assert.equal((await ok('POST',path(t,'execute'),exec)).run.run_id,run.run_id);
+    await transaction(pool,c=>grantCredits(c,{owner:user,points:4499,key:'synthetic-below-price',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    assert.equal((await send('POST',path(t,'execute'),exec)).json().code,'CREDITS_INSUFFICIENT');
+    assert.equal((await creditBalance(pool,user)).frozen,0);
+    await transaction(pool,c=>grantCredits(c,{owner:user,points:1,key:'synthetic-exact-price',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    const run=(await ok('POST',path(t,'execute'),exec)).run;assert.equal(run.billing_mode,'fixed_credits');assert.equal((await ok('POST',path(t,'execute'),exec)).run.run_id,run.run_id);
+    assert.equal((await creditBalance(pool,user)).frozen,4500);assert.equal((await creditBalance(pool,user)).available,0);
+    await transaction(pool,c=>grantCredits(c,{owner:user,points:100000,key:'synthetic-fund',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const quote2=await ok('POST',path(t2,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
     assert.equal((await send('POST',path(t2,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote2.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
     const quote3=await ok('POST',path(t3,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
@@ -419,6 +426,10 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
       await assert.rejects(()=>transaction(pool,async c=>{await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);}),/document and preparation note must be delivered/);
       await transaction(pool,c=>registerM4Artifacts(c,user,r.run_id,[{kind:'preparation_note',artifact_id:note.artifactId,artifact_version:1,filename:'preparation-note.docx',byte_size:noteBytes.length,preview_content:`Synthetic notes ${number}`} ]));
       await transaction(pool,async c=>{await c.query("UPDATE bb_jobs SET state='succeeded',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[r.run_id]);await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);});
+      await pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[r.run_id]);
+      assert.equal(Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[r.run_id])).rows[0].charged_points),4500);
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[r.run_id])).rows[0].n,1);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_metering WHERE run_id=$1',[r.run_id])).rows[0].n,0,'fixed price must not fabricate metering');
       const delivered=(await ok('GET',path(t,'workspace'))).artifacts.filter((a:any)=>a.run_id===r.run_id);assert.equal(delivered.length,2);
       for(const a of delivered){assert.equal(a.revision_number,number);assert.match(a.filename,new RegExp(`第${number}稿`));const download=await send('GET',`/api/v1/m4/artifacts/${a.artifact_id}/versions/1/bytes`);assert.equal(download.statusCode,200,download.body);assert.equal(digest(download.rawPayload),a.sha256);}
       return delivered.find((a:any)=>a.kind==='document');};
@@ -432,7 +443,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
       for(const market of ['sse','szse'] as const){
         const d=await save(t,{...emptyM4Draft(type),materials:[pin],fields:{issuer_name:'Synthetic issuer',market}},version);version=d.version;
         const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:type,expected_draft_version:version});
-        assert.equal(q.quote.task_type,type==='underwriter'?'m4_G02':'m4_G03');assert.equal(q.quote.multiplier,type==='underwriter'?12:15);
+        assert.equal(q.quote.task_type,type==='underwriter'?'m4_G02':'m4_G03');assert.equal(q.quote.points,4500);assert.equal(q.quote.billing_method,'fixed');
         const request={...exec,execution_request_id:randomUUID(),document_type:type,expected_draft_version:version,quote_id:q.quote.quote_id};
         const run=(await ok('POST',path(t,'execute'),request)).run;
         assert.equal((await ok('POST',path(t,'execute'),request)).run.run_id,run.run_id);

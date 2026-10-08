@@ -118,6 +118,7 @@ jobs:
           node --test --test-concurrency=1 --test-reporter=tap \
             apps/api/dist/m4-knowledge.test.js \
             apps/api/dist/m4-workspace.pg.test.js \
+            apps/api/dist/m4-fixed-billing.pg.test.js \
             apps/api/dist/authoring-task-kind.pg.test.js \
             apps/api/dist/billing.pg.test.js \
             apps/api/dist/review-billing.pg.test.js \

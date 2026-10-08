@@ -91,8 +91,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
     await ok('PUT',path('drafts/private_summary'),{expected_version:0,input:{document_type:'private_summary',source_material:pin,materials:[pin],template,edit_base:null,scope:'whole',fields:{issuer_name:'Synthetic issuer',market:'sse'},requirements:[]}});
     const rate={input_microyuan_per_million:1000000,cached_microyuan_per_million:1000000,output_microyuan_per_million:2000000};
     const cost:M4BillingConfig={model_id:config.model_id,rates:{[config.model_id]:rate},budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
-    await publishM4BillingConfig(pool,{id:'synthetic-m4-pipeline-rates',config:cost,effective_at:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
-    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-m4-fund',points:10000,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-m4-fund',points:100000,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const start=async()=>{const q=await ok('POST',path('quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
       const request={execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
       const r=(await ok('POST',path('execute'),request)).run;assert.equal((await ok('POST',path('execute'),request)).run.run_id,r.run_id);return {r,q};};
@@ -128,18 +127,18 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
       const preview=await ok('GET',`/api/v1/m4/artifacts/${artifact.artifact_id}/versions/${artifact.artifact_version}/preview`);assert.match(preview.content,/SYNTHETIC/);assert.match(preview.content,/Assets \| 100/);}
     assert.equal((await pool.query(`SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE run_id=$1 AND delivery_code='readback_verified'`,[first.r.run_id])).rows[0].n,2);
     const paid=(await pool.query('SELECT state,charged_points,points FROM bb_credit_reservations WHERE run_id=$1',[first.r.run_id])).rows[0];
-    assert.equal(paid.state,'settled');assert.equal(Number(paid.charged_points),1);assert.ok(Number(paid.points)>1);assert.equal((await creditBalance(pool,owner)).frozen,0);
+    assert.equal(paid.state,'settled');assert.equal(Number(paid.charged_points),4500);assert.equal(Number(paid.points),4500);assert.equal((await creditBalance(pool,owner)).frozen,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_billing_configs')).rows[0].n,0,'document delivery works without cost configuration');
+    await publishM4BillingConfig(pool,{id:'synthetic-m4-pipeline-rates',config:cost,effective_at:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
     actor=randomUUID();assert.equal((await send('GET',`/api/v1/m4/artifacts/${artifacts[0].artifact_id}/versions/1/bytes`)).statusCode,404);actor=owner;
-    unknown=true;const pending=await start();assert.equal(await pipeline(),'paused');assert.equal(modelCalls,2);
-    assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[pending.r.run_id])).rows[0].state,'paused');
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_artifacts WHERE run_id=$1',[pending.r.run_id])).rows[0].n,2,'real files persist while billing remains pending');
+    unknown=true;const pending=await start();assert.equal(await pipeline(),'succeeded');assert.equal(modelCalls,2);
+    assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[pending.r.run_id])).rows[0].state,'succeeded');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_artifacts WHERE run_id=$1',[pending.r.run_id])).rows[0].n,2,'fixed price requires both real files, independent of token reporting');
     const pendingWorkspace=await ok('GET',path('workspace'));
     await verifyPendingReading(pendingWorkspace.artifacts.find((a:M4Artifact)=>a.run_id===pending.r.run_id&&a.kind==='document'));
-    assert.equal(await resumePausedRun(pool,owner,pending.r.run_id,'provider_reconciled'),false);assert.equal(modelCalls,2,'unknown usage never triggers a duplicate model send');
-    const attempt=(await pool.query('SELECT a.id FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id WHERE j.run_id=$1',[pending.r.run_id])).rows[0].id;
-    await pool.query(`INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens)
-      VALUES($1,$2,$3,'provider','synthetic-reconciled-usage','measured',1000,0,100,0)`,[randomUUID(),owner,attempt]);
-    assert.equal(await resumePausedRun(pool,owner,pending.r.run_id,'provider_reconciled'),true);assert.equal(await pipeline(),'succeeded');assert.equal(modelCalls,2);
+    const unknownUsage=(await pool.query('SELECT a.usage_status FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id WHERE j.run_id=$1',[pending.r.run_id])).rows[0];
+    assert.equal(unknownUsage.usage_status,'unknown','unknown supplier usage is retained, never invented for fixed settlement');
+    assert.equal(Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[pending.r.run_id])).rows[0].charged_points),4500);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind=\'settle\'',[pending.r.run_id])).rows[0].n,1);
     assert.equal((await creditBalance(pool,owner)).frozen,0);
     // Pure QA follows the same durable pipeline but delivers authenticated text without any Word promotion.
