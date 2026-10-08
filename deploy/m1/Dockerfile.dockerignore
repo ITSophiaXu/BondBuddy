@@ -18,4 +18,5 @@ product-prototype
 !product-prototype/public/styles.css
 !product-prototype/public/project-workspace.css
 !product-prototype/public/credits.css
+!product-prototype/public/material-results.css
 !product-prototype/knowledge/*-review.md
