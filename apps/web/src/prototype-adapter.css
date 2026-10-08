@@ -7,6 +7,8 @@
 .prototype-app .user { flex-shrink: 0; }
 .prototype-app .account { border-top: 1px solid var(--line); padding-top: 16px; }
 .prototype-app .account .text-button { margin-left: auto; }
+.prototype-app .account [data-account-name] { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.prototype-app .account .avatar,.prototype-app .account .text-button { flex-shrink:0; }
 .prototype-app .nav-pending { margin-left: auto; font-size: 9px; color: var(--muted); }
 .prototype-app .topbar { height: 82px; padding: 0 42px; }
 .prototype-app .top-actions { display: flex; align-items: center; gap: 20px; font-size: 11px; }
@@ -112,6 +114,9 @@
 @media (max-width:760px) {
   .prototype-app .sidebar { display:none; position:fixed; inset:0 auto 0 0; width:236px; height:100vh; }
   .prototype-app .sidebar.mobile-open { display:flex; transform:none; box-shadow:0 0 0 100vw #172d3344; }
+  .prototype-app .sidebar nav { display:block; margin-top:0; }
+  .prototype-app .sidebar .nav-item { justify-content:flex-start; }
+  .prototype-app .sidebar .nav-label { display:block; }
   .prototype-app .mobile-menu-close { display:block; position:absolute; right:12px; top:6px; }
   .prototype-app .shell { margin-left:0; }
   .prototype-app .topbar { height:auto; min-height:68px; padding:12px 18px; }
