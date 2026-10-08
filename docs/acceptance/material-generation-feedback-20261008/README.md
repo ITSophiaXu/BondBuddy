@@ -1,26 +1,26 @@
-# 材料生成失败反馈（2026-10-08）
+# 材料生成固定价与提交反馈（2026-10-08）
 
-## 问题与修复
+四类完整材料采用用户确定的固定价，按 Spec 的 PROJECT_DOCUMENT 档 4,500 积分／份执行。生成前报价并明确确认、冻结；正文 Word 和编制说明均交付后扣款。失败或取消全额释放，内部重试及重复下载不另收费。材料生成不依赖模型成本率配置，QA 和已运行历史任务按原规则结算。见[产品决定](../../product-decisions/2026-10-08-m4-fixed-document-price.md)。
 
-材料生成在请求报价失败时，只在页面顶部更新错误。用户点击页面底部的生成按钮后看不到原因；任意错误又会显示“重试保存草稿”，把计费配置或执行错误误报为保存失败。
+报价或执行失败会在生成按钮旁显示 role=alert，单独记录保存失败，仅实际保存失败才提供“重试保存草稿”。保存内容和任务幂等不变。
 
-本次在生成按钮旁同步显示现有状态与错误（`role=alert`），并单独记录保存失败状态。异步保存失败立即显示重试入口，保存成功后移除；报价失败不会出现保存重试。原输入、报价确认、幂等执行与计费逻辑保持原有行为。
+## 原型与实现
 
-## 依据与对照
+- 关联 #57、#66、#361；表单基线 a47e0dc，product-prototype/public/material-studio.js。
+- 本 PR 同步原型页尾固定价文案，实现增加现有报价区的固定价确认。用户确认来源：2026-10-08 当前会话“材料生成用固定价就可以”。
+- 原型已有提交区内错误提示，实现补齐同处反馈。
+- 同尺寸原型／实现 1440×960、390×844 截图：apps/web/test-evidence/m4-form-20261008/，文件来自本 PR 当前源代码。表单结构与基线一致；价格在报价后显示于确认按钮上方。
+- 价格截图：[桌面](implementation-fixed-1440.png)、[手机](implementation-fixed-430.png)。错误截图：[桌面](implementation-error-desktop.png)、[手机](implementation-error-mobile.png)。全部是 synthetic HTTP fixture，不含真实客户数据。
 
-- 关联 #57、#66、#361；原型基线 `09fe96a`，`product-prototype/public/material-studio.js`。
-- 原型已有提交区内的 `d.error` / `upload-error`，本次补齐迁移页面的同处反馈，不新增页面或收费决定。原型源代码没有修改。
-- 同尺寸原型/实现截图重新运行：1440×960、390×844，见 `apps/web/test-evidence/m4-prototype-20261007/`；正常页面结构保持一致。
-- 额外异常截图：[桌面](implementation-error-desktop.png)、[手机](implementation-error-mobile.png)。两图均为 synthetic HTTP fixture，不是真实客户材料或真实生成结果。
+## 本地验证
 
-## 验证
+- Windows / Node 22.14.0 / PostgreSQL 16.14 隔离克隆 / 独立 Azurite / Edge。
+- npm run build、npm run check:contracts 通过：167 公共示例、12 内部示例、4 生命周期示例及 40 契约测试。
+- 浏览器 m4-workspace.spec.ts：20 passed，0 skipped，含桌面／手机固定价、报价错误、保存重试、输入保留、同尺寸截图。
+- API m4-workspace.pg.test.ts、billing.pg.test.ts、review-billing.pg.test.ts：6 passed，0 skipped。真实钱包、双 Word 交付门、固定成功扣 4,500、失败／取消释放、重复终态只结算一次，M1/M2 回归。
+- API m4-fixed-billing.pg.test.ts：1 passed，0 skipped。四文种无成本配置报价、余额竞争仅一方冻结、不可变报价、旧未执行报价重新确认、已运行旧按量任务保留原金额。
+- Worker m4-pipeline.pg.test.ts：1 passed，0 skipped。无成本配置下实际生成 synthetic Word 双文件、私有 Blob 回读和授权下载、崩溃后复用结果、固定价不因未知 usage 暂停、QA 未知 usage 待核恢复、自然语言明确执行只产生一次冻结。
 
-- Windows / Node 22.14.0 / Edge，独立 Vite 端口 5198。
-- `npm test -w @bondbuddy/web -- tests/m4-workspace.spec.ts`：17 passed，0 skipped（`M4_UX_EVIDENCE=1`）。
-- `npm run build`、`npm run check:contracts` 通过；167 个公共示例、12 个内部示例、4 个生命周期示例及 40 项契约测试通过。
-- 两个新增场景验证：页面顶部已在视口外时，报价返回 `BILLING_NOT_READY` 的错误仍在生成按钮旁可见；不出现错误的保存重试；不创建任务、不扣费、不修改保存输入。
-- 保存失败场景验证：错误与重试入口立即出现；成功同步后移除重试入口。
+## 发布边界
 
-## 验证边界
-
-本次仅修复反馈，不发布费率、预算或新计费规则。`BILLING_NOT_READY` 由合成 HTTP fixture 返回；不把页面测试称为真实模型或 Word 交付验收。此目录只包含合成截图和代码测试证据。
+迁移 0099 仅新增报价字段、分流现有账务终态触发器；不改写旧报价和任务。需要 API、worker、web 同版本发布。合成模型注入测试不冒充真实供应商或专业内容验收。具体 master SHA、线上迁移和回滚状态另记发布记录。

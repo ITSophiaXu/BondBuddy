@@ -12,7 +12,7 @@
 
 `m4_document_v1` 与 `m4_qa_v1` 为独立 job subtype，不截获旧 M1 generation。现有 worker 租约／检查点、`codexModelStage` 和 contained Codex CLI 接收只读原件、固定受信 Skill 及本轮 scratch/output。立项和普通私募摘要各交付可编辑 DOCX 与独立编制说明，私有 Blob 读回核对后登记；QA 回复在聊天中展示，持久文本只用于恢复和免费导出。准确输入／技能／工具／模型变更不静默重发，未知调用先核对。财务工具固定宿主授权，Decimal 重算并保留期间、单位、口径及精确引用；算术成功不代表来源事实已核。
 
-文书任务按准确来源项目与更新／复核共用互斥，普通 QA 可并行。M4 沿用现有积分批次账本，新增 `metered_credits` 路径：发布成本率与预算后按真实成本 × 100 × K、上限 B 结算，失败释放，usage unknown 保留待核；G01=8／G05=6 是成本系数。没有生产默认成本率，未配置不得开放付费。旧固定价运行不变。交互、工程、真实供应商与最终专业／发布验收分别见[实施记录](acceptance/m4-implementation-2026-10-06.md)。
+文书任务按准确来源项目与更新／复核共用互斥，普通 QA 可并行。按[2026-10-08 固定价决定](product-decisions/2026-10-08-m4-fixed-document-price.md)，新文书统一 4,500 积分，使用共享账本的 `fixed_credits`，以正文与编制说明双文件交付触发结算，失败释放；新文书不依赖模型成本配置。QA 与历史按量文书保留 `metered_credits`，按锁定配置的真实成本 × 100 × K、上限 B 结算，usage unknown 保留待核。迁移 0099 按报价归属区分 M4 与 M1/M2 固定价触发器，不重新定价旧运行。交互、工程、真实供应商与最终专业／发布验收分别见[实施记录](acceptance/m4-implementation-2026-10-06.md)。
 
 2026-10-05[可读结果投影](product-decisions/2026-10-05-review-readable-results.md)：API按账号/项目/run读取已交付报告的私有Markdown并核对输入/hash；前端只读整理为财务/合规披露/公开核验三维业务结果，过滤工程元数据、保留缺项和不确定性，不生成可执行finding，不写run，不触发模型。读取异常只影响正文，Word交付独立。无需数据库迁移。
 
