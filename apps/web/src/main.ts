@@ -41,6 +41,7 @@ const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
 const plus = icon('M12 5v14M5 12h14');
 const person = icon('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0');
 let identity: string | undefined;
+let accountIdentity: { owner: string; name?: string; request?: Promise<void> } | undefined;
 let epoch = 0;
 let currentRoute = '/';
 let draft: Draft | undefined;
@@ -85,6 +86,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  accountIdentity = undefined;
   creditWallet?.dispose(); creditWallet = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
   clearSourceSelections();
@@ -246,16 +248,37 @@ function bindRegister() {
   });
 }
 
+function mountAccountIdentity() {
+  if (!identity) return;
+  const state = accountIdentity ??= { owner: identity };
+  const paint = () => {
+    const label = document.querySelector<HTMLElement>('[data-account-name]');
+    if (label && accountIdentity === state) {
+      label.textContent = state.name ?? '当前账号';
+      label.title = state.name ?? '';
+    }
+  };
+  paint();
+  if (state.name !== undefined || state.request) return;
+  state.request = api.account().then(account => {
+    if (accountIdentity !== state || account.user_id !== state.owner) return;
+    state.name = account.username?.trim() || '当前账号';
+    paint();
+  }).catch(() => { /* Keep navigation and logout available; retry on the next page. */ })
+    .finally(() => { state.request = undefined; });
+}
+
 function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
     <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate')}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
-    <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
     <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   creditWallet ??= new CreditWallet(api);
   creditWallet.mount();
+  mountAccountIdentity();
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
   const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
   document.querySelector('#close-menu')!.addEventListener('click', () => { document.querySelector('#sidebar')!.classList.remove('mobile-open'); menu.setAttribute('aria-expanded','false'); menu.setAttribute('aria-label','打开菜单'); menu.focus(); });
