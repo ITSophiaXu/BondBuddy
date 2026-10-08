@@ -64,16 +64,23 @@ export async function renderAccount(ctx: AccountContext) {
   }
   if (!live()) return;
   const username = account.username;
-  ctx.shell(`<div class="page-head"><div><p class="eyebrow">MY ACCOUNT</p><h1>我的账号</h1><p>管理积分、充值和账号安全。</p></div><span class="account-username">${esc(username ?? '我的账号')}</span></div>
+  ctx.shell(`<div class="page-head"><div><p class="eyebrow">MY ACCOUNT</p><h1>我的账号</h1><p>管理积分、充值和账号信息。</p></div></div>
     <div class="account-layout"><div id="account-credits" class="account-credits" aria-label="积分与充值"></div><div class="settings-stack account-security">
-    <section class="panel" aria-labelledby="account-info-title"><div class="panel-heading"><h2 id="account-info-title">账号信息</h2></div><dl class="settings-list" id="account-info"></dl></section>
+    <section class="panel" aria-labelledby="account-info-title"><div class="panel-heading"><h2 id="account-info-title">基本信息</h2><button class="text-button" id="open-account-settings" type="button" aria-haspopup="dialog">账号设置</button></div><dl class="settings-list" id="account-info"></dl></section>
+    </div></div>
+    <dialog id="account-settings" class="account-settings-dialog" aria-labelledby="account-settings-title">
+    <div class="account-settings-heading"><h2 id="account-settings-title">账号设置</h2><button class="text-button" id="close-account-settings" type="button" autofocus>关闭</button></div>
+    <div class="settings-stack">
     <details class="panel account-disclosure"><summary>登录会话</summary><div class="account-disclosure-body"><p class="muted">退出后，该设备需要重新登录。</p><button class="button secondary" id="revoke-others" type="button">退出其他全部会话</button>
     <p id="sessions-message" class="form-message session-message" role="status" hidden></p><ul class="session-list" id="session-list"></ul></div></details>
     <details class="panel account-disclosure"><summary>修改密码</summary><div class="account-disclosure-body form-panel">${username ? passwordForm(username) : legacyNote}</div></details>
     <details class="panel account-disclosure"><summary>账号找回</summary><div class="account-disclosure-body form-panel" id="account-recovery"><p role="status">正在读取恢复联系方式…</p></div></details>
     <details class="panel account-disclosure" id="account-data"><summary>数据说明</summary><div class="account-disclosure-body" id="account-data-copy"><p>正在读取数据说明…</p></div></details>
     <details class="panel account-disclosure danger-panel"><summary>注销账号</summary><div class="account-disclosure-body form-panel"><p class="muted">注销会关闭账号，并停止访问账号下的全部项目、材料和成果。完成后无法恢复。</p><div id="closure-body">${username ? closureStart : legacyNote}</div></div></details>
-    </div></div>`, 'account');
+    </div></dialog>`, 'account');
+  const settings = document.querySelector<HTMLDialogElement>('#account-settings')!;
+  document.querySelector('#open-account-settings')!.addEventListener('click', () => settings.showModal());
+  document.querySelector('#close-account-settings')!.addEventListener('click', () => settings.close());
   void ctx.api.dataPolicy().then(policy => {
     if(!live())return;
     const copy=dataPolicyCopy(policy),target=document.querySelector('#account-data-copy');
@@ -81,17 +88,9 @@ export async function renderAccount(ctx: AccountContext) {
   }).catch(()=>{if(live()){const target=document.querySelector('#account-data-copy');if(target)target.textContent='数据说明暂未读取，请稍后刷新。';}});
 
   const paintInfo = () => {
-    const accepted = account.accepted_terms_version ? `已接受版本 ${esc(account.accepted_terms_version)}` : '暂无接受记录';
-    const current = account.current_terms_version && account.current_terms_version !== account.accepted_terms_version
-      ? `<span class="settings-note">当前版本 ${esc(account.current_terms_version)}</span>` : '';
     document.querySelector('#account-info')!.innerHTML = [
-      ['用户名', esc(account.username ?? '未设置（旧手机号账号）')],
-      ['绑定手机号', esc(account.phone_masked ?? '未绑定')],
-      ['注册时间', esc(date(account.created_at))],
-      ['密码最近修改', esc(account.password_updated_at ? date(account.password_updated_at) : '—')],
-      ['服务协议', accepted + current],
-      ['找回账号', '人工找回需核验事先绑定的联系方式。请在下方查看绑定状态；没有可靠旧记录时不能重置。'],
-      ['联系客服', esc(account.support_contact ?? '客服入口尚未公布')]
+      ['账户名', esc(account.username ?? '未设置（旧手机号账号）')],
+      ['绑定手机号', esc(account.phone_masked ?? '未绑定')]
     ].map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('');
   };
 

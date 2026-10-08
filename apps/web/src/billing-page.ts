@@ -34,7 +34,7 @@ export class BillingPage {
     const context=this.projectId?`<section class="notice"><span>${this.quote?.quote?`本次任务需要 ${number(this.quote.quote.points)} 积分，当前可用 ${number(b?.available??0)} 积分${shortage?`，还差 ${number(shortage)} 积分`:'，已足够开始'}。`:'项目材料与补充说明已保留。'}充值到账不会自动开始任务。</span>${returnLink}</section>`:'';
     this.shell(`<div class="section-head"><h2>${o?'订单与支付':'积分与充值'}</h2></div>
       <p role="alert">${esc(this.error)}</p>${context}
-      <section class="panel credit-overview"><div><span class="eyebrow">AVAILABLE CREDITS</span><h2>${b?number(b.available):'—'} <small>可用积分</small></h2><p>上传材料、保存项目和下载已有成果免费。</p></div><div class="credit-stats"><div><span>任务占用</span><strong>${b?number(b.frozen):'—'}</strong></div></div></section>
+      <section class="panel credit-overview"><div><span class="eyebrow">AVAILABLE CREDITS</span><h2>${b?number(b.available):'—'} <small>可用积分</small></h2><p>上传材料、保存项目和下载已有成果免费。</p>${b && b.frozen > 0 ? `<p class="credit-reservation">进行中任务预留 <strong>${number(b.frozen)}</strong> 积分<span>已从可用积分中预留，成功后扣除，失败或取消后返还。</span></p>` : ''}</div></section>
       ${o?`<div class="simple-payment-wrap"><section class="panel payment-card simple-payment"><span class="eyebrow">CREDIT RECHARGE</span><h2>${{pending:'等待支付确认',paid:'积分已到账',expired:'订单已过期',failed:'支付未完成'}[o.state]}</h2><p>${number(o.points)} 积分</p><div class="payment-amount">¥${money(o.amount_fen)}</div>
         ${o.state==='pending'&&o.checkout_url?.startsWith('https://')?`<a class="btn primary" href="${esc(o.checkout_url)}" target="_blank" rel="noopener noreferrer">前往${channel[o.provider]}</a>`:''}
         ${o.state==='pending'&&o.checkout_url?.startsWith('weixin://')?`<p>微信支付链接</p><a href="${esc(o.checkout_url)}" class="btn primary">打开微信支付</a>`:''}

@@ -360,7 +360,7 @@ async function renderRoute() {
     if(token!==epoch)return;
     const host=document.querySelector<HTMLElement>('#account-credits');
     if(host){billingPage=new BillingPage(api,html=>{if(token===epoch)host.innerHTML=html;},()=>token===epoch,project,order);await billingPage.render();}
-    if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){details.open=true;details.scrollIntoView({block:'start'});}}
+    if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){document.querySelector<HTMLDialogElement>('#account-settings')?.showModal();details.open=true;details.scrollIntoView({block:'start'});}}
     return;
   }
   if (/^generate(\?|$)/.test(requested)) {
