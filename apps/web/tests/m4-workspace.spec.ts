@@ -49,7 +49,7 @@ for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`on
   await expect(page.locator('.m4-price')).toHaveCount(0);await expect(page.getByRole('button',{name:'确认并生成'})).toHaveCount(0);
   if(process.env.M4_UX_EVIDENCE){const dir=resolve('test-evidence/m4-one-click-20261008');await mkdir(dir,{recursive:true});await page.locator('.form-footer').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`ready-${viewport.width}.png`)});}
   await start(page);await expect.poll(()=>s.executions.length).toBe(1);expect(s.quotes).toHaveLength(1);
-  await expect(page.getByRole('tab',{name:'正在制作'})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByRole('tab',{name:'生成进度'})).toHaveAttribute('aria-selected','true');
   await expect(page.locator('.m4-price')).toHaveCount(0);await expect(wallet).toHaveText('10,000');
   await expect(page.locator('.wallet-note')).toContainText('任务已预留 4,500');
   const reads=s.balanceReads;s.balance.frozen=0;
@@ -173,27 +173,27 @@ test('replacing the source adopts only saved bytes and restores that exact file 
 test('generation pins direct requirements and progress is on the page; edits never change running input',async({page})=>{
   const s=fixture();await mount(page,s);await choose(page,'private_summary');await page.locator('#m4-requirements').fill('保留财务表格');
   await expect.poll(()=>s.workspace.drafts.private_summary.supplemental_requirements).toBe('保留财务表格');await start(page);
-  await expect(page.getByRole('tab',{name:'正在制作'})).toHaveAttribute('aria-selected','true');await expect(page.locator('.m4-task')).toContainText('正在制作');
+  await expect(page.getByRole('tab',{name:'生成进度'})).toHaveAttribute('aria-selected','true');await expect(page.locator('.task-progress')).toContainText('正在制作');
   await expect(page.locator('#m4-requirements,#m4-message')).toHaveCount(0);
   const fixed=structuredClone(s.workspace.tasks[0].manifest);expect(fixed.kind==='document'&&fixed.input.supplemental_requirements).toBe('保留财务表格');
-  await page.getByRole('button',{name:'准备新任务'}).click();await page.locator('#m4-requirements').fill('下一版增加风险分析');
+  await page.getByRole('button',{name:'查看与补充材料'}).click();await page.locator('#m4-requirements').fill('下一版增加风险分析');
   await expect.poll(()=>s.workspace.drafts.private_summary.supplemental_requirements).toBe('下一版增加风险分析');expect(s.workspace.tasks[0].manifest).toEqual(fixed);expect(s.executions).toHaveLength(1);
 });
 
 test('completion keeps older reader, new real artifact appears once and preview failure still permits download',async({page})=>{
-  const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);await page.getByRole('button',{name:'准备新任务'}).click();
-  await page.getByRole('button',{name:'合成摘要.docx · 第1稿',exact:true}).click();await expect(page.locator('.m4-preview')).toContainText('合成正文');
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);await page.getByRole('button',{name:'查看与补充材料'}).click();
+  await page.getByRole('button',{name:'合成摘要.docx · 第1稿',exact:true}).click();await page.getByText('查看正文预览',{exact:true}).click();await expect(page.locator('.m4-preview')).toContainText('合成正文');
   const fresh={...s.artifact,artifact_id:'new-artifact',revision_number:2,filename:'合成摘要新稿.docx',run_id:'new-run'};
   s.workspace.artifacts.push(fresh);s.workspace.tasks[0].run=s.run('new-run','succeeded');s.workspace.tasks[0].artifacts=[fresh];s.workspace.active_run=null;
   await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.getByRole('tab',{name:'合成摘要.docx · 第1稿',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.getByRole('tab',{name:'合成摘要新稿.docx · 第2稿'})).toHaveCount(1);
   await page.route('**/preview',route=>reply(route,{code:'DATA_UNAVAILABLE'},503));await page.getByRole('tab',{name:'合成摘要新稿.docx · 第2稿'}).click();
-  await expect(page.locator('.m4-preview')).toContainText('可下载原成果查看');await expect(page.getByRole('button',{name:'下载',exact:true})).toBeEnabled();expect(s.executions).toHaveLength(1);
+  await page.getByText('查看正文预览',{exact:true}).click();await expect(page.locator('.m4-preview')).toContainText('可下载原成果查看');await expect(page.getByRole('button',{name:'下载正文 Word',exact:true})).toBeEnabled();expect(s.executions).toHaveLength(1);
 });
 
 test('whole-document continuation keeps original source and requirements',async({page})=>{
   const s=fixture();await mount(page,s);await page.getByRole('button',{name:'合成摘要.docx · 第1稿',exact:true}).click();
-  await page.getByRole('button',{name:'基于 合成摘要.docx · 第1稿 继续全文改稿'}).click();
+  await page.getByRole('button',{name:'继续修改',exact:true}).click();
   await expect.poll(()=>s.workspace.drafts.private_summary.edit_base?.artifact_id).toBe('old-artifact');
   expect(s.workspace.drafts.private_summary.source_material?.material_version).toBe(3);expect(s.workspace.drafts.private_summary.requirements[0].text).toBe('保留已采纳要求');expect(s.executions).toHaveLength(0);
 });
@@ -301,4 +301,64 @@ test('same-size original prototype and material implementation screenshots',asyn
     await page.screenshot({path:`${output}/saved-file-${label}.png`,fullPage:true});
   }
   await original.close();
+});
+
+function completeTask(s:ReturnType<typeof fixture>,task:M4Task){
+  const fresh={...s.artifact,artifact_id:'new-artifact',revision_number:2,filename:'合成摘要新稿.docx',run_id:task.run.run_id};
+  const note={...fresh,artifact_id:'new-note',filename:'合成编制说明.docx',kind:'preparation_note' as const};
+  s.workspace.artifacts.push(fresh,note);task.run={...task.run,state:'succeeded',artifact_id:fresh.artifact_id};task.artifacts=[fresh,note];s.workspace.active_run=null;
+  return {fresh,note};
+}
+test('live phases, terminal states and closed-tab recovery keep the same immutable task',async({page})=>{
+  const s=fixture(),task=s.addDocumentTask('observed');task.run.stage='m4_document_v1_prompt';
+  await mount(page,s);await page.getByRole('button',{name:'查看生成进度',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('正在生成材料正文');await expect(page.locator('.m4-content [data-m4-action=task]')).toHaveCount(0);
+  await page.getByText('查看本次材料与要求',{exact:true}).click();
+  task.events=[{event_id:'e1',schema_version:1,trace_id:'trace',run_id:task.run.run_id,seq:1,occurred_at:now,stage:'model_generation',type:'run.progress',state:'running',payload:{reason:'m4_reading_materials'}}];
+  await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress [aria-current=step]')).toContainText('准备材料');
+  await expect(page.locator('[data-m4-detail=input]')).toHaveAttribute('open','');
+  task.run.stage='word_delivery';await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress [aria-current=step]')).toContainText('准备下载');
+  await expect(page.locator('.task-progress')).not.toContainText('正在读取本轮材料');
+  for(const state of ['paused','awaiting_input','failed','cancelled'] as const){task.run.state=state;s.workspace.active_run=['paused','awaiting_input'].includes(state)?task.run:null;await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).not.toContainText('文档已生成');await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);}
+  await expect(page.getByRole('button',{name:'停止本次任务'})).toHaveCount(0);
+  await page.locator('.m4-tab-close').click();await page.getByRole('button',{name:'查看本轮任务'}).click();await expect(page.locator('.task-progress')).toContainText('本轮已停止');
+  await page.getByRole('button',{name:'继续修改',exact:true}).click();expect(s.executions).toHaveLength(0);
+});
+test('completion and reload retain paired downloads; download errors stay beside the exact file',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);const task=s.workspace.tasks[0],{fresh,note}=completeTask(s,task);
+  await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.getByRole('tab',{name:'合成摘要新稿.docx · 第2稿'})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByRole('button',{name:'下载正文 Word',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'下载编制说明',exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByRole('button',{name:'下载编制说明',exact:true})).toBeVisible();let bad=true;const requested:string[]=[];
+  await page.route('**/m4/artifacts/*/versions/*/bytes',route=>{requested.push(route.request().url());return route.fulfill({status:200,contentType:mime,body:bad?'wrong bytes':'Synthetic DOCX bytes'});});
+  await page.getByRole('button',{name:'下载编制说明',exact:true}).click();await expect(page.locator('.artifact-file').filter({hasText:'合成编制说明.docx'}).getByRole('alert')).toContainText('下载未完成');
+  await expect(page.locator('.artifact-file').filter({hasText:'合成摘要新稿.docx'}).getByRole('alert')).toHaveCount(0);bad=false;
+  for(const [label,file] of [['下载正文 Word',fresh],['下载编制说明',note]] as const){const pending=page.waitForEvent('download');await page.getByRole('button',{name:label,exact:true}).click();const downloaded=await pending;expect(downloaded.suggestedFilename()).toBe(file.filename);expect(requested.at(-1)).toContain(`/m4/artifacts/${file.artifact_id}/versions/${file.artifact_version}/bytes`);}
+  expect(s.executions).toHaveLength(1);expect(s.quotes).toHaveLength(1);
+});
+test('historical note from another run is not presented as this result',async({page})=>{
+  const s=fixture();s.workspace.artifacts.push({...s.artifact,artifact_id:'unrelated-note',run_id:'other-run',kind:'preparation_note',filename:'另一任务说明.docx'});await mount(page,s);await page.getByRole('button',{name:'合成摘要.docx · 第1稿',exact:true}).click();
+  await expect(page.getByRole('button',{name:'下载编制说明',exact:true})).toHaveCount(0);await expect(page.getByText('本轮暂无可下载的编制说明。')).toBeVisible();expect(s.executions).toHaveLength(0);
+});
+test('material progress and results match the reference at desktop and mobile sizes',async({page})=>{
+  test.setTimeout(120000);const output=resolve('test-evidence/m4-results-20261008');await mkdir(output,{recursive:true});
+  const s=fixture(),task=s.addDocumentTask('visual');task.run.stage='model_generation';await mount(page,s);await page.getByRole('button',{name:'查看生成进度',exact:true}).click();
+  const prototype=await page.context().newPage();await prototype.route('http://prototype.test/**',async route=>{const name=new URL(route.request().url()).pathname;const file=name.startsWith('/apps/web/src/')?resolve('../..'+name):resolve('../../product-prototype/public'+name);return route.fulfill({contentType:name.endsWith('.css')?'text/css':'text/html',body:await readFile(file)});});
+  for(const state of ['running','failed','succeeded'] as const){
+    if(state==='failed'){task.run.state='failed';s.workspace.active_run=null;}if(state==='succeeded')completeTask(s,task);await page.getByRole('button',{name:'刷新状态'}).click();await prototype.goto(`http://prototype.test/material-results.html#${state}`);await prototype.reload();
+    for(const [label,viewport] of [['desktop',{width:1440,height:1100}],['mobile',{width:390,height:844}],['narrow',{width:320,height:844}]] as const){await page.setViewportSize(viewport);await prototype.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(page.locator('.task-progress [aria-current=step]')).toHaveCount(1);
+      if(label!=='narrow'){
+        const shot=await page.locator('#m4-content').screenshot({path:`${output}/implementation-${state}-${label}.png`,style:".topbar{visibility:hidden!important}"});
+        const size={width:shot.readUInt32BE(16),height:shot.readUInt32BE(20)};
+        await prototype.locator('#material-result').evaluate((node,size)=>{Object.assign((node as HTMLElement).style,{width:`${size.width}px`,height:`${size.height}px`,maxWidth:'none',position:'absolute',left:'0',top:'0',margin:'0'});},size);
+        await prototype.locator('#material-result').screenshot({path:`${output}/prototype-${state}-${label}.png`});
+      }
+    }
+  }await prototype.close();expect(s.executions).toHaveLength(0);
+});
+
+test('refresh preserves an expanded preview and its reading position',async({page})=>{
+ const s=fixture();await mount(page,s);await page.route('**/preview',route=>reply(route,{artifact:s.artifact,content:Array.from({length:100},(_,i)=>`合成正文第 ${i} 段。`).join('\n\n')}));
+ await page.getByRole('button',{name:'合成摘要.docx · 第1稿',exact:true}).click();await page.getByText('查看正文预览',{exact:true}).click();const preview=page.locator('.m4-preview');await expect(preview).toContainText('第 99 段');
+ await preview.evaluate(node=>{node.scrollTop=400;});await expect.poll(()=>preview.evaluate(node=>node.scrollTop)).toBe(400);
+ await page.getByRole('button',{name:'刷新状态'}).click();await expect(preview).toBeVisible();await expect.poll(()=>preview.evaluate(node=>node.scrollTop)).toBe(400);expect(s.executions).toHaveLength(0);
 });

@@ -8,6 +8,8 @@
 
 ## M4 单文书与基础问答增量（2026-10-06）
 
+2026-10-08 [材料生成进度与成果体验](product-decisions/2026-10-08-material-results-ux.md)：材料页复用募集书的阶段进度与下载卡，按相同 run 配对正文/编制说明；默认折叠预览与来源详情，保留阅读状态及下载失败恢复。只改变前端展示，无新接口、状态机或迁移。
+
 按[已确认首发范围](product-decisions/2026-10-06-m4-m5-priority-split.md)实现合并材料与问答入口。公共契约在 `packages/contracts/src/m4-workspace.ts`；`/api/v1/m4` 保存话题共享材料、两文种独立草稿、精确来源／模板／底稿 pins、不可变执行输入、消息及工作区阅读／未发送状态。数据库迁移只新增，不把原型 JSON 接作持久层。
 
 `m4_document_v1` 与 `m4_qa_v1` 为独立 job subtype，不截获旧 M1 generation。现有 worker 租约／检查点、`codexModelStage` 和 contained Codex CLI 接收只读原件、固定受信 Skill 及本轮 scratch/output。立项和普通私募摘要各交付可编辑 DOCX 与独立编制说明，私有 Blob 读回核对后登记；QA 回复在聊天中展示，持久文本只用于恢复和免费导出。准确输入／技能／工具／模型变更不静默重发，未知调用先核对。财务工具固定宿主授权，Decimal 重算并保留期间、单位、口径及精确引用；算术成功不代表来源事实已核。
