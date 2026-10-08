@@ -1,4 +1,29 @@
 import test from 'node:test';
+
+test('global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text',async()=>{
+  for(const content of ['更新募集书，只改措辞，不要更新财务数字','先别更新募集书，只是讨论']){
+    const f=await fixture('qa');
+    try{
+      const manifest=f.input.manifest as M4QaManifest;manifest.content=content;manifest.billing_task='m4_task_assistance';
+      manifest.assistant_context={project_id:'source-project',project_name:'Synthetic',issuer_name:'Synthetic',market:'sse',offering:'private',reporting_cutoff:'2025-09-30',action:null};
+      f.ctx.run.input_hash=inputManifestHash(manifest);let calls=0;
+      const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+        calls++;await options.fileWorkspace!.prepare(f.directory);
+        const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
+        assert.equal(input.skill.id,'global-project-assistant');
+        assert.equal(input.task.assistant_context.project_id,'source-project');
+        await writeFile(join(f.directory,'output/reply.json'),JSON.stringify(reply({intent:'clarify',assistant_action:{business:'update',requirements:content,fields:{}}})));
+        return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-global-assistant'} as never,{text:''})};
+      }})});
+      const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error();
+      assert.ok(validM4QaResult(result.value,f.ctx,f.input));assert.equal(calls,1);
+      assert.equal(result.value.reply.assistant_action?.requirements,content.startsWith('先别')?undefined:content);
+      assert.equal(result.value.reply.document_type,null);assert.deepEqual(result.value.reply.fields,{});
+      assert.equal([...f.store.keys()].some(key=>key.includes('m4-documents')),false);
+    }finally{await f.clean();}
+  }
+});
+
 import assert from 'node:assert/strict';
 import { mkdtemp,readFile,writeFile,rm,chmod,link,symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

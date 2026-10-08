@@ -29,6 +29,7 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
     LEFT JOIN LATERAL (
       SELECT id,state,updated_at FROM bb_runs
       WHERE owner_user_id=p.owner_user_id AND project_id=p.id
+        AND NOT (task_kind='qa' AND EXISTS(SELECT 1 FROM bb_m4_topics t WHERE t.project_id=p.id AND t.surface='assistant'))
       ORDER BY (state IN ('succeeded','test_completed','failed','cancelled','rejected')),created_at DESC,id DESC LIMIT 1
     ) r ON true
     LEFT JOIN LATERAL (
@@ -40,6 +41,7 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
       ORDER BY completed.created_at DESC,completed.id DESC LIMIT 1
     ) a ON true
     WHERE p.owner_user_id=$1 AND p.deleted_at IS NULL
+      AND NOT (p.kind='qa' AND EXISTS(SELECT 1 FROM bb_m4_topics t WHERE t.project_id=p.id AND t.surface='assistant'))
       AND ($2::text IS NULL OR strpos(lower(p.name),lower($2))>0 OR strpos(lower(coalesce(p.issuer_name,'')),lower($2))>0)
       AND ($3::text IS NULL OR p.kind=$3)
       AND ($4::text='all' OR (p.archived_at IS NOT NULL)=($4='archived'))

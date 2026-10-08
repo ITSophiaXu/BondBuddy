@@ -3,6 +3,7 @@ import { MARKETS, OFFERINGS, MARKET_OFFERINGS } from './public-enums.js';
 import type { ProjectMessageSetPin } from './project-message-set-pin.js';
 
 export type UnifiedAuthoringInput = {
+  edit_baseline?: {market:typeof MARKETS[number];offering:typeof OFFERINGS[number];reporting_periods:TargetReportingPeriod[]};
   review_result?: import('./review-update.js').ReviewResultPin;
   review_revision?: import('./review-revision.js').ReviewRevisionPin;
   version: 'unified_v1'; source_prospectuses: SourceProspectus[];

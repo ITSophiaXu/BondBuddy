@@ -20,6 +20,10 @@
     "m4-legal": {
       "path": "apps/worker/skills/m4-legal/SKILL.md",
       "sha256": "d06d09be4759a3cdbabb322fa6ef427781da589f773965573f2cffc953af9d29"
+    },
+    "global-project-assistant": {
+      "path": "apps/worker/skills/global-project-assistant/SKILL.md",
+      "sha256": "806d92279275134ae54737c896e25622c0f73f4ebe585bb75bd5af34694dea07"
     }
   }
 }

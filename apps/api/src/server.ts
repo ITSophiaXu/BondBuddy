@@ -6,6 +6,7 @@ import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contr
 import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
 import { registerM4Routes } from './m4-workspace.js';
+import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewRevisionHandlingSchema } from '@bondbuddy/contracts';
@@ -171,6 +172,7 @@ export function createServer(settings: Settings = {}) {
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   registerReviewRoutes(app, db, owner, paidReview);
   registerM4Routes(app, db, owner, blob, queueEnabled);
+  registerProjectAssistant(app, db, owner);
   registerReadableReview(app, db, owner, blob);
   installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
@@ -302,14 +304,20 @@ export function createServer(settings: Settings = {}) {
   app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
     archiveProject(db(),await owner(request),param(request,'project_id'),body<{archived:boolean}>(request).archived,request.id));
   app.post('/api/v1/projects',{schema:{body:schemas.ProjectCreateRequest}},async (request,reply) => {
-    const user=await owner(request), b=body<{name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
+    const user=await owner(request), b=body<{creation_request_id?:string;name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);
     const details={...emptyUpdateDetails(),...b.update_details};
     const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
     const id=uid(), value=await transaction(db(),async client=>{
+      if(b.creation_request_id){
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`project-create:${user}:${b.creation_request_id}`]);
+        const prior=(await client.query('SELECT * FROM bb_project_creation_requests WHERE owner_user_id=$1 AND request_id=$2',[user,b.creation_request_id])).rows[0];
+        if(prior){if(prior.request_hash.trim()!==inputManifestHash(b))throw conflict('IDEMPOTENCY_CONFLICT','Project creation request already used');return projectDto(await project(client,user,prior.project_id));}
+      }
       await admitProjectCreate(client,trial,user,sourceHash(request.ip));
       const row=await client.query('INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,user,b.name,b.kind,b.issuer_name,b.market,b.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.created',{project_id:id}]);
+      if(b.creation_request_id)await client.query('INSERT INTO bb_project_creation_requests(owner_user_id,request_id,project_id,request_hash) VALUES($1,$2,$3,$4)',[user,b.creation_request_id,id,inputManifestHash(b)]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_create',status:'submitted'});
       return projectDto(row.rows[0]);
     }).catch(async error=>{await trialRejected(error,user,'project_create',null,request.id);throw error;});
@@ -658,7 +666,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
+    const b=body<{edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
     if(b.test_rule_applicability_context_ref && !testChannelEnabled())
       throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
     const result=await transaction(db(),async client=>{
@@ -799,12 +807,17 @@ export function createServer(settings: Settings = {}) {
           JOIN bb_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
           JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
           WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND r.channel='production'
-            AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY r.created_at DESC LIMIT 1`,[user,id])).rows[0];
+            AND a.quality_status='passed' AND a.delivery_status='available'
+            AND ($3::text IS NULL OR (a.id=$3 AND a.version=$4 AND a.sha256=$5)) ORDER BY r.created_at DESC LIMIT 1`,
+            [user,id,b.edit_base?.artifact_id??null,b.edit_base?.artifact_version??null,b.edit_base?.sha256??null])).rows[0];
         const sourceKey = (items: {material_id:string;material_version:number;role:string;sha256:string}[]) => JSON.stringify(items.filter(m => ['historical','reference'].includes(m.role)).map(m => [m.material_id,m.material_version,m.sha256]).sort());
-        if (previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
+        if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
+        if (b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
             sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved)) {
           authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
+          if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,reporting_periods:previous.manifest.update_details.target_reporting_periods??[]};
         }
+        if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
       const hash=inputManifestHash(manifest);

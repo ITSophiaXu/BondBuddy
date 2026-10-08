@@ -71,12 +71,12 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         const message={message_id:randomUUID(),submission_request_id:randomUUID(),expected_message_version:null,body:'合成要求：明确2025年信息，缺项标待确认。',material_versions:[]};
         const saved=await send('POST',`/api/v1/projects/${project}/messages`,message);
         assert.equal(saved.statusCode,201,saved.body);
-        const lockResponse=async()=>{
+        const lockResponse=async(edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null)=>{
           const messagePage=await send('GET',`/api/v1/projects/${project}/messages`);
           assert.equal(messagePage.statusCode,200,messagePage.body);
           const messages=messagePage.json().project_message_set_ref;
           return send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:draftRevision,material_versions:refs,
-            requirement_message_ids:messages.message_ids,project_message_set_ref:messages});
+            requirement_message_ids:messages.message_ids,project_message_set_ref:messages,...(edit_base!==undefined?{edit_base}:{})});
         };
         const lock=async()=>{
           const response=await lockResponse();
@@ -166,6 +166,19 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const nextRun=await start(next);assert.equal(await execute(),'succeeded');
           const nextArtifact=(await send('GET',`/api/v1/artifacts/${(await send('GET',`/api/v1/runs/${nextRun.run_id}`)).json().artifact_id}`)).json();
           assert.equal(nextArtifact.word_delivery.baseline_kind,'project_output');
+          // A newer clean result exists. Explicitly selecting the original still pins that exact result.
+          const firstClean=(await send('GET',`/api/v1/artifacts/${artifact.word_delivery.clean_artifact_id}`)).json();
+          const explicit=await lockResponse({artifact_id:firstClean.artifact_id,artifact_version:1,sha256:firstClean.sha256});
+          assert.equal(explicit.statusCode,201,explicit.body);
+          const pinned=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[project,explicit.json().input_revision])).rows[0].manifest;
+          assert.equal(pinned.authoring.previous_output.artifact_id,firstClean.artifact_id);
+          assert.deepEqual(pinned.authoring.edit_baseline.reporting_periods,periods);
+          const selectedRun=await start(explicit.json());assert.equal(await execute(),'succeeded');
+          const selectedArtifact=(await send('GET',`/api/v1/artifacts/${(await send('GET',`/api/v1/runs/${selectedRun.run_id}`)).json().artifact_id}`)).json();
+          assert.equal(selectedArtifact.word_delivery.source_sha256,firstClean.sha256);
+          assert.equal((await lockResponse({artifact_id:firstClean.artifact_id,artifact_version:1,sha256:'0'.repeat(64)})).statusCode,409);
+          const noBase=await lockResponse(null);assert.equal(noBase.statusCode,201,noBase.body);
+          assert.equal((await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[project,noBase.json().input_revision])).rows[0].manifest.authoring.previous_output,undefined);
         }
         active=`other-${randomUUID()}`;
         assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).statusCode,404);
