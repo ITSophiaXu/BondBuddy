@@ -713,22 +713,30 @@ test('review navigation retains the app scale while keeping its own layout',asyn
  }
 });
 
-test('paid review confirms points before execution and shows shortage without starting',async({page})=>{
- const state=fixture();await setup(page,state);
- let available=299;
- await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:300,reason:'合成价格'},balance:{available,frozen:0},shortage:Math.max(0,300-available),reason:null}));
+for(const width of [1440,390])test('paid review reserves on explicit start and shortage preserves inputs '+width,async({page})=>{
+ const state=fixture();await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
+ let available=13899;
+ await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:13900,reason:'用户Spec'},balance:{available,frozen:0},shortage:Math.max(0,13900-available),reason:null}));
  await page.goto(`/#/projects/${id}/review?tab=materials`);
  await page.getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).not.toContainText('13,900');
+ const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-ready-${width}.png`});}
  await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('还差 1 积分');
+ await expect(page.getByRole('dialog')).toContainText('积分不足，请充值后继续任务');
  await expect(page.getByRole('dialog').getByRole('link',{name:'充值积分'})).toHaveAttribute('href',`#/account?project=${id}`);
  expect(state.executes).toHaveLength(0);
- await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=5000;
+ if(output)await page.screenshot({path:`${output}/implementation-shortage-${width}.png`});
+ await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=13900;
+ await page.reload();expect(state.executes).toHaveLength(0);
  await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('确认后可用 4,700 积分');
- expect(state.executes).toHaveLength(0);
- await page.getByRole('button',{name:'确认并开始 · 300 积分'}).click();
  await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('synthetic-quote');
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('enabled review never starts free when its price is missing',async({page})=>{
+ const state=fixture();await setup(page,state);await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:null,balance:{available:20000,frozen:0},shortage:0,reason:null}));
+ await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('积分价格尚未配置');expect(state.executes).toHaveLength(0);
 });
 
 test('review task receipt displays the actual reserved, charged and released points',async({page})=>{
@@ -750,4 +758,27 @@ test('dashboard review progress keeps its collection context through tab changes
  const s=fixture();s.workspace.active_run=s.makeRun('active-run','running');await setup(page,s,`#/projects/${id}/review?tab=making&from=dashboard&dashboard_kind=review&dashboard_status=active`);
  await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
  await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.getByRole('link',{name:'返回工作台'})).toHaveAttribute('href','#dashboard?kind=review&status=active');expect(s.executes).toHaveLength(0);
+});
+
+
+test('paid review response loss keeps quote and intent on explicit retry',async({page})=>{
+ const state=fixture();state.dropExecutionOnce=true;await setup(page,state);let quotes=0;
+ await page.route('**/review-executions/quote',route=>{quotes++;return reply(route,200,{enabled:true,quote:{quote_id:'original-quote',task_type:'full_review',points:13900},balance:{available:13900,frozen:0},shortage:0,reason:null});});
+ await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect.poll(()=>state.executes.length).toBe(2);expect(quotes).toBe(1);expect(state.executes[1]).toEqual(state.executes[0]);expect(state.executes[0].quote_id).toBe('original-quote');
+});
+
+test('review credit prototype comparison',async({page})=>{
+ const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;test.skip(!output,'optional prototype comparison');
+ await page.route('http://prototype.test/**',async route=>{
+  const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});
+  await route.fulfill({body:await readFile('../../product-prototype/public'+path),contentType:path.endsWith('.js')?'text/javascript':path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/html'});
+ });
+ for(const width of [1440,390]){
+  await page.setViewportSize({width,height:width===1440?960:844});await page.goto(`http://prototype.test/review-v2.html?credits=shortage&width=${width}#materials`);
+  await page.locator('[data-action="start-review"]').click();await expect(page.locator('#modal')).toContainText('成功交付后扣费');
+  await page.screenshot({path:`${output}/prototype-ready-${width}.png`});await page.locator('[data-action="confirm-full-review"]').click();
+  await expect(page.locator('#modal')).toContainText('积分不足，请充值后继续任务');await page.screenshot({path:`${output}/prototype-shortage-${width}.png`});
+ }
 });
