@@ -134,7 +134,7 @@ jobs:
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m3-cli-native.tap"
       - name: Native Word and parser regressions
-        run: python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery test_file_authoring test_revision_cli
+        run: python -m unittest -v test_document_parser test_review_word test_review_file_annotations test_unified_word test_word_delivery test_file_authoring test_revision_cli
       - name: Stop private Blob test service
         if: always()
         run: |

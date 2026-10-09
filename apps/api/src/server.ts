@@ -263,6 +263,9 @@ export function createServer(settings: Settings = {}) {
       try { bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize); }
       catch { throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed'); }
       if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    }else if(artifact.media_type==='application/pdf'){
+      bytes=await blob().getIfExistsBounded(artifact.object_key,100*1024*1024);
+      if(!bytes)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
     }else{
       bytes=await blob().get(artifact.object_key);
     }

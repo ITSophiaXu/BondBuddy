@@ -24,7 +24,7 @@ const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/
 export function validReviewFileResult(value: unknown, ctx: StageContext): value is ReviewFileResult {
   const result = value as ReviewFileResult | null;
   return !!result && result.version === 'codex-review-file-v1' && result.input_hash === ctx.run.input_hash.trim()
-    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'report.md', 'final-response.md'].includes(name)
+    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json'].includes(name)
       && file.key.startsWith(prefix(ctx)) && !file.key.includes('..') && file.key.endsWith(`/${file.sha256}/${name}`)
       && /^[a-f0-9]{64}$/.test(file.sha256) && Number.isSafeInteger(file.byte_size) && file.byte_size > 0 && file.byte_size <= MAX)
     && (result.error === 'WORD_DELIVERY_UNAVAILABLE' || !!result.files['report.docx']);
@@ -71,7 +71,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       for (const dir of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, dir), { mode: 0o700 });
       const materials = [];
       for (const [index, material] of input.materials.entries()) {
-        const suffix = material.media_type === DOCX ? '.docx' : /\.(pdf|xlsx|txt|csv|png|jpg|jpeg)$/i.test(material.filename) ? extname(material.filename).toLowerCase() : '.bin';
+        const suffix = material.media_type === DOCX ? '.docx' : material.media_type === 'application/pdf' ? '.pdf' : /\.(pdf|xlsx|txt|csv|png|jpg|jpeg)$/i.test(material.filename) ? extname(material.filename).toLowerCase() : '.bin';
         const path = `materials/m${index}${suffix}`;
         if (ctx.blobs.readToFile) {
           const stored = await ctx.blobs.readToFile(material.object_key, join(cwd, path), MAX);
@@ -82,7 +82,8 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           await writeFile(join(cwd, path), bytes, { mode: 0o400 });
         }
         originals.set(path, material.pin.sha256);
-        materials.push({ ...material.pin, path, filename: material.filename, review_source: material.pin.material_id === manifest.review.input.source_material_ref!.material_id });
+        const source = manifest.review.input.source_material_ref!;
+        materials.push({ ...material.pin, path, filename: material.filename, review_source: material.pin.material_id === source.material_id && material.pin.material_version === source.material_version && material.pin.sha256 === source.sha256 });
       }
       const knowledge = [];
       for (const [index, item] of manifest.review.file_delivery!.knowledge.entries()) {
@@ -105,9 +106,9 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       for (const [path, sha] of originals) if (digest(await checkedFile(cwd, path)) !== sha) throw Error('INPUT_REVISION_CONFLICT');
       const files: Record<string, FileRef> = {}, output = join(cwd, 'output');
       const retain = async (name: string, bytes: Buffer) => {
-        if (!bytes.length || bytes.length > (name.endsWith('.docx') ? MAX : TEXT_MAX)) return;
+        if (!bytes.length || bytes.length > (/\.(docx|pdf)$/.test(name) ? MAX : TEXT_MAX)) return;
         const sha256 = digest(bytes), key = `${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-        await ctx.blobs.put(key, bytes, name.endsWith('.docx') ? DOCX : 'text/markdown');
+        await ctx.blobs.put(key, bytes, name.endsWith('.docx') ? DOCX : name.endsWith('.pdf') ? 'application/pdf' : name.endsWith('.json') ? 'application/json' : 'text/markdown');
         const stored = await ctx.blobs.getIfExistsBounded(key, MAX);
         if (!stored || digest(stored) !== sha256) throw Error('REVIEW_OUTPUT_STORE_FAILED');
         files[name] = { key, sha256, byte_size: bytes.length };
@@ -133,6 +134,34 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           finally { await rm(exportDir, { recursive: true, force: true }); }
         }
       }
+      // A trusted local writer adds native comments to the pinned source. The model's
+      // Markdown is the single finding text; no second model call or generated JSON.
+      const sourcePin = manifest.review.input.source_material_ref!;
+      const sourceIndex = input.materials.findIndex(m => m.pin.material_id === sourcePin.material_id && m.pin.material_version === sourcePin.material_version && m.pin.sha256 === sourcePin.sha256);
+      const source = input.materials[sourceIndex];
+      if (word && source && [DOCX, 'application/pdf'].includes(source.media_type)) {
+        const exportDir = await mkdtemp(join(cwd, '..', 'review-annotations-'));
+        try {
+          const suffix = source.media_type === DOCX ? '.docx' : '.pdf';
+          const original = await checkedFile(cwd, `materials/m${sourceIndex}${suffix}`);
+          if (digest(original) !== sourcePin.sha256) throw Error('INPUT_REVISION_CONFLICT');
+          await writeFile(join(exportDir, `source${suffix}`), original);
+          const reportName = reportText ? 'returned.md' : 'returned.docx';
+          await writeFile(join(exportDir, reportName), reportText ?? word);
+          await writeFile(join(exportDir, 'request.json'), JSON.stringify({ pin: sourcePin, filename: source.filename,
+            created_at: new Date().toISOString() }));
+          await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+            ['-m', 'bondbuddy_file_authoring.annotate_review', join(exportDir, `source${suffix}`), join(exportDir, 'request.json'), join(exportDir, reportName), exportDir],
+            { cwd: root, env: { ...process.env, PYTHONPATH: join(root, 'python') }, timeout: 300000, signal: ctx.signal, maxBuffer: 1024 * 1024 });
+          for (const name of ['report.md', 'report.docx', `comments${suffix}`, 'annotations.json']) await retain(name, await checkedFile(exportDir, name, /\.(docx|pdf)$/.test(name) ? MAX : TEXT_MAX));
+          word = undefined; // The canonical report with the same IDs/limits is already retained.
+        } catch (error) {
+          if (ctx.signal.aborted) throw error;
+          // Retain the report for recovery, but never label a missing annotated source as delivered.
+          if (word) await retain('report.docx', word);
+          return { version: 'codex-review-file-v1', input_hash: ctx.run.input_hash.trim(), files, error: 'WORD_DELIVERY_UNAVAILABLE' };
+        } finally { await rm(exportDir, { recursive: true, force: true }); }
+      }
       if (word) await retain('report.docx', word);
       return { version: 'codex-review-file-v1', input_hash: ctx.run.input_hash.trim(), files,
         ...(!files['report.docx'] ? { error: 'WORD_DELIVERY_UNAVAILABLE' as const } : {}) };
@@ -140,7 +169,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
     const config = options.config ?? loadCodexAdapterConfig();
     return (options.model ?? codexModelStage)({ name: 'review_file_v1', logicalCallId: 'review-file-v1',
       config: { ...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'review-files'), max_output_bytes: 32 * 1024 * 1024 },
-      buildPrompt: async () => `请完整阅读 review.md 和 input.json，自主复核并把完整报告写入 output/report.md 与 output/report.docx。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。`,
+      buildPrompt: async () => `请完整阅读 review.md 和 input.json，自主复核并把完整报告写入 output/report.md 与 output/report.docx。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原文批注。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。`,
       schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: 'review-file-v1',
       fileWorkspace: { prepare, collect } }).run(ctx);
   } };
@@ -151,11 +180,18 @@ export function reviewFileDeliveryStage(): RunStage {
     const result = ctx.values.get('model_generation');
     if (!validReviewFileResult(result, ctx)) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const file = result.files['report.docx'];
-    if (!file) return { kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE' };
+    if (!file || result.error) return { kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE' };
     const gate = await ctx.validateBeforeModelCall?.(); if (gate) return gate;
     const bytes = await ctx.blobs.getIfExistsBounded(file.key, MAX);
     if (!bytes || bytes.length !== file.byte_size || digest(bytes) !== file.sha256) return { kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE' };
-    return { kind: 'deliver', bytes, deliveryPolicy: 'generated_review_v1',
+    const attachments: {kind:'comments';bytes:Buffer;mediaType?:'application/pdf'}[] = [];
+    for (const name of ['comments.docx', 'comments.pdf']) {
+      const annotation = result.files[name]; if (!annotation) continue;
+      const content = await ctx.blobs.getIfExistsBounded(annotation.key, MAX);
+      if (!content || content.length !== annotation.byte_size || digest(content) !== annotation.sha256) return { kind:'fail', code:'WORD_DELIVERY_UNAVAILABLE' };
+      attachments.push({ kind:'comments', bytes:content, ...(name.endsWith('.pdf') ? {mediaType:'application/pdf' as const} : {}) });
+    }
+    return { kind: 'deliver', bytes, attachments, deliveryPolicy: 'generated_review_v1',
       wordSummary: { writer_version: 'codex-review-file-v1', delivery_policy: 'generated_review_v1', content_review: 'not_performed', structured_report: 'not_requested' } };
   } };
 }

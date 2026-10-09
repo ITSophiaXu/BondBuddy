@@ -7,7 +7,7 @@ export const reviewDimensions = [
 ] as const;
 type Dimension = typeof reviewDimensions[number]['id'];
 export type BusinessSection = { id: string; title: string; description: string; blocks: ReportBlock[]; items: ReportItem[] };
-export type BusinessReport = { dimensions: BusinessSection[]; other: BusinessSection; actions: ReportBlock[] };
+export type BusinessReport = { dimensions: BusinessSection[]; other: BusinessSection; actions: ReportBlock[]; annotations: ReportBlock[] };
 
 // This is a presentation filter, not evidence validation or a change to the saved report.
 const metadata = /(?:input\.json|input_hash|输入锁|输入哈希|SHA[- ]?256|\b(?:run_id|call_id|receipt_id|full_review|differential_review)\b|哈希(?:值|一致)|校验(?:输入|通过)|(?:scratch|output)\/)/i;
@@ -79,8 +79,9 @@ export function businessReport(markdown: string): BusinessReport {
   const document = reportDocument(markdown);
   const dimensions: BusinessSection[] = reviewDimensions.map(d => ({ ...d, blocks: [], items: [] }));
   const other: BusinessSection = { id: 'other', title: '其他需确认事项', description: '', blocks: [], items: [] };
-  const actions: ReportBlock[] = [];
+  const actions: ReportBlock[] = [], annotations: ReportBlock[] = [];
   for (const section of document.sections) {
+    if (/原文批注与待确认定位/.test(section.title)) { annotations.push(...clean(section.blocks)); continue; }
     const dim = explicitDimension(section.title);
     if (dim) dimensions.find(d => d.id === dim)!.blocks.push(...clean(section.blocks));
     else if (/未覆盖|待补充|待确认/.test(section.title)) {
@@ -111,7 +112,7 @@ export function businessReport(markdown: string): BusinessReport {
       && !/不提供未经|不得编造|不以模型记忆/.test(text));
     publicSection.blocks.push(...clean(statements.map(text => ({ kind:'paragraph' as const, text }))));
   }
-  return { dimensions, other, actions };
+  return { dimensions, other, actions, annotations };
 }
 
 export function dimensionStatus(section: BusinessSection): string {

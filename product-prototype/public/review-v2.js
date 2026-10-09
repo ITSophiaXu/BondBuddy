@@ -85,7 +85,7 @@ function renderMain(){
   else if(state.activeRun)content=runningView()+`<div class="run-notice">${icon('history')}<p>已有报告 ${esc(state.report)} 保留。${button('查看已有报告','show-prior-report',{class:'text-button'})}</p></div>`;
   else content=revision?revisionResult():resultsView();
   const fileResult=fileDeliveryPreview&&!state.activeRun&&!revision;
-  if(fileResult)content=`<section class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 1 次复核 · 分别查看财务、合规与公开信息的核对结果。</p></div><div class="review-result-actions review-downloads">${button('下载复核报告（Word）','download-file-preview',{class:'secondary'})}</div></div><div id="readable-preview"></div></section>`;
+  if(fileResult)content=`<section class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 1 次复核 · 分别查看财务、合规与公开信息的核对结果。</p><p>原文批注保留上传版本正文；无法定位的事项请查看报告中的“原文批注与待确认定位”。</p></div><div class="review-result-actions review-downloads">${button('下载原文批注版','download-file-preview',{class:'primary'})}${button('下载复核报告（Word）','download-file-preview',{class:'secondary'})}</div></div><div id="readable-preview"></div></section>`;
   $('#work-content').innerHTML=state.tab==='materials'?materialsView():(fileResult?'':taskLink(linked))+content;
   if(fileResult&&state.tab!=='materials')mountReadablePreview($('#readable-preview'));
 }
@@ -186,7 +186,7 @@ const actions={
   'run-context':()=>{if(state.activeRun)taskFocus(state.activeRun.id);},
   coverage:value=>{const data=[['财务数据','12 项示例检查已执行，2 项发现。涵盖金额、单位、期间及口径。'],['合规与格式','18 项示例检查已执行，3 项发现。格式偏好与监管要求分开呈现。'],['公开信息','8 项示例检查中，7 项已有示例依据，1 项待补名称变更证明。待补证不等于无风险；此原型没有真实联网查询。']][Number(value)];if(data)modal(`${data[0]} · 覆盖说明`,`<p>${data[1]}</p><p class="muted">检查覆盖数与问题数量独立。整个关键维度未执行时，正式产品不能显示完整复核成功。</p>`,button('知道了','close-modal',{class:'primary'}));},
   downloads:()=>modal('复核成果',`<div class="material-list"><div class="material-row"><span class="file-icon">${icon('file')}</span><div class="file-info"><strong>复核报告 · ${esc(visibleReport())}</strong><small>正式产品提供 DOCX，此原型尚未生成</small></div>${pill('待接入')}</div><div class="material-row"><span class="file-icon">${icon('file-edit')}</span><div class="file-info"><strong>原文批注版募集书</strong><small>保留原文并附问题批注；此处展示交付位置</small></div>${pill('待接入')}</div></div><p class="muted">可下载本次示例流程记录（TXT），用于评审交互设计。</p>`,button('下载示例记录','download-current',{class:'primary',icon:'download'})),
-  'download-file-preview':()=>toast('此处演示 Word 下载入口；正式报告由复核任务生成。'),
+  'download-file-preview':()=>toast('此处演示原文批注版及报告下载入口；正式文件由复核任务生成。'),
   'download-current':()=>downloadRecord(state.runs.find(r=>r.id===visibleReport())||state.runs[0]),
   'download-version':id=>{const run=state.runs.find(r=>r.id===id);if(run)downloadRecord(run);},
 
