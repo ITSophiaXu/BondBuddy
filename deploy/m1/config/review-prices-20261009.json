@@ -1,0 +1,18 @@
+{
+  "id": "review-20261009-v1",
+  "prices": {
+    "interim": 17900,
+    "annual": 27900,
+    "two_years": 48900,
+    "three_years": 68900,
+    "migration": 64900,
+    "migration_two_years": 85900,
+    "migration_three_years": 105900,
+    "new_authoring": 159900,
+    "full_review": 13900,
+    "differential_review": 1200
+  },
+  "effectiveAt": "2026-10-09T00:00:00Z",
+  "actor": "ITSophiaXu via Codex",
+  "reason": "2026-10-09 user instructed implementation of issue #628 following BondBuddy credits Spec: FULL_REVIEW 13900; LOCAL_REVIEW 1200 for selected-finding differential review. Preserve all eight authoring prices. Independent revision has no approved price and is not enabled. No historical backcharge."
+}

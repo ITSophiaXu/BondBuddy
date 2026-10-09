@@ -1,4 +1,4 @@
-import { BILLING_TASKS, ReviewUpdateRequestSchema, type ReviewUpdateRequest } from '@bondbuddy/contracts';
+import { ReviewUpdateRequestSchema, type ReviewUpdateRequest } from '@bondbuddy/contracts';
 import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewDraftInputSchema, ReviewExecutionRequestSchema,
   type ReviewWorkspace as Workspace, type ReviewContext, type ReviewDraftInput, type ReviewExecutionRequest,
   ReviewProposalAdoptionRequestSchema, type ReviewMaterialPin, type ReviewFinding, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal, type ReviewPlanRequest, type Run, type Market, type Offering } from '@bondbuddy/contracts';
@@ -363,7 +363,7 @@ export class ReviewWorkspace {
       try{const stored:unknown=JSON.parse(localStorage.getItem(pendingKey)??'null');if(Value.Check(ReviewUpdateRequestSchema,stored))pending=stored;}catch{}
       if(pending&&(pending.source_run_id!==sourceRun||pending.requirements!==requirements)){this.message('原更新请求尚未确认，请先恢复原要求并核对任务状态。',true);return;}
       const request=confirmed??pending??{execution_request_id,source_run_id:sourceRun,requirements};
-      if(!confirmed&&!pending){const quote=await this.reviewApi.quoteUpdate(request);if(!this.live())return;if(quote.enabled){this.confirmCredits(quote,async quoteId=>this.updateFromReview({...request,quote_id:quoteId}));return;}}
+      if(!confirmed&&!pending){const quote=await this.reviewApi.quoteUpdate(request);if(!this.live())return;if(!this.applyCredits(quote,request))return;}
       try{localStorage.setItem(pendingKey,JSON.stringify(request));}catch{}
       const run=await this.reviewApi.updateFromReview(request);
       try{localStorage.removeItem(pendingKey);}catch{}
@@ -565,7 +565,7 @@ export class ReviewWorkspace {
     const requestBase:Omit<ReviewExecutionRequest,'execution_request_id'>={operation,expected_input_version:this.workspace.draft.version,source_report_id:sourceReport,expected_plan_version:operation==='revision'?this.workspace.plan?.version??null:null,finding_ids:[...findings]};
     if(this.executionPending&&executionIdentity(this.executionPending)!==executionIdentity(requestBase)){this.openDialog('核对待确认的原任务',`<p>有一项 ${operationLabels[this.executionPending.operation]} 的提交结果尚未确认。先重试原请求获取状态，再开始新的范围。</p>`,[{label:'核对原请求状态',primary:true,action:()=>this.execute(this.executionPending!)}]);return;}
     const source=this.workspace.materials.find(m=>sameMaterial(materialPin(m),this.draftInput!.source_material_ref!));
-    this.openDialog('确认本次执行范围',`<p><strong>${operationLabels[operation]}</strong></p><dl><dt>输入草稿</dt><dd>V${requestBase.expected_input_version}</dd><dt>源稿</dt><dd>${esc(source?.filename??this.draftInput.source_material_ref.material_id)} · V${this.draftInput.source_material_ref.material_version}</dd><dt>来源报告</dt><dd>${esc(sourceReport??'首次／完整三维复核')}</dd><dt>范围</dt><dd>${operation==='full_review'?'财务数据、合规与格式、公开信息':findings.map(esc).join('、')}</dd></dl>${this.draftInput.requirements.length?`<h3>本次要求</h3><ul>${this.draftInput.requirements.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:''}<p class="review-muted">开始后锁定本次输入。新的材料与说明进入下一版；${operation==='revision'?'修订完成不代表复核通过，再次复核需另行明确执行。':'如有未覆盖范围，报告会说明原因。'}</p>`,[{label:operation==='revision'?'执行修订':'开始复核',primary:true,action:()=>this.execute(requestBase)}]);
+    this.openDialog('确认本次执行范围',`<p><strong>${operationLabels[operation]}</strong></p><dl><dt>输入草稿</dt><dd>V${requestBase.expected_input_version}</dd><dt>源稿</dt><dd>${esc(source?.filename??this.draftInput.source_material_ref.material_id)} · V${this.draftInput.source_material_ref.material_version}</dd><dt>来源报告</dt><dd>${esc(sourceReport??'首次／完整三维复核')}</dd><dt>范围</dt><dd>${operation==='full_review'?'财务数据、合规与格式、公开信息':findings.map(esc).join('、')}</dd></dl>${this.draftInput.requirements.length?`<h3>本次要求</h3><ul>${this.draftInput.requirements.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:''}<p class="review-muted">开始后锁定本次输入并预留积分，成功交付后扣费；失败或取消返还。新的材料与说明进入下一版；${operation==='revision'?'修订完成不代表复核通过，再次复核需另行明确执行。':'如有未覆盖范围，报告会说明原因。'}</p>`,[{label:operation==='revision'?'执行修订':'开始复核',primary:true,action:()=>this.execute(requestBase)}]);
   }
   private async execute(base:Omit<ReviewExecutionRequest,'execution_request_id'>,confirmed?:ReviewExecutionRequest){
     if(!this.workspace)return;
@@ -575,7 +575,7 @@ export class ReviewWorkspace {
     const execution_request_id=this.executionPending&&executionIdentity(this.executionPending)===executionIdentity(base)?this.executionPending.execution_request_id:'m3-'+[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
     const request:ReviewExecutionRequest=confirmed??this.executionPending??{...base,execution_request_id};
     if(!confirmed&&!this.executionPending){
-      try{const quote=await this.reviewApi.quoteExecution(request);if(!this.live())return;if(quote.enabled){this.confirmCredits(quote,async quoteId=>this.execute(base,{...request,quote_id:quoteId}));return;}}
+      try{const quote=await this.reviewApi.quoteExecution(request);if(!this.live())return;if(!this.applyCredits(quote,request))return;}
       catch(error){this.dialogStatus(friendlyError(error));return;}
     }
     this.executionPending=request;
@@ -592,11 +592,16 @@ export class ReviewWorkspace {
       }else{this.dialogStatus(`${friendlyError(error)} 重试沿用同一请求，不会重复执行。`);this.message('执行结果尚未确认，请在确认窗口重试原请求或刷新状态。',true);}
     }
   }
-  private confirmCredits(quote:Dto<'FixedQuoteResponse'>,start:(quoteId:string)=>Promise<void>){
-    const q=quote.quote;if(!q){this.message('本次积分报价暂不可用，请稍后重试。',true);return;}
-    const n=(v:number)=>v.toLocaleString('zh-CN');
-    this.openDialog('确认本次积分',`<div class="fixed-quote"><h3>${esc(BILLING_TASKS[q.task_type])}</h3><p class="review-credit-price"><strong>${n(q.points)}</strong> 积分</p><p>可用 ${n(quote.balance.available)} 积分${quote.shortage?`，还差 ${n(quote.shortage)} 积分`:`，确认后可用 ${n(quote.balance.available-q.points)} 积分`}。</p><p>开始后预留本次积分，成果可下载后扣费；失败或取消自动返还。系统重试不重复收费。</p>${quote.shortage?`<a class="btn primary" href="#/account?project=${encodeURIComponent(this.projectId)}" id="review-recharge-link">充值积分</a>`:''}</div>`,quote.shortage?[]:[{label:`确认并开始 · ${n(q.points)} 积分`,primary:true,action:()=>start(q.quote_id)}]);
-    this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
+  private applyCredits(quote:Dto<'FixedQuoteResponse'>,request:ReviewExecutionRequest|ReviewUpdateRequest):boolean {
+    if(!quote.enabled)return true;
+    if(!quote.quote)throw new ApiError(503,'BILLING_NOT_READY');
+    if(quote.shortage){
+      this.openDialog('积分不足',`<p>积分不足，请充值后继续任务。</p><p>本次材料、要求与问题范围已保留。充值到账后请返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="#/account?project=${encodeURIComponent(this.projectId)}" id="review-recharge-link">充值积分</a>`,[]);
+      this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
+      return false;
+    }
+    request.quote_id=quote.quote.quote_id;
+    return true;
   }
   private renderCharge(){
     const run=this.workspace?.active_run??this.run,host=this.page?.querySelector<HTMLElement>('#review-credit-receipt');if(!host)return;

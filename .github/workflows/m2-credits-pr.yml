@@ -65,6 +65,7 @@ jobs:
             apps/api/dist/credit-history.test.js \
             apps/api/dist/billing.pg.test.js \
             apps/api/dist/review-billing.pg.test.js \
+            apps/api/dist/review-price-activation.pg.test.js \
             apps/api/dist/payments.pg.test.js \
             apps/api/dist/upload-safety.test.js \
             apps/api/dist/original-material-upload.test.js \
