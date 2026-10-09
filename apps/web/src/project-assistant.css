@@ -198,3 +198,6 @@
 .ba-message .ba-text{line-height:1.8}
 @media(max-width:700px){.ba-form{margin:12px;padding:12px}
 }
+
+/* Keep the collapsed assistant clear of the sticky authoring controls. */
+@media(min-height:501px){body:has(.authoring-actions.is-preparing) .bb-assistant:not(.ba-open){bottom:112px}}

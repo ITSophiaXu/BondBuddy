@@ -183,7 +183,7 @@ test('M2 shortage preserves inputs, recharge never executes, returning requires 
   expect(state.executes).toHaveLength(0);await expect(page.locator('#execute-input')).toBeDisabled();
   const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'m2-quote-desktop.png')});}
   await page.locator('#fixed-quote').getByRole('link',{name:'充值积分',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'积分与充值',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'按需充值',exact:true})).toBeVisible();
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-desktop.png')});
   await expect(page.locator('[data-pack]')).toHaveCount(4);
   await page.setViewportSize({width:390,height:844});
@@ -1113,6 +1113,65 @@ test('all-projects update keeps its list context through progress, edit and refr
  expect(state.executes).toHaveLength(1);
 });
 
+
+// Project-list links and refreshed step URLs carry navigation context in the query.
+// It must not prevent the material workspace from accepting its own read/upload results.
+for (const scenario of [
+  { name: 'project list', query: null, width: 1440, height: 960 },
+  { name: 'reloaded material step', query: 'step=materials&from=projects', width: 390, height: 844 },
+  { name: 'query order and run link', query: 'from=projects&step=materials&run=synthetic-run-1', width: 1440, height: 960 },
+]) test(`cancel then supplement materials from ${scenario.name}`, async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runState = 'running'; state.runStage = 'file_authoring'; state.runReason = '';
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.setViewportSize({ width: scenario.width, height: scenario.height });
+  await setup(page, state); await page.locator('#execute-input').click();
+  await expect(page.locator('#cancel-run')).toBeVisible();
+  const originalInput = structuredClone(state.inputs[0]);
+  if (scenario.query === null) {
+    await page.goto('/#tasks'); await page.getByRole('link', { name: state.project.name, exact: true }).click();
+  } else await page.goto(`/#/projects/${id}?${scenario.query}`);
+  await expect(page).toHaveURL(/from=projects/);
+  await page.getByRole('button', { name: '停止本次任务', exact: true }).click();
+  await expect(page.locator('#execution-progress')).toContainText('本轮已停止');
+  await page.getByRole('button', { name: '继续修改', exact: true }).click();
+  await expect(page.locator('#material-recovery-status')).toContainText('已恢复 2 份材料');
+  await expect(page.locator('.material-file-row')).toHaveCount(2);
+  // Re-entering the cancelled project must recover the same files before editing.
+  await page.reload();
+  await page.getByRole('button', { name: '继续修改', exact: true }).click();
+  await expect(page.locator('#material-recovery-status')).toContainText('已恢复 2 份材料');
+  const picker = page.getByLabel('为审计报告（可含报表及附注）选择文件');
+  await expect(picker).toBeEnabled();
+  let byteUploads = 0;
+  await page.route(`**/api/v1/projects/${id}/materials/uploads**`, async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/bytes')) { byteUploads++; return route.fulfill({ status: 204 }); }
+    if (path.endsWith('/complete')) {
+      const receipt: Dto<'MaterialResponse'> = { material_id: 'synthetic-supplement', material_version: 1, upload_id: 'synthetic-supplement-upload',
+        role: 'audit', filename: 'supplement.txt', media_type: 'text/plain', ...route.request().postDataJSON(), state: 'persisted', persisted_at: now, error: null };
+      state.materials.push(receipt); return json(route, 200, receipt);
+    }
+    return json(route, 201, { upload_id: 'synthetic-supplement-upload', state: 'uploading',
+      upload_url: `/api/v1/projects/${id}/materials/uploads/synthetic-supplement-upload/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 100_000_000 });
+  });
+  await picker.setInputFiles({ name: 'supplement.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic supplementary material') });
+  await expect(page.locator('.material-file-row').filter({ hasText: 'supplement.txt' })).toContainText('服务器已确认保存');
+  await expect(page.locator('#workspace-material-count')).toHaveText('3 份已保存材料');
+  await expect(page.locator('#material-recovery-status')).toContainText('已恢复 3 份材料');
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click({ trial: true });
+  const evidence = process.env.BB_UX_EVIDENCE_DIR;
+  if (evidence) {
+    await mkdir(evidence, { recursive: true });
+    await page.screenshot({ path: join(evidence, `cancel-supplement-${scenario.width}-${scenario.query === null ? 'list' : 'step'}.png`) });
+  }
+  await page.reload(); await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await expect(page.locator('.material-file-row')).toHaveCount(3);
+  await expect(picker).toBeDisabled();
+  expect(byteUploads).toBe(1); expect(state.runActions).toEqual(['/runs/synthetic-run-1/cancel']);
+  expect(state.executes).toHaveLength(1); expect(state.inputs).toEqual([originalInput]);
+  expect(errors).toEqual([]);
+});
 
 test('credit visibility: quote precedes execution and running receipt follows settlement and retry',async({page})=>{
   const state=fixture(); state.paid=true; state.checkStatus='ready'; state.available=100000; state.runState='running'; state.runStage='provider_call';
