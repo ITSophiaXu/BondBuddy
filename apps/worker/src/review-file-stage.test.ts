@@ -86,3 +86,30 @@ test('report symlinks cannot publish outside files', { skip: process.platform !=
     assert.ok(validReviewFileResult(result.value, f.ctx)); assert.equal(result.value.files['report.docx'], undefined);
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
+
+test('pinned DOCX produces source comments and the same canonical report; missing comment bytes block delivery', async () => {
+  const f = await fixture();
+  try {
+    const original = makeWorkerDocxFixture({externalLink:false});
+    f.store.set('source',original);f.input.materials[0].pin.sha256=digest(original);
+    f.input.materials[0].media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    f.input.materials[0].filename='synthetic.docx';
+    let calls=0;
+    const stage=reviewFileStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+      calls++;await options.fileWorkspace!.prepare(f.directory);
+      await writeFile(join(f.directory,'output/report.md'),'## 财务核对\n### 金额需核对\n**原文披露：** Synthetic worker upload fixture\n**核对依据：** 合成材料\n**修改建议：** 核实后修改\n');
+      return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'call-annotations'} as never,{text:'已写好报告'})};
+    }})});
+    const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('result');
+    assert.ok(validReviewFileResult(result.value,f.ctx));assert.equal(result.value.error,undefined);
+    const receipt=JSON.parse(f.store.get(result.value.files['annotations.json'].key)!.toString());
+    assert.equal(receipt.placed.length,1);assert.equal(receipt.source.sha256,digest(original));
+    assert.match(f.store.get(result.value.files['report.md'].key)!.toString(),/R001 · 金额需核对/);
+    assert.deepEqual(f.store.get('source'),original);assert.equal(calls,1);
+    f.ctx.values.set('model_generation',result.value);
+    const delivery=await reviewFileDeliveryStage().run(f.ctx);assert.equal(delivery.kind,'deliver');
+    if(delivery.kind!=='deliver')throw Error('delivery');assert.equal(delivery.attachments?.length,1);
+    f.store.set(result.value.files['comments.docx'].key,Buffer.from('corrupted'));
+    assert.deepEqual(await reviewFileDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'});
+  } finally {await rm(f.directory,{recursive:true,force:true});}
+});

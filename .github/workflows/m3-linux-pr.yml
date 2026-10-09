@@ -189,7 +189,7 @@ jobs:
 
       - name: Python native parser, Word delivery and revision regressions
         run: |
-          python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery 2>&1 | tee "$RUNNER_TEMP/bb-m3-python.log"
+          python -m unittest -v test_document_parser test_review_word test_review_file_annotations test_unified_word test_word_delivery 2>&1 | tee "$RUNNER_TEMP/bb-m3-python.log"
           if grep -Eq 'OK \(skipped=[1-9][0-9]*\)' "$RUNNER_TEMP/bb-m3-python.log"; then
             echo 'Required Python tests were skipped.' >&2
             exit 1

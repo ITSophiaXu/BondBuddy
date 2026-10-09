@@ -1,0 +1,36 @@
+Results read: 2026-10-09T13:06:43Z
+PR: 637; implementation/test head: fa6a35d3d6198f80342f8a921b2ce9c173486d26
+Environment: Linux Docker, existing worker runtime 593685340dc3, PostgreSQL16-alpine, Azurite3.35.0.
+Network: dedicated internal Docker network; no host ports, production data or live model/payment calls.
+Native sandbox: read-only runtime, cap-drop ALL, no-new-privileges, apparmor=bondbuddy-codex-v1, repository codex-seccomp.json.
+
+Transferred source: 6f6259c666c29a04d8a7e2f21f385517c985d85a
+Only test override: apps/worker/src/review-file-delivery.pg.test.ts from fa6a35d3.
+Override SHA256: 117dc1e733d6e80c7e81933f658624b1f0c3dc4acbfb0cb5285de6a5d50718cd
+Verified with git diff: all other apps/api, apps/worker, python, db, packages, package.json, package-lock.json,
+deploy/m1/security, product-prototype/knowledge and knowledge inputs match fa6a35d3 byte-for-byte.
+The rebase also brings frontend #631 and documentation; their local build/contracts/browser evidence is separate.
+
+npm ci --include=dev --no-audit --no-fund
+npm run build
+npm run check:contracts
+PASS; 171 contract examples and 11 contract tests.
+
+node db/migrate.mjs
+PASS, including 0103_review_pdf_delivery_evidence.sql in a fresh synthetic database.
+node --test --test-concurrency=1 --test-reporter=tap apps/worker/dist/review-file-delivery.pg.test.js apps/worker/dist/review-file-stage.test.js apps/api/dist/generated-word-delivery.test.js apps/api/dist/billing.pg.test.js apps/api/dist/review-billing.pg.test.js apps/api/dist/payments.pg.test.js apps/api/dist/m4-workspace.pg.test.js
+# tests 16
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+
+python -m unittest -v test_review_word test_review_file_annotations
+Ran 15 tests
+OK
+Runner exit: 0. Own PostgreSQL/Blob containers and internal network removed by cleanup trap.
+
+GitHub-hosted Actions did not start because account billing/spending limit rejected the jobs.
+These are independent Linux test results, not a forged GitHub status or real professional acceptance.
+最终统一验收待办: real long documents/model conclusions and actual Word/WPS/PDF client round trips (#56/#146).
