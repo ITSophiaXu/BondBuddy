@@ -28,7 +28,7 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   else if(path.startsWith('/synthetic-upload/')){if(uploads[Number(path.split('/').at(-1))].filename==='first.txt')await new Promise<void>(resolve=>{releaseUpload=resolve;});await route.fulfill({status:204});return;}
   else if(path.endsWith('/complete')){const id=path.split('/').at(-2)!,u=uploads[Number(id)];body={...u,material_id:'material-'+id,material_version:1,state:'persisted'};}
   else if(path==='/m4/topics/topic/materials'){const pin=req.postDataJSON().material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
-  else if(path==='/artifacts/result')body={artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
+  else if(path==='/artifacts/result')body={filename:'合成项目_复核报告_V2_20261009.txt',artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
   else if(path==='/artifacts/result/download'){await route.fulfill({contentType:'text/plain',body:delivered});return;}
   else if(path.endsWith('/messages')){const b=req.postDataJSON();messages.push(b);w.messages.push({message_id:'message',role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context},
     {message_id:'answer',role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message:w.messages[0],run:{run_id:'qa'}};}
@@ -84,7 +84,7 @@ test('attachments selected during an upload are queued and retained; changed car
  if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
  await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});
- const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('BondBuddy-复核报告.txt');expect(s.executions).toHaveLength(1);
+ const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('合成项目_复核报告_V2_20261009.txt');expect(s.executions).toHaveLength(1);
 });
 
 test('approved prototype comparison capture',async({page})=>{

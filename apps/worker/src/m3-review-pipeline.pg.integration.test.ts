@@ -176,6 +176,7 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
         const bytes=await send('GET',metadata.json().download_url);assert.equal(bytes.statusCode,200,bytes.body);assert.equal(digest(bytes.rawPayload),metadata.json().sha256);
         return {bytes:bytes.rawPayload,metadata:metadata.json()};};
       const comments=await download(workspace.artifacts.find((a:any)=>a.kind==='comments').artifact_id),reportFile=await download(workspace.artifacts.find((a:any)=>a.kind==='report').artifact_id);
+      for(const a of workspace.artifacts){const delivered=a.kind==='comments'?comments:reportFile;assert.equal(delivered.metadata.filename,a.filename);assert.match(a.filename,/_V1_[0-9]{8}\.docx$/);}
       const sourceView=await inspect(sourceBytes,'source-inspected'),commentView=await inspect(comments.bytes,'comments-downloaded'),reportView=await inspect(reportFile.bytes,'report-downloaded');
       assert.equal(commentView.visible,sourceView.visible);assert.equal(commentView.insertions,0);assert.equal(commentView.deletions,0);
       assert.ok(commentView.comment_count>=2);assert.ok(commentView.comments.includes(selected.finding_id));assert.ok(reportView.visible.includes('募集书复核报告'));
