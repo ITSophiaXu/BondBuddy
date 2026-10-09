@@ -15,3 +15,5 @@
 最终统一验收待办：真实长募集书/不同版本定位，实际 Word/WPS 与 PDF 客户端打开、保存重开及跨客户端往返、真实模型专业结论（#56/#146）；本PR只完成#55今天补充的工程范围，不关闭整个父issue。部署状态另记。
 
 Rebase 到5a69ff12（#630合并）后，Python15/15再次通过；最终 build/contracts、worker单测及5项浏览器复验在PR合并前完成并记录。
+
+首轮Linux CI：3组通过；cli-review中DOCX链路通过，PDF测试夹具直接写stdout触发pypdf Illegal seek（9/10）。夹具改用BytesIO后已本地子进程实测成功，重新跑CI；这不是生产writer路径（生产写普通文件）。最终rebase后的build/contracts171样例、worker3通过/1跳过、浏览器5/5已通过。
