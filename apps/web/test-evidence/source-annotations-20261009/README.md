@@ -19,3 +19,5 @@ Rebase 到5a69ff12（#630合并）后，Python15/15再次通过；最终 build/c
 首轮Linux CI：3组通过；cli-review中DOCX链路通过，PDF测试夹具直接写stdout触发pypdf Illegal seek（9/10）。夹具改用BytesIO后已本地子进程实测成功，重新跑CI；这不是生产writer路径（生产写普通文件）。最终rebase后的build/contracts171样例、worker3通过/1跳过、浏览器5/5已通过。
 
 第二轮 Linux CI：3组通过，DOCX通过；PDF发布被既有只认Word/QA凭证的数据库约束拒绝。新增独立PDF凭证与精确下载校验，集成测试补充缺失凭证、hash/路径/MIME/渠道篡改、凭证不可更新删除和撤回/恢复下载；重新执行CI后记录最终结果。
+
+最终独立 Linux 验证（2026-10-09，结果见 linux-validation.txt）：16项真实PG/Blob/原生进程测试全部通过，0跳过；Python原文批注/Word保留性15/15。首次撤回断言误用了不存在的artifact状态unavailable，已改为既有revoked后复验通过。新0103迁移、PDF交付及撤回/恢复、损坏/越权拒绝均实际执行。当前源码fa6a35d3的Windows build/contracts171再次通过；Linux使用已传输6f6259c6源码，加经SHA256验证的fa6a35d3测试文件。git diff核实全部API、worker、Python、迁移、依赖、知识和安全配置与当前测试输入完全相同；差异只有已单独验证的#631前端及文档。GitHub Actions仍因账户付款/额度未启动，不把该状态改称CI通过。隔离测试使用synthetic数据、独立数据库/Blob和原生sandbox，没有修改生产账本或启用收费。
