@@ -9,3 +9,5 @@
 新增“下载原文批注版”主入口，独立报告为辅助成果。下载沿用私有存储、源版本/hash、账号权限、真实 MIME 与规范文件名；批注存储/hash失败不得只交报告而宣称本次批注交付成功。旧的“仅报告、不要求批注”和“PDF只提供页定位”决定在本次范围被覆盖。旧任务已保存的成果不回填、不重跑模型。
 
 原型：product-prototype/public/review-v2.html?delivery=files（review-v2.js / review-readable-preview.js / .css）；页面：apps/web/src/review-workspace.ts。合成自动化证据见 apps/web/test-evidence/source-annotations-20261009/README.md。最终统一验收待办：Word/WPS 实际版本打开/保存往返、真实原稿精确定位和专业复核，归 #56/#146 跟踪。本切片不等于整个 #55 已完成。
+
+PDF成果使用独立不可变交付凭证（迁移0103），精确绑定账号、任务、原稿版本/hash及成果hash、字节数、私有路径；授权下载必须读回匹配。既有Word/QA凭证和成功任务主报告要求保持。

@@ -264,8 +264,10 @@ export function createServer(settings: Settings = {}) {
       catch { throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed'); }
       if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
     }else if(artifact.media_type==='application/pdf'){
-      bytes=await blob().getIfExistsBounded(artifact.object_key,100*1024*1024);
-      if(!bytes)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+      const expectedSize=Number(artifact.delivery_evidence_byte_size);
+      if(!Number.isSafeInteger(expectedSize)||expectedSize<8||expectedSize>100*1024*1024)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+      try {bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize);}catch{throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');}
+      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
     }else{
       bytes=await blob().get(artifact.object_key);
     }
@@ -1500,10 +1502,11 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      LEFT JOIN bb_review_pdf_delivery_evidence pdf_e ON pdf_e.owner_user_id=a.owner_user_id AND pdf_e.run_id=a.run_id AND pdf_e.id=a.review_pdf_delivery_evidence_id
       ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
         ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
@@ -1532,10 +1535,11 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      LEFT JOIN bb_review_pdf_delivery_evidence pdf_e ON pdf_e.owner_user_id=a.owner_user_id AND pdf_e.run_id=a.run_id AND pdf_e.id=a.review_pdf_delivery_evidence_id
       ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
         ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR

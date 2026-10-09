@@ -90,6 +90,20 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       await promisify(execFile)(python!,['-c',check,annotationPath]);
       active=randomUUID();assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,404);active=owner;
       const storedAnnotation=(await pool.query('SELECT object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2',[owner,annotated.artifact_id])).rows[0];
+      if(format==='pdf') {
+        const rejectChange=async(set:string)=>assert.rejects(pool.query(`UPDATE bb_artifact_versions SET ${set} WHERE id=$1`,[annotated.artifact_id]),(e:any)=>e.code==='23514');
+        await rejectChange('review_pdf_delivery_evidence_id=NULL');
+        await rejectChange("sha256=repeat('0',64)");
+        await rejectChange("object_key='wrong/private/key'");
+        await rejectChange("media_type='text/plain'");
+        await rejectChange("delivery_status='test_only'");
+        await assert.rejects(pool.query('UPDATE bb_review_pdf_delivery_evidence SET byte_size=byte_size+1 WHERE artifact_id=$1',[annotated.artifact_id]),(e:any)=>e.code==='23514');
+        await assert.rejects(pool.query('DELETE FROM bb_review_pdf_delivery_evidence WHERE artifact_id=$1',[annotated.artifact_id]),(e:any)=>e.code==='23514');
+        await pool.query("UPDATE bb_artifact_versions SET delivery_status='unavailable' WHERE id=$1",[annotated.artifact_id]);
+        assert.notEqual((await send('GET',annotationMeta.json().download_url)).statusCode,200);
+        await pool.query("UPDATE bb_artifact_versions SET delivery_status='available' WHERE id=$1",[annotated.artifact_id]);
+        assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,200);
+      }
       await blobs.put(storedAnnotation.object_key,Buffer.from('corrupted'),annotationMeta.json().media_type);
       assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,503,'corrupted annotations never download');
       await blobs.put(storedAnnotation.object_key,annotationDownload.rawPayload,annotationMeta.json().media_type);
