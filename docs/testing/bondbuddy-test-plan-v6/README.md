@@ -2,7 +2,9 @@
 
 本轮目标是尽快达到 **U：受控邀请用户测试准入**。准备齐全后按1–2个工作日规划；全部适用U子例和Human预检通过才可开始邀请。完整79组是覆盖池，完整E/R验收、全历史回归对账与用户测试并行推进。
 
-发布于2026-10-09。源码参考为 master `a6fa7eb030f7f9bc4c803176b2aacf38d35642b6`，develop `ebae7f6b50aaacff34cab717a5bde5892fe239b6`，10月9日重新核对时未变化。**线上观察仅来自10月8日；执行前重新冻结实际运行版本、功能与配置。所有产品结果初始为 `not_run`，U未批准。**
+发布于2026-10-09。原v6源码参考为 master `a6fa7eb030f7f9bc4c803176b2aacf38d35642b6`，develop `ebae7f6b50aaacff34cab717a5bde5892fe239b6`；这是10月9日当天较早调查的记录，随后v6.1增补已重新核对develop `55941dc`。**线上观察仅来自10月8日；执行前重新冻结实际运行版本、功能与配置。所有产品结果初始为 `not_run`，U未批准。**
+
+**v6.1 用户行为增补：**先读[23张用户场景任务卡](user-scenarios.md)，包含6正常、7异常、10中断/并发场景。每卡写出用户目标、具体步骤、恢复、任务/输入/积分标准及Agent/Human分工。用户已确认“暂停→补料→继续原任务”；缺入口/续做协议记功能缺失，积分政策未定义记设计缺口，现有取消重建不能替代目标判pass。场景增补参考最新develop `55941dc`；新固定60积分QA只在实际发布有效价格的环境适用，原v6按量QA标准保留为legacy。
 
 ## 文件与用途
 
@@ -13,6 +15,9 @@
 | [release-baseline-template.json](release-baseline-template.json) | 完整版本/配置/计费/资料/回归/批准manifest模板；U、E、R分别登记 |
 | [execution-report-template.json](execution-report-template.json) | 本轮执行副本：逐包、逐子例、Human预检、缺陷及决策；不要直接覆盖模板 |
 | [validate.mjs](validate.mjs) | 检查本包ID、分工、映射、初始状态和文件引用；仅用Node标准库 |
+| [user-scenarios.md](user-scenarios.md) | 真实用户行为任务卡；先给Human业务目标，再观察自主操作和偏离脚本的真实意图 |
+| [user-scenario-result-template.json](user-scenario-result-template.json) | 逐步用户轨迹、Agent断言、Human观察和功能/设计缺口；与U报告按scenario/run关联 |
+| [validate-user-scenarios.mjs](validate-user-scenarios.mjs) | 校验场景与原BB/U映射、分工、初始结果及已确认需求/缺口元数据 |
 
 ## 启动本轮测试
 
@@ -20,11 +25,12 @@
 
    ```bash
    node docs/testing/bondbuddy-test-plan-v6/validate.mjs
+   node docs/testing/bondbuddy-test-plan-v6/validate-user-scenarios.mjs
    ```
 
    无需安装依赖。绿色结果只说明文档metadata一致，不表示产品测试通过或U ready。
 
-2. QA负责人复制两个结果模板到团队受控证据目录，分配Agent执行人、业务用户、内容审核人及Word/WPS客户端审核人。记录实际日期、owner与反馈入口。凭证、客户原件、生成稿、完整日志保留在受控位置；仓库/Issue仅保存脱敏摘要、hash及授权访问的证据链接。
+2. QA负责人复制baseline、U执行报告和用户场景结果模板到团队受控证据目录，分配Agent执行人、业务用户、内容审核人及Word/WPS客户端审核人。记录实际日期、owner与反馈入口。凭证、客户原件、生成稿、完整日志保留在受控位置；仓库/Issue仅保存脱敏摘要、hash及授权访问的证据链接。
 
 3. 冻结实际试用URL、Web/API/worker SHA或image digest与可核对回执、相关迁移、flags、实际价格/开关、开放模块及市场、授权fixture/hash、余额和真实调用预算。将执行报告 `selection.frozen` 与所选子例范围填全。模板候选SHA是设计依据，实际运行不同版本时需登记该版本源码与diff；不能用最新源码测试替代旧运行版证据。
 
@@ -67,3 +73,5 @@
 JSON的 `suite_candidates` 是 **固定 `source_reference_sha` 的仓库根相对路径**，可能包含源代码/历史材料，并非每条断言已有自动化。包内artifact链接相对本目录，源码Markdown链接固定GitHub SHA。历史PR/Issue回执可读，原本地调查记录未提交；本轮须留可复核的新证据。
 
 完整release baseline仍要求全历史fix对账、unmapped=0和全部适用永久回归；目前 `inventory_complete=false`。U ready只批准记录范围内的受邀试用，不代表正式发布或已部署新功能。
+
+真实用户行为测试的结果还必须列出 `functional_gap/design_gap/usability_defect/reliability_defect/billing_defect`。BB关联用于定位相关工程机制，不表示现有79组已经实现全部场景断言；新增“原任务暂停补料续做”的业务目标须单独验收。Agent可以模拟断网、浏览器退出和逐步操作，Human自主使用与真实设备/专业文件判断分别记录；实际物理关机没有执行时不能标成已测。

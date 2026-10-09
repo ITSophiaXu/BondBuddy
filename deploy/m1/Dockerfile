@@ -32,6 +32,7 @@ RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.j
  && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src
 COPY db db
+COPY deploy/m1/config/review-prices-20261009.json deploy/m1/config/review-prices-20261009.json
 COPY python python
 COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/
 COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
@@ -77,6 +78,7 @@ COPY --from=build --chown=root:root /app/packages packages
 COPY --from=build --chown=root:root /app/apps/api apps/api
 COPY --from=build --chown=root:root /app/apps/worker apps/worker
 COPY --from=build --chown=root:root /app/db db
+COPY --from=build --chown=root:root /app/deploy/m1/config/review-prices-20261009.json deploy/m1/config/review-prices-20261009.json
 COPY --from=build --chown=root:root /app/knowledge knowledge
 COPY --from=build --chown=root:root /app/product-prototype/knowledge product-prototype/knowledge
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/blob-snapshot.mjs

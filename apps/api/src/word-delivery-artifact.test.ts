@@ -19,10 +19,11 @@ test('checked revision metadata exposes clean and baseline downloads with pendin
       return { rows: [{ id: values[1], owner_user_id: owner, project_id: 'project-a', run_id: 'run-1', version: 1,
         media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         sha256: digest(bytes), quality_status: 'passed', delivery_status: 'available', object_key: `private/${values[1]}`,
-        delivery_evidence_byte_size: bytes.length }] };
+        naming_created_at:'2026-10-09T02:00:00Z',naming_manifest:{name:'冻结项目'},naming_input_revision:3,naming_pair:summary,delivery_evidence_byte_size: bytes.length }] };
     }
     if (sql.includes('FROM bb_jobs')) return { rows: [{ pair: summary }] };
     if (sql.includes('SELECT channel FROM bb_runs')) return { rows: [{ channel: 'production' }], rowCount: 1 };
+    if (sql.includes('SELECT 1 FROM bb_artifact_download_grants')) return {rows:[{}]};
     if (sql.includes('INSERT INTO bb_artifact_download_grants')) return { rows: [] };
     if (sql.includes('INSERT INTO bb_operations') || sql.includes('INSERT INTO bb_observability_events') || sql.includes('INSERT INTO bb_outbox')) return { rows: [], rowCount: 1 };
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -40,6 +41,13 @@ test('checked revision metadata exposes clean and baseline downloads with pendin
     const clean = await app.inject('/api/v1/artifacts/word-clean');
     assert.equal(clean.statusCode, 200, clean.body);
     assert.equal(clean.json().word_delivery.variant, 'clean');
+    assert.equal(revision.json().filename,'冻结项目_募集书修订版_V3_20261009.docx');
+    assert.equal(clean.json().filename,'冻结项目_募集书清洁版_V3_20261009.docx');
+    const download=await app.inject(clean.json().download_url);
+    assert.equal(download.statusCode,200,download.body);
+    assert.ok(download.headers['content-disposition']?.includes(encodeURIComponent(clean.json().filename)));
+    assert.deepEqual(download.rawPayload,bytes);
+    assert.equal((await app.inject('/api/v1/artifacts/word-clean')).json().filename,clean.json().filename);
     owner = 'owner-b';
     assert.equal((await app.inject('/api/v1/artifacts/word-revision')).statusCode, 404);
   } finally { await app.close(); }

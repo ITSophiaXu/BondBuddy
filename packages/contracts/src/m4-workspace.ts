@@ -91,6 +91,7 @@ export const M4KnowledgeSnapshotSchema = obj({version:id,document_type:M4Documen
   source_ids:Type.Array(id,{minItems:1,maxItems:20}),content:Type.String({minLength:1,maxLength:500000})});
 export type M4KnowledgeSnapshot = Static<typeof M4KnowledgeSnapshotSchema>;
 export const M4DocumentManifestSchema = obj({ version: Type.Literal('m4-document-input-v1'), kind: Type.Literal('document'),
+  project_name: Type.Optional(Type.String({ maxLength: 200 })),
   topic_id: id, execution_scope_project_id: id, draft_version: version, input: M4DraftInputSchema,
   template_material: nullable(M4MaterialPinSchema), market: Type.Union([Type.Literal('sse'), Type.Literal('szse')]),
   // Optional only for persisted pre-knowledge v1 tasks; the API pins it on every new task.

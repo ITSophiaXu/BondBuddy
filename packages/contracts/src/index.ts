@@ -1,5 +1,6 @@
+export * from './artifact-filename.js';
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
-import { billingSchemas } from './billing.js';
+import { billingSchemas, creditHistorySchemas } from './billing.js';
 import { m4Schemas } from './m4-workspace.js';
 export * from './m4-workspace.js';
 export * from './billing.js';
@@ -180,6 +181,7 @@ export const schemas = {
   ...m4Schemas,
   ReviewReadableReport: ReviewReadableReportSchema,
   ...billingSchemas,
+  ...creditHistorySchemas,
   ...browserErrorSchemas,
   ...targetPeriodEvidenceSchemas,
   ...issuerIdentityReviewSchemas,
@@ -268,7 +270,7 @@ export const schemas = {
   ProjectEventsResponse: obj({ items: Type.Array(ProjectEventSchema), next_cursor: nullable(Type.Integer({ minimum: 0 })) }),
   InternalObservabilityEvent: InternalObservabilityEventSchema,
   UsageObservation: UsageObservationSchema,
-  ArtifactResponse: obj({ artifact_id: id, run_id: id, version: revision, media_type: Type.Literal('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), sha256: hash, quality_status: Type.Literal('passed'), delivery_status: enumOf(ARTIFACT_DELIVERY_STATUSES), download_url: Type.String({ description: 'Short-lived authorized URL, only after owner and hash check.' }), expires_at: utc,
+  ArtifactResponse: obj({ filename: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })), display_version: Type.Optional(revision), artifact_id: id, run_id: id, version: revision, media_type: Type.String({ minLength: 1, maxLength: 255 }), sha256: hash, quality_status: Type.Literal('passed'), delivery_status: enumOf(ARTIFACT_DELIVERY_STATUSES), download_url: Type.String({ description: 'Short-lived authorized URL, only after owner and hash check.' }), expires_at: utc,
     word_delivery: Type.Optional(obj({ variant: Type.Union([Type.Literal('revision'), Type.Literal('clean'), Type.Literal('baseline')]),
       revision_artifact_id: id, clean_artifact_id: id, baseline_artifact_id: Type.Optional(id),
       writer_version: Type.Union([Type.Literal('bondbuddy-word-delivery-1.0.0'), Type.Literal('bondbuddy-unified-word-1.0.0'), Type.Literal('bondbuddy-file-word-1.0.0')]), source_sha256: nullable(hash), baseline_hash: nullable(hash), effective_baseline_sha256: nullable(hash), plan_hash: nullable(hash),
@@ -325,6 +327,8 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get','/credits/consumption-history','Read owned task reservations, settlements and releases','CreditConsumptionHistoryResponse',200,undefined,[422]),
+  op('get','/credits/recharge-history','Read owned payment recharge orders','RechargeHistoryResponse',200,undefined,[422]),
   op('get','/credits/balance','Read available and frozen credits','CreditBalanceResponse'),
   op('post','/projects/{project_id}/credit-quote','Preview one fixed price for the immutable input without reserving credits','FixedQuoteResponse',200,'FixedQuoteRequest',[404,409,503]),
   op('get','/runs/{run_id}/credit-charge','Read this task confirmation and settlement state','RunCreditChargeResponse',200,undefined,[404]),
@@ -466,7 +470,8 @@ export function openApiDocument() {
         { name: 'limit', in: 'query', required: false, schema: { type: 'string', pattern: '^(?:[1-9]|[1-4][0-9]|50)$', default: '20' } }] : [];
     const historyQueryParameters = operation.path === '/projects/{project_id}/artifacts'
       ? Object.entries(schemas.ArtifactHistoryQuery.properties).map(([name, schema]) => ({ name, in: 'query', required: false, schema })) : [];
-    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...messageQueryParameters, ...historyQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
+    const creditHistoryQueryParameters = ['/credits/consumption-history','/credits/recharge-history'].includes(operation.path) ? Object.entries(schemas.CreditHistoryQuery.properties).map(([name,schema])=>({name,in:'query',required:false,schema})) : [];
+    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...messageQueryParameters, ...historyQueryParameters, ...creditHistoryQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
   paths['/api/v1/projects/{project_id}/review-executions/{run_id}/readable-report'] = { get: {
     summary: 'Read a delivered private review report for display without executing a task',

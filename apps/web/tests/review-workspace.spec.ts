@@ -446,6 +446,55 @@ test('readable view failure is retryable, preserves Word, and never re-executes 
   await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();expect(state.executes).toHaveLength(0);
 });
 
+for(const extension of ['docx','pdf'])test(`annotated source ${extension}: download, source limits, reload, no rerun`,async({page})=>{
+  const state=fixture();state.workspace.selected_report=null;state.workspace.reports=[];
+  state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};state.history[0].report_id=null;
+  const filename=`合成复核项目_原文批注版_V1_20261009.${extension}`,body='synthetic annotation bytes';
+  state.workspace.artifacts.push({artifact_id:'source-comments',artifact_version:1,kind:'comments',filename});
+  state.artifacts.set('source-comments',{artifact_id:'source-comments',run_id:'run-1',version:1,filename,display_version:1,media_type:extension==='pdf'?'application/pdf':mime,sha256:hash(body),quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/source-comments/download',expires_at:'2027-01-01T00:00:00Z'});
+  await setup(page,state);
+  await page.route('**/artifacts/source-comments/download',route=>route.fulfill({status:200,body,contentType:extension==='pdf'?'application/pdf':mime}));
+  const canonical=readableMarkdown+'\n\n## 原文批注与待确认定位\n底稿：合成募集书.docx · 上传版本 V1。正文未改写。\n\n本报告识别 3 项问题，已添加 2 处原文批注，1 处无法自动定位。\n\n- R003 · 第二章 · 历史名称：缺失披露没有可核对的原文片段，请人工确认。';
+  await page.route('**/readable-report',route=>reply(route,200,{version:'review-readable-v1',project_id:id,run_id:'run-1',execution_version:1,status:'available',markdown:canonical,content_sha256:hash(canonical)}));
+  await page.reload();
+  const button=page.getByRole('button',{name:'下载原文批注版',exact:true});await expect(button).toBeVisible();
+  await page.locator('[data-annotation-summary] summary').click();
+  await expect(page.locator('[data-annotation-summary]')).toContainText('1 处无法自动定位');
+  await expect(page.locator('[data-annotation-summary]')).toContainText('R003');
+  let download=page.waitForEvent('download');await button.click();expect((await download).suggestedFilename()).toBe(filename);
+  const output=process.env.BB_ANNOTATION_EVIDENCE_DIR;
+  if(output&&extension==='docx'){
+    await mkdir(output,{recursive:true});
+    await page.locator('[data-annotation-summary] summary').click();
+    for(const width of [1440,390]){
+      await page.setViewportSize({width,height:width===1440?960:844});
+      await page.locator('.review-readable-heading').scrollIntoViewIfNeeded();
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+      await page.screenshot({path:`${output}/implementation-${width}.png`});
+    }
+  }
+  await page.route('**/readable-report',route=>reply(route,503,{code:'DATA_UNAVAILABLE'}));await page.reload();
+  await expect(button).toBeEnabled();download=page.waitForEvent('download');await button.click();await download;
+  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
+});
+
+test('annotated source prototype screenshots',async({page})=>{
+  const output=process.env.BB_ANNOTATION_EVIDENCE_DIR;test.skip(!output,'optional design evidence');
+  await page.route('http://prototype.test/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});
+    try {const bytes=await readFile('../../product-prototype/public'+path);await route.fulfill({body:bytes,contentType:path.endsWith('.css')?'text/css':path.endsWith('.js')?'text/javascript':path.endsWith('.svg')?'image/svg+xml':'text/html'});}catch{await route.fulfill({status:404});}
+  });
+  await page.goto('http://prototype.test/review-v2.html?delivery=files');
+  await page.locator('[data-tab="results"]').click();
+  await expect(page.getByRole('button',{name:'下载原文批注版',exact:true})).toBeVisible();
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:width===1440?960:844});
+    await page.locator('.review-readable-heading').scrollIntoViewIfNeeded();
+    await page.screenshot({path:`${output}/prototype-${width}.png`});
+  }
+});
+
 for(const viewport of [{width:1360,height:900},{width:390,height:844}])test(`unified review materials and discussion preserve assistant drafts ${viewport.width}`,async({page})=>{
  await page.setViewportSize(viewport);const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials&from=projects`);
  await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
@@ -664,22 +713,30 @@ test('review navigation retains the app scale while keeping its own layout',asyn
  }
 });
 
-test('paid review confirms points before execution and shows shortage without starting',async({page})=>{
- const state=fixture();await setup(page,state);
- let available=299;
- await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:300,reason:'合成价格'},balance:{available,frozen:0},shortage:Math.max(0,300-available),reason:null}));
+for(const width of [1440,390])test('paid review reserves on explicit start and shortage preserves inputs '+width,async({page})=>{
+ const state=fixture();await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
+ let available=13899;
+ await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:13900,reason:'用户Spec'},balance:{available,frozen:0},shortage:Math.max(0,13900-available),reason:null}));
  await page.goto(`/#/projects/${id}/review?tab=materials`);
  await page.getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).not.toContainText('13,900');
+ const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-ready-${width}.png`});}
  await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('还差 1 积分');
+ await expect(page.getByRole('dialog')).toContainText('积分不足，请充值后继续任务');
  await expect(page.getByRole('dialog').getByRole('link',{name:'充值积分'})).toHaveAttribute('href',`#/account?project=${id}`);
  expect(state.executes).toHaveLength(0);
- await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=5000;
+ if(output)await page.screenshot({path:`${output}/implementation-shortage-${width}.png`});
+ await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=13900;
+ await page.reload();expect(state.executes).toHaveLength(0);
  await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('确认后可用 4,700 积分');
- expect(state.executes).toHaveLength(0);
- await page.getByRole('button',{name:'确认并开始 · 300 积分'}).click();
  await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('synthetic-quote');
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('enabled review never starts free when its price is missing',async({page})=>{
+ const state=fixture();await setup(page,state);await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:null,balance:{available:20000,frozen:0},shortage:0,reason:null}));
+ await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('积分价格尚未配置');expect(state.executes).toHaveLength(0);
 });
 
 test('review task receipt displays the actual reserved, charged and released points',async({page})=>{
@@ -701,4 +758,27 @@ test('dashboard review progress keeps its collection context through tab changes
  const s=fixture();s.workspace.active_run=s.makeRun('active-run','running');await setup(page,s,`#/projects/${id}/review?tab=making&from=dashboard&dashboard_kind=review&dashboard_status=active`);
  await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
  await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.getByRole('link',{name:'返回工作台'})).toHaveAttribute('href','#dashboard?kind=review&status=active');expect(s.executes).toHaveLength(0);
+});
+
+
+test('paid review response loss keeps quote and intent on explicit retry',async({page})=>{
+ const state=fixture();state.dropExecutionOnce=true;await setup(page,state);let quotes=0;
+ await page.route('**/review-executions/quote',route=>{quotes++;return reply(route,200,{enabled:true,quote:{quote_id:'original-quote',task_type:'full_review',points:13900},balance:{available:13900,frozen:0},shortage:0,reason:null});});
+ await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect.poll(()=>state.executes.length).toBe(2);expect(quotes).toBe(1);expect(state.executes[1]).toEqual(state.executes[0]);expect(state.executes[0].quote_id).toBe('original-quote');
+});
+
+test('review credit prototype comparison',async({page})=>{
+ const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;test.skip(!output,'optional prototype comparison');
+ await page.route('http://prototype.test/**',async route=>{
+  const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});
+  await route.fulfill({body:await readFile('../../product-prototype/public'+path),contentType:path.endsWith('.js')?'text/javascript':path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/html'});
+ });
+ for(const width of [1440,390]){
+  await page.setViewportSize({width,height:width===1440?960:844});await page.goto(`http://prototype.test/review-v2.html?credits=shortage&width=${width}#materials`);
+  await page.locator('[data-action="start-review"]').click();await expect(page.locator('#modal')).toContainText('成功交付后扣费');
+  await page.screenshot({path:`${output}/prototype-ready-${width}.png`});await page.locator('[data-action="confirm-full-review"]').click();
+  await expect(page.locator('#modal')).toContainText('积分不足，请充值后继续任务');await page.screenshot({path:`${output}/prototype-shortage-${width}.png`});
+ }
 });

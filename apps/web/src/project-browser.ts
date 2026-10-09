@@ -1,6 +1,6 @@
 import { PROJECT_STATES, PROJECT_ARCHIVE_VIEWS, PROJECT_FIELD_LIMITS, TASK_KINDS } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
-import { ArtifactDownloads, artifactError } from './artifact-download';
+import { ArtifactDownloads, artifactError, artifactFilename } from './artifact-download';
 import { ReviewHistory } from './review-history';
 import { date, esc, icon } from './ui';
 import './project-browser.css';
@@ -160,7 +160,7 @@ export class ProjectBrowser {
       if(run.run_id!==artifact.run_id || run.project_id!==item.project_id || run.state!=='succeeded' || run.artifact_id!==artifact.artifact_id)throw new ApiError(0,'DATA_UNAVAILABLE');
       const bytes=await this.api.artifactBytes(artifact,signal);
       if(!current())return;
-      this.downloads.save(bytes,`${item.name}-v${artifact.version}.docx`);
+      this.downloads.save(bytes,artifactFilename(artifact));
       feedback.textContent='文件已交给浏览器下载，请在浏览器下载列表中查看。';
     } catch(error) {if(current())feedback.textContent=artifactError(error);}
     finally {

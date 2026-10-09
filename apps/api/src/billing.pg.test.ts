@@ -67,6 +67,9 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal(both[0].json().billing_mode,'fixed_credits');assert.ok(both[0].json().reservation_id);
     assert.equal(await count('bb_credit_reservations'),1);assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:P});
     const id=both[0].json().run_id;
+    const heldHistory=await send('GET','/api/v1/credits/consumption-history');assert.equal(heldHistory.statusCode,200,heldHistory.body);
+    assert.deepEqual(heldHistory.json().items.map((r:any)=>[r.run_id,r.state,r.reserved_points,r.charged_points]),[[id,'held',P,0]]);
+    assert.equal(heldHistory.headers['cache-control'],'private, no-store');
     const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,id);
     const prompt=Buffer.from('Synthetic billing prompt'),objectKey=`users/${owner}/projects/${i.project_id}/snapshots/synthetic-billing`;
     await blobs.put(objectKey,prompt,'text/plain');
@@ -87,6 +90,8 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     await finish(pool,lease,'succeeded',{artifactId:revised.artifactId,artifactVersion:1,blobs});
     assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
     assert.equal((await pool.query("SELECT points::int FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].points,P);
+    const settledHistory=(await send('GET','/api/v1/credits/consumption-history')).json().items;
+    assert.equal(settledHistory[0].state,'settled');assert.equal(settledHistory[0].charged_points,P);assert.ok(settledHistory[0].finalized_at);
     // Late supplier usage is an internal cost observation, not another task transition.
     await observeUsage(pool,{owner,attemptId:callId,source:'provider',sourceEventId:'synthetic-late-usage',status:'measured',inputTokens:10,outputTokens:4});
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].n,1);
@@ -162,6 +167,18 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     const raceFinal=(await pool.query("SELECT kind FROM bb_credit_events WHERE run_id=$1 AND kind IN ('settle','release')",[raceRun.json().run_id])).rows;
     assert.equal(raceFinal.length,1);assert.equal((await creditBalance(pool,owner)).frozen,0);
     const audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
+    const all=(await send('GET','/api/v1/credits/consumption-history')).json().items;
+    assert.equal(all.find((r:any)=>r.run_id===id).corrected_points,P);
+    assert.equal(all.find((r:any)=>r.run_id===lastRun.json().run_id).charged_points,0);
+    assert.equal(all.find((r:any)=>r.run_id===lastRun.json().run_id).released_points,lastQuote.quote.points);
+    let cursor:string|undefined;const paged:string[]=[];do{const page=await send('GET','/api/v1/credits/consumption-history?limit=2'+(cursor?'&cursor='+cursor:''));assert.equal(page.statusCode,200,page.body);paged.push(...page.json().items.map((r:any)=>r.reservation_id));cursor=page.json().page.next_cursor??undefined;}while(cursor);
+    assert.deepEqual(paged,all.map((r:any)=>r.reservation_id));assert.equal(new Set(paged).size,paged.length);
+    assert.equal((await send('GET','/api/v1/credits/recharge-history')).json().items.length,0,'manual/legacy grants are not payment orders');
+    const firstPage=(await send('GET','/api/v1/credits/consumption-history?limit=1')).json();assert.ok(firstPage.page.next_cursor);
+    assert.equal((await send('GET','/api/v1/credits/consumption-history?cursor=not-a-cursor')).statusCode,422);
+    actor='foreign';assert.equal((await send('GET','/api/v1/credits/consumption-history')).json().items.length,0);
+    assert.equal((await send('GET','/api/v1/credits/consumption-history?cursor='+firstPage.page.next_cursor)).statusCode,422);
+    actor=owner;
     actor='foreign';assert.equal((await send('GET',`/api/v1/runs/${id}`)).statusCode,404);
     assert.equal((await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:1,input_hash:i.input_hash})).statusCode,404);
     assert.deepEqual((await send('GET','/api/v1/credits/balance')).json(),{enabled:true,available:0,frozen:0});

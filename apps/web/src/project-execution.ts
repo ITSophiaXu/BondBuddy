@@ -1,6 +1,6 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
-import { BILLING_TASKS, reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
+import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -147,6 +147,7 @@ export class ProjectExecution {
   private chargeRefreshPending = false;
   private chargeError = false;
   private paidEnabled?: boolean;
+  private awaitingCredits = new URLSearchParams(location.hash.split('?')[1] ?? '').get('resume') === 'credits';
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
@@ -287,19 +288,19 @@ export class ProjectExecution {
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote?.shortage);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…')
-      : this.quote?.enabled && this.quote.quote ? '确认并开始更新'
+      : this.awaitingCredits ? '继续更新'
       : this.nextRequested ? '生成新版' : '开始编制';
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
-    quoteHost.hidden=!q?.enabled||!q.quote||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=q?.enabled&&q.quote?`<div class="fixed-quote"><h3>本次需要 ${q.quote.points.toLocaleString('zh-CN')} 积分</h3><p>${esc(BILLING_TASKS[q.quote.task_type])}</p><p>${esc(q.quote.reason)}</p><p>可用 ${q.balance.available.toLocaleString('zh-CN')} 积分${q.shortage?`，还差 ${q.shortage.toLocaleString('zh-CN')} 积分`:`，预留后可用 ${(q.balance.available-q.quote.points).toLocaleString('zh-CN')} 积分`}</p><p class="muted">确认后预留本次积分；修订版和清洁版 Word 可下载后扣费，失败或取消返还。</p>${q.shortage?`<a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a>`:''}<button type="button" class="text-button" id="refresh-quote">刷新报价与余额</button></div>`:'';
+    quoteHost.hidden=!q?.shortage||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
+    quoteHost.innerHTML=q?.shortage?`<div class="fixed-quote"><h3>积分不足，请充值后继续更新</h3><p>项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote());});
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
-    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q?.quote);
+    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q?.shortage);
     billingHint.textContent = this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
-      : '开始前会展示本次所需积分，确认报价后才会启动付费任务。';
+      : '成功交付成果后扣除积分；失败或取消不扣费。';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -369,7 +370,10 @@ export class ProjectExecution {
       if (!this.active || !this.selected || !this.preflight) return;
       // Backend admission is authoritative; uncertainty alone does not add an upload review step.
       if (this.preflight.status === 'blocked') return;
-      if(this.preflight.billing_mode==='fixed_credits'&&!this.quote){await this.action(()=>this.loadQuote());return;}
+      if(this.preflight.billing_mode==='fixed_credits'){
+        if(!this.quote || this.quote.shortage)await this.action(()=>this.loadQuote());
+        if(!this.quote?.enabled || !this.quote.quote || this.quote.shortage)return;
+      }
       await this.execute();
     } finally { this.starting = false; this.render(); }
   }
@@ -377,8 +381,8 @@ export class ProjectExecution {
     if(!this.input||!this.selected)return;
     const generation=this.generation,input=this.input;
     const quote=await this.api.creditQuote(this.id,{input_revision:input.input_revision,input_hash:input.input_hash},this.controller.signal);
-    if(quote.enabled&&!quote.quote)throw new ApiError(409,'QUOTE_REQUIRED');
-    if(this.active&&generation===this.generation){this.quote=quote;this.render();}
+    if(!quote.enabled||!quote.quote)throw new ApiError(409,'QUOTE_REQUIRED');
+    if(this.active&&generation===this.generation){this.quote=quote;if(quote.shortage)this.awaitingCredits=true;this.render();}
   }
   private async changeRun(action: 'cancel' | 'resume') {
     if (!this.run || action === 'resume' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
@@ -401,7 +405,7 @@ export class ProjectExecution {
     catch (error) {
       if (this.active) {
         if(error instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED','CREDITS_INSUFFICIENT'].includes(error.code)) {
-          this.quote=undefined;
+          this.quote=undefined;this.awaitingCredits=true;
           if(error.code==='QUOTE_REQUIRED')this.preflight=undefined;
           else {try{await this.loadQuote();}catch{/* Explicit retry keeps the task unstarted. */}}
         }
@@ -409,7 +413,7 @@ export class ProjectExecution {
           ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials, this.draft.fields.update_details.authoring_mode === 'unified_v1') : undefined;
         this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
           (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
-        this.message = inputMessage ??
+        this.message = inputMessage ?? (error instanceof ApiError && error.code==='CREDITS_INSUFFICIENT' ? '积分不足，请充值后继续更新。' : error instanceof ApiError && error.code==='QUOTE_CHANGED' ? '计费条件已更新，请点击继续更新。' : error instanceof ApiError && error.code==='QUOTE_REQUIRED' ? '积分核验暂不可用，请稍后重新开始。' : undefined) ??
           (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
             ? operation === 'preflight' && error.status === 409
               ? `材料或处理条件尚未就绪，请稍后重新检查；持续未恢复时联系支持。${errorReference(error)}`

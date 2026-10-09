@@ -9,3 +9,5 @@
 - 用户名目前同时作为登录名，现有 API 没有修改接口。本次未增加改名能力，不将显示名称编辑冒充登录账号修改。
 
 原型：product-prototype/public/account-credits.html。实现：apps/web/src/account.ts、account.css、billing-page.ts、main.ts。关联 #361、#36。无 API、公共契约、数据库或 worker 改动。
+
+2026-10-09 #630：按用户要求在同一账号页面的充值区下方补齐[积分消耗与充值记录](2026-10-09-account-credit-history.md)，其余简化布局继续沿用。

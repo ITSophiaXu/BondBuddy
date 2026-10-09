@@ -24,7 +24,7 @@ import { reviewFileStage } from './review-file-stage.js';
 const database = await isolatedTestDatabase(undefined, 'review-files');
 const connection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const python = process.env.BONDBUDDY_TEST_PYTHON;
-test('file-only review: immutable input → plain CLI → Word → crash recovery without resend → owner download',
+for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: source comments → crash recovery without resend → owner download`,
   { skip: process.platform !== 'linux' || !database || !connection || !python, timeout: 180000 }, async () => {
     const pool = new Pool({ connectionString: database }), directory = await mkdtemp(join(tmpdir(), 'bb-review-file-pg-'));
     const container = `bb-review-file-${randomUUID().replaceAll('-', '')}`, blobs = azureBlobs(connection!, container);
@@ -38,8 +38,9 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `rf_${randomUUID().slice(0, 8)}`]);
       const created = await send('POST', '/api/v1/projects', { kind: 'review', name: 'Synthetic file review', issuer_name: '合成目标发行人', market: 'sse', offering: 'private' });
       assert.equal(created.statusCode, 201, created.body); const project = created.json().project_id;
-      const bytes = makeWorkerDocxFixture({ externalLink: false }), declared = { byte_size: bytes.length, sha256: digest(bytes) };
-      const upload = await send('POST', `/api/v1/projects/${project}/materials/uploads`, { ...declared, filename: 'synthetic-source.docx', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', role: 'historical' });
+      const pdfCode="import sys;from pypdf import PdfWriter;from pypdf.generic import DictionaryObject,NameObject,DecodedStreamObject;w=PdfWriter();p=w.add_blank_page(612,792);s=DecodedStreamObject();s.set_data(b'BT /F1 12 Tf 50 700 Td (Synthetic worker upload fixture) Tj ET');p[NameObject('/Resources')]=DictionaryObject({NameObject('/Font'):DictionaryObject({NameObject('/F1'):DictionaryObject({NameObject('/Type'):NameObject('/Font'),NameObject('/Subtype'):NameObject('/Type1'),NameObject('/BaseFont'):NameObject('/Helvetica')})})});p[NameObject('/Contents')]=w._add_object(s);from io import BytesIO;b=BytesIO();w.write(b);sys.stdout.buffer.write(b.getvalue())";
+      const bytes = format==='docx' ? makeWorkerDocxFixture({ externalLink: false }) : (await promisify(execFile)(python!,['-c',pdfCode],{encoding:'buffer'})).stdout, declared = { byte_size: bytes.length, sha256: digest(bytes) };
+      const upload = await send('POST', `/api/v1/projects/${project}/materials/uploads`, { ...declared, filename: `synthetic-source.${format}`, media_type: format==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document', role: 'historical' });
       assert.equal(upload.statusCode, 201, upload.body);
       assert.equal((await send('PUT', upload.json().upload_url, bytes, { 'content-type': 'application/octet-stream' })).statusCode, 204);
       const completed = await send('POST', `/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`, declared);
@@ -67,16 +68,46 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_reports WHERE run_id=$1', [runId])).rows[0].n, 0);
       const response = await send('GET', `/api/v1/projects/${project}/review-workspace`);
       assert.equal(response.statusCode, 200, response.body); const workspace = response.json();
-      assert.equal(workspace.selected_report, null); assert.equal(workspace.artifact_run.run_id, runId); assert.equal(workspace.artifacts.length, 1);
-      const artifact = workspace.artifacts[0]; assert.equal(artifact.kind, 'report');
+      assert.equal(workspace.selected_report, null); assert.equal(workspace.artifact_run.run_id, runId); assert.equal(workspace.artifacts.length, 2);
+      const artifact = workspace.artifacts.find((a:any)=>a.kind==='report'); assert.equal(artifact.kind, 'report');
       const meta = await send('GET', `/api/v1/artifacts/${artifact.artifact_id}`);
-      assert.equal(meta.statusCode, 200, meta.body); assert.equal(meta.json().run_id, runId);
+      assert.equal(meta.statusCode, 200, meta.body); assert.equal(meta.json().run_id, runId);assert.equal(meta.json().filename,artifact.filename);assert.match(artifact.filename,/_复核报告_V1_[0-9]{8}\.docx$/);
       const download = await send('GET', meta.json().download_url);
-      assert.equal(download.statusCode, 200, download.body); assert.equal(digest(download.rawPayload), meta.json().sha256);
+      assert.equal(download.statusCode, 200, download.body); assert.equal(digest(download.rawPayload), meta.json().sha256);assert.ok(download.headers['content-disposition']?.includes(encodeURIComponent(artifact.filename)));
       const outputPath = join(directory, 'report.docx'); await writeFile(outputPath, download.rawPayload);
       const parsed = await promisify(execFile)(python!, ['-c', "import sys;from docx import Document;print('\\n'.join(p.text for p in Document(sys.argv[1]).paragraphs))", outputPath], { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
       assert.match(parsed.stdout, /合成金额100与120不一致/); assert.match(parsed.stdout, /公开检索未执行/);
-      assert.equal((await send('GET', `/api/v1/projects/${project}/review-history`)).json().items[0].artifacts[0].artifact_id, artifact.artifact_id);
+      assert.equal((await send('GET', `/api/v1/projects/${project}/review-history`)).json().items[0].artifacts.find((a:any)=>a.kind==='report').artifact_id, artifact.artifact_id);
+      assert.equal((await send('GET', `/api/v1/projects/${project}/review-history`)).json().items[0].artifacts.find((a:any)=>a.kind==='report').filename,artifact.filename);
+      const annotated=workspace.artifacts.find((a:any)=>a.kind==='comments');
+      assert.ok(annotated.filename.endsWith('.'+format));
+      const annotationMeta=await send('GET',`/api/v1/artifacts/${annotated.artifact_id}`);assert.equal(annotationMeta.statusCode,200,annotationMeta.body);
+      const annotationDownload=await send('GET',annotationMeta.json().download_url);assert.equal(annotationDownload.statusCode,200);
+      assert.equal(digest(annotationDownload.rawPayload),annotationMeta.json().sha256);
+      assert.equal(annotationMeta.json().filename,annotated.filename);
+      const annotationPath=join(directory,`comments.${format}`);await writeFile(annotationPath,annotationDownload.rawPayload);
+      const check= format==='docx' ? "import sys;from zipfile import ZipFile;from lxml import etree;z=ZipFile(sys.argv[1]);c=etree.fromstring(z.read('word/comments.xml'));assert len(c)==1;assert 'R001' in ''.join(c.itertext())" : "import sys;from pypdf import PdfReader;p=PdfReader(sys.argv[1]).pages[0];assert len(p['/Annots'])==1;assert 'R001' in p['/Annots'][0].get_object()['/Contents'];assert 'Synthetic worker upload fixture' in p.extract_text()";
+      await promisify(execFile)(python!,['-c',check,annotationPath]);
+      active=randomUUID();assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,404);active=owner;
+      const storedAnnotation=(await pool.query('SELECT object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2',[owner,annotated.artifact_id])).rows[0];
+      if(format==='pdf') {
+        const rejectChange=async(set:string)=>assert.rejects(pool.query(`UPDATE bb_artifact_versions SET ${set} WHERE id=$1`,[annotated.artifact_id]),(e:any)=>e.code==='23514');
+        await rejectChange('review_pdf_delivery_evidence_id=NULL');
+        await rejectChange("sha256=repeat('0',64)");
+        await rejectChange("object_key='wrong/private/key'");
+        await rejectChange("media_type='text/plain'");
+        await rejectChange("delivery_status='test_only'");
+        await assert.rejects(pool.query('UPDATE bb_review_pdf_delivery_evidence SET byte_size=byte_size+1 WHERE artifact_id=$1',[annotated.artifact_id]),(e:any)=>e.code==='23514');
+        await assert.rejects(pool.query('DELETE FROM bb_review_pdf_delivery_evidence WHERE artifact_id=$1',[annotated.artifact_id]),(e:any)=>e.code==='23514');
+        await pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1",[annotated.artifact_id]);
+        assert.notEqual((await send('GET',annotationMeta.json().download_url)).statusCode,200);
+        await pool.query("UPDATE bb_artifact_versions SET delivery_status='available' WHERE id=$1",[annotated.artifact_id]);
+        assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,200);
+      }
+      await blobs.put(storedAnnotation.object_key,Buffer.from('corrupted'),annotationMeta.json().media_type);
+      assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,503,'corrupted annotations never download');
+      await blobs.put(storedAnnotation.object_key,annotationDownload.rawPayload,annotationMeta.json().media_type);
+      assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,200);
       const readablePath = `/api/v1/projects/${project}/review-executions/${runId}/readable-report`;
       const readable = await send('GET', readablePath);
       assert.equal(readable.statusCode, 200, readable.body); assert.equal(readable.json().status, 'available');
@@ -93,6 +124,7 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       assert.equal((await send('GET', meta.json().download_url)).statusCode, 200, 'optional text failure preserves Word');
       assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [runId])).rows[0].state, 'succeeded');
       assert.equal((await readFile(marker, 'utf8')).trim().split('\n').length, 1, 'reading never re-executes');
+      if(format==='pdf')return; // PDF overlay delivery/ownership verified above; existing update regression remains DOCX.
       const updateRequest={execution_request_id:randomUUID(),source_run_id:runId,requirements:'保留历史名称，依据复核报告修改本期金额。'};
       const updatePath=`/api/v1/projects/${project}/review-updates`;
       active=randomUUID();assert.equal((await send('POST',updatePath,updateRequest)).statusCode,404);active=owner;

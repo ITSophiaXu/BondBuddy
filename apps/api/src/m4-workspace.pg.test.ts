@@ -494,7 +494,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[r.run_id])).rows[0].n,1);
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_metering WHERE run_id=$1',[r.run_id])).rows[0].n,0,'fixed price must not fabricate metering');
       const delivered=(await ok('GET',path(t,'workspace'))).artifacts.filter((a:any)=>a.run_id===r.run_id);assert.equal(delivered.length,2);
-      for(const a of delivered){assert.equal(a.revision_number,number);assert.match(a.filename,new RegExp(`第${number}稿`));const download=await send('GET',`/api/v1/m4/artifacts/${a.artifact_id}/versions/1/bytes`);assert.equal(download.statusCode,200,download.body);assert.equal(digest(download.rawPayload),a.sha256);}
+      for(const a of delivered){assert.equal(a.revision_number,number);assert.match(a.filename,new RegExp(`_V${number}_[0-9]{8}\\.docx$`));const download=await send('GET',`/api/v1/m4/artifacts/${a.artifact_id}/versions/1/bytes`);assert.equal(download.statusCode,200,download.body);assert.equal(digest(download.rawPayload),a.sha256);assert.ok(download.headers['content-disposition']?.includes(encodeURIComponent(a.filename)));const meta=await ok('GET',`/api/v1/artifacts/${a.artifact_id}`);assert.equal(meta.filename,a.filename);}
       return delivered.find((a:any)=>a.kind==='document');};
     const doc1=await makePair(await executeDoc(4),1);
     ws=await ok('GET',path(t,'workspace'));const {version:_iv,sha256:_ih,updated_at:_it,...currentInit}=ws.drafts.init;

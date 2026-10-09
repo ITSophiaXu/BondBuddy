@@ -27,12 +27,14 @@ export async function renderDataPolicyPage(api: ApiClient, shell: (content: stri
 }
 
 /** Delegated handlers for `data-delete-material` buttons and the `#delete-project` button on the project page. */
-export function bindDeletionActions(api: ApiClient, projectId: string, done: { material: () => void; project: () => void; error: (error: unknown) => void }) {
+export function bindDeletionActions(api: ApiClient, projectId: string, done: { canEdit?: () => boolean; material: (materialId: string) => void; project: () => void; error: (error: unknown) => void }) {
+  const deleting = new Set<string>();
   document.querySelector('#materials-title')?.closest('section')?.addEventListener('click', event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-delete-material]');
-    if (!button || button.matches(':disabled') || !window.confirm('删除后这份材料立即无法访问，原件和衍生内容会按数据说明中的时限清理，无法恢复。确定删除吗？')) return;
-    button.disabled = true;
-    api.deleteMaterial(projectId, button.dataset.deleteMaterial!).then(done.material, error => { button.disabled = false; done.error(error); });
+    if (!button || button.matches(':disabled') || done.canEdit?.() === false || deleting.has(button.dataset.deleteMaterial!) || !window.confirm('删除后这份材料立即无法访问，原件和衍生内容会按数据说明中的时限清理，无法恢复。确定删除吗？')) return;
+    const materialId = button.dataset.deleteMaterial!;
+    deleting.add(materialId); button.disabled = true;
+    api.deleteMaterial(projectId, materialId).then(() => done.material(materialId), error => { button.disabled = false; done.error(error); }).finally(() => deleting.delete(materialId));
   });
   const projectButton = document.querySelector<HTMLButtonElement>('#delete-project');
   projectButton?.addEventListener('click', () => {

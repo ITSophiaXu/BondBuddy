@@ -81,6 +81,8 @@ def _boundary(paragraph, offset):
 
 
 def _comment_text(finding):
+    if finding.get("comment_text"):
+        return finding["comment_text"]
     lines = [f"{finding['finding_id']} · {finding['severity']} · {finding['title']}", finding["description"]]
     if finding.get("check_status") == "carried_forward":
         lines.append(f"沿用报告 {finding['origin_report_id']} 的发现，本轮未据此认定通过。")

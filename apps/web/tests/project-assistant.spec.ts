@@ -28,7 +28,7 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   else if(path.startsWith('/synthetic-upload/')){if(uploads[Number(path.split('/').at(-1))].filename==='first.txt')await new Promise<void>(resolve=>{releaseUpload=resolve;});await route.fulfill({status:204});return;}
   else if(path.endsWith('/complete')){const id=path.split('/').at(-2)!,u=uploads[Number(id)];body={...u,material_id:'material-'+id,material_version:1,state:'persisted'};}
   else if(path==='/m4/topics/topic/materials'){const pin=req.postDataJSON().material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
-  else if(path==='/artifacts/result')body={artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
+  else if(path==='/artifacts/result')body={filename:'合成项目_复核报告_V2_20261009.txt',artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
   else if(path==='/artifacts/result/download'){await route.fulfill({contentType:'text/plain',body:delivered});return;}
   else if(path.endsWith('/messages')){const b=req.postDataJSON();messages.push(b);w.messages.push({message_id:'message',role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context},
     {message_id:'answer',role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message:w.messages[0],run:{run_id:'qa'}};}
@@ -48,6 +48,20 @@ test('global launcher preserves unsent text across navigation, collapse, reload 
 test('paid QA shows real cap, sends only after confirmation and preserves requested content',async({page})=>{
  const s=await setup(page,{paid:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('20');expect(s.messages).toHaveLength(0);await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].content).toBe('解释担保条款');expect(s.messages[0].execute).toBeUndefined();expect(s.quoteReads()).toBe(1);
+});
+
+test('update card has no upfront price and recharge retains the project',async({page})=>{
+ const s=await setup(page);s.w.view.assistant={...s.w.view.assistant,draft_token:'draft',prepared_card_id:'update-card'};
+ const key=createHash('sha256').update(JSON.stringify(['source-project',1,hash])).digest('hex');
+ const card:any={card_id:'update-card',operation:'update',project_id:'source-project',project_name:'合成更新项目',draft_token:'draft',created_at:now,
+  input_revision:1,input_hash:hash,execution_request_id:'web-update-'+key,quote_id:'update-quote',quote:{points:17900},balance:{available:1,frozen:0},material_names:['原稿.docx'],requirements:'仅更新本期',baseline:null,run:null};s.cards.push(card);
+ await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task')).toContainText('仅更新本期');
+ await expect(page.locator('.ba-task .ba-credits')).toHaveCount(0);
+ await expect(page.locator('.ba-task a.ba-primary')).toHaveAttribute('href','#/account?project=source-project');
+ card.balance.available=17900;
+ await expect(page.locator('.ba-task').getByRole('button',{name:'开始更新',exact:true})).toBeVisible({timeout:12000});expect(s.executions).toHaveLength(0);
+ await page.locator('.ba-task').getByRole('button',{name:'开始更新',exact:true}).click();
+ await expect.poll(()=>s.executions.length).toBe(1);expect(s.executions[0].quote_id).toBe('update-quote');
 });
 test('fixed QA states the exact price and success/failure terms before confirmation',async({page})=>{
  const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
@@ -78,10 +92,13 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('[data-requirements]').fill('只润色摘要，不改数字');await page.locator('[data-a=prepare]').click();await expect(page.locator('.ba-task')).toContainText('4,500');expect(s.executions).toHaveLength(0);
  await page.locator('[data-a=edit]').click();await page.locator('[data-requirements]').fill('新增一个风险提示段落');await expect(page.locator('[data-a=execute]')).toHaveCount(0);
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-a=execute]')).toHaveCount(1);await page.locator('[data-a=execute]').click();await expect.poll(()=>s.executions.length).toBe(1);
+ await page.locator('.ba-header [data-a=hide]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
+ expect(s.cards.at(-1).run.state).toBe('queued');expect(s.executions).toHaveLength(1);
+ await page.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
  if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
  await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});
- const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('BondBuddy-复核报告.txt');expect(s.executions).toHaveLength(1);
+ const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('合成项目_复核报告_V2_20261009.txt');expect(s.executions).toHaveLength(1);
 });
 
 test('approved prototype comparison capture',async({page})=>{
@@ -96,5 +113,49 @@ test('approved prototype comparison capture',async({page})=>{
   await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir,'prototype-panel.png')});
   await page.setViewportSize({width:390,height:960});
   await page.screenshot({path:resolve(evidenceDir,'prototype-390.png')});
+ }
+});
+
+for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844],['narrow',320,740],['zoom-equivalent',720,480]] as const)
+test('assistant can hide completely and restore without losing text - '+name,async({page})=>{
+ await page.setViewportSize({width,height});
+ const s=await setup(page);
+ // A synthetic underlying action occupies exactly the obstructed launcher area.
+ await page.evaluate(()=>{const b=document.createElement('button');b.id='underlying-action';b.textContent='保存项目';b.style.cssText='position:fixed;right:12px;bottom:12px;width:220px;height:56px;z-index:1';b.onclick=()=>b.dataset.clicked='true';document.querySelector('main')!.append(b);});
+ await page.locator('.ba-hide-launcher').click();
+ await expect(page.locator('.bb-assistant')).toBeHidden();
+ await page.locator('#underlying-action').click();
+ await expect(page.locator('#underlying-action')).toHaveAttribute('data-clicked','true');
+ const restore=async()=>{
+   const menu=page.getByRole('button',{name:'打开菜单',exact:true});if(await menu.isVisible())await menu.click();
+   await page.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();
+   await expect(page.locator('.ba-panel')).toBeVisible();
+ };
+ await restore();
+ await page.locator('[data-composer]').fill('隐藏后仍保留的未发送文字');
+ await expect.poll(()=>s.w.view.unsent_content).toBe('隐藏后仍保留的未发送文字');
+ await page.locator('.ba-header [data-a=hide]').click();
+ await page.reload();
+ await expect(page.locator('.bb-assistant')).toBeHidden();
+ await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+ await restore();
+ await expect(page.locator('[data-composer]')).toHaveValue('隐藏后仍保留的未发送文字');
+ const hideBox=await page.locator('.ba-header [data-a=hide]').boundingBox();
+ expect(hideBox!.x).toBeGreaterThanOrEqual(0);expect(hideBox!.x+hideBox!.width).toBeLessThanOrEqual(width);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
+ const evidence=process.env.BB_HIDE_ASSISTANT_EVIDENCE_DIR;
+ if(evidence&&['desktop','mobile'].includes(name)){
+   await mkdir(evidence,{recursive:true});await page.screenshot({path:resolve(evidence,'implementation-open-'+name+'.png')});
+   const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+   await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));
+   await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('隐藏后仍保留的未发送文字');
+   await prototype.screenshot({path:resolve(evidence,'prototype-open-'+name+'.png')});
+   await prototype.locator('.ba-header [data-a=hide]').click();await expect(prototype.locator('.bb-assistant')).toBeHidden();
+   await prototype.screenshot({path:resolve(evidence,'prototype-hidden-'+name+'.png')});
+   await prototype.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();await expect(prototype.getByRole('textbox')).toHaveValue('隐藏后仍保留的未发送文字');await prototype.close();
+   await page.locator('.ba-header [data-a=hide]').click();
+   const menu=page.getByRole('button',{name:'打开菜单',exact:true});if(await menu.isVisible())await menu.click();
+   await page.screenshot({path:resolve(evidence,'implementation-hidden-'+name+'.png')});
  }
 });

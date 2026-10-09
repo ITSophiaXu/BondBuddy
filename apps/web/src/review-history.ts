@@ -41,7 +41,7 @@ export class ReviewHistory {
             const entry=items.find(item=>item.artifacts.some(a=>a.artifact_id===artifact.artifact_id));
             if(metadata.artifact_id!==artifact.artifact_id||metadata.version!==artifact.artifact_version||metadata.run_id!==entry?.run.run_id||metadata.quality_status!=='passed')throw new ApiError(0,'DATA_UNAVAILABLE');
             const bytes = await this.api.artifactBytes(metadata, controller.signal);
-            if (!controller.signal.aborted) this.downloads.save(bytes,artifact.filename);
+            if (!controller.signal.aborted) this.downloads.save(bytes,metadata.filename ?? artifact.filename);
           } catch(error) { if(!controller.signal.aborted) content.querySelector('#review-history-status')!.textContent=artifactError(error); }
           finally { button.disabled=false; }
         }));
