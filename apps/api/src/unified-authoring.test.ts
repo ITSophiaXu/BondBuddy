@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { MARKET_OFFERINGS, emptyUpdateDetails, UpdateDetailsSchema, updateDetailsErrors, type Market, type Offering, type ProjectMessageSetPin, type SourceProspectus } from '@bondbuddy/contracts';
-import { lockUnifiedAuthoring } from './unified-authoring.js';
+import { assertAuthoringSourceInformation, lockUnifiedAuthoring } from './unified-authoring.js';
 import { digest } from './data.js';
 const messages={version:0,content_sha256:'0'.repeat(64),members:[],message_ids:[]} as ProjectMessageSetPin;
 const source: SourceProspectus = { material_id:'source-a',material_version:1,sha256:'a'.repeat(64),issuer_name:'合成母公司',relation:'parent',market:'sse',offering:'private',reporting_periods:[],status:'user_asserted' };
@@ -31,4 +31,12 @@ test('source metadata uses public enums and validates dates without converting u
   assert.equal(Value.Check(UpdateDetailsSchema,{...details,source_prospectuses:[{...source,status:'verified'}]}),false);
   assert.equal(updateDetailsErrors({...details,source_prospectuses:[{...source,market:'nafmii'}]})[0].code,'invalid_source_scope');
   assert.equal(updateDetailsErrors({...details,source_prospectuses:[source,source]})[0].code,'duplicate_source');
+});
+
+test('source-name-free declarations pass the same API gate used by input locking, quote and execute', () => {
+  const material = { material_id: source.material_id, material_version: 1, sha256: source.sha256, role: 'historical' };
+  const declared = { ...source, issuer_name: null, reporting_periods: [{start:'2024-01-01',end:'2024-12-31',period_kind:'annual' as const,scope:null,status:'user_asserted' as const,evidence_refs:[]}] };
+  assert.doesNotThrow(() => assertAuthoringSourceInformation([material], [declared]));
+  assert.throws(() => assertAuthoringSourceInformation([material], [{...declared,relation:null}]), /企业关系/);
+  assert.throws(() => assertAuthoringSourceInformation([{...material,material_version:2}], [declared]), /INPUT_REQUIRED|补齐/);
 });

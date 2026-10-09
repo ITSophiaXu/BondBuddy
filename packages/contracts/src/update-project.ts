@@ -64,7 +64,6 @@ export type SourceMaterialPin = { material_id: string; material_version: number;
 /** Draft fields stay nullable while editing. New authoring submissions require a declaration for every selected source. */
 export function sourceProspectusMissingFields(source?: SourceProspectus): string[] {
   const missing: string[] = [];
-  if (!source?.issuer_name?.trim()) missing.push('原发行人名称');
   if (!source?.relation || !Object.hasOwn(SOURCE_RELATIONS, source.relation)) missing.push('企业关系');
   if (!source?.market || !MARKETS.includes(source.market)) missing.push('原发行市场');
   if (!source?.offering || !source.market || !(MARKET_OFFERINGS[source.market] as readonly string[] | undefined)?.includes(source.offering)) missing.push('原品种');
