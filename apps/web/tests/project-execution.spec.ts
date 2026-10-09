@@ -4,7 +4,7 @@ import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
 import { join, resolve } from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 // Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
@@ -176,12 +176,12 @@ async function prepare(page: Page) {
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
 }
 
-test('M2 shortage preserves inputs, recharge never executes, returning requires confirmed quote',async({page})=>{
+test('M2 shortage preserves inputs, recharge never executes, returning starts directly',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.project.update_details!.authoring_mode='unified_v1';
   await page.setViewportSize({width:1440,height:960});await setup(page,state);
-  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('还差 1 积分');
+  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足，请充值后继续更新');
   expect(state.executes).toHaveLength(0);await expect(page.locator('#execute-input')).toBeDisabled();
-  const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'m2-quote-desktop.png')});}
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-shortage-1440.png')});await page.setViewportSize({width:390,height:844});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-shortage-390.png')});await page.setViewportSize({width:1440,height:960});}
   await page.locator('#fixed-quote').getByRole('link',{name:'充值积分',exact:true}).click();
   await expect(page.getByRole('heading',{name:'按需充值',exact:true})).toBeVisible();
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-desktop.png')});
@@ -196,30 +196,34 @@ test('M2 shortage preserves inputs, recharge never executes, returning requires 
   state.order!.state='paid';state.order!.credited_at=now;state.available+=20000;
   await page.getByRole('button',{name:'刷新支付状态'}).click();await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
   expect(state.executes).toHaveLength(0);
-  await page.getByRole('link',{name:'返回项目确认开始'}).first().click();
-  await page.locator('#execute-input').click();await expect(page.locator('#execute-input')).toHaveText('确认并开始更新');
-  expect(state.executes).toHaveLength(0);await page.locator('#execute-input').click();
+  await page.getByRole('link',{name:'返回项目继续更新'}).first().click();
+  await expect(page.locator('#execute-input')).toHaveText('继续更新');expect(state.executes).toHaveLength(0);
+  await page.locator('#execute-input').click();
   await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('quote-test-v1');
   expect(state.inputs.at(-1)!.material_versions).toEqual(state.inputs[0].material_versions);
 });
-test('M2 price change refreshes the displayed quote and requires another confirmation',async({page})=>{
+test('M2 a changed price is checked again without revealing or confirming the amount',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.available=999999;
-  await setup(page,state);await page.locator('#execute-input').click();
-  await expect(page.locator('#fixed-quote')).toContainText('17,900');
-  state.points=20000;state.priceVersion='test-v2';state.executeError={status:409,code:'QUOTE_CHANGED',correlation_id:'synthetic'};
-  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('20,000');
-  expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(0);
-  state.executeError=undefined;await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
+  await setup(page,state);let reject=true;
+  await page.route('**/api/v1/runs/execute',async route=>{
+    if(route.request().method()!=='POST'||!reject)return route.fallback();
+    reject=false;state.executes.push(route.request().postDataJSON());state.points=20000;state.priceVersion='test-v2';
+    return json(route,409,{code:'QUOTE_CHANGED'});
+  });
+  await page.locator('#execute-input').click();await expect(page.locator('#execution-message')).toContainText('计费条件已更新');
+  await expect(page.locator('#fixed-quote')).toBeHidden();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(0);
+  await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
   expect(state.executes[1].quote_id).toBe('quote-test-v2');
 });
+
 test('M2 a legacy empty quote cannot offer a new free task',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.freeClassification=true;
   await setup(page,state);await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('请查看本次任务报价后确认开始');
+  await expect(page.locator('#execution-message')).toContainText('积分核验暂不可用');
   await expect(page.getByRole('button',{name:'按 M1 免费编制'})).toHaveCount(0);
   await expect(page.locator('#fixed-quote')).toBeHidden();expect(state.executes).toHaveLength(0);
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('请查看本次任务报价后确认开始');
+  await expect(page.locator('#execution-message')).toContainText('积分核验暂不可用');
   expect(state.executes).toHaveLength(0);
 });
 test('M2 missing uploaded source metadata blocks the next action before quote or execution',async({page})=>{
@@ -1172,18 +1176,17 @@ for (const scenario of [
   expect(errors).toEqual([]);
 });
 
-test('credit visibility: quote precedes execution and running receipt follows settlement and retry',async({page})=>{
+test('credit visibility: one click starts and running receipt follows settlement and retry',async({page})=>{
   const state=fixture(); state.paid=true; state.checkStatus='ready'; state.available=100000; state.runState='running'; state.runStage='provider_call';
   await page.setViewportSize({width:1440,height:960}); await setup(page,state);
-  await expect(page.locator('#execution-credit-hint')).toContainText('确认报价后');
-  await page.locator('#execute-input').click();
-  await expect(page.locator('#fixed-quote')).toContainText('本次需要 17,900 积分');
-  await expect(page.locator('#fixed-quote')).toContainText('预留后可用 82,100 积分');
-  expect(state.executes).toHaveLength(0);
+  await expect(page.locator('#execution-credit-hint')).toContainText('成功交付成果后扣除积分');
+  await expect(page.locator('#fixed-quote')).toBeHidden();
   const evidence=process.env.BB_UX_EVIDENCE_DIR;
-  if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-quote.png')});}
-  state.available=82100; state.frozen=17900;
-  await page.locator('#execute-input').click();
+  if(evidence){await mkdir(evidence,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:width===1440?960:844});await page.locator('#execute-input').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,`implementation-ready-${width}.png`)});}}
+  await page.setViewportSize({width:1440,height:960});
+  await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);
+  state.available=82100;state.frozen=17900;await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));
+  await expect(page.locator('#fixed-quote')).toBeHidden();
   await expect(page.locator('.task-credit-receipt')).toContainText('17,900 积分 · 已预留');
   await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('100,000');await expect(page.locator('.credit-wallet')).toContainText('可用 82,100');
   await expect(page.locator('.credit-wallet')).toContainText('任务已预留 17,900');
@@ -1218,7 +1221,7 @@ test('credit visibility: an in-flight old receipt is refreshed after the run com
     const first=++reads===1;if(first)await new Promise<void>(resolve=>{release=resolve;});
     return json(route,200,{quote:{points:17900},state:first?'held':'settled'});
   });
-  await page.locator('#execute-input').click();await page.locator('#execute-input').click();
+  await page.locator('#execute-input').click();
   await expect.poll(()=>reads).toBe(1);
   [...state.runs.values()][0].state='succeeded';
   await expect(page.locator('#execution-progress')).toContainText('文档已生成，可下载',{timeout:12000});
@@ -1336,4 +1339,33 @@ test('uploaded source without an issuer name can start and preserves target iden
   await page.locator('#execute-input').click();
   await expect.poll(()=>state.executes.length).toBe(1);
   expect(state.project.update_details!.source_prospectuses![0].issuer_name).toBeNull();
+});
+
+for(const width of [1440,390])test(`M2 exact balance: single click and retries retain one execution ${width}`,async({page})=>{
+ const state=fixture();state.paid=true;state.available=state.points;state.checkStatus='ready';state.runState='running';state.runStage='provider_call';state.dropExecute=true;
+ await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
+ await page.locator('#execute-input').click();await expect(page.locator('#execution-message')).not.toBeEmpty();
+ await page.reload();await expect(page.locator('#execution-progress')).toContainText('编制募集书');
+ expect(state.runs.size).toBe(1);expect(state.executes).toHaveLength(1);
+ await expect(page.locator('#fixed-quote')).toBeHidden();
+});
+
+test('M2 balance refresh never starts and stale insufficient balance rejects before a run',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';await setup(page,state);
+ await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足');
+ state.available=state.points;await page.locator('#refresh-quote').click();await expect(page.locator('#fixed-quote')).toBeHidden();expect(state.executes).toHaveLength(0);
+ state.executeError={status:409,code:'CREDITS_INSUFFICIENT',correlation_id:'synthetic'};state.available=1;
+ await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足');expect(state.runs.size).toBe(0);
+});
+
+test('M2 deferred charge prototype screenshots',async({page})=>{
+ const output=process.env.BB_UX_EVIDENCE_DIR;test.skip(!output,'optional design evidence');
+ await page.route('http://prototype.test/**',async route=>{
+  const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});
+  try{await route.fulfill({body:await readFile('../../product-prototype/public'+path),contentType:path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/html'});}catch{await route.fulfill({status:404});}
+ });
+ for(const state of ['ready','shortage'])for(const width of [1440,390]){
+  await page.setViewportSize({width,height:width===1440?960:844});await page.goto('http://prototype.test/credit-visibility.html?state='+state);
+  await page.locator('.quote-area').scrollIntoViewIfNeeded();await page.screenshot({path:join(output!,`prototype-${state}-${width}.png`)});
+ }
 });

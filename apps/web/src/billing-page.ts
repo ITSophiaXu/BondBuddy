@@ -28,26 +28,26 @@ export class BillingPage {
     }catch(e){this.error=friendlyError(e);}
     if(this.active()){this.draw();this.schedule();this.scheduleHistory();}
   }
-  private back(){return this.projectId?`#/projects/${encodeURIComponent(this.projectId)}${this.reviewProject?'/review?tab=materials':'?step=materials'}`:'#dashboard';}
+  private back(){return this.projectId?`#/projects/${encodeURIComponent(this.projectId)}${this.reviewProject?'/review?tab=materials':'?step=materials&resume=credits'}`:'#dashboard';}
   private draw(){
     if(!this.active())return;
     const provider=document.querySelector<HTMLSelectElement>('#payment-provider')?.value;
     const faqOpen=document.querySelector<HTMLDetailsElement>('.billing-faq')?.open;
     const b=this.balance,c=this.config,o=this.order;
     const shortage=Math.max(0,(this.quote?.quote?.points??0)-(b?.available??0));
-    const returnLink=`<a class="btn secondary" href="${this.back()}">${this.projectId?'返回项目确认开始':'返回工作台'}</a>`;
-    const context=this.projectId?`<section class="notice"><span>${this.quote?.quote?`本次任务需要 ${number(this.quote.quote.points)} 积分，当前可用 ${number(b?.available??0)} 积分${shortage?`，还差 ${number(shortage)} 积分`:'，已足够开始'}。`:'项目材料与补充说明已保留。'}充值到账不会自动开始任务。</span>${returnLink}</section>`:'';
+    const returnLink=`<a class="btn secondary" href="${this.back()}">${this.projectId?(this.reviewProject?'返回项目确认开始':'返回项目继续更新'):'返回工作台'}</a>`;
+    const context=this.projectId?`<section class="notice"><span>${this.quote?.quote?shortage?'积分仍不足，请充值后继续更新。':'余额已满足更新条件，可返回项目继续更新。':'项目材料与补充说明已保留。'}充值到账不会自动开始任务。</span>${returnLink}</section>`:'';
     this.shell(`<section class="credit-overview" aria-labelledby="account-balance-title"><h2 id="account-balance-title">可用积分</h2><p class="account-balance-value">${b?number(b.available):'—'}<span>积分</span></p><p class="account-balance-note">上传、保存项目和下载已有成果免费</p>${b && b.frozen > 0 ? `<p class="credit-reservation">进行中任务预留 <strong>${number(b.frozen)}</strong> 积分<span>已从可用积分中预留，成功后扣除，失败或取消后返还。</span></p>` : ''}</section>
       <div class="account-billing-content">${this.error?`<p class="account-billing-error" role="alert">${esc(this.error)}</p>`:''}${context}
       ${o?`<div class="simple-payment-wrap"><section class="panel payment-card simple-payment"><span class="eyebrow">CREDIT RECHARGE</span><h2>${{pending:'等待支付确认',paid:'积分已到账',expired:'订单已过期',failed:'支付未完成'}[o.state]}</h2><p>${number(o.points)} 积分</p><div class="payment-amount">¥${money(o.amount_fen)}</div>
         ${o.state==='pending'&&o.checkout_url?.startsWith('https://')?`<a class="btn primary" href="${esc(o.checkout_url)}" target="_blank" rel="noopener noreferrer">前往${channel[o.provider]}</a>`:''}
         ${o.state==='pending'&&o.checkout_url?.startsWith('weixin://')?`<p>微信支付链接</p><a href="${esc(o.checkout_url)}" class="btn primary">打开微信支付</a>`:''}
         <button class="btn secondary" type="button" id="refresh-payment" ${this.busy?'disabled':''}>刷新支付状态</button>${returnLink}
-        <p>到账后请返回原项目确认开始。若支付结果暂未确认，请刷新状态，无需重复付款。</p><p class="muted">订单号：${esc(o.order_id)}</p><p>需要发票或支付差错处理时，请联系客服并提供订单号。</p></section></div>`:
+        <p>到账后请返回原项目继续任务。若支付结果暂未确认，请刷新状态，无需重复付款。</p><p class="muted">订单号：${esc(o.order_id)}</p><p>需要发票或支付差错处理时，请联系客服并提供订单号。</p></section></div>`:
       `<section class="credit-recharge"><div class="section-head"><div><h2>按需充值</h2><p>购入积分长期有效 · 不自动续费或充值</p></div></div>
       ${c?.enabled?`<label class="account-payment-method">支付方式 <select id="payment-provider">${c.providers.map(p=>`<option value="${p}">${channel[p]}</option>`).join('')}</select></label>`:'<p class="account-recharge-status" role="status"><span aria-hidden="true"></span>充值渠道暂未开放</p>'}
       <div class="credit-pack-grid">${(c?.packs??[]).map((p,i)=>`<article class="credit-pack ${i===1?'recommended':''}"><div class="credit-pack-heading"><span>${['轻量体验','日常项目','高频使用','团队储备'][i]}</span>${i===1?'<span class="credit-pack-badge">推荐</span>':''}</div><h3>${number(p.points)}<small> 积分</small></h3><p class="plan-price"><span>¥</span>${money(p.amount_fen)}</p><button class="btn ${i===1?'primary':'secondary'}" data-pack="${esc(p.id)}" type="button" ${!c?.enabled||this.busy?'disabled':''}>充值 ¥${money(p.amount_fen)}</button></article>`).join('')}</div></section>`}
-      <div id="account-credit-history"></div><details class="billing-faq"><summary><span>积分使用说明</span><span class="billing-faq-hint">扣费、有效期与退款</span></summary><div class="billing-faq-body"><p>开始前展示任务类型、固定积分价和可用余额。确认后预留本次积分，成果可下载后扣费；失败或有效取消自动返还预留积分。任务开始后不因调价或模型用量变化补扣。</p><p>充值积分不设有效期，赠送积分按原批次有效期保留。活动积分优先使用，余额不提供现金退款。</p></div></details></div>`,'billing');
+      <div id="account-credit-history"></div><details class="billing-faq"><summary><span>积分使用说明</span><span class="billing-faq-hint">扣费、有效期与退款</span></summary><div class="billing-faq-body"><p>点击开始时核验余额并预留积分，成果可下载后扣费；失败或有效取消自动返还预留积分。任务开始后不因调价或模型用量变化补扣。</p><p>充值积分不设有效期，赠送积分按原批次有效期保留。活动积分优先使用，余额不提供现金退款。</p></div></details></div>`,'billing');
     const select=document.querySelector<HTMLSelectElement>('#payment-provider');if(provider&&select)select.value=provider;const faq=document.querySelector<HTMLDetailsElement>('.billing-faq');if(faq&&faqOpen)faq.open=true;
     const historyHost=document.querySelector<HTMLElement>('#account-credit-history');if(historyHost)this.history.mount(historyHost);
     document.querySelectorAll<HTMLButtonElement>('[data-pack]').forEach(button=>button.addEventListener('click',()=>{void this.buy(button.dataset.pack!);}));
