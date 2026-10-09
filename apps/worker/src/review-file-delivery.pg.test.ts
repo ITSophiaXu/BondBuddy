@@ -99,7 +99,7 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
         await rejectChange("delivery_status='test_only'");
         await assert.rejects(pool.query('UPDATE bb_review_pdf_delivery_evidence SET byte_size=byte_size+1 WHERE artifact_id=$1',[annotated.artifact_id]),(e:any)=>e.code==='23514');
         await assert.rejects(pool.query('DELETE FROM bb_review_pdf_delivery_evidence WHERE artifact_id=$1',[annotated.artifact_id]),(e:any)=>e.code==='23514');
-        await pool.query("UPDATE bb_artifact_versions SET delivery_status='unavailable' WHERE id=$1",[annotated.artifact_id]);
+        await pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1",[annotated.artifact_id]);
         assert.notEqual((await send('GET',annotationMeta.json().download_url)).statusCode,200);
         await pool.query("UPDATE bb_artifact_versions SET delivery_status='available' WHERE id=$1",[annotated.artifact_id]);
         assert.equal((await send('GET',annotationMeta.json().download_url)).statusCode,200);
