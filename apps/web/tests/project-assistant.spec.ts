@@ -1,6 +1,8 @@
 import { test,expect,type Page } from '@playwright/test';
 import { mkdir,readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const evidenceDir=fileURLToPath(new URL('../test-evidence/assistant-refined/',import.meta.url));
 import { createHash } from 'node:crypto';
 const now='2026-10-08T10:00:00Z',hash='a'.repeat(64);
 function fixture(){return {topic:{topic_id:'topic',project_id:'scope',source_project_id:null,name:'项目助手',surface:'assistant',created_at:now,updated_at:now},
@@ -56,7 +58,7 @@ test('editable task card uses quarters and optional requirements; insufficient i
 test('desktop, focus and narrow assistant stay within viewport and preserve normal page layout',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();
  for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  if(process.env.ASSISTANT_EVIDENCE){const dir=resolve('test-evidence/project-assistant');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});}}
+  if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
  await page.setViewportSize({width:1440,height:960});await page.locator('[data-a=wide]').click();expect((await page.locator('.ba-panel').boundingBox())!.width).toBeGreaterThan(700);expect(errors).toEqual([]);
 });
 
@@ -70,7 +72,7 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('[data-requirements]').fill('只润色摘要，不改数字');await page.locator('[data-a=prepare]').click();await expect(page.locator('.ba-task')).toContainText('4,500');expect(s.executions).toHaveLength(0);
  await page.locator('[data-a=edit]').click();await page.locator('[data-requirements]').fill('新增一个风险提示段落');await expect(page.locator('[data-a=execute]')).toHaveCount(0);
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-a=execute]')).toHaveCount(1);await page.locator('[data-a=execute]').click();await expect.poll(()=>s.executions.length).toBe(1);
- if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve('test-evidence/project-assistant/implementation-confirmed.png')});}
+ if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
  await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});
  const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('BondBuddy-复核报告.txt');expect(s.executions).toHaveLength(1);
@@ -78,11 +80,15 @@ test('attachments selected during an upload are queued and retained; changed car
 
 test('approved prototype comparison capture',async({page})=>{
  test.skip(!process.env.ASSISTANT_EVIDENCE,'Opt-in visual evidence');
+ await mkdir(evidenceDir,{recursive:true});
  await page.setViewportSize({width:1440,height:960});
- for(const file of ['global-project-assistant','assistant-conversations']){
-  const source=await readFile(resolve('../../product-prototype/public/'+file+'.html'),'utf8');
+ for(const file of ['project-assistant-refined']){
+  const source=await readFile(new URL('../../../product-prototype/public/'+file+'.html',import.meta.url),'utf8');
   await page.setContent('<!doctype html><meta charset="utf-8"><style>:root{color-scheme:light}body{margin:0}</style>'+source);
-  if(file==='global-project-assistant'&&await page.locator('[data-action="open"]').isVisible())await page.locator('[data-action="open"]').click();
-  await page.screenshot({path:resolve('test-evidence/project-assistant/prototype-'+file+'.png')});
+  await page.getByRole('textbox',{name:'发送给项目助手'}).focus();
+  await page.screenshot({path:resolve(evidenceDir,'prototype-1440.png')});
+  await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir,'prototype-panel.png')});
+  await page.setViewportSize({width:390,height:960});
+  await page.screenshot({path:resolve(evidenceDir,'prototype-390.png')});
  }
 });
