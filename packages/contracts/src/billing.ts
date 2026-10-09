@@ -52,3 +52,20 @@ export const billingSchemas = {
 };
 export type FixedQuote = Static<typeof FixedQuoteSchema>;
 export type CreditBalance = Static<typeof CreditBalanceSchema>;
+
+// Account history is read-only. Amounts are ledger points or CNY fen, never model cost.
+const historyPage = obj({ next_cursor: nullable(Type.String({ maxLength: 1024 })), has_more: Type.Boolean() });
+export const creditHistorySchemas = {
+  CreditHistoryQuery: obj({ cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })), limit: Type.Optional(Type.String({ pattern: '^(?:[1-9]|[1-4][0-9]|50)$', default: '20' })) }),
+  CreditConsumptionHistoryResponse: obj({ items: Type.Array(obj({
+    reservation_id: id, run_id: id, project_id: nullable(id), project_name: Type.String({ maxLength: 200 }),
+    task_name: Type.String({ maxLength: 200 }), created_at: utc, finalized_at: nullable(utc),
+    state: Type.Union(['held','settled','released'].map(s=>Type.Literal(s))),
+    reserved_points: points, charged_points: points, released_points: points, corrected_points: points,
+  })), page: historyPage }),
+  RechargeHistoryResponse: obj({ items: Type.Array(obj({
+    order_id: id, provider: Type.Union([Type.Literal('wechat'),Type.Literal('alipay')]),
+    state: Type.Union(['pending','paid','expired','failed'].map(s=>Type.Literal(s))),
+    amount_fen: points, points, created_at: utc, credited_at: nullable(utc),
+  })), page: historyPage }),
+};

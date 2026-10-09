@@ -344,6 +344,7 @@ async function renderRoute() {
     }
   }
   draft?.dispose(); draft = undefined;
+  billingPage?.dispose(); billingPage = undefined;
   projectBrowser?.dispose(); projectBrowser = undefined;
   dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;

@@ -14,7 +14,7 @@ data.cases.push(...updateExamples.cases);
 const billingExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/billing.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(billingExamples.synthetic, true);
 data.cases.push(...billingExamples.cases);
-for (const path of ['/credits/balance', '/projects/{project_id}/credit-quote', '/credits/recharge-orders']) {
+for (const path of ['/credits/consumption-history','/credits/recharge-history','/credits/balance', '/projects/{project_id}/credit-quote', '/credits/recharge-orders']) {
   const operations = openApiDocument().paths[`/api/v1${path}`] as Record<string, { 'x-implementation-status': string }>;
   assert.ok(Object.values(operations).every(op => op['x-implementation-status'].includes('implemented')));
 }

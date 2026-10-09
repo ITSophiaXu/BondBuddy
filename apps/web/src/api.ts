@@ -72,6 +72,8 @@ export function friendlyError(error: unknown): string {
 }
 
 export class ApiClient {
+  consumptionHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'CreditConsumptionHistoryResponse'>>('GET','/credits/consumption-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
+  rechargeHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'RechargeHistoryResponse'>>('GET','/credits/recharge-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   creditBalance(signal?: AbortSignal) { return this.request<Dto<'CreditBalanceResponse'>>('GET','/credits/balance',undefined,{},signal); }
   creditQuote(id: string, input: Dto<'FixedQuoteRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'FixedQuoteResponse'>>('POST',`/projects/${encodeURIComponent(id)}/credit-quote`,input,{},signal);
