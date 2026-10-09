@@ -31,6 +31,7 @@ export class ProjectAssistant {
   private m4:M4Api;
   private host=document.createElement('div');
   private open=false;
+  private hidden=false;
   private wide=false;
   private history=false;
   private projectPicker=false;
@@ -54,8 +55,9 @@ export class ProjectAssistant {
   private conversationRequest?:{projectId?:string;key:string};
   private projects:Dto<'ProjectListResponse'>['items']=[];
   private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
-    this.open=true;this.formOpen=false;this.changed();});};
+    this.hidden=false;sessionStorage.removeItem('bb-assistant-hidden:'+this.owner);this.open=true;this.formOpen=false;this.changed();});};
   constructor(private api:ApiClient,private owner:string){
+    this.hidden=sessionStorage.getItem('bb-assistant-hidden:'+owner)==='true';
     this.m4=new M4Api(api,this.controller.signal);this.host.className='bb-assistant';document.body.append(this.host);
     this.host.addEventListener('click',e=>void this.click(e));
     this.host.addEventListener('input',e=>this.input(e));
@@ -65,7 +67,20 @@ export class ProjectAssistant {
     window.addEventListener('bondbuddy:assistant',this.event);this.paint();
   }
   dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);this.host.remove();}
-  mount(){if(!this.host.isConnected)document.body.append(this.host);}
+  mount(){
+    if(!this.host.isConnected)document.body.append(this.host);
+    const navigation=document.querySelector('.sidebar nav[aria-label="账号"]');
+    if(navigation&&!navigation.querySelector('[data-assistant-restore]')){
+      const button=document.createElement('button');button.type='button';button.className='nav-item assistant-restore';button.dataset.assistantRestore='';
+      button.innerHTML=icon('buddy')+'<span>BondBuddy 助手</span>';
+      button.title='打开或恢复项目助手';
+      button.addEventListener('click',()=>{this.hidden=false;sessionStorage.removeItem('bb-assistant-hidden:'+this.owner);this.open=true;this.paint();
+        const menu=document.querySelector<HTMLButtonElement>('#toggle-menu');if(menu?.getAttribute('aria-expanded')==='true')menu.click();
+        if(!this.workspace)void this.work(()=>this.init());else this.host.querySelector<HTMLTextAreaElement>('[data-composer]')?.focus();
+      });
+      navigation.prepend(button);
+    }
+  }
   private get live(){return !this.controller.signal.aborted;}
   private get view(){return this.workspace!.view;}
   private get action(){return this.workspace?.view.assistant?.action??null;}
@@ -253,6 +268,9 @@ export class ProjectAssistant {
   }
   private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=a.word_delivery?(a.word_delivery.variant==='revision'?'募集说明书-修订版.docx':'募集说明书-清洁版.docx'):a.media_type===M1_UPLOAD_MIME_TYPES[0]?'BondBuddy-成果.docx':'BondBuddy-复核报告.txt';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;
+    if(a==='hide'){this.hidden=true;this.open=false;sessionStorage.setItem('bb-assistant-hidden:'+this.owner,'true');this.paint();
+      const restore=document.querySelector<HTMLElement>('[data-assistant-restore]');
+      (restore?.getClientRects().length?restore:document.querySelector<HTMLElement>('#toggle-menu'))?.focus();return;}
     if(a==='toggle'){this.open=!this.open;this.paint();if(this.open&&!this.workspace)await this.work(()=>this.init());this.host.querySelector<HTMLElement>(this.open?'[data-composer]':'[data-a="toggle"]')?.focus();return;}
     if(a==='wide'){this.wide=!this.wide;this.paint();return;}
     if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
@@ -345,11 +363,12 @@ export class ProjectAssistant {
   private sizeComposer(){const input=this.host.querySelector<HTMLTextAreaElement>('[data-composer]');if(input){input.style.height='auto';input.style.height=`${Math.min(160,input.scrollHeight)}px`;}}
   private paint(){
     if(!this.live)return;
+    this.host.hidden=this.hidden;
     this.host.classList.toggle('ba-wide',this.wide);this.host.classList.toggle('ba-open',this.open);
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
     const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
-    this.host.innerHTML=`<button class="ba-launcher" data-a="toggle" aria-label="${this.open?'收起':'打开'}项目助手" aria-expanded="${this.open}"><span class="ba-mark">${icon('buddy')}</span><span>BondBuddy</span><i data-active-dot></i></button>${this.open?`
-      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原窗口':'展开宽屏'}" aria-label="${this.wide?'还原窗口':'展开宽屏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手" aria-label="收起助手">${icon('minus')}</button></div></header>
+    this.host.innerHTML=`<div class="ba-launcher-group"><button class="ba-launcher" data-a="toggle" aria-label="${this.open?'收起':'打开'}项目助手" aria-expanded="${this.open}"><span class="ba-mark">${icon('buddy')}</span><span>BondBuddy</span><i data-active-dot></i></button><button class="ba-hide-launcher" data-a="hide" title="隐藏助手，可从侧栏恢复" aria-label="隐藏项目助手">${icon('close')}</button></div>${this.open?`
+      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原窗口':'展开宽屏'}" aria-label="${this.wide?'还原窗口':'展开宽屏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手" aria-label="收起助手">${icon('minus')}</button><button class="ba-icon-button" data-a="hide" title="隐藏助手，可从侧栏恢复" aria-label="隐藏项目助手">${icon('close')}</button></div></header>
       <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>${currentProject&&currentProject!==project?.project_id?'<button class="ba-current-project" data-a="current-project">使用当前项目</button>':''}
       ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}

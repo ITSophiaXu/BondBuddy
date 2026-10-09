@@ -201,3 +201,14 @@
 
 /* Keep the collapsed assistant clear of the sticky authoring controls. */
 @media(min-height:501px){body:has(.authoring-actions.is-preparing) .bb-assistant:not(.ba-open){bottom:112px}}
+
+.bb-assistant[hidden]{display:none!important}
+.ba-launcher-group{display:flex;align-items:center;border:1px solid var(--ba-line);border-radius:28px;background:white;box-shadow:0 4px 16px #243e321c}
+.bb-assistant .ba-launcher-group .ba-launcher{border:0;box-shadow:none;padding-right:8px}
+.bb-assistant .ba-hide-launcher{display:grid;place-items:center;min-width:36px;min-height:44px;padding:6px;border:0;border-left:1px solid var(--ba-line);border-radius:0 28px 28px 0;color:var(--ba-muted)}
+.ba-open .ba-launcher-group{visibility:hidden;pointer-events:none}
+button.assistant-restore{width:100%;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer}
+.assistant-restore .ba-icon{width:20px;height:20px;flex:none}
+@media(max-width:700px){.bb-assistant .ba-hide-launcher{min-width:44px}.ba-header .ba-toolbar{gap:0}.bb-assistant .ba-header .ba-icon-button{width:30px}}
+
+@media(max-width:360px){.ba-header .ba-identity>.ba-mark{display:none}}
