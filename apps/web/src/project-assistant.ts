@@ -10,6 +10,7 @@ import { sourceFields,readSourceFields } from './source-prospectus';
 import { cutoffSelection,quarterCutoff,QUARTER_ENDS } from './reporting-cutoff';
 import { taskProgress } from './task-progress';
 import { esc } from './ui';
+import { assistantIcon as icon } from './assistant-icons';
 import './project-assistant.css';
 
 type ProjectData={project:Dto<'ProjectResponse'>;materials:Dto<'MaterialResponse'>[];results:AssistantResult[]};
@@ -32,6 +33,7 @@ export class ProjectAssistant {
   private open=false;
   private wide=false;
   private history=false;
+  private projectPicker=false;
   private busy=false;
   private topics:M4Topic[]=[];
   private workspace?:M4Workspace;
@@ -92,7 +94,7 @@ export class ProjectAssistant {
     this.conversationRequest=undefined;this.topics.unshift(result.topic);await this.select(result.topic.topic_id);
     this.view.assistant={project_id:source?.project_id??null,action:null};
     if(source){this.data=await this.projectData(source.project_id);for(const m of this.data.materials.filter(m=>m.state==='persisted'))await this.m4.material(this.workspace!.topic.topic_id,pin(source.project_id,m));}
-    this.changed();await this.flush();this.history=false;this.formOpen=false;
+    this.changed();await this.flush();this.history=false;this.formOpen=false;this.projectPicker=false;
   }
   private async select(id:string){
     await this.flush();const token=++this.epoch;const w=await this.m4.workspace(id);if(!this.live||token!==this.epoch)return;
@@ -101,7 +103,7 @@ export class ProjectAssistant {
     sessionStorage.setItem(`bb-assistant:${this.owner}`,id);
     if(this.view.assistant.project_id){this.data=await this.projectData(this.view.assistant.project_id);if(this.view.assistant.source_prospectuses)this.data.project.update_details!.source_prospectuses=this.view.assistant.source_prospectuses;}
     this.cards=(await this.api.request<{cards:AssistantCard[]}>('GET',`/assistant/topics/${id}/cards`,undefined,{},this.controller.signal)).cards;
-    this.history=false;this.poll();
+    this.history=false;this.projectPicker=false;this.poll();
   }
   private projectData(id:string){return this.api.request<ProjectData>('GET',`/assistant/projects/${encodeURIComponent(id)}`,undefined,{},this.controller.signal);}
   private changed(){this.viewDirty=true;clearTimeout(this.saveTimer);this.saveTimer=setTimeout(()=>void this.flush().catch(e=>{this.error=assistantError(e);this.paint();}),500);}
@@ -251,9 +253,10 @@ export class ProjectAssistant {
   }
   private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=a.word_delivery?(a.word_delivery.variant==='revision'?'募集说明书-修订版.docx':'募集说明书-清洁版.docx'):a.media_type===M1_UPLOAD_MIME_TYPES[0]?'BondBuddy-成果.docx':'BondBuddy-复核报告.txt';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;
-    if(a==='toggle'){this.open=!this.open;this.paint();if(this.open&&!this.workspace)await this.work(()=>this.init());return;}
+    if(a==='toggle'){this.open=!this.open;this.paint();if(this.open&&!this.workspace)await this.work(()=>this.init());this.host.querySelector<HTMLElement>(this.open?'[data-composer]':'[data-a="toggle"]')?.focus();return;}
     if(a==='wide'){this.wide=!this.wide;this.paint();return;}
-    if(a==='history'){this.history=!this.history;this.paint();return;}
+    if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
+    if(a==='close-project'||a==='project'&&this.projectPicker){this.projectPicker=false;this.paint();this.host.querySelector<HTMLElement>('[data-a="project"]')?.focus();return;}
     if(a==='hide-form'){this.formOpen=false;this.paint();return;}
     await this.work(async()=>{
       if(a==='recover-view'&&this.workspace){const text=this.text;this.viewDirty=false;this.viewConflict=false;await this.select(this.workspace.topic.topic_id);this.text=text;this.changed();await this.flush();this.status='已载入最新会话，本页未发送文字已保留。';}
@@ -261,7 +264,7 @@ export class ProjectAssistant {
       if(a==='select')await this.select(el.dataset.id!);
       if(a==='send')await this.send();
       if(a==='current-project'){const id=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];if(id)await this.newConversation(decodeURIComponent(id));}
-      if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;}
+      if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;this.projectPicker=true;}
       if(a==='action'){const message=this.workspace?.messages.find(m=>m.message_id===el.dataset.id);if(message?.reply?.assistant_action)await this.useAction(message.reply.assistant_action);}
       if(a==='shortcut')await this.useAction({business:el.dataset.kind as AssistantAction['business'],requirements:'',fields:{}});
       if(a==='edit'){this.formOpen=true;}
@@ -275,7 +278,7 @@ export class ProjectAssistant {
     });
   }
   private input(event:Event){const el=event.target as HTMLInputElement;
-    if(el.matches('[data-composer]')){this.text=el.value;this.qaQuote=undefined;this.changed();this.paintStatus();}
+    if(el.matches('[data-composer]')){this.text=el.value;this.qaQuote=undefined;this.changed();this.paintStatus();this.sizeComposer();}
     if(el.matches('[data-field]')&&this.action){(this.action.fields as Record<string,string>)[el.dataset.field!]=el.value;this.invalidateTask();}
     if(el.matches('[data-requirements]')&&this.action){this.action.requirements=el.value;this.invalidateTask();}
     if(el.dataset.sourceField&&this.data){const container=el.closest<HTMLElement>('[data-source-material]')!,m=this.data.materials.find(m=>m.material_id===container.dataset.sourceMaterial)!;
@@ -296,7 +299,7 @@ export class ProjectAssistant {
     if(el.dataset.sourceField==='market'&&this.data)this.paint();
   }
   private form(){const a=this.action;if(!a)return '';const f=a.fields,s=cutoffSelection(f.reporting_cutoff??null),materials=this.data?.materials??[],sources=(this.workspace?.material_details??[]).filter(m=>m.role==='historical'&&(!this.data||m.source_project_id===this.data.project.project_id));
-    return `<section class="ba-form"><div class="ba-card-head"><strong>${businessName(a.business)} · 核对信息</strong><button data-a="hide-form" aria-label="收起任务信息">−</button></div>
+    return `<section class="ba-form"><div class="ba-card-head"><strong>${businessName(a.business)} · 核对信息</strong><button class="ba-icon-button" data-a="hide-form" title="收起任务信息" aria-label="收起任务信息">${icon('minus')}</button></div>
       <div class="ba-fields">${a.business==='generation'?`<label>材料类型<select data-field="document_type"><option value="">请选择</option>${M4_DOCUMENT_TYPES.map(t=>option(t,M4_DOCUMENT_LABELS[t],f.document_type)).join('')}</select></label>`:`<label>项目名称<input data-field="name" maxlength="120" value="${esc(f.name??'')}"></label><label>发行人全称<input data-field="issuer_name" maxlength="200" value="${esc(f.issuer_name??'')}"></label>`}
       <label>发行市场<select data-field="market"><option value="">请选择</option>${(a.business==='generation'?MARKETS.filter(m=>m!=='nafmii'):MARKETS).map(m=>option(m,MARKET_LABELS[m],f.market)).join('')}</select></label>
       ${a.business!=='generation'?`<label>品种<select data-field="offering"><option value="">请选择</option>${(f.market?MARKET_OFFERINGS[f.market]:[]).map(o=>option(o,OFFERING_LABELS[o],f.offering)).join('')}</select></label>
@@ -320,7 +323,9 @@ export class ProjectAssistant {
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
     const messages=this.workspace?.messages??[];const entries=[...messages.map(m=>({time:m.created_at,html:`<article class="ba-message ${m.role}"><small>${m.role==='user'?'你':'BondBuddy'}</small><div class="ba-text">${esc(m.content)}</div>${m.error?`<p role="alert">${esc(m.error)}</p>`:''}${m.role==='user'&&!['completed','failed'].includes(m.reply_status)?`<p class="ba-thinking">${m.reply_status==='running'?'正在阅读并整理回复…':'已收到，等待处理…'}</p>`:''}${m.reply?.assistant_action?`<button class="ba-suggestion" data-a="action" data-id="${esc(m.message_id)}">核对${businessName(m.reply.assistant_action.business)}的信息与要求 →</button>`:''}</article>`})),...this.cards.map(c=>({time:c.created_at,html:this.card(c)}))].sort((a,b)=>a.time.localeCompare(b.time));
-    box.innerHTML=entries.map(e=>e.html).join('')||`<div class="ba-welcome"><div class="ba-mark">b</div><h2>一起把项目往前推进</h2><p>问一个问题，讨论已有成果，或告诉我你要完成什么。</p><div class="ba-shortcuts"><button data-a="shortcut" data-kind="update">更新募集书</button><button data-a="shortcut" data-kind="review">复核募集书</button><button data-a="shortcut" data-kind="generation">生成项目材料</button></div></div>`;
+    box.hidden=this.formOpen&&!entries.length;
+    box.classList.toggle('ba-empty',!entries.length);
+    box.innerHTML=entries.map(e=>e.html).join('')||`<div class="ba-welcome"><span class="ba-welcome-mark">${icon('buddy')}</span><h2>有什么可以帮你？</h2><p>讨论项目、完善文稿，或开始一项新任务。</p><div class="ba-shortcuts"><button data-a="shortcut" data-kind="update"><span class="ba-shortcut-icon">${icon('update')}</span><span><strong>更新募集书</strong><small>更新内容，或继续修改已有成果</small></span>${icon('arrow')}</button><button data-a="shortcut" data-kind="review"><span class="ba-shortcut-icon">${icon('review')}</span><span><strong>复核募集书</strong><small>检查内容，梳理需要完善的地方</small></span>${icon('arrow')}</button><button data-a="shortcut" data-kind="generation"><span class="ba-shortcut-icon">${icon('generation')}</span><span><strong>生成项目材料</strong><small>根据材料和要求，编制所需文书</small></span>${icon('arrow')}</button></div></div>`;
     if(atEnd)box.scrollTop=box.scrollHeight;else box.scrollTop=scroll;
     for(const c of this.cards.filter(c=>c.run?.state==='succeeded'))void this.delivery(c);
   }
@@ -334,19 +339,23 @@ export class ProjectAssistant {
   private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
     const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>`<div>${esc(u.file.name)} · ${esc(u.status)}${u.error?`<p>${esc(u.error)}</p><button data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button><button data-a="remove-upload" data-id="${esc(u.id)}">移除</button>`:''}</div>`).join('');
     const quote=this.host.querySelector<HTMLElement>('[data-qa-price]');if(quote)quote.textContent=this.qaQuote?.value.quote.points?`本次回答最多 ${this.qaQuote.value.quote.points.toLocaleString()} 积分，按实际用量结算。再次点击发送确认。`:'';
+    const send=this.host.querySelector<HTMLButtonElement>('[data-a="send"]');if(send)send.disabled=this.busy||!this.workspace||!this.text.trim();
   }
+  private sizeComposer(){const input=this.host.querySelector<HTMLTextAreaElement>('[data-composer]');if(input){input.style.height='auto';input.style.height=`${Math.min(160,input.scrollHeight)}px`;}}
   private paint(){
     if(!this.live)return;
     this.host.classList.toggle('ba-wide',this.wide);this.host.classList.toggle('ba-open',this.open);
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
-    this.host.innerHTML=`<button class="ba-launcher" data-a="toggle" aria-label="${this.open?'收起':'打开'}项目助手" aria-expanded="${this.open}"><span class="ba-mark">b</span><span>BondBuddy</span><i data-active-dot></i></button>${this.open?`
-      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div><strong>BondBuddy</strong><small>项目助手</small></div><div><button data-a="new" title="新对话" aria-label="新对话">＋</button><button data-a="history" aria-label="最近对话">◷</button><button data-a="wide" aria-label="${this.wide?'还原窗口':'展开宽屏'}">↔</button><button data-a="toggle" aria-label="收起助手">−</button></div></header>
-      <div class="ba-context"><button data-a="project">${esc(project?.name??'未关联项目')}⌄</button><small>本会话上下文</small>${location.hash.match(/#\/projects\/([^/?]+)/)?.[1]!==project?.project_id&&location.hash.startsWith('#/projects/')?'<button data-a="current-project">使用当前页面项目</button>':''}${this.projects.length?`<label>切换项目将新建对话<select data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select></label>`:''}
-      ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${this.workspace.material_details.length} 份已保存材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}
-      ${this.data?.results.length?`<label>讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
-      ${this.history?`<div class="ba-history"><h3>最近对话</h3>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
-      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<textarea data-composer ${this.busy?'disabled':''} rows="3" maxlength="12000" placeholder="问一个问题，或说明你想完成的任务…" aria-label="发送给项目助手">${esc(this.text)}</textarea><small data-qa-price></small><div class="ba-send-row"><label class="ba-attach" title="添加附件">＋ 附件<input type="file" data-file="other" multiple></label><span>Enter 发送 · Shift+Enter 换行</span><button class="ba-primary" data-a="send"${this.busy||!this.workspace?' disabled':''}>${this.busy?'处理中…':'发送 ↑'}</button></div></footer></section>`:''}`;
-    if(this.open){this.paintTimeline();this.paintStatus();
+    const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
+    this.host.innerHTML=`<button class="ba-launcher" data-a="toggle" aria-label="${this.open?'收起':'打开'}项目助手" aria-expanded="${this.open}"><span class="ba-mark">${icon('buddy')}</span><span>BondBuddy</span><i data-active-dot></i></button>${this.open?`
+      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原窗口':'展开宽屏'}" aria-label="${this.wide?'还原窗口':'展开宽屏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手" aria-label="收起助手">${icon('minus')}</button></div></header>
+      <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>${currentProject&&currentProject!==project?.project_id?'<button class="ba-current-project" data-a="current-project">使用当前项目</button>':''}
+      ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
+      ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
+      ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
+      ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
+      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:''}`;
+    if(this.open){this.paintTimeline();this.paintStatus();this.sizeComposer();
       if(this.busy)this.host.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('.ba-form input:not([type=file]),.ba-form select,.ba-form textarea').forEach(el=>el.disabled=true);
     }
   }

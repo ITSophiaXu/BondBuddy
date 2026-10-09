@@ -1,0 +1,222 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BondBuddy · 项目助手界面细化</title>
+<!-- 2026-10-09 requested refinement of the global shell. Synthetic visual reference only. Existing task/quote/pin flows remain in assistant-conversations.html. -->
+<style>body{margin:0;background:#f7f8f2}main{font:14px "Segoe UI","Microsoft YaHei",sans-serif;padding:40px;color:#718074}main h1{color:#233c34;font-size:27px}.bb-assistant{--ba-ink:#233c34;--ba-muted:#728078;--ba-line:#e4eae5;--ba-soft:#f3f6f2;--ba-green:#285d48;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--ba-ink);position:fixed;right:24px;bottom:24px;z-index:1200;font-size:14px;line-height:1.6}
+
+.bb-assistant *{box-sizing:border-box}
+.bb-assistant label{margin:0}
+.bb-assistant .ba-baseline{margin-top:9px}
+.bb-assistant .ba-welcome p{line-height:1.6}
+.bb-assistant .ba-composer input[type=file]{min-height:0;padding:0;border:0}
+.bb-assistant [hidden]{display:none!important}
+.bb-assistant button,.bb-assistant input,.bb-assistant select,.bb-assistant textarea{font:inherit}
+.bb-assistant button,.ba-attach,.ba-upload-actions label{cursor:pointer}
+
+.bb-assistant button{border:1px solid var(--ba-line);background:#fff;color:var(--ba-ink);border-radius:9px;padding:7px 12px;transition:background .15s,border-color .15s}
+.bb-assistant button:disabled{opacity:.45;cursor:default}
+.bb-assistant button:hover:not(:disabled){background:var(--ba-soft);border-color:#cad8cc}
+.bb-assistant button:focus-visible,.bb-assistant select:focus-visible,.bb-assistant textarea:focus-visible,.bb-assistant input:focus-visible,.ba-attach:focus-within{outline:2px solid #428267;outline-offset:3px}
+
+.bb-assistant .ba-icon{display:block;width:18px;height:18px;flex:none}
+.bb-assistant .ba-icon-button{display:inline-grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:#738177}
+.bb-assistant .ba-icon-button:hover,.bb-assistant .ba-icon-button[aria-pressed=true]{color:var(--ba-green);background:#edf3ee}
+
+.bb-assistant .ba-primary{background:var(--ba-green);color:white;border-color:var(--ba-green);text-decoration:none;border-radius:9px;padding:8px 14px;display:inline-block}
+.bb-assistant .ba-primary:hover:not(:disabled){background:#204d3b;border-color:#204d3b}
+
+.ba-mark{display:inline-grid;place-items:center;width:34px;height:34px;flex:none;background:var(--ba-green);border-radius:11px;color:#fff}
+.bb-assistant .ba-mark .ba-icon{width:23px;height:23px}
+
+.bb-assistant .ba-launcher{display:flex;gap:10px;align-items:center;padding:7px 17px 7px 7px;box-shadow:0 4px 16px #243e321c;border-radius:28px;font-size:14px;font-weight:600}
+.ba-launcher i.is-active{width:7px;height:7px;border-radius:50%;background:#208564}
+.ba-open .ba-launcher{visibility:hidden;pointer-events:none}
+
+.ba-panel{position:absolute;right:0;bottom:0;width:min(480px,calc(100vw - 48px));height:min(736px,calc(100dvh - 48px));background:#fff;border:1px solid #dce5de;border-radius:20px;box-shadow:0 16px 64px #1d372526,0 2px 8px #1d37250a;display:flex;flex-direction:column;overflow:hidden}
+.ba-wide .ba-panel{width:min(900px,calc(100vw - 80px));height:calc(100dvh - 48px)}
+
+.ba-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 18px;flex-shrink:0}
+.ba-identity{display:flex;gap:10px;align-items:center;min-width:0}
+.ba-identity strong{font-size:15px;font-weight:650;display:block;line-height:1.4;letter-spacing:-.2px}
+.ba-identity small{display:block;color:var(--ba-muted);font-size:11px;line-height:1.5;margin-top:1px}
+.ba-toolbar{display:flex;gap:3px;flex-shrink:0}
+
+.ba-context{padding:0 18px 11px;border-bottom:1px solid #edf0ec;flex-shrink:0}
+.ba-context-row{display:flex;align-items:center;gap:8px;min-height:30px}
+.bb-assistant .ba-project-button{display:flex;gap:7px;align-items:center;padding:5px 9px;max-width:100%;min-width:0;background:#f5f7f3;border-color:transparent;font-size:12px}
+.ba-project-button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ba-project-button .ba-icon{width:15px;height:15px;color:#718174}
+.bb-assistant .ba-current-project{padding:4px;font-size:11px;border:0;color:var(--ba-green);white-space:nowrap}
+
+.ba-project-picker{border:1px solid var(--ba-line);border-radius:10px;padding:10px 12px;margin-top:9px;background:#fafbf9}
+.ba-project-picker>div,.ba-history-heading{display:flex;align-items:center;justify-content:space-between}
+.ba-project-picker strong{font-size:12px;font-weight:600}
+.ba-project-picker p{margin:8px 0 0;color:var(--ba-muted);font-size:11px}
+.ba-context select{display:block;width:100%;min-width:0;font-size:12px;padding:7px 8px;border:1px solid #dce4dc;background:white;border-radius:7px;color:var(--ba-ink)}
+.ba-baseline{display:block;margin-top:9px;font-size:11px;color:var(--ba-muted)}
+.ba-baseline select{margin-top:4px}
+
+.ba-context-files{margin-left:auto;flex-shrink:0;font-size:11px;color:var(--ba-muted)}
+.ba-context-files summary{display:flex;align-items:center;gap:4px;cursor:pointer;border-radius:6px;padding:4px;list-style:none}
+.ba-context-files summary::-webkit-details-marker{display:none}
+.ba-context-files .ba-icon{width:14px;height:14px}
+.ba-context-files ul{position:absolute;right:18px;left:18px;z-index:1;padding:10px 12px 10px 28px;margin:6px 0 0;max-height:140px;overflow:auto;overflow-wrap:anywhere;background:#fff;border:1px solid var(--ba-line);border-radius:9px;box-shadow:0 6px 18px #233e3114}
+
+.ba-body{min-height:0;flex:1;display:flex;flex-direction:column;overflow:auto}
+.ba-timeline{padding:22px;flex:1;overflow:auto;min-height:100px}
+.ba-timeline.ba-empty{display:flex;align-items:center}
+.ba-welcome{width:100%;max-width:376px;margin:auto;padding:18px 0}
+.ba-welcome-mark{display:grid;place-items:center;width:48px;height:48px;border-radius:16px;background:#edf3e9;color:var(--ba-green);margin-bottom:18px}
+.bb-assistant .ba-welcome-mark .ba-icon{width:28px;height:28px;stroke-width:1.5}
+.ba-welcome h2{font-size:23px;font-weight:600;letter-spacing:-.5px;margin:0 0 8px;line-height:1.4}
+.ba-welcome p{font-size:13px;color:var(--ba-muted);margin:0}
+
+.ba-shortcuts{display:grid;gap:8px;margin-top:25px}
+.bb-assistant .ba-shortcuts button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-color:#e7ece5;border-radius:11px;text-align:left}
+.ba-shortcut-icon{display:grid;place-items:center;width:34px;height:36px;border-radius:8px;background:#f3f6f0;color:#52725b;flex:none}
+.bb-assistant .ba-shortcut-icon .ba-icon{width:20px;height:20px}
+.ba-shortcuts strong{display:block;font-size:13px;font-weight:600}
+.ba-shortcuts small{display:block;font-size:11px;color:var(--ba-muted);margin-top:2px}
+.ba-shortcuts button>.ba-icon{margin-left:auto;width:15px;color:#859487}
+
+.ba-composer{flex-shrink:0;padding:8px 16px 10px;background:#fff}
+.ba-input-shell{border:1px solid #d9e2d7;background:#fcfdfb;border-radius:14px;padding:2px;transition:border-color .15s,box-shadow .15s}
+.ba-input-shell:focus-within{border-color:#91ad95;box-shadow:0 0 0 3px #4e7b5810}
+.ba-composer textarea{width:100%;resize:none;min-height:64px;max-height:160px;border:0;border-radius:12px;padding:11px 12px 6px;display:block;color:var(--ba-ink);background:transparent;line-height:1.65;font-size:13px}
+.ba-composer textarea::placeholder{color:#89938a;opacity:1}
+.bb-assistant .ba-composer textarea:focus-visible{outline:none;box-shadow:none}
+.ba-send-row{display:flex;align-items:center;gap:8px;padding:0 8px 7px}
+.ba-attach{position:relative;display:inline-flex;align-items:center;gap:5px;border-radius:6px;font-size:11px;color:#657b6a;padding:5px 3px}
+.ba-attach:hover{color:var(--ba-green)}
+.bb-assistant input[type=file]{display:none}
+.bb-assistant .ba-composer input[type=file]{display:block;position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+
+.bb-assistant .ba-send{margin-left:auto;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:10px;background:var(--ba-green);color:#fff}
+.bb-assistant .ba-send:hover:not(:disabled){background:#204d3b}
+.bb-assistant .ba-send:disabled{background:#e6ece2;color:#91a08f;opacity:1}
+.ba-composer-hint{font-size:10px;color:#8a958b;margin-top:7px;text-align:center}
+.ba-composer-hint span{padding:0 3px}
+
+.ba-composer [data-status]{color:#916128;font-size:12px;margin:0 0 8px;white-space:pre-wrap}
+.ba-composer [data-qa-price]{display:block;font-size:11px;color:#627769;margin-bottom:8px}
+.ba-composer [data-status]:empty,.ba-composer [data-qa-price]:empty{display:none}
+.ba-uploads{max-height:85px;overflow:auto;font-size:11px;color:#64786c;overflow-wrap:anywhere}
+.ba-uploads:not(:empty){margin-bottom:8px}
+.ba-uploads>div{padding:5px 8px;background:#f4f7f1;border-radius:6px;margin:3px 0}
+.ba-uploads button{padding:2px 5px;font-size:10px}
+
+.ba-history{flex:1;overflow:auto;padding:16px 20px}
+.ba-history h3{font-size:14px;font-weight:600;margin:0}
+.ba-history>button{display:flex;align-items:center;gap:10px;text-align:left;width:100%;margin:8px 0;font-size:13px;padding:12px}
+.ba-history>button>span{min-width:0;overflow-wrap:anywhere}
+.ba-history>button>.ba-icon{color:#7e9080;width:16px}
+.ba-history>button>.ba-icon:last-child{margin-left:auto}
+.ba-history small{display:block;color:#8a988f;font-size:11px}
+
+.ba-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.ba-spinning{animation:ba-spin 1s linear infinite}
+@keyframes ba-spin{to{transform:rotate(360deg)}
+}
+
+@media(prefers-reduced-motion:reduce){.ba-spinning{animation:none}
+.bb-assistant button,.ba-input-shell{transition:none}
+}
+
+@media(max-width:700px){.bb-assistant{right:12px;bottom:12px}
+.ba-panel,.ba-wide .ba-panel{position:fixed;inset:8px;width:calc(100vw - 16px);height:calc(100dvh - 16px);border-radius:16px}
+.ba-header{padding:12px 14px;gap:6px}
+.ba-toolbar{gap:0}
+.ba-timeline{padding:18px}
+.ba-context{padding:0 14px 10px}
+.ba-fields{gap:8px}
+.ba-form{margin:12px;padding:12px}
+.ba-composer{padding:8px 12px max(10px,env(safe-area-inset-bottom))}
+.ba-composer-hint{display:none}
+.ba-welcome h2{font-size:22px}
+.ba-welcome p{font-size:12px}
+.ba-shortcuts{margin-top:20px}
+}
+
+@media(max-width:360px){.ba-identity{gap:7px}
+.ba-identity strong{font-size:13px}
+.ba-header .ba-mark{width:30px;height:30px}
+.ba-header .ba-icon-button{width:29px;height:30px}
+.ba-timeline{padding:14px}
+.bb-assistant .ba-shortcuts button{padding:10px;gap:9px}
+}
+
+.ba-message{margin-bottom:22px}
+.ba-message>small{font-size:11px;color:#7a8d80;display:block;margin-bottom:7px}
+.ba-message.user{margin-left:38px;background:#eff5f0;padding:12px 15px;border-radius:14px 14px 3px 14px}
+.ba-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.ba-thinking{font-size:12px;color:#6c8076}
+.ba-message .ba-suggestion{font-size:12px;margin-top:12px;border-color:#b5cfbe;background:#f5faf7}
+
+.ba-form,.ba-task{border:1px solid #d9e5dc;border-radius:13px;margin:8px 0 20px;background:#fff;padding:16px}
+.ba-form{margin:0 16px 16px;flex-shrink:0}
+.ba-card-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.ba-card-head>span{font-size:11px;background:#eaf3ed;padding:3px 8px;border-radius:10px;color:#48715a}
+.ba-task>p{font-size:12px;color:#65746d;margin:8px 0}
+.ba-task details{font-size:12px}
+.ba-task summary{cursor:pointer;color:#597463}
+.ba-task li{overflow-wrap:anywhere}
+.ba-credits{padding:12px 0;display:flex;align-items:baseline;gap:8px;font-size:12px}
+.ba-credits strong{font-size:21px}
+.ba-credits small{margin-left:auto;color:#748a7b}
+.ba-card-actions{display:flex;gap:8px;justify-content:flex-end}
+.ba-task>small{display:block;color:#7c8b80;font-size:10px;margin-top:10px}
+.ba-task a{color:#2c6b52;font-size:12px}
+.ba-task [data-delivery]{display:flex;gap:8px;margin-top:10px}
+.ba-task [data-delivery] button{font-size:12px}
+
+.ba-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.ba-form label{display:block;font-size:12px;color:#53665b}
+.ba-form input,.ba-form select,.ba-form textarea{display:block;width:100%;border:1px solid #dce5de;border-radius:7px;padding:7px 9px;background:white;color:#263e30;min-width:0}
+.ba-form textarea{resize:vertical;margin:6px 0 12px}
+.ba-form>button{width:100%}
+.ba-upload-actions{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}
+.ba-upload-actions label{border:1px dashed #b4cebe;padding:7px;border-radius:7px;font-size:11px;background:#f7faf8}
+.bb-assistant input[type=file]{display:none}
+.ba-files{list-style:none;padding:0;font-size:11px}
+.ba-files>li{padding:6px 0;overflow-wrap:anywhere}
+.ba-files small{color:#71917b}
+.ba-form .source-prospectus{grid-template-columns:1fr 1fr;font-size:11px;padding:10px;gap:8px;margin:10px 0;border:1px solid #dce7df;border-radius:8px}
+.ba-form .source-prospectus input[type=radio]{display:inline;width:auto}
+.ba-form .source-prospectus .quarter-grid{display:flex;flex-wrap:wrap}
+.ba-form .source-prospectus small,.ba-form .source-prospectus p,.ba-form .source-prospectus .source-period{grid-column:1/-1}
+
+
+.ba-fields{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.bb-assistant .task-progress{padding:14px;margin-bottom:10px;border-radius:10px}
+.bb-assistant .task-progress-heading{gap:8px}
+.bb-assistant .task-progress-heading strong{font-size:14px}
+.bb-assistant .task-progress-heading p{font-size:12px;margin-top:4px}
+.bb-assistant .task-progress-dot{width:7px;height:7px;margin-top:7px}
+.bb-assistant .task-progress-steps{gap:6px;margin-top:14px}
+.bb-assistant .task-progress-steps li{display:block;font-size:10px;padding-top:8px;line-height:1.6}
+.bb-assistant .task-progress-steps span{margin-bottom:5px;width:17px;height:17px;font-size:9px}
+.bb-assistant .task-progress-footnote{font-size:11px!important;margin-top:12px!important}
+.ba-form .source-prospectus{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.ba-card-actions,.ba-credits,.ba-task [data-delivery]{flex-wrap:wrap}
+.ba-form{margin:16px}
+.ba-message .ba-text{line-height:1.8}
+@media(max-width:700px){.ba-form{margin:12px;padding:12px}
+}
+</style>
+<main><h1>工作台</h1><p>项目助手 · 界面细化原型</p><p>演示内容不提交任务、不消耗积分。</p></main>
+<div class="bb-assistant ba-open"><button class="ba-launcher" data-a="toggle" aria-label="打开项目助手"><span class="ba-mark"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 4.5H7a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h1v3l4-3h5a3 3 0 0 0 3-3v-4"/><path d="M8 10h4m-4 4h8M18 2l1.1 3.4L22.5 6.5l-3.4 1.1L18 11l-1.1-3.4L13.5 6.5l3.4-1.1Z"/></svg></span><span>BondBuddy</span></button>
+<section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 4.5H7a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h1v3l4-3h5a3 3 0 0 0 3-3v-4"/><path d="M8 10h4m-4 4h8M18 2l1.1 3.4L22.5 6.5l-3.4 1.1L18 11l-1.1-3.4L13.5 6.5l3.4-1.1Z"/></svg></span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6M16 4l4 4M10 14l1-5 7-7 4 4-7 7Z"/></svg></button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7m2-4v5l3 2"/></svg></button><button class="ba-icon-button" data-a="wide" title="展开宽屏" aria-label="展开宽屏"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button><button class="ba-icon-button" data-a="toggle" title="收起助手" aria-label="收起助手"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button></div></header>
+<div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="false"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/></svg><span>关联项目</span><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button></div><div class="ba-project-picker" hidden><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="project" title="关闭项目选择" aria-label="关闭项目选择"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select"><option>选择项目</option><option>合成发行人 · 募集书更新</option></select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p></div></div>
+<div class="ba-body"><div class="ba-timeline ba-empty"><div class="ba-welcome"><span class="ba-welcome-mark"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 4.5H7a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h1v3l4-3h5a3 3 0 0 0 3-3v-4"/><path d="M8 10h4m-4 4h8M18 2l1.1 3.4L22.5 6.5l-3.4 1.1L18 11l-1.1-3.4L13.5 6.5l3.4-1.1Z"/></svg></span><h2>有什么可以帮你？</h2><p>讨论项目、完善文稿，或开始一项新任务。</p><div class="ba-shortcuts"><button data-kind="update"><span class="ba-shortcut-icon"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7M13 3v5h5M13 3l5 5M8 12h4m-4 4h2m4 1 5-5 3 3-5 5-4 1Z"/></svg></span><span><strong>更新募集书</strong><small>更新内容，或继续修改已有成果</small></span><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></button><button data-kind="review"><span class="ba-shortcut-icon"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5M14 3v5h5M14 3l5 5M8 12h3m-3 4h2"/><circle cx="17" cy="16" r="4"/><path d="m20 19 2 2"/></svg></span><span><strong>复核募集书</strong><small>检查内容，梳理需要完善的地方</small></span><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></button><button data-kind="generation"><span class="ba-shortcut-icon"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V9M14 3v6h6M14 3l6 6M9 13h7m-7 4h4"/></svg></span><span><strong>生成项目材料</strong><small>根据材料和要求，编制所需文书</small></span><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></button></div></div></div></div>
+<footer class="ba-composer"><div class="ba-input-shell"><textarea rows="2" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手"></textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件"><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 13 6.8-6.8a2.8 2.8 0 0 1 4 4L9.2 19.8a4.5 4.5 0 0 1-6.4-6.4L13 3.2"/></svg><span>添加附件</span><input type="file" multiple></label><button class="ba-send" data-a="send" title="发送消息" aria-label="发送消息" disabled><svg class="ba-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section></div>
+<script>
+const host=document.querySelector('.bb-assistant'),panel=document.querySelector('.ba-panel'),timeline=document.querySelector('.ba-timeline'),initial=timeline.innerHTML,input=document.querySelector('textarea'),send=document.querySelector('[data-a="send"]');
+input.addEventListener('input',()=>{send.disabled=!input.value.trim();input.style.height='auto';input.style.height=Math.min(160,input.scrollHeight)+'px';});
+host.addEventListener('click',e=>{const b=e.target.closest('[data-a],[data-kind]');if(!b)return;
+ if(b.dataset.a==='toggle'){host.classList.toggle('ba-open');panel.hidden=!host.classList.contains('ba-open');}
+ if(b.dataset.a==='wide')host.classList.toggle('ba-wide');
+ if(b.dataset.a==='project'){const picker=document.querySelector('.ba-project-picker');picker.hidden=!picker.hidden;document.querySelector('.ba-project-button').setAttribute('aria-expanded',String(!picker.hidden));}
+ if(b.dataset.a==='new'){timeline.innerHTML=initial;timeline.classList.add('ba-empty');input.value='';send.disabled=true;}
+ if(b.dataset.a==='history'){timeline.classList.remove('ba-empty');timeline.innerHTML='<div class="ba-history"><h3>最近对话</h3><p>暂无对话</p></div>';}
+ if(b.dataset.kind){input.value=b.querySelector('strong').textContent;input.dispatchEvent(new Event('input'));input.focus();}
+ if(b.dataset.a==='send'&&input.value.trim()){const article=document.createElement('article');article.className='ba-message user';article.textContent=input.value;timeline.classList.remove('ba-empty');timeline.replaceChildren(article);input.value='';send.disabled=true;}
+});
+</script></html>

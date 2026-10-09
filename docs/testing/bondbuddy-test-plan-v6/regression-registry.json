@@ -1,0 +1,3218 @@
+{
+  "schema_version": 2,
+  "artifact_type": "regression_registry_design",
+  "created_date": "2026-10-08",
+  "timezone": "Asia/Shanghai",
+  "repository": "https://github.com/ITSophiaXu/BondBuddy",
+  "cached_release_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "remote_latest_verified": true,
+  "production_release_verified": false,
+  "plan_file": "test-plan.md",
+  "status": "all_entries_require_candidate_rerun",
+  "inventory_complete": false,
+  "inventory_audit": {
+    "scope": "22 retained historical entries plus 17 mapped recent merged PRs; not a complete repository fix inventory",
+    "sources_required": [
+      "merged_fix_pull_requests",
+      "bug_issues",
+      "local_fix_commits"
+    ],
+    "last_audited_at": "2026-10-08T10:59:24.3857992Z",
+    "audited_recent_pull_requests": [
+      581,
+      583,
+      587,
+      589,
+      590,
+      591,
+      594,
+      596,
+      598,
+      604,
+      607,
+      609,
+      611,
+      613,
+      615,
+      601,
+      603
+    ],
+    "unmapped_fix_count": null,
+    "unmapped_fixes": [],
+    "complete": false,
+    "evidence_file": null,
+    "incremental_policy": "Complete historical inventory once with evidence, then reconcile approved baseline SHA to candidate SHA including reverts; rerun all applicable permanent assertions on every RC.",
+    "local_evidence_available_to_team": false
+  },
+  "notes": [
+    "All 39 entries are candidate rerun requirements; no product test was executed in this session.",
+    "Remote SHA and source tree were read and verified; deployed runtime values require independent observation.",
+    "Historical receipts and prototype U1-U7 are references and cannot serve as current candidate pass evidence.",
+    "Suite paths are relative to repository root at source_reference_sha; suite candidates can include supporting source or historical evidence files.",
+    "Exact historical names are source references, not proof that each permanent assertion already has complete automated coverage.",
+    "Project uploads save opaque original bytes without content deep inspection; untrusted files remain contained at task execution.",
+    "Material form one-click, assistant explicit confirmation card, fixed eight-tier authoring and QA metered confirmation are distinct entry/billing rules.",
+    "QA/legacy metered unknown usage stays pending; new fixed 4500 document delivery settles independently of model usage availability.",
+    "Inventory completeness and unmapped-fix count remain unknown until all merged fixes and bug issues are reconciled.",
+    "No entry may be removed because a regression fails; keep prior failure evidence and versioned approved expectations.",
+    "Source uploads in the material form adopt the newly saved original; generic assistant attachments do not implicitly replace source. Non-QA business execution is distinct from legitimate help/chat QA runs.",
+    "v5 coverage review preserves all 76 original IDs and 39 fix entries, adds BB-077 account operations, BB-078 project lifecycle and BB-079 pause/resume. Shared executions reduce duplicate calls and reviews without weakening per-case assertions. Legacy upload parsing is retained; unified_v1 opaque upload has zero parse jobs.",
+    "v6 adds a scoped U invited-user-testing admission gate. Known scope/diff high-risk fix assertions remain mandatory; full historical inventory and all release regression requirements continue in parallel and are not claimed complete."
+  ],
+  "entry_template_fields": [
+    "bug_id",
+    "fix_commits",
+    "test_ids",
+    "suite_candidates",
+    "exact_case_names",
+    "fixture_manifest_sha256",
+    "old_version_fail_evidence",
+    "candidate_pass_evidence",
+    "last_passed_release_sha",
+    "human_review",
+    "candidate_result"
+  ],
+  "entries": [
+    {
+      "bug_id": "UX-U1",
+      "title": "资料断点与错误继承",
+      "severity": "P1",
+      "test_ids": [
+        "BB-020",
+        "BB-028",
+        "BB-061"
+      ],
+      "permanent_assertion": "授权资料库与本次采用清单分别可核对；显式采用准确版本后不得用旧稿代算；资料不得静默加入其他文种、模板或任务。 材料表单purpose=source替换成功直接采用新稿，失败保留旧源；通用助手附件与阅读不自动替换执行源。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/web/tests/project-assistant.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_then_real_product_required",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "左右上传共用授权资料；明确采用v5后不拿旧稿代算；任务清单不静默混入其他模板",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-020",
+          "BB-028",
+          "BB-061"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-020": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-028": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-061": [
+          "G1",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "UX-U2",
+      "title": "自然要求和缺项答案未回填",
+      "severity": "P1",
+      "test_ids": [
+        "BB-021",
+        "BB-026",
+        "BB-064",
+        "BB-065"
+      ],
+      "permanent_assertion": "助手重点、禁止项和澄清答案只回填正确业务草稿与确认卡；材料表单保留一个可选额外要求框；保存、澄清与准备卡片均不自动执行或冻结积分。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/worker/src/m4-stages.test.ts",
+        "apps/web/tests/project-assistant.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_then_real_product_required",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "重点/禁止项/缺项答案写正确草稿；只保存、不自动执行；来源消息保留",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-021",
+          "BB-026",
+          "BB-064",
+          "BB-065"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-021": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-026": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-064": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-065": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "UX-U3",
+      "title": "准备新任务与续改覆盖既有要求",
+      "severity": "P1",
+      "test_ids": [
+        "BB-022",
+        "BB-023",
+        "BB-062",
+        "BB-065"
+      ],
+      "permanent_assertion": "准备、重开、切文种保留后继草稿；运行中新增要求只进入下一轮；当前run的输入hash、精确底稿及执行次数不变。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/web/tests/project-assistant.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_then_real_product_required",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "后继草稿保留；当前run hash不变；切文种不串要求；重复续改不覆盖",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-022",
+          "BB-023",
+          "BB-062",
+          "BB-065"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-023"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-022": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-023": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-062": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-065": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "UX-U4",
+      "title": "旧引用覆盖显式续改底稿",
+      "severity": "P1",
+      "test_ids": [
+        "BB-023",
+        "BB-028",
+        "BB-067"
+      ],
+      "permanent_assertion": "显式选中的准确成果版本优先于旧讨论引用；募集书续改固定用户选中的已交付清洁版与hash及原市场、品种、期间，不能替换为最新稿或原首次编制输入；旧成果保留。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/api/src/project-assistant.pg.test.ts",
+        "apps/worker/src/unified-authoring.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_then_real_product_required",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "打开v2续改必须实际用v2；v1讨论引用不能覆盖；原生成来源另存",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-023",
+          "BB-028",
+          "BB-067"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-023",
+          "BB-067"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-023": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-028": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-067": [
+          "G1",
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "UX-U5",
+      "title": "局部修改范围被扩大",
+      "severity": "P1",
+      "test_ids": [
+        "BB-024",
+        "BB-065",
+        "BB-067"
+      ],
+      "permanent_assertion": "准确引用版本、原文与局部范围进入讨论及任务确认卡；保留禁止项，不把局部要求静默扩大为全文改动。未实现的范围如实说明，不执行替代任务；只有用户确认有效卡片才调用对应原业务worker。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/worker/src/m4-stages.test.ts",
+        "apps/web/tests/project-assistant.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_m4_boundary_only",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "M4准确引用讨论；局部执行说明未开放，零替代全文run/预留；M5开放后新增局部oracle",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-024",
+          "BB-065",
+          "BB-067"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-067"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-024": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-065": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-067": [
+          "G1",
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "UX-U6",
+      "title": "明确执行被错误否定或咨询被执行",
+      "severity": "P1",
+      "test_ids": [
+        "BB-025",
+        "BB-064",
+        "BB-065",
+        "BB-066"
+      ],
+      "permanent_assertion": "模型回复和自然语言执行请求只提出动作建议；如何、先别及补齐资料均不创建业务run或冻结。助手必须由用户核对并确认有效任务卡后才执行一次；编辑卡片必须重新prepare。独立材料表单仍一次点击生成，不增加报价区或二次确认。 此处业务run指非QA文书任务；允许按QA政策记录免费帮助/聊天CLI调用，付费QA另行确认。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/worker/src/m4-stages.test.ts",
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/web/tests/project-assistant.spec.ts",
+        "apps/api/src/project-assistant.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_then_real_product_required",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "识别完整主动作与局部限制；有效报价时只执行一次；如何/先别等零文书执行；补齐不自启",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-025",
+          "BB-064",
+          "BB-065",
+          "BB-066"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-025": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-064": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-065": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-066": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "UX-U7",
+      "title": "刷新丢失长历史与未发送草稿",
+      "severity": "P1",
+      "test_ids": [
+        "BB-042",
+        "BB-043",
+        "BB-062",
+        "BB-063"
+      ],
+      "permanent_assertion": "长历史、准确引用、资料、要求、未发送草稿与阅读状态可恢复；全站助手收起、跨页、reload不丢内容或取消任务；新对话与显式换项目隔离，logout清空前端身份状态；恢复零执行。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/web/tests/project-assistant.spec.ts",
+        "apps/api/src/project-assistant.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "prototype_origin_then_real_product_required",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "8话题/8成果/46消息、引用/资料/要求/未发送/阅读持久恢复；失败可见不清空；恢复零执行",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-042",
+          "BB-043",
+          "BB-062",
+          "BB-063"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-042": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-043": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-062": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-063": [
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-544",
+      "title": "已保存上传响应丢失后的准确恢复",
+      "severity": "P1",
+      "test_ids": [
+        "BB-006",
+        "BB-007",
+        "BB-010"
+      ],
+      "permanent_assertion": "owner/project/hash/size/role/media准确匹配保存回执，不按同名猜测；先查持久记录，允许自动重试同一upload session/request key的幂等complete；不重传原字节、不重复材料或任务、不自动执行或扣费，持续失败保留重试入口。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "438ccd804711fedd720e9541cb4865be4302772a"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/web/tests/upload.spec.ts",
+        "apps/web/test-evidence/upload-reconcile/README.md",
+        "apps/api/src/original-material-upload.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_automated",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "owner/project/hash/size/role/media准确匹配；不重传/重复complete/执行/扣费；同名误匹配拒绝",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-006",
+          "BB-007",
+          "BB-010"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-006": [
+          "G1",
+          "G4"
+        ],
+        "BB-007": [
+          "G4",
+          "G5"
+        ],
+        "BB-010": [
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-568",
+      "title": "多文件队列和picker可用性",
+      "severity": "P1",
+      "test_ids": [
+        "BB-011",
+        "BB-051"
+      ],
+      "permanent_assertion": "单项失败不阻全队；其他picker可用，poll不拆控件；只重试原session",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [
+        "cc370f4550c60bdce91dd20def5e94c947d9d4c8"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/web/tests/upload.spec.ts",
+        "apps/web/tests/review-workspace.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_automated",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-011",
+          "BB-051"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-051"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-011": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-051": [
+          "G2",
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-548",
+      "title": "复核租约续约和取消响应",
+      "severity": "P1",
+      "test_ids": [
+        "BB-047",
+        "BB-048"
+      ],
+      "permanent_assertion": "续租/cancel正常；已完成CLI结果重放不再调模型；measured保留，unknown不伪0",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "c97db4248710faf91587c23ae2e66901bb0a8f34"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/worker/src/review-cancellation.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_automated",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-047",
+          "BB-048"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-047": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-048": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-554",
+      "title": "file-only复核报告可读可下载",
+      "severity": "P1",
+      "test_ids": [
+        "BB-016",
+        "BB-041"
+      ],
+      "permanent_assertion": "无structured findings仍交付真实Word；预览失败不复核重跑；授权hash下载",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [
+        "a4e9465d8ba2f8ab6249e1e296d356c9f8459aa8"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/web/tests/review-workspace.spec.ts",
+        "apps/worker/src/review-file-delivery.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_automated",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-016",
+          "BB-041"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-016"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-016": [
+          "G1",
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-041": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-570",
+      "title": "付费更新复核幂等结算和返回路径",
+      "severity": "P0",
+      "test_ids": [
+        "BB-014",
+        "BB-044",
+        "BB-053",
+        "BB-056",
+        "BB-057"
+      ],
+      "permanent_assertion": "丢响应同key一次预留；按对应交付政策结算，fail/cancel释放；付款返回原业务不自启",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "52201005f8304eedb594b69b8831b0101b354bca",
+        "74e184a91f73ea6d1a7c011902ad16ef845d2c1e",
+        "a92925f19821d07bfddce1a7a7f84f902f0f5b2d"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/api/src/billing.pg.test.ts",
+        "apps/api/src/review-billing.pg.test.ts",
+        "apps/web/tests/account.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_automated",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-014",
+          "BB-044",
+          "BB-053",
+          "BB-056",
+          "BB-057"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-014": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-044": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-053": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-056": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-057": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-572",
+      "title": "多页签名PDF与最低充值兼容",
+      "severity": "P1",
+      "test_ids": [
+        "BB-005",
+        "BB-006",
+        "BB-007",
+        "BB-057"
+      ],
+      "permanent_assertion": "支持格式的项目材料上传只核对身份、项目、会话、大小/容量及原字节hash，原样私有保存；不以逐页PDF、签章、Office解压、OCR或内容嗅探作上传门槛。signature_assessment=null如实表示未评估，旧不可变签章记录保留。最低充值20000积分/200元；旧订单值与幂等到账不变，支付未接通显示不可用。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "58ab71d0ff9d98dcb6c61e5575b3e3b7ea5f1319"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/web/tests/upload.spec.ts",
+        "apps/web/tests/account.spec.ts",
+        "packages/contracts/src/billing.ts",
+        "apps/api/src/original-material-upload.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_automated",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "合法签名PDF原字节保留；危险/不完整拒绝；新首档20000积分/200元；旧订单不改值/幂等到账",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-005",
+          "BB-006",
+          "BB-007",
+          "BB-057"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-005": [
+          "G1",
+          "G2",
+          "G3",
+          "G4"
+        ],
+        "BB-006": [
+          "G1",
+          "G4"
+        ],
+        "BB-007": [
+          "G4",
+          "G5"
+        ],
+        "BB-057": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-0097",
+      "title": "跨项目准确字节保留",
+      "severity": "P0",
+      "test_ids": [
+        "BB-049"
+      ],
+      "permanent_assertion": "running/paused准确source/support/template/QA pin保留字节；错身份不误pin；终态可清理；旧非M4兼容",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "a7100469abbaedab3afa47737382b48569c8606d"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "suite_candidates": [
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "db/migrations/0097_m4_cross_project_material_retention.sql"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_pg_integration",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-049"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-049": [
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-CANONICAL",
+      "title": "换源拆组与跨话题绕过项目互斥",
+      "severity": "P0",
+      "test_ids": [
+        "BB-018",
+        "BB-045"
+      ],
+      "permanent_assertion": "服务端派生canonical并锁定重核；不能换源拆组；非QA业务互斥；绑定免费、草稿保留、结束不自启",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_pg_and_browser",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-018",
+          "BB-045"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-018": [
+          "G1",
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-045": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-TASK-KIND",
+      "title": "文书任务伪装QA绕过互斥",
+      "severity": "P0",
+      "test_ids": [
+        "BB-045"
+      ],
+      "permanent_assertion": "update/generation不可声明QA；拒绝无run/reserve；真实QA可并行",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/api/src/authoring-task-kind.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_pg_integration",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-045"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-045": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-QUOTE-REVISION",
+      "title": "重复字段无故失效与新增要求沿用旧报价",
+      "severity": "P1",
+      "test_ids": [
+        "BB-014",
+        "BB-026"
+      ],
+      "permanent_assertion": "相同值不增加草稿revision；新要求或pending首次消费产生新版本，旧报价不能自动执行",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_pg_and_browser",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-014",
+          "BB-026"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-014": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-026": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-Q04",
+      "title": "两期比较分类及百分点伪造",
+      "severity": "P1",
+      "test_ids": [
+        "BB-031",
+        "BB-032"
+      ],
+      "permanent_assertion": "Q04优先；50%到60%为+10个百分点；模型不可绕宿主receipt造数字/显著改善；口径冲突拒算",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/worker/src/m4-stages.test.ts",
+        "python/tests/test_m4_finance_tool.py"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_python_and_worker",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-031",
+          "BB-032"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-032"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-031": [
+          "G1",
+          "G4",
+          "G5"
+        ],
+        "BB-032": [
+          "G1",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-USAGE-PENDING",
+      "title": "待核成果读取与恢复重复调用计费",
+      "severity": "P0",
+      "test_ids": [
+        "BB-033",
+        "BB-047",
+        "BB-055"
+      ],
+      "permanent_assertion": "QA及legacy按量任务的unknown usage如实待核，已交付成果按owner/version/hash可读，补齐权威usage后仅一次结算且零新调用。新固定文书4500不依赖模型成本率；双Word有效交付后即按固定价settle，unknown usage仅留审计，不能阻断固定价结算。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/worker/src/m4-pipeline.pg.test.ts",
+        "apps/api/src/m4-fixed-billing.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_pg_blob_pipeline",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "已核验成果/文本可按owner/version/hash读取；unknown账务待核；实际usage补齐一次结算、零新调用/费用",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-033",
+          "BB-047",
+          "BB-055"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-033": [
+          "G1",
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-047": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-055": [
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-TEMPLATE-BROKER",
+      "title": "摘要模板误要求券商非空",
+      "severity": "P1",
+      "test_ids": [
+        "BB-027",
+        "BB-034",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-038"
+      ],
+      "permanent_assertion": "当前四类文种分别采用沪深交易所准确知识版本及文种模板/平台默认框架，文种、市场、owner/version/hash固定；摘要券商可空，立项按其字段规则必填；受限上交所核查模板未能读取IRM全文，不冒称逐字模板一致。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "apps/worker/src/m4-pipeline.pg.test.ts",
+        "apps/api/src/m4-knowledge.test.ts",
+        "apps/worker/src/m4-runtime-skills.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_pg_blob_pipeline",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "摘要券商可空，立项非空；仍保持文种/市场/owner/version/hash校验",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-027",
+          "BB-034",
+          "BB-035",
+          "BB-038"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-027",
+          "BB-035",
+          "BB-036",
+          "BB-037",
+          "BB-038"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-027": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-034": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-035": [
+          "G1",
+          "G3",
+          "G4"
+        ],
+        "BB-036": [
+          "G1",
+          "G4"
+        ],
+        "BB-037": [
+          "G1",
+          "G4"
+        ],
+        "BB-038": [
+          "G1",
+          "G2",
+          "G3",
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-READING-FOCUS",
+      "title": "制作完成抢切旧稿与重复成果tab",
+      "severity": "P1",
+      "test_ids": [
+        "BB-040",
+        "BB-051"
+      ],
+      "permanent_assertion": "旧稿位置保留；当前制作原位转artifact；关tab不cancel；不重复标签",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "historical_browser",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-040",
+          "BB-051"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-051"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-040": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-051": [
+          "G2",
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "M4-BILLING-NOT-READY",
+      "title": "未配置正式M4成本率仍收费执行",
+      "severity": "P0",
+      "test_ids": [
+        "BB-052",
+        "BB-054",
+        "BB-058",
+        "BB-068"
+      ],
+      "permanent_assertion": "普通专业QA缺正式成本/预算配置时保持BILLING_NOT_READY，零该QA预留/供应商调用；产品帮助与任务准备仍免费。材料固定价m4-document-fixed-20261008-v1为4500，不依赖QA成本配置；更新使用已确认八档价格。不得将待讨论的QA_SINGLE 60积分当作已发布生产价。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [],
+      "fix_commit_resolution": "historical_fix_commit_not_recorded",
+      "suite_candidates": [
+        "apps/api/src/m4-workspace.pg.test.ts",
+        "docs/M4-CORE-API.md",
+        "apps/api/src/m4-fixed-billing.pg.test.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "code_boundary_and_historical_pg",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "owner": null,
+      "product_test_executed_this_session": false,
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "previous_product_assertion": "缺配置收费请求BILLING_NOT_READY且零该业务run/reserve/provider intent；免费保存/帮助可用；不用synthetic生产价",
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-052",
+          "BB-054",
+          "BB-058",
+          "BB-068"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-052": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-054": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-058": [
+          "G3",
+          "G4"
+        ],
+        "BB-068": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-581",
+      "title": "四文种与交易所知识准确固定",
+      "severity": "P1",
+      "test_ids": [
+        "BB-027",
+        "BB-034",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-038"
+      ],
+      "permanent_assertion": "立项、主承销商核查、法律意见、普通私募摘要四类分别可准备和生成；沪深知识采用精确不可变字节、版本及hash，不能混入其他文种。受限核查模板如实标明限制，专业签认和授权另验。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [
+        "d72b74158c2d16d240a17ffd15fba7c03fc13c51"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/581"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-07-material-drafting-knowledge.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/api/src/m4-knowledge.test.ts",
+        "apps/worker/src/m4-runtime-skills.test.ts",
+        "apps/worker/src/m4-stages.test.ts",
+        "apps/worker/src/m4-pipeline.pg.test.ts"
+      ],
+      "exact_case_names": [
+        "all material/exchange combinations select actual source knowledge with distinct immutable bytes",
+        "protected template is not misrepresented and existing billing config remains usable"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-027",
+          "BB-034",
+          "BB-035",
+          "BB-038"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-027",
+          "BB-035",
+          "BB-036",
+          "BB-037",
+          "BB-038"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-027": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-034": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-035": [
+          "G1",
+          "G3",
+          "G4"
+        ],
+        "BB-036": [
+          "G1",
+          "G4"
+        ],
+        "BB-037": [
+          "G1",
+          "G4"
+        ],
+        "BB-038": [
+          "G1",
+          "G2",
+          "G3",
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-583",
+      "title": "恢复独立材料生成表单",
+      "severity": "P1",
+      "test_ids": [
+        "BB-019",
+        "BB-021",
+        "BB-025",
+        "BB-026"
+      ],
+      "permanent_assertion": "材料生成保留独立文种卡片及文种专属字段、来源与模板；一个可选额外要求框，不要求通过助手才能生成；保存输入不得执行。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "58e0ab254a9d5742f0741304ddfa6e94546eade5"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/583"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-07-material-studio-prototype.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [
+        "prototype material navigation, cards, source modes and only one optional requirements box"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-019",
+          "BB-021",
+          "BB-025",
+          "BB-026"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-019": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-021": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-025": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-026": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-587",
+      "title": "原件不深检与自动上传回执恢复",
+      "severity": "P0",
+      "test_ids": [
+        "BB-006",
+        "BB-007",
+        "BB-010"
+      ],
+      "permanent_assertion": "支持格式原件只做身份、归属、会话、容量及hash校验后私有保存；PUT/complete不深检、OCR或启动独立辅助解析；先查回执再同key幂等complete重试，100%发送不等于已保存，不重传字节或自动编制。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "09fe96a3ce16487cc8951982dbf0a50671da7097"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/587"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-07-pdf-original-upload.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/api/src/original-material-upload.test.ts",
+        "apps/api/src/upload-reuse.test.ts",
+        "apps/web/tests/upload.spec.ts",
+        "apps/web/tests/project-execution.spec.ts"
+      ],
+      "exact_case_names": [
+        "every supported project material is stored opaquely without content parsing",
+        "raw material public upload preserves bytes, ownership, idempotency and old signature records without starting parsing"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-006",
+          "BB-007",
+          "BB-010"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-006": [
+          "G1",
+          "G4"
+        ],
+        "BB-007": [
+          "G4",
+          "G5"
+        ],
+        "BB-010": [
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-589",
+      "title": "常驻真实积分与更新收费回执",
+      "severity": "P1",
+      "test_ids": [
+        "BB-052",
+        "BB-053",
+        "BB-073",
+        "BB-074"
+      ],
+      "permanent_assertion": "桌面侧栏和手机顶栏主数字为available+reserved；运行中预留不显示为已消费，成功结算减少、失败取消不减少；账号页分别显示可用与预留，登出/失效清身份，按任务状态刷新原回执。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "9f04d127c7228d100e3dea129d399618b7d8a08c"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/589"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-credit-visibility.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/account.spec.ts",
+        "apps/web/tests/project-execution.spec.ts"
+      ],
+      "exact_case_names": [
+        "credit visibility: wallet stays pinned, works on mobile, refreshes and clears on logout",
+        "credit visibility: quote precedes execution and running receipt follows settlement and retry"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-052",
+          "BB-053",
+          "BB-073",
+          "BB-074"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-052": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-053": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-073": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-074": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-590",
+      "title": "材料入口与原募集书来源简化",
+      "severity": "P1",
+      "test_ids": [
+        "BB-019",
+        "BB-021",
+        "BB-025",
+        "BB-026"
+      ],
+      "permanent_assertion": "材料文种入口、准确来源本体、模板字段和一个可选要求框可核对；重传采用已保存的准确新原件，reload仍同一文件，不以旧版本选择器或重设主体覆盖来源。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "a47e0dc48c0632f33e2417d221ceedd8a9a4422e"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/590"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-material-form-simplification.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [
+        "replacing the source adopts only saved bytes and restores that exact file without a version selector"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-019",
+          "BB-021",
+          "BB-025",
+          "BB-026"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-019": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-021": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-025": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-026": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-591",
+      "title": "固定4500文书账务及按钮旁错误",
+      "severity": "P0",
+      "test_ids": [
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055"
+      ],
+      "permanent_assertion": "四文种每次完整委托正文+说明固定4500，报价版本不可变且不依赖QA成本率；确认入口原子预留、双Word私有回读/登记后仅一次settle；失败/有效取消全释放，并发不超支，按钮旁具体失败保留输入。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "51ea9b67c441d7dc2c6bb5d9d376f43f7ec08282"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/591"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-m4-fixed-document-price.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/api/src/m4-fixed-billing.pg.test.ts",
+        "apps/worker/src/m4-pipeline.pg.test.ts",
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [
+        "synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-052": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-053": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-054": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-055": [
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-594",
+      "title": "独立材料表单一键生成与结算后余额",
+      "severity": "P0",
+      "test_ids": [
+        "BB-019",
+        "BB-025",
+        "BB-026",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-073"
+      ],
+      "permanent_assertion": "独立材料表单一次点击连续后台报价+提交，无价格区与二次确认；单击/重试同key只建一次run和预留，成功双Word结算后主余额减少4500，失败取消不减，余额不足保留输入且充值后不自启。助手确认卡仍需用户确认。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "db79fa99bae61353709f0888e9501e5d8310db25"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/594"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-m4-fixed-document-price.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/api/src/m4-fixed-billing.pg.test.ts"
+      ],
+      "exact_case_names": [
+        "one click starts a document without a price panel and balance drops only after success at 1440px",
+        "insufficient credits show a recharge action, retain input and never auto-start"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-019",
+          "BB-025",
+          "BB-026",
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055",
+          "BB-073"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-019": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-025": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-026": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-052": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-053": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-054": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-055": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-073": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-596",
+      "title": "材料进度与同轮双成果阅读下载",
+      "severity": "P1",
+      "test_ids": [
+        "BB-040",
+        "BB-041",
+        "BB-042",
+        "BB-051"
+      ],
+      "permanent_assertion": "真实阶段及终态不得伪造；同run正文和说明成对保留，关页/reload恢复准确成果，历史版本不抢切；预览失败仍可授权下载，下载失败提示邻接准确文件且不重做任务，展开与阅读位置保持。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [
+        "2e2c101a334750552433629ae1950e6cbd6ee180"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/596"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-material-results-ux.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [
+        "completion and reload retain paired downloads; download errors stay beside the exact file",
+        "refresh preserves an expanded preview and its reading position",
+        "completion keeps older reader, new real artifact appears once and preview failure still permits download"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-040",
+          "BB-041",
+          "BB-042",
+          "BB-051"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-051"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-040": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-041": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-042": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-051": [
+          "G2",
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-598",
+      "title": "侧栏账号身份退出与迟到响应隔离",
+      "severity": "P0",
+      "test_ids": [
+        "BB-001",
+        "BB-002",
+        "BB-003",
+        "BB-075"
+      ],
+      "permanent_assertion": "侧栏显示真实用户名与退出、统一账号入口和常驻积分；长名字不遮退出，手机菜单纵向；logout/会话失效/换账号清缓存，旧迟到身份或余额响应不能覆盖新账号。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "bd9dd010d659f3d58307d1b2e3b5523c5399681c"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/598"
+      ],
+      "product_decision_sources": [],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/account.spec.ts",
+        "apps/web/tests/prototype-workflow.spec.ts"
+      ],
+      "exact_case_names": [
+        "credit visibility: wallet stays pinned, works on mobile, refreshes and clears on logout"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-001",
+          "BB-002",
+          "BB-003",
+          "BB-075"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-001": [
+          "G4",
+          "G5"
+        ],
+        "BB-002": [
+          "G4",
+          "G5"
+        ],
+        "BB-003": [
+          "G1",
+          "G4",
+          "G5"
+        ],
+        "BB-075": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-604",
+      "title": "统一编制开始后材料只读",
+      "severity": "P1",
+      "test_ids": [
+        "BB-072"
+      ],
+      "permanent_assertion": "统一募集书编制M1运行/暂停/等待输入/结束及取消后均保持只读直到明确继续修改；隐藏上传删除、禁原稿编辑，迟到file/drag/drop/删除事件零写请求；reload/重开不解锁，下一轮不改旧输入和成果。M4可保存后继草稿但当前run快照不变。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "3617ef3cabbfa3c92c1836d431bc35c5bb1a67b1"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/604"
+      ],
+      "product_decision_sources": [],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/project-execution.spec.ts",
+        "apps/web/tests/project-conversation.spec.ts",
+        "apps/web/tests/upload.spec.ts",
+        "apps/web/test-evidence/material-lock-20261008/README.md"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-072"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-072": [
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-607",
+      "title": "八档编制收费启用与旧试用兼容",
+      "severity": "P0",
+      "test_ids": [
+        "BB-014",
+        "BB-056",
+        "BB-057",
+        "BB-074"
+      ],
+      "permanent_assertion": "authoring-20261008-v1八档分类与积分准确，报价确认后才预留执行；一期17900，零余额前端禁确认/后端402；价格变化重确认，发布价格不改余额或启动任务，旧试用不追补，复核开关及充值可用性独立。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "947628b75ce056e1291a0b4d2336e82ad8bf3444"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/607"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-authoring-credit-activation.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/api/src/billing-classification.test.ts",
+        "apps/api/src/billing.pg.test.ts",
+        "apps/web/tests/project-execution.spec.ts",
+        "docs/acceptance/authoring-credit-activation-20261008.md"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-014",
+          "BB-056",
+          "BB-057",
+          "BB-074"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-014": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-056": [
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-057": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-074": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-609",
+      "title": "状态优先工作台完整统计和精准导航",
+      "severity": "P1",
+      "test_ids": [
+        "BB-069",
+        "BB-070",
+        "BB-071"
+      ],
+      "permanent_assertion": "统计覆盖全部分页与更新/复核/材料三类最新任务；后页失败不展示部分总数，刷新失败保留旧快照并报错；旧成功不能替代本轮失败；精确run进度/结果导航与筛选在reload/编辑/返回保留，页面操作零新任务。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "4c32f8c0e0d28894128a535000f9b6acb5452e83"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/609"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-status-first-dashboard.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/dashboard-status.spec.ts",
+        "apps/web/tests/m4-workspace.spec.ts",
+        "apps/web/tests/review-workspace.spec.ts",
+        "apps/web/tests/project-execution.spec.ts",
+        "apps/web/tests/prototype-workflow.spec.ts"
+      ],
+      "exact_case_names": [
+        "totals include every page and all three types; filters survive reload and never start tasks",
+        "a failed later page never becomes partial totals; retry and refresh errors preserve honest status",
+        "task state actions, new entries, narrow layouts and credit visibility match the approved workbench"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-069",
+          "BB-070",
+          "BB-071"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-069": [
+          "G1",
+          "G2",
+          "G4"
+        ],
+        "BB-070": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-071": [
+          "G1",
+          "G2",
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-611",
+      "title": "账号精简与安全设置入口保留",
+      "severity": "P1",
+      "test_ids": [
+        "BB-075"
+      ],
+      "permanent_assertion": "基本信息只保留只读账户名与绑定手机号；低频密码/会话/注销在一个设置入口，数据说明深链可用；零预留隐藏，非零准确解释成功扣除/失败取消返还，原安全确认不丢失。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "ff3f7fcd554a6805f1139fcca4f218a6035951e8"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/611"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-account-page-simplify.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/account.spec.ts",
+        "apps/web/tests/data-policy.spec.ts",
+        "docs/acceptance/account-simplify-20261008/README.md"
+      ],
+      "exact_case_names": [
+        "unified account keeps two basic fields and opens security settings only on request"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-075"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-075": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-613",
+      "title": "账号双卡与充值响应式布局",
+      "severity": "P1",
+      "test_ids": [
+        "BB-075"
+      ],
+      "permanent_assertion": "账号基本信息/积分双卡，桌面充值四列、手机两列，使用说明默认折叠；320/390/768/1024/1360/1920及长名字大余额无横溢；设置键盘可达，Escape关闭返回焦点，不改计价/支付可用性。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "6ab5f447a43761117654629fa1b0f5146453f533"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/613"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-account-page-simplify.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/account.spec.ts",
+        "apps/web/tests/data-policy.spec.ts",
+        "apps/web/test-evidence/account-layout-20261008/README.md"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-075"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-075": [
+          "G1",
+          "G2",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-615",
+      "title": "全站持久助手确认卡与准确旧清洁版续改",
+      "severity": "P0",
+      "test_ids": [
+        "BB-061",
+        "BB-062",
+        "BB-063",
+        "BB-064",
+        "BB-065",
+        "BB-066",
+        "BB-067",
+        "BB-068"
+      ],
+      "permanent_assertion": "assistant surface及owner隔离；收起/宽屏/跨页/历史/new/reload恢复草稿，logout清前端；普通聊天与prepare零执行预留，改卡重新prepare，确认samekey并发只建一次run并重核权限；旧clean版本/hash及原市场品种期间续改按一期17900，旧成果保留；付费QA先展示真实上限再二次确认，不造生产60积分价。 零执行指非QA文书业务run/intent；合法免费帮助QA运行/模型调用如实另记，不等于零供应商调用。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A",
+        "H"
+      ],
+      "fix_commits": [
+        "ebae7f6b50aaacff34cab717a5bde5892fe239b6"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/615"
+      ],
+      "product_decision_sources": [
+        "docs/product-decisions/2026-10-08-global-project-assistant.md"
+      ],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/tests/project-assistant.spec.ts",
+        "apps/api/src/project-assistant.pg.test.ts",
+        "apps/worker/src/unified-authoring.pg.test.ts"
+      ],
+      "exact_case_names": [
+        "global assistant persistence, owner isolation, no implicit execution and create retries",
+        "explicit completed baseline uses the existing content-update tier, not the original first-authoring tier",
+        "global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs",
+        "paid QA shows real cap, sends only after confirmation and preserves requested content",
+        "attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload"
+      ],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-061",
+          "BB-062",
+          "BB-063",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-067",
+          "BB-068"
+        ],
+        "human_acceptance_test_ids": [
+          "BB-067"
+        ],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "case_goal_map": {
+        "BB-061": [
+          "G1",
+          "G4",
+          "G5"
+        ],
+        "BB-062": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-063": [
+          "G2",
+          "G4",
+          "G5"
+        ],
+        "BB-064": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-065": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-066": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-067": [
+          "G1",
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ],
+        "BB-068": [
+          "G2",
+          "G3",
+          "G4",
+          "G5"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-601",
+      "title": "Docker结果页样式COPY完整",
+      "severity": "P1",
+      "test_ids": [
+        "BB-076"
+      ],
+      "permanent_assertion": "Web镜像包含浏览器真实引用的材料结果共享CSS；只在Vite开发服务存在不算通过；精确candidate生产镜像及公网资源对应hash，结果页桌面/窄屏样式验收。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "b296aa1ac24fe964375dca67d4643440b874081d"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/601"
+      ],
+      "product_decision_sources": [],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/src/web-build-assets.test.ts",
+        "deploy/m1/Dockerfile",
+        "deploy/m1/Dockerfile.dockerignore",
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-076"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G4"
+      ],
+      "case_goal_map": {
+        "BB-076": [
+          "G4"
+        ]
+      }
+    },
+    {
+      "bug_id": "GH-603",
+      "title": "Docker上下文白名单保留全部导入CSS",
+      "severity": "P1",
+      "test_ids": [
+        "BB-076"
+      ],
+      "permanent_assertion": "每个实际导入的原型CSS同时在COPY与Dockerfile.dockerignore白名单中；Linux最终镜像包含所有资源，产物hash与公网字节一致；不能以本地开发预览或仅COPY修改替代生产包验收。",
+      "applicable_release_gates": [
+        "engineering",
+        "real_acceptance"
+      ],
+      "applicable_observation_stages": [
+        "online_smoke"
+      ],
+      "executors": [
+        "A"
+      ],
+      "fix_commits": [
+        "8ceeda5edb946dcdebbdf24291cbe0b58c893d31"
+      ],
+      "fix_commit_resolution": "full_sha_resolved_from_local_git_objects",
+      "source_pull_requests": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/603"
+      ],
+      "product_decision_sources": [],
+      "product_expectation_version": "approved-decisions-through-20261008-global-assistant",
+      "suite_candidates": [
+        "apps/web/src/web-build-assets.test.ts",
+        "deploy/m1/Dockerfile",
+        "deploy/m1/Dockerfile.dockerignore",
+        "apps/web/tests/m4-workspace.spec.ts"
+      ],
+      "exact_case_names": [],
+      "fixture_manifest_sha256": null,
+      "historical_evidence_type": "merged_source_and_historical_pr_receipts_not_session_execution",
+      "old_version_fail_evidence": null,
+      "candidate_pass_evidence": null,
+      "last_passed_release_sha": null,
+      "human_review": null,
+      "candidate_result": "not_run",
+      "product_test_executed_this_session": false,
+      "owner": null,
+      "execution_ownership": {
+        "agent_test_ids": [
+          "BB-076"
+        ],
+        "human_acceptance_test_ids": [],
+        "human_gate": "Applicable real_acceptance subcases; mechanical regression does not require repeated Human execution"
+      },
+      "goal_ids": [
+        "G4"
+      ],
+      "case_goal_map": {
+        "BB-076": [
+          "G4"
+        ]
+      }
+    }
+  ],
+  "candidate_release_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "candidate_git_tree": "9930a4f4c981cdff0275a1698f16dd8188225bb8",
+  "remote_verified_at": "2026-10-08T10:59:24.3857992Z",
+  "product_tests_executed_this_session": false,
+  "gate_definitions": {
+    "E": "engineering",
+    "R": "real_acceptance",
+    "O": "online_smoke_post_release_observation"
+  },
+  "source_snapshot": "https://github.com/ITSophiaXu/BondBuddy/tree/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "approved_product_decision_sources": [
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-07-pdf-original-upload.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-07-material-drafting-knowledge.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-material-form-simplification.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-m4-fixed-document-price.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-material-results-ux.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-credit-visibility.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-authoring-credit-activation.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-status-first-dashboard.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-account-page-simplify.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-global-project-assistant.md"
+  ],
+  "business_goal_definition_version": "business-goals-20261008-v1",
+  "transversal_goal": "G4",
+  "plan_revision": "v6-fast-invited-user-testing",
+  "published_date": "2026-10-09",
+  "source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "publication": {
+    "plan_revision": "v6-fast-invited-user-testing",
+    "source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+    "develop_reference_sha": "ebae7f6b50aaacff34cab717a5bde5892fe239b6",
+    "remote_heads_rechecked_date": "2026-10-09",
+    "remote_heads_unchanged_at_recheck": true,
+    "runtime_observation_date": "2026-10-08",
+    "runtime_reverified_for_publication": false,
+    "source_paths_relative_to": "repository_root_at_source_reference_sha",
+    "artifact_paths_relative_to": "this_directory",
+    "local_investigation_records_published": false,
+    "historical_observations_are_current_test_evidence": false,
+    "execution_instruction": "Freeze actual source/config/scope and rerun selected subcases; static metadata validation is not product test execution or admission approval."
+  }
+}
