@@ -24,7 +24,8 @@ import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation,
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
-import { sendMaterial } from './material-download.js';
+import { sendMaterial, contentDisposition } from './material-download.js';
+import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
 import { dataPolicyFromEnv } from './deletion-lifecycle.js';
 import { dataLifecycleSchemas } from '@bondbuddy/contracts';
 import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
@@ -1494,10 +1495,11 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
         ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
          (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
@@ -1521,14 +1523,15 @@ export function createServer(settings: Settings = {}) {
       await client.query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
       await recordOperation(client,{owner:user,projectId:a.project_id,runId:a.run_id,requestId:request.id,traceId:a.run_id,kind:'artifact_download_grant',status:'submitted'});
     });
-    return {artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString(),...(wordDelivery?{word_delivery:wordDelivery}:{})};
+    return {...artifactDownloadName(a,pair),artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString(),...(wordDelivery?{word_delivery:wordDelivery}:{})};
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
         ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
          (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
@@ -1537,7 +1540,7 @@ export function createServer(settings: Settings = {}) {
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
     const bytes=await verifiedArtifactBytes(a);
     await transaction(db(),client=>recordOperation(client,{owner:user,projectId:(a.project_id as string),runId:a.run_id,requestId:request.id,traceId:a.run_id,kind:'artifact_download',status:'submitted'}));
-    return reply.header('content-type',a.media_type).header('cache-control','private, no-store').send(bytes);
+    return reply.header('content-type',a.media_type).header('cache-control','private, no-store').header('content-disposition',contentDisposition(artifactDownloadName(a).filename)).send(bytes);
   });
   const ocrPath='/api/v1/projects/:project_id/materials/:material_id/ocr';
   app.get(ocrPath,{schema:{response:{200:schemas.OcrReview}}},async(request,reply)=>{

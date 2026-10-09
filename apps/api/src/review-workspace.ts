@@ -1,3 +1,4 @@
+import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
 import { activePrice, creditBalance, quoteDto, reserveCredits } from './billing.js';
 import { billingSchemas, type BillingTask } from '@bondbuddy/contracts';
 import { ReviewUpdateRequestSchema, type ReviewUpdateRequest, type ReviewResultPin } from '@bondbuddy/contracts';
@@ -82,9 +83,10 @@ export function reviewReplyMetadataDto(r: { reply_metadata?: unknown; context?: 
 }
 const messageDto = (r: any): ReviewMessage => ({ message_id: r.id, role: r.role, content: r.content, context: r.context, created_at: date(r.created_at), reply_status: r.reply_status, reply_to: r.reply_to, proposal: r.proposal, error: r.error, reply_metadata: reviewReplyMetadataDto(r) });
 async function artifacts(db: Db, user: string, id: string, runId: string) {
-  return (await db.query(`SELECT a.artifact_id,a.artifact_version,a.kind,a.filename FROM bb_review_artifacts a
+  return (await db.query(`SELECT a.artifact_id,a.artifact_version,a.kind,v.media_type,${artifactNameColumns('v')} FROM bb_review_artifacts a
     JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
-    WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3 AND v.quality_status='passed' AND v.delivery_status='available' ORDER BY a.kind`, [user, id, runId])).rows;
+    JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')}
+    WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3 AND v.quality_status='passed' AND v.delivery_status='available' ORDER BY a.kind`, [user, id, runId])).rows.map(a=>({artifact_id:a.artifact_id,artifact_version:a.artifact_version,kind:a.kind,filename:artifactDownloadName(a).filename}));
 }
 async function outbox(db: Db, user: string, id: string, event: string, payload: unknown) {
   await db.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'review_project',$3,$4,$5)", [uid(), user, id, event, payload]);
@@ -411,7 +413,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const runId = uid();
       const discussion = (await client.query('SELECT * FROM bb_review_messages WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id', [user, id])).rows.map(messageDto);
       const review = { version: 'review_v1', ...(revision ? {} : { file_delivery: await lockReviewFileDelivery(p) }), operation: b.operation, report_id: uid(), version_number: version, draft_version: inputVersion, input, origin, context_messages: discussion, source_report_id: b.source_report_id, finding_ids: b.finding_ids, source_report_sha256: source?.content_sha256.trim() ?? null };
-      const manifest = { project_kind: 'review', draft_revision: p.draft_revision, issuer_name: p.issuer_name, market: p.market, offering: p.offering,
+      const manifest = { project_kind: 'review', name:p.name, draft_revision: p.draft_revision, issuer_name: p.issuer_name, market: p.market, offering: p.offering,
         update_details: { ...emptyUpdateDetails(), ...p.update_details, authoring_mode: 'unified_v1' },
         materials: materialRows.map(m => ({ material_id: m.id, material_version: m.version, sha256: m.sha256.trim(), role: m.role })), review,
         ...(revision ? { authoring: { version: 'unified_v1', source_prospectuses: [], requirements: [], knowledge: [], knowledge_status: 'authoring_reference_not_compliance_approval', review_revision: revision } } : {}) };
@@ -456,7 +458,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const revision=Number((await client.query('SELECT COALESCE(max(revision),0)+1 next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
       const sourceProject={issuer_name:source.manifest.issuer_name,market:source.manifest.market,offering:source.manifest.offering};
       const input={...original,requirements:pin.requirements?[pin.requirements]:[]};
-      const manifest={project_kind:'review',draft_revision:p.draft_revision,...sourceProject,
+      const manifest={project_kind:'review',name:p.name,draft_revision:p.draft_revision,...sourceProject,
         update_details:{...emptyUpdateDetails(),...source.manifest.update_details,authoring_mode:'unified_v1',supplementary_notes:pin.requirements||null},
         materials:materialRows.map(m=>({material_id:m.id,material_version:m.version,sha256:m.sha256.trim(),role:m.role})),
         authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:await loadAuthoringKnowledge(sourceProject),knowledge_status:'authoring_reference_not_compliance_approval',review_result:pin}};

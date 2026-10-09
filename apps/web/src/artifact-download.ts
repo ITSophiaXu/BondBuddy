@@ -1,4 +1,9 @@
-import { ApiError, friendlyError } from './api';
+import { ApiError, friendlyError, type Dto } from './api';
+import { resultFilename } from '@bondbuddy/contracts';
+
+export function artifactFilename(artifact: Dto<'ArtifactResponse'>): string {
+  return artifact.filename ?? resultFilename({ kind: artifact.word_delivery ? ({revision:'募集书修订版',clean:'募集书清洁版',baseline:'募集书基线版'} as const)[artifact.word_delivery.variant] : '成果', version:artifact.display_version ?? artifact.version, mediaType:artifact.media_type });
+}
 
 export function artifactError(error: unknown): string {
   if (error instanceof ApiError) {

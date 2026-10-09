@@ -1,3 +1,4 @@
+export * from './artifact-filename.js';
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
 import { billingSchemas } from './billing.js';
 import { m4Schemas } from './m4-workspace.js';
@@ -268,7 +269,7 @@ export const schemas = {
   ProjectEventsResponse: obj({ items: Type.Array(ProjectEventSchema), next_cursor: nullable(Type.Integer({ minimum: 0 })) }),
   InternalObservabilityEvent: InternalObservabilityEventSchema,
   UsageObservation: UsageObservationSchema,
-  ArtifactResponse: obj({ artifact_id: id, run_id: id, version: revision, media_type: Type.Literal('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), sha256: hash, quality_status: Type.Literal('passed'), delivery_status: enumOf(ARTIFACT_DELIVERY_STATUSES), download_url: Type.String({ description: 'Short-lived authorized URL, only after owner and hash check.' }), expires_at: utc,
+  ArtifactResponse: obj({ filename: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })), display_version: Type.Optional(revision), artifact_id: id, run_id: id, version: revision, media_type: Type.String({ minLength: 1, maxLength: 255 }), sha256: hash, quality_status: Type.Literal('passed'), delivery_status: enumOf(ARTIFACT_DELIVERY_STATUSES), download_url: Type.String({ description: 'Short-lived authorized URL, only after owner and hash check.' }), expires_at: utc,
     word_delivery: Type.Optional(obj({ variant: Type.Union([Type.Literal('revision'), Type.Literal('clean'), Type.Literal('baseline')]),
       revision_artifact_id: id, clean_artifact_id: id, baseline_artifact_id: Type.Optional(id),
       writer_version: Type.Union([Type.Literal('bondbuddy-word-delivery-1.0.0'), Type.Literal('bondbuddy-unified-word-1.0.0'), Type.Literal('bondbuddy-file-word-1.0.0')]), source_sha256: nullable(hash), baseline_hash: nullable(hash), effective_baseline_sha256: nullable(hash), plan_hash: nullable(hash),

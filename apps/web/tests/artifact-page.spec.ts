@@ -1,3 +1,4 @@
+import { readFile, mkdir } from 'node:fs/promises';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Dto } from '../src/api';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import { createHash } from 'node:crypto';
 const now = '2026-09-26T02:00:00Z';
 const projectId = 'synthetic-word-project';
 const runId = 'synthetic-successful-run';
+const filenames = {revision:'合成成果项目_募集书修订版_V2_20260926.docx',clean:'合成成果项目_募集书清洁版_V2_20260926.docx',baseline:'合成成果项目_募集书基线版_V2_20260926.docx'};
 const ids = { revision: 'word-revision', clean: 'word-clean', baseline: 'word-baseline' };
 const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const bytes = Buffer.from('synthetic Word download bytes');
@@ -60,7 +62,7 @@ async function installApi(page: Page, data: State) {
       }
       data.metadataReads[id] = (data.metadataReads[id] ?? 0) + 1;
       if (data.metadataStatus !== 200) return json(route, data.metadataStatus, { code: data.metadataStatus === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE' });
-      const artifact: Dto<'ArtifactResponse'> = { artifact_id: id, run_id: data.changedRun ? 'other-run' : runId, version: 1,
+      const artifact: Dto<'ArtifactResponse'> = { filename:filenames[variant],display_version:2,artifact_id: id, run_id: data.changedRun ? 'other-run' : runId, version: 1,
         media_type: mediaType, sha256: createHash('sha256').update(bytes).digest('hex'), quality_status: 'passed', delivery_status: 'available',
         download_url: data.urlOverride ?? `/api/v1/artifacts/${id}/download?grant=fresh-${data.metadataReads[id]}`,
         expires_at: '2026-09-26T02:05:00Z',
@@ -110,7 +112,8 @@ test('latest failed run preserves access to successful Word summary and both use
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', { name: `下载${label}`, exact: true }).click();
     const download = await downloaded;
-    expect(download.suggestedFilename()).toBe(`合成成果项目-v1-${label}.docx`);
+    expect(download.suggestedFilename()).toBe(filenames[variant]);
+    await expect(page.locator('.artifact-filename').filter({hasText:filenames[variant]})).toBeVisible();
     expect(await download.failure()).toBeNull();
     const stream = await download.createReadStream();
     const chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
@@ -287,7 +290,7 @@ for (const scenario of ['corrupt bytes', 'partial response', 'unavailable bytes'
     await button.click();
     const download = await downloaded;
     expect(await download.failure()).toBeNull();
-    expect(download.suggestedFilename()).toBe('合成成果项目-v1.docx');
+    expect(download.suggestedFilename()).toBe(filenames.revision);
     expect(data.grants).toEqual(['fresh-1', 'fresh-2']);
     expect(data.calls.every(call => call.method === 'GET')).toBe(true);
     await expect(page).toHaveURL(/#tasks$/);
@@ -369,4 +372,23 @@ test('project-list pagination keeps a pending download disabled and releases it 
   await expect(button).toBeEnabled();
   expect(byteRequests).toBe(1);
   expect(data.metadataReads[ids.revision]).toBe(1);
+});
+
+
+test('canonical filenames stay the same after reload and across project list with prototype captures',async({page})=>{
+  const data=state();data.pendingItems=[{record_id:'paragraph-42',message:'请补充授信截至日及证明材料。'}];await installApi(page,data);
+  for(const viewport of [{width:1440,height:960},{width:390,height:844}]){
+    await page.setViewportSize(viewport);
+    const evidence=process.env.BB_FILENAME_EVIDENCE_DIR;
+    if(evidence){await mkdir(evidence,{recursive:true});await page.setContent(await readFile('../../product-prototype/public/result-filenames.html','utf8'));await page.screenshot({path:join(evidence,`prototype-${viewport.width}.png`)});}
+    await page.goto('/?evidence='+viewport.width+'#/artifacts/word-revision');await expect(page.locator('[data-filename="1"]')).toHaveText(filenames.clean);
+    await page.locator('#artifact-downloads').evaluate(el=>el.scrollIntoView({block:'start'}));
+    await expect(page.locator('[data-filename="0"]')).toBeInViewport();
+    if(evidence)await page.screenshot({path:join(evidence,`implementation-${viewport.width}.png`)});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+  }
+  await page.reload();await expect(page.locator('[data-filename="0"]')).toHaveText(filenames.revision);
+  const first=page.waitForEvent('download');await page.getByRole('button',{name:'下载修订版',exact:true}).click();expect((await first).suggestedFilename()).toBe(filenames.revision);
+  await page.goto('/#tasks');const second=page.waitForEvent('download');await page.getByRole('button',{name:'下载最近成果'}).click();expect((await second).suggestedFilename()).toBe(filenames.revision);
+  expect(data.calls.every(call=>call.method==='GET')).toBe(true);
 });

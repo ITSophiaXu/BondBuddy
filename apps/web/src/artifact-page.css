@@ -17,3 +17,5 @@
   .artifact-provenance { grid-template-columns: 1fr; gap: 6px; }
   .artifact-provenance dd { margin-bottom: 12px; }
 }
+
+.artifact-filename { display:block; width:100%; overflow-wrap:anywhere; font-size:12px; color:var(--muted,#647067); margin:0 0 12px; }

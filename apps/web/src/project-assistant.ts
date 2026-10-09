@@ -1,3 +1,4 @@
+import { artifactFilename } from './artifact-download';
 import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
   sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
   type AssistantAction,type AssistantCard,type AssistantCardRequest,type AssistantResult,type M4Workspace,type M4Topic,
@@ -266,7 +267,7 @@ export class ProjectAssistant {
     for(const file of files)this.uploads.push({id:crypto.randomUUID(),file,role,project,topic,status:'等待上传'});
     this.invalidateTask();this.paintStatus();void this.drainUploads();
   }
-  private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=a.word_delivery?(a.word_delivery.variant==='revision'?'募集说明书-修订版.docx':'募集说明书-清洁版.docx'):a.media_type===M1_UPLOAD_MIME_TYPES[0]?'BondBuddy-成果.docx':'BondBuddy-复核报告.txt';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+  private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=artifactFilename(a);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;
     if(a==='hide'){this.hidden=true;this.open=false;sessionStorage.setItem('bb-assistant-hidden:'+this.owner,'true');this.paint();
       const restore=document.querySelector<HTMLElement>('[data-assistant-restore]');

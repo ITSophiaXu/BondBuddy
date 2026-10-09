@@ -70,13 +70,14 @@ test('file-only review: immutable input → plain CLI → Word → crash recover
       assert.equal(workspace.selected_report, null); assert.equal(workspace.artifact_run.run_id, runId); assert.equal(workspace.artifacts.length, 1);
       const artifact = workspace.artifacts[0]; assert.equal(artifact.kind, 'report');
       const meta = await send('GET', `/api/v1/artifacts/${artifact.artifact_id}`);
-      assert.equal(meta.statusCode, 200, meta.body); assert.equal(meta.json().run_id, runId);
+      assert.equal(meta.statusCode, 200, meta.body); assert.equal(meta.json().run_id, runId);assert.equal(meta.json().filename,artifact.filename);assert.match(artifact.filename,/_复核报告_V1_[0-9]{8}\.docx$/);
       const download = await send('GET', meta.json().download_url);
-      assert.equal(download.statusCode, 200, download.body); assert.equal(digest(download.rawPayload), meta.json().sha256);
+      assert.equal(download.statusCode, 200, download.body); assert.equal(digest(download.rawPayload), meta.json().sha256);assert.ok(download.headers['content-disposition']?.includes(encodeURIComponent(artifact.filename)));
       const outputPath = join(directory, 'report.docx'); await writeFile(outputPath, download.rawPayload);
       const parsed = await promisify(execFile)(python!, ['-c', "import sys;from docx import Document;print('\\n'.join(p.text for p in Document(sys.argv[1]).paragraphs))", outputPath], { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
       assert.match(parsed.stdout, /合成金额100与120不一致/); assert.match(parsed.stdout, /公开检索未执行/);
       assert.equal((await send('GET', `/api/v1/projects/${project}/review-history`)).json().items[0].artifacts[0].artifact_id, artifact.artifact_id);
+      assert.equal((await send('GET', `/api/v1/projects/${project}/review-history`)).json().items[0].artifacts[0].filename,artifact.filename);
       const readablePath = `/api/v1/projects/${project}/review-executions/${runId}/readable-report`;
       const readable = await send('GET', readablePath);
       assert.equal(readable.statusCode, 200, readable.body); assert.equal(readable.json().status, 'available');
