@@ -26,7 +26,7 @@ M4 保留 Codex CLI 服务端 worker。`m4_document_v1` 与 `m4_qa_v1` 使用独
 | `POST /topics/:topic_id/materials` | 采用授权的准确材料版本；原件上传复用已有项目上传接口 |
 | `PUT /topics/:topic_id/view` | 保存准确阅读/未发送状态，保留旧版引用 |
 | `GET/POST /templates` | 本账号私有 Word 模板；明确文种、交易所、券商、准确材料版本和 hash。摘要无需编造券商 |
-| `POST /topics/:topic_id/quote` | 返回输入绑定的五分钟预留上限 B，不能称为最终固定价格 |
+| `POST /topics/:topic_id/quote` | 返回输入绑定的五分钟报价，按 billing_method 区分固定价与历史按量预留上限 |
 | `POST /topics/:topic_id/execute` | 核对输入、报价、授权、同项目互斥和实际余额，原子预留、保存 run 和 outbox |
 | `POST /topics/:topic_id/messages` | 基础问答或任务讨论。补齐字段/采纳要求不自动制作。用户明确本业务执行且有当前文书报价时，可解析自然语言主动作再由宿主核对执行 |
 | `POST /topics/:topic_id/handoffs/bind` | 用户明确采用准确原消息及来源时，将新建更新／复核目标绑定服务端派生的 canonical scope；不复制文件、不执行、不收费 |
@@ -49,7 +49,9 @@ M4 保留 Codex CLI 服务端 worker。`m4_document_v1` 与 `m4_qa_v1` 使用独
 
 2026-10-08 起，四类完整材料按每份 4,500 积分固定价：报价返回 `billing_method=fixed`、`amount_semantics=fixed_price` 和不可变价格版本，用户确认后以 `fixed_credits` 冻结。正文 Word 与编制说明都实际交付后扣款，失败或取消全额释放；材料生成不依赖模型成本配置。迁移 0099 将 M4 固定价结算路由至专用双文件触发器，不影响 M1/M2。详见[产品决定](product-decisions/2026-10-08-m4-fixed-document-price.md)。
 
-基础 QA 和已运行的历史按量文书保持原计费：真实供应商成本（元）×100×K 得 A，预留 B，成功扣 `min(A,B)`，失败/取消释放。实际钱包、积分批次、预留/分配/结算/释放事件共用。旧未执行文书报价返回 `QUOTE_CHANGED`，必须重新展示固定价后确认。
+按[2026-10-09 用户决定](product-decisions/2026-10-09-fixed-qa-price.md)，新的普通 QA 统一固定 60 积分，以已交付答案成功终态结算，失败／取消全额释放。`publishM4QaPrice` 可信运营函数发布不可变价格版本；运行前报价版本变化需重新确认，运行后保留原锁定价格。追加迁移0101仅扩展固定QA账务守卫，不种生产价格。
+
+已运行的历史按量 QA 与文书保持原计费：真实供应商成本（元）×100×K 得 A，预留 B，成功扣 `min(A,B)`，失败/取消释放。实际钱包、积分批次、预留/分配/结算/释放事件共用。旧未执行文书报价返回 `QUOTE_CHANGED`，必须重新展示固定价后确认。
 
 `publishM4BillingConfig` 是可信运营发布接口，记录 actor、reason、有效时点和不可变配置。配置须包含准确模型 ID、人民币成本率（整数 micro-yuan/百万 tokens）及每类任务估算预算/预留系数。仓库不种生产成本率或预算；未发布返回 `BILLING_NOT_READY`。调用时固定配置，运行中发布新版不替换原快照。网关/CLI 同一调用只采用一份权威 usage；缺失/冲突不当作零成本。已由平台承担的预检/解析不补收。
 
@@ -57,7 +59,7 @@ M4 保留 Codex CLI 服务端 worker。`m4_document_v1` 与 `m4_qa_v1` 使用独
 
 未选择文种时，任务准备要求同样免费并持久等待首次采用。明确请求未开放文种、局部执行或实时公开／法规检索、深度研究时，免费返回能力说明，不按基础 QA 预留。普通概念解释、准确材料解读和确定性计算仍采用原实际 QA 类别。API 的未开放请求判断供 worker 的诚实反馈复用；否定执行和基础概念不冒充已进行检索。
 
-已核验 result 但 usage 待核时，按量任务可展示已生成成果，保持 `settlement_pending` 或可恢复暂停，不成功扣费。待核队列只在实际 usage 齐备后恢复并复用已固定 result，不重复派发供应商调用。固定价文书按真实双文件交付结算，未知 usage 原样保留审计。供应商未完成/结果冲突仍走原 reconciliation 门，不能借此放宽。
+已核验 result 但 usage 待核时，按量任务可展示已生成成果，保持 `settlement_pending` 或可恢复暂停，不成功扣费。待核队列只在实际 usage 齐备后恢复并复用已固定 result，不重复派发供应商调用。固定价文书按真实双文件交付结算，固定价 QA 按答案实际交付结算，未知 usage 原样保留审计。供应商未完成/结果冲突仍走原 reconciliation 门，不能借此放宽。
 
 ## 验证边界
 
