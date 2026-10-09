@@ -338,7 +338,8 @@ export class ProjectAssistant {
   }
   private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
     const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>`<div>${esc(u.file.name)} · ${esc(u.status)}${u.error?`<p>${esc(u.error)}</p><button data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button><button data-a="remove-upload" data-id="${esc(u.id)}">移除</button>`:''}</div>`).join('');
-    const quote=this.host.querySelector<HTMLElement>('[data-qa-price]');if(quote)quote.textContent=this.qaQuote?.value.quote.points?`本次回答最多 ${this.qaQuote.value.quote.points.toLocaleString()} 积分，按实际用量结算。再次点击发送确认。`:'';
+    const quote=this.host.querySelector<HTMLElement>('[data-qa-price]');if(quote){const q=this.qaQuote?.value.quote;
+      quote.textContent=q?.points?(q.billing_method==='fixed'?`本次回答 ${q.points.toLocaleString()} 积分，回答成功后扣费，失败不扣费。再次点击发送确认。`:`本次回答最多 ${q.points.toLocaleString()} 积分，按实际用量结算。再次点击发送确认。`):'';}
     const send=this.host.querySelector<HTMLButtonElement>('[data-a="send"]');if(send)send.disabled=this.busy||!this.workspace||!this.text.trim();
   }
   private sizeComposer(){const input=this.host.querySelector<HTMLTextAreaElement>('[data-composer]');if(input){input.style.height='auto';input.style.height=`${Math.min(160,input.scrollHeight)}px`;}}

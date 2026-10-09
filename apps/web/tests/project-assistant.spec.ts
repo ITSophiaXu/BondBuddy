@@ -8,7 +8,7 @@ const now='2026-10-08T10:00:00Z',hash='a'.repeat(64);
 function fixture(){return {topic:{topic_id:'topic',project_id:'scope',source_project_id:null,name:'项目助手',surface:'assistant',created_at:now,updated_at:now},
  project:{project_id:'scope',kind:'qa',name:'项目助手',draft_revision:1},materials:[],material_details:[],drafts:{},templates:[],messages:[] as any[],tasks:[],artifacts:[],pending_requirements:[],active_run:null,
  view:{version:0,selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},assistant:{project_id:null,action:null}}};}
-async function setup(page:Page,{paid=false}={}){
+async function setup(page:Page,{paid=false,fixed=false}={}){
  const w:any=fixture(),messages:any[]=[],executions:any[]=[],cards:any[]=[],uploads:any[]=[];let quoteReads=0,releaseUpload:(()=>void)|undefined;
  const delivered=Buffer.from('Synthetic downloadable report'),deliveredHash=createHash('sha256').update(delivered).digest('hex');
  w.drafts.private_summary={document_type:'private_summary',version:0,sha256:hash,updated_at:null,source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[]};
@@ -21,7 +21,7 @@ async function setup(page:Page,{paid=false}={}){
   else if(path.endsWith('/workspace'))body=w;
   else if(path.endsWith('/view')){const b=req.postDataJSON();expect(b.expected_version).toBe(w.view.version);w.view={...b.view,version:w.view.version+1};body={view:w.view};}
   else if(path.endsWith('/cards')){if(req.method()==='POST'){const b=req.postDataJSON();const card={...b,draft_token:w.view.assistant.draft_token,created_at:new Date().toISOString(),project_name:'合成材料任务',requirements:w.drafts.private_summary.supplemental_requirements,material_names:w.material_details.map((m:any)=>m.filename),baseline:null,quote:{points:4500},balance:{available:100000,frozen:0},run:null};cards.push(card);body={card};}else body={cards};}
-  else if(path.endsWith('/quote')){quoteReads++;const document=req.postDataJSON().kind==='document';body={quote:{quote_id:'quote',topic_id:'topic',input_hash:hash,points:document?4500:paid?20:0,task_type:document?'m4_G05':paid?'m4_Q01':'m4_Q00',billing_method:document?'fixed':paid?'metered_capped':'free',amount_semantics:document?'fixed_price':'reservation_cap'},balance:{available:100000,frozen:0},shortage:0};}
+  else if(path.endsWith('/quote')){quoteReads++;const document=req.postDataJSON().kind==='document';body={quote:{quote_id:'quote',topic_id:'topic',input_hash:hash,points:document?4500:fixed?60:paid?20:0,task_type:document?'m4_G05':paid||fixed?'m4_Q01':'m4_Q00',billing_method:document||fixed?'fixed':paid?'metered_capped':'free',amount_semantics:document||fixed?'fixed_price':'reservation_cap'},balance:{available:100000,frozen:0},shortage:0};}
   else if(path.endsWith('/drafts/private_summary')){const b=req.postDataJSON();w.drafts.private_summary={...b.input,version:w.drafts.private_summary.version+1,sha256:hash,updated_at:now};body={draft:w.drafts.private_summary};}
   else if(path==='/m4/topics/topic/execute'){const b=req.postDataJSON();executions.push(b);const card=cards.find(c=>c.execution_request_id===b.execution_request_id);card.run={run_id:'document-run',project_id:'scope',state:'queued',stage:'queued',input_revision:1};body={run:card.run};}
   else if(path.endsWith('/materials/uploads')){const b=req.postDataJSON(),id=String(uploads.length);uploads.push(b);body={upload_id:id,upload_url:'/api/v1/synthetic-upload/'+id};}
@@ -48,6 +48,12 @@ test('global launcher preserves unsent text across navigation, collapse, reload 
 test('paid QA shows real cap, sends only after confirmation and preserves requested content',async({page})=>{
  const s=await setup(page,{paid:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('20');expect(s.messages).toHaveLength(0);await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].content).toBe('解释担保条款');expect(s.messages[0].execute).toBeUndefined();expect(s.quoteReads()).toBe(1);
+});
+test('fixed QA states the exact price and success/failure terms before confirmation',async({page})=>{
+ const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
+ await expect(page.locator('[data-qa-price]')).toContainText('本次回答 60 积分');await expect(page.locator('[data-qa-price]')).toContainText('失败不扣费');await expect(page.locator('[data-qa-price]')).not.toContainText('按实际用量');expect(s.messages).toHaveLength(0);
+ if(process.env.QA_PRICE_EVIDENCE){const dir=fileURLToPath(new URL('../test-evidence/assistant-qa-price/',import.meta.url));await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
+ await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].quote_id).toBe('quote');
 });
 test('editable task card uses quarters and optional requirements; insufficient input never executes',async({page})=>{
  const s=await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-kind=update]').click();await expect(page.locator('.ba-form')).toBeVisible();

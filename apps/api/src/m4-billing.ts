@@ -6,6 +6,28 @@ import { inputManifestHash } from './production-rule-pin.js';
 
 type Db = Pool | PoolClient;
 const isDocumentTask = (task:string) => (Object.values(M4_DOCUMENT_BILLING_TASKS) as string[]).includes(task);
+const isPaidQaTask = (task:string) => task in M4_BILLING_TASKS && !isDocumentTask(task);
+/** Immutable, trusted operational publication; never accepts a price from a chat request. */
+export async function publishM4QaPrice(pool:Pool,input:{id:string;points:number;effective_at:string;actor:string;reason:string}) {
+  if(!/^[a-zA-Z0-9._:-]{1,128}$/.test(input.id)||!Number.isSafeInteger(input.points)||input.points<1||input.points>1e9
+    ||!Number.isFinite(Date.parse(input.effective_at))||!input.actor.trim()||!input.reason.trim())
+    throw new Problem(422,'VALIDATION_FAILED','QA price version, positive points, effective time and approval evidence required');
+  return transaction(pool,async c=>{
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended('bb-m4-qa-price',0))");
+    const old=(await c.query('SELECT * FROM bb_m4_qa_price_versions WHERE id=$1',[input.id])).rows[0];
+    if(old){
+      if(Number(old.points)!==input.points||date(old.effective_at)!==date(input.effective_at)||old.actor!==input.actor||old.reason!==input.reason)
+        throw new Problem(409,'IDEMPOTENCY_CONFLICT','QA price version is immutable');
+      return;
+    }
+    await c.query('INSERT INTO bb_m4_qa_price_versions(id,points,effective_at,actor,reason) VALUES($1,$2,$3,$4,$5)',
+      [input.id,input.points,input.effective_at,input.actor,input.reason]);
+  });
+}
+async function activeQaPrice(c:PoolClient){
+  await c.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-m4-qa-price',0))");
+  return (await c.query('SELECT * FROM bb_m4_qa_price_versions WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
+}
 export const M4_MULTIPLIERS: Record<M4BillingTask, number> = { m4_G01: 8, m4_G02: 12, m4_G03: 15, m4_G05: 6, m4_Q01: 2, m4_Q02: 2.5, m4_Q03: 3, m4_Q04: 4, m4_Q05: 5 };
 export type M4CostRate = { input_microyuan_per_million: number; cached_microyuan_per_million: number; output_microyuan_per_million: number };
 export type M4BillingConfig = { model_id: string; rates: Record<string, M4CostRate>; budgets: Record<M4BillingTask, {input_tokens: number; output_tokens: number; reserve_factor: number}> };
@@ -45,13 +67,15 @@ const roundedNumerator=(value:bigint)=>{const points=Number((value+100000000000n
   if(!Number.isSafeInteger(points)||points<0||points>1e9)throw new Problem(503,'BILLING_NOT_READY','M4 amount outside supported range');return points;};
 const roundedPoints=(input:number,cached:number,output:number,rate:M4CostRate,multiplier:number)=>roundedNumerator(costNumerator(input,cached,output,rate,multiplier));
 export const m4QuoteDto = (q:any):M4Quote => ({ quote_id:q.id,topic_id:q.topic_id,input_hash:q.intent_hash.trim(),task_type:q.task_type,
-  points:Number(q.reserve_points),price_version:q.fixed_price_version??q.config_id,reason:q.task_type==='m4_Q00'?'产品帮助免费':q.task_type==='m4_task_assistance'?'任务澄清与要求整理免费':q.billing_method==='fixed'?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':'本次预留上限 B；交付后按真实成本 × 100 × K 结算，最多扣 B。',
+  points:Number(q.reserve_points),price_version:q.fixed_price_version??q.config_id,reason:q.task_type==='m4_Q00'?'产品帮助免费':q.task_type==='m4_task_assistance'?'任务澄清与要求整理免费':q.billing_method==='fixed'?(isDocumentTask(q.task_type)?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':`本次独立问题 ${Number(q.reserve_points)} 积分；回答成功后扣费，失败或取消不扣费。`):'本次预留上限 B；交付后按真实成本 × 100 × K 结算，最多扣 B。',
   created_at:date(q.created_at),expires_at:date(q.expires_at),billing_method:Number(q.reserve_points)===0?'free':q.billing_method==='fixed'?'fixed':'metered_capped',
   multiplier:Number(q.multiplier),amount_semantics:q.billing_method==='fixed'?'fixed_price':'reservation_cap' });
 export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4BillingTask|'m4_Q00'|'m4_task_assistance',intentHash:string,snapshot:unknown) {
   let config:any=null,points=0,multiplier=0;
-  const fixed=isDocumentTask(task);
-  if(fixed) { points=M4_DOCUMENT_FIXED_PRICE.points; multiplier=1; }
+  const qaPrice=isPaidQaTask(task)?await activeQaPrice(c):null;
+  const fixed=isDocumentTask(task)||!!qaPrice;
+  const fixedVersion=isDocumentTask(task)?M4_DOCUMENT_FIXED_PRICE.version:qaPrice?.id??null;
+  if(fixed) { points=qaPrice?Number(qaPrice.points):M4_DOCUMENT_FIXED_PRICE.points; multiplier=1; }
   else if(task!=='m4_Q00'&&task!=='m4_task_assistance') {
     await c.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-m4-billing',0))");
     config=(await c.query('SELECT * FROM bb_m4_billing_configs WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
@@ -62,7 +86,7 @@ export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4Bill
     points=Math.max(1,Math.ceil(roundedPoints(b.input_tokens,0,b.output_tokens,r,multiplier)*b.reserve_factor));
   }
   const row=(await c.query(`INSERT INTO bb_m4_quotes(id,owner_user_id,topic_id,intent_hash,task_type,config_id,reserve_points,multiplier,snapshot,expires_at,billing_method,fixed_price_version)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '5 minutes',$10,$11) RETURNING *`,[uid(),owner,topic,intentHash,task,config?.id??null,points,multiplier,snapshot,fixed?'fixed':'metered_capped',fixed?M4_DOCUMENT_FIXED_PRICE.version:null])).rows[0];
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '5 minutes',$10,$11) RETURNING *`,[uid(),owner,topic,intentHash,task,config?.id??null,points,multiplier,snapshot,fixed?'fixed':'metered_capped',fixedVersion])).rows[0];
   const balance=await creditBalance(c,owner);return {quote:m4QuoteDto(row),balance,shortage:Math.max(0,points-balance.available)};
 }
 export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string|undefined,topicId:string,intentHash:string) {
@@ -75,9 +99,16 @@ export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string
     if(!fixed||q.fixed_price_version!==M4_DOCUMENT_FIXED_PRICE.version||Number(q.reserve_points)!==M4_DOCUMENT_FIXED_PRICE.points)
       throw new Problem(409,'QUOTE_CHANGED','材料生成已采用固定价，请重新查看费用后确认。');
   } else {
-    await c.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-m4-billing',0))");
-    const config=(await c.query('SELECT id FROM bb_m4_billing_configs WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
-    if(config?.id!==q.config_id)throw new Problem(409,'QUOTE_CHANGED','M4成本配置已更新，请重新查看预留上限。');
+    const qaPrice=await activeQaPrice(c);
+    if(fixed){
+      if(!isPaidQaTask(q.task_type)||qaPrice?.id!==q.fixed_price_version||Number(qaPrice.points)!==Number(q.reserve_points))
+        throw new Problem(409,'QUOTE_CHANGED','问答价格已更新，请重新查看费用后确认。');
+    }else{
+      if(qaPrice)throw new Problem(409,'QUOTE_CHANGED','问答已采用固定积分，请重新查看费用后确认。');
+      await c.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-m4-billing',0))");
+      const config=(await c.query('SELECT id FROM bb_m4_billing_configs WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
+      if(config?.id!==q.config_id)throw new Problem(409,'QUOTE_CHANGED','M4成本配置已更新，请重新查看预留上限。');
+    }
   }
   await lockCreditAccount(c,owner);const points=Number(q.reserve_points),balance=await creditBalance(c,owner);
   if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',`本次预留 ${points} 积分，当前可用 ${balance.available} 积分，请充值后明确执行。`);

@@ -9,7 +9,7 @@ import { digest, transaction, type PrivateBlobs } from './data.js';
 import { grantCredits, creditBalance } from './billing.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { emptyM4Context, emptyM4Draft, emptyM4View, completeM4Qa, registerM4Artifacts, classifyM4Qa,m4UnavailableDocument,m4UnavailableLocalScope,m4UnavailableResearch } from './m4-workspace.js';
-import { publishM4BillingConfig, settleM4Metering, type M4BillingConfig } from './m4-billing.js';
+import { publishM4BillingConfig, publishM4QaPrice, settleM4Metering, type M4BillingConfig } from './m4-billing.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { claim, finish, finishM4Qa, promoteWordArtifact, recordPotentialCall, pausedRuns, resumePausedRun } from './queue.js';
 import { saveSnapshotRef, observeUsage } from './observability.js';
@@ -18,8 +18,71 @@ import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { runStorageLifecycle } from './storage-lifecycle.js';
 
 const connection=await isolatedTestDatabase(undefined,'m4-workspace');
+const fixedQaConnection=await isolatedTestDatabase(undefined,'m4-fixed-qa');
 const handoffConnection=await isolatedTestDatabase(undefined,'m4-handoff');
 const retentionConnection=await isolatedTestDatabase(undefined,'m4-retention');
+
+test('synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes',
+  {skip:!fixedQaConnection,timeout:90000},async()=>{
+  const pool=new Pool({connectionString:fixedQaConnection}),user=`fixed-qa-${randomUUID()}`;
+  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
+  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
+  const price={id:'synthetic-qa-v1',points:60,effective_at:'2020-01-01T00:00:00.000Z',actor:'synthetic-test',reason:'synthetic fixed-price approval, not a production price'};
+  try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'synthetic_fixed_qa']);
+    const topic=(await ok('POST','/api/v1/m4/topics',{creation_request_id:randomUUID(),name:'Synthetic assistant',surface:'assistant'})).topic;
+    const path=`/api/v1/m4/topics/${topic.topic_id}`,context=emptyM4Context(),content='解释资产的概念';
+    const quote=()=>ok('POST',`${path}/quote`,{kind:'qa',content,context});
+    assert.equal((await send('POST',`${path}/quote`,{kind:'qa',content,context})).json().code,'BILLING_NOT_READY');
+    assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:'如何使用项目助手？',context})).quote.points,0);
+    for(const greeting of ['你好！','Hello BondBuddy','你能帮我做什么？','你是谁'])
+      assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:greeting,context})).quote.points,0);
+    assert.equal(classifyM4Qa('你好，解释担保条款',context),'m4_Q01','a greeting must not make a business question free');
+    await assert.rejects(publishM4QaPrice(pool,{...price,points:0}));
+    await publishM4QaPrice(pool,price);await publishM4QaPrice(pool,price);
+    await assert.rejects(publishM4QaPrice(pool,{...price,points:61}),/immutable/);
+    await assert.rejects(pool.query('UPDATE bb_m4_qa_price_versions SET points=61 WHERE id=$1',[price.id]));
+    const q=(await quote()).quote;
+    assert.equal(q.points,60);assert.equal(q.billing_method,'fixed');assert.equal(q.amount_semantics,'fixed_price');assert.equal(q.price_version,price.id);
+    assert.match(q.reason,/回答成功后扣费/);
+    const request={submission_request_id:randomUUID(),content,context,quote_id:q.quote_id};
+    assert.equal((await send('POST',`${path}/messages`,request)).json().code,'CREDITS_INSUFFICIENT');
+    assert.deepEqual(await creditBalance(pool,user),{available:0,frozen:0});
+    await transaction(pool,c=>grantCredits(c,{owner:user,source:'purchase',key:'synthetic-fixed-qa-fund',points:180,expiresAt:null,actor:'synthetic-test',reason:'synthetic only'}));
+    const failed=(await ok('POST',`${path}/messages`,request)).run;
+    assert.equal((await ok('POST',`${path}/messages`,request)).run.run_id,failed.run_id);
+    assert.equal(failed.billing_mode,'fixed_credits');assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:60});
+    await pool.query("UPDATE bb_jobs SET state='failed',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[failed.run_id]);
+    await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[failed.run_id]);
+    assert.deepEqual(await creditBalance(pool,user),{available:180,frozen:0});
+
+    const accepted={...request,submission_request_id:randomUUID(),quote_id:(await quote()).quote.quote_id};
+    const run=(await ok('POST',`${path}/messages`,accepted)).run;
+    const lease=await claim(pool,30,{runKinds:['qa']});assert.ok(lease);assert.equal(lease.runId,run.run_id);
+    await publishM4QaPrice(pool,{...price,id:'synthetic-qa-v2',points:80,effective_at:'2020-01-02T00:00:00.000Z'});
+    assert.deepEqual(await settleM4Metering(pool,user,run.run_id),{ready:true,charged_points:60});
+    const result=await finishM4Qa(pool,lease,{content:'Synthetic answer for fixed-price ledger verification.',citations:[],requirements:[],fields:{},intent:'answer',document_type:null,target_business:null,retrieval:'not_performed'});
+    assert.equal(result.state,'succeeded');
+    assert.equal((await ok('POST',`${path}/messages`,accepted)).run.run_id,run.run_id);
+    assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:0});
+    const settled=(await pool.query("SELECT points FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows;
+    assert.equal(settled.length,1);assert.equal(Number(settled[0].points),60);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_billing_configs')).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts')).rows[0].n,0,'synthetic delivery must not invent model usage');
+    const stale=(await quote()).quote;
+    await publishM4QaPrice(pool,{...price,id:'synthetic-qa-v3',points:90,effective_at:'2020-01-03T00:00:00.000Z'});
+    assert.equal((await send('POST',`${path}/messages`,{...request,submission_request_id:randomUUID(),quote_id:stale.quote_id})).json().code,'QUOTE_CHANGED');
+    assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:0});
+    await publishM4QaPrice(pool,{...price,id:'synthetic-qa-future',points:999,effective_at:'2999-01-01T00:00:00.000Z'});
+    const current=(await quote()).quote;assert.equal(current.points,90);
+    const cancelled=(await ok('POST',`${path}/messages`,{...request,submission_request_id:randomUUID(),quote_id:current.quote_id})).run;
+    await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[cancelled.run_id]);
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[cancelled.run_id]);
+    assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:0});
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[user])).rows[0].n,1);
+  }finally{await app.close();await pool.end();}
+});
 test('synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes',
   {skip:!retentionConnection,timeout:180000},async()=>{
   const pool=new Pool({connectionString:retentionConnection}),user=`m4-retention-${randomUUID()}`,other=`m4-retention-${randomUUID()}`;let actor=user;

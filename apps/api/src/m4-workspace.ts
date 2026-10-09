@@ -176,7 +176,8 @@ export function m4UnavailableResearch(content:string):boolean{return content.spl
 });}
 export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingTask|'m4_Q00'|'m4_task_assistance'{
   // Capability explanations and preparing a task never reserve user credits. Basic analysis still uses its actual QA category.
-  if(!context.citations.length && !context.source_material && !context.reading_artifact && /如何使用|怎么使用|使用帮助|产品帮助|支持哪些功能|怎么上传|如何上传/.test(content))return 'm4_Q00';
+  const greeting=/^(?:(?:你好|您好|嗨|hi|hello)(?:[，,\s]*(?:bondbuddy|项目助手))?|你是谁|你(?:能|可以)(?:帮我)?做什么|你有什么功能|介绍一下你自己)[\s!！?？。,.，]*$/i.test(content.trim());
+  if(!context.citations.length && !context.source_material && !context.reading_artifact && (greeting||/如何使用|怎么使用|使用帮助|产品帮助|支持哪些功能|怎么上传|如何上传/.test(content)))return 'm4_Q00';
   if(m4UnavailableDocument(content)||m4UnavailableResearch(content)||m4UnavailableLocalScope(content))return 'm4_task_assistance';
   const analysis=/解释|解读|查询|分析|计算|比较|对比|概念|条款|有哪些|是否|为什么|是什么意思|是什么|有什么|怎么理解|如何理解|同比|比率|公式/.test(content);
   if(context.document_type && !analysis)return 'm4_task_assistance';
