@@ -49,6 +49,20 @@ test('paid QA shows real cap, sends only after confirmation and preserves reques
  const s=await setup(page,{paid:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('20');expect(s.messages).toHaveLength(0);await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].content).toBe('解释担保条款');expect(s.messages[0].execute).toBeUndefined();expect(s.quoteReads()).toBe(1);
 });
+
+test('update card has no upfront price and recharge retains the project',async({page})=>{
+ const s=await setup(page);s.w.view.assistant={...s.w.view.assistant,draft_token:'draft',prepared_card_id:'update-card'};
+ const key=createHash('sha256').update(JSON.stringify(['source-project',1,hash])).digest('hex');
+ const card:any={card_id:'update-card',operation:'update',project_id:'source-project',project_name:'合成更新项目',draft_token:'draft',created_at:now,
+  input_revision:1,input_hash:hash,execution_request_id:'web-update-'+key,quote_id:'update-quote',quote:{points:17900},balance:{available:1,frozen:0},material_names:['原稿.docx'],requirements:'仅更新本期',baseline:null,run:null};s.cards.push(card);
+ await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task')).toContainText('仅更新本期');
+ await expect(page.locator('.ba-task .ba-credits')).toHaveCount(0);
+ await expect(page.locator('.ba-task a.ba-primary')).toHaveAttribute('href','#/account?project=source-project');
+ card.balance.available=17900;
+ await expect(page.locator('.ba-task').getByRole('button',{name:'开始更新',exact:true})).toBeVisible({timeout:12000});expect(s.executions).toHaveLength(0);
+ await page.locator('.ba-task').getByRole('button',{name:'开始更新',exact:true}).click();
+ await expect.poll(()=>s.executions.length).toBe(1);expect(s.executions[0].quote_id).toBe('update-quote');
+});
 test('fixed QA states the exact price and success/failure terms before confirmation',async({page})=>{
  const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('本次回答 60 积分');await expect(page.locator('[data-qa-price]')).toContainText('失败不扣费');await expect(page.locator('[data-qa-price]')).not.toContainText('按实际用量');expect(s.messages).toHaveLength(0);

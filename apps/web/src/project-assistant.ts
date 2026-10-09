@@ -237,7 +237,7 @@ export class ProjectAssistant {
     await this.flush();
     const {card}=await this.api.request<{card:AssistantCard}>('POST',`/assistant/topics/${this.workspace.topic.topic_id}/cards`,b,{},this.controller.signal);
     this.view.assistant!.prepared_card_id=card.card_id;this.changed();await this.flush();
-    this.cards.push(card);this.formOpen=false;this.status='请核对材料、要求和积分后开始。';
+    this.cards.push(card);this.formOpen=false;this.status=b.operation==='update'?'请核对材料与要求后开始更新。':'请核对材料、要求和积分后开始。';
   }
   private reviewRequest(c:AssistantCardRequest){return {execution_request_id:c.execution_request_id,operation:'full_review' as const,expected_input_version:c.expected_input_version!,source_report_id:null,expected_plan_version:null,finding_ids:[],...(c.quote_id?{quote_id:c.quote_id}:{})};}
   private async execute(c:AssistantCard){
@@ -334,10 +334,10 @@ export class ProjectAssistant {
   private card(c:AssistantCard){const stale=!c.run&&this.staleCard(c),r=c.run,price=c.quote?.points??0,insufficient=c.balance.available<price;
     return `<section class="ba-task ${r?'ba-committed':''}" data-card="${esc(c.card_id)}"><div class="ba-card-head"><strong>${businessName(c.operation)}</strong><span>${r?runLabel(r.state):stale?'已保留旧方案':'待确认'}</span></div><p>${esc(c.project_name)}</p><p>${esc([c.target?.issuer_name,MARKET_LABELS[c.target?.market as Market],OFFERING_LABELS[c.target?.offering as Offering],c.document_type?M4_DOCUMENT_LABELS[c.document_type as M4DocumentType]:null,c.target?.reporting_cutoff?`最新报告期 ${c.target.reporting_cutoff}`:null].filter(Boolean).join(' · '))}</p>
       <details${!r?' open':''}><summary>${c.baseline?'基于已选成果继续修改':'任务材料与要求'}</summary><p>${c.baseline?'保留旧成果，生成新的文件版本。':''}</p><ul>${c.material_names.map(n=>`<li>${esc(n)}</li>`).join('')}</ul><p class="ba-text">${esc(c.requirements||'按所选材料和对应编制要求处理。')}</p></details>
-      <div class="ba-credits">${r?'本次任务积分':'本次消耗积分'} <strong>${price.toLocaleString()}</strong>${!r?`<small>可用 ${c.balance.available.toLocaleString()} 积分</small>`:''}</div>
+      ${c.operation==='update'&&!r?'':`<div class="ba-credits">${r?'本次任务积分':'本次消耗积分'} <strong>${price.toLocaleString()}</strong>${!r?`<small>可用 ${c.balance.available.toLocaleString()} 积分</small>`:''}</div>`}
       ${r&&!finished(r.state)?taskProgress(r,c.operation==='generation'?'material':c.operation):''}
       ${r?`<a href="#/projects/${encodeURIComponent(c.project_id)}${c.operation==='review'?'/review?tab=results':'?from=projects'}">查看项目${finished(r.state)?'结果':'进度'}</a>${r.state==='succeeded'?` <button data-a="continue" data-id="${esc(c.card_id)}">继续修改</button><div data-delivery="${esc(r.run_id)}"></div>`:''}${['failed','paused'].includes(r.state)?'<p>原材料和要求已保留，可在项目页查看原因与恢复状态。</p>':''}`:
-        `<div class="ba-card-actions"><button data-a="edit">修改信息</button>${stale?'<span>输入已变化，请重新核对任务。</span>':insufficient?'<a href="#/account" class="ba-primary">积分不足，去充值</a>':`<button class="ba-primary" data-a="execute" data-id="${esc(c.card_id)}"${this.busy?' disabled':''}>确认并开始</button>`}</div><small>成功交付后扣费；失败或取消释放预留积分。</small>`}</section>`;
+        `<div class="ba-card-actions"><button data-a="edit">修改信息</button>${stale?'<span>输入已变化，请重新核对任务。</span>':insufficient?`<a href="#/account?project=${encodeURIComponent(c.project_id)}" class="ba-primary">积分不足，去充值</a>`:`<button class="ba-primary" data-a="execute" data-id="${esc(c.card_id)}"${this.busy?' disabled':''}>${c.operation==='update'?'开始更新':'确认并开始'}</button>`}</div><small>成功交付后扣费；失败或取消释放预留积分。</small>`}</section>`;
   }
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
