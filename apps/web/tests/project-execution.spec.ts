@@ -381,7 +381,7 @@ test('editing while preflight is pending discards that result; next action locks
   await expect(page.locator('#start-disabled-reason')).toContainText('尚未保存');
   await page.getByLabel('补充募集书更新说明').fill('');
   await prepare(page);
-  expect(state.inputs).toHaveLength(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
+  await expect.poll(()=>state.inputs.length).toBe(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
 });
@@ -533,7 +533,7 @@ test('v3 recheck restores failed test run v8; explicit new input v9 uses a disti
   await expect.poll(()=>state.executes.length).toBe(1);
   const fresh=state.snapshots.get(9)!;
   const productionKey=`web-update-${hash(JSON.stringify([id,9,fresh.input_hash]))}`;
-  expect(state.inputs).toHaveLength(2);
+  await expect.poll(()=>state.inputs.length).toBe(2);
   expect(state.project.input_revision).toBe(9);
   expect(state.preflights.at(-1)).toEqual({input_revision:9,input_hash:fresh.input_hash});
   expect(state.executes[0].execution_request_id).toBe(productionKey);
@@ -1235,4 +1235,84 @@ test('dashboard update preserves filtered workbench context through execution, e
  await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
  await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  await page.getByRole('link',{name:'返回工作台'}).click();await expect(page.locator('[data-dashboard-kind=update]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('#dashboard-status')).toHaveValue('active');expect(state.executes).toHaveLength(1);
+});
+
+
+for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historical upload (${reloadBeforeDelete ? 'restored' : 'same session'})`, async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runState = 'running'; state.runStage = 'file_authoring'; state.runReason = '';
+  await page.setViewportSize({width: reloadBeforeDelete ? 390 : 1440, height: reloadBeforeDelete ? 844 : 960});
+  await setup(page, state);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#cancel-run')).toBeVisible();
+  const originalInput = structuredClone(state.inputs[0]);
+  await page.getByRole('button', {name:'停止本次任务',exact:true}).click();
+  await page.getByRole('button', {name:'继续修改',exact:true}).click();
+  let failDelete = false, deletes = 0, nextName = '', sequence = 0;
+  await page.route(`**/api/v1/projects/${id}/materials/*`, async route => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    deletes++;
+    if (failDelete) { failDelete = false; return json(route,503,{code:'DATA_UNAVAILABLE'}); }
+    const materialId = new URL(route.request().url()).pathname.split('/').at(-1);
+    state.materials.splice(state.materials.findIndex(m => m.material_id === materialId),1);
+    return route.fulfill({status:204});
+  });
+  await page.route(`**/api/v1/projects/${id}/materials/uploads**`, async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/bytes')) return route.fulfill({status:204});
+    if (path.endsWith('/complete')) {
+      const material: Dto<'MaterialResponse'> = {material_id:`replacement-${sequence}`,material_version:1,upload_id:`upload-${sequence}`,
+        role:'historical',filename:nextName,media_type:'application/pdf',...route.request().postDataJSON(),state:'persisted',persisted_at:now,error:null};
+      state.materials.push(material); return json(route,200,material);
+    }
+    nextName = route.request().postDataJSON().filename; sequence++;
+    return json(route,201,{upload_id:`upload-${sequence}`,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/upload-${sequence}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100000000});
+  });
+  const remove = async (name:string, accept=true) => {
+    page.once('dialog', dialog => accept ? dialog.accept() : dialog.dismiss());
+    await page.locator('.material-file-row').filter({hasText:name}).getByRole('button',{name:'删除',exact:true}).click();
+  };
+  await remove('history.docx');
+  await expect(page.locator('.material-file-row').filter({hasText:'history.docx'})).toHaveCount(0);
+  await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
+  const picker = page.getByLabel('为历史／参考募集书选择文件');
+  await picker.setInputFiles({name:'误传募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic wrong')});
+  const wrong = page.locator('.material-file-row').filter({hasText:'误传募集书.pdf'});
+  await expect(wrong).toContainText('服务器已确认保存');
+  await wrong.locator('[data-source-field="issuer_name"]').fill('误传发行人');
+  await wrong.locator('[data-source-field="relation"]').selectOption('same_issuer');
+  await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.issuer_name).toBe('误传发行人');
+  if (reloadBeforeDelete) { await page.reload(); await page.getByRole('button',{name:'继续修改',exact:true}).click(); }
+  await remove('误传募集书.pdf',false);
+  expect(deletes).toBe(1);
+  await expect(wrong).toBeVisible();
+  failDelete = true; await remove('误传募集书.pdf');
+  await expect(wrong.getByRole('button',{name:'删除',exact:true})).toBeEnabled();
+  expect(state.materials.some(m=>m.filename==='误传募集书.pdf')).toBe(true);
+  await remove('误传募集书.pdf');
+  await expect(wrong).toHaveCount(0);
+  await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
+  await picker.setInputFiles({name:'正确募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic correct')});
+  const correct = page.locator('.material-file-row').filter({hasText:'正确募集书.pdf'});
+  await expect(correct).toContainText('服务器已确认保存');
+  await expect(correct.locator('[data-source-field="issuer_name"]')).toHaveValue('');
+  await correct.locator('[data-source-field="issuer_name"]').fill('合成发行人');
+  await correct.locator('[data-source-field="relation"]').selectOption('same_issuer');
+  await correct.locator('[data-source-field="market"]').selectOption('sse');
+  await correct.locator('[data-source-field="offering"]').selectOption('private');
+  await correct.locator('[data-source-field="year"]').selectOption('2024');
+  await correct.locator('[data-source-field="quarter"][value="12-31"]').check();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.reporting_periods.length).toBeGreaterThan(0);
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;
+  if(evidence) {await mkdir(evidence,{recursive:true});await correct.evaluate(el=>el.scrollIntoView({block:'start'}));await page.evaluate(()=>window.scrollBy(0,-90));await page.screenshot({path:join(evidence,`implementation-${reloadBeforeDelete?'mobile':'desktop'}.png`)});}
+  await page.reload();
+  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await expect(correct).toBeVisible();
+  await expect(page.locator('.material-file-row')).toHaveCount(2);
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.inputs.length).toBe(2);
+  expect(state.inputs[0]).toEqual(originalInput);
+  expect(state.inputs[1].material_versions.map(m=>m.material_id).sort()).toEqual(['replacement-2','synthetic-audit']);
+  expect(JSON.stringify(state.inputs[1])).not.toContain('replacement-1');
+  expect(JSON.stringify(state.inputs[1])).not.toContain('误传发行人');
 });
