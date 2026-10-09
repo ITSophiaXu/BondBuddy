@@ -1,0 +1,2358 @@
+{
+  "schema_version": 2,
+  "artifact_type": "release_baseline_template",
+  "status": "candidate_source_verified_product_tests_not_executed_release_not_approved",
+  "created_date": "2026-10-08",
+  "timezone": "Asia/Shanghai",
+  "scope": {
+    "release_gate": null,
+    "allowed_release_gates": [
+      "user_testing",
+      "engineering",
+      "real_acceptance"
+    ],
+    "gate_definitions": {
+      "E": "engineering",
+      "R": "real_acceptance",
+      "O": "online_smoke_post_release_observation",
+      "U": "user_testing_admission_not_public_release"
+    },
+    "post_release_observation_stage": "online_smoke",
+    "enabled_features": [
+      "four_document_types",
+      "opaque_original_upload",
+      "independent_material_form_one_click",
+      "status_first_dashboard",
+      "persistent_global_assistant_with_explicit_cards",
+      "fixed_clean_baseline_authoring_revision",
+      "account_overview_and_settings"
+    ],
+    "excluded_features": [
+      "unapproved_QA_SINGLE_60_production_price",
+      "unconfigured_live_payment",
+      "unimplemented_combination_or_market_capabilities"
+    ],
+    "candidate_scope_only": true,
+    "production_enablement_verified": false,
+    "m5_capability_feedback_verified": false,
+    "execution_policy": {
+      "material_form": "One click obtains fixed quote and submits; no price panel or second confirmation",
+      "global_assistant": "Model suggestion and prepare have no execution authority; explicitly confirm valid task card",
+      "authoring_form": "Existing eight-tier quote and explicit confirmation",
+      "paid_qa": "Show actual configured reservation cap; explicit paid send; missing production config blocks paid QA"
+    },
+    "primary_objective": "Reach the minimum readiness gate quickly and begin small invited user testing; complete formal release and professional acceptance in parallel.",
+    "user_testing": {
+      "scope_status": "proposed_not_frozen",
+      "cohort": "small_invited_group",
+      "tested_url": null,
+      "actual_running_version": {
+        "web_sha": null,
+        "api_sha": null,
+        "worker_images": [],
+        "receipt": null
+      },
+      "recommended_initial_features": [
+        "authoring",
+        "review",
+        "four_document_material_form",
+        "available_free_help",
+        "basic_login_project_upload_and_download"
+      ],
+      "recommended_initial_market": "one_authorized_market_per_offered_document_type",
+      "feature_market_scope": [],
+      "excluded_until_deployed_and_U_verified": [
+        "global_assistant",
+        "new_account_layout"
+      ],
+      "disabled_unless_configured_and_tested": [
+        "paid_qa",
+        "live_recharge"
+      ],
+      "target_may_differ_from_latest_master": true,
+      "evidence_must_match_actual_tested_source_config": true,
+      "real_call_budget": null,
+      "invited_user_list_record": null,
+      "users_invited_this_session": false,
+      "exclusion_policy": "Historical exclusions must be rechecked against the actual runtime; include only deployed features that pass their selected U subcases."
+    }
+  },
+  "candidate": {
+    "repository": "https://github.com/ITSophiaXu/BondBuddy",
+    "git_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+    "git_tree": "9930a4f4c981cdff0275a1698f16dd8188225bb8",
+    "branch": "master",
+    "develop_sha": "ebae7f6b50aaacff34cab717a5bde5892fe239b6",
+    "tag": null,
+    "source_verified": true,
+    "source_verified_at": "2026-10-08T10:59:24.3857992Z",
+    "release_pr": "https://github.com/ITSophiaXu/BondBuddy/pull/616",
+    "implementation_pr": "https://github.com/ITSophiaXu/BondBuddy/pull/615",
+    "required_migrations": [
+      "0091_m4_workspace.sql",
+      "0092_m4_pending_requirements.sql",
+      "0093_m4_qa_text_delivery.sql",
+      "0094_m4_settlement_allocation_variable.sql",
+      "0095_m4_artifact_revision_number.sql",
+      "0096_m4_message_template_identity.sql",
+      "0097_m4_cross_project_material_retention.sql",
+      "0098_m4_material_knowledge.sql",
+      "0099_m4_fixed_document_credits.sql",
+      "0100_global_project_assistant.sql"
+    ],
+    "newly_pending_migration": "0100_global_project_assistant.sql",
+    "cached_reference_only": {
+      "sha": "3c1eb26099e05082d8b1bdb43401474ac42c450d",
+      "tree": "a850f9a8a5a7719d7fac55338c72d78f2f6c997e",
+      "tag": "m4-workspace-20261007",
+      "remote_verified_on": "2026-10-07",
+      "note": "Historical M4 workspace release only; superseded as code candidate by verified master a6fa7eb."
+    }
+  },
+  "runtime": {
+    "environment": null,
+    "url": null,
+    "observed_at": null,
+    "web": {
+      "git_sha": null,
+      "bundle_path": null,
+      "bundle_sha256": null,
+      "css_path": null,
+      "css_sha256": null
+    },
+    "api": {
+      "git_sha": null,
+      "image_digest": null
+    },
+    "workers": [],
+    "migration_ledger": [],
+    "feature_flags": {},
+    "cli": {
+      "version": null,
+      "model_id": null,
+      "provider_config_version": null
+    },
+    "skills": [],
+    "knowledge_versions": [],
+    "template_versions": [],
+    "health_evidence": null,
+    "readiness_evidence": null,
+    "sandbox_evidence": null,
+    "independent_runtime_verification_completed": false
+  },
+  "billing": {
+    "mode_by_task_type": {
+      "authoring": "fixed_credits_eight_tier_with_explicit_quote_confirmation",
+      "m4_document": "fixed_credits_4500_for_body_and_preparation_note",
+      "ordinary_qa": "metered_capped_when_formal_cost_and_budget_configuration_exists",
+      "free_help_and_task_preparation": "Free; prepare has no non-QA business execution or reservation. Legal help/chat QA runs and CLI calls are separately recorded with the actual payer.",
+      "legacy_m4_document": "original_immutable_metered_quote",
+      "review": "existing_fixed_quote_and_independent_enable_flag"
+    },
+    "paid_authoring_enabled": null,
+    "paid_review_enabled": null,
+    "m4_config_version": null,
+    "fixed_price_version": null,
+    "recharge_version": null,
+    "candidate_expected_authoring_price_version": "authoring-20261008-v1",
+    "candidate_expected_eight_tier_points": {
+      "interim": 17900,
+      "annual": 27900,
+      "two_years": 48900,
+      "three_years": 68900,
+      "migration": 64900,
+      "migration_two_years": 85900,
+      "migration_three_years": 105900,
+      "new_authoring": 159900
+    },
+    "candidate_expected_document_price_version": "m4-document-fixed-20261008-v1",
+    "candidate_expected_document_points": 4500,
+    "candidate_price_config_file": "deploy/m1/config/authoring-prices-20261008.json",
+    "wallet_display": {
+      "persistent_main": "available + reserved",
+      "account_page": "available and reserved shown separately"
+    },
+    "settlement_rules": {
+      "fixed_document": "Settle 4500 once after both actual Word files are privately read back and registered; release on final failure or effective cancellation; unknown model usage does not block fixed settlement",
+      "authoring": "Lock exact eight-tier quote; settle after actual revised and clean Word delivery; preserve historical trial pricing; no retroactive charge",
+      "qa_and_legacy_metered": "Unknown or inconsistent usage remains pending; retain delivered text/Word; settle once after authoritative usage reconciles without new provider call",
+      "retry_and_download": "No additional charge for internal retry or repeated existing download"
+    },
+    "budgets_approved": false,
+    "authority": "Approved product decision sources and reported deployment receipts; live configuration requires readback",
+    "contains_production_credentials": false
+  },
+  "fixtures": {
+    "synthetic_manifests": [],
+    "authorized_real_manifests": [],
+    "old_protocol_snapshots": [],
+    "oracle_versions": [],
+    "sha256_verified": false
+  },
+  "test_execution": {
+    "executed_this_session": false,
+    "required_test_ids": [],
+    "regression_registry_file": "regression-registry.json",
+    "regression_inventory_complete": false,
+    "regression_inventory_audit_evidence": null,
+    "unmapped_fix_count": null,
+    "build_evidence": null,
+    "contracts_evidence": null,
+    "ci_reports": [],
+    "browser_reports": [],
+    "real_api_browser_reports": [],
+    "real_cli_runs": [],
+    "counts": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "not_run": 79
+    },
+    "exceptions": [],
+    "product_tests_executed_this_session": false,
+    "regression_registry_entry_count": 39,
+    "reported_candidate_ci_reference": [
+      {
+        "name": "cli-review-linux",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ITSophiaXu/BondBuddy/actions/runs/37755313078/job/113238297470",
+        "evidence_type": "Remote CI receipt; no product tests executed by this session"
+      },
+      {
+        "name": "linux-integration",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ITSophiaXu/BondBuddy/actions/runs/37755312805/job/113238296504",
+        "evidence_type": "Remote CI receipt; no product tests executed by this session"
+      },
+      {
+        "name": "core-linux",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ITSophiaXu/BondBuddy/actions/runs/37755312985/job/113238297229",
+        "evidence_type": "Remote CI receipt; no product tests executed by this session"
+      }
+    ],
+    "minimum_evidence_policy": "Required gates need nonzero test count, zero failures and no unapproved skips/TODO. Historical pass counts do not replace candidate execution.",
+    "all_planned_test_ids": [
+      "BB-001",
+      "BB-002",
+      "BB-003",
+      "BB-004",
+      "BB-005",
+      "BB-006",
+      "BB-007",
+      "BB-008",
+      "BB-009",
+      "BB-010",
+      "BB-011",
+      "BB-012",
+      "BB-013",
+      "BB-014",
+      "BB-015",
+      "BB-016",
+      "BB-017",
+      "BB-018",
+      "BB-019",
+      "BB-020",
+      "BB-021",
+      "BB-022",
+      "BB-023",
+      "BB-024",
+      "BB-025",
+      "BB-026",
+      "BB-027",
+      "BB-028",
+      "BB-029",
+      "BB-030",
+      "BB-031",
+      "BB-032",
+      "BB-033",
+      "BB-034",
+      "BB-035",
+      "BB-036",
+      "BB-037",
+      "BB-038",
+      "BB-039",
+      "BB-040",
+      "BB-041",
+      "BB-042",
+      "BB-043",
+      "BB-044",
+      "BB-045",
+      "BB-046",
+      "BB-047",
+      "BB-048",
+      "BB-049",
+      "BB-050",
+      "BB-051",
+      "BB-052",
+      "BB-053",
+      "BB-054",
+      "BB-055",
+      "BB-056",
+      "BB-057",
+      "BB-058",
+      "BB-059",
+      "BB-060",
+      "BB-061",
+      "BB-062",
+      "BB-063",
+      "BB-064",
+      "BB-065",
+      "BB-066",
+      "BB-067",
+      "BB-068",
+      "BB-069",
+      "BB-070",
+      "BB-071",
+      "BB-072",
+      "BB-073",
+      "BB-074",
+      "BB-075",
+      "BB-076",
+      "BB-077",
+      "BB-078",
+      "BB-079"
+    ],
+    "required_test_ids_by_gate": {
+      "engineering": [
+        "BB-001",
+        "BB-002",
+        "BB-003",
+        "BB-004",
+        "BB-005",
+        "BB-006",
+        "BB-007",
+        "BB-008",
+        "BB-009",
+        "BB-010",
+        "BB-011",
+        "BB-012",
+        "BB-013",
+        "BB-014",
+        "BB-015",
+        "BB-016",
+        "BB-017",
+        "BB-018",
+        "BB-019",
+        "BB-020",
+        "BB-021",
+        "BB-022",
+        "BB-023",
+        "BB-024",
+        "BB-025",
+        "BB-026",
+        "BB-027",
+        "BB-028",
+        "BB-029",
+        "BB-030",
+        "BB-031",
+        "BB-032",
+        "BB-033",
+        "BB-034",
+        "BB-040",
+        "BB-041",
+        "BB-042",
+        "BB-043",
+        "BB-044",
+        "BB-045",
+        "BB-046",
+        "BB-047",
+        "BB-048",
+        "BB-049",
+        "BB-050",
+        "BB-051",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-056",
+        "BB-057",
+        "BB-058",
+        "BB-059",
+        "BB-060",
+        "BB-061",
+        "BB-062",
+        "BB-063",
+        "BB-064",
+        "BB-065",
+        "BB-066",
+        "BB-067",
+        "BB-068",
+        "BB-069",
+        "BB-070",
+        "BB-071",
+        "BB-072",
+        "BB-073",
+        "BB-074",
+        "BB-075",
+        "BB-076",
+        "BB-077",
+        "BB-078",
+        "BB-079"
+      ],
+      "real_acceptance": [
+        "BB-001",
+        "BB-002",
+        "BB-003",
+        "BB-004",
+        "BB-005",
+        "BB-006",
+        "BB-007",
+        "BB-008",
+        "BB-009",
+        "BB-010",
+        "BB-011",
+        "BB-012",
+        "BB-013",
+        "BB-014",
+        "BB-015",
+        "BB-016",
+        "BB-017",
+        "BB-018",
+        "BB-019",
+        "BB-020",
+        "BB-021",
+        "BB-022",
+        "BB-023",
+        "BB-024",
+        "BB-025",
+        "BB-026",
+        "BB-027",
+        "BB-028",
+        "BB-029",
+        "BB-030",
+        "BB-031",
+        "BB-032",
+        "BB-033",
+        "BB-034",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-038",
+        "BB-039",
+        "BB-040",
+        "BB-041",
+        "BB-042",
+        "BB-043",
+        "BB-044",
+        "BB-045",
+        "BB-046",
+        "BB-047",
+        "BB-048",
+        "BB-049",
+        "BB-050",
+        "BB-051",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-056",
+        "BB-057",
+        "BB-058",
+        "BB-059",
+        "BB-060",
+        "BB-061",
+        "BB-062",
+        "BB-063",
+        "BB-064",
+        "BB-065",
+        "BB-066",
+        "BB-067",
+        "BB-068",
+        "BB-069",
+        "BB-070",
+        "BB-071",
+        "BB-072",
+        "BB-073",
+        "BB-074",
+        "BB-075",
+        "BB-076",
+        "BB-077",
+        "BB-078",
+        "BB-079"
+      ],
+      "user_testing": [
+        "BB-001",
+        "BB-002",
+        "BB-003",
+        "BB-004",
+        "BB-005",
+        "BB-006",
+        "BB-010",
+        "BB-013",
+        "BB-014",
+        "BB-016",
+        "BB-017",
+        "BB-025",
+        "BB-026",
+        "BB-028",
+        "BB-029",
+        "BB-033",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-039",
+        "BB-041",
+        "BB-044",
+        "BB-047",
+        "BB-048",
+        "BB-050",
+        "BB-051",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-056",
+        "BB-070",
+        "BB-072",
+        "BB-073",
+        "BB-074",
+        "BB-076",
+        "BB-078",
+        "BB-079"
+      ]
+    },
+    "required_ids_selection_policy": "Gate arrays are logical coverage pools. Freeze enabled scope, diff, subcases and triggers before filling required_test_ids. R references the same candidate E report and executes applicable real/Human increments; no full real-model fault matrix. First unified acceptance needs all eight M4 combinations and representative M1/M3 journeys. Disabled live payment/paid QA require negative behavior and isolated protocol evidence, not nonexistent production transactions. U is an independent invited-testing admission gate: select its package subcases on the actual frozen runtime, not the whole logical case matrix. It does not depend on a complete E/R gate or full historical inventory. Known shared P0 and scope-critical P1 must be resolved.",
+    "counts_scope": "All 79 planned logical cases; gate pools are coverage requirements, not 79 separate runs or completed tests",
+    "artifact_consistency_evidence": null,
+    "execution_ownership": {
+      "agent_independent": {
+        "count": 65,
+        "test_ids": [
+          "BB-001",
+          "BB-002",
+          "BB-003",
+          "BB-004",
+          "BB-005",
+          "BB-006",
+          "BB-007",
+          "BB-008",
+          "BB-009",
+          "BB-010",
+          "BB-011",
+          "BB-014",
+          "BB-015",
+          "BB-017",
+          "BB-018",
+          "BB-019",
+          "BB-020",
+          "BB-021",
+          "BB-022",
+          "BB-024",
+          "BB-025",
+          "BB-026",
+          "BB-028",
+          "BB-030",
+          "BB-031",
+          "BB-033",
+          "BB-034",
+          "BB-040",
+          "BB-041",
+          "BB-042",
+          "BB-043",
+          "BB-044",
+          "BB-045",
+          "BB-046",
+          "BB-047",
+          "BB-048",
+          "BB-049",
+          "BB-050",
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055",
+          "BB-056",
+          "BB-057",
+          "BB-058",
+          "BB-059",
+          "BB-060",
+          "BB-061",
+          "BB-062",
+          "BB-063",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-068",
+          "BB-069",
+          "BB-070",
+          "BB-071",
+          "BB-072",
+          "BB-073",
+          "BB-074",
+          "BB-075",
+          "BB-076",
+          "BB-077",
+          "BB-078",
+          "BB-079"
+        ]
+      },
+      "human_required": {
+        "count": 3,
+        "test_ids": [
+          "BB-036",
+          "BB-037",
+          "BB-039"
+        ]
+      },
+      "agent_then_human": {
+        "count": 11,
+        "test_ids": [
+          "BB-012",
+          "BB-013",
+          "BB-016",
+          "BB-023",
+          "BB-027",
+          "BB-029",
+          "BB-032",
+          "BB-035",
+          "BB-038",
+          "BB-051",
+          "BB-067"
+        ]
+      },
+      "policy": "Ownership is not automation coverage or a pass receipt. Joint cases record Agent engineering and Human acceptance separately; Human approval is required for the applicable real_acceptance subcase, not for every synthetic engineering repetition.",
+      "human_result_fields": [
+        "reviewer_role",
+        "reviewer_name",
+        "review_date",
+        "artifact_sha256",
+        "criterion_results",
+        "human_result"
+      ],
+      "product_tests_executed": false
+    },
+    "business_goal_coverage": [
+      {
+        "goal_id": "G1",
+        "test_ids": [
+          "BB-003",
+          "BB-005",
+          "BB-006",
+          "BB-008",
+          "BB-009",
+          "BB-012",
+          "BB-013",
+          "BB-015",
+          "BB-016",
+          "BB-018",
+          "BB-019",
+          "BB-020",
+          "BB-021",
+          "BB-022",
+          "BB-023",
+          "BB-024",
+          "BB-027",
+          "BB-028",
+          "BB-029",
+          "BB-030",
+          "BB-031",
+          "BB-032",
+          "BB-033",
+          "BB-034",
+          "BB-035",
+          "BB-036",
+          "BB-037",
+          "BB-038",
+          "BB-039",
+          "BB-041",
+          "BB-059",
+          "BB-061",
+          "BB-067",
+          "BB-069",
+          "BB-071",
+          "BB-075",
+          "BB-077",
+          "BB-078"
+        ],
+        "status": "not_run",
+        "evidence": [],
+        "open_defects": [],
+        "counts_scope": "Planned mapped cases, not executed tests",
+        "counts": {
+          "passed": 0,
+          "failed": 0,
+          "blocked": 0,
+          "skipped": 0,
+          "not_run": 38
+        }
+      },
+      {
+        "goal_id": "G2",
+        "test_ids": [
+          "BB-005",
+          "BB-008",
+          "BB-009",
+          "BB-010",
+          "BB-011",
+          "BB-013",
+          "BB-014",
+          "BB-015",
+          "BB-016",
+          "BB-018",
+          "BB-019",
+          "BB-020",
+          "BB-021",
+          "BB-022",
+          "BB-023",
+          "BB-024",
+          "BB-025",
+          "BB-026",
+          "BB-027",
+          "BB-028",
+          "BB-033",
+          "BB-034",
+          "BB-038",
+          "BB-039",
+          "BB-040",
+          "BB-041",
+          "BB-042",
+          "BB-043",
+          "BB-045",
+          "BB-046",
+          "BB-048",
+          "BB-051",
+          "BB-053",
+          "BB-057",
+          "BB-059",
+          "BB-062",
+          "BB-063",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-067",
+          "BB-068",
+          "BB-069",
+          "BB-070",
+          "BB-071",
+          "BB-072",
+          "BB-073",
+          "BB-074",
+          "BB-075",
+          "BB-077",
+          "BB-078",
+          "BB-079"
+        ],
+        "status": "not_run",
+        "evidence": [],
+        "open_defects": [],
+        "counts_scope": "Planned mapped cases, not executed tests",
+        "counts": {
+          "passed": 0,
+          "failed": 0,
+          "blocked": 0,
+          "skipped": 0,
+          "not_run": 52
+        }
+      },
+      {
+        "goal_id": "G3",
+        "test_ids": [
+          "BB-005",
+          "BB-013",
+          "BB-014",
+          "BB-016",
+          "BB-017",
+          "BB-018",
+          "BB-025",
+          "BB-026",
+          "BB-029",
+          "BB-033",
+          "BB-035",
+          "BB-038",
+          "BB-044",
+          "BB-045",
+          "BB-047",
+          "BB-048",
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055",
+          "BB-056",
+          "BB-057",
+          "BB-058",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-067",
+          "BB-068",
+          "BB-073",
+          "BB-074",
+          "BB-079"
+        ],
+        "status": "not_run",
+        "evidence": [],
+        "open_defects": [],
+        "counts_scope": "Planned mapped cases, not executed tests",
+        "counts": {
+          "passed": 0,
+          "failed": 0,
+          "blocked": 0,
+          "skipped": 0,
+          "not_run": 31
+        }
+      },
+      {
+        "goal_id": "G4",
+        "test_ids": [
+          "BB-001",
+          "BB-002",
+          "BB-003",
+          "BB-005",
+          "BB-006",
+          "BB-007",
+          "BB-010",
+          "BB-011",
+          "BB-014",
+          "BB-016",
+          "BB-017",
+          "BB-018",
+          "BB-019",
+          "BB-020",
+          "BB-021",
+          "BB-022",
+          "BB-023",
+          "BB-024",
+          "BB-025",
+          "BB-026",
+          "BB-027",
+          "BB-028",
+          "BB-031",
+          "BB-032",
+          "BB-033",
+          "BB-034",
+          "BB-035",
+          "BB-036",
+          "BB-037",
+          "BB-038",
+          "BB-040",
+          "BB-041",
+          "BB-042",
+          "BB-043",
+          "BB-044",
+          "BB-045",
+          "BB-047",
+          "BB-048",
+          "BB-049",
+          "BB-051",
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055",
+          "BB-056",
+          "BB-057",
+          "BB-058",
+          "BB-060",
+          "BB-061",
+          "BB-062",
+          "BB-063",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-067",
+          "BB-068",
+          "BB-069",
+          "BB-070",
+          "BB-071",
+          "BB-072",
+          "BB-073",
+          "BB-074",
+          "BB-075",
+          "BB-076"
+        ],
+        "status": "not_run",
+        "evidence": [],
+        "open_defects": [],
+        "counts_scope": "Planned mapped cases, not executed tests",
+        "counts": {
+          "passed": 0,
+          "failed": 0,
+          "blocked": 0,
+          "skipped": 0,
+          "not_run": 64
+        }
+      },
+      {
+        "goal_id": "G5",
+        "test_ids": [
+          "BB-001",
+          "BB-002",
+          "BB-003",
+          "BB-004",
+          "BB-007",
+          "BB-008",
+          "BB-010",
+          "BB-011",
+          "BB-012",
+          "BB-014",
+          "BB-016",
+          "BB-017",
+          "BB-018",
+          "BB-021",
+          "BB-022",
+          "BB-024",
+          "BB-025",
+          "BB-026",
+          "BB-027",
+          "BB-028",
+          "BB-030",
+          "BB-031",
+          "BB-032",
+          "BB-033",
+          "BB-034",
+          "BB-040",
+          "BB-041",
+          "BB-042",
+          "BB-043",
+          "BB-044",
+          "BB-045",
+          "BB-046",
+          "BB-047",
+          "BB-048",
+          "BB-049",
+          "BB-050",
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055",
+          "BB-056",
+          "BB-057",
+          "BB-059",
+          "BB-060",
+          "BB-061",
+          "BB-062",
+          "BB-063",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-067",
+          "BB-068",
+          "BB-070",
+          "BB-072",
+          "BB-073",
+          "BB-074",
+          "BB-075",
+          "BB-077",
+          "BB-078",
+          "BB-079"
+        ],
+        "status": "not_run",
+        "evidence": [],
+        "open_defects": [],
+        "counts_scope": "Planned mapped cases, not executed tests",
+        "counts": {
+          "passed": 0,
+          "failed": 0,
+          "blocked": 0,
+          "skipped": 0,
+          "not_run": 60
+        }
+      }
+    ],
+    "additional_execution_test_ids_by_gate": {
+      "engineering": [
+        "BB-001",
+        "BB-002",
+        "BB-003",
+        "BB-004",
+        "BB-005",
+        "BB-006",
+        "BB-007",
+        "BB-008",
+        "BB-009",
+        "BB-010",
+        "BB-011",
+        "BB-012",
+        "BB-013",
+        "BB-014",
+        "BB-015",
+        "BB-016",
+        "BB-017",
+        "BB-018",
+        "BB-019",
+        "BB-020",
+        "BB-021",
+        "BB-022",
+        "BB-023",
+        "BB-024",
+        "BB-025",
+        "BB-026",
+        "BB-027",
+        "BB-028",
+        "BB-029",
+        "BB-030",
+        "BB-031",
+        "BB-032",
+        "BB-033",
+        "BB-034",
+        "BB-040",
+        "BB-041",
+        "BB-042",
+        "BB-043",
+        "BB-044",
+        "BB-045",
+        "BB-046",
+        "BB-047",
+        "BB-048",
+        "BB-049",
+        "BB-050",
+        "BB-051",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-056",
+        "BB-057",
+        "BB-058",
+        "BB-059",
+        "BB-060",
+        "BB-061",
+        "BB-062",
+        "BB-063",
+        "BB-064",
+        "BB-065",
+        "BB-066",
+        "BB-067",
+        "BB-068",
+        "BB-069",
+        "BB-070",
+        "BB-071",
+        "BB-072",
+        "BB-073",
+        "BB-074",
+        "BB-075",
+        "BB-076",
+        "BB-077",
+        "BB-078",
+        "BB-079"
+      ],
+      "real_acceptance": [
+        "BB-012",
+        "BB-013",
+        "BB-016",
+        "BB-023",
+        "BB-027",
+        "BB-029",
+        "BB-032",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-038",
+        "BB-039",
+        "BB-051",
+        "BB-059",
+        "BB-067"
+      ],
+      "user_testing": [
+        "BB-001",
+        "BB-002",
+        "BB-003",
+        "BB-004",
+        "BB-005",
+        "BB-006",
+        "BB-010",
+        "BB-013",
+        "BB-014",
+        "BB-016",
+        "BB-017",
+        "BB-025",
+        "BB-026",
+        "BB-028",
+        "BB-029",
+        "BB-033",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-039",
+        "BB-041",
+        "BB-044",
+        "BB-047",
+        "BB-048",
+        "BB-050",
+        "BB-051",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-056",
+        "BB-070",
+        "BB-072",
+        "BB-073",
+        "BB-074",
+        "BB-076",
+        "BB-078",
+        "BB-079"
+      ]
+    },
+    "reused_engineering_test_ids": [
+      "BB-001",
+      "BB-002",
+      "BB-003",
+      "BB-004",
+      "BB-005",
+      "BB-006",
+      "BB-007",
+      "BB-008",
+      "BB-009",
+      "BB-010",
+      "BB-011",
+      "BB-012",
+      "BB-013",
+      "BB-014",
+      "BB-015",
+      "BB-016",
+      "BB-017",
+      "BB-018",
+      "BB-019",
+      "BB-020",
+      "BB-021",
+      "BB-022",
+      "BB-023",
+      "BB-024",
+      "BB-025",
+      "BB-026",
+      "BB-027",
+      "BB-028",
+      "BB-029",
+      "BB-030",
+      "BB-031",
+      "BB-032",
+      "BB-033",
+      "BB-034",
+      "BB-040",
+      "BB-041",
+      "BB-042",
+      "BB-043",
+      "BB-044",
+      "BB-045",
+      "BB-046",
+      "BB-047",
+      "BB-048",
+      "BB-049",
+      "BB-050",
+      "BB-051",
+      "BB-052",
+      "BB-053",
+      "BB-054",
+      "BB-055",
+      "BB-056",
+      "BB-057",
+      "BB-058",
+      "BB-059",
+      "BB-060",
+      "BB-061",
+      "BB-062",
+      "BB-063",
+      "BB-064",
+      "BB-065",
+      "BB-066",
+      "BB-067",
+      "BB-068",
+      "BB-069",
+      "BB-070",
+      "BB-071",
+      "BB-072",
+      "BB-073",
+      "BB-074",
+      "BB-075",
+      "BB-076",
+      "BB-077",
+      "BB-078",
+      "BB-079"
+    ],
+    "evidence_reuse_policy": {
+      "engineering": "Candidate E evidence must match SHA, configuration, fixture/input/key/run and criterion. Historical pass cannot replace the current candidate permanent engineering rerun.",
+      "real_acceptance": "Reuse the same candidate E protocol/fault reports. Existing Human approval may be cited only for unchanged artifact/knowledge/template hashes and applicable unchanged dependencies with an explicit scope/diff record. Changed content or rendering requires affected re-acceptance.",
+      "per_subcase_results_required": true,
+      "shared_run_does_not_imply_shared_pass": true,
+      "result_record_fields": [
+        "case_id",
+        "subcase_id",
+        "criterion_id",
+        "status",
+        "execution_or_reference",
+        "candidate_sha",
+        "config_hash",
+        "fixture_hash",
+        "input_hash",
+        "request_key",
+        "run_id",
+        "artifact_hash",
+        "evidence_uri"
+      ]
+    },
+    "shared_execution_packages": [
+      {
+        "package_id": "material-form-submit",
+        "test_ids": [
+          "BB-025",
+          "BB-026",
+          "BB-044",
+          "BB-053",
+          "BB-058"
+        ],
+        "status": "not_run",
+        "evidence": []
+      },
+      {
+        "package_id": "assistant-prepare-confirm",
+        "test_ids": [
+          "BB-024",
+          "BB-034",
+          "BB-064",
+          "BB-065",
+          "BB-066",
+          "BB-044"
+        ],
+        "status": "not_run",
+        "evidence": []
+      },
+      {
+        "package_id": "wallet-and-billing",
+        "test_ids": [
+          "BB-052",
+          "BB-053",
+          "BB-054",
+          "BB-055",
+          "BB-056",
+          "BB-068",
+          "BB-073",
+          "BB-074"
+        ],
+        "status": "not_run",
+        "evidence": []
+      },
+      {
+        "package_id": "upload-and-restoration",
+        "test_ids": [
+          "BB-006",
+          "BB-007",
+          "BB-010",
+          "BB-011",
+          "BB-028",
+          "BB-042",
+          "BB-043",
+          "BB-062",
+          "BB-063"
+        ],
+        "status": "not_run",
+        "evidence": []
+      },
+      {
+        "package_id": "authoring-review-journeys",
+        "test_ids": [
+          "BB-013",
+          "BB-015",
+          "BB-016",
+          "BB-018",
+          "BB-039",
+          "BB-067",
+          "BB-072"
+        ],
+        "status": "not_run",
+        "evidence": []
+      },
+      {
+        "package_id": "real-material-artifacts",
+        "test_ids": [
+          "BB-027",
+          "BB-035",
+          "BB-036",
+          "BB-037",
+          "BB-038",
+          "BB-039",
+          "BB-041",
+          "BB-054",
+          "BB-059"
+        ],
+        "status": "not_run",
+        "evidence": []
+      }
+    ],
+    "trigger_rules": {
+      "PR": "Build/contracts and affected module, permanent regressions and adjacent negative cases. No mandatory eight-combination real regeneration for every UI fix.",
+      "daily_smoke": "Representative subcases from the shared packages; affected historical P0 before merge; full applicable P0 nightly/RC. No blanket case pass from one branch.",
+      "release_candidate": "All applicable permanent engineering assertions on the candidate, plus enabled scope and compatibility checks.",
+      "full_rollback_drill": {
+        "when": [
+          "first_baseline",
+          "migration_change",
+          "worker_protocol_change",
+          "deployment_topology_change",
+          "rollback_plan_change"
+        ],
+        "current_candidate_triggered": true,
+        "current_reason": "Migration 0100 and new assistant protocol are pending",
+        "unchanged_plan_reuse_requires": [
+          "approved_plan_hash",
+          "compatibility_review",
+          "trigger_decision"
+        ]
+      },
+      "real_eight_combinations": "First unified acceptance; subsequent generation/model/Skill/knowledge/template changes test affected combinations, all eight when the shared generation path changes.",
+      "professional_and_clients": "Reuse exact unchanged approved hashes with scope/diff evidence; re-review changed contents and rerun Word/WPS for affected structure/rendering changes.",
+      "performance": {
+        "reliability_branches_required": true,
+        "latency_slo_approved": false,
+        "proposed_thresholds_are_gates": false,
+        "ten_samples_are_exploratory": true
+      },
+      "user_testing_admission": "Run the seven minimum package subcases and short Human preflight first; start invited tests on pass without waiting for the five-day bash rotation, complete inventory, full R or all CI work. Keep shared P0 and scope-critical P1 as blockers."
+    },
+    "plan_review": {
+      "reviewed_at": "2026-10-08T12:22:46.643Z",
+      "candidate_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+      "plan_revision": "v5-necessity-and-coverage-review",
+      "scope": "Frozen latest source snapshot, product decisions, existing suite candidates and all 79 logical cases; plan review only",
+      "original_case_count": 76,
+      "retained_original_case_count": 76,
+      "removed_case_count": 0,
+      "new_case_ids": [
+        "BB-077",
+        "BB-078",
+        "BB-079"
+      ],
+      "shared_execution_package_count": 6,
+      "expanded_existing_cases": [
+        "BB-003",
+        "BB-007",
+        "BB-013",
+        "BB-016",
+        "BB-018",
+        "BB-047",
+        "BB-048",
+        "BB-054",
+        "BB-056",
+        "BB-057",
+        "BB-074"
+      ],
+      "reduced_unnecessary_work": [
+        "Repeated model calls/ledger checks for the same scenario",
+        "Repeated professional review of identical files",
+        "Full real-model fault matrix after E",
+        "Unapproved 2s/3s latency failure gate",
+        "Full rollback drill for unrelated UI-only changes",
+        "Fixed two-person daily mechanical checks",
+        "Repeated full-history PR reading after a complete approved inventory"
+      ],
+      "preserved_distinctions": [
+        "same-key idempotency versus different-key wallet races",
+        "fixed versus metered unknown usage",
+        "material-form one-click versus assistant confirmation",
+        "M1 material lock versus M4 later draft",
+        "legacy upload parse versus unified_v1 opaque zero-parse",
+        "available expired gifts versus reserved gifts and platform compensation"
+      ],
+      "historical_inventory_complete": false,
+      "product_tests_executed": false,
+      "automation_coverage_complete": false,
+      "limitation": "Review resolves documented gaps for the examined source and scope; complete historical fix reconciliation and actual implementation/execution remain pending.",
+      "final_review_corrections": [
+        "BB-048 uses one terminal finalization: fixed success settlement or cancellation release; metered success may legitimately settle plus release unused cap once each.",
+        "Legacy upload-capacity parse=5 is retained; unified_v1 opaque upload requires zero parse jobs."
+      ]
+    },
+    "user_testing_admission": {
+      "status": "not_run",
+      "ready": false,
+      "target": "Begin small invited user testing after admission, not claim formal release acceptance",
+      "candidate_case_pool_only": true,
+      "packages": [
+        {
+          "package_id": "U-A",
+          "purpose": "Traceable running version, enabled scope and usable entry",
+          "test_ids": [
+            "BB-001",
+            "BB-002",
+            "BB-005",
+            "BB-076"
+          ],
+          "required_subcases": [
+            "invited URL and actual Web/API/worker source or image receipt",
+            "scope migrations/flags/prices",
+            "health/readiness/heartbeat",
+            "production CSS and available entries; unavailable functions truthfully disabled"
+          ],
+          "status": "not_run",
+          "evidence": []
+        },
+        {
+          "package_id": "U-B",
+          "purpose": "One actual positive journey for each invited module",
+          "test_ids": [
+            "BB-003",
+            "BB-006",
+            "BB-013",
+            "BB-016",
+            "BB-029",
+            "BB-033",
+            "BB-035",
+            "BB-078"
+          ],
+          "required_subcases": [
+            "valid login or registration, original bytes and project reopen shared with journeys",
+            "actual CLI M1 dual Word plus download and locked accounting",
+            "actual CLI M3 report plus download and actual billing flag",
+            "one authorized market per offered M4 document type; four types require four real combinations",
+            "visible free help once, restore and export existing text; exclude unconfigured paid QA"
+          ],
+          "status": "not_run",
+          "evidence": []
+        },
+        {
+          "package_id": "U-C",
+          "purpose": "Identity, source immutability and worker isolation",
+          "test_ids": [
+            "BB-003",
+            "BB-004",
+            "BB-028",
+            "BB-050",
+            "BB-072"
+          ],
+          "required_subcases": [
+            "two isolated authorized owners; foreign read/download/write/execute denied",
+            "logout/expiry and late-response isolation",
+            "adopted source version/hash and M1 submitted material lock",
+            "current worker input/knowledge readonly and cross-directory access denied"
+          ],
+          "status": "not_run",
+          "evidence": []
+        },
+        {
+          "package_id": "U-D",
+          "purpose": "Explicit execution and request idempotency",
+          "test_ids": [
+            "BB-014",
+            "BB-025",
+            "BB-026",
+            "BB-044"
+          ],
+          "required_subcases": [
+            "M1 actual quote and confirmation; changed input invalidates quote",
+            "material form single-click save/quote/execute",
+            "double click or lost execute response uses same key and one run/reservation without repeating completed calls"
+          ],
+          "status": "not_run",
+          "evidence": []
+        },
+        {
+          "package_id": "U-E",
+          "purpose": "Enabled billing and balance cannot lose or duplicate funds",
+          "test_ids": [
+            "BB-052",
+            "BB-053",
+            "BB-054",
+            "BB-055",
+            "BB-056",
+            "BB-073",
+            "BB-074"
+          ],
+          "required_subcases": [
+            "M4 4499 denial and 4500 reservation",
+            "independent-key project race cannot overspend",
+            "dual delivery before exactly 4500 settlement; missing file does not settle; fixed unknown usage retains audit",
+            "failed and effective cancel release once; wallet available plus reserved",
+            "M1 selected real tier accounting plus fast eight-tier classification checks; M3 actual billing flag",
+            "unconfigured paid QA and recharge do not start business; add affected metered/expiry/payment branches only when enabled or changed"
+          ],
+          "status": "not_run",
+          "evidence": []
+        },
+        {
+          "package_id": "U-F",
+          "purpose": "Critical recovery is actionable and preserves one task",
+          "test_ids": [
+            "BB-010",
+            "BB-041",
+            "BB-044",
+            "BB-047",
+            "BB-048",
+            "BB-079"
+          ],
+          "required_subcases": [
+            "lost upload complete readback/same-key recovery",
+            "running reload/login retains run/input/funds; existing output downloads",
+            "one completed-call checkpoint recovery does not repeat call or accounting",
+            "cancel-success race one terminal finalization; metered settle plus unused-cap release each once is valid",
+            "user-visible paused reason/resume and pending provider reconciliation guard"
+          ],
+          "status": "not_run",
+          "evidence": []
+        },
+        {
+          "package_id": "U-G",
+          "purpose": "Known high-risk fixes in scope and current diff remain fixed",
+          "test_ids": [
+            "BB-017",
+            "BB-026",
+            "BB-070",
+            "BB-072",
+            "BB-073",
+            "BB-074",
+            "BB-076"
+          ],
+          "required_subcases": [
+            "derive current scope and diff impacted registry assertions",
+            "all selected known P0/P1 funds/identity/unintended execution/source/recovery assertions pass on the tested version",
+            "record excluded scope and reasons; shared known P0 cannot be excluded to pass"
+          ],
+          "status": "not_run",
+          "evidence": []
+        }
+      ],
+      "human_preflight": [
+        {
+          "subcase_id": "U-H-flow",
+          "test_ids": [
+            "BB-051"
+          ],
+          "executor": "Human",
+          "criterion": "One business user completes a representative preparation/fee-confirmation/progress/result/download/revisit journey without a dead end or continual coaching",
+          "status": "not_run"
+        },
+        {
+          "subcase_id": "U-H-content",
+          "test_ids": [
+            "BB-013",
+            "BB-016",
+            "BB-036",
+            "BB-037"
+          ],
+          "executor": "Human with Agent source locators",
+          "criterion": "Quick key identity/market/period/numbers/terms and obvious invented procedure checks on offered representative outputs; known critical error blocks entry, full professional review remains R pending",
+          "status": "not_run"
+        },
+        {
+          "subcase_id": "U-H-client",
+          "test_ids": [
+            "BB-039"
+          ],
+          "executor": "Human",
+          "criterion": "Open representative authoring/review/material files in the invited users primary real Word or WPS client: readable, editable, no repair warning or empty output; full two-client matrix remains R pending",
+          "status": "not_run"
+        }
+      ],
+      "human_active_operation_target_minutes": {
+        "minimum": 30,
+        "maximum": 60,
+        "generation_wait_excluded": true,
+        "time_limit_is_not_a_pass_criterion": true
+      },
+      "planning_target": "1–2 working days after environment, authorized materials, actual version and budget are ready; not an achieved result or fixed guarantee",
+      "does_not_require_complete_engineering_or_real_acceptance_gate": true,
+      "conditional_additions": {
+        "global_assistant": {
+          "when": "deployed and included in invitation scope",
+          "test_ids": [
+            "BB-061",
+            "BB-063",
+            "BB-064",
+            "BB-065",
+            "BB-066",
+            "BB-068"
+          ]
+        },
+        "migration_and_rollback": "Only relevant to the tested runtime; any new deployment/migration still follows its deployment and rollback requirements. Pending migration 0100 does not block testing an existing deployed scope without the assistant.",
+        "impacted_billing": "Include metered, expiring gift and payment protocol regression branches when actually enabled in scope or changed in the tested version.",
+        "separate_authoring_paths": "Add both new-authoring and update real representatives if production paths differ."
+      },
+      "deferred_not_deleted": [
+        "complete historical fix inventory and unmapped=0 release audit",
+        "entire 79-case fault matrix",
+        "real eight-market-document combinations",
+        "full professional signoff",
+        "complete Word and WPS matrix",
+        "all CI integration work",
+        "unconfigured payment activation"
+      ],
+      "blocker_policy": "Every applicable admission subcase and Human preflight passes. No known shared P0 or scope-critical P1. Do not exclude known funds/identity/unintended execution/data loss bugs merely to pass.",
+      "feedback_record_fields": [
+        "session_id",
+        "tested_runtime",
+        "task_goal",
+        "completed_without_help",
+        "needed_assistance",
+        "blocker_or_confusion",
+        "task_elapsed_time",
+        "user_comment",
+        "run_id",
+        "accounting_evidence",
+        "bug_id",
+        "owner",
+        "retest_result"
+      ],
+      "following_user_tests": "Human real tasks and feedback are the main work after U. Agent observes errors, verifies accounting, reproduces bugs and runs targeted regressions.",
+      "product_tests_executed": false,
+      "invitation_messages_sent": false
+    },
+    "artifact_consistency_validation_command": "node docs/testing/bondbuddy-test-plan-v6/validate.mjs"
+  },
+  "human_acceptance": {
+    "professional_reviews": [],
+    "word_reviews": [],
+    "wps_reviews": [],
+    "financial_oracles": [],
+    "business_journey_reviews": [],
+    "approved": false
+  },
+  "defects": {
+    "open_p0": [],
+    "open_p1": [],
+    "accepted_p2": [],
+    "reopened": [],
+    "inventory_status": "Not fully audited; empty lists do not certify that there are no open defects"
+  },
+  "rollback": {
+    "backup_evidence": null,
+    "previous_image_digests": [],
+    "migration_reversal_allowed": false,
+    "overwrite_live_database_allowed": false,
+    "m4_active_run_strategy": null,
+    "staging_rehearsal_evidence": null
+  },
+  "release_decision": {
+    "eligible": false,
+    "approvers": [],
+    "approved_at": null,
+    "blocking_reasons": [
+      "Product and admission subcases have not been executed in this session",
+      "Actual invited runtime and enabled feature scope are not frozen",
+      "Applicable gate and scope must be selected"
+    ],
+    "conditional_requirements": [
+      {
+        "feature": "ordinary_paid_qa",
+        "requirement": "Published approved production cost/cap configuration required before enabling paid QA. This requirement does not block fixed 4500 document settlement or enabled fixed-price authoring.",
+        "current_reported_status": "not_configured"
+      }
+    ],
+    "blocking_reasons_by_gate": {
+      "engineering": [
+        "Required engineering cases are not run; isolated PG/Azurite/Linux/browser/build evidence is pending",
+        "Migration 0100 compatibility and active-run staging rollback evidence are pending; this candidate triggers the full drill",
+        "Full historical fix inventory reconciliation remains required for the formal release baseline"
+      ],
+      "real_acceptance": [
+        "Engineering gate has not passed",
+        "Authorized eight-combination real CLI and affected continuation journeys need execution evidence",
+        "Human professional and Word/WPS acceptance is pending",
+        "Real-call budget and enabled-feature configuration must be recorded"
+      ],
+      "user_testing": [
+        "Actual Web/API/worker runtime and invitation feature/market scope need traceable evidence",
+        "Required seven-package subcases and real business journeys have not been run",
+        "Short Human flow/content/primary-client preflight is pending",
+        "Authorized fixtures, available credits, real-call budget and feedback ownership need recording"
+      ]
+    },
+    "required_business_goal_ids": [
+      "G1",
+      "G2",
+      "G3",
+      "G4",
+      "G5"
+    ],
+    "business_goal_status_by_gate": {
+      "engineering": {
+        "G1": "not_run",
+        "G2": "not_run",
+        "G3": "not_run",
+        "G4": "not_run",
+        "G5": "not_run"
+      },
+      "real_acceptance": {
+        "G1": "not_run",
+        "G2": "not_run",
+        "G3": "not_run",
+        "G4": "not_run",
+        "G5": "not_run"
+      },
+      "user_testing": {
+        "G1": "not_run",
+        "G2": "not_run",
+        "G3": "not_run",
+        "G4": "not_run",
+        "G5": "not_run"
+      }
+    },
+    "goal_evidence_policy": "Record all five goal statuses separately for the selected gate. Critical criteria are mandatory; no averaged score can offset funds, data or professional-content failures. No goal is passed by this document update. U approval, if earned, permits only its recorded invited-testing scope and never automatically approves public release or full E/R goals.",
+    "eligible_by_gate": {
+      "user_testing": false,
+      "engineering": false,
+      "real_acceptance": false
+    },
+    "public_release_eligible": false
+  },
+  "post_release_observation": {
+    "stage": "online_smoke",
+    "immediate": null,
+    "after_30_minutes": null,
+    "next_workday": null,
+    "pre_candidate_public_reference": null,
+    "pre_candidate_readonly_ui_reference": null,
+    "candidate_online_smoke_passed": false,
+    "blocking_reasons": [
+      "Actual Web/API/worker image identities and migration ledger need approved-candidate readback",
+      "Global assistant production deployment and 0100 migration have no completion receipt",
+      "Candidate immediate/30-minute/next-workday online observations have not been recorded"
+    ]
+  },
+  "source_snapshot": "https://github.com/ITSophiaXu/BondBuddy/tree/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "approved_product_decision_sources": [
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-07-pdf-original-upload.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-07-material-drafting-knowledge.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-material-form-simplification.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-m4-fixed-document-price.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-material-results-ux.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-credit-visibility.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-authoring-credit-activation.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-status-first-dashboard.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-account-page-simplify.md",
+    "https://github.com/ITSophiaXu/BondBuddy/blob/a6fa7eb030f7f9bc4c803176b2aacf38d35642b6/docs/product-decisions/2026-10-08-global-project-assistant.md"
+  ],
+  "reported_live_reference": {
+    "evidence_type": "Historical release-owner reports; not runtime fields independently verified in this session",
+    "evidence_file": null,
+    "report_retrieved_at": "2026-10-08T10:59:24.3857992Z",
+    "url": "https://bondbuddy.gululai.com/",
+    "web": {
+      "git_sha": "6f2e2305a64b03ef0e699da8b68ddbb68c3b0eea",
+      "reported_verified_at": "2026-10-08T14:38:06.518887+08:00",
+      "js_path": "/assets/index-FcPIb1Ll.js",
+      "js_sha256": "76e45c7b5425d7d5d25cd92aa9e3f8c4af84f3c250e11c368584d071ffc04642",
+      "css_path": "/assets/index-KlPkIRHL.css",
+      "css_sha256": "628fb6ff77bfaadb667ae4ab008622fff4f1fb75c83f53b867588035db694796",
+      "source": "https://github.com/ITSophiaXu/BondBuddy/pull/610#issuecomment-6054025965"
+    },
+    "backend": {
+      "git_sha": "2e7b33475a35957c5131753eadf60223f76ef375",
+      "migration_0099_reported_applied": true,
+      "source": "https://github.com/ITSophiaXu/BondBuddy/pull/593#issuecomment-6051589302"
+    },
+    "billing": {
+      "paid_authoring_enabled": true,
+      "fixed_price_version": "authoring-20261008-v1",
+      "eight_tier_points": {
+        "interim": 17900,
+        "annual": 27900,
+        "two_years": 48900,
+        "three_years": 68900,
+        "migration": 64900,
+        "migration_two_years": 85900,
+        "migration_three_years": 105900,
+        "new_authoring": 159900
+      },
+      "authoring_activation_reported_at": "2026-10-08T05:35:31Z",
+      "document_points": 4500,
+      "document_price_version": "m4-document-fixed-20261008-v1",
+      "paid_review_enabled": false,
+      "recharge_enabled": false,
+      "ordinary_qa_cost_config_published": false,
+      "qa_single_60_points_approved": false,
+      "sources": [
+        "https://github.com/ITSophiaXu/BondBuddy/pull/607",
+        "https://github.com/ITSophiaXu/BondBuddy/pull/593"
+      ]
+    },
+    "newer_merged_not_verified_live": [
+      {
+        "pr": 614,
+        "sha": "d09a930fb9430e785086b787cfdd5b05965b6307",
+        "feature": "account redesign",
+        "status": "No completion receipt; assistant issue reported account build awaiting receipt"
+      },
+      {
+        "pr": 616,
+        "sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+        "feature": "global assistant",
+        "status": "Issue 612 explicitly reports not deployed; migration 0100 pending"
+      }
+    ],
+    "assistant_pending_source": "https://github.com/ITSophiaXu/BondBuddy/issues/612#issuecomment-6056852842",
+    "github_deployment_records": [],
+    "historical_reference_only": true,
+    "original_local_record_published": false,
+    "current_candidate_pass_evidence": false
+  },
+  "observed_public_probe": {
+    "evidence_file": null,
+    "observed_at_utc": "2026-10-08T11:03:47.15Z",
+    "completed_at_utc": "2026-10-08T11:03:50.65Z",
+    "origin": "https://bondbuddy.gululai.com",
+    "read_only": true,
+    "authenticated_requests": 0,
+    "remote_changes": false,
+    "requests": [
+      {
+        "kind": "html",
+        "url": "https://bondbuddy.gululai.com/",
+        "final_url": "https://bondbuddy.gululai.com/",
+        "status": 200,
+        "content_type": "text/html",
+        "bytes": 750,
+        "sha256": "dec31426c29bdd69b4eaadbd1b8ee2d52354aeca0b29f8fad810aef078636c26",
+        "elapsed_ms": 1730
+      },
+      {
+        "kind": "health",
+        "url": "https://bondbuddy.gululai.com/healthz",
+        "final_url": "https://bondbuddy.gululai.com/healthz",
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "bytes": 97,
+        "sha256": "d3035e2a590234ea5e63ec0b15a5788286b83f3a7c55f142c24aabe6b5d6cb8d",
+        "elapsed_ms": 1675,
+        "public_json": {
+          "status": "ok",
+          "service": "bondbuddy-m1-api-skeleton",
+          "implementation": "health-and-contract-only"
+        }
+      },
+      {
+        "kind": "ready",
+        "url": "https://bondbuddy.gululai.com/api/v1/ready",
+        "final_url": "https://bondbuddy.gululai.com/api/v1/ready",
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "bytes": 184,
+        "sha256": "0127b6ef05aa3146104caad37227dc06982ccb74e8cebbd0e80a503c25ced50c",
+        "elapsed_ms": 3122,
+        "public_json": {
+          "status": "ready",
+          "checks": {
+            "database": "ok",
+            "blob_storage": "ok",
+            "evidence_gate": "ok",
+            "worker_heartbeat": "ok"
+          },
+          "worker_heartbeat_age_seconds": 11,
+          "checked_at": "2026-10-08T11:03:50.178Z"
+        }
+      }
+    ],
+    "resources": [
+      {
+        "kind": "script",
+        "url": "https://bondbuddy.gululai.com/assets/index-FcPIb1Ll.js",
+        "final_url": "https://bondbuddy.gululai.com/assets/index-FcPIb1Ll.js",
+        "status": 200,
+        "content_type": "application/javascript",
+        "bytes": 633471,
+        "sha256": "76e45c7b5425d7d5d25cd92aa9e3f8c4af84f3c250e11c368584d071ffc04642",
+        "elapsed_ms": 327
+      },
+      {
+        "kind": "stylesheet",
+        "url": "https://bondbuddy.gululai.com/assets/index-KlPkIRHL.css",
+        "final_url": "https://bondbuddy.gululai.com/assets/index-KlPkIRHL.css",
+        "status": 200,
+        "content_type": "text/css",
+        "bytes": 192355,
+        "sha256": "628fb6ff77bfaadb667ae4ab008622fff4f1fb75c83f53b867588035db694796",
+        "elapsed_ms": 237
+      }
+    ],
+    "deployed_sha": null,
+    "deployed_sha_verified": false,
+    "limitation": "Observed HTTP health/readiness and exact public bytes; not proof of running source SHA or business correctness",
+    "historical_reference_only": true,
+    "original_local_record_published": false,
+    "current_candidate_pass_evidence": false
+  },
+  "observed_readonly_ui": {
+    "evidence_file": null,
+    "observed_at": "2026-10-08T19:05:08+08:00",
+    "method": "Codex in-app browser, rendered accessibility state and DOM resource links",
+    "authentication": "Reused an existing browser session; no new login or credentials entered",
+    "pages_read": [
+      "dashboard",
+      "existing material-generation draft",
+      "account"
+    ],
+    "observations": {
+      "dashboard": "State-first dashboard, three business filters, latest task per project, status-specific navigation visible",
+      "material_form": "Four enabled document types: init, underwriter, legal, private_summary; recommendation disabled; exchange selector; init broker/private template fields; optional requirements textarea; one generate button; no embedded assistant visible",
+      "account": "Older layout still exposes registration/password-change/agreement details and inline expandable settings; recharge unavailable; minimum package 20000 credits / CNY200",
+      "global_assistant": "No floating assistant launcher visible in the three observed pages",
+      "script_path": "/assets/index-FcPIb1Ll.js",
+      "stylesheet_path": "/assets/index-KlPkIRHL.css"
+    },
+    "data_mutations": 0,
+    "business_executions": 0,
+    "paid_tasks": 0,
+    "limitation": "Read-only inspection of visible behavior; does not certify all test cases, actual API/worker SHA, accounting, professional content or successful document delivery",
+    "historical_reference_only": true,
+    "original_local_record_published": false,
+    "current_candidate_pass_evidence": false
+  },
+  "business_test_goals": {
+    "schema_version": 1,
+    "authority": "User-specified five business objectives in the current conversation",
+    "goal_definition_version": "business-goals-20261008-v1",
+    "definitions": [
+      {
+        "id": "G1",
+        "business_objective": "业务模块都能够正确完成",
+        "test_goal": "本次声明开放的募集书编制/更新、复核、四文种材料生成、QA、助手及账号模块，能从有效输入完成各自预期结果；来源/版本/企业/期间/关键事实正确",
+        "pass_criteria": "U：每个试用模块至少一条真实闭环，开放四文种时各一个已授权市场，共4组合；关键事实/文件可用性预检通过，无核心P0/P1。R：沪深×四文种8组合及M1/M3代表旅程，完整专业和Word/WPS验收通过",
+        "representative_cases": "BB-013/016/027/029–039/067/069/075/077/078"
+      },
+      {
+        "id": "G2",
+        "business_objective": "user flow正确流畅",
+        "test_goal": "用户能顺畅完成“进入模块→准备资料/要求→明确执行→查看进度→阅读/下载→继续修改”；页面切换、返回、刷新、错误重试保持上下文，确认步骤符合入口设计",
+        "pass_criteria": "关键旅程100%通过，无流程死路、意外执行、输入/焦点/阅读位置丢失；材料表单一次生成、助手确认卡和M1报价确认各自正确。客观UI由Agent验；连续使用体验由Human在BB-051验；响应时间按已确认SLO实测",
+        "representative_cases": "BB-005/010–011/019–026/040–043/051/062–068/070–075"
+      },
+      {
+        "id": "G3",
+        "business_objective": "积分使用/消耗正确",
+        "test_goal": "报价、余额、预留、消费、释放及历史任务收费，准确符合本轮任务和锁定版本",
+        "pass_criteria": "四文种双Word交付后只扣4500一次；八档编制价及一期17900准确；不足不超支/误启动；失败或有效取消按协议释放；主余额和ledger一致；免费操作不扣积分；QA/legacy与固定价的unknown处理正确，旧任务不追补",
+        "representative_cases": "BB-014/044/052–058/066–068/073–074"
+      },
+      {
+        "id": "G4",
+        "business_objective": "修复稳定回归",
+        "test_goal": "每个已修复问题有永久复现用例，新候选不会破坏已修复行为或既有业务/协议",
+        "pass_criteria": "U：试用范围/当前diff涉及的已知资金、权限、误执行、底稿、恢复P0/P1永久断言全部通过；记录版本/映射及未覆盖项。E/R完整发布baseline：全历史fix对账、未映射fix=0、可信旧fail→候选pass、全部适用永久回归100%通过，无必跑fail/blocked/skip/todo。不因准入缩小而删除原断言或隐藏已知风险",
+        "representative_cases": "全部registry关联用例，以及BB-001/017/056/060/074/076"
+      },
+      {
+        "id": "G5",
+        "business_objective": "可靠性：异常情况和bad case可以处理",
+        "test_goal": "缺材料/错误输入/错权限/余额不足、网络中断、丢响应、并发、超时、取消、worker崩溃、服务不可用等，有正确状态、可操作提示和安全恢复",
+        "pass_criteria": "所有必跑异常分支符合各自协议：正确拒绝/暂停/恢复/释放/结算；保留输入/来源/审计，不重复执行/扣费、不越权泄漏、不假报成功。队列未启用允许paused并保留预留；固定文书unknown双交付可结算，QA/legacy按量unknown待核",
+        "representative_cases": "BB-004/007–012/024/026/043–050/052–057/063–068/070/072/074"
+      }
+    ],
+    "case_goal_map": {
+      "BB-001": [
+        "G4",
+        "G5"
+      ],
+      "BB-002": [
+        "G4",
+        "G5"
+      ],
+      "BB-003": [
+        "G1",
+        "G4",
+        "G5"
+      ],
+      "BB-004": [
+        "G5"
+      ],
+      "BB-005": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "BB-006": [
+        "G1",
+        "G4"
+      ],
+      "BB-007": [
+        "G4",
+        "G5"
+      ],
+      "BB-008": [
+        "G1",
+        "G2",
+        "G5"
+      ],
+      "BB-009": [
+        "G1",
+        "G2"
+      ],
+      "BB-010": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-011": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-012": [
+        "G1",
+        "G5"
+      ],
+      "BB-013": [
+        "G1",
+        "G2",
+        "G3"
+      ],
+      "BB-014": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-015": [
+        "G1",
+        "G2"
+      ],
+      "BB-016": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-017": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-018": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-019": [
+        "G1",
+        "G2",
+        "G4"
+      ],
+      "BB-020": [
+        "G1",
+        "G2",
+        "G4"
+      ],
+      "BB-021": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-022": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-023": [
+        "G1",
+        "G2",
+        "G4"
+      ],
+      "BB-024": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-025": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-026": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-027": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-028": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-029": [
+        "G1",
+        "G3"
+      ],
+      "BB-030": [
+        "G1",
+        "G5"
+      ],
+      "BB-031": [
+        "G1",
+        "G4",
+        "G5"
+      ],
+      "BB-032": [
+        "G1",
+        "G4",
+        "G5"
+      ],
+      "BB-033": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-034": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-035": [
+        "G1",
+        "G3",
+        "G4"
+      ],
+      "BB-036": [
+        "G1",
+        "G4"
+      ],
+      "BB-037": [
+        "G1",
+        "G4"
+      ],
+      "BB-038": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "BB-039": [
+        "G1",
+        "G2"
+      ],
+      "BB-040": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-041": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-042": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-043": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-044": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-045": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-046": [
+        "G2",
+        "G5"
+      ],
+      "BB-047": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-048": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-049": [
+        "G4",
+        "G5"
+      ],
+      "BB-050": [
+        "G5"
+      ],
+      "BB-051": [
+        "G2",
+        "G4"
+      ],
+      "BB-052": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-053": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-054": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-055": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-056": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-057": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-058": [
+        "G3",
+        "G4"
+      ],
+      "BB-059": [
+        "G1",
+        "G2",
+        "G5"
+      ],
+      "BB-060": [
+        "G4",
+        "G5"
+      ],
+      "BB-061": [
+        "G1",
+        "G4",
+        "G5"
+      ],
+      "BB-062": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-063": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-064": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-065": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-066": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-067": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-068": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-069": [
+        "G1",
+        "G2",
+        "G4"
+      ],
+      "BB-070": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-071": [
+        "G1",
+        "G2",
+        "G4"
+      ],
+      "BB-072": [
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-073": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-074": [
+        "G2",
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "BB-075": [
+        "G1",
+        "G2",
+        "G4",
+        "G5"
+      ],
+      "BB-076": [
+        "G4"
+      ],
+      "BB-077": [
+        "G1",
+        "G2",
+        "G5"
+      ],
+      "BB-078": [
+        "G1",
+        "G2",
+        "G5"
+      ],
+      "BB-079": [
+        "G2",
+        "G3",
+        "G5"
+      ]
+    },
+    "multi_goal_case_counts_are_not_additive": true,
+    "G4_policy": "U checks known high-risk fixes affected by the invited scope and current diff; U pass is not full historical-regression approval. E/R still require complete inventory reconciliation, unmapped=0 and all applicable permanent regressions.",
+    "scope_policy": "All five goals have separate U/E/R statuses. U certifies scoped readiness for invited testing, not public release or full professional/desktop acceptance."
+  },
+  "plan_revision": "v6-fast-invited-user-testing",
+  "published_date": "2026-10-09",
+  "source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "publication": {
+    "plan_revision": "v6-fast-invited-user-testing",
+    "source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+    "develop_reference_sha": "ebae7f6b50aaacff34cab717a5bde5892fe239b6",
+    "remote_heads_rechecked_date": "2026-10-09",
+    "remote_heads_unchanged_at_recheck": true,
+    "runtime_observation_date": "2026-10-08",
+    "runtime_reverified_for_publication": false,
+    "source_paths_relative_to": "repository_root_at_source_reference_sha",
+    "artifact_paths_relative_to": "this_directory",
+    "local_investigation_records_published": false,
+    "historical_observations_are_current_test_evidence": false,
+    "execution_instruction": "Freeze actual source/config/scope and rerun selected subcases; static metadata validation is not product test execution or admission approval."
+  }
+}

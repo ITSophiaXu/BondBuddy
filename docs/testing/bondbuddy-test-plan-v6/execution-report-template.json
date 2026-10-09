@@ -1,0 +1,2074 @@
+{
+  "schema_version": 1,
+  "artifact_type": "execution_report_template",
+  "plan_revision": "v6-fast-invited-user-testing",
+  "plan_file": "docs/testing/bondbuddy-test-plan-v6/test-plan.md",
+  "source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "created_date": "2026-10-09",
+  "status": "not_run",
+  "product_tests_executed": false,
+  "invitation_messages_sent": false,
+  "instructions": [
+    "Copy this template for a specific execution. Do not overwrite the committed blank template with customer data or private run evidence.",
+    "Freeze the actual runtime, feature/market scope, authorized fixtures, owners and selected required subcases before any U decision. Reference SHA is historical design evidence, not the tested runtime.",
+    "Seven packages are logical coverage groups. Select applicable subcases and add conditional assistant/billing branches; do not mark a whole case pass from one representative.",
+    "Record actual execution or an explicit controlled evidence reference with matching source/configuration/fixture/run/artifact hashes. Preserve separate engineering and Human conclusions.",
+    "Record G1–G5 for each gate separately. A U decision permits its recorded invited-testing scope only; no automatic E/R or public-release approval.",
+    "Use controlled evidence URIs and hashes. Never commit credentials, recovery tokens, customer originals, raw prompts or private generated outputs. This metadata validator never runs product tests or infers readiness."
+  ],
+  "allowed_statuses": [
+    "not_run",
+    "pass",
+    "fail",
+    "blocked",
+    "skipped",
+    "N/A"
+  ],
+  "selection": {
+    "gate": null,
+    "frozen": false,
+    "frozen_by": null,
+    "frozen_at": null,
+    "tested_url": null,
+    "enabled_features": [],
+    "enabled_markets": [],
+    "offered_document_types": [],
+    "excluded_scope_with_reasons": [],
+    "authorized_fixture_manifests": [],
+    "credits_and_real_call_budget_receipt": null,
+    "required_subcase_ids": [],
+    "conditional_additions": [],
+    "source_diff_receipt": null,
+    "impact_and_known_high_risk_fix_selection": [],
+    "actual_runtime": {
+      "observed_at": null,
+      "web": {
+        "git_sha": null,
+        "bundle_sha256": null
+      },
+      "api": {
+        "git_sha": null,
+        "image_digest": null
+      },
+      "workers": [],
+      "migration_ledger": [],
+      "configuration_receipt": null,
+      "knowledge_and_skill_versions": []
+    },
+    "remaining_selection_blockers": [
+      "Actual running version, scope, owners and required subcases are not frozen"
+    ]
+  },
+  "packages": [
+    {
+      "package_id": "U-A",
+      "purpose": "Traceable running version, enabled scope and usable entry",
+      "test_ids": [
+        "BB-001",
+        "BB-002",
+        "BB-005",
+        "BB-076"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-A-01",
+          "criterion": "invited URL and actual Web/API/worker source or image receipt",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-A-02",
+          "criterion": "scope migrations/flags/prices",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-A-03",
+          "criterion": "health/readiness/heartbeat",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-A-04",
+          "criterion": "production CSS and available entries; unavailable functions truthfully disabled",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    },
+    {
+      "package_id": "U-B",
+      "purpose": "One actual positive journey for each invited module",
+      "test_ids": [
+        "BB-003",
+        "BB-006",
+        "BB-013",
+        "BB-016",
+        "BB-029",
+        "BB-033",
+        "BB-035",
+        "BB-078"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-B-01",
+          "criterion": "valid login or registration, original bytes and project reopen shared with journeys",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-B-02",
+          "criterion": "actual CLI M1 dual Word plus download and locked accounting",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-B-03",
+          "criterion": "actual CLI M3 report plus download and actual billing flag",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-B-04",
+          "criterion": "one authorized market per offered M4 document type; four types require four real combinations",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-B-05",
+          "criterion": "visible free help once, restore and export existing text; exclude unconfigured paid QA",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    },
+    {
+      "package_id": "U-C",
+      "purpose": "Identity, source immutability and worker isolation",
+      "test_ids": [
+        "BB-003",
+        "BB-004",
+        "BB-028",
+        "BB-050",
+        "BB-072"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-C-01",
+          "criterion": "two isolated authorized owners; foreign read/download/write/execute denied",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-C-02",
+          "criterion": "logout/expiry and late-response isolation",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-C-03",
+          "criterion": "adopted source version/hash and M1 submitted material lock",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-C-04",
+          "criterion": "current worker input/knowledge readonly and cross-directory access denied",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    },
+    {
+      "package_id": "U-D",
+      "purpose": "Explicit execution and request idempotency",
+      "test_ids": [
+        "BB-014",
+        "BB-025",
+        "BB-026",
+        "BB-044"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-D-01",
+          "criterion": "M1 actual quote and confirmation; changed input invalidates quote",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-D-02",
+          "criterion": "material form single-click save/quote/execute",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-D-03",
+          "criterion": "double click or lost execute response uses same key and one run/reservation without repeating completed calls",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    },
+    {
+      "package_id": "U-E",
+      "purpose": "Enabled billing and balance cannot lose or duplicate funds",
+      "test_ids": [
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-055",
+        "BB-056",
+        "BB-073",
+        "BB-074"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-E-01",
+          "criterion": "M4 4499 denial and 4500 reservation",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-E-02",
+          "criterion": "independent-key project race cannot overspend",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-E-03",
+          "criterion": "dual delivery before exactly 4500 settlement; missing file does not settle; fixed unknown usage retains audit",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-E-04",
+          "criterion": "failed and effective cancel release once; wallet available plus reserved",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-E-05",
+          "criterion": "M1 selected real tier accounting plus fast eight-tier classification checks; M3 actual billing flag",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-E-06",
+          "criterion": "unconfigured paid QA and recharge do not start business; add affected metered/expiry/payment branches only when enabled or changed",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    },
+    {
+      "package_id": "U-F",
+      "purpose": "Critical recovery is actionable and preserves one task",
+      "test_ids": [
+        "BB-010",
+        "BB-041",
+        "BB-044",
+        "BB-047",
+        "BB-048",
+        "BB-079"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-F-01",
+          "criterion": "lost upload complete readback/same-key recovery",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-F-02",
+          "criterion": "running reload/login retains run/input/funds; existing output downloads",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-F-03",
+          "criterion": "one completed-call checkpoint recovery does not repeat call or accounting",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-F-04",
+          "criterion": "cancel-success race one terminal finalization; metered settle plus unused-cap release each once is valid",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-F-05",
+          "criterion": "user-visible paused reason/resume and pending provider reconciliation guard",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    },
+    {
+      "package_id": "U-G",
+      "purpose": "Known high-risk fixes in scope and current diff remain fixed",
+      "test_ids": [
+        "BB-017",
+        "BB-026",
+        "BB-070",
+        "BB-072",
+        "BB-073",
+        "BB-074",
+        "BB-076"
+      ],
+      "owner": null,
+      "status": "not_run",
+      "required_subcases": [
+        {
+          "subcase_id": "U-G-01",
+          "criterion": "derive current scope and diff impacted registry assertions",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-G-02",
+          "criterion": "all selected known P0/P1 funds/identity/unintended execution/source/recovery assertions pass on the tested version",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        },
+        {
+          "subcase_id": "U-G-03",
+          "criterion": "record excluded scope and reasons; shared known P0 cannot be excluded to pass",
+          "test_ids": [],
+          "owner": null,
+          "execution_layer": null,
+          "selected": false,
+          "selection_status": "unselected",
+          "selection_reason": null,
+          "required": null,
+          "status": "not_run",
+          "execution_or_reference": null,
+          "source": {
+            "git_sha": null,
+            "git_tree": null,
+            "component": null,
+            "image_digest": null,
+            "tested_runtime": null
+          },
+          "config": {
+            "version": null,
+            "sha256": null,
+            "flags_and_prices_receipt": null
+          },
+          "fixture": {
+            "manifest_uri": null,
+            "sha256": null,
+            "authorized": null,
+            "synthetic": null
+          },
+          "run": {
+            "run_id": null,
+            "input_hash": null,
+            "request_key": null,
+            "call_receipt": null
+          },
+          "artifacts": [],
+          "accounting": {
+            "ledger_receipts": [],
+            "lot_allocation_receipt": null,
+            "reserved_points": null,
+            "settled_points": null,
+            "released_points": null,
+            "balance_receipt": null
+          },
+          "controlled_evidence": [],
+          "observed_at": null,
+          "checked_by": null,
+          "criterion_result": null,
+          "notes": null
+        }
+      ],
+      "additional_selected_subcases": [],
+      "controlled_evidence": []
+    }
+  ],
+  "human_preflight": [
+    {
+      "subcase_id": "U-H-flow",
+      "test_ids": [
+        "BB-051"
+      ],
+      "criterion": "One business user completes a representative preparation/fee-confirmation/progress/result/download/revisit journey without a dead end or continual coaching",
+      "executor": "Human",
+      "owner": null,
+      "execution_layer": null,
+      "selected": false,
+      "selection_status": "unselected",
+      "selection_reason": null,
+      "required": null,
+      "status": "not_run",
+      "execution_or_reference": null,
+      "source": {
+        "git_sha": null,
+        "git_tree": null,
+        "component": null,
+        "image_digest": null,
+        "tested_runtime": null
+      },
+      "config": {
+        "version": null,
+        "sha256": null,
+        "flags_and_prices_receipt": null
+      },
+      "fixture": {
+        "manifest_uri": null,
+        "sha256": null,
+        "authorized": null,
+        "synthetic": null
+      },
+      "run": {
+        "run_id": null,
+        "input_hash": null,
+        "request_key": null,
+        "call_receipt": null
+      },
+      "artifacts": [],
+      "accounting": {
+        "ledger_receipts": [],
+        "lot_allocation_receipt": null,
+        "reserved_points": null,
+        "settled_points": null,
+        "released_points": null,
+        "balance_receipt": null
+      },
+      "controlled_evidence": [],
+      "observed_at": null,
+      "checked_by": null,
+      "criterion_result": null,
+      "notes": null,
+      "reviewer_role": null,
+      "reviewer_name": null,
+      "review_date": null,
+      "primary_word_or_wps_client": null,
+      "reviewed_artifact_hashes": [],
+      "agent_precheck_status": "not_run",
+      "human_result": "not_run"
+    },
+    {
+      "subcase_id": "U-H-content",
+      "test_ids": [
+        "BB-013",
+        "BB-016",
+        "BB-036",
+        "BB-037"
+      ],
+      "criterion": "Quick key identity/market/period/numbers/terms and obvious invented procedure checks on offered representative outputs; known critical error blocks entry, full professional review remains R pending",
+      "executor": "Human with Agent source locators",
+      "owner": null,
+      "execution_layer": null,
+      "selected": false,
+      "selection_status": "unselected",
+      "selection_reason": null,
+      "required": null,
+      "status": "not_run",
+      "execution_or_reference": null,
+      "source": {
+        "git_sha": null,
+        "git_tree": null,
+        "component": null,
+        "image_digest": null,
+        "tested_runtime": null
+      },
+      "config": {
+        "version": null,
+        "sha256": null,
+        "flags_and_prices_receipt": null
+      },
+      "fixture": {
+        "manifest_uri": null,
+        "sha256": null,
+        "authorized": null,
+        "synthetic": null
+      },
+      "run": {
+        "run_id": null,
+        "input_hash": null,
+        "request_key": null,
+        "call_receipt": null
+      },
+      "artifacts": [],
+      "accounting": {
+        "ledger_receipts": [],
+        "lot_allocation_receipt": null,
+        "reserved_points": null,
+        "settled_points": null,
+        "released_points": null,
+        "balance_receipt": null
+      },
+      "controlled_evidence": [],
+      "observed_at": null,
+      "checked_by": null,
+      "criterion_result": null,
+      "notes": null,
+      "reviewer_role": null,
+      "reviewer_name": null,
+      "review_date": null,
+      "primary_word_or_wps_client": null,
+      "reviewed_artifact_hashes": [],
+      "agent_precheck_status": "not_run",
+      "human_result": "not_run"
+    },
+    {
+      "subcase_id": "U-H-client",
+      "test_ids": [
+        "BB-039"
+      ],
+      "criterion": "Open representative authoring/review/material files in the invited users primary real Word or WPS client: readable, editable, no repair warning or empty output; full two-client matrix remains R pending",
+      "executor": "Human",
+      "owner": null,
+      "execution_layer": null,
+      "selected": false,
+      "selection_status": "unselected",
+      "selection_reason": null,
+      "required": null,
+      "status": "not_run",
+      "execution_or_reference": null,
+      "source": {
+        "git_sha": null,
+        "git_tree": null,
+        "component": null,
+        "image_digest": null,
+        "tested_runtime": null
+      },
+      "config": {
+        "version": null,
+        "sha256": null,
+        "flags_and_prices_receipt": null
+      },
+      "fixture": {
+        "manifest_uri": null,
+        "sha256": null,
+        "authorized": null,
+        "synthetic": null
+      },
+      "run": {
+        "run_id": null,
+        "input_hash": null,
+        "request_key": null,
+        "call_receipt": null
+      },
+      "artifacts": [],
+      "accounting": {
+        "ledger_receipts": [],
+        "lot_allocation_receipt": null,
+        "reserved_points": null,
+        "settled_points": null,
+        "released_points": null,
+        "balance_receipt": null
+      },
+      "controlled_evidence": [],
+      "observed_at": null,
+      "checked_by": null,
+      "criterion_result": null,
+      "notes": null,
+      "reviewer_role": null,
+      "reviewer_name": null,
+      "review_date": null,
+      "primary_word_or_wps_client": null,
+      "reviewed_artifact_hashes": [],
+      "agent_precheck_status": "not_run",
+      "human_result": "not_run"
+    }
+  ],
+  "human_preflight_time": {
+    "target_active_minutes": [
+      30,
+      60
+    ],
+    "generation_wait_excluded": true,
+    "actual_active_minutes": null,
+    "time_limit_is_not_a_pass_criterion": true
+  },
+  "business_goal_status_by_gate": {
+    "user_testing": {
+      "G1": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G2": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G3": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G4": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G5": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      }
+    },
+    "engineering": {
+      "G1": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G2": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G3": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G4": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G5": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      }
+    },
+    "real_acceptance": {
+      "G1": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G2": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G3": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G4": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      },
+      "G5": {
+        "status": "not_run",
+        "owner": null,
+        "subcase_ids": [],
+        "controlled_evidence": [],
+        "limitations": null
+      }
+    }
+  },
+  "defects": [],
+  "defect_record_template": {
+    "bug_id": null,
+    "severity": null,
+    "status": "not_run",
+    "owner": null,
+    "test_ids": [],
+    "subcase_ids": [],
+    "found_source_sha": null,
+    "fixture_hash": null,
+    "run_id": null,
+    "expected": null,
+    "actual": null,
+    "minimal_steps": [],
+    "controlled_evidence": [],
+    "affected_scope": null,
+    "fix_sha": null,
+    "permanent_reproducer": null,
+    "retest_status": "not_run",
+    "retest_source_sha": null
+  },
+  "feedback_records": [],
+  "decision": {
+    "status": "not_run",
+    "ready": false,
+    "actual_ready": false,
+    "eligible_by_gate": {
+      "user_testing": false,
+      "engineering": false,
+      "real_acceptance": false
+    },
+    "public_release_approved": false,
+    "made_by": null,
+    "made_at": null,
+    "approved_scope": null,
+    "required_results_reviewed": false,
+    "blockers": [
+      "Selection is not frozen",
+      "Required admission subcases and Human preflight are not run"
+    ],
+    "deferred_scope_and_work": [],
+    "feedback_owner": null,
+    "invitation_authorization_receipt": null,
+    "policy": "A named owner records a decision from actual scoped evidence. No score, metadata pass or automatic rule makes U ready."
+  }
+}
