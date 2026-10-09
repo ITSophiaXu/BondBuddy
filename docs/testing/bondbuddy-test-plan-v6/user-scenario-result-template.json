@@ -4,7 +4,7 @@
   "plan_revision": "v6.1-user-behavior-scenarios",
   "created_date": "2026-10-09",
   "original_plan_source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
-  "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+  "source_reference_sha": "55941dc7f42aa3a87e2cae0ca933502f69e2aac3",
   "scenario_file": "user-scenarios.md",
   "engineering_plan_file": "test-plan.md",
   "status": "not_run",
@@ -387,13 +387,15 @@
         "BB-047",
         "BB-048",
         "BB-055",
-        "BB-056"
+        "BB-056",
+        "BB-071",
+        "BB-072"
       ],
       "u_packages": [
         "U-E",
         "U-F"
       ],
-      "selection_rule": "U：隔离环境取消与成功竞争必要例；Human只抽查费用/状态理解",
+      "selection_rule": "U：隔离环境取消与成功竞争必要例；#626相关入口按scope/diff补材料恢复子例；Human只抽查费用/状态理解",
       "executor": "Agent独立；Human按代表旅程抽查体验",
       "selected": false,
       "selection_reason": null,
@@ -805,7 +807,7 @@
       "type": "functional_gap",
       "evidence_method": "source_review_not_runtime_test",
       "finding": "No public active-run pause action/UI",
-      "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+      "source_reference_sha": "55941dc7f42aa3a87e2cae0ca933502f69e2aac3",
       "source_paths": [
         "apps/api/src/server.ts",
         "apps/web/src/api.ts"
@@ -821,7 +823,7 @@
       "type": "functional_gap",
       "evidence_method": "source_review_not_runtime_test",
       "finding": "No protocol adopts supplementary material into the original task continuation; only fixed input, cancel or next draft",
-      "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+      "source_reference_sha": "55941dc7f42aa3a87e2cae0ca933502f69e2aac3",
       "source_paths": [
         "apps/api/src/queue.ts",
         "apps/web/src/project-execution.ts",
@@ -839,7 +841,7 @@
       "type": "design_gap",
       "evidence_method": "user_confirmation_and_source_review",
       "finding": "Pause boundary, version/prior-work handling and charging policy are not defined for this confirmed user goal",
-      "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+      "source_reference_sha": "55941dc7f42aa3a87e2cae0ca933502f69e2aac3",
       "source_paths": [],
       "owner": null,
       "severity": null,

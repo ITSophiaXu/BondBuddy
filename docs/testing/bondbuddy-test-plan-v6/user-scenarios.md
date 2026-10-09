@@ -6,7 +6,7 @@
 
 Agent场景执行可用浏览器自动化逐屏填写/点击，控制offline、丢某个响应、关闭整个browser context，再用新context登录回同项目；需要查真实服务端状态/账本，不能仅修改页面变量模拟任务继续。隔离环境的合成worker/模型用于可控竞争与恢复，证据标synthetic；真实业务闭环仍按U-B用授权材料、实际模型和真实成果，不能由合成回答代替。没有产品实测的场景继续not_run，本次没有新增自动化产品测试实现。
 
-**源码边界：**场景核对参考为[develop 2805b31](https://github.com/ITSophiaXu/BondBuddy/tree/2805b31eb081aef52f1cdb777b8cbf85aefd44c9)；10月9日新增#618助手UI、#620固定QA价。原v6源码/线上调查仍为历史参考，执行前冻结实际运行版/flags/price version。当前新专业QA在有效运营发布价下为60；旧已提交按量QA仍按原锁定价。v6旧“capped/成本配置/60未批准”断言只适用于对应历史协议，不能套给已启用的新固定价QA。见[固定问答价决定](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/docs/product-decisions/2026-10-09-fixed-qa-price.md)。迁移0101不自动发布生产价格，未核实线上配置不得声明已收费60。
+**源码边界：**场景核对参考为[develop 55941dc](https://github.com/ITSophiaXu/BondBuddy/tree/55941dc7f42aa3a87e2cae0ca933502f69e2aac3)；10月9日新增#618助手UI、#620固定QA价、#626项目链接取消后的材料恢复。#626只修复带导航参数的项目页面更新，不增加主动暂停/更换原任务输入的协议，也不改变积分政策；其定向回归纳入UX-A06。原v6源码/线上调查仍为历史参考，执行前冻结实际运行版/flags/price version。当前新专业QA在有效运营发布价下为60；旧已提交按量QA仍按原锁定价。v6旧“capped/成本配置/60未批准”断言只适用于对应历史协议，不能套给已启用的新固定价QA。见[固定问答价决定](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/docs/product-decisions/2026-10-09-fixed-qa-price.md)。迁移0101不自动发布生产价格，未核实线上配置不得声明已收费60。
 
 在baseline/U报告的执行副本里填实际candidate、0101/有效价格receipt，并把本轮启用的新QA子例链接到UX-N06及59/60工程边界；旧BB-030/031/056/068及U-E的cap/成本配置断言标明legacy适用范围。不能只修改UI文字却继续拿旧按量oracle给新固定价判pass。
 
@@ -170,7 +170,7 @@ same run不表示永远成功，新run不表示可以自动重新下单。记录
 
 **前置：**助手已部署；先核对0101和可信运营发布的有效60积分price version。迁移本身不种生产价，不能据源码推定线上已启用。
 
-**缺陷发现线索：**源码[QA分类](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/api/src/m4-workspace.ts#L177)的免费帮助匹配可能漏掉自然说法“怎么下载已生成文件”，在空引用context下落入专业QA。保留该真实说法观察是否误收费；不要改成刚好命中关键词的句子来让测试通过。这是源码疑点，尚无运行复现；实际报价/账务错才记录对应缺陷。
+**缺陷发现线索：**源码[QA分类](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/api/src/m4-workspace.ts#L177)的免费帮助匹配可能漏掉自然说法“怎么下载已生成文件”，在空引用context下落入专业QA。保留该真实说法观察是否误收费；不要改成刚好命中关键词的句子来让测试通过。这是源码疑点，尚无运行复现；实际报价/账务错才记录对应缺陷。
 
 **用户动作与恢复：**
 
@@ -317,16 +317,18 @@ same run不表示永远成功，新run不表示可以自动重新下单。记录
 2. 观察请求已提交和最终状态，刷新或回工作台再进入同任务。
 3. 查看材料、既有成果、余额/预留和终态；再次点停止或重读。
 4. 隔离子例在点击停止时丢响应，恢复网络后读取真实终态，不能仅凭页面报错认定已取消。另用受控时序让取消恰逢成功交付，查看最终实际结果。
+5. #626受影响子例：从全部项目或带`from/step/run`参数的任务链接进入，取消后点“继续修改”，补传一份材料并刷新；查看已保存清单/数量、保存与处理反馈和开始按钮。仅试点“明确开始”前的状态，不因补传自动执行；要生成新版仍须核对报价后明确开始。
 
 **Pass criteria / 设计缺口：**
 
 - cancel是终止本轮，不是可继续同run的pause；有效取消终态保留，输入/既有成果不消失。
 - 按本任务协议完成一次finalize：固定价有效取消全release；成功已先提交则保留成功及合法结算，不再按取消退款。
 - 两种终态竞争各验证，不能既cancel成功又重复settle/release；后续要执行只能用明确支持的新任务流程。
+- 带导航参数进入也能恢复已有材料并同步补传结果；仅补传时run/执行请求不增加、旧input/snapshot不变、无新预留或扣费。这条取消后修改的回归通过不代表UX-A03暂停续原任务通过。
 
 **分工：**Agent独立；Human按代表旅程抽查体验。Human专业/真实客户端只按U-H或R适用范围签认，Agent机械通过不替代Human。
 
-**关联：**BB-045 / BB-047 / BB-048 / BB-055 / BB-056；U-E / U-F。**选择：**U：隔离环境取消与成功竞争必要例；Human只抽查费用/状态理解。**设计状态：**`current_contract`。
+**关联：**BB-045 / BB-047 / BB-048 / BB-055 / BB-056 / BB-071 / BB-072；U-E / U-F。**选择：**U：隔离环境取消与成功竞争必要例；#626相关入口按scope/diff补材料恢复子例；Human只抽查费用/状态理解。**设计状态：**`current_contract`。
 
 ### UX-A07 任务失败后补正再试
 
@@ -596,10 +598,11 @@ same run不表示永远成功，新run不表示可以自动重新下单。记录
 
 已知源码调查缺口（未运行产品实测）：FG-001主动暂停入口缺失；FG-002补料后原任务采用新版本并继续的协议缺失。DG-001该行为的暂停生效、已有工作/模型调用与积分处理尚需设计。UX-A03业务目标已由用户确认；这些缺口继续跟踪，不能用现有取消/下一草稿限制代替目标。
 
-| 源码调查依据（固定2805b31） | 可核对的实现现状 |
+| 源码调查依据（固定55941dc） | 可核对的实现现状 |
 |---|---|
-| [公开run动作](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/api/src/server.ts#L1490)、[client动作](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/web/src/api.ts#L186) | cancel/resume，未提供主动pause |
-| [queue动作与原输入恢复](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/api/src/queue.ts#L202) | 系统paused恢复有reason guard；更换材料不进入原snapshot |
-| [M1材料锁/继续修改](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/web/src/project-execution.ts#L270)、[M4下一草稿说明](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/web/src/material-workspace.ts#L182)、[M3换输入提示](https://github.com/ITSophiaXu/BondBuddy/blob/2805b31eb081aef52f1cdb777b8cbf85aefd44c9/apps/web/src/review-workspace.ts#L392) | 各业务保留当前输入，取消/下一草稿为已有路径，不等同用户要求的暂停补料续做 |
+| [公开run动作](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/api/src/server.ts#L1490)、[client动作](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/web/src/api.ts#L186) | cancel/resume，未提供主动pause |
+| [queue动作与原输入恢复](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/api/src/queue.ts#L202) | 系统paused恢复有reason guard；更换材料不进入原snapshot |
+| [M1材料锁/继续修改](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/web/src/project-execution.ts#L270)、[M4下一草稿说明](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/web/src/material-workspace.ts#L182)、[M3换输入提示](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/web/src/review-workspace.ts#L392) | 各业务保留当前输入，取消/下一草稿为已有路径，不等同用户要求的暂停补料续做 |
+| [带导航参数的材料更新](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/web/src/main.ts#L612)、[取消补料浏览器回归](https://github.com/ITSophiaXu/BondBuddy/blob/55941dc7f42aa3a87e2cae0ca933502f69e2aac3/apps/web/tests/project-execution.spec.ts#L1123) | #626恢复取消后材料页面同步；既有合成浏览器证据不等于本轮线上实测，也不补齐UX-A03 |
 
 源码调查只能说明已查源码的缺口，不代表线上UI已经执行失败。实际运行时仍记录版本与用户轨迹；业务目标未达成不能因旧工程guard通过而变pass。

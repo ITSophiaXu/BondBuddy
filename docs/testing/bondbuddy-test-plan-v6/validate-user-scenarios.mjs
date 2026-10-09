@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../../..");
-const sourceSha = "2805b31eb081aef52f1cdb777b8cbf85aefd44c9";
+const sourceSha = "55941dc7f42aa3a87e2cae0ca933502f69e2aac3";
 const originalSha = "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6";
 const groups = { N: ["normal", 6], A: ["abnormal", 7], C: ["corner", 10] };
 const expectedIds = Object.entries(groups).flatMap(([prefix, [, count]]) =>
