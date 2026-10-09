@@ -609,8 +609,14 @@ function confirmedMaterials(projectId: string) {
   return [...materials.values()];
 }
 
+function isCurrentProjectWorkspace(projectId: string) {
+  // Navigation context (from, step, run, handoff) does not change the project.
+  // Keep the full route for navigation, but compare the path when accepting material updates.
+  return currentRoute.split('?')[0] === `/projects/${projectId}`;
+}
+
 function updateProcessingRows(projectId: string) {
-  if (currentRoute !== `/projects/${projectId}` || !materialProcessing) return;
+  if (!isCurrentProjectWorkspace(projectId) || !materialProcessing) return;
   const materials = new Map(confirmedMaterials(projectId).map(material => [materialProcessingKey(material), material]));
   for (const element of document.querySelectorAll<HTMLElement>('[data-material-processing]')) {
     const material = materials.get(element.dataset.materialProcessing!);
@@ -679,7 +685,7 @@ function renderMaterialPartitions(projectId: string) {
 }
 
 function syncProjectExecution(projectId: string) {
-  if (currentRoute !== `/projects/${projectId}`) return;
+  if (!isCurrentProjectWorkspace(projectId)) return;
   const unsettled = (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
   const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${confirmedMaterials(projectId).length} 份已保存材料`;
   const recovery = recoveryStates.get(projectId);
@@ -692,9 +698,9 @@ function syncProjectExecution(projectId: string) {
 
 function updateMaterialWorkspace(projectId: string) {
   syncProjectExecution(projectId);
-  if (currentRoute === `/projects/${projectId}`) materialProcessing?.sync(confirmedMaterials(projectId));
+  if (isCurrentProjectWorkspace(projectId)) materialProcessing?.sync(confirmedMaterials(projectId));
   const list = document.querySelector<HTMLElement>('#material-partitions');
-  if (list && currentRoute === `/projects/${projectId}`) {
+  if (list && isCurrentProjectWorkspace(projectId)) {
     // Keep file input nodes attached: rebuilding them during recovery/progress can swallow
     // the native file chooser's change event. Only partition changes add/remove pickers.
     const template = document.createElement('template'); template.innerHTML = renderMaterialPartitions(projectId);
@@ -726,7 +732,7 @@ function updateMaterialWorkspace(projectId: string) {
     });
   }
   const status = document.querySelector<HTMLElement>('#material-recovery-status');
-  if (!status || currentRoute !== `/projects/${projectId}`) return;
+  if (!status || !isCurrentProjectWorkspace(projectId)) return;
   const state = recoveryStates.get(projectId);
   if (state?.state === 'loading') status.textContent = '正在读取已保存材料…';
   else if (state?.state === 'unavailable') status.textContent = state.message ?? '材料记录读取失败，请刷新重试。';
