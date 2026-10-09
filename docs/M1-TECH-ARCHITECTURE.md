@@ -1,3 +1,7 @@
+## 2026-10-09 账号积分历史
+
+#630 新增只读 consumption-history / recharge-history 接口。前者从任务预留与 append-only settle/release/correction 事件投影，后者仅从支付订单读取；白名单 DTO、账号隔离、绑定账号/类别的 created_at/id 游标与 no-store。0102 仅增加查询索引，不改账务触发器或历史费用。契约/原型/验收见[产品决定](product-decisions/2026-10-09-account-credit-history.md)。
+
 ## 2026-10-08 全站项目助手
 
 [当前产品决定](product-decisions/2026-10-08-global-project-assistant.md)增加全站悬浮入口。复用 M4 topic/message/view、Codex CLI、现有队列与账务；assistant surface 的消息仅产生文本或动作建议，执行始终由用户确认卡通过原更新／复核／材料接口发起。

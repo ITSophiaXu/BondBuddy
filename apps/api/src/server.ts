@@ -1,3 +1,4 @@
+import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
 import { listArtifactHistory } from './artifact-history.js';
@@ -1282,6 +1283,7 @@ export function createServer(settings: Settings = {}) {
     const items=rows.map(event=>({event_id:event.id,schema_version:1 as const,trace_id:event.trace_id,project_id:event.project_id,seq:Number(event.seq),occurred_at:date(event.occurred_at),type:event.type,payload:{material_id:event.payload.material_id,uploaded_bytes:event.payload.uploaded_bytes,total_bytes:event.payload.total_bytes}}));
     return {items,next_cursor:hasMore?items.at(-1)!.seq:null};
   });
+  installCreditHistory(app,db,owner);
   app.get('/api/v1/credits/balance',{schema:{response:{200:schemas.CreditBalanceResponse}}},async request=>{
     const user=await owner(request);return {enabled:paidAuthoring,...await creditBalance(db(),user)};
   });

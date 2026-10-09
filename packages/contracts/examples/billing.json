@@ -161,6 +161,61 @@
         "expires_at": "2026-10-03T01:00:00Z",
         "credited_at": "2026-10-03T00:31:00Z"
       }
+    },
+    {
+      "name": "owned consumption history includes held non-charge",
+      "schema": "CreditConsumptionHistoryResponse",
+      "valid": true,
+      "value": {
+        "items": [
+          {
+            "reservation_id": "synthetic-hold",
+            "run_id": "synthetic-run",
+            "project_id": "synthetic-project",
+            "project_name": "合成项目",
+            "task_name": "一期更新",
+            "created_at": "2026-10-09T02:00:00Z",
+            "finalized_at": null,
+            "state": "held",
+            "reserved_points": 17900,
+            "charged_points": 0,
+            "released_points": 0,
+            "corrected_points": 0
+          }
+        ],
+        "page": {
+          "has_more": false,
+          "next_cursor": null
+        }
+      }
+    },
+    {
+      "name": "owned recharge history empty is explicit",
+      "schema": "RechargeHistoryResponse",
+      "valid": true,
+      "value": {
+        "items": [],
+        "page": {
+          "has_more": false,
+          "next_cursor": null
+        }
+      }
+    },
+    {
+      "name": "bounded credit history page",
+      "schema": "CreditHistoryQuery",
+      "valid": true,
+      "value": {
+        "limit": "50"
+      }
+    },
+    {
+      "name": "reject oversized credit history page",
+      "schema": "CreditHistoryQuery",
+      "valid": false,
+      "value": {
+        "limit": "51"
+      }
     }
   ]
 }

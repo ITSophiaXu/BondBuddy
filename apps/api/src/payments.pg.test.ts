@@ -26,6 +26,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     await pool.query("INSERT INTO bb_users(id,username) VALUES($1,'synthetic_payments')",[actor]);
     const request={request_id:'synthetic-order-1',provider:'alipay',pack_id:'cny500'};
     const first=await send('POST','/api/v1/credits/recharge-orders',request);assert.equal(first.statusCode,201,first.body);
+    const historyPending=await send('GET','/api/v1/credits/recharge-history');assert.equal(historyPending.statusCode,200,historyPending.body);assert.equal(historyPending.json().items[0].state,'pending');assert.ok(historyPending.json().items[0].created_at);
     const order=first.json();assert.equal(order.amount_fen,50000);assert.equal(order.points,52500);
     await assert.rejects(()=>pool.query('UPDATE bb_recharge_orders SET points=1 WHERE id=$1',[order.order_id]),/values are locked/);
     assert.equal((await send('POST','/api/v1/credits/recharge-orders',request)).json().order_id,order.order_id);assert.equal(creates,1);
@@ -55,7 +56,16 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     assert.deepEqual(await creditBalance(pool,actor),{available:72500,frozen:0});
     assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_runs')).rows[0].n),0);
     assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_credit_lots')).rows[0].n),2);
-    actor='foreign';assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).statusCode,404);
+    const history=(await send('GET','/api/v1/credits/recharge-history')).json();assert.equal(history.items.length,2);
+    assert.equal(history.items.reduce((sum:number,r:any)=>sum+(r.state==='paid'?r.points:0),0),72500);
+    assert.ok(history.items.every((r:any)=>r.credited_at&&r.state==='paid'));
+    assert.ok(!JSON.stringify(history).includes('merchant')&&!JSON.stringify(history).includes('checkout'));
+    const head=(await send('GET','/api/v1/credits/recharge-history?limit=1')).json();assert.ok(head.page.next_cursor);
+    const tail=(await send('GET','/api/v1/credits/recharge-history?limit=1&cursor='+head.page.next_cursor)).json();
+    assert.deepEqual([...head.items,...tail.items].map((r:any)=>r.order_id),history.items.map((r:any)=>r.order_id));
+    actor='foreign';assert.equal((await send('GET','/api/v1/credits/recharge-history')).json().items.length,0);
+    assert.equal((await send('GET','/api/v1/credits/recharge-history?cursor='+head.page.next_cursor)).statusCode,422);
+    assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).statusCode,404);
     assert.equal((await send('POST',`/api/v1/credits/recharge-orders/${second.order_id}/refresh`,{})).statusCode,404);
     const report=await auditCredits(pool);assert.equal(report.consistent,true,JSON.stringify(report));
   }finally{await app.close();await pool.end();}

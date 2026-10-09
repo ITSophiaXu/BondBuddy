@@ -1,6 +1,6 @@
 export * from './artifact-filename.js';
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
-import { billingSchemas } from './billing.js';
+import { billingSchemas, creditHistorySchemas } from './billing.js';
 import { m4Schemas } from './m4-workspace.js';
 export * from './m4-workspace.js';
 export * from './billing.js';
@@ -181,6 +181,7 @@ export const schemas = {
   ...m4Schemas,
   ReviewReadableReport: ReviewReadableReportSchema,
   ...billingSchemas,
+  ...creditHistorySchemas,
   ...browserErrorSchemas,
   ...targetPeriodEvidenceSchemas,
   ...issuerIdentityReviewSchemas,
@@ -326,6 +327,8 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get','/credits/consumption-history','Read owned task reservations, settlements and releases','CreditConsumptionHistoryResponse',200,undefined,[422]),
+  op('get','/credits/recharge-history','Read owned payment recharge orders','RechargeHistoryResponse',200,undefined,[422]),
   op('get','/credits/balance','Read available and frozen credits','CreditBalanceResponse'),
   op('post','/projects/{project_id}/credit-quote','Preview one fixed price for the immutable input without reserving credits','FixedQuoteResponse',200,'FixedQuoteRequest',[404,409,503]),
   op('get','/runs/{run_id}/credit-charge','Read this task confirmation and settlement state','RunCreditChargeResponse',200,undefined,[404]),
@@ -467,7 +470,8 @@ export function openApiDocument() {
         { name: 'limit', in: 'query', required: false, schema: { type: 'string', pattern: '^(?:[1-9]|[1-4][0-9]|50)$', default: '20' } }] : [];
     const historyQueryParameters = operation.path === '/projects/{project_id}/artifacts'
       ? Object.entries(schemas.ArtifactHistoryQuery.properties).map(([name, schema]) => ({ name, in: 'query', required: false, schema })) : [];
-    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...messageQueryParameters, ...historyQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
+    const creditHistoryQueryParameters = ['/credits/consumption-history','/credits/recharge-history'].includes(operation.path) ? Object.entries(schemas.CreditHistoryQuery.properties).map(([name,schema])=>({name,in:'query',required:false,schema})) : [];
+    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...messageQueryParameters, ...historyQueryParameters, ...creditHistoryQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
   paths['/api/v1/projects/{project_id}/review-executions/{run_id}/readable-report'] = { get: {
     summary: 'Read a delivered private review report for display without executing a task',

@@ -1,3 +1,4 @@
+import { CreditHistory } from './credit-history';
 import { ApiClient, friendlyError, type Dto } from './api';
 import { esc } from './ui';
 import '../../../product-prototype/public/credits.css';
@@ -10,10 +11,12 @@ export class BillingPage {
   private controller=new AbortController();private timer?:ReturnType<typeof setTimeout>;
   private busy=false;private balance?:Dto<'CreditBalanceResponse'>;private config?:Dto<'RechargeConfigResponse'>;
   private quote?:Dto<'FixedQuoteResponse'>;private order?:Dto<'RechargeOrderResponse'>;private error='';
+  private history:CreditHistory;private updatingHistory=false;private historyTimer?:ReturnType<typeof setTimeout>;
+  private onCredits=()=>{if(!document.hidden)void this.refreshHistory();};
   private request?:Dto<'RechargeOrderRequest'>;private reviewProject=false;
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private active:()=>boolean,
-    private projectId?:string,private orderId?:string){}
-  dispose(){this.controller.abort();clearTimeout(this.timer);}
+    private projectId?:string,private orderId?:string){this.history=new CreditHistory(api,active);window.addEventListener('bondbuddy:credits-changed',this.onCredits);window.addEventListener('focus',this.onCredits);document.addEventListener('visibilitychange',this.onCredits);}
+  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.historyTimer);this.history.dispose();window.removeEventListener('bondbuddy:credits-changed',this.onCredits);window.removeEventListener('focus',this.onCredits);document.removeEventListener('visibilitychange',this.onCredits);}
   async render(){
     this.shell('<p role="status">正在读取积分…</p>','billing');
     try{
@@ -23,11 +26,13 @@ export class BillingPage {
         this.reviewProject=p.kind==='review';
         if(!this.reviewProject&&p.input_revision&&p.input_hash)this.quote=await this.api.creditQuote(p.project_id,{input_revision:p.input_revision,input_hash:p.input_hash},this.controller.signal);}
     }catch(e){this.error=friendlyError(e);}
-    if(this.active()){this.draw();this.schedule();}
+    if(this.active()){this.draw();this.schedule();this.scheduleHistory();}
   }
   private back(){return this.projectId?`#/projects/${encodeURIComponent(this.projectId)}${this.reviewProject?'/review?tab=materials':'?step=materials'}`:'#dashboard';}
   private draw(){
     if(!this.active())return;
+    const provider=document.querySelector<HTMLSelectElement>('#payment-provider')?.value;
+    const faqOpen=document.querySelector<HTMLDetailsElement>('.billing-faq')?.open;
     const b=this.balance,c=this.config,o=this.order;
     const shortage=Math.max(0,(this.quote?.quote?.points??0)-(b?.available??0));
     const returnLink=`<a class="btn secondary" href="${this.back()}">${this.projectId?'返回项目确认开始':'返回工作台'}</a>`;
@@ -42,7 +47,9 @@ export class BillingPage {
       `<section class="credit-recharge"><div class="section-head"><div><h2>按需充值</h2><p>购入积分长期有效 · 不自动续费或充值</p></div></div>
       ${c?.enabled?`<label class="account-payment-method">支付方式 <select id="payment-provider">${c.providers.map(p=>`<option value="${p}">${channel[p]}</option>`).join('')}</select></label>`:'<p class="account-recharge-status" role="status"><span aria-hidden="true"></span>充值渠道暂未开放</p>'}
       <div class="credit-pack-grid">${(c?.packs??[]).map((p,i)=>`<article class="credit-pack ${i===1?'recommended':''}"><div class="credit-pack-heading"><span>${['轻量体验','日常项目','高频使用','团队储备'][i]}</span>${i===1?'<span class="credit-pack-badge">推荐</span>':''}</div><h3>${number(p.points)}<small> 积分</small></h3><p class="plan-price"><span>¥</span>${money(p.amount_fen)}</p><button class="btn ${i===1?'primary':'secondary'}" data-pack="${esc(p.id)}" type="button" ${!c?.enabled||this.busy?'disabled':''}>充值 ¥${money(p.amount_fen)}</button></article>`).join('')}</div></section>`}
-      <details class="billing-faq"><summary><span>积分使用说明</span><span class="billing-faq-hint">扣费、有效期与退款</span></summary><div class="billing-faq-body"><p>开始前展示任务类型、固定积分价和可用余额。确认后预留本次积分，成果可下载后扣费；失败或有效取消自动返还预留积分。任务开始后不因调价或模型用量变化补扣。</p><p>充值积分不设有效期，赠送积分按原批次有效期保留。活动积分优先使用，余额不提供现金退款。</p></div></details></div>`,'billing');
+      <div id="account-credit-history"></div><details class="billing-faq"><summary><span>积分使用说明</span><span class="billing-faq-hint">扣费、有效期与退款</span></summary><div class="billing-faq-body"><p>开始前展示任务类型、固定积分价和可用余额。确认后预留本次积分，成果可下载后扣费；失败或有效取消自动返还预留积分。任务开始后不因调价或模型用量变化补扣。</p><p>充值积分不设有效期，赠送积分按原批次有效期保留。活动积分优先使用，余额不提供现金退款。</p></div></details></div>`,'billing');
+    const select=document.querySelector<HTMLSelectElement>('#payment-provider');if(provider&&select)select.value=provider;const faq=document.querySelector<HTMLDetailsElement>('.billing-faq');if(faq&&faqOpen)faq.open=true;
+    const historyHost=document.querySelector<HTMLElement>('#account-credit-history');if(historyHost)this.history.mount(historyHost);
     document.querySelectorAll<HTMLButtonElement>('[data-pack]').forEach(button=>button.addEventListener('click',()=>{void this.buy(button.dataset.pack!);}));
     document.querySelector('#refresh-payment')?.addEventListener('click',()=>{void this.refresh();});
   }
@@ -57,8 +64,10 @@ export class BillingPage {
   }
   private async refresh(){
     if(this.busy||!this.order)return;this.busy=true;this.error='';this.draw();
-    try{this.order=await this.api.refreshRecharge(this.order.order_id,this.controller.signal);this.balance=await this.api.creditBalance(this.controller.signal);}
+    try{this.order=await this.api.refreshRecharge(this.order.order_id,this.controller.signal);this.balance=await this.api.creditBalance(this.controller.signal);await this.history.refresh();window.dispatchEvent(new Event('bondbuddy:credits-changed'));}
     catch(e){this.error=friendlyError(e);}finally{this.busy=false;this.draw();this.schedule();}
   }
+  private async refreshHistory(){if(this.updatingHistory||!this.active())return;this.updatingHistory=true;try{await Promise.all([this.history.refresh(),this.api.creditBalance(this.controller.signal).then(b=>{this.balance=b;})]);if(this.active())this.draw();}catch(e){if(this.active()){this.balance=undefined;this.error=friendlyError(e);this.draw();}}finally{this.updatingHistory=false;this.scheduleHistory();}}
+  private scheduleHistory(){clearTimeout(this.historyTimer);if(this.active())this.historyTimer=setTimeout(this.onCredits,30000);}
   private schedule(){clearTimeout(this.timer);if(this.active()&&this.order?.state==='pending')this.timer=setTimeout(()=>{void this.refresh();},10000);}
 }

@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -329,4 +329,60 @@ test('credit visibility: wallet stays pinned, works on mobile, refreshes and cle
   available=70000;await page.clock.fastForward(31000);await expect(wallet).toContainText('70,000');
   await page.locator('#logout').click();await expect(wallet).toHaveCount(0);const reads=balanceReads;
   await page.clock.fastForward(31000);expect(balanceReads).toBe(reads);await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();
+});
+
+
+function creditHistoryFixture(){
+ const base={project_id:'project-synthetic',project_name:'合成项目',task_name:'完整三维复核',created_at:'2026-10-09T02:00:00Z',finalized_at:'2026-10-09T03:00:00Z',reserved_points:13900,charged_points:13900,released_points:0,corrected_points:0};
+ return {fail:false,moreFail:false,available:50000,reads:0,
+  consumption:[{...base,reservation_id:'settled',run_id:'run-settled',state:'settled'},{...base,reservation_id:'held',run_id:'run-held',state:'held',charged_points:0,finalized_at:null},{...base,reservation_id:'released',run_id:'run-released',state:'released',charged_points:0,released_points:13900}],
+  orders:['paid','pending','expired','failed'].map((state,i)=>({order_id:'order-'+i,provider:'alipay',state,amount_fen:50000,points:52500,created_at:'2026-10-09T02:00:00Z',credited_at:state==='paid'?'2026-10-09T03:00:00Z':null}))};
+}
+async function installCreditHistory(context:BrowserContext,data:ReturnType<typeof creditHistoryFixture>){
+ await context.route('**/api/v1/credits/balance',route=>json(route,200,{enabled:true,available:data.available,frozen:13900}));
+ await context.route('**/api/v1/credits/consumption-history*',route=>{data.reads++;const next=new URL(route.request().url()).searchParams.has('cursor');if(data.fail||next&&data.moreFail)return json(route,503,{code:'DATA_UNAVAILABLE'});return json(route,200,{items:next?data.consumption.slice(2):data.consumption.slice(0,2),page:{has_more:!next&&data.consumption.length>2,next_cursor:!next&&data.consumption.length>2?'synthetic-next':null}});});
+ await context.route('**/api/v1/credits/recharge-history*',route=>json(route,200,{items:data.orders,page:{has_more:false,next_cursor:null}}));
+}
+test('credit history separates settlement, reservation and release; paginates and persists after reload',async({page,context})=>{
+ const state=fixture(),data=creditHistoryFixture();data.consumption[0].project_name='<img src=x onerror=alert(1)>合成项目';await installApi(context,state);await installCreditHistory(context,data);await openSettings(page,state);
+ const history=page.getByRole('region',{name:'积分记录'});
+ await expect(history.locator('[data-record=settled]')).toContainText('消耗 13,900 积分');await expect(history.locator('[data-record=held]')).toContainText('预留中 · 未扣费');await expect(history.locator('img')).toHaveCount(0);
+ await history.getByRole('button',{name:'加载更多记录'}).click();await expect(history.locator('[data-record=released]')).toContainText('消耗 0 积分');await expect(history.locator('[data-record=released]')).toContainText('已释放 13,900 积分');
+ await history.locator('[data-record=settled] summary').click();await expect(history).toContainText('run-settled');await expect(history.getByRole('link',{name:'查看项目'})).toHaveAttribute('href','#/projects/project-synthetic');
+ await history.getByRole('button',{name:'刷新记录与余额'}).click();await expect(history.locator('[data-record]')).toHaveCount(3);await expect(history.locator('[data-record=settled] details')).toHaveAttribute('open','');
+ await page.reload();await expect(page.locator('[data-record=settled]')).toHaveCount(1);expect(calls(state,'/runs/execute')).toHaveLength(0);
+});
+test('credit history retries failures without claiming an empty ledger or discarding loaded rows',async({page,context})=>{
+ const state=fixture(),data=creditHistoryFixture();data.fail=true;await installApi(context,state);await installCreditHistory(context,data);await openSettings(page,state);
+ const history=page.getByRole('region',{name:'积分记录'});await expect(history.getByRole('alert')).toContainText('记录加载失败');await expect(history).not.toContainText('暂无积分消耗');
+ data.fail=false;await history.getByRole('button',{name:'重试',exact:true}).click();await expect(history.locator('[data-record=settled]')).toHaveCount(1);
+ data.moreFail=true;await history.getByRole('button',{name:'加载更多记录'}).click();await expect(history.getByRole('alert')).toBeVisible();await expect(history.locator('[data-record=settled]')).toHaveCount(1);
+ data.moreFail=false;await history.getByRole('button',{name:'重试',exact:true}).click();await expect(history.locator('[data-record]')).toHaveCount(3);
+ data.orders=[];await history.getByRole('tab',{name:'充值记录',exact:true}).click();await expect(history).toContainText('暂无充值记录');
+});
+test('credit history shows actual order states and refreshes arrival and balance without executing tasks',async({page,context})=>{
+ const state=fixture(),data=creditHistoryFixture();await installApi(context,state);await installCreditHistory(context,data);await openSettings(page,state);
+ const history=page.getByRole('region',{name:'积分记录'});await history.getByRole('tab',{name:'充值记录',exact:true}).click();
+ for(const text of ['已到账','待支付／确认中','已关闭／过期','支付未完成'])await expect(history).toContainText(text);
+ await expect(history.locator('[data-record=order-0]')).toContainText('¥500.00');await expect(history.locator('[data-record=order-0]')).toContainText('52,500 积分');
+ data.orders[1].state='paid';data.orders[1].credited_at='2026-10-09T04:00:00Z';data.available+=52500;
+ await history.getByRole('button',{name:'刷新记录与余额'}).click();await expect(history.locator('[data-record=order-1]')).toContainText('已到账');await expect(page.locator('.account-balance-value')).toContainText('102,500');
+ await expect(history.locator('[data-record]')).toHaveCount(4);expect(state.mutations.filter(x=>x.path.includes('execute')||x.path.includes('recharge-orders'))).toHaveLength(0);
+});
+test('credit history aborts pending pages and clears private records on logout',async({page,context})=>{
+ const state=fixture(),data=creditHistoryFixture();await installApi(context,state);await installCreditHistory(context,data);await openSettings(page,state);await expect(page.locator('[data-record=settled]')).toHaveCount(1);
+ let release!:()=>void;const pending=new Promise<void>(r=>{release=r;});let started!:()=>void;const requested=new Promise<void>(r=>{started=r;});
+ await context.route('**/api/v1/credits/consumption-history?cursor=*',async route=>{started();await pending;await json(route,200,{items:data.consumption.slice(2),page:{next_cursor:null,has_more:false}}).catch(()=>{});});
+ await page.getByRole('button',{name:'加载更多记录'}).click();await requested;await page.locator('#logout').click();release();await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();await expect(page.locator('.credit-history')).toHaveCount(0);await expect(page.getByText('合成项目')).toHaveCount(0);
+});
+test('credit history matches updated account prototype at desktop and narrow widths',async({page,context})=>{
+ const evidence=process.env.BB_HISTORY_EVIDENCE_DIR;test.skip(!evidence,'Screenshot evidence is opt-in');const state=fixture(),data=creditHistoryFixture();await installApi(context,state);await installCreditHistory(context,data);await openSettings(page,state);
+ for(const viewport of [{width:1440,height:960},{width:390,height:844}]){
+  await page.setViewportSize(viewport);
+  for(const kind of ['consumption','recharge']){
+   await page.goto('/?history='+viewport.width+kind+'#/account');await page.getByRole('tab',{name:kind==='consumption'?'积分消耗记录':'充值记录',exact:true}).click();await expect(page.locator('.credit-history [data-record]').first()).toBeVisible();await page.locator('.credit-history').evaluate(el=>el.scrollIntoView({block:'start'}));
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await mkdir(evidence!,{recursive:true});await page.screenshot({path:join(evidence!,`implementation-${kind}-${viewport.width}.png`)});
+   await page.setContent(await readFile('../../product-prototype/public/account-credits.html','utf8'));if(kind==='recharge')await page.locator('[data-prototype-tab=recharge]').click();await page.locator('.credit-history').evaluate(el=>el.scrollIntoView({block:'start'}));await page.screenshot({path:join(evidence!,`prototype-${kind}-${viewport.width}.png`)});
+  }
+ }
 });
