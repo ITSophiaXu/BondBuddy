@@ -7,10 +7,10 @@ const material = { material_id: 'synthetic-source', material_version: 1, sha256:
 const source = (): SourceProspectus => ({ ...material, issuer_name: 'Synthetic issuer', relation: 'same_issuer',
   market: 'sse', offering: 'private', reporting_periods: reportingWindow('sse', 'private', '2025-09-30'), status: 'user_asserted' });
 
-test('each uploaded source requires declared identity, relation, market, offering and reporting period', () => {
+test('each uploaded source requires relation, market, offering and reporting period', () => {
   assert.deepEqual(sourceProspectusMissingFields(source()), []);
   assert.equal(sourceProspectusInputGaps([material], []).length, 1);
-  for (const [field, value] of [['issuer_name', '  '], ['relation', null], ['market', null], ['offering', null], ['reporting_periods', []]] as const)
+  for (const [field, value] of [['relation', null], ['market', null], ['offering', null], ['reporting_periods', []]] as const)
     assert.ok(sourceProspectusMissingFields({ ...source(), [field]: value }).length, field);
   for (const relation of ['same_issuer', 'parent', 'subsidiary', 'similar_business'] as const) {
     assert.deepEqual(sourceProspectusMissingFields({ ...source(), relation }), []);
@@ -36,4 +36,13 @@ test('user-declared periods need valid dates, without financial extraction or sc
   for (const edit of [{ end: null }, { start: null }, { end: '2025-02-30' }, { start: '2026-01-01' }, { period_kind: null }])
     assert.ok(sourceProspectusMissingFields({ ...s, reporting_periods: [{ ...s.reporting_periods[0], ...edit }] }).includes('原稿最新报告期'));
   assert.deepEqual(sourceProspectusMissingFields({ ...s, reporting_periods: [{ ...s.reporting_periods[0], start: '2023-04-01', end: '2024-03-30' }] }), []);
+});
+
+test('source issuer name is optional while all other declarations and material pins remain required', () => {
+  for (const issuer_name of [null, '', '  ']) {
+    const declaration = { ...source(), issuer_name };
+    assert.deepEqual(sourceProspectusMissingFields(declaration), []);
+    assert.deepEqual(sourceProspectusInputGaps([material], [declaration]), []);
+    assert.equal(sourceProspectusInputGaps([{ ...material, material_version: 2 }], [declaration]).length, 1);
+  }
 });

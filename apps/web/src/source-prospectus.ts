@@ -21,7 +21,6 @@ export function sourceFields(material: Dto<'MaterialResponse'>, sources: readonl
   const saved = cutoffSelection(cutoff), transient = selections.get(key(material));
   const selection = transient?.signature === JSON.stringify(source?.reporting_periods ?? []) ? transient : saved;
   return `<fieldset class="source-prospectus update-grid" data-source-material="${esc(material.material_id)}"><legend>原稿信息（上传后必填）</legend>
-    <label>原发行人名称<input data-source-field="issuer_name" required maxlength="200" value="${esc(source?.issuer_name ?? '')}"></label>
     <label>与目标发行人的关系<select aria-label="与目标发行人的关系" data-source-field="relation" required><option value="">请选择</option>${Object.entries(SOURCE_RELATIONS).map(([key, label]) => option(key, label, source?.relation)).join('')}</select></label>
     <label>原发行市场<select aria-label="原发行市场" data-source-field="market" required><option value="">请选择</option>${MARKETS.map(key => option(key, MARKET_LABELS[key], source?.market)).join('')}</select></label>
     <label>原品种<select aria-label="原品种" data-source-field="offering" required><option value="">请选择</option>${(source?.market ? MARKET_OFFERINGS[source.market] : []).map(key => option(key, OFFERING_LABELS[key], source?.offering)).join('')}</select></label>
@@ -43,7 +42,7 @@ export function readSourceFields(element: HTMLElement, material: Dto<'MaterialRe
   }
   selections.set(key(material), { signature: JSON.stringify(periods), year, quarter });
   return { material_id: material.material_id, material_version: material.material_version, sha256: material.sha256,
-    issuer_name: value('issuer_name') || null, relation: value('relation') as SourceProspectus['relation'] || null,
+    issuer_name: previous?.issuer_name ?? null, relation: value('relation') as SourceProspectus['relation'] || null,
     market: market || null, offering: selectedOffering,
     reporting_periods: structuredClone(periods), status: 'user_asserted' };
 }

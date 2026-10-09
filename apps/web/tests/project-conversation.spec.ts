@@ -195,7 +195,6 @@ for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] 
     await page.screenshot({path:join(out,`implementation-source-required-${device}.png`)});
     for (const [material,relation] of [['synthetic-historical','same_issuer'],['synthetic-reference','similar_business']] as const) {
       const source=page.locator(`[data-source-material="${material}"]`);
-      await source.getByLabel('原发行人名称',{exact:true}).fill('合成原发行人');
       await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption(relation);
       await expect(button).toBeDisabled();
       await source.getByLabel('原发行市场',{exact:true}).selectOption('szse');
@@ -234,17 +233,16 @@ test('unified source metadata is material-version-bound, survives reopening and 
   await expect(page.getByRole('heading',{name:'是否有本发行人的历史募集书？'})).toHaveCount(0);
   await expect(page.getByRole('heading',{name:'募集书更新补充说明'})).toBeVisible();
   const source=page.locator('[data-source-material="synthetic-historical"]');
-  await source.getByLabel('原发行人名称',{exact:true}).fill('合成母公司');
   await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('parent');
   await source.getByLabel('原发行市场',{exact:true}).selectOption('nafmii');
   await source.getByLabel('原品种',{exact:true}).selectOption('ppn');
   await source.getByLabel('原稿最新报告期年份',{exact:true}).selectOption('2024');
   await source.getByRole('radio',{name:'6月末',exact:true}).check();
-  await source.getByLabel('原发行人名称',{exact:true}).focus();
+  await source.getByLabel('与目标发行人的关系',{exact:true}).focus();
   await expect.poll(()=>state.project.update_details?.source_prospectuses?.[0]?.reporting_periods.length).toBe(3);
   expect(state.project.update_details!.source_prospectuses![0]).toMatchObject({material_id:'synthetic-historical',material_version:1,sha256:hash('historical'),relation:'parent',market:'nafmii',offering:'ppn'});
   expect(state.project.market).toBe('sse');expect(state.project.offering).toBe('private');expect(state.executes).toHaveLength(0);
-  await page.reload();await expect(source.getByLabel('原发行人名称',{exact:true})).toHaveValue('合成母公司');
+  await page.reload();await expect(source.getByLabel('原发行人名称',{exact:true})).toHaveCount(0);
   await expect(source.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2024');
   await expect(source.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
   expect(state.project.update_details!.source_prospectuses![0].reporting_periods.map(p=>p.end)).toEqual(['2022-12-31','2023-12-31','2024-06-30']);
@@ -507,6 +505,7 @@ test('unrelated edits preserve historical target metadata and original prospectu
   await page.getByRole('radio',{name:'9月末',exact:true}).check();
   await expect.poll(()=>f.state.project.update_details!.reporting_cutoff).toBe('2025-09-30');
   expect(f.state.project.update_details!.source_prospectuses![0].reporting_periods).toEqual(old);
+  expect(f.state.project.update_details!.source_prospectuses![0].issuer_name).toBe('合成母公司');
   expect(f.state.executes).toHaveLength(0);
 });
 
@@ -547,9 +546,10 @@ test('source quarter controls stay independent and unrelated edits preserve actu
   await setup(page,f);
   const source=page.locator('[data-source-material="synthetic-historical"]'), reference=page.locator('[data-source-material="synthetic-reference"]');
   await expect(source.getByText('已保留原稿的实际报告期',{exact:false})).toBeVisible();
-  await source.getByLabel('原发行人名称',{exact:true}).fill('更正名称');await reference.getByLabel('原发行人名称',{exact:true}).focus();
-  await expect.poll(()=>f.state.project.update_details!.source_prospectuses![0].issuer_name).toBe('更正名称');
+  await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('subsidiary');await reference.getByLabel('与目标发行人的关系',{exact:true}).focus();
+  await expect.poll(()=>f.state.project.update_details!.source_prospectuses![0].relation).toBe('subsidiary');
   expect(f.state.project.update_details!.source_prospectuses![0].reporting_periods).toEqual(old);
+  expect(f.state.project.update_details!.source_prospectuses![0].issuer_name).toBe('合成母公司');
   await reference.getByLabel('原稿最新报告期年份').selectOption('2022');
   await page.getByRole('button',{name:'刷新已保存材料'}).click();
   await expect(reference.getByLabel('原稿最新报告期年份')).toHaveValue('2022');
@@ -557,7 +557,7 @@ test('source quarter controls stay independent and unrelated edits preserve actu
   await reference.getByLabel('原发行市场',{exact:true}).selectOption('sse');
   await reference.getByLabel('原品种',{exact:true}).selectOption('public');
   await source.getByRole('radio',{name:'6月末',exact:true}).check();
-  await reference.getByLabel('原发行人名称',{exact:true}).focus();
+  await reference.getByLabel('与目标发行人的关系',{exact:true}).focus();
   await expect.poll(()=>f.state.project.update_details!.source_prospectuses!.find(s=>s.material_id==='synthetic-reference')?.reporting_periods.map(p=>p.end)).toEqual(['2019-12-31','2020-12-31','2021-12-31','2022-09-30']);
   await page.reload();
   await expect(source.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();

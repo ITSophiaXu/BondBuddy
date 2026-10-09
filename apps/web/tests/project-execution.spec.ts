@@ -228,7 +228,7 @@ test('M2 missing uploaded source metadata blocks the next action before quote or
   state.project.update_details!.source_prospectuses=[];
   await setup(page,state,false);
   await expect(page.locator('#execute-input')).toBeDisabled();
-  await expect(page.locator('#start-disabled-reason')).toContainText('原发行人名称、企业关系、原发行市场、原品种、原稿最新报告期');
+  await expect(page.locator('#start-disabled-reason')).toContainText('企业关系、原发行市场、原品种、原稿最新报告期');
   await expect(page.locator('#fixed-quote')).toBeHidden();
   expect(state.inputs).toHaveLength(0);expect(state.preflights).toHaveLength(0);expect(state.executes).toHaveLength(0);
 });
@@ -249,7 +249,7 @@ test('authoring materials stay read-only after starting until an explicit next v
   state.project.update_details!.authoring_mode = 'unified_v1';
   await setup(page, state);
   const picker = page.locator('#upload-audit');
-  const source = page.locator('[data-source-field="issuer_name"]');
+  const source = page.locator('[data-source-field="relation"]');
   const capture = async (name: string) => {
     if (!process.env.BB_MATERIAL_LOCK_EVIDENCE_DIR) return;
     const output = resolve(process.env.BB_MATERIAL_LOCK_EVIDENCE_DIR); await mkdir(output, { recursive: true });
@@ -1079,7 +1079,6 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       await page.screenshot({ path: join(output, `materials-${label}.png`), fullPage: true });
     }
     const source = history.locator('[data-source-material]');
-    await source.getByLabel('原发行人名称',{exact:true}).fill('合成发行人');
     await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('same_issuer');
     await source.getByLabel('原发行市场',{exact:true}).selectOption('sse');
     await source.getByLabel('原品种',{exact:true}).selectOption('private');
@@ -1278,9 +1277,8 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await picker.setInputFiles({name:'误传募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic wrong')});
   const wrong = page.locator('.material-file-row').filter({hasText:'误传募集书.pdf'});
   await expect(wrong).toContainText('服务器已确认保存');
-  await wrong.locator('[data-source-field="issuer_name"]').fill('误传发行人');
-  await wrong.locator('[data-source-field="relation"]').selectOption('same_issuer');
-  await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.issuer_name).toBe('误传发行人');
+  await wrong.locator('[data-source-field="relation"]').selectOption('parent');
+  await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.relation).toBe('parent');
   if (reloadBeforeDelete) { await page.reload(); await page.getByRole('button',{name:'继续修改',exact:true}).click(); }
   await remove('误传募集书.pdf',false);
   expect(deletes).toBe(1);
@@ -1294,8 +1292,8 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await picker.setInputFiles({name:'正确募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic correct')});
   const correct = page.locator('.material-file-row').filter({hasText:'正确募集书.pdf'});
   await expect(correct).toContainText('服务器已确认保存');
-  await expect(correct.locator('[data-source-field="issuer_name"]')).toHaveValue('');
-  await correct.locator('[data-source-field="issuer_name"]').fill('合成发行人');
+  await expect(correct.locator('[data-source-field="issuer_name"]')).toHaveCount(0);
+  await expect(correct.locator('[data-source-field="relation"]')).toHaveValue('');
   await correct.locator('[data-source-field="relation"]').selectOption('same_issuer');
   await correct.locator('[data-source-field="market"]').selectOption('sse');
   await correct.locator('[data-source-field="offering"]').selectOption('private');
@@ -1315,4 +1313,27 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   expect(state.inputs[1].material_versions.map(m=>m.material_id).sort()).toEqual(['replacement-2','synthetic-audit']);
   expect(JSON.stringify(state.inputs[1])).not.toContain('replacement-1');
   expect(JSON.stringify(state.inputs[1])).not.toContain('误传发行人');
+});
+test('uploaded source without an issuer name can start and preserves target identity', async ({page}) => {
+  const state=fixture();state.checkStatus='ready';
+  state.project.update_details!.source_prospectuses![0].issuer_name=null;
+  await setup(page,state);
+  await expect(page.getByLabel('原发行人名称',{exact:true})).toHaveCount(0);
+  await page.locator('[data-source-field="relation"]').selectOption('parent');
+  await expect.poll(()=>state.project.update_details!.source_prospectuses![0].relation).toBe('parent');
+  expect(state.project.update_details!.source_prospectuses![0].issuer_name).toBeNull();
+  expect(state.project.issuer_name).toBe('合成发行人');
+  const evidence=process.env.BB_NO_SOURCE_ISSUER_EVIDENCE_DIR;
+  if(evidence) {
+    await mkdir(evidence,{recursive:true});
+    for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.locator('[data-source-material]').evaluate(el=>el.scrollIntoView({block:'start'}));
+      await page.evaluate(()=>window.scrollBy(0,-90));
+      await page.screenshot({path:join(evidence,'implementation-'+name+'.png')});
+    }
+  }
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.executes.length).toBe(1);
+  expect(state.project.update_details!.source_prospectuses![0].issuer_name).toBeNull();
 });
