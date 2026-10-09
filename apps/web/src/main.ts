@@ -527,8 +527,24 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   });
   bindMaterialWorkspace(project.project_id);
   void renderUploadPolicyNote(api, document.querySelector('#upload-policy-note'));
+  const deletionEpoch = epoch;
   bindDeletionActions(api, project.project_id, {
-    material: () => { void refreshProjectMaterials(project.project_id, epoch); },
+    canEdit: () => deletionEpoch === epoch && (!projectExecution || projectExecution.materialsEditable),
+    material: materialId => {
+      if (deletionEpoch !== epoch) return;
+      localUploads.set(project.project_id, (localUploads.get(project.project_id) ?? []).filter(upload => upload.material?.material_id !== materialId));
+      recoveredMaterials.set(project.project_id, (recoveredMaterials.get(project.project_id) ?? []).filter(material => material.material_id !== materialId));
+      if (draft?.project.project_id === project.project_id) {
+        const details = draft.fields.update_details;
+        const sources = (details.source_prospectuses ?? []).filter(source => source.material_id !== materialId);
+        if (sources.length !== (details.source_prospectuses ?? []).length) {
+          draft.edit({ update_details: { ...details, source_prospectuses: sources } });
+          retainUpdateDetails(form, draft.fields.update_details);
+          void draft.save();
+        }
+      }
+      void refreshProjectMaterials(project.project_id, deletionEpoch);
+    },
     project: () => { draft?.dispose(); draft = undefined; location.hash = '/'; },
     error: showError
   });
@@ -643,7 +659,9 @@ function renderUploadRow(upload: LocalUpload) {
       : active
         ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= upload.file.size ? '停止等待' : '取消此文件'}</button>`
         : '';
-  const canRemove = ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
+  const canRemove = upload.phase === 'persisted' && upload.material
+    ? `<button type="button" class="text-button" data-delete-material="${esc(upload.material.material_id)}">删除</button>`
+    : ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';

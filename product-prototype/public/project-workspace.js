@@ -175,7 +175,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     if(action==='remove-file'){
       const kind=state.route,item=state.files[kind][Number(value)],key=operationKey(kind);if(!item||item.uploadStatus==='uploading')return true;
       pending.set(key,'正在移除材料…');invalidate(kind);await render();
-      try{if(item.stored)await api(`/api/projects/${draft(kind).projectId}/materials/${item.key}`,{method:'DELETE'});if(operationKey(kind)===key)state.files[kind]=state.files[kind].filter(f=>f!==item);}
+      try{if(item.stored)await api(`/api/projects/${draft(kind).projectId}/materials/${item.key}`,{method:'DELETE'});if(operationKey(kind)===key){state.files[kind]=state.files[kind].filter(f=>f!==item);const d=draft(kind);if(d.sourceProspectuses)delete d.sourceProspectuses[item.key||Number(value)];saveDraft(kind);}}
       finally{pending.delete(key);if(state.route===kind&&operationKey(kind)===key)await render();}
       return true;
     }
