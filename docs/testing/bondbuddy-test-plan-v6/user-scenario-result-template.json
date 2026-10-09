@@ -1,0 +1,856 @@
+{
+  "schema_version": 1,
+  "artifact_type": "user_scenario_result_template",
+  "plan_revision": "v6.1-user-behavior-scenarios",
+  "created_date": "2026-10-09",
+  "original_plan_source_reference_sha": "a6fa7eb030f7f9bc4c803176b2aacf38d35642b6",
+  "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+  "scenario_file": "user-scenarios.md",
+  "engineering_plan_file": "test-plan.md",
+  "status": "not_run",
+  "product_tests_executed": false,
+  "user_testing_ready": false,
+  "selection": {
+    "frozen": false,
+    "gate": null,
+    "tested_url": null,
+    "actual_web_sha": null,
+    "actual_api_sha": null,
+    "worker_images": [],
+    "configuration_receipt": null,
+    "feature_market_scope": [],
+    "effective_price_versions": [],
+    "fixture_manifests": [],
+    "selected_scenario_subcases": [],
+    "owner": null
+  },
+  "instructions": [
+    "Copy for a frozen execution; scenario selection is not 23 additional whole-case gates. Map selected subcases to existing BB/U assertions.",
+    "No scenario result changes the original U/E/R decision automatically. Agent simulated shutdown must be labelled; Human real device/content/client evidence stays separate.",
+    "New published fixed QA prices supersede historical capped QA only for new runs. Record actual deployed and published immutable price version; keep legacy run protocol.",
+    "UX-A03 is a confirmed user goal. Missing pause/amend/resume capability is a functional_gap; undefined charging is a design_gap. Workarounds or excluding an unimplemented confirmed goal do not make it pass."
+  ],
+  "allowed_statuses": [
+    "not_run",
+    "pass",
+    "fail",
+    "blocked",
+    "skipped",
+    "N/A"
+  ],
+  "scenario_catalog": [
+    {
+      "scenario_id": "UX-N01",
+      "category": "normal",
+      "title": "按流程更新已有募集书",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-003",
+        "BB-006",
+        "BB-008",
+        "BB-013",
+        "BB-014",
+        "BB-015",
+        "BB-039",
+        "BB-041",
+        "BB-071",
+        "BB-074"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-D",
+        "U-E",
+        "U-F"
+      ],
+      "selection_rule": "U：开放M1更新时必选；复用既有M1真实代表run",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-N02",
+      "category": "normal",
+      "title": "没有历史稿也能新编",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-006",
+        "BB-013",
+        "BB-014",
+        "BB-015",
+        "BB-039",
+        "BB-074"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-D",
+        "U-E"
+      ],
+      "selection_rule": "U：新编在试用范围且与更新使用不同生产路径时补代表例，否则按scope登记",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-N03",
+      "category": "normal",
+      "title": "复核完成后补资料再核一轮",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-016",
+        "BB-018",
+        "BB-039",
+        "BB-041",
+        "BB-071"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-D",
+        "U-E",
+        "U-F"
+      ],
+      "selection_rule": "U：首轮复核必选；补料重核在试用确实提供该能力或相关diff时选，否则E/R",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-N04",
+      "category": "normal",
+      "title": "用材料表单生成一份业务文书",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-025",
+        "BB-027",
+        "BB-028",
+        "BB-029",
+        "BB-033",
+        "BB-035",
+        "BB-036",
+        "BB-037",
+        "BB-039",
+        "BB-052",
+        "BB-056"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-D",
+        "U-E"
+      ],
+      "selection_rule": "U：每个开放文种一个授权市场；共享成果供Human预检",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-N05",
+      "category": "normal",
+      "title": "选择准确成果继续修改",
+      "design_status": "conditional_deployment",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-023",
+        "BB-038",
+        "BB-040",
+        "BB-061",
+        "BB-064",
+        "BB-065",
+        "BB-066",
+        "BB-067"
+      ],
+      "u_packages": [
+        "U-D",
+        "U-E"
+      ],
+      "selection_rule": "U：仅续改/助手已部署并纳入scope时选；否则E/R",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-N06",
+      "category": "normal",
+      "title": "先问产品帮助，再确认一个专业问题",
+      "design_status": "conditional_deployment",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-024",
+        "BB-030",
+        "BB-031",
+        "BB-044",
+        "BB-056",
+        "BB-058",
+        "BB-061",
+        "BB-064",
+        "BB-068"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-D",
+        "U-E"
+      ],
+      "selection_rule": "U：可见免费帮助分支必选；固定60正例仅实际启用且纳入scope时选",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A01",
+      "category": "abnormal",
+      "title": "漏填上传原稿的源信息",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-008",
+        "BB-013",
+        "BB-014"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-D"
+      ],
+      "selection_rule": "U：共享准备旅程可覆盖，无需再真实生成一次",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A02",
+      "category": "abnormal",
+      "title": "准备中发现选错文件或期间",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-014",
+        "BB-021",
+        "BB-022",
+        "BB-028",
+        "BB-065"
+      ],
+      "u_packages": [
+        "U-C",
+        "U-D"
+      ],
+      "selection_rule": "U：必要的stale输入检查；助手卡分支仅scope开放时选",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A03",
+      "category": "abnormal",
+      "title": "运行中漏材料，想暂停补齐后继续原任务",
+      "design_status": "confirmed_requirement_with_gaps",
+      "requirement_status": "user_confirmed",
+      "implementation_status": "missing_in_source_review",
+      "billing_policy_status": "pending_design",
+      "bb_test_ids": [
+        "BB-022",
+        "BB-045",
+        "BB-048",
+        "BB-072",
+        "BB-079"
+      ],
+      "u_packages": [
+        "U-C",
+        "U-E",
+        "U-F"
+      ],
+      "selection_rule": "业务期望已确认：必需暴露功能/设计缺口；是否阻断U按实际试用核心程度和P级决定，不以当前不支持作为通过理由",
+      "executor": "Agent复现并核对输入/账务；Human实际尝试并记录绕路与费用理解",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A04",
+      "category": "abnormal",
+      "title": "运行中保存补料，清楚知道本轮不会采用",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-018",
+        "BB-020",
+        "BB-022",
+        "BB-028",
+        "BB-045",
+        "BB-072"
+      ],
+      "u_packages": [
+        "U-C",
+        "U-D"
+      ],
+      "selection_rule": "U：仅本轮开放运行中下一草稿时选，通常隔离工程和既有run复用",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A05",
+      "category": "abnormal",
+      "title": "积分不够，返回后仍要自己明确开始",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-025",
+        "BB-026",
+        "BB-052",
+        "BB-053",
+        "BB-057",
+        "BB-073"
+      ],
+      "u_packages": [
+        "U-D",
+        "U-E"
+      ],
+      "selection_rule": "U：M4临界余额必选，复用工程fixture；其他开启模式按实际范围补",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A06",
+      "category": "abnormal",
+      "title": "用户主动停止任务",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-045",
+        "BB-047",
+        "BB-048",
+        "BB-055",
+        "BB-056"
+      ],
+      "u_packages": [
+        "U-E",
+        "U-F"
+      ],
+      "selection_rule": "U：隔离环境取消与成功竞争必要例；Human只抽查费用/状态理解",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-A07",
+      "category": "abnormal",
+      "title": "任务失败后补正再试",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-012",
+        "BB-016",
+        "BB-043",
+        "BB-045",
+        "BB-047",
+        "BB-055",
+        "BB-056",
+        "BB-079"
+      ],
+      "u_packages": [
+        "U-F"
+      ],
+      "selection_rule": "U：受影响关键恢复机制选一代表；全错误类型矩阵留E/R",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C01",
+      "category": "corner",
+      "title": "上传一半断网或关机",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-006",
+        "BB-007",
+        "BB-009",
+        "BB-010",
+        "BB-011"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-F"
+      ],
+      "selection_rule": "U：上传恢复机制代表例；断网/关机同阶段可复用断言，不要求都真实传大文件",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C02",
+      "category": "corner",
+      "title": "上传100%后保存回执丢失",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-006",
+        "BB-010",
+        "BB-011"
+      ],
+      "u_packages": [
+        "U-F"
+      ],
+      "selection_rule": "U：lost complete必选；隔离代理注入，复用正常任务",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C03",
+      "category": "corner",
+      "title": "点击开始时响应丢失或误双击",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-014",
+        "BB-025",
+        "BB-026",
+        "BB-044",
+        "BB-066"
+      ],
+      "u_packages": [
+        "U-D",
+        "U-F"
+      ],
+      "selection_rule": "U：丢execute响应/双击共享同幂等机制，必要代表例；助手条件分支按scope",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C04",
+      "category": "corner",
+      "title": "运行中电脑断网",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-002",
+        "BB-041",
+        "BB-043",
+        "BB-044",
+        "BB-070",
+        "BB-079"
+      ],
+      "u_packages": [
+        "U-F"
+      ],
+      "selection_rule": "U：客户端中断后的same-run恢复代表例，可复用正常真实run",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C05",
+      "category": "corner",
+      "title": "运行中关机，隔天再登录",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-003",
+        "BB-040",
+        "BB-041",
+        "BB-043",
+        "BB-048",
+        "BB-071"
+      ],
+      "u_packages": [
+        "U-F"
+      ],
+      "selection_rule": "U：重登恢复必选，Agent模拟足够；Human真实设备按用户环境风险触发",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C06",
+      "category": "corner",
+      "title": "成功后预览或下载断网",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-039",
+        "BB-040",
+        "BB-041",
+        "BB-042",
+        "BB-056"
+      ],
+      "u_packages": [
+        "U-B",
+        "U-F"
+      ],
+      "selection_rule": "U：下载恢复复用已有真实成果，零额外模型调用",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C07",
+      "category": "corner",
+      "title": "后台卡住/恢复后用户继续看结果",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-043",
+        "BB-046",
+        "BB-047",
+        "BB-048",
+        "BB-079"
+      ],
+      "u_packages": [
+        "U-F"
+      ],
+      "selection_rule": "U：关键checkpoint和暂停guard工程代表例；所有reason矩阵留E/R",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C08",
+      "category": "corner",
+      "title": "两个标签页修改同一个项目",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-021",
+        "BB-022",
+        "BB-026",
+        "BB-044",
+        "BB-065",
+        "BB-066",
+        "BB-072"
+      ],
+      "u_packages": [
+        "U-C",
+        "U-D"
+      ],
+      "selection_rule": "U：输入/确认stale机制按实际入口选代表，其余多tab矩阵留E/R",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C09",
+      "category": "corner",
+      "title": "会话过期或切换账号后回到任务",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-003",
+        "BB-004",
+        "BB-041",
+        "BB-043",
+        "BB-063",
+        "BB-070"
+      ],
+      "u_packages": [
+        "U-C",
+        "U-F"
+      ],
+      "selection_rule": "U：退出/过期/迟到隔离必要机制；同一次代表run复用",
+      "executor": "Agent独立；Human按代表旅程抽查体验",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    },
+    {
+      "scenario_id": "UX-C10",
+      "category": "corner",
+      "title": "最后4,500积分被两个项目同时使用",
+      "design_status": "current_contract",
+      "requirement_status": "approved_contract_or_scoped_goal",
+      "implementation_status": "requires_runtime_verification",
+      "billing_policy_status": "defined_version_or_actual_flag",
+      "bb_test_ids": [
+        "BB-025",
+        "BB-044",
+        "BB-052",
+        "BB-053",
+        "BB-054",
+        "BB-073"
+      ],
+      "u_packages": [
+        "U-E"
+      ],
+      "selection_rule": "U：钱包不同key竞争工程例，不要求两份真实生成",
+      "executor": "Agent独立；Human按需抽查提示理解",
+      "selected": false,
+      "selection_reason": null,
+      "status": "not_run",
+      "agent_result": "not_run",
+      "human_result": "not_run",
+      "result_record": null
+    }
+  ],
+  "result_record_template": {
+    "scenario_id": null,
+    "subcase": null,
+    "participant_anonymous_id": null,
+    "fixture_manifest_sha256": null,
+    "tested_source_sha": null,
+    "config_price_receipt": null,
+    "user_goal": null,
+    "guidance_allowed": false,
+    "started_at": null,
+    "finished_at": null,
+    "step_results": [],
+    "step_record_template": {
+      "step_no": null,
+      "user_action": null,
+      "expected_visible_feedback": null,
+      "actual_visible_feedback": null,
+      "interruption_stage": null,
+      "interruption_method": null,
+      "actual_device_shutdown": false,
+      "run_before": null,
+      "run_after": null,
+      "input_revision_hash_before": null,
+      "input_revision_hash_after": null,
+      "artifact_version_hash": null,
+      "ledger_receipt": null,
+      "occurred_at": null,
+      "status": "not_run",
+      "controlled_evidence": []
+    },
+    "agent_assertions": [],
+    "human_observation": {
+      "status": "not_run",
+      "completed_without_help": null,
+      "assistance_count": null,
+      "confusing_steps": [],
+      "task_elapsed_seconds": null,
+      "recovery_understood": null,
+      "fees_understood": null,
+      "critical_fact_or_client_issues": [],
+      "verbatim_feedback": null
+    },
+    "reused_evidence_with_scope": [],
+    "defects": [],
+    "owner": null,
+    "status": "not_run"
+  },
+  "product_design_questions": [
+    {
+      "decision_id": "DG-001",
+      "scenario_id": "UX-A03",
+      "status": "design_missing",
+      "user_goal_confirmed": true,
+      "current_capability": "No public active-run pause or same-task material amendment continuation protocol.",
+      "confirmed_user_goal": "Pause an active task, supplement materials, then continue the original task; discover functional and billing design gaps.",
+      "design_required": [
+        "effective_pause_boundary",
+        "versioned_input_and_prior_work",
+        "completed_or_unknown_calls",
+        "reservation_and_final_charge"
+      ],
+      "billing_policy": null
+    }
+  ],
+  "gap_record_template": {
+    "gap_id": null,
+    "scenario_id": null,
+    "type": null,
+    "evidence_method": null,
+    "confirmed_user_goal": null,
+    "current_capability": null,
+    "expected_user_outcome": null,
+    "actual_observation": null,
+    "affected_user_flow": null,
+    "severity": null,
+    "owner": null,
+    "design_decision": null,
+    "billing_policy": null,
+    "workaround": null,
+    "workaround_counts_as_goal_pass": false,
+    "blocks_U": null,
+    "evidence": [],
+    "next_action": null,
+    "target_date": null,
+    "verification_status": "not_run"
+  },
+  "known_source_review_gaps": [
+    {
+      "gap_id": "FG-001",
+      "scenario_id": "UX-A03",
+      "type": "functional_gap",
+      "evidence_method": "source_review_not_runtime_test",
+      "finding": "No public active-run pause action/UI",
+      "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+      "source_paths": [
+        "apps/api/src/server.ts",
+        "apps/web/src/api.ts"
+      ],
+      "owner": null,
+      "severity": null,
+      "blocks_U": null,
+      "verification_status": "not_run"
+    },
+    {
+      "gap_id": "FG-002",
+      "scenario_id": "UX-A03",
+      "type": "functional_gap",
+      "evidence_method": "source_review_not_runtime_test",
+      "finding": "No protocol adopts supplementary material into the original task continuation; only fixed input, cancel or next draft",
+      "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+      "source_paths": [
+        "apps/api/src/queue.ts",
+        "apps/web/src/project-execution.ts",
+        "apps/web/src/material-workspace.ts",
+        "apps/web/src/review-workspace.ts"
+      ],
+      "owner": null,
+      "severity": null,
+      "blocks_U": null,
+      "verification_status": "not_run"
+    },
+    {
+      "gap_id": "DG-001",
+      "scenario_id": "UX-A03",
+      "type": "design_gap",
+      "evidence_method": "user_confirmation_and_source_review",
+      "finding": "Pause boundary, version/prior-work handling and charging policy are not defined for this confirmed user goal",
+      "source_reference_sha": "2805b31eb081aef52f1cdb777b8cbf85aefd44c9",
+      "source_paths": [],
+      "owner": null,
+      "severity": null,
+      "blocks_U": null,
+      "verification_status": "not_run"
+    }
+  ],
+  "admission_decision": {
+    "status": "not_run",
+    "ready": false,
+    "owner": null,
+    "evidence_report": null
+  }
+}
