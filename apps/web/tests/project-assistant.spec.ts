@@ -37,13 +37,18 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
-test('mobile navigation can log out while the assistant launcher is visible',async({page})=>{
+test('mobile navigation can log out while the assistant panel is open',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const s=await setup(page);let logouts=0;
  await page.route('**/api/v1/auth/logout',async route=>{logouts++;await route.fulfill({status:204});});
- await expect(page.getByRole('button',{name:'打开项目助手'})).toBeVisible();
- await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+ await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ await expect(page.locator('.ba-panel')).toBeVisible();
+ await expect(page.locator('[data-composer]')).toBeEnabled();
+ // The narrow panel covers the header; the underlying navigation is still keyboard-accessible.
+ await page.getByRole('button',{name:'打开菜单',exact:true}).press('Enter');
  await expect(page.locator('#sidebar')).toHaveClass(/mobile-open/);
+ await expect(page.locator('.ba-panel')).toBeVisible();
+ if(process.env.ASSISTANT_EVIDENCE){await mkdir(evidenceDir,{recursive:true});await page.screenshot({path:resolve(evidenceDir,'implementation-mobile-menu-open.png')});}
  await page.getByRole('button',{name:'退出',exact:true}).click();
  await expect(page.getByRole('heading',{name:'登录工作区',exact:true})).toBeVisible();
  await expect(page.locator('.bb-assistant')).toHaveCount(0);
