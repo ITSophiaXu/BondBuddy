@@ -377,3 +377,31 @@ for(const state of ['running','succeeded','failed'] as const)test(`dashboard mat
  await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
  await page.getByRole('link',{name:'返回工作台'}).click();await expect(page.locator('[data-dashboard-kind=generation]')).toHaveAttribute('aria-pressed','true');expect(s.executions).toHaveLength(0);
 });
+
+
+for(const width of [1440,390])test(`delete owned material source and support without changing task history ${width}`,async({page})=>{
+  const s=fixture();const source={...s.workspace.materials[0],source_project_id:'m4-project'};
+  const support={...source,material_id:'support',sha256:hash('support')};
+  s.workspace.materials=[source,support];s.workspace.material_details=[{...source,filename:'误传募集书.docx',state:'persisted',media_type:mime},{...support,filename:'误传财务报表.docx',state:'persisted',media_type:mime}];
+  s.workspace.drafts.private_summary.source_material=source;s.workspace.drafts.private_summary.materials=[support];
+  const old=s.addDocumentTask('completed');old.run.state='succeeded';s.workspace.active_run=null;const history=JSON.stringify(s.workspace.tasks);
+  await page.setViewportSize({width,height:width===1440?960:844});await mount(page,s);await choose(page,'private_summary');
+  let failed=false;await page.route('**/materials/*',route=>{if(route.request().method()!=='DELETE'){const m=s.workspace.material_details?.find(m=>m.material_id===new URL(route.request().url()).pathname.split('/').at(-1));return m?reply(route,m):route.fallback();}if(!failed){failed=true;return reply(route,{code:'DATA_UNAVAILABLE'},503);}const id=new URL(route.request().url()).pathname.split('/').at(-1);s.workspace.materials=s.workspace.materials.filter(m=>m.material_id!==id);s.workspace.material_details=s.workspace.material_details!.filter(m=>m.material_id!==id);return route.fulfill({status:204});});
+  page.on('dialog',dialog=>dialog.accept());const remove=page.getByRole('button',{name:'删除 误传财务报表.docx',exact:true});
+  await remove.click();await expect(page.locator('#m4-status')).toContainText('删除未完成');await expect(remove).toBeEnabled();
+  await remove.click();await expect(remove).toHaveCount(0);await expect.poll(()=>s.workspace.drafts.private_summary.materials).toEqual([]);
+  await expect(page.getByRole('button',{name:'删除 误传募集书.docx',exact:true})).toBeEnabled();
+  if(process.env.BB_DELETE_EVIDENCE){const dir='test-evidence/material-delete-20261010';await mkdir(dir,{recursive:true});await page.locator('.m4-source-file').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('.m4-source-file').screenshot({path:`${dir}/material-source-${width}.png`});}
+  await page.getByRole('button',{name:'删除 误传募集书.docx',exact:true}).click();await expect.poll(()=>s.workspace.drafts.private_summary.source_material).toBeNull();
+  await page.reload();await choose(page,'private_summary');await expect(page.locator('.m4-source-file')).toHaveCount(0);await expect(page.getByLabel('上传最新版募集说明书',{exact:true})).toBeVisible();
+  expect(JSON.stringify(s.workspace.tasks)).toBe(history);expect(s.executions).toHaveLength(0);
+});
+
+test('linked source is not deleted from another project and own material unlocks after cancellation',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  await expect(page.locator('[data-m4-action=delete-material]')).toHaveCount(0);
+  const source={...s.workspace.materials[0],source_project_id:'m4-project'};s.workspace.materials=[source];s.workspace.material_details=[{...source,filename:'本次上传.docx',state:'persisted',media_type:mime}];s.workspace.drafts.private_summary.source_material=source;
+  const task=s.addDocumentTask('active');await page.reload();await choose(page,'private_summary');
+  const remove=page.getByRole('button',{name:'删除 本次上传.docx',exact:true});await expect(remove).toBeDisabled();
+  task.run.state='cancelled';s.workspace.active_run=null;await page.getByRole('button',{name:'刷新状态',exact:true}).click();await expect(remove).toBeEnabled();
+});

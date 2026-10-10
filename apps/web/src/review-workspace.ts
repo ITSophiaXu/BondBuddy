@@ -35,6 +35,7 @@ export class ReviewWorkspace {
   private reviewApi: ReviewApi;
   private readable: ReadableReview;
   private fromList = projectListContext();
+  private deletingMaterial?: string;
   private uploadRows = new Map<string,UploadRow>();
   private uploadQueue: {key:string;row:UploadRow;done:(saved:boolean)=>void}[] = [];
   private workspace?: Workspace;
@@ -239,6 +240,7 @@ export class ReviewWorkspace {
         case 'cancel':void this.cancelRun();break;
         case 'upload':this.setTab('materials');this.page?.querySelector<HTMLInputElement>('[data-review-upload-role]')?.click();break;
         case 'retry-upload':{const row=this.uploadRows.get(target.dataset.uploadKey??'');if(row?.error)void this.upload([row.file],row.role,row.target);break;}
+        case 'delete-material':void this.deleteMaterial(target.dataset.materialId??'');break;
         case 'remove-upload':{const key=target.dataset.uploadKey??'',row=this.uploadRows.get(key);if(row?.error&&!row.material){this.uploadRows.delete(key);this.renderMaterials();}break;}
         case 'evidence':if(finding)this.uploadDialog(this.context(finding));break;
         case 'source':if(finding)this.showSource(finding,target);break;
@@ -283,10 +285,10 @@ export class ReviewWorkspace {
       : failed ? `${failed} 份文件尚未保存，请重试或移除失败文件后开始。` : '';
     const pendingMaterialIds=new Set([...this.uploadRows.values()].flatMap(row=>row.material?[row.material.material_id]:[]));
     const groups=[{title:'待复核募集书',roles:['historical','reference'],primary:'historical'}, {title:'审计报告 / 财务报表及附注',roles:['audit','financial','interimFinancial','notes'],primary:'audit'}, {title:'其他核验材料',roles:Object.keys(roleLabels).filter(r=>!['historical','reference','audit','financial','interimFinancial','notes'].includes(r)),primary:'other'}];
-    const fileRow=(m:Dto<'MaterialResponse'>)=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(m.filename)}</strong><span>${esc(roleLabels[m.role]??'其他材料')} · ${(m.byte_size/1024).toFixed(1)} KB</span><p class="material-file-status">已保存</p></div></li>`;
-    const role=(r:string)=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div><strong>${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}</strong><span>${r==='historical'?'上传需要复核的募集书，支持 Word / PDF':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" multiple accept="${r==='historical'||r==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${materials.filter(m=>m.role===r&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>row.role===r).map(([key,row])=>`<li class="material-file-row" data-review-upload-key="${esc(key)}"><div class="material-file-main"><strong>${esc(row.file.name)}</strong><p class="material-file-status ${row.error?'material-file-error':''}" role="status">${esc(row.state)}</p></div>${row.error?`<div class="material-file-actions"><button class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}">重试此文件</button>${!row.material?`<button class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}">移除此行</button>`:''}</div>`:''}</li>`).join('')}</ul></li>`;
+    const fileRow=(m:Dto<'MaterialResponse'>)=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(m.filename)}</strong><span>${esc(roleLabels[m.role]??'其他材料')} · ${(m.byte_size/1024).toFixed(1)} KB</span><p class="material-file-status">已保存</p></div><div class="material-file-actions"><button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(m.material_id)}" aria-label="删除 ${esc(m.filename)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>${this.deletingMaterial===m.material_id?'正在删除…':'删除'}</button></div></li>`;
+    const role=(r:string)=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div><strong>${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}</strong><span>${r==='historical'?'上传需要复核的募集书，支持 Word / PDF':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" multiple accept="${r==='historical'||r==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${materials.filter(m=>m.role===r&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>row.role===r).map(([key,row])=>`<li class="material-file-row" data-review-upload-key="${esc(key)}"><div class="material-file-main"><strong>${esc(row.file.name)}</strong><p class="material-file-status ${row.error?'material-file-error':''}" role="status">${esc(row.state)}</p></div>${row.error?`<div class="material-file-actions"><button class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}">重试此文件</button>${row.material?`<button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(row.material.material_id)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>删除</button>`:``}${!row.material?`<button class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}">移除此行</button>`:''}</div>`:''}</li>`).join('')}</ul></li>`;
     if(!host.querySelector('#review-upload-groups'))host.innerHTML='<div id="review-materials-before"></div><div id="review-upload-groups"></div><div id="review-materials-after"></div>';
-    host.querySelector('#review-materials-before')!.innerHTML=`${this.projectInfo()}${this.inputConflictVersion!==undefined?'<div class="review-notice error">其他页面已修改材料与要求，本页内容已保留。<button class="text-btn" data-review-action="reload-input">采用服务器版本</button><button class="text-btn" data-review-action="adopt-local-input">核对本页内容</button></div>':''}<div class="panel-heading materials-heading"><div><h2>提供复核材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。上传过程中可继续添加文件。</p></div></div><p class="review-upload-summary" role="status">${esc(uploadNotice)}</p>`;
+    host.querySelector('#review-materials-before')!.innerHTML=`${this.projectInfo()}${this.inputConflictVersion!==undefined?'<div class="review-notice error">其他页面已修改材料与要求，本页内容已保留。<button class="text-btn" data-review-action="reload-input">采用服务器版本</button><button class="text-btn" data-review-action="adopt-local-input">核对本页内容</button></div>':''}<div class="panel-heading materials-heading"><div><h2>提供复核材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。上传过程中可继续添加文件。</p></div></div><p class="review-upload-summary" role="status">${esc(uploadNotice)}</p>${running?'<p class="review-muted">当前任务使用的材料已锁定；请先停止任务，停止完成后可删除误传文件并重新上传。</p>':''}`;
     const groupsHost=host.querySelector('#review-upload-groups')!;
     const template=document.createElement('template');
     template.innerHTML=`${groups.map(g=>`<section class="material-partition"><h3>${g.title}</h3><ul class="material-role-list">${role(g.primary)}</ul>${g.roles.filter(r=>r!==g.primary).length?`<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary><ul class="material-role-list">${g.roles.filter(r=>r!==g.primary).map(role).join('')}</ul></details>`:''}</section>`).join('')}`;
@@ -558,6 +560,7 @@ export class ReviewWorkspace {
   private async previewExecution(operation:Operation,sourceReport:string|null,findings:string[]){
     if(!this.workspace||!this.draftInput)return;
     if(isActiveRun(this.workspace.active_run)){this.message('同一项目已有任务进行中，请查看当前状态。',true);this.setTab('results');return;}
+    if(this.deletingMaterial){this.message('正在删除材料，请稍候。');return;}
     if(this.uploadRows.size){this.message(this.uploading?'材料仍在上传或保存，请等待全部保存确认。':'有文件尚未保存，请重试或移除失败文件后开始。',true);this.setTab('materials');return;}
     if(!await this.saveInput())return;
     if(!this.draftInput.source_material_ref){this.message('请先选择已上传的待复核募集书。',true);this.setTab('materials');return;}
@@ -637,7 +640,31 @@ export class ReviewWorkspace {
     const target=context?structuredClone(context):undefined;
     this.openDialog(target?'为此问题补充材料':'上传项目材料',`${target?`<div class="review-notice">补证目标：${esc(target.report_id)} · ${target.finding_ids.map(esc).join('、')}。该补证对象固定保留。</div>`:''}<label for="review-upload-role">材料类型</label><select id="review-upload-role" class="review-source-select">${Object.entries(roleLabels).filter(([role])=>!target||role!=='historical').map(([role,label])=>`<option value="${role}" ${target&&role==='other'?'selected':''}>${label}</option>`).join('')}</select><label for="review-upload-file">选择 DOCX／PDF／XLSX／CSV／TXT 或图片</label><input id="review-upload-file" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"><p class="review-muted">文件会真实上传到当前项目。保存材料不自动开始复核。</p><div id="review-upload-progress" role="status"></div>`,[{label:'上传并保存',primary:true,action:async()=>{const input=this.dialog!.querySelector<HTMLInputElement>('#review-upload-file')!;if(!input.files?.length){this.dialogStatus('请选择文件。');return;}const role=this.dialog!.querySelector<HTMLSelectElement>('#review-upload-role')!.value as Dto<'MaterialResponse'>['role'];await this.upload([...input.files],role,target);}}]);
   }
+  private async deleteMaterial(id:string){
+    const material=this.workspace?.materials.find(m=>m.material_id===id);
+    if(!material||!this.workspace||!this.draftInput||this.deletingMaterial||this.uploading)return;
+    if(isActiveRun(this.workspace.active_run)||this.executionPending){this.message('请先停止或确认当前任务，停止完成后可删除材料。',true);return;}
+    if(!window.confirm(`确定删除“${material.filename}”？删除后可重新上传正确文件。已提交任务的输入与历史成果保持不变。`))return;
+    this.deletingMaterial=id;this.readGeneration++;this.renderMaterials();
+    try{
+      if(this.inputSaving)await this.inputSaving;
+      if(!this.live())return;
+      await this.api.deleteMaterial(this.projectId,id);
+      if(!this.live())return;
+      this.workspace.materials=this.workspace.materials.filter(m=>m.material_id!==id);
+      this.draftInput.material_versions=this.draftInput.material_versions.filter(m=>m.material_id!==id);
+      if(this.draftInput.source_material_ref?.material_id===id)this.draftInput.source_material_ref=null;
+      if(this.draftInput.evidence_links)this.draftInput.evidence_links=this.draftInput.evidence_links.filter(link=>link.material_ref.material_id!==id);
+      for(const [key,row] of this.uploadRows)if(row.material?.material_id===id)this.uploadRows.delete(key);
+      for(const [key,attempt] of this.uploadAttempts)if(attempt.material?.material_id===id)this.uploadAttempts.delete(key);
+      this.inputDirty=true;this.cacheInput();this.renderMaterials();
+      if(await this.saveInput())this.message('材料已删除，可以重新上传正确文件。');
+      else this.message('材料已删除，草稿选择尚未保存。请处理保存提示后重试保存。',true);
+    }catch(error){if(this.live())this.message(`删除未完成。${friendlyError(error)} 请重试删除。`,true);}
+    finally{this.deletingMaterial=undefined;if(this.live())this.renderMaterials();}
+  }
   private async upload(files:File[],role:Dto<'MaterialResponse'>['role'],target?:ReviewContext){
+    if(this.deletingMaterial){this.message('正在删除材料，请稍候再上传。');return false;}
     if(!this.workspace||!this.draftInput||!this.live())return;
     const dialog=this.dialog?.open?this.dialog:undefined;
     const pending:Promise<boolean>[]=[];
@@ -720,7 +747,7 @@ export class ReviewWorkspace {
   private async loadWorkspace(){
     const generation=++this.readGeneration;
     try{
-      const fresh=await this.reviewApi.workspace(this.reportId);if(!this.live()||generation!==this.readGeneration||this.uploading)return;
+      const fresh=await this.reviewApi.workspace(this.reportId);if(!this.live()||generation!==this.readGeneration||this.uploading||this.deletingMaterial)return;
       const workspace=this.mergeWorkspace(fresh);this.workspace=workspace;
       if(!this.inputDirty)this.draftInput=this.inputFrom(workspace);if(!this.planSaving)this.syncSelections();
       if(workspace.active_run)this.run=workspace.active_run;
