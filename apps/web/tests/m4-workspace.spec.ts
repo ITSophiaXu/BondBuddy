@@ -391,7 +391,7 @@ for(const width of [1440,390])test(`delete owned material source and support wit
   await remove.click();await expect(page.locator('#m4-status')).toContainText('删除未完成');await expect(remove).toBeEnabled();
   await remove.click();await expect(remove).toHaveCount(0);await expect.poll(()=>s.workspace.drafts.private_summary.materials).toEqual([]);
   await expect(page.getByRole('button',{name:'删除 误传募集书.docx',exact:true})).toBeEnabled();
-  if(process.env.BB_DELETE_EVIDENCE){const dir='test-evidence/material-delete-20261010';await mkdir(dir,{recursive:true});await page.locator('.m4-source-file').scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/material-source-${width}.png`});}
+  if(process.env.BB_DELETE_EVIDENCE){const dir='test-evidence/material-delete-20261010';await mkdir(dir,{recursive:true});await page.locator('.m4-source-file').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('.m4-source-file').screenshot({path:`${dir}/material-source-${width}.png`});}
   await page.getByRole('button',{name:'删除 误传募集书.docx',exact:true}).click();await expect.poll(()=>s.workspace.drafts.private_summary.source_material).toBeNull();
   await page.reload();await choose(page,'private_summary');await expect(page.locator('.m4-source-file')).toHaveCount(0);await expect(page.getByLabel('上传最新版募集说明书',{exact:true})).toBeVisible();
   expect(JSON.stringify(s.workspace.tasks)).toBe(history);expect(s.executions).toHaveLength(0);
