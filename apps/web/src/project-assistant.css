@@ -24,9 +24,18 @@
 .ba-mark{display:inline-grid;place-items:center;width:34px;height:34px;flex:none;background:var(--ba-green);border-radius:11px;color:#fff}
 .bb-assistant .ba-mark .ba-icon{width:23px;height:23px}
 
-.bb-assistant .ba-launcher{display:flex;gap:10px;align-items:center;padding:7px 17px 7px 7px;box-shadow:0 4px 16px #243e321c;border-radius:28px;font-size:14px;font-weight:600}
-.ba-launcher i.is-active{width:7px;height:7px;border-radius:50%;background:#208564}
-.ba-open .ba-launcher{visibility:hidden;pointer-events:none}
+.ba-dock{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex-shrink:0;min-height:40px;padding:8px 12px;border:1px solid #d5e1d4;border-radius:9px;background:#f0f5ec;color:#285d48;font:600 13px "Segoe UI","Microsoft YaHei",sans-serif;white-space:nowrap;cursor:pointer}
+.ba-dock:hover,.ba-dock[aria-expanded=true]{background:#e3eedf;border-color:#a5bca5}
+.ba-dock:focus-visible{outline:2px solid #428267;outline-offset:3px}
+.ba-dock .ba-icon{width:20px;height:20px;flex:none}
+.ba-dock i.is-active{width:7px;height:7px;border-radius:50%;background:#208564}
+/* The restore control occupies normal header space, never the business canvas. */
+.prototype-app .topbar:has(.ba-dock){position:sticky;top:0;z-index:20;height:auto;min-height:82px;flex-wrap:wrap}
+.prototype-app .topbar:has(.ba-dock) .top-actions{flex-wrap:wrap}
+@media(max-width:760px){.prototype-app .topbar:has(.ba-dock){min-height:68px;gap:8px}
+.prototype-app .topbar:has(.ba-dock) .top-actions{margin-left:auto;gap:8px}
+.ba-dock{min-height:44px;padding:8px 10px}
+}
 
 .ba-panel{position:absolute;right:0;bottom:0;width:min(480px,calc(100vw - 48px));height:min(736px,calc(100dvh - 48px));background:#fff;border:1px solid #dce5de;border-radius:20px;box-shadow:0 16px 64px #1d372526,0 2px 8px #1d37250a;display:flex;flex-direction:column;overflow:hidden}
 .ba-wide .ba-panel{width:min(900px,calc(100vw - 80px));height:calc(100dvh - 48px)}
@@ -199,16 +208,6 @@
 @media(max-width:700px){.ba-form{margin:12px;padding:12px}
 }
 
-/* Keep the collapsed assistant clear of the sticky authoring controls. */
-@media(min-height:501px){body:has(.authoring-actions.is-preparing) .bb-assistant:not(.ba-open){bottom:112px}}
-
 .bb-assistant[hidden]{display:none!important}
-.ba-launcher-group{display:flex;align-items:center;border:1px solid var(--ba-line);border-radius:28px;background:white;box-shadow:0 4px 16px #243e321c}
-.bb-assistant .ba-launcher-group .ba-launcher{border:0;box-shadow:none;padding-right:8px}
-.bb-assistant .ba-hide-launcher{display:grid;place-items:center;min-width:36px;min-height:44px;padding:6px;border:0;border-left:1px solid var(--ba-line);border-radius:0 28px 28px 0;color:var(--ba-muted)}
-.ba-open .ba-launcher-group{visibility:hidden;pointer-events:none}
 button.assistant-restore{width:100%;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer}
 .assistant-restore .ba-icon{width:20px;height:20px;flex:none}
-@media(max-width:700px){.bb-assistant .ba-hide-launcher{min-width:44px}.ba-header .ba-toolbar{gap:0}.bb-assistant .ba-header .ba-icon-button{width:30px}}
-
-@media(max-width:360px){.ba-header .ba-identity>.ba-mark{display:none}}
