@@ -150,7 +150,10 @@ export class ProjectAssistant {
       if(this.viewConflict)throw new AssistantInputError('此对话已在其他页面修改。请先恢复最新会话；本页未发送文字会保留。');
       const w=this.workspace;this.view.unsent_content=this.text;const {version,...view}=structuredClone(this.view);
       this.viewDirty=false;
-      try{const result=await this.m4.view(w.topic.topic_id,{expected_version:version,view});if(this.workspace===w)w.view.version=result.view.version;}
+      try{const result=await this.m4.view(w.topic.topic_id,{expected_version:version,view});
+        // Polling replaces the workspace while retaining the same editable view.
+        // A save receipt still advances that view, but never a switched conversation.
+        if(this.workspace?.topic.topic_id===w.topic.topic_id && this.workspace.view===w.view)this.workspace.view.version=result.view.version;}
       catch(e){this.viewDirty=true;if(e instanceof ApiError&&e.code==='INPUT_REVISION_CONFLICT')this.viewConflict=true;throw e;}
     });return this.saving;
   }

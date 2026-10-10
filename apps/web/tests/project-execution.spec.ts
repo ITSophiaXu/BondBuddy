@@ -1062,7 +1062,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await page.getByLabel('为历史／参考募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
     await expect(history).toContainText('正在保存');
-    expect(releaseSave).toBeDefined(); releaseSave!();
+    await expect.poll(() => releaseSave).toBeDefined(); releaseSave!();
     await expect(history).toContainText('处理中');
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
     const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });

@@ -32,7 +32,7 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'synthetic_fixed_qa']);
     const topic=(await ok('POST','/api/v1/m4/topics',{creation_request_id:randomUUID(),name:'Synthetic assistant',surface:'assistant'})).topic;
-    const path=`/api/v1/m4/topics/${topic.topic_id}`,context=emptyM4Context(),content='解释资产的概念';
+    const path=`/api/v1/m4/topics/${topic.topic_id}`,context=emptyM4Context(),content='如何上传材料，并计算资产负债率';
     const quote=()=>ok('POST',`${path}/quote`,{kind:'qa',content,context});
     assert.equal((await send('POST',`${path}/quote`,{kind:'qa',content,context})).json().code,'BILLING_NOT_READY');
     assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:'如何使用项目助手？',context})).quote.points,0);
@@ -43,6 +43,14 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
     await publishM4QaPrice(pool,price);await publishM4QaPrice(pool,price);
     await assert.rejects(publishM4QaPrice(pool,{...price,points:61}),/immutable/);
     await assert.rejects(pool.query('UPDATE bb_m4_qa_price_versions SET points=61 WHERE id=$1',[price.id]));
+    for(const question of ['解释资产的概念','解释担保条款，并告诉我怎么上传材料','如何使用净现值公式计算本期债券价格','怎么下载已生成文件，并分析现金流',
+      '请告诉我怎么上传材料，并计算资产负债率','能告诉我如何使用净现值公式计算债券价格吗','怎么充值积分，并分析现金流',
+      '如何查看积分流水，并计算资产负债率','怎么取消正在运行的任务，比较两期偿债能力','如何计算积分余额']){
+      const mixed=(await ok('POST',`${path}/quote`,{kind:'qa',content:question,context})).quote;
+      assert.equal(mixed.points,60,question);assert.equal(mixed.billing_method,'fixed');
+      assert.equal((await send('POST',`${path}/messages`,{submission_request_id:randomUUID(),content:question,context,quote_id:mixed.quote_id})).json().code,'CREDITS_INSUFFICIENT',question);
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[user])).rows[0].n,0,'mixed business analysis must not create a free run without credit');
     const q=(await quote()).quote;
     assert.equal(q.points,60);assert.equal(q.billing_method,'fixed');assert.equal(q.amount_semantics,'fixed_price');assert.equal(q.price_version,price.id);
     assert.match(q.reason,/回答成功后扣费/);
@@ -68,6 +76,14 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
     assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:0});
     const settled=(await pool.query("SELECT points FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows;
     assert.equal(settled.length,1);assert.equal(Number(settled[0].points),60);
+    const artifact=(await pool.query('SELECT id,version,sha256 FROM bb_artifact_versions WHERE run_id=$1',[run.run_id])).rows[0];
+    const readingContext={...context,reading_artifact:{source_project_id:topic.project_id,artifact_id:artifact.id,artifact_version:artifact.version,sha256:artifact.sha256.trim()}};
+    for(const help of ['你好','使用帮助','如何上传材料','怎么下载已生成文件','文件怎么下载','在哪下载报告','怎么查看清洁版','成果在哪里',
+      '请告诉我如何上传材料','能告诉我怎么使用项目助手吗','怎么上传文件到当前项目','你好，请告诉我怎么下载已生成文件',
+      '怎么查看任务进度','请告诉我如何查看任务状态吗','怎么充值积分','如何查看积分余额','如何查看积分流水','余额在哪里查看','怎么取消当前任务','怎么取消正在运行的任务']){
+      const free=(await ok('POST',`${path}/quote`,{kind:'qa',content:help,context:readingContext})).quote;
+      assert.equal(free.points,0,help);assert.equal(free.billing_method,'free');assert.equal(free.task_type,'m4_Q00');
+    }
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_billing_configs')).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts')).rows[0].n,0,'synthetic delivery must not invent model usage');
     const stale=(await quote()).quote;
@@ -291,6 +307,26 @@ test('M4 free task preparation and unavailable capabilities do not turn basic QA
   assert.equal(m4UnavailableLocalScope('请生成完整立项报告，不要只修改某个段落'),false);
   assert.equal(m4UnavailableResearch('不要联网，解释资产的概念'),false);
 });
+
+test('product help remains free with selected sources while mixed professional questions remain paid',()=>{
+  const context=emptyM4Context(),material={source_project_id:'synthetic-project',material_id:'synthetic-material',material_version:1,sha256:'0'.repeat(64)},
+    artifact={source_project_id:'synthetic-project',artifact_id:'synthetic-artifact',artifact_version:1,sha256:'0'.repeat(64)};
+  const contexts=[context,{...context,source_material:material},{...context,citations:[{kind:'material' as const,ref:material,locator:'paragraph 1'}]},
+    {...context,reading_artifact:artifact}];
+  for(const selected of contexts){
+    for(const help of ['你好！','你好，项目助手','Hello BondBuddy','你能帮我做什么？','使用帮助','如何使用项目助手？','BondBuddy怎么使用？','如何使用材料生成？','如何上传材料','怎么上传募集书？','你好，如何上传财务材料？','产品帮助：如何上传材料',
+      '怎么下载已生成文件','文件怎么下载','在哪下载报告','怎么查看清洁版','成果在哪里','怎么找到已生成的Word文件',
+      '请告诉我如何上传材料','能告诉我怎么使用项目助手吗','怎么上传文件到当前项目','你好，请告诉我怎么下载已生成文件','请你解释怎么上传财务材料到本项目吗',
+      '怎么查看任务进度','请告诉我如何查看任务状态吗','怎么充值积分','如何查看积分余额','如何查看积分流水','余额在哪里查看','怎么取消当前任务','怎么取消正在运行的任务'])
+      assert.equal(classifyM4Qa(help,selected),'m4_Q00',help);
+    for(const [question,category] of [['如何上传材料，并计算资产负债率','m4_Q03'],['解释担保条款，并告诉我怎么上传材料',selected===context?'m4_Q01':'m4_Q02'],
+      ['如何使用净现值公式计算本期债券价格','m4_Q03'],['如何使用项目助手，对比两年流动比率','m4_Q04'],['你好，解释担保条款',selected===context?'m4_Q01':'m4_Q02'],
+      ['怎么下载已生成文件，并分析现金流',selected===context?'m4_Q01':'m4_Q02'],['请告诉我怎么上传材料，并计算资产负债率','m4_Q03'],
+      ['能告诉我如何使用净现值公式计算债券价格吗','m4_Q03'],['怎么充值积分，并分析现金流',selected===context?'m4_Q01':'m4_Q02'],
+      ['如何查看积分流水，并计算资产负债率','m4_Q03'],['怎么取消正在运行的任务，比较两期偿债能力','m4_Q04'],['如何计算积分余额','m4_Q03']] as const)
+      assert.equal(classifyM4Qa(question,selected),category,question);
+  }
+});
 test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering',{skip:!connection,timeout:180000},async()=>{
   const pool=new Pool({connectionString:connection}),user=`m4-${randomUUID()}`,other=`m4-${randomUUID()}`;let actor=user;
   const bytes=new Map<string,Buffer>();
@@ -326,6 +362,10 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     let ws=await ok('GET',path(t,'workspace'));assert.equal(ws.drafts.private_summary.version,1);assert.equal(ws.drafts.init.version,init.version);assert.equal(ws.material_details[0].filename,'synthetic.docx');
     const view={...emptyM4View(),selected_document_type:'private_summary',unsent_content:'Synthetic unsent request',unsent_context:{...context,document_type:'private_summary',draft_version:1,source_material:pin,citations:[{kind:'material',ref:pin,locator:'paragraph 1'}]},workspace_tab:'input',tab_scroll:{input:240}};
     await ok('PUT',path(t,'view'),{expected_version:0,view});ws=await ok('GET',path(t,'workspace'));assert.equal(ws.view.unsent_content,view.unsent_content);assert.equal(ws.view.tab_scroll.input,240);
+    for(const selected of [{...context,source_material:pin},{...context,citations:[{kind:'material',ref:pin,locator:'paragraph 1'}]}]){
+      const help=(await ok('POST',path(t,'quote'),{kind:'qa',content:'如何上传材料',context:selected})).quote;
+      assert.equal(help.task_type,'m4_Q00');assert.equal(help.points,0);assert.equal(help.billing_method,'free');
+    }
     actor=other;assert.equal((await send('GET',path(t,'workspace'))).statusCode,404);assert.equal((await ok('GET','/api/v1/m4/templates')).templates.length,0);actor=user;
     const withoutRates=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
     assert.equal(withoutRates.quote.points,4500);assert.equal(withoutRates.quote.billing_method,'fixed');

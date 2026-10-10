@@ -40,6 +40,10 @@ async function installApi(page: Page, state: { requests: any[]; fail: number; cu
     const url = new URL(route.request().url());
     const path = url.pathname;
     if (path === '/api/v1/me') return json(route, 200, { user_id: 'owner-1', session_status: 'active' });
+    if (path === '/api/v1/account') return json(route, 200, { user_id: 'owner-1', username: 'synthetic', phone_masked: null,
+      status: 'active', created_at: now, accepted_terms_version: null, current_terms_version: null,
+      password_updated_at: null, support_contact: null });
+    if (path === '/api/v1/credits/balance') return json(route, 200, { enabled: false, available: 0, frozen: 0 });
     if (path === '/api/v1/data-policy') return json(route, 200, policy);
     // The surrounding project workspace also recovers the current run and old artifact.
     if (path === '/api/v1/projects') return json(route, 200, { items: [{ project_id: projectId, name: '合成事实审核项目',

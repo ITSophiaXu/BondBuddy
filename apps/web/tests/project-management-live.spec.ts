@@ -36,7 +36,10 @@ test('global issuer search beyond first page, filters, archive and saved materia
   await page.getByRole('link').filter({has:page.getByRole('heading',{name:'合成验收 · 历史项目',exact:true})}).click();
   const { pdfSample, PDF }=await import('../../api/dist/upload-safety.samples.js');
   const persisted=page.waitForResponse(response=>response.url().includes(`/projects/${project}/materials/uploads/`) && response.url().endsWith('/complete') && response.request().method()==='POST');
-  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'archive-recovery.pdf',mimeType:PDF,buffer:pdfSample()});
+  const fileInput=page.getByLabel('为审计报告（可含报表及附注）选择文件');
+  // setInputFiles can select a disabled control; wait until the real user can upload.
+  await expect(fileInput).toBeEnabled();
+  await fileInput.setInputFiles({name:'archive-recovery.pdf',mimeType:PDF,buffer:pdfSample()});
   expect((await persisted).status()).toBe(200);
   await expect(page.locator('.material-file-row').filter({hasText:'archive-recovery.pdf'})).toContainText('服务器已确认保存');
   await page.getByRole('link',{name:'全部项目',exact:true}).click();
