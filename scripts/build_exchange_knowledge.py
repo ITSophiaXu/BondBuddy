@@ -32,6 +32,26 @@ def write_md(path, content):
     path.write_text(content.strip() + '\n', 'utf-8')
 
 
+def apply_authoring_guide(scope, chapter_guide):
+    """Embed the expert text: runtime pins README bytes, not linked resources."""
+    if scope != 'szse-private':
+        return chapter_guide
+    path = BASE / 'drafts/szse-private/expert-writing-20261010.md'
+    expert = path.read_text('utf-8')
+    return (
+        '# 深交所普通私募公司债券募集说明书写作知识\n\n'
+        '写作版本：`szse-private-writing-2026.10.10-v1`。\n\n'
+        '依据用户于2026年10月10日转述的五项专家反馈。以下修订后的专家全文及其写作执行规则优先于本文件后部的旧研究摘要、共通方法和冲突清单中的旧写法。'
+        '适用范围仅为目标 `market=szse`、`offering=private` 的普通私募公司债券募集说明书更新；公募及专项分支仅供识别差异，不自动套用。'
+        '材料缺失按财务【X】与非财务沿用历史分别处理，提示只入批注或内部记录；内部知识的研究状态不写入募集说明书正文。'
+        '本次为写作方法修订，未将研究规则标为合规审核通过。\n\n'
+        f'专家源文件：`expert-writing-20261010.md`；SHA-256：`{hashlib.sha256(expert.encode()).hexdigest()}`。'
+        '原始EX038不变，以下全文随运行输入一起锁定，无需依赖链接读取。\n\n'
+        '<!-- revised-expert-writing:start -->\n\n' + expert.strip() +
+        '\n\n<!-- revised-expert-writing:end -->\n\n'
+        '# 既有研究摘要与法规状态（冲突写法以上述修订为准）\n\n' + chapter_guide)
+
+
 def extract(source):
     path = BASE / source['original_path']
     raw = path.read_bytes()
@@ -235,7 +255,7 @@ def main():
                 chapter_guide += f'### {r["title"]}\n\n{r["logic"]}\n\n输入：'+ '、'.join(r['inputs']) +f'。\n\n依据：{links}。例外/边界：{r["exception"]}\n\n'
             chapter_guide += '## 未完成项\n\n' + '\n'.join('- '+b['description']+' 所需证据：'+b['required_evidence'] for b in blocker_list)
             chapter_guide += '\n\n## 2026-09-26补充资料交接\n\n见[两包清点与分市场阅读指南](../../intake/2026-09-26-archives/README.md)及[逐Issue交接](../../intake/2026-09-26-archives/ISSUE-HANDOFF.md)。旧优化审核资料仅保留历史追溯；新增研究候选不构成规则发布。\n'
-            write_md(BASE / f'drafts/{scope}/README.md', chapter_guide)
+            write_md(BASE / f'drafts/{scope}/README.md', apply_authoring_guide(scope, chapter_guide))
             scope_index.append({'scope':scope,'issue':issue,'version':scope_version,'status':'draft','production_ready':False,'rules':len(pack['rules']),'chapters':len(chapters),'path':f'drafts/{scope}'})
 
             # Existing prototype DTO is retained. This is a generated research view,
