@@ -92,7 +92,7 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('[data-requirements]').fill('只润色摘要，不改数字');await page.locator('[data-a=prepare]').click();await expect(page.locator('.ba-task')).toContainText('4,500');expect(s.executions).toHaveLength(0);
  await page.locator('[data-a=edit]').click();await page.locator('[data-requirements]').fill('新增一个风险提示段落');await expect(page.locator('[data-a=execute]')).toHaveCount(0);
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-a=execute]')).toHaveCount(1);await page.locator('[data-a=execute]').click();await expect.poll(()=>s.executions.length).toBe(1);
- await page.locator('.ba-header [data-a=hide]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
+ await page.locator('.ba-header [data-a=toggle]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
  expect(s.cards.at(-1).run.state).toBe('queued');expect(s.executions).toHaveLength(1);
  await page.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
  if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
@@ -117,45 +117,43 @@ test('approved prototype comparison capture',async({page})=>{
 });
 
 for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844],['narrow',320,740],['zoom-equivalent',720,480]] as const)
-test('assistant can hide completely and restore without losing text - '+name,async({page})=>{
+test('assistant collapses into visible header without obstructing the page - '+name,async({page})=>{
  await page.setViewportSize({width,height});
- const s=await setup(page);
- // A synthetic underlying action occupies exactly the obstructed launcher area.
+ // Upgrade path: a user hid the assistant in the previous version.
+ await page.addInitScript(()=>sessionStorage.setItem('bb-assistant-hidden:synthetic-assistant-user','true'));
+ const s=await setup(page),dock=page.locator('[data-assistant-dock]');
+ await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
+ await expect(page.locator('.ba-launcher,[data-a=hide]')).toHaveCount(0);
  await page.evaluate(()=>{const b=document.createElement('button');b.id='underlying-action';b.textContent='保存项目';b.style.cssText='position:fixed;right:12px;bottom:12px;width:220px;height:56px;z-index:1';b.onclick=()=>b.dataset.clicked='true';document.querySelector('main')!.append(b);});
- await page.locator('.ba-hide-launcher').click();
- await expect(page.locator('.bb-assistant')).toBeHidden();
+ await page.locator('#underlying-action').click();await expect(page.locator('#underlying-action')).toHaveAttribute('data-clicked','true');
+ await dock.click();await expect(page.locator('[data-composer]')).toBeEnabled();
+ await page.locator('[data-composer]').fill('收起后仍保留的未发送文字');
+ // Collapse immediately, before the autosave debounce; reopening must keep local input.
+ await page.getByRole('button',{name:'收起助手',exact:true}).click();
+ await expect(dock).toBeFocused();await expect(page.locator('.ba-panel')).toHaveCount(0);
  await page.locator('#underlying-action').click();
- await expect(page.locator('#underlying-action')).toHaveAttribute('data-clicked','true');
- const restore=async()=>{
-   const menu=page.getByRole('button',{name:'打开菜单',exact:true});if(await menu.isVisible())await menu.click();
-   await page.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();
-   await expect(page.locator('.ba-panel')).toBeVisible();
- };
- await restore();
- await page.locator('[data-composer]').fill('隐藏后仍保留的未发送文字');
- await expect.poll(()=>s.w.view.unsent_content).toBe('隐藏后仍保留的未发送文字');
- await page.locator('.ba-header [data-a=hide]').click();
- await page.reload();
- await expect(page.locator('.bb-assistant')).toBeHidden();
+ await dock.click();await expect(page.locator('[data-composer]')).toHaveValue('收起后仍保留的未发送文字');
+ await page.locator('[data-composer]').press('Escape');await expect(dock).toBeFocused();
+ await expect.poll(()=>s.w.view.unsent_content).toBe('收起后仍保留的未发送文字');
+ await page.reload();await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
- await restore();
- await expect(page.locator('[data-composer]')).toHaveValue('隐藏后仍保留的未发送文字');
- const hideBox=await page.locator('.ba-header [data-a=hide]').boundingBox();
- expect(hideBox!.x).toBeGreaterThanOrEqual(0);expect(hideBox!.x+hideBox!.width).toBeLessThanOrEqual(width);
+ const dockBox=await dock.boundingBox(),headerBox=await page.locator('.topbar').boundingBox();
+ expect(dockBox!.x).toBeGreaterThanOrEqual(0);expect(dockBox!.x+dockBox!.width).toBeLessThanOrEqual(width);
+ expect(dockBox!.y).toBeGreaterThanOrEqual(0);expect(dockBox!.y+dockBox!.height).toBeLessThanOrEqual(headerBox!.y+headerBox!.height);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await dock.click();await expect(page.locator('[data-composer]')).toHaveValue('收起后仍保留的未发送文字');
  expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
- const evidence=process.env.BB_HIDE_ASSISTANT_EVIDENCE_DIR;
+ const evidence=process.env.BB_COLLAPSE_ASSISTANT_EVIDENCE_DIR;
  if(evidence&&['desktop','mobile'].includes(name)){
    await mkdir(evidence,{recursive:true});await page.screenshot({path:resolve(evidence,'implementation-open-'+name+'.png')});
    const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
    await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));
-   await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('隐藏后仍保留的未发送文字');
+   await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('收起后仍保留的未发送文字');
    await prototype.screenshot({path:resolve(evidence,'prototype-open-'+name+'.png')});
-   await prototype.locator('.ba-header [data-a=hide]').click();await expect(prototype.locator('.bb-assistant')).toBeHidden();
-   await prototype.screenshot({path:resolve(evidence,'prototype-hidden-'+name+'.png')});
-   await prototype.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();await expect(prototype.getByRole('textbox')).toHaveValue('隐藏后仍保留的未发送文字');await prototype.close();
-   await page.locator('.ba-header [data-a=hide]').click();
-   const menu=page.getByRole('button',{name:'打开菜单',exact:true});if(await menu.isVisible())await menu.click();
-   await page.screenshot({path:resolve(evidence,'implementation-hidden-'+name+'.png')});
+   await prototype.getByRole('button',{name:'收起助手',exact:true}).click();await expect(prototype.locator('.bb-assistant')).toBeHidden();
+   await prototype.screenshot({path:resolve(evidence,'prototype-collapsed-'+name+'.png')});
+   await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(prototype.getByRole('textbox')).toHaveValue('收起后仍保留的未发送文字');await prototype.close();
+   await page.getByRole('button',{name:'收起助手',exact:true}).click();
+   await page.screenshot({path:resolve(evidence,'implementation-collapsed-'+name+'.png')});
  }
 });
