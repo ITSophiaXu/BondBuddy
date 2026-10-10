@@ -1,6 +1,7 @@
 """Attach the saved report's findings to the immutable source, without another model call.
 
-Markdown remains the single finding text used by the page, report and comments.
+Markdown remains the single finding source used by the page, report and comments.
+Comments omit source-location/quotation fields already represented by their anchor.
 Only unique exact quotations are anchored; ambiguity is a reported limitation.
 """
 import hashlib
@@ -10,7 +11,7 @@ import sys
 from pathlib import Path
 from zipfile import ZipFile
 
-from bondbuddy_word_delivery.review import annotate, ANCHOR_REASONS
+from bondbuddy_word_delivery.review import annotate, ANCHOR_REASONS, strip_comment_location_prefix
 from bondbuddy_word_delivery.writer import parse_xml, paragraph_map, visible
 from bondbuddy_file_authoring.report_from_text import export_report
 
@@ -29,25 +30,36 @@ def findings_from_markdown(markdown):
         body = markdown[heading.end():heading.end() + end.start() if end else len(markdown)].strip()
         identity = f"R{index + 1:03d}"
         title = re.sub(r"^(?:R\d+\s*[·.、:]\s*|\d+[.、]\s*)", "", heading[1])
-        content = f"{identity} · {plain(title)}\n{plain(body)}"
+        comment_lines = []
         targets, location = [], "原文位置待确认"
         field = None
         # Repeated disclosure fields are allowed for one finding at several places.
         for line in body.splitlines():
-            match = re.match(r"^\s*(?:[-*]\s+)?(?:\*\*)?([^*：:]{2,12})[：:](?:\*\*)?\s*(.*)$", line)
+            match = re.match(r"^\s*(?:[-*]\s+)?(?:\*\*)?([^*：:]{2,12})(?:\*\*)?[：:](?:\*\*)?\s*(.*)$", line)
             if match:
-                field, value = match[1], match[2]
+                field, value = match[1].strip(), match[2]
                 if field == "原文位置":
                     location = plain(value)
+                if field not in ("原文位置", "原文披露", "原文件"):
+                    concise = strip_comment_location_prefix(plain(value))
+                    comment_lines.append(f"{field}：{concise}" if concise != plain(value) else plain(line))
+                elif field == "原文件":
+                    original = f"{field}：{plain(value)}"
+                    concise = strip_comment_location_prefix(original)
+                    if concise != original:
+                        comment_lines.append(concise)
             elif field == "原文披露" and line.strip():
                 value = re.sub(r"^\s*[-*]\s+", "", line)
             else:
+                if field not in ("原文位置", "原文披露", "原文件"):
+                    comment_lines.append(strip_comment_location_prefix(plain(line)))
                 continue
             if field == "原文披露":
                 quote = value.strip().strip('`“”「」"').strip()
                 if quote:
                     targets.append({"quote": quote, "location": location})
-        findings.append({"finding_id": identity, "title": title, "comment_text": content, "targets": targets})
+        content = f"{identity} · {plain(title)}\n" + "\n".join(comment_lines).strip()
+        findings.append({"finding_id": identity, "title": title, "comment_text": content.rstrip(), "targets": targets})
         edits.append((heading.start(), heading.end(), f"### {identity} · {title}"))
     for start, end, replacement in reversed(edits):
         markdown = markdown[:start] + replacement + markdown[end:]
