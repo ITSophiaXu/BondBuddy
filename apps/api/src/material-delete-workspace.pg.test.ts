@@ -6,21 +6,23 @@ import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { emptyM4Draft } from './m4-workspace.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import { azureBlobs } from './data.js';
+import { azureBlobs, digest } from './data.js';
 
 const connection = await isolatedTestDatabase(undefined, 'material-delete-workspace');
 test('deleted material and template do not break a shared workspace; ownership and immutable inputs are preserved', { skip: !connection || !process.env.BB_TEST_AZURITE_CONNECTION_STRING }, async () => {
   const pool = new Pool({ connectionString: connection });
   const owner = randomUUID(), foreign = randomUUID(); let actor = owner;
-  const app = createServer({ pool, blobs: azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!), allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: actor, csrfVerified: true }) });
+  const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!, `bb-delete-${owner.replaceAll('-', '')}`);
+  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: actor, csrfVerified: true }) });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, payload: payload as any, headers: { origin: 'http://bondbuddy.test' } });
   const ok = async (method: string, url: string, payload?: unknown) => { const r = await send(method, url, payload); assert.equal(r.statusCode, 200, r.body); return r.json(); };
   try {
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [owner, `syn_${owner.replaceAll('-', '').slice(0, 20)}`, foreign, `syn_${foreign.replaceAll('-', '').slice(0, 20)}`]);
     const topic = (await ok('POST', '/api/v1/m4/topics', { creation_request_id: randomUUID(), name: 'Synthetic deletion' })).topic;
     const second = (await ok('POST', '/api/v1/m4/topics', { creation_request_id: randomUUID(), name: 'Synthetic second topic' })).topic;
-    const upload = randomUUID(), id = randomUUID(), sha = 'a'.repeat(64), object = `users/${owner}/projects/${topic.project_id}/materials/${upload}`;
+    const upload = randomUUID(), id = randomUUID(), bytes = Buffer.alloc(100, 1), sha = digest(bytes), object = `users/${owner}/projects/${topic.project_id}/materials/${upload}`;
     const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    await blobs.put(object, bytes, mime);
     await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
       VALUES($1,$2,$3,'synthetic.docx',$4,100,$5,'other',$6,now()+interval '1 hour','completed')`, [upload, owner, topic.project_id, mime, sha, object]);
     await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
