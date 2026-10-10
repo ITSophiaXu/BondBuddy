@@ -120,7 +120,7 @@
 }
 @media (max-width:760px) {
   .prototype-app .sidebar { display:none; position:fixed; inset:0 auto 0 0; width:236px; height:100vh; }
-  .prototype-app .sidebar.mobile-open { display:flex; transform:none; box-shadow:0 0 0 100vw #172d3344; }
+  .prototype-app .sidebar.mobile-open { display:flex; transform:none; z-index:1300; box-shadow:0 0 0 100vw #172d3344; }
   .prototype-app .sidebar nav { display:block; margin-top:0; }
   .prototype-app .sidebar .nav-item { justify-content:flex-start; }
   .prototype-app .sidebar .nav-label { display:block; }

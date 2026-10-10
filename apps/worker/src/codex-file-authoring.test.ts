@@ -10,7 +10,7 @@ import {MemoryCodexJournal} from './codex-memory-journal.js';
 async function setup(){
   const root=await mkdtemp(join(tmpdir(),'bb-native-files-test-'));
   let prepared=0,collected=0;
-  const config={...loadCodexAdapterConfig({}),command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-authoring.mjs',import.meta.url))],work_root:root,timeout_ms:20,authoring_timeout_ms:5000};
+  const config={...loadCodexAdapterConfig({BB_CODEX_PATH:process.env.BB_CODEX_PATH}),command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-authoring.mjs',import.meta.url))],work_root:root,timeout_ms:20,authoring_timeout_ms:5000};
   const input:ContainedCallInput={owner_user_id:'synthetic-owner',project_id:'synthetic-project',job_id:'synthetic-job',run_id:'synthetic-run',trace_id:'synthetic-run',logical_call_id:'file-authoring-v1',prompt_snapshot_ref:'synthetic-prompt',prompt:'SCENARIO:file_done',output:{kind:'text'},result_schema_version:'synthetic-file-v1',
     fileWorkspace:{prepare:async cwd=>{prepared++;for(const dir of ['scratch','output'])await mkdir(join(cwd,dir));await writeFile(join(cwd,'input.json'),'{}');},
       collect:async cwd=>{collected++;return {file:await readFile(join(cwd,'output/fixture.txt'),'utf8')};}}};

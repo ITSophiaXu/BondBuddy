@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
+import { productionSnapshotHash } from '@bondbuddy/rule-pack-registry';
 import { isolatedTestDatabase } from './test-database.js';
 
 const optedIn = process.env.BB_RUN_RULE_SOURCE_DATE_JSON_PG_TESTS === '1';
@@ -56,9 +57,28 @@ test('PostgreSQL 16 source applicability and method-window JSON guards reject in
     assert.ok(Number(version.rows[0]!.server_version_num) >= 160000, 'regression requires PostgreSQL 16 or newer');
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)',
       [admin, `datejsonadmin${suffix.slice(0, 12)}`, reviewer, `datejsonreviewer${suffix.slice(0, 12)}`]);
-    await pool.query(`INSERT INTO bb_rule_pack_production_reviewer_grants
-      (id,user_id,role,market,offering,granted_by,reason_code)
-      VALUES($1,$2,'rule_pack_industry_reviewer','sse','public_all',$3,'synthetic_test')`, [grant, reviewer, admin]);
+    const dimension = { mode: 'explicit_codes', codes: ['synthetic'], dictionary_version: 'synthetic-v1' };
+    const scope = {
+      instruments: ['synthetic-bond'], document_stages: ['registration'],
+      issuer_scopes: dimension, investor_scopes: dimension,
+      industry_codes: dimension, special_feature_scope: dimension,
+    };
+    // 0071 requires every new grant and its immutable scope in one transaction.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO bb_rule_pack_production_reviewer_grants
+        (id,user_id,role,market,offering,granted_by,reason_code)
+        VALUES($1,$2,'rule_pack_industry_reviewer','sse','public_all',$3,'synthetic_test')`, [grant, reviewer, admin]);
+      await client.query(`INSERT INTO bb_rule_pack_production_grant_scopes
+        (grant_id,instruments,document_stages,issuer_scopes,investor_scopes,industry_codes,special_feature_scope,scope_hash)
+        VALUES($1,$2::text[],$3::text[],$4::jsonb,$4::jsonb,$4::jsonb,$4::jsonb,$5)`,
+      [grant, scope.instruments, scope.document_stages, JSON.stringify(dimension), productionSnapshotHash(scope)]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
 
     await insertSource(`pending-${suffix}`, null, null);
     await insertSource(`valid-${suffix}`, validBasis, validWindow);

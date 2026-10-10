@@ -512,7 +512,7 @@ test('failed and page-limited parser results are not cached', async (t) => {
 });
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
-const localPython = join(repositoryRoot, '.venv', 'bin', 'python');
+const localPython = process.env.BB_PYTHON?.trim() || join(repositoryRoot, '.venv', 'bin', 'python');
 const authorizedSampleManifestPath = join(repositoryRoot, 'tests/samples/2026-09-25/manifest.json');
 test('bridge parses synthetic text through the actual Python subprocess when the repo venv exists', {
   skip: existsSync(localPython) ? false : 'repository .venv is not installed',

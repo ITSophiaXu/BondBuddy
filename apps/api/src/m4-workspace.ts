@@ -181,8 +181,18 @@ export function m4UnavailableResearch(content:string):boolean{return content.spl
 });}
 export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingTask|'m4_Q00'|'m4_task_assistance'{
   // Capability explanations and preparing a task never reserve user credits. Basic analysis still uses its actual QA category.
-  const greeting=/^(?:(?:你好|您好|嗨|hi|hello)(?:[，,\s]*(?:bondbuddy|项目助手))?|你是谁|你(?:能|可以)(?:帮我)?做什么|你有什么功能|介绍一下你自己)[\s!！?？。,.，]*$/i.test(content.trim());
-  if(!context.citations.length && !context.source_material && !context.reading_artifact && (greeting||/如何使用|怎么使用|使用帮助|产品帮助|支持哪些功能|怎么上传|如何上传/.test(content)))return 'm4_Q00';
+  const greeting=/^(?:(?:你好|您好|嗨|hi|hello)(?:[，,\s]*(?:bondbuddy|项目助手))?|你是谁|你(?:能|可以)(?:帮我)?做什么|你有什么功能|介绍一下你自己)[\s!！?？。,.，]*$/i;
+  const productSurface='(?:bondbuddy|项目助手|产品|本产品|这个产品|材料生成|这个页面|这个功能)';
+  const uploadTarget='(?:(?:财务|审计)?材料|附件|文件|原稿|模板|募集说明书|募集书|参考稿|历史稿|资料)';
+  const outputTarget='(?:(?:已(?:经)?(?:生成|完成)(?:的)?|生成的|当前任务的|本次任务的|本项目的|我的|复核|财务|审计)?(?:成果|结果|文件|报告|word|pdf|修订版|清洁版)(?:文件|报告)?)';
+  const outputOperation='(?:下载|查看|打开|找到|查找)';
+  const outputHelp=`(?:(?:如何|怎么|在哪(?:里)?|哪里|从哪(?:里)?)${outputOperation}${outputTarget}|${outputTarget}(?:如何|怎么|在哪(?:里)?|在哪里)${outputOperation}?|下载(?:入口|链接)(?:在哪(?:里)?|在哪里))`;
+  const workflowHelp='(?:(?:如何|怎么|在哪(?:里)?|哪里)(?:(?:查看|查询|查)(?:任务进度|任务状态|项目进度|项目状态|积分余额|余额|可用积分|积分流水|消费记录|积分记录)|(?:充值|购买)积分|(?:取消|停止)(?:当前|正在运行的|本次)?任务)|(?:任务进度|任务状态|积分余额|积分流水|余额)(?:如何|怎么|在哪(?:里)?|在哪里)(?:查看|查询|查)?|(?:当前|正在运行的|本次)?任务(?:如何|怎么)(?:取消|停止)|积分(?:如何|怎么)(?:充值|购买))';
+  const productHelp=new RegExp(String.raw`^(?:并|也|还)?(?:请问|请你|请|能否|能不能|可以|能|麻烦你|麻烦)?(?:告诉我|帮我|说明|介绍|解释)?\s*(?:${productSurface}(?:的)?\s*)?(?:(?:如何|怎么)使用${productSurface}?|(?:如何|怎么)上传${uploadTarget}?(?:(?:到|至)(?:当前项目|本项目|这个项目|项目))?|${outputHelp}|${workflowHelp}|(?:产品|使用)帮助|支持哪些功能)(?:\s*吗)?$`,'i');
+  // A selected source does not turn product help into paid material analysis. Every
+  // clause must be help: an upload/use phrase cannot make a separate business question free.
+  const clauses=content.split(/[，,。；;：:!！?？\n]/).map(c=>c.trim()).filter(Boolean);
+  if(greeting.test(content.trim())||clauses.length && clauses.every(c=>greeting.test(c)||productHelp.test(c)))return 'm4_Q00';
   if(m4UnavailableDocument(content)||m4UnavailableResearch(content)||m4UnavailableLocalScope(content))return 'm4_task_assistance';
   const analysis=/解释|解读|查询|分析|计算|比较|对比|概念|条款|有哪些|是否|为什么|是什么意思|是什么|有什么|怎么理解|如何理解|同比|比率|公式/.test(content);
   if(context.document_type && !analysis)return 'm4_task_assistance';

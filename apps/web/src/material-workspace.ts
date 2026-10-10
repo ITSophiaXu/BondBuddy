@@ -301,7 +301,10 @@ export class MaterialWorkspace {
         this.cache();
         this.message(`${friendlyError(error)}${this.pendingExecution?' 原制作请求已保留，请核对并重试。':''}`,true,error instanceof ApiError&&error.code==='CREDITS_INSUFFICIENT');
       }
-    }finally{this.executing=false;if(this.live())this.paint();}
+    }finally{this.executing=false;if(this.live()){
+      this.paint();
+      if(this.statusError&&this.reading.selected==='input')this.page?.querySelector('#m4-submit-status')?.scrollIntoView({block:'nearest'});
+    }}
   }
   private async refresh(){if(!this.workspace||!this.live())return;if(this.refreshing)return this.refreshing;const p=(async()=>{try{const w=await this.m4.workspace(this.topicId!);if(!this.live()||this.deletingMaterial)return;this.rememberScroll();this.install(w);await this.loadNames();this.cache();const selection=getSelection();if(selection&&!selection.isCollapsed&&this.page?.contains(selection.anchorNode)){this.paintAgent();this.paintTabs();}else this.paint();}catch(error){if(this.live())this.message(`状态暂未同步。${friendlyError(error)} 原输入与阅读位置保留。`,true);}finally{this.schedulePoll();}})();this.refreshing=p;void p.finally(()=>{if(this.refreshing===p)this.refreshing=undefined;});return p;}
   private schedulePoll(){clearTimeout(this.pollTimer);if(!this.live()||!this.workspace)return;const active=isActiveRun(this.workspace.active_run)||this.workspace.messages.some(m=>['queued','running'].includes(m.reply_status));if(active)this.pollTimer=setTimeout(()=>void this.refresh(),2200);}
