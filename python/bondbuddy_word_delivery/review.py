@@ -23,6 +23,33 @@ ANCHOR_REASONS = {
 }
 
 
+def strip_comment_location_prefix(text):
+    """Remove only explicit source/reader-position prefixes, never evidence prose."""
+    original = text
+    text = re.sub(r"\A\s*原文件\s*[：:]\s*[^；;]*?\.(?:docx?|pdf)\s*[；;]\s*", "", text, count=1, flags=re.I)
+    position = r"正文位置\s*\d+(?:\s*的表格\s*[·，,]?\s*第\s*\d+\s*行\s*[·，,]?\s*第\s*\d+\s*列)?"
+    text = re.sub(r"\A\s*(?:\[\s*" + position + r"\s*\]|" + position + r")\s*(?:[；;]\s*|\n\s*)", "", text, count=1)
+    return text if text.strip() else original
+
+
+def _trim_generated_comment_prefixes(comments):
+    # Review copies may contain comments from an earlier BondBuddy draft. Retain
+    # IDs, authors, dates, runs and anchors; only trim a known redundant prefix.
+    for comment in comments:
+        if not re.fullmatch(r"BondBuddy(?:-[a-f0-9]{12})?", comment.get(Q("author"), "")):
+            continue
+        nodes = list(comment.iter(Q("t")))
+        text = "".join(node.text or "" for node in nodes)
+        remaining = len(text) - len(strip_comment_location_prefix(text))
+        for node in nodes:
+            if remaining <= 0:
+                break
+            value = node.text or ""
+            cut = min(remaining, len(value))
+            node.text = value[cut:]
+            remaining -= cut
+
+
 def _location(ref):
     location = ref.get("locator", {})
     if location.get("path"):
@@ -80,14 +107,15 @@ def _boundary(paragraph, offset):
     raise ValueError("anchor_out_of_range")
 
 
-def _comment_text(finding):
+def _comment_text(finding, *, for_report=False):
     if finding.get("comment_text"):
-        return finding["comment_text"]
-    lines = [f"{finding['finding_id']} · {finding['severity']} · {finding['title']}", finding["description"]]
+        return strip_comment_location_prefix(finding["comment_text"])
+    lines = [f"{finding['finding_id']} · {finding['severity']} · {finding['title']}", strip_comment_location_prefix(finding["description"])]
     if finding.get("check_status") == "carried_forward":
         lines.append(f"沿用报告 {finding['origin_report_id']} 的发现，本轮未据此认定通过。")
     for ref in finding.get("evidence_refs", []):
-        lines.append(f"材料依据：{ref['material_id']} · 版本 {ref['material_version']} · {_location(ref)}\n{ref['quote']}")
+        location = f"{ref['material_id']} · 版本 {ref['material_version']} · {_location(ref)}\n" if for_report else ""
+        lines.append(f"材料依据：{location}{ref['quote']}")
     for rule in finding.get("rule_refs", []):
         lines.append(f"规则依据：{rule['rule_id']} / {rule['rule_version']} / {rule['locator']}\n{rule['quote']}")
     for source in finding.get("public_sources", []):
@@ -103,6 +131,7 @@ def annotate(source, destination, report):
         before = document_signature(root)
         anchors = paragraph_map(root)
         comments = parse_xml(parts["word/comments.xml"]) if "word/comments.xml" in parts else etree.Element(Q("comments"), nsmap={"w": W})
+        _trim_generated_comment_prefixes(comments)
         used = [int(n.get(Q("id"))) for n in root.iter() if n.tag in (Q("commentRangeStart"), Q("commentReference")) and (n.get(Q("id")) or "").isdigit()]
         used += [int(n.get(Q("id"))) for n in comments if (n.get(Q("id")) or "").isdigit()]
         next_id = max(used, default=-1) + 1
@@ -196,7 +225,7 @@ def write_report(destination, report, unanchored):
         document.add_paragraph(f"{DIMENSIONS[check['dimension']]}：{OUTCOMES[check['outcome']]} · {status}\n{check['reason']}\n检查编号：{check['check_id']}\n来源报告：{check['origin_report_id']}")
     for finding in report["findings"]:
         document.add_heading(f"{finding['finding_id']} · {finding['title']}", level=1)
-        document.add_paragraph(_comment_text(finding))
+        document.add_paragraph(_comment_text(finding, for_report=True))
         status = "本轮核对" if finding["check_status"] == "rechecked" else "沿用历史"
         document.add_paragraph(f"结论：{OUTCOMES[finding['conclusion']]}；状态：{status}；来源报告：{finding['origin_report_id']}")
         for target in finding["target_refs"]:
