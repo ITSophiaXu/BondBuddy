@@ -6,12 +6,13 @@ import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { emptyM4Draft } from './m4-workspace.js';
 import { inputManifestHash } from './production-rule-pin.js';
+import { azureBlobs } from './data.js';
 
 const connection = await isolatedTestDatabase(undefined, 'material-delete-workspace');
-test('deleted material and template do not break a shared workspace; ownership and immutable inputs are preserved', { skip: !connection }, async () => {
+test('deleted material and template do not break a shared workspace; ownership and immutable inputs are preserved', { skip: !connection || !process.env.BB_TEST_AZURITE_CONNECTION_STRING }, async () => {
   const pool = new Pool({ connectionString: connection });
   const owner = randomUUID(), foreign = randomUUID(); let actor = owner;
-  const app = createServer({ pool, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: actor, csrfVerified: true }) });
+  const app = createServer({ pool, blobs: azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!), allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: actor, csrfVerified: true }) });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, payload: payload as any, headers: { origin: 'http://bondbuddy.test' } });
   const ok = async (method: string, url: string, payload?: unknown) => { const r = await send(method, url, payload); assert.equal(r.statusCode, 200, r.body); return r.json(); };
   try {
