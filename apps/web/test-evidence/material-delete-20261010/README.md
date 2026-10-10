@@ -13,6 +13,6 @@ Windows / Node 22 / Edge：
 
 同尺寸视口 1440×960 / 390×844；`prototype-review-*` / `review-*` 展示复核材料，`prototype-material-source-*` / `material-source-*` 展示材料生成删除入口。人工核对文件名、可见“删除”文字、手机换行及重传入口。裁剪材料行以排除分区外固定页头；现有下载/替换布局沿用已迁移页面，未新增流程。
 
-真实 PostgreSQL 16 + Azurite 隔离集成结果在同目录 Linux 记录中补充；不将缺依赖而跳过的测试计作通过。
+真实 PostgreSQL 16 + Azurite 隔离集成：10 pass、0 fail、0 skip，退出码 0，见 linux-validation.txt。新用例的用户名、存储准备已修正，最终源码哈希与提交一致。最新 develop（含助手收起）复验：build/contracts 通过，删除/期次提示9/9；此前三项整合主链路16/16。
 
 最终统一验收待办：用户原账号误传纠正、真实 Word/WPS 文件与历史成果确认。自动化使用合成数据，无客户数据变更或真实费用。

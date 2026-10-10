@@ -1,0 +1,49 @@
+#641 isolated Linux validation — 2026-10-10
+
+Synthetic PostgreSQL 16 + Azurite, internal Docker network, tmpfs data, no host ports and no customer credentials/data. Trusted runtime bondbuddy-m1-worker:c9759852463b. Source 8c7310ab8485ac7e945daaa0365140a961b9dcee; API implementation unchanged in final branch. Final test from commit 81282e29048ff6b1aecc7a35145975cf4dbf8c94, canonical LF SHA256 6010693bc1583d282668ddd5b04c8cc2d557b22dda0ac4691b8c1ff298949517. Other changes since test base are independently validated #642/#643 and assistant UI, not the deletion API behavior.
+
+Build: npm ci --include=dev; npm run build; npm run check:contracts PASS. Final test fixture changes recompiled with npm run build -w @bondbuddy/api.
+Tests: node db/migrate.mjs; node --test --test-concurrency=1 apps/api/dist/material-delete-workspace.pg.test.js apps/api/dist/deletion-lifecycle.test.js apps/api/dist/m4-workspace.pg.test.js
+Final: 10 pass, 0 fail, 0 skip, process exit 0.
+
+Earlier failures preserved outside repo in task logs: test-stage mount permission; invalid synthetic usernames; missing blob adapter. Corrected test creates actual synthetic blob bytes with matching hash. LF/CRLF transfer checks stopped mismatched payloads before execution; final source is the exact committed LF file. No runtime fix was needed during these fixture repairs. Final cleanup trap removes only the owned PG/Azurite containers/network.
+
+Enable succeeded: 
+[stdout]
+Sat Oct 10 02:53:10 UTC 2026
+Validation exit=0
+ok 7 - synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage
+  ---
+  duration_ms: 2983.928391
+  type: 'test'
+  ...
+# Subtest: M4 free task preparation and unavailable capabilities do not turn basic QA into free help
+ok 8 - M4 free task preparation and unavailable capabilities do not turn basic QA into free help
+  ---
+  duration_ms: 0.472968
+  type: 'test'
+  ...
+# Subtest: synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering
+ok 9 - synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering
+  ---
+  duration_ms: 10717.642801
+  type: 'test'
+  ...
+# Subtest: deleted material and template do not break a shared workspace; ownership and immutable inputs are preserved
+ok 10 - deleted material and template do not break a shared workspace; ownership and immutable inputs are preserved
+  ---
+  duration_ms: 3351.286337
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41832.731495
+6010693bc1583d282668ddd5b04c8cc2d557b22dda0ac4691b8c1ff298949517  /mnt/bondbuddy-feedback-20261010/641-8c7310ab/apps/api/src/material-delete-workspace.pg.test.ts
+
+[stderr]
