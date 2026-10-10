@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 from docx import Document
 from lxml import etree
-from bondbuddy_word_delivery.review import annotate, write_report
+from bondbuddy_word_delivery.review import annotate, write_report, strip_comment_location_prefix
 from bondbuddy_word_delivery.writer import Q, W, parse_xml, document_signature
 
 
@@ -67,6 +67,47 @@ class ReviewWordTests(unittest.TestCase):
         self.assertEqual(len({c.get(Q('id')) for c in comments}), 3)
         self.assertEqual(document_signature(self.xml(first)), document_signature(self.xml(second)))
         self.assertIn('100万元', Document(second).paragraphs[0].text)
+
+    def test_old_bondbuddy_prefix_is_trimmed_only_in_the_review_copy(self):
+        doc = Document(self.source)
+        prefix = '原文件：合成募集书.docx；正文位置285；'
+        substance = '合成函〔2025〕324号为历史文件；请核实本次发行的有效期。'
+        generated = doc.add_comment(doc.paragraphs[0].runs, author='BondBuddy-1c736c8976a1')
+        generated.paragraphs[0].add_run(prefix[:15]).bold = True
+        generated.paragraphs[0].add_run(prefix[15:] + substance).italic = True
+        doc.add_comment(doc.paragraphs[0].runs, text=prefix + substance, author='人工复核人')
+        doc.save(self.source)
+        before = self.source.read_bytes()
+        before_comments = self.xml(self.source, 'word/comments.xml')
+        out = self.root / 'trimmed.docx'
+        annotate(self.source, out, self.report())
+        comments = self.xml(out, 'word/comments.xml')
+        self.assertEqual(''.join(comments[0].itertext()), substance)
+        self.assertEqual(dict(comments[0].attrib), dict(before_comments[0].attrib))
+        self.assertIsNotNone(comments[0].find('.//' + Q('i')))
+        self.assertEqual(etree.tostring(comments[1]), etree.tostring(before_comments[1]))
+        self.assertEqual(self.source.read_bytes(), before)
+        self.assertEqual(document_signature(self.xml(self.source)), document_signature(self.xml(out)))
+
+    def test_prefix_cleanup_does_not_remove_substantive_locations_or_empty_notes(self):
+        for text in ['根据合成报表第8页，金额应为120万元。', '正文位置285存在重复披露，请删除重复内容。',
+                     '合成函〔2025〕324号第3条要求补证。', '原文件：合成.docx；正文位置285；']:
+            self.assertEqual(strip_comment_location_prefix(text), text)
+        self.assertEqual(strip_comment_location_prefix('正文位置 8 的表格 · 第 2 行 · 第 3 列；金额应为120万元。'), '金额应为120万元。')
+        self.assertEqual(strip_comment_location_prefix('[正文位置 285]\n请补证。'), '请补证。')
+
+    def test_structured_evidence_location_stays_in_report_not_comment(self):
+        report = self.report()
+        report['findings'][0]['evidence_refs'] = [{'material_id': 'synthetic-evidence', 'material_version': 7,
+            'locator': {'stable_ref': 'docx:p0285'}, 'quote': '2025年末资产合计120万元。'}]
+        comments, summary = self.root / 'comments.docx', self.root / 'report.docx'
+        annotate(self.source, comments, report)
+        write_report(summary, report, [])
+        text = ''.join(self.xml(comments, 'word/comments.xml')[0].itertext())
+        self.assertIn('2025年末资产合计120万元', text)
+        self.assertNotIn('第 285 段', text)
+        self.assertNotIn('synthetic-evidence', text)
+        self.assertIn('第 285 段', '\n'.join(p.text for p in Document(summary).paragraphs))
 
     def test_table_cell_anchor_and_multiple_original_positions(self):
         report = self.report()
