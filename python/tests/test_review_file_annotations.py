@@ -9,7 +9,7 @@ from lxml import etree
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Text
 from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
-from bondbuddy_file_authoring.annotate_review import build, plain
+from bondbuddy_file_authoring.annotate_review import build, plain, findings_from_markdown
 from bondbuddy_word_delivery.review import annotate
 from bondbuddy_word_delivery.writer import Q, parse_xml, document_signature
 
@@ -51,11 +51,15 @@ class FileAnnotationTests(unittest.TestCase):
                 body = ''.join(comment.itertext())
                 self.assertIn('核实并修改差额', body)
                 self.assertIn('合成报表金额120万元', body)
+                self.assertNotIn('原文位置', body)
+                self.assertNotIn('原文披露', body)
         markdown = (self.root / 'report.md').read_text(encoding='utf-8')
         self.assertIn('R001 · 金额不符', markdown)
         self.assertIn('R002 · 口径需核对', markdown)
         self.assertIn('3 处原文批注', markdown)
         self.assertIn('上传版本 V7', markdown)
+        self.assertIn('**原文位置：** 第一段', markdown)
+        self.assertIn('**原文披露：** 90万元', markdown)
         self.assertIn('R002', '\n'.join(p.text for p in Document(self.root / 'report.docx').paragraphs))
 
     def test_existing_comments_revisions_and_missing_quotes_are_preserved(self):
@@ -108,6 +112,8 @@ class FileAnnotationTests(unittest.TestCase):
         self.assertEqual(notes[1]['/Subtype'], '/Highlight')
         self.assertIn('R001', notes[1]['/Contents'])
         self.assertIn('合成报表金额120万元', notes[1]['/Contents'])
+        self.assertNotIn('原文位置', notes[1]['/Contents'])
+        self.assertNotIn('原文披露', notes[1]['/Contents'])
         rect = notes[1]['/Rect']
         self.assertGreater(float(rect[0]), 50)
         self.assertLess(float(rect[1]), 700)
@@ -128,6 +134,49 @@ class FileAnnotationTests(unittest.TestCase):
 
     def test_comment_preserves_calculation_operators(self):
         self.assertEqual(plain('**核对依据：** `5 * 3 = 15`'), '核对依据： 5 * 3 = 15')
+
+    def test_location_fields_do_not_leak_but_evidence_and_multiline_advice_survive(self):
+        text = '''### 1. 合成发行文件待核
+**问题说明：** 原文件：合成募集书.docx；正文位置285；历史文件不能直接用于本次发行。
+**原文位置**：合成募集书.docx；正文位置285
+正文位置285的附表
+**原文披露**：100万元
+**核对依据：** 合成函〔2025〕324号第三条；2025年度报表附注第8页，金额120万元。
+https://example.test/synthetic-evidence
+**差异及影响：** `5 * 3 = 15`，单位为万元。
+**修改建议：** 请补充本次发行决议。
+核实文件有效期后再修改。
+**待确认事项：** 缺少最新有效期证明。
+'''
+        _, findings = findings_from_markdown(text)
+        self.assertEqual(findings[0]['targets'], [{'quote': '100万元', 'location': '合成募集书.docx；正文位置285'}])
+        receipt = self.run_writer(text)
+        self.assertEqual((len(receipt['placed']), len(receipt['unanchored'])), (1, 0))
+        with ZipFile(self.root / 'comments.docx') as z:
+            content = ''.join(parse_xml(z.read('word/comments.xml'))[0].itertext())
+        for redundant in ['原文件', '正文位置', '原文位置', '原文披露', '合成募集书.docx']:
+            self.assertNotIn(redundant, content)
+        for substantive in ['历史文件不能直接用于本次发行', '合成函〔2025〕324号第三条',
+                            '报表附注第8页', '120万元', '5 * 3 = 15', '请补充本次发行决议',
+                            '核实文件有效期后再修改', '缺少最新有效期证明', 'https://example.test/synthetic-evidence']:
+            self.assertIn(substantive, content)
+        self.assertIn('正文位置285', (self.root / 'report.md').read_text(encoding='utf-8'))
+
+    def test_legacy_inline_source_prefix_keeps_the_issue(self):
+        _, findings = findings_from_markdown('### 文件待核\n原文件：合成.docx；正文位置285；请核实文件有效期。\n**原文披露：** 100万元\n')
+        self.assertEqual(findings[0]['comment_text'], 'R001 · 文件待核\n请核实文件有效期。')
+
+    def test_pdf_page_hint_still_disambiguates_repeated_quotes(self):
+        source = self.pdf()
+        writer = PdfWriter()
+        writer.append(source)
+        writer.append(source)
+        writer.write(source)
+        text = self.issue('100 million').replace('第一段', '物理第 2 页')
+        receipt = self.run_writer(text, source)
+        self.assertEqual([(item['finding_id'], item['page']) for item in receipt['placed']], [('R001', 2)])
+        notes = [item.get_object() for item in PdfReader(self.root / 'comments.pdf').pages[1]['/Annots']]
+        self.assertNotIn('物理第', notes[-1]['/Contents'])
 
 
 if __name__ == '__main__':
