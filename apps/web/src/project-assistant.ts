@@ -32,7 +32,7 @@ export class ProjectAssistant {
   private m4:M4Api;
   private host=document.createElement('div');
   private open=false;
-  private hidden=false;
+  private active=false;
   private wide=false;
   private history=false;
   private projectPicker=false;
@@ -56,31 +56,51 @@ export class ProjectAssistant {
   private conversationRequest?:{projectId?:string;key:string};
   private projects:Dto<'ProjectListResponse'>['items']=[];
   private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
-    this.hidden=false;sessionStorage.removeItem('bb-assistant-hidden:'+this.owner);this.open=true;this.formOpen=false;this.changed();});};
+    this.open=true;this.formOpen=false;this.changed();});};
   constructor(private api:ApiClient,private owner:string){
-    this.hidden=sessionStorage.getItem('bb-assistant-hidden:'+owner)==='true';
     this.m4=new M4Api(api,this.controller.signal);this.host.className='bb-assistant';document.body.append(this.host);
     this.host.addEventListener('click',e=>void this.click(e));
     this.host.addEventListener('input',e=>this.input(e));
     this.host.addEventListener('change',e=>void this.change(e));
-    this.host.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.open){this.open=false;this.paint();this.host.querySelector<HTMLButtonElement>('[data-a="toggle"]')?.focus();}
+    this.host.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.open){e.preventDefault();void this.setOpen(false);}
       if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(e.target as HTMLElement).matches('[data-composer]')){e.preventDefault();void this.work(()=>this.send());}});
     window.addEventListener('bondbuddy:assistant',this.event);this.paint();
   }
   dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);this.host.remove();}
   mount(){
     if(!this.host.isConnected)document.body.append(this.host);
+    const actions=document.querySelector('.top-actions');
+    if(actions&&!actions.querySelector('[data-assistant-dock]')){
+      const button=document.createElement('button');button.type='button';button.className='ba-dock';button.dataset.assistantDock='';
+      button.innerHTML=icon('buddy')+'<span>项目助手</span><i data-active-dot aria-hidden="true"></i>';
+      button.addEventListener('click',()=>void this.setOpen(!this.open));actions.prepend(button);
+    }
     const navigation=document.querySelector('.sidebar nav[aria-label="账号"]');
     if(navigation&&!navigation.querySelector('[data-assistant-restore]')){
       const button=document.createElement('button');button.type='button';button.className='nav-item assistant-restore';button.dataset.assistantRestore='';
       button.innerHTML=icon('buddy')+'<span>BondBuddy 助手</span>';
       button.title='打开或恢复项目助手';
-      button.addEventListener('click',()=>{this.hidden=false;sessionStorage.removeItem('bb-assistant-hidden:'+this.owner);this.open=true;this.paint();
+      button.addEventListener('click',()=>{
         const menu=document.querySelector<HTMLButtonElement>('#toggle-menu');if(menu?.getAttribute('aria-expanded')==='true')menu.click();
-        if(!this.workspace)void this.work(()=>this.init());else this.host.querySelector<HTMLTextAreaElement>('[data-composer]')?.focus();
+        void this.setOpen(true);
       });
       navigation.prepend(button);
     }
+    this.paintDock();
+  }
+  private async setOpen(open:boolean){
+    this.open=open;this.paint();
+    if(open&&!this.workspace)await this.work(()=>this.init());
+    // Recheck the current state: the user may collapse while initialization is pending.
+    if(this.open)this.host.querySelector<HTMLTextAreaElement>('[data-composer]')?.focus();
+    else document.querySelector<HTMLButtonElement>('[data-assistant-dock]')?.focus();
+  }
+  private paintDock(){
+    const dock=document.querySelector<HTMLButtonElement>('[data-assistant-dock]');if(!dock)return;
+    dock.setAttribute('aria-label',this.open?'收起项目助手':'打开项目助手');
+    dock.setAttribute('aria-expanded',String(this.open));
+    dock.title=this.open?'收起项目助手':'打开项目助手，继续对话';
+    dock.querySelector('[data-active-dot]')?.classList.toggle('is-active',this.active);
   }
   private get live(){return !this.controller.signal.aborted;}
   private get view(){return this.workspace!.view;}
@@ -142,7 +162,7 @@ export class ProjectAssistant {
       this.workspace={...w,view:this.workspace.view};this.cards=c.cards;
       if(this.open&&!this.busy)this.paintTimeline();
       const active=w.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status))||c.cards.some(c=>c.run&&!finished(c.run.state));
-      this.host.querySelector('[data-active-dot]')?.classList.toggle('is-active',active);
+      this.active=active;this.paintDock();
     }catch(e){if(this.live&&this.open){this.status='连接暂时中断，已提交任务继续运行。';this.paintStatus();}}
     if(this.live&&token===this.epoch)this.timer=setTimeout(()=>void this.poll(),this.open?4000:12000);
   }
@@ -269,10 +289,7 @@ export class ProjectAssistant {
   }
   private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=artifactFilename(a);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;
-    if(a==='hide'){this.hidden=true;this.open=false;sessionStorage.setItem('bb-assistant-hidden:'+this.owner,'true');this.paint();
-      const restore=document.querySelector<HTMLElement>('[data-assistant-restore]');
-      (restore?.getClientRects().length?restore:document.querySelector<HTMLElement>('#toggle-menu'))?.focus();return;}
-    if(a==='toggle'){this.open=!this.open;this.paint();if(this.open&&!this.workspace)await this.work(()=>this.init());this.host.querySelector<HTMLElement>(this.open?'[data-composer]':'[data-a="toggle"]')?.focus();return;}
+    if(a==='toggle'){await this.setOpen(!this.open);return;}
     if(a==='wide'){this.wide=!this.wide;this.paint();return;}
     if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
     if(a==='close-project'||a==='project'&&this.projectPicker){this.projectPicker=false;this.paint();this.host.querySelector<HTMLElement>('[data-a="project"]')?.focus();return;}
@@ -364,18 +381,18 @@ export class ProjectAssistant {
   private sizeComposer(){const input=this.host.querySelector<HTMLTextAreaElement>('[data-composer]');if(input){input.style.height='auto';input.style.height=`${Math.min(160,input.scrollHeight)}px`;}}
   private paint(){
     if(!this.live)return;
-    this.host.hidden=this.hidden;
+    this.host.hidden=!this.open;this.paintDock();
     this.host.classList.toggle('ba-wide',this.wide);this.host.classList.toggle('ba-open',this.open);
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
     const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
-    this.host.innerHTML=`<div class="ba-launcher-group"><button class="ba-launcher" data-a="toggle" aria-label="${this.open?'收起':'打开'}项目助手" aria-expanded="${this.open}"><span class="ba-mark">${icon('buddy')}</span><span>BondBuddy</span><i data-active-dot></i></button><button class="ba-hide-launcher" data-a="hide" title="隐藏助手，可从侧栏恢复" aria-label="隐藏项目助手">${icon('close')}</button></div>${this.open?`
-      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原窗口':'展开宽屏'}" aria-label="${this.wide?'还原窗口':'展开宽屏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手" aria-label="收起助手">${icon('minus')}</button><button class="ba-icon-button" data-a="hide" title="隐藏助手，可从侧栏恢复" aria-label="隐藏项目助手">${icon('close')}</button></div></header>
+    this.host.innerHTML=this.open?`
+      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原窗口':'展开宽屏'}" aria-label="${this.wide?'还原窗口':'展开宽屏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起到顶部“项目助手”" aria-label="收起助手">${icon('minus')}</button></div></header>
       <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>${currentProject&&currentProject!==project?.project_id?'<button class="ba-current-project" data-a="current-project">使用当前项目</button>':''}
       ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
       ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
       ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
-      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:''}`;
+      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
     if(this.open){this.paintTimeline();this.paintStatus();this.sizeComposer();
       if(this.busy)this.host.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('.ba-form input:not([type=file]),.ba-form select,.ba-form textarea').forEach(el=>el.disabled=true);
     }
