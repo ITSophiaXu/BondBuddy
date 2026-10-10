@@ -4,6 +4,7 @@ import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { mkdir, readFile } from 'node:fs/promises';
 import type { Dto } from '../src/api';
 
 // Synthetic HTTP boundary; no model, database, OCR or document acceptance.
@@ -136,4 +137,31 @@ test('failed material reads give a retry reason that clears on successful recove
   await expect(page.locator('#start-disabled-reason')).toContainText('材料记录读取失败');await expect(page.locator('#execute-input')).toBeDisabled();
   state.materialReadFails=false;await page.getByRole('button',{name:'刷新已保存材料',exact:true}).click();
   await expect(page.locator('#start-disabled-reason')).toContainText('请先添加');await expect(page.locator('#start-disabled-reason')).not.toContainText('读取失败');
+});
+
+
+for(const width of [1440,390])test(`financial material guidance follows project edits and survives reload ${width}`,async({page})=>{
+  const s=fixture();s.project.update_details={...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-06-30'};
+  await install(page,s);await page.setViewportSize({width,height:width===1440?960:844});await page.goto(`/#/projects/${id}`);
+  const guide=page.locator('[data-financial-upload-guidance]');
+  await expect(guide).toBeVisible();await expect(guide.locator('li')).toHaveText(['2024年度审计报告（含财务报表及附注）','2025年度审计报告（含财务报表及附注）','2026年1—6月财务报表']);
+  await expect(page.locator('.material-file-row')).toHaveCount(0);
+  const box=await guide.boundingBox(),picker=await page.locator('[data-material-role=audit] .material-role-heading').boundingBox();expect(box!.y).toBeGreaterThanOrEqual(picker!.y+picker!.height);
+  if(process.env.BB_GUIDANCE_EVIDENCE){const dir='test-evidence/financial-guidance-20261010';await mkdir(dir,{recursive:true});await page.locator('[data-material-role=audit]').screenshot({path:`${dir}/implementation-${width}.png`});}
+  await page.getByRole('button',{name:'编辑项目信息'}).click();await page.getByLabel('发行方式',{exact:true}).selectOption('public');
+  await page.getByLabel('最新报告期年份').selectOption('2027');await page.getByRole('radio',{name:'年末',exact:true}).check();
+  await expect.poll(()=>s.project.update_details!.reporting_cutoff).toBe('2027-12-31');
+  await expect(guide.locator('li')).toHaveText(['2025年度审计报告（含财务报表及附注）','2026年度审计报告（含财务报表及附注）','2027年度审计报告（含财务报表及附注）']);
+  await page.goto(`/#/projects/${id}?step=materials`);await page.reload();await expect(guide).toBeVisible();await expect(guide.locator('li')).toHaveCount(3);await expect(guide).not.toContainText('1—');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(s.calls.some(c=>c.path==='/runs/execute')).toBe(false);
+});
+
+test('financial material guidance explains missing and invalid project inputs without blocking upload',async({page})=>{
+  const s=fixture();s.project.market=null;s.project.offering=null;s.project.update_details!.reporting_cutoff=null;
+  await install(page,s);await page.goto(`/#/projects/${id}`);const guide=page.locator('[data-financial-upload-guidance]');
+  await expect(guide).toContainText('发行市场、品种／发行方式、财务截止日');await expect(guide.locator('li')).toHaveCount(0);
+  await expect(page.locator('[data-upload-role=audit]')).toBeEnabled();
+  s.project.market='sse';s.project.offering='private';s.project.update_details!.reporting_cutoff='2026-06-29';await page.reload();
+  await expect(guide).toContainText('暂无法确定所需财务期间');await expect(guide.locator('li')).toHaveCount(0);
 });

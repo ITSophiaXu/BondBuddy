@@ -17,3 +17,5 @@
 .source-prospectus small{grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.7}
 
 .source-prospectus .source-period{grid-column:1/-1}.source-period>label>select{width:130px}.source-period .quarter-grid{margin:12px 0;max-width:520px}.source-period label.quarter{flex-direction:row;align-items:center}.source-period input[type=radio]{width:auto;min-height:0;padding:0}.source-period small{display:block}
+
+.financial-upload-guidance{padding:12px 14px;margin:12px 0;background:#f2f7e9;border-radius:6px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}.financial-upload-guidance ul{padding-left:20px;margin:6px 0}.financial-upload-guidance p{margin:4px 0 0;color:#64745c}

@@ -1,3 +1,4 @@
+import { reportingPeriods } from './reporting-periods.js';
 import { projectConversation } from './project-conversation.js';
 import { REVIEW_DIMENSIONS,FINANCIAL_ROLES } from './review-scope.js';
 import { planQueries,hasExternalData } from './query-policy.js';
@@ -46,6 +47,15 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     const status=f.stored?'已上传并保存':failed?f.error:pending?(f.progress===100?'传输完成，正在保存…':'正在上传 '+(f.progress===null?'':f.progress+'%')):'已选择，等待上传';
     return '<div class="file-item"><div class="file-icon">'+icon('file')+'</div><div class="file-name"><strong>'+esc(f.file.name)+'</strong><small class="'+(failed?'upload-error':'')+'">'+bytes(f.file.size)+' · '+esc(status)+'</small>'+(pending?'<progress max="100" '+(f.progress===null?'':'value="'+(f.progress||0)+'"')+' aria-label="'+esc(f.file.name)+'上传进度"></progress>':'')+'</div>'+(failed?'<button type="button" class="text-btn" data-action="retry-project-upload" data-value="'+index+'">重试</button>':'')+'<button type="button" class="icon-btn" data-action="remove-file" data-value="'+index+'" '+(pending?'disabled':'')+' aria-label="移除'+esc(f.file.name)+'">'+icon('close')+'</button></div>'+sourceMetadata(kind,f,index);
   }
+  function financialGuidance(d){
+    let items=[];
+    let note='请先在项目信息中填写发行市场、品种／发行方式和财务截止日，即可查看需要准备的财务期间。';
+    try{if(d.exchange&&offeringsFor(d.exchange).some(([code])=>code===d.offering)){
+      items=reportingPeriods(`${d.year}-${d.quarter}`,d.offering).periods.map(p=>p.type==='annual'?`${p.start.slice(0,4)}年度审计报告（含财务报表及附注）`:`${p.start.slice(0,4)}年1—${Number(p.end.slice(5,7))}月财务报表`);
+      note='按当前品种和财务截止日的通常口径准备；报告已包含的报表及附注无需重复上传。成立不足年限、特殊披露或期间调整，请在补充说明中注明。';
+    }}catch{note='暂无法确定所需财务期间，请核对项目信息中的市场、品种和财务截止日。';}
+    return `<aside class="financial-upload-guidance" aria-label="需要准备的财务材料"><strong>需要准备的财务材料</strong>${items.length?`<ul>${items.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`:''}<p>${esc(note)}</p></aside>`;
+  }
   function uploads(kind,d){
     const files=selected(kind),primary=kind==='review'?'updated':'historical';
     const groups=[];
@@ -54,7 +64,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     groups.push({role:'audit',title:'审计报告 / 财务报表及附注',hint:'必需 · 可上传一份完整审计报告，也可分开上传报表和附注；同一文件无需重复上传。',roles:FINANCIAL_ROLES});
     if(kind==='update')groups.push({role:'fundUse',title:'募投项目与权证材料',hint:'按项目提供：可研报告、备案许可、土地或建设许可证、基金备案许可、子公司股权投资相关材料等。',roles:['fundUse','feasibility','resolutions']});
     const assigned=new Set(groups.flatMap(g=>g.roles));groups.push({role:'other',title:kind==='review'?'其他核对依据':'其他项目材料',hint:kind==='review'?'选填 · 可补充适用法规、工商资料、授信或其他核对依据。':'选填 · 可补充发行方案、授信、经营及其他资料。',roles:[...new Set(files.filter(f=>!assigned.has(f.role)).map(f=>f.role)),'other']});
-    return (kind==='review'?reviewOverview():'')+'<section class="form-section material-sections"><h2>提供项目材料</h2><p>在对应分区添加文件，选中后立即上传。每份材料都会显示上传状态。</p>'+groups.map(g=>'<section class="material-group"><div class="material-group-heading"><h3>'+g.title+'</h3><span>'+files.filter(f=>g.roles.includes(f.role)).length+' 份</span></div><p>'+g.hint+'</p><label class="dropzone compact-dropzone" data-upload-role="'+g.role+'">'+icon('upload')+'<strong>点击或拖入'+g.title+'</strong><span>'+((g.accept||'.docx,.pdf,.xlsx,.csv,.txt').replaceAll('.','').toUpperCase().replaceAll(',',' / '))+'</span><input type="file" data-project-upload-role="'+g.role+'" accept="'+(g.accept||'.docx,.pdf,.xlsx,.csv,.txt')+'" '+(g.single?'':'multiple')+' aria-label="上传'+g.title+'"></label><div class="file-list">'+files.filter(f=>g.roles.includes(f.role)).map(f=>fileRow(kind,f)).join('')+'</div></section>').join('')+'<p class="authoring-help">最多60份、合计80 MB。上传材料免费；扫描件或无法解析的文件需替换后再执行。</p></section>';
+    return (kind==='review'?reviewOverview():'')+'<section class="form-section material-sections"><h2>提供项目材料</h2><p>在对应分区添加文件，选中后立即上传。每份材料都会显示上传状态。</p>'+groups.map(g=>'<section class="material-group"><div class="material-group-heading"><h3>'+g.title+'</h3><span>'+files.filter(f=>g.roles.includes(f.role)).length+' 份</span></div><p>'+g.hint+'</p><label class="dropzone compact-dropzone" data-upload-role="'+g.role+'">'+icon('upload')+'<strong>点击或拖入'+g.title+'</strong><span>'+((g.accept||'.docx,.pdf,.xlsx,.csv,.txt').replaceAll('.','').toUpperCase().replaceAll(',',' / '))+'</span><input type="file" data-project-upload-role="'+g.role+'" accept="'+(g.accept||'.docx,.pdf,.xlsx,.csv,.txt')+'" '+(g.single?'':'multiple')+' aria-label="上传'+g.title+'"></label>'+(kind==='update'&&g.role==='audit'?financialGuidance(d):'')+'<div class="file-list">'+files.filter(f=>g.roles.includes(f.role)).map(f=>fileRow(kind,f)).join('')+'</div></section>').join('')+'<p class="authoring-help">最多60份、合计80 MB。上传材料免费；扫描件或无法解析的文件需替换后再执行。</p></section>';
   }
   function buttonProgress(progress){const button=document.querySelector('#start-task');if(button)button.textContent=progress.transferred?'上传完成，正在准备任务…':'正在提交任务 '+(progress.percent===null?'':progress.percent+'%');}
   async function transfer(kind,item){
