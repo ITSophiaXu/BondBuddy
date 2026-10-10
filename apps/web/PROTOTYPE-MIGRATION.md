@@ -97,3 +97,7 @@ npm test -w @bondbuddy/web -- --workers=1
 ## 2026-10-10 财务材料期间提示（#642）
 
 按用户本次要求落实，详见[产品决定](../../docs/product-decisions/2026-10-10-financial-upload-guidance.md)。原型与现有页面同步，桌面和窄屏截图及 synthetic 验证记录在本次 test-evidence 中登记；历史任务输入与成果保持原版，最终专业验收单独跟踪。
+
+## 2026-10-10 已上传材料删除（#641）
+
+按用户本次要求落实，详见[产品决定](../../docs/product-decisions/2026-10-10-material-deletion.md)。原型与现有页面同步，桌面和窄屏截图及 synthetic 验证记录在本次 test-evidence 中登记；历史任务输入与成果保持原版，最终专业验收单独跟踪。

@@ -135,8 +135,11 @@ async function saveDraft(db:Db,owner:string,topic:string,input:M4DraftInput,expe
   if(pending.length)await consumePendingRequirements(db,owner,topic,input.document_type,row.version);
   await topicEvent(db,owner,topic,'m4.draft_saved',{document_type:input.document_type,version:row.version});return {...row.input,version:row.version,sha256:row.sha256.trim(),updated_at:date(row.updated_at)} as M4Draft;
 }
-async function sharedMaterials(db:Db,owner:string,topic:string):Promise<M4MaterialPin[]>{return (await db.query(`SELECT source_project_id,material_id,material_version,sha256 FROM bb_m4_topic_materials
-  WHERE owner_user_id=$1 AND topic_id=$2 ORDER BY created_at,material_id`,[owner,topic])).rows.map(m=>({...m,sha256:m.sha256.trim()}));}
+async function sharedMaterials(db:Db,owner:string,topic:string):Promise<M4MaterialPin[]>{return (await db.query(`SELECT tm.source_project_id,tm.material_id,tm.material_version,tm.sha256 FROM bb_m4_topic_materials tm
+  JOIN bb_material_versions m ON m.owner_user_id=tm.owner_user_id AND m.project_id=tm.source_project_id
+    AND m.id=tm.material_id AND m.version=tm.material_version AND m.sha256=tm.sha256 AND m.deleted_at IS NULL
+  JOIN bb_projects p ON p.owner_user_id=m.owner_user_id AND p.id=m.project_id AND p.deleted_at IS NULL
+  WHERE tm.owner_user_id=$1 AND tm.topic_id=$2 ORDER BY tm.created_at,tm.material_id`,[owner,topic])).rows.map(m=>({...m,sha256:m.sha256.trim()}));}
 async function adoptMaterial(db:Db,owner:string,topic:string,pin:M4MaterialPin){await readM4MaterialPin(db,owner,pin);await db.query(`INSERT INTO bb_m4_topic_materials(owner_user_id,topic_id,source_project_id,material_id,material_version,sha256)
   VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,[owner,topic,pin.source_project_id,pin.material_id,pin.material_version,pin.sha256]);}
 async function templateFor(db:Db,owner:string,ref:M4DraftInput['template']){if(!ref)return null;const t=(await db.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 AND id=$2 AND version=$3',[owner,ref.template_id,ref.template_version])).rows[0];if(!t || t.sha256.trim()!==ref.sha256 || t.retired_at)stale();return t;}
@@ -349,7 +352,13 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const tasks=await Promise.all(rows.map(async r=>({run:runDto(r),manifest:r.manifest as M4Manifest,created_at:date(r.created_at),artifacts:artifacts.filter(a=>a.run_id===r.id),
     events:(await db.query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq',[owner,r.id])).rows.map(ev=>({event_id:ev.id,schema_version:1 as const,trace_id:ev.trace_id,run_id:ev.run_id,seq:ev.seq,type:ev.type,state:ev.state,stage:ev.stage,payload:runEventPayloadDto(ev),occurred_at:date(ev.occurred_at)}))})));
   const view=(await db.query('SELECT * FROM bb_m4_views WHERE owner_user_id=$1 AND topic_id=$2',[owner,id])).rows[0];
-  const templates=(await db.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 ORDER BY created_at DESC',[owner])).rows.map(templateDto);
+  const templates=(await db.query(`SELECT t.* FROM bb_m4_templates t
+    WHERE t.owner_user_id=$1 AND EXISTS (
+      SELECT 1 FROM bb_material_versions m JOIN bb_projects p ON p.id=m.project_id AND p.owner_user_id=m.owner_user_id
+      WHERE m.owner_user_id=t.owner_user_id AND m.project_id=t.material->>'source_project_id'
+        AND m.id=t.material->>'material_id' AND m.version=(t.material->>'material_version')::int
+        AND m.sha256=t.material->>'sha256' AND m.deleted_at IS NULL AND p.deleted_at IS NULL)
+    ORDER BY t.created_at DESC`,[owner])).rows.map(templateDto);
   const pending_requirements=(await db.query(`SELECT requirement_id,text,message_id,message_version FROM bb_m4_pending_requirements
     WHERE owner_user_id=$1 AND topic_id=$2 AND consumed_document_type IS NULL ORDER BY created_at,requirement_id`,[owner,id])).rows;
   const drafts=Object.fromEntries(await Promise.all(M4_DOCUMENT_TYPES.map(async type=>[type,await readDraft(db,owner,id,type)]))) as M4Workspace['drafts'];

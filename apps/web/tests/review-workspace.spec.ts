@@ -782,3 +782,46 @@ test('review credit prototype comparison',async({page})=>{
   await expect(page.locator('#modal')).toContainText('积分不足，请充值后继续任务');await page.screenshot({path:`${output}/prototype-shortage-${width}.png`});
  }
 });
+
+
+for(const width of [1440,390])test(`delete review uploads, retry failures and preserve report history ${width}`,async({page})=>{
+  const s=fixture();const history=JSON.stringify(s.history);let fail=true,deleted=0;
+  await page.setViewportSize({width,height:width===1440?960:844});await setup(page,s,`#/projects/${id}/review?tab=materials`);
+  await page.route('**/materials/*',async route=>{
+    if(route.request().method()!=='DELETE')return route.fallback();
+    if(fail){fail=false;return reply(route,503,{code:'DATA_UNAVAILABLE'});}
+    const materialId=new URL(route.request().url()).pathname.split('/').at(-1)!;
+    s.workspace.materials=s.workspace.materials.filter(m=>m.material_id!==materialId);deleted++;return route.fulfill({status:204});
+  });
+  page.on('dialog',dialog=>dialog.accept());
+  const button=page.getByRole('button',{name:'删除 合成审计报告.docx',exact:true});
+  await expect(button).toBeVisible();await button.click();
+  await expect(page.locator('#review-status')).toContainText('删除未完成');await expect(button).toBeEnabled();
+  await button.click();await expect(button).toHaveCount(0);
+  await expect.poll(()=>s.workspace.draft.material_versions.some(m=>m.material_id==='material-1')).toBe(false);
+  expect(s.workspace.draft.source_material_ref?.material_id).toBe('material-0');
+  await page.reload();await expect(page.getByRole('button',{name:'删除 合成审计报告.docx',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'删除 合成募集书.docx',exact:true}).click();
+  await expect.poll(()=>s.workspace.draft.source_material_ref).toBeNull();
+  await page.locator('[data-review-upload-role=historical]').setInputFiles({name:'正确募集书.docx',mimeType:mime,buffer:Buffer.from('synthetic corrected source')});
+  await expect.poll(()=>s.workspace.draft.source_material_ref?.material_id).toBe('evidence-new');
+  await expect(page.getByRole('button',{name:'删除 正确募集书.docx',exact:true})).toBeVisible();
+  expect(deleted).toBe(2);expect(JSON.stringify(s.history)).toBe(history);expect(s.executes).toHaveLength(0);
+  if(process.env.BB_DELETE_EVIDENCE){await mkdir('test-evidence/material-delete-20261010',{recursive:true});await page.locator('[data-review-drop=historical]').screenshot({path:`test-evidence/material-delete-20261010/review-${width}.png`});}
+});
+
+test('review upload deletion unlocks after cancellation and repeated upload creates a fresh material',async({page})=>{
+  const s=fixture();s.workspace.active_run=s.makeRun('active-review','running');s.runs.set('active-review',s.workspace.active_run);
+  await setup(page,s,`#/projects/${id}/review?tab=materials`);
+  const button=page.getByRole('button',{name:'删除 合成审计报告.docx',exact:true});await expect(button).toBeDisabled();
+  await expect(page.getByText('当前任务使用的材料已锁定；请先停止任务，停止完成后可删除误传文件并重新上传。')).toBeVisible();
+  s.workspace.active_run=null;s.runs.set('active-review',s.makeRun('active-review','cancelled'));await page.reload();await expect(button).toBeEnabled();
+  page.on('dialog',dialog=>dialog.accept());
+  await page.route('**/materials/*',async route=>{if(route.request().method()!=='DELETE')return route.fallback();const id=new URL(route.request().url()).pathname.split('/').at(-1);s.workspace.materials=s.workspace.materials.filter(m=>m.material_id!==id);return route.abort('connectionreset');});
+  const file={name:'same-report.docx',mimeType:mime,buffer:Buffer.from('synthetic same bytes')};
+  await page.locator('[data-review-upload-role=audit]').setInputFiles(file);const remove=page.getByRole('button',{name:'删除 same-report.docx',exact:true});await expect(remove).toBeEnabled();
+  await remove.click();await expect(remove).toHaveCount(0);
+  await page.locator('[data-review-upload-role=audit]').setInputFiles(file);await expect(remove).toBeEnabled();
+  expect(s.uploads).toHaveLength(2);expect(s.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(false);
+  expect(s.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new-2')).toBe(true);
+});
