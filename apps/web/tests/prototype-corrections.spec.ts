@@ -76,48 +76,60 @@ test('quarter selection -> create -> upload -> original footer action -> refresh
   await page.setViewportSize({width:1440,height:960});
   await expect(page.locator('#create-form input[type=date]')).toHaveCount(0);
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
-  await page.getByRole('radio',{name:'有',exact:true}).check();await page.getByLabel('发行市场',{exact:true}).selectOption('sse');await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('财务截止年份').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();
+  await expect(page.getByRole('radio',{name:'有',exact:true})).toHaveCount(0);await page.getByLabel('发行市场',{exact:true}).selectOption('sse');await page.getByLabel('发行方式',{exact:true}).selectOption('private');
+  await page.getByLabel('最新报告期年份').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await capture(page,'create-desktop');
   await page.setViewportSize({width:390,height:844});await capture(page,'create-mobile');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
   await expect(page.locator('#start-disabled-reason')).toContainText('请先添加');
   expect(state.project.update_details!.reporting_cutoff).toBe('2026-06-30');
-  expect(state.project.update_details!.target_reporting_periods??[]).toEqual([]);
+  expect(state.project.update_details!.target_reporting_periods).toEqual([
+    {start:'2024-01-01',end:'2024-12-31',period_kind:'annual',scope:null,status:'needs_confirmation',evidence_refs:[]},
+    {start:'2025-01-01',end:'2025-12-31',period_kind:'annual',scope:null,status:'needs_confirmation',evidence_refs:[]},
+    {start:'2026-01-01',end:'2026-06-30',period_kind:'interim',scope:null,status:'needs_confirmation',evidence_refs:[]}
+  ]);
   await expect(page.locator('#execution-setup, #target-reporting-period-rows')).toHaveCount(0);
   await expect(page.getByText('准备好，开始更新',{exact:true})).toHaveCount(0);
   await expect(page.locator('#execution-actions input, #execution-actions select')).toHaveCount(0);
   await expect(page.locator('#upload-policy-note')).toHaveText('数据保存与删除说明');
-  await addFile(page);await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
+  await addFile(page);await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeEnabled();
   await page.setViewportSize({width:1440,height:960});await capture(page,'materials-desktop');
   await page.setViewportSize({width:390,height:844});await capture(page,'materials-mobile');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
   const button=page.locator('#execute-input');expect(await button.evaluate(el=>Boolean(el.closest('.form-footer')))).toBe(true);
-  await button.click();await expect(page.locator('#execution-progress')).toContainText('排队中');
+  await button.click();await expect(page.locator('#execution-progress')).toContainText('等待开始');
   expect(state.calls.filter(c=>c.path==='/runs/execute')).toHaveLength(1);
   expect(state.calls.find(c=>c.path.endsWith('/input-revisions')&&c.method==='POST')!.body).not.toHaveProperty('target_confirmation');
-  await page.reload();await expect(page.locator('#execution-progress')).toContainText('排队中');
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('等待开始');
   await expect(page.locator('#start-disabled-reason')).toContainText('已有任务');
   await page.getByRole('button',{name:'编辑项目信息'}).click();
-  await expect(page.getByLabel('财务截止年份')).toHaveValue('2026');await expect(page.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
+  await expect(page.getByLabel('最新报告期年份')).toHaveValue('2026');await expect(page.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
   expect(state.calls.filter(c=>c.path==='/runs/execute')).toHaveLength(1);
 });
 
-test('all quarter ends and year changes preserve existing periods, uncertainty and old non-quarter dates',async({page})=>{
+test('unrelated edits preserve old dates and periods; quarter and year changes derive pending reporting windows',async({page})=>{
   const state=fixture();state.project.update_details!.reporting_cutoff='2024-04-20';await install(page,state);await page.goto(`/#/projects/${id}?step=details`);
   await expect(page.locator('#legacy-cutoff')).toContainText('2024-04-20');await expect(page.locator('[name=reporting_quarter]:checked')).toHaveCount(0);
-  await page.getByLabel('补充说明与写作要求').fill('补充说明，不修改旧日期或期间。');
+  await page.getByLabel('其他已知信息').fill('补充说明，不修改旧日期或期间。');
   await expect(page.locator('#save-state')).toHaveText('已保存');expect(state.project.update_details!.reporting_cutoff).toBe('2024-04-20');
-  await page.getByLabel('财务截止年份').selectOption('2025');
+  expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
+  const expectedWindows=[
+    ['2023-12-31','2024-12-31','2025-03-31'],['2023-12-31','2024-12-31','2025-06-30'],
+    ['2023-12-31','2024-12-31','2025-09-30'],['2024-12-31','2025-12-31']
+  ];
+  await page.getByLabel('最新报告期年份').selectOption('2025');
+  let index=0;
   for(const [label,date] of [['3月末','03-31'],['6月末','06-30'],['9月末','09-30'],['年末','12-31']]) {
     await page.getByRole('radio',{name:label,exact:true}).check();await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe(`2025-${date}`);
-    expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
+    expect(state.project.update_details!.target_reporting_periods).toEqual(expectedWindows[index++].map(end=>({
+      start:`${end.slice(0,4)}-01-01`,end,period_kind:end.endsWith('12-31')?'annual':'interim',scope:null,status:'needs_confirmation',evidence_refs:[]
+    })));
   }
-  await page.getByLabel('财务截止年份').selectOption('2026');await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe('2026-12-31');
+  await page.getByLabel('最新报告期年份').selectOption('2026');await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe('2026-12-31');
   await page.reload();await expect(page.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
   await expect(page.locator('#target-reporting-period-rows, [data-remove-target-period]')).toHaveCount(0);
-  expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
-  for(const call of state.calls.filter(c=>c.method==='PATCH'))expect(call.body.update_details.target_reporting_periods).toEqual(periods);
+  expect(state.project.update_details!.target_reporting_periods).toEqual(['2025-12-31','2026-12-31'].map(end=>({start:`${end.slice(0,4)}-01-01`,end,period_kind:'annual',scope:null,status:'needs_confirmation',evidence_refs:[]})));
+  expect(state.calls.find(c=>c.method==='PATCH')!.body.update_details.target_reporting_periods).toEqual(periods);
 });
 
 test('disabled reason follows actual upload/save state; capability-off only appears after API rejection',async({page})=>{

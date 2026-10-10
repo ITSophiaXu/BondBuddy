@@ -34,6 +34,7 @@ docs/acceptance/*
 !docs/acceptance/m4-workspace-20261006/
 !docs/acceptance/m4-knowledge-20261007/
 !docs/acceptance/raw-upload-20261007/
+!docs/acceptance/agent-qa-v61-2026-10-10.md
 docs/acceptance/m4-workspace-20261006/*
 !docs/acceptance/m4-workspace-20261006/*.png
 !docs/acceptance/m4-workspace-20261006/README.md
