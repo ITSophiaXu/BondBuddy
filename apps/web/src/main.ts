@@ -1,3 +1,4 @@
+import { renderFinancialUploadGuidance } from './financial-upload-guidance';
 import { Dashboard } from './dashboard';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
@@ -696,9 +697,9 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}<button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}</div><div class="material-file-actions"><button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
-    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
+    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
   }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
   return groups;
 }
@@ -737,6 +738,11 @@ function updateMaterialWorkspace(projectId: string) {
           heading.querySelector('div')!.innerHTML = fresh.querySelector('.material-role-heading > div')!.innerHTML;
           const picker = fresh.querySelector('.material-picker'), oldPicker = heading.querySelector('.material-picker');
           if (!picker) oldPicker?.remove(); else if (!oldPicker) heading.append(picker);
+          const guidance = fresh.querySelector('[data-financial-upload-guidance]');
+          const oldGuidance = old.querySelector('[data-financial-upload-guidance]');
+          if (guidance && oldGuidance?.outerHTML !== guidance.outerHTML) {
+            if (oldGuidance) oldGuidance.replaceWith(guidance); else heading.after(guidance);
+          }
           const fileList = old.querySelector('.material-file-list')!;
           if (!fileList.querySelector('[data-source-field]:focus')) fileList.innerHTML = fresh.querySelector('.material-file-list')!.innerHTML;
         }

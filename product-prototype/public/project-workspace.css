@@ -55,3 +55,5 @@
 
 /* 2026-10-07: material requirements live in the form; Q&A remains separate. */
 .studio-layout.material-studio-single{grid-template-columns:minmax(0,1fr)}
+
+.financial-upload-guidance{padding:12px 14px;margin:12px 0;background:#f2f7e9;border-radius:6px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}.financial-upload-guidance ul{padding-left:20px;margin:6px 0}.financial-upload-guidance p{margin:4px 0 0;color:#64745c}

@@ -237,7 +237,17 @@ export class ApiClient {
   }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
-  deleteMaterial(id: string, materialId: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }
+  async deleteMaterial(id: string, materialId: string) {
+    try { await this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }
+    catch (error) {
+      // A lost response may follow a successful tombstone. Reconcile before leaving
+      // the removed file selected in a draft; do not retry a business operation.
+      if (error instanceof ApiError && error.status > 0 && error.status < 500) throw error;
+      try { await this.material(id, materialId); }
+      catch (readError) { if (readError instanceof ApiError && readError.status === 404) return; }
+      throw error;
+    }
+  }
   project(id: string, signal?: AbortSignal) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`, undefined, {}, signal); }
   material(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));

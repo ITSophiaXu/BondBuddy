@@ -5,7 +5,7 @@
 <header class="page-head"><div><div class="eyebrow">BOND WORKSPACE</div><h1>材料生成与问答</h1><p>准备材料与要求，生成可编辑 Word。</p></div></header>
 <div class="m4-grid"><section class="m4-panel" aria-label="任务输入与成果"><nav class="m4-tabs"><button role="tab" aria-selected="true">任务输入</button></nav><div class="m4-content">
 <section class="m4-section">
-<label class="m4-label" for="material-type">材料类型</label><select id="material-type" class="m4-wide"><option value="init">立项报告</option><option value="underwriter" selected>主承销商核查意见</option><option value="legal">法律意见书</option><option value="private_summary">普通私募募集说明书摘要</option></select>
+<label class="m4-label" for="material-type">材料类型</label><select id="material-type" class="m4-wide"><option value="init">立项报告</option><option value="underwriter" selected>主承销商核查意见</option><option value="legal">法律意见书</option><option value="private_summary">募集说明书摘要</option></select>
 <label class="m4-label" for="m4-market">交易所</label><select id="m4-market"><option value="">请选择</option><option value="sse" selected>上海证券交易所</option><option value="szse">深圳证券交易所</option></select>
 <p class="m4-knowledge" role="status" id="knowledge"></p>
 <p class="m4-muted">每次制作一份材料，生成可编辑 Word 和独立制作说明。</p>
@@ -17,7 +17,7 @@
 </div></section><aside class="m4-agent" aria-label="项目助手"><header class="m4-agent-head"><span class="m4-agent-icon">✦</span><div><h2>项目助手</h2><p>理解需求 · 澄清口径 · 执行任务</p></div></header><div class="m4-context">围绕当前材料讨论，补充写作要求</div><div class="m4-messages"><p class="m4-muted">可以说明写作重点、格式及需要保留的内容。</p></div><div class="m4-composer"><label for="prompt">与项目助手讨论</label><textarea id="prompt" placeholder="例如：保留待核事项，不要生成签署页"></textarea><div class="m4-compose-actions"><button class="btn primary">发送</button></div></div></aside></div>
 <p class="m4-muted">2026-10-07 原型补充。示例内容；按钮不创建任务、不上传材料、不扣费。制作中仍采用现有工作区与成果标签。</p>
 </div></main><script>
-const labels={init:'立项报告',underwriter:'主承销商核查意见',legal:'法律意见书',private_summary:'普通私募募集说明书摘要'};
+const labels={init:'立项报告',underwriter:'主承销商核查意见',legal:'法律意见书',private_summary:'募集说明书摘要'};
 function update(){const type=document.querySelector('#material-type').value,market=document.querySelector('#m4-market').value;
 document.querySelector('#knowledge').textContent=market?'已匹配'+(market==='sse'?'上交所':'深交所')+' · '+labels[type]+'编制要求，将与本次材料和写作要求一并使用。':'选择交易所后，自动采用对应材料的编制要求。';
 document.querySelector('#source-title').textContent=type==='init'?'私有立项模板':type==='private_summary'?'来源募集说明书':'来源募集说明书（选填）';
