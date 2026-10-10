@@ -2,7 +2,7 @@
 
 用户反馈旧“×”隐藏整个入口后难以找回，要求收起且不遮挡业务内容。本次取代 #623 的隐藏方式；顶部正常导航布局保留“项目助手”，面板“－”及 Escape 收起到该入口。旧隐藏偏好不再影响入口显示，侧栏仍可打开助手。用户是本次交互变更确认人。
 
-原型与实现源码 commit：`72265eaf649d60bc7c1f9ce4347b663eed70f01d`。原型为 `product-prototype/public/project-assistant-refined.html`，实现为 `apps/web/src/project-assistant.ts` / `project-assistant.css`。无 API、迁移、定价或执行语义变化。
+原型与实现源码 commit：`cfeec225`。原型为 `product-prototype/public/project-assistant-refined.html`，实现为 `apps/web/src/project-assistant.ts` / `project-assistant.css`。无 API、迁移、定价或执行语义变化。
 
 | 同尺寸对照 | 原型 | 实现 |
 | --- | --- | --- |
@@ -23,3 +23,5 @@
 最终统一验收待办：原账号会话与实际浏览器缩放试用。合成工程测试不冒充真实用户验收。
 
 同步 develop 的财务上传提示（271169be）后，web build 和相同 14 项浏览器回归再次通过。GitHub 四个托管检查均因账户付款/额度问题未启动，未计为通过。
+
+同步已合并 #645 的材料标签后（17b707cd），contracts/web build 和相同浏览器测试再次 14 passed / 1 skipped；助手及原型的代码差异为空。
