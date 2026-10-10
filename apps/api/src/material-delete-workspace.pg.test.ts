@@ -15,7 +15,7 @@ test('deleted material and template do not break a shared workspace; ownership a
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, payload: payload as any, headers: { origin: 'http://bondbuddy.test' } });
   const ok = async (method: string, url: string, payload?: unknown) => { const r = await send(method, url, payload); assert.equal(r.statusCode, 200, r.body); return r.json(); };
   try {
-    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [owner, `synthetic-${owner}`, foreign, `synthetic-${foreign}`]);
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [owner, `syn_${owner.replaceAll('-', '').slice(0, 20)}`, foreign, `syn_${foreign.replaceAll('-', '').slice(0, 20)}`]);
     const topic = (await ok('POST', '/api/v1/m4/topics', { creation_request_id: randomUUID(), name: 'Synthetic deletion' })).topic;
     const second = (await ok('POST', '/api/v1/m4/topics', { creation_request_id: randomUUID(), name: 'Synthetic second topic' })).topic;
     const upload = randomUUID(), id = randomUUID(), sha = 'a'.repeat(64), object = `users/${owner}/projects/${topic.project_id}/materials/${upload}`;
