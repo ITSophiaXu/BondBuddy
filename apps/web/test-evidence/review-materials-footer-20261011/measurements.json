@@ -1,0 +1,142 @@
+[
+  {
+    "width": 1826,
+    "footer": {
+      "width": 958,
+      "height": 67.1875
+    },
+    "primary": {
+      "x": 868,
+      "y": 22.09375,
+      "width": 90,
+      "height": 44
+    },
+    "secondary": {
+      "x": 750,
+      "y": 22.09375,
+      "width": 106,
+      "height": 44
+    },
+    "prototypeHeight": 67.1875
+  },
+  {
+    "width": 1440,
+    "footer": {
+      "width": 667,
+      "height": 67.1875
+    },
+    "primary": {
+      "x": 577,
+      "y": 22.09375,
+      "width": 90,
+      "height": 44
+    },
+    "secondary": {
+      "x": 459,
+      "y": 22.09375,
+      "width": 106,
+      "height": 44
+    },
+    "prototypeHeight": 67.1875
+  },
+  {
+    "width": 1100,
+    "footer": {
+      "width": 403,
+      "height": 127.1875
+    },
+    "primary": {
+      "x": 313,
+      "y": 83.1875,
+      "width": 90,
+      "height": 44
+    },
+    "secondary": {
+      "x": 195,
+      "y": 83.1875,
+      "width": 106,
+      "height": 44
+    },
+    "prototypeHeight": 127.1875
+  },
+  {
+    "width": 900,
+    "footer": {
+      "width": 547,
+      "height": 67.1875
+    },
+    "primary": {
+      "x": 457,
+      "y": 22.09375,
+      "width": 90,
+      "height": 44
+    },
+    "secondary": {
+      "x": 339,
+      "y": 22.09375,
+      "width": 106,
+      "height": 44
+    },
+    "prototypeHeight": 67.1875
+  },
+  {
+    "width": 768,
+    "footer": {
+      "width": 415,
+      "height": 127.1875
+    },
+    "primary": {
+      "x": 325,
+      "y": 83.1875,
+      "width": 90,
+      "height": 44
+    },
+    "secondary": {
+      "x": 207,
+      "y": 83.1875,
+      "width": 106,
+      "height": 44
+    },
+    "prototypeHeight": 127.1875
+  },
+  {
+    "width": 390,
+    "footer": {
+      "width": 303,
+      "height": 125.1875
+    },
+    "primary": {
+      "x": 157.5,
+      "y": 81.1875,
+      "width": 145.5,
+      "height": 44
+    },
+    "secondary": {
+      "x": 0,
+      "y": 81.1875,
+      "width": 147.5,
+      "height": 44
+    },
+    "prototypeHeight": 125.1875
+  },
+  {
+    "width": 320,
+    "footer": {
+      "width": 233,
+      "height": 125.1875
+    },
+    "primary": {
+      "x": 122.5,
+      "y": 81.1875,
+      "width": 110.5,
+      "height": 44
+    },
+    "secondary": {
+      "x": 0,
+      "y": 81.1875,
+      "width": 112.5,
+      "height": 44
+    },
+    "prototypeHeight": 125.1875
+  }
+]
