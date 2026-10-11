@@ -35,7 +35,7 @@ function fixture() {
     liveProgress: undefined as Dto<'RunCreditChargeResponse'>['progress'],
     liveActivity: undefined as Dto<'RunEvent'>['payload']['authoring_activity'],
     chargeState: 'held' as 'held'|'settled'|'released', chargeFailure:false, frozen:0,
-    paid:false,freeClassification:false,points:17900,available:17899,priceVersion:'test-v1',
+    paid:false,freeClassification:false,points:17900,available:0,priceVersion:'test-v1',
     order:undefined as Dto<'RechargeOrderResponse'>|undefined,
     parseSucceeded: false,
     runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
@@ -1187,7 +1187,7 @@ for (const scenario of [
 test('credit visibility: one click starts and running receipt follows settlement and retry',async({page})=>{
   const state=fixture(); state.paid=true; state.checkStatus='ready'; state.available=100000; state.runState='running'; state.runStage='provider_call';
   await page.setViewportSize({width:1440,height:960}); await setup(page,state);
-  await expect(page.locator('#execution-credit-hint')).toContainText('处理开始后按进度累计积分');
+  await expect(page.locator('#execution-credit-hint')).toContainText('有积分即可开始，处理时按进度扣减');
   await expect(page.locator('#fixed-quote')).toBeHidden();
   const evidence=process.env.BB_UX_EVIDENCE_DIR;
   if(evidence){await mkdir(evidence,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:width===1440?960:844});await page.locator('#execute-input').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,`implementation-ready-${width}.png`)});}}
@@ -1362,7 +1362,7 @@ test('M2 balance refresh never starts and stale insufficient balance rejects bef
  const state=fixture();state.paid=true;state.checkStatus='ready';await setup(page,state);
  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足');
  state.available=state.points;await page.locator('#refresh-quote').click();await expect(page.locator('#fixed-quote')).toBeHidden();expect(state.executes).toHaveLength(0);
- state.executeError={status:409,code:'CREDITS_INSUFFICIENT',correlation_id:'synthetic'};state.available=1;
+ state.executeError={status:409,code:'CREDITS_INSUFFICIENT',correlation_id:'synthetic'};state.available=0;
  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足');expect(state.runs.size).toBe(0);
 });
 
@@ -1414,5 +1414,28 @@ for(const width of [1440,390])test('live authoring: queue, model activity, growi
  await expect(page.locator('.authoring-credit-meter')).toContainText('1,830 积分');
  await expect(page.locator('.authoring-credit-meter')).toContainText('47,070 积分已释放');
  expect(state.executes).toHaveLength(1);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion dialog, refresh and automatic same-run resume '+width,async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=1;state.runState='running';state.runStage='model_generation';
+ state.liveProgress={policy:'authoring_balance_v2',accrued_points:0,charged_points:0,released_points:0,active_ms:0,pause_requested:false,credit_exhausted:false,available_points:1,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:true};
+ state.liveActivity={activity_id:'c'.repeat(64),code:'write_document',state:'started',summary:'已完成目录核对，正在更新财务章节。'};
+ await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
+ await page.locator('#execute-input').click();await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 1 积分');
+ await expect(page.locator('#execution-progress')).toContainText('已完成目录核对，正在更新财务章节。');
+ expect(state.executes).toHaveLength(1);await expect(page.locator('#fixed-quote')).toBeHidden();
+ const run=[...state.runs.values()][0];
+ state.liveProgress={...state.liveProgress,accrued_points:1,charged_points:1,available_points:0,credit_exhausted:true,clock_running:false};state.available=0;
+ run.state='paused';run.stage='credits_exhausted';state.eventSeq++;
+ await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog')).toContainText('充值后继续');
+ const evidence=process.env.BB_UX_EVIDENCE_DIR;
+ if(evidence){await mkdir(evidence,{recursive:true});await page.screenshot({path:join(evidence,'dynamic-exhausted-'+width+'.png'),fullPage:true});}
+ await page.getByRole('button',{name:'稍后充值'}).click();
+ await page.reload();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'稍后充值'}).click();
+ state.available=20000;state.liveProgress={...state.liveProgress,available_points:20000,credit_exhausted:false,clock_running:true};run.state='running';run.stage='model_generation';state.eventSeq++;
+ await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 20,000 积分');
+ await expect(page.getByRole('dialog')).not.toBeVisible();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+ if(evidence)await page.screenshot({path:join(evidence,'dynamic-resumed-'+width+'.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

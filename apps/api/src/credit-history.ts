@@ -50,7 +50,7 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
   return {page:result.page,items:result.items.map(r=>({reservation_id:r.id,run_id:r.run_id,
     project_id:r.deleted_at||r.project_kind==='qa'?null:r.project_id,project_name:r.deleted_at?'已删除项目':r.project_name,
     task_name:labels[r.task_type]??'项目任务',created_at:date(r.created_at),finalized_at:r.finalized_at?date(r.finalized_at):null,
-    state:r.state,reserved_points:Number(r.points),charged_points:Number(r.charged),released_points:Number(r.released),corrected_points:Number(r.corrected)}))};
+    state:r.state,billing_policy:r.billing_policy,reserved_points:r.billing_policy==='authoring_balance_v2'?0:Number(r.points),charged_points:Number(r.charged),released_points:Number(r.released),corrected_points:Number(r.corrected)}))};
 }
 export async function rechargeHistory(db:Pool,owner:string,query:Query){
   const limit=Number(query.limit??20),after=historyPosition(query.cursor,owner,'recharge');

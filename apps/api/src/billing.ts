@@ -81,11 +81,18 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
     throw new Problem(409, 'QUOTE_CHANGED', '价格已更新，请查看新报价后确认。');
   await lockCreditAccount(c, owner);
   const balance = await creditBalance(c, owner), points = Number(quote.points);
-  if (balance.available < points) throw new Problem(402, 'CREDITS_INSUFFICIENT', `本次任务需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始。`);
+  const dynamic = !reviewIntentHash && quote.task_type in AUTHORING_BILLING_TASKS;
+  if (balance.available < (dynamic ? 1 : points)) throw new Problem(402, 'CREDITS_INSUFFICIENT', dynamic ? '可用积分为 0，请充值后开始；项目材料与补充要求已保留。' : `本次任务需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始。`);
   if ((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1', [quote.id])).rowCount)
     throw new Problem(409, 'IDEMPOTENCY_CONFLICT', 'Quote already used by another execution');
   const reservation = uid();
-  await c.query('INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,$6)', [reservation, owner, run.id, quote.id, points, !reviewIntentHash && quote.task_type in AUTHORING_BILLING_TASKS ? 'authoring_progress_v1' : 'on_delivery']);
+  await c.query('INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,$6)', [reservation, owner, run.id, quote.id, points, dynamic ? 'authoring_balance_v2' : 'on_delivery']);
+  if (dynamic) {
+    await c.query('UPDATE bb_credit_reservations SET charged_points=0 WHERE id=$1', [reservation]);
+    await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1", [run.id, reservation]);
+    run.billing_mode = 'fixed_credits'; run.reservation_id = reservation;
+    return;
+  }
   const lots = await c.query(`SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now())
     ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE`, [owner]);
   let remaining = points;

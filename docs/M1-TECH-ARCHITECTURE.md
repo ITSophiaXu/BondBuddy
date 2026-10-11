@@ -799,3 +799,7 @@ Codex 使用命名文件权限：本次输入只读、scratch/output 可写，�
 Spec没有提供独立全文修订价；review_revision 不写入价目表、不套用完整复核或局部核对价格。开启付费复核后，独立“按问题修订/根据报告更新”若无正式价格，以 BILLING_NOT_READY 明确阻止新收费任务，不自动免费或按最高档收费。旧已提交的试用修订按原条件重放；平台自身修复不新建收费意图。若要开放独立修订，需补充价格与范围决定。
 
 原型 review-v2.html?credits=shortage#materials、review-v2.js；源码 apps/web/src/review-workspace.ts。验收包含正式价的P−1/P、同意图并发、防重复结算、差异核对释放、账本流水、旧试用及价格缺失不免费执行。最终统一验收待办：真实长任务/模型复核与充值返回，由综合验收跟踪。
+
+## 2026-10-11：募集书动态扣款与充值续跑
+
+按 [当前动态余额决定](product-decisions/2026-10-11-authoring-dynamic-balance.md)，新任务以 authoring_balance_v2 锁价但不整笔预留；有效进度同步事务按账户锁追加扣款，余额归零持久化 credit_pause_requested 并在检查点暂停。worker 独立扫描已到账的 credits_exhausted 任务并复用原 run/checkpoint。0104 追加迁移保持旧计费政策；三端和账本需要协调发布。
