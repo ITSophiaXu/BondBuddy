@@ -10,11 +10,11 @@ export function projectKind(hasHistorical: boolean | null | undefined): 'generat
 export function blankDraft(): ProjectCreate {
   return { name: '', kind: 'update', issuer_name: null, market: null, offering: null, update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', source_prospectuses: [] } };
 }
-export function generatedProjectName(issuer: string | null, market: Market | null, offering: Offering | null): string {
+export function generatedProjectName(issuer: string | null, market: Market | null, offering: Offering | null, purpose: 'update' | 'review' = 'update'): string {
   const name = issuer?.trim();
   if (!name) return '';
   const applicable = market && offering && (MARKET_OFFERINGS[market] as readonly Offering[]).includes(offering);
-  const suffix = [market && MARKET_LABELS[market], applicable && OFFERING_LABELS[offering!], '募集书更新'].filter(Boolean).join('-');
+  const suffix = [market && MARKET_LABELS[market], applicable && OFFERING_LABELS[offering!], purpose === 'review' ? '募集书复核' : '募集书更新'].filter(Boolean).join('-');
   const limit = PROJECT_FIELD_LIMITS.name - suffix.length - 1;
   let prefix = '';
   for (const character of name) {
