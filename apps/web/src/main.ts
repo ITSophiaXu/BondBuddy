@@ -36,6 +36,7 @@ import '../../../product-prototype/public/styles.css';
 import '../../../product-prototype/public/project-workspace.css';
 import './prototype-adapter.css';
 import './quarter-controls.css';
+import '../../../product-prototype/public/source-prospectus.css';
 import './credit-wallet.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;

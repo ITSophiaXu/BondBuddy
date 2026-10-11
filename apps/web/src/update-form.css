@@ -13,12 +13,4 @@
 .supplement-panel{position:sticky;top:24px}.supplement-panel ul{padding-left:20px;font-size:13px;line-height:2}
 .update-form .detail-layout{align-items:start}.update-form .form-panel{min-width:0}.update-form .context-panel{min-width:0}
 @media(max-width:1100px){.update-grid{grid-template-columns:1fr}}@media(max-width:900px){.supplement-panel{position:static}}
-.source-prospectus{min-width:0;margin:16px 0;border:1px solid var(--line);border-radius:8px;padding:16px;align-items:start}
-.source-prospectus legend{font-size:13px;font-weight:600;padding:0 6px}
-.source-prospectus label{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px;line-height:1.5}
-.source-prospectus input,.source-prospectus select{box-sizing:border-box;width:100%;min-width:0;min-height:40px;padding:8px;border:1px solid #d5dece;border-radius:6px;background:white;color:var(--ink);font:inherit}
-.source-prospectus small{grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.7}
-
-.source-prospectus .source-period{grid-column:1/-1}.source-period>label>select{width:130px}.source-period .quarter-grid{margin:12px 0;max-width:520px}.source-period label.quarter{flex-direction:row;align-items:center}.source-period input[type=radio]{width:auto;min-height:0;padding:0}.source-period small{display:block}
-
 .financial-upload-guidance{padding:12px 14px;margin:12px 0;background:#f2f7e9;border-radius:6px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}.financial-upload-guidance ul{padding-left:20px;margin:6px 0}.financial-upload-guidance p{margin:4px 0 0;color:#64745c}
