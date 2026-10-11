@@ -27,7 +27,12 @@ export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:stri
   // Completing an in-flight operation after pause cannot increase the frozen bill.
   const work=Math.max(m.work_bps,!j.user_pause_requested&&!j.credit_pause_requested&&(next?.reason==='checkpoint_saved'||next?.reason==='stage_completed')?(milestones[next.stage??'']??0):0);
   const reservation=r.reservation_id?(await c.query('SELECT points,billing_policy FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2',[r.reservation_id,r.owner_user_id])).rows[0]:null;
-  const amount=Math.max(Number(m.accrued_points),accruedAuthoringPoints(Number(reservation?.points??0),active,work));
+  const price=Number(reservation?.points??0),calculated=accruedAuthoringPoints(price,active,work);
+  // An exhausted sample may cross the zero point. Discard that unfunded excess;
+  // topping up must not collect it while the saved task is still queued.
+  const amount=reservation?.billing_policy===DYNAMIC_AUTHORING_POLICY
+    ? Math.min(price,Number(m.accrued_points)+Math.max(0,calculated-accruedAuthoringPoints(price,Number(m.active_ms),Number(m.work_bps))))
+    : Math.max(Number(m.accrued_points),calculated);
   const debit=reservation?.billing_policy===DYNAMIC_AUTHORING_POLICY
     ? await debitAuthoringCredits(c,r,j.credit_pause_requested?Number(m.accrued_points):amount) : null;
   const exhausted=!!debit && debit.available===0 && debit.charged<debit.ceiling;

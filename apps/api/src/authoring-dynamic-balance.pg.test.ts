@@ -77,6 +77,7 @@ test('dynamic billing: one point starts, exhaustion pauses, topup resumes same c
    await Promise.all([fund(7,'one-topup'),fund(7,'one-topup')]);
    assert.deepEqual(await creditBalance(pool,owner),{available:7,frozen:0});
    assert.equal(await resumePausedRun(pool,owner,r.run_id,'credits_recharged'),true);
+   assert.equal((await creditBalance(pool,owner)).available,7,'requeue after payment cannot collect unfunded pre-pause excess');
    assert.equal(await resumePausedRun(pool,owner,r.run_id,'credits_recharged'),false);
    const resumed=await claim(pool);assert.ok(resumed);assert.equal(resumed.runId,r.run_id);
    assert.equal((resumed.checkpoint.stages as any).model_generation.logical_call_id,'durable-synthetic-result');
