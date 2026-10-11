@@ -166,6 +166,23 @@ https://example.test/synthetic-evidence
         _, findings = findings_from_markdown('### 文件待核\n原文件：合成.docx；正文位置285；请核实文件有效期。\n**原文披露：** 100万元\n')
         self.assertEqual(findings[0]['comment_text'], 'R001 · 文件待核\n请核实文件有效期。')
 
+    def test_xlsx_locators_are_omitted_from_docx_and_pdf_comments_but_retained_in_report(self):
+        prefix = '原文件：合成报表.xlsx；工作表《01合并资产负债表》D128、D78；'
+        for source, quote in [(self.source, '100万元'), (self.pdf(), '100 million')]:
+            text = self.issue(quote).replace('合计需核对', prefix + '合计应为120万元，原文少计20万元。')
+            text += '**差异及影响：** 120 - 100 = 20，单位为万元。\n'
+            self.run_writer(text, source)
+            if source.suffix == '.docx':
+                with ZipFile(self.root / 'comments.docx') as z:
+                    content = ''.join(parse_xml(z.read('word/comments.xml'))[0].itertext())
+            else:
+                content = PdfReader(self.root / 'comments.pdf').pages[0]['/Annots'][-1].get_object()['/Contents']
+            for redundant in ['原文件', '工作表', 'D128', '合成报表.xlsx']:
+                self.assertNotIn(redundant, content)
+            self.assertIn('合计应为120万元，原文少计20万元。', content)
+            self.assertIn('120 - 100 = 20', content)
+            self.assertIn(prefix, (self.root / 'report.md').read_text(encoding='utf-8'))
+
     def test_pdf_page_hint_still_disambiguates_repeated_quotes(self):
         source = self.pdf()
         writer = PdfWriter()
