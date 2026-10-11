@@ -622,11 +622,11 @@ test('file report update pins source and optional requirements, survives respons
 test('compact review creation preserves quarter, review kind and existing optional details on edits',async({page})=>{
  const state=fixture();await setup(page,state,'#review');
  await expect(page.locator('#review-create-form input[type=date]')).toHaveCount(0);
- await page.locator('#name').fill('合成复核项目');
+ await expect(page.locator('#name')).toHaveCount(0);
  await page.locator('#issuer').fill('合成发行人');
  await page.locator('#market').selectOption('sse');await page.locator('#offering').selectOption('private');
  await page.locator('#reporting-year').selectOption('2025');await page.getByLabel('9月末',{exact:true}).check();
- await page.route('**/api/v1/projects',async route=>{if(route.request().method()==='POST'){const body=route.request().postDataJSON();expect(body.kind).toBe('review');expect(body.update_details.reporting_cutoff).toBe('2025-09-30');state.workspace.project={...state.workspace.project,...body};return reply(route,201,state.workspace.project);}return route.fallback();});
+ await page.route('**/api/v1/projects',async route=>{if(route.request().method()==='POST'){const body=route.request().postDataJSON();expect(body.kind).toBe('review');expect(body.name).toBe('合成发行人-上交所-普通私募公司债-募集书复核');expect(body.update_details.reporting_cutoff).toBe('2025-09-30');state.workspace.project={...state.workspace.project,...body};return reply(route,201,state.workspace.project);}return route.fallback();});
  await expect(page.getByRole('heading',{name:'发行规模与债券安排'})).toHaveCount(0);
  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
  await expect.poll(()=>state.workspace.project.update_details).toBeDefined();
@@ -824,4 +824,46 @@ test('review upload deletion unlocks after cancellation and repeated upload crea
   await page.locator('[data-review-upload-role=audit]').setInputFiles(file);await expect(remove).toBeEnabled();
   expect(s.uploads).toHaveLength(2);expect(s.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(false);
   expect(s.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new-2')).toBe(true);
+});
+
+for(const width of [1440,390])test('review setup explains scope and generates a name '+width,async({page})=>{
+ const state=fixture();await page.setViewportSize({width,height:width===1440?1040:844});await setup(page,state,'#review');
+ const form=page.locator('#review-create-form'),preview=page.locator('#generated-review-name');
+ await expect(form.locator('.review-create-intro .required')).toHaveText('必填：发行人全称');
+ await expect(form.locator('label .required')).toHaveCount(0);
+ await expect(preview).toHaveText('填写发行人后自动生成');
+ await expect(form.locator('.review-scope-item[open]')).toHaveCount(0);
+ await expect(form.getByText('暂未自动联网核验',{exact:true})).toBeVisible();
+ await page.locator('#issuer').fill('   ');await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+ await expect(page.locator('#review-create-status')).toHaveText('请填写发行人全称。');
+ await page.locator('#issuer').fill('合成发行人有限公司');
+ await expect(preview).toHaveText('合成发行人有限公司-募集书复核');
+ const compliance=form.locator('[data-scope=compliance]');await compliance.locator('summary').focus();await page.keyboard.press('Enter');
+ await expect(compliance).toHaveAttribute('open','');await expect(compliance).toContainText('选择发行市场和品种后');
+ await page.locator('#market').selectOption('sse');await page.locator('#offering').selectOption('private');
+ await expect(preview).toHaveText('合成发行人有限公司-上交所-普通私募公司债-募集书复核');
+ await expect(compliance).toContainText('非公开发行公司债券挂牌');
+ await page.locator('#market').selectOption('nafmii');await expect(page.locator('#offering')).toHaveValue('');
+ await expect(compliance).toContainText('选择发行市场和品种后');
+ await page.locator('#offering').selectOption('ppn');await expect(compliance).toContainText('定向发行协议');
+ await expect(compliance).not.toContainText('公司债券发行与交易管理办法');
+ await page.locator('#offering').selectOption('dfi');await expect(compliance).toContainText('统一注册');
+ await page.locator('#market').selectOption('szse');await page.locator('#offering').selectOption('public_all');
+ await expect(compliance).toContainText('深圳证券交易所公司债券发行上市审核及上市');
+ await page.locator('#market').selectOption('sse');await page.locator('#offering').selectOption('private');
+ await page.locator('#reporting-year').selectOption('2026');await page.getByLabel('9月末',{exact:true}).check();
+ await compliance.locator('summary').click();
+ const evidence=process.env.BB_REVIEW_SETUP_EVIDENCE;
+ if(evidence){await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0)});await page.screenshot({path:evidence+'/implementation-collapsed-'+width+'.png',fullPage:true});}
+ await compliance.locator('summary').click();
+ const publicScope=form.locator('[data-scope=public]');await publicScope.locator('summary').click();
+ await expect(publicScope).toContainText('不会自动访问工商网站');await expect(publicScope).toContainText('信用代码');await expect(publicScope).toContainText('事实时点');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ if(evidence){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:evidence+'/implementation-expanded-'+width+'.png',fullPage:true});}
+ if(evidence&&width===1440){
+  const css=await page.evaluate(()=>[...document.querySelectorAll('style[data-vite-dev-id]')].map(el=>el.textContent).join('\n'));
+  const html=await page.locator('.prototype-app').evaluate(el=>el.outerHTML);
+  await writeFile(evidence+'/scene.json',JSON.stringify({css,html}));
+ }
+ expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
 });
