@@ -416,7 +416,7 @@ async function renderRoute() {
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
   shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
-    <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value)}
+    <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section></div></form>`, 'new');
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
@@ -424,7 +424,7 @@ function renderNew(handoffQuery=new URLSearchParams()) {
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     const value = readUpdateForm(form); value.name = value.name.trim();
-    const errors = validateDraft(value);
+    const errors = value.issuer_name ? validateDraft(value) : ['请填写发行人全称。'];
     if (errors.length) { const target = document.querySelector<HTMLElement>('#page-error')!; target.textContent = errors.join(' '); target.hidden = false; return; }
     creating = true;
     const controls = [...form.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement>('input,button,select,textarea')].map(control => ({ control, disabled: control.disabled }));

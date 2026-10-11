@@ -14,9 +14,17 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
   const fields=kind=>{const {dataUpdate,updateYears,sourceScope,majorRestructuring,investorProtection,protectionTerms,registrationMode,conversationTopic,conversationDrafts,messageEditIndex,messageDraft,informationLayout,...d}=draft(kind);return {...d,...normaliseOptional(d),updateMode:'full',kind,scope:`${d.exchange}-${d.offering}`,periods:`${d.year}-${d.quarter}`,projectMessages:JSON.stringify(d.projectMessages||[]),projectId:undefined,assessment:undefined};};
   function invalidate(kind){const d=draft(kind);if(d.assessment){delete d.assessment;saveDraft(kind);}}
   const conversation=projectConversation({state,draft,saveDraft,esc,icon,render,invalidate,document});
+  function autoTitle(d){
+    const issuer=(d.issuer||'').trim();if(!issuer)return '';
+    const suffix=[MARKETS.find(([id])=>id===d.exchange)?.[1],d.exchange&&offeringsFor(d.exchange).find(([id])=>id===d.offering)?.[1],'募集书更新'].filter(Boolean).join('-');
+    let prefix='';for(const c of issuer){if(prefix.length+c.length>120-suffix.length-1)break;prefix+=c;}return prefix+'-'+suffix;
+  }
   function basics(kind,d){
+    const automatic=kind==='update'&&!d.projectId;
+    if(automatic)d.title=autoTitle(d);
+    const identity=automatic?`<div class="field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer" required maxlength="200" value="${esc(d.issuer||'')}"><small>填写发行人法定全称</small></div><div class="field"><label for="generated-project-name">项目名称 <span class="optional">自动生成</span></label><output id="generated-project-name" for="issuer exchange offering" aria-live="polite">${esc(d.title)||'填写发行人后自动生成'}</output><small>根据发行人、发行市场和发行方式自动生成，无需填写。</small></div>`:`${textField('title','项目名称',d.title,'例如：2026年第一期债券',kind==='review')}${textField('issuer','发行人全称',d.issuer,'填写本次发行人的法定全称',kind==='review')}`;
     const currentYear=new Date().getFullYear();
-    return `${kind==='review'?reviewOverview():''}<section class="form-section"><h2>项目基本信息</h2><p>${kind==='review'?'填写必要信息，用于确定适用规则和财务核对期间。':'填写本次发行安排；选填信息可按已知情况补充。'}</p><div class="field-grid">${textField('title','项目名称',d.title,'例如：2026年第一期债券',true)}${textField('issuer','发行人全称',d.issuer,'填写本次发行人的法定全称',true)}${select('exchange','发行市场',MARKETS,d.exchange,true)}${select('offering',d.exchange==='nafmii'?'债务融资工具品种':'发行方式',offeringsFor(d.exchange),d.offering,true)}<div class="field full"><label for="year">最新报告期 <span class="required">*</span></label><div class="period-row"><select id="year" name="year" required>${Array.from({length:currentYear-1998},(_,i)=>currentYear+1-i).map(y=>`<option value="${y}" ${String(y)===d.year?'selected':''}>${y} 年</option>`).join('')}</select><div class="quarter-grid">${[['03-31','3月末'],['06-30','6月末'],['09-30','9月末'],['12-31','年末']].map(([v,l])=>`<label class="quarter"><input type="radio" name="quarter" value="${v}" ${v===d.quarter?'checked':''} required>${l}</label>`).join('')}</div></div>${reportingPreview(d,kind==='update'?'simple':false)}</div></div></section>${kind==='update'?authoring.optional(d):''}`;
+    return `${kind==='review'?reviewOverview():''}<section class="form-section"><h2>项目基本信息${kind==='update'?' <span class="required">必填</span>':''}</h2><p>${kind==='review'?'填写必要信息，用于确定适用规则和财务核对期间。':'填写发行人全称即可自动生成项目名称，其他尚未确定的信息可留空保存。'}</p><div class="field-grid">${identity}${select('exchange','发行市场',MARKETS,d.exchange,kind==='review')}${select('offering',d.exchange==='nafmii'?'债务融资工具品种':'发行方式',offeringsFor(d.exchange),d.offering,kind==='review')}<div class="field full"><label for="year">最新报告期${kind==='review'?' <span class="required">*</span>':''}</label><div class="period-row"><select id="year" name="year" ${kind==='review'?'required':''}>${Array.from({length:currentYear-1998},(_,i)=>currentYear+1-i).map(y=>`<option value="${y}" ${String(y)===d.year?'selected':''}>${y} 年</option>`).join('')}</select><div class="quarter-grid">${[['03-31','3月末'],['06-30','6月末'],['09-30','9月末'],['12-31','年末']].map(([v,l])=>`<label class="quarter"><input type="radio" name="quarter" value="${v}" ${v===d.quarter?'checked':''} ${kind==='review'?'required':''}>${l}</label>`).join('')}</div></div>${reportingPreview(d,kind==='update'?'simple':false)}</div></div></section>${kind==='update'?authoring.optional(d):''}`;
   }
   function selected(kind){const d=draft(kind);return state.files[kind].filter(f=>kind==='review'?f.role!=='reference':SUPPORT_ROLES.includes(f.role)||['historical','userReference'].includes(f.role));}
   function reviewOverview(){
@@ -160,7 +168,11 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
   }
   function input(el){
     if(el.id==='project-message'){draft(state.route).messageDraft=el.value;saveDraft(state.route);return;}
-    if(el.closest('#workflow-form')&&el.name)invalidate(state.route);
+    if(el.closest('#workflow-form')&&el.name){
+      const d=draft(state.route);
+      if(state.route==='update'&&!d.projectId){d[el.name]=el.value;d.title=autoTitle(d);const output=document.querySelector('#generated-project-name');if(output)output.value=d.title||'填写发行人后自动生成';}
+      invalidate(state.route);
+    }
   }
   function change(el){
     if(el.dataset?.prototypeSource!==undefined){const i=Number(el.dataset.prototypeSource),f=state.files[state.route][i],d=draft(state.route);d.sourceProspectuses??={};const v=d.sourceProspectuses[f.key||i]??={};v[el.dataset.sourceField]=el.value;if(el.dataset.sourceField==='market')v.offering='';invalidate(state.route);saveDraft(state.route);void render();return true;}

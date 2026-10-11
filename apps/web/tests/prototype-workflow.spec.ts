@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Dto } from '../src/api';
 import { createHash } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
 
 // Synthetic API state; the UI, routing, saves and layouts are real browser code.
 async function setup(page: Page, options: { beforeProjectRead?: () => Promise<void>; failProjectRead?: boolean } = {}) {
@@ -52,8 +53,7 @@ test('prototype dashboard leads through creation to materials with persistent ma
   const errors: string[]=[]; page.on('pageerror',e=>errors.push(e.message));
   const state=await setup(page);
   await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
-  await expect(page.locator('.workflow-card')).toHaveCount(4);
-  await expect(page.locator('.stats')).not.toContainText('0 份');
+  await expect(page.locator('.dashboard-start a')).toHaveCount(3);
   await page.setViewportSize({width:1440,height:960});
   await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),'bb361-dashboard-desktop.png'),fullPage:true});
@@ -63,11 +63,11 @@ test('prototype dashboard leads through creation to materials with persistent ma
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
   await page.getByRole('button',{name:'打开菜单'}).click();
   await expect(page.getByRole('link',{name:'全部项目',exact:true}).first()).toBeVisible();
-  await page.getByRole('link',{name:'更新募集书',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'更新募集书',exact:true}).click();
   await expect(page.getByRole('heading',{name:'更新募集说明书'})).toBeVisible();
   await page.setViewportSize({width:1440,height:960});
   await expect(page.locator('.step.current')).toContainText('创建项目');
-  await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');
+
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await expect(page.locator('[name=has_historical]')).toHaveCount(0);
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
@@ -104,10 +104,10 @@ test('creating an update keeps its navigation active while the project loads',as
   const pending = new Promise<void>(resolve => { release=resolve; });
   await setup(page,{beforeProjectRead:()=>pending});
   await page.locator('.dashboard-start').getByRole('link',{name:'更新募集书',exact:true}).click();
-  await page.getByLabel('项目名称').fill('合成导航验收');
+
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.getByRole('status')).toContainText('正在读取项目');
+  await expect(page.getByRole('status').filter({hasText:'正在读取项目'})).toBeVisible();
   await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
   release();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
@@ -126,7 +126,7 @@ for (const width of [1440, 390]) {
     await expect(page.locator('#other_agencies-note')).toHaveText('如律师事务所等。');
     const originalNotes = await form.locator('.field-note').allTextContents();
     const fields: Record<string, string> = {
-      name: '合成注释验收项目', issuer: '合成发行人有限公司', registration_amount: '20', issuance_amount: '10',
+      issuer: '合成发行人有限公司', registration_amount: '20', issuance_amount: '10',
       bond_terms: '3年期，分两个品种', underwriting: '合成证券担任主承销商', other_agencies: '合成律师事务所',
       rating_enhancement: '主体评级AA+', other_information: '合成授信资料待补充'
     };
@@ -159,7 +159,7 @@ for (const width of [1440, 390]) {
     await page.screenshot({path:join(tmpdir(), `bb-project-notes-${width}-filled.png`), fullPage:true});
     await page.getByRole('button', {name:'创建项目，继续提供材料'}).click();
     await expect(page.getByRole('heading', {name:'提供项目材料'})).toBeVisible();
-    expect(state.projects[0].name).toBe(fields.name);
+    expect(state.projects[0].name).toBe(`${fields.issuer}-募集书更新`);
     expect(state.projects[0].update_details?.underwriting).toBe(fields.underwriting);
     expect(state.projects[0].update_details?.funding_uses[0].amount?.value).toBe('1.5');
     expect(JSON.stringify(state.writes)).not.toContain('沿用历史募集说明书内容');
@@ -183,7 +183,7 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
     const pending = new Promise<void>(resolve => { release=resolve; });
     await setup(page,{beforeProjectRead:()=>pending,failProjectRead:true});
     await page.goto(`/#/projects/synthetic-design-project${suffix}`);
-    await expect(page.getByRole('status')).toContainText('正在读取项目');
+    await expect(page.getByRole('status').filter({hasText:'正在读取项目'})).toBeVisible();
     await expect(page.locator('.nav-item.active')).toHaveText(active);
     release();
     await expect(page.getByRole('heading',{name:'项目暂时无法打开'})).toBeVisible();
@@ -200,4 +200,68 @@ test('unavailable modules retain original navigation but never create demo work'
   expect(state.writes).toEqual([]);
   await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
   await page.goto('/'); await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
+});
+
+for (const width of [1440, 390]) {
+  test(`automatic project name saves and restores without manual naming (${width}px)`, async ({page}) => {
+    const state = await setup(page);
+    await page.setViewportSize({width, height: width === 1440 ? 960 : 844});
+    await page.goto('/#update');
+    const form = page.locator('#create-form');
+    await expect(form.locator('h2').first()).toHaveText('项目基本信息 必填');
+    await expect(form.locator('input[name=name]')).toHaveCount(0);
+    const preview = page.locator('#generated-project-name');
+    await expect(preview).toHaveText('填写发行人后自动生成');
+    await page.getByLabel('发行人全称').fill('   ');
+    await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+    await expect(page.locator('#page-error')).toHaveText('请填写发行人全称。');
+    expect(state.writes).toHaveLength(0);
+    await page.getByLabel('发行人全称').fill('  合成发行人有限公司  ');
+    await expect(preview).toHaveText('合成发行人有限公司-募集书更新');
+    await page.getByLabel('发行市场',{exact:true}).selectOption('nafmii');
+    await page.getByLabel('发行方式',{exact:true}).selectOption('dfi');
+    await expect(preview).toHaveText('合成发行人有限公司-交易商协会-DFI · 储架发行-募集书更新');
+    await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
+    await expect(page.getByLabel('发行方式',{exact:true})).toHaveValue('');
+    await expect(preview).toHaveText('合成发行人有限公司-上交所-募集书更新');
+    await page.getByLabel('发行方式',{exact:true}).selectOption('private');
+    await expect(preview).toHaveText('合成发行人有限公司-上交所-普通私募公司债-募集书更新');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if(process.env.BB_NAME_EVIDENCE){
+      const dir='test-evidence/project-auto-name-20261011';await mkdir(dir,{recursive:true});
+      await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0);});
+      await page.screenshot({path:`${dir}/implementation-${width}.png`});
+    }
+    const generated = await preview.textContent();
+    await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+    await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
+    expect(state.projects[0].name).toBe(generated);
+    expect(state.projects[0].issuer_name).toBe('合成发行人有限公司');
+    await page.getByRole('button',{name:'编辑项目信息'}).click();
+    await page.reload();
+    await expect(page.getByLabel('项目名称',{exact:true})).toHaveValue(generated!);
+    await page.getByLabel('项目名称',{exact:true}).fill('原有自定义名称');
+    await expect.poll(()=>state.projects[0].name).toBe('原有自定义名称');
+    await page.reload();
+    await page.getByLabel('发行人全称').fill('已调整发行人有限公司');
+    await expect.poll(()=>state.projects[0].issuer_name).toBe('已调整发行人有限公司');
+    expect(state.projects[0].name).toBe('原有自定义名称');
+    expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
+  });
+}
+
+test('issuer alone and a long Unicode issuer can create projects within the public name limit',async({page})=>{
+  const state=await setup(page);
+  await page.goto('/#update');
+  const issuer='合成𠮷'.repeat(45);
+  await page.getByLabel('发行人全称').fill(issuer);
+  const name=await page.locator('#generated-project-name').textContent();
+  expect(name!.length).toBeLessThanOrEqual(120);
+  expect(name).toMatch(/-募集书更新$/);
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+  await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
+  expect(state.projects[0].name).toBe(name);
+  expect(state.projects[0].issuer_name).toBe(issuer);
+  expect(state.projects[0].market).toBeNull();
+  expect(state.projects[0].offering).toBeNull();
 });

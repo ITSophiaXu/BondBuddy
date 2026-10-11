@@ -61,3 +61,6 @@
 .studio-layout.material-studio-single{grid-template-columns:minmax(0,1fr)}
 
 .financial-upload-guidance{padding:12px 14px;margin:12px 0;background:#f2f7e9;border-radius:6px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}.financial-upload-guidance ul{padding-left:20px;margin:6px 0}.financial-upload-guidance p{margin:4px 0 0;color:#64745c}
+
+#workflow-form h2 .required{font-size:12px;font-weight:400;margin-left:8px}
+#workflow-form output{display:block;min-height:46px;padding:12px;border:1px solid var(--line);border-radius:7px;background:#f7f9f3;font-size:14px;line-height:1.6;overflow-wrap:anywhere}

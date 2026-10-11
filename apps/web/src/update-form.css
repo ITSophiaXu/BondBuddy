@@ -1,5 +1,7 @@
 .update-form .update-section + .update-section{border-top:1px solid var(--line);margin-top:28px;padding-top:24px}
 .update-form .update-section h2{margin-bottom:12px}.update-form .optional{font-size:12px;font-weight:400;color:var(--muted)}
+.update-form h2 .required{font-size:12px;font-weight:400;margin-left:8px}
+.update-form output{display:block;min-height:46px;padding:12px;border:1px solid var(--line);border-radius:7px;background:#f7f9f3;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
 .update-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.update-field.full{grid-column:1/-1}
 .update-form .field-hint,.update-form small{font-size:12px;color:var(--muted);line-height:1.85}.update-form .field-hint{margin:10px 0 16px}
 .update-form .field-note{margin:7px 0 0;font-size:12px;line-height:1.75;color:#63725c;overflow-wrap:anywhere}
