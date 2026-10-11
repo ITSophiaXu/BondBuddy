@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>复核要求 · BondBuddy 交互原型</title>
+<link rel="stylesheet" href="/review-v2.css">
+<style>
+  .workspace-grid{display:block}.workspace{max-width:none}.work-panel{padding:0}.work-content{padding:28px}.topbar-actions button{white-space:nowrap}.requirements{border-top:1px solid var(--line,#e1e7dc);margin-top:24px;padding-top:24px}.requirements label{display:block;font-size:15px;font-weight:600}.requirements p,.saved{font-size:12px;color:#758375;line-height:1.8}.requirements textarea{display:block;box-sizing:border-box;width:100%;margin:12px 0;min-height:116px;resize:vertical;border:1px solid #ccd9c2;border-radius:6px;padding:12px;font:inherit;color:#173e33;background:white}.save-row{display:flex;justify-content:space-between;align-items:center;gap:12px}.scope-grid{margin:24px 0}.action-footer{margin-top:24px}.floating-buddy{position:fixed;right:24px;top:82px;width:min(390px,calc(100vw - 32px));height:440px;box-sizing:border-box;padding:20px;border:1px solid #d7e3ce;border-radius:14px;background:#fff;box-shadow:0 16px 50px #173e3325;z-index:20}.floating-buddy[hidden]{display:none}.buddy-head{display:flex;justify-content:space-between;align-items:center}.floating-buddy textarea{box-sizing:border-box;width:100%;margin-top:30px;padding:12px;border:1px solid #ccd9c2;border-radius:8px;resize:vertical}.material-row{margin:10px 0}.topbar{gap:12px}.work-tabs .tab{cursor:default}@media(max-width:760px){.workspace{padding:20px 16px}.work-content{padding:20px 16px}.topbar{padding:14px 16px;flex-wrap:wrap}.topbar-actions{margin-left:auto}.floating-buddy{right:16px;top:110px}.action-footer{flex-wrap:wrap}.action-footer .primary{margin-left:auto}}
+</style>
+<body>
+<aside class="sidebar" aria-label="主导航"><a class="brand" href="#"><img src="/favicon.svg" width="32" height="32" alt=""><span>bondbuddy<small>BETA</small></span></a><div class="workspace-chip">我的工作空间</div><nav><a class="nav-item" href="#">工作台</a><div class="nav-label">开始工作</div><a class="nav-item" href="#">更新募集书</a><a class="nav-item active" href="#">复核募集书</a><a class="nav-item" href="#">材料生成</a><div class="nav-label">工作空间</div><a class="nav-item" href="#">全部项目</a></nav></aside>
+<div class="app-shell"><header class="topbar"><div class="breadcrumbs">工作空间　›　复核募集书</div><div class="topbar-actions"><button class="button secondary small" id="buddy-toggle" aria-expanded="false" aria-controls="buddy">项目助手</button><span class="prototype-pill">交互原型 · 示例数据</span></div></header>
+<main class="workspace"><div class="workspace-grid"><section class="work-panel" aria-label="复核内容"><nav class="work-tabs"><span class="tab active">材料与要求</span><span class="tab">复核结果</span></nav><div class="work-content">
+<div class="context-strip"><div><strong>项目信息</strong><p>合成发行人 · 上交所 · 普通私募公司债</p></div></div>
+<div class="section-heading"><h2>提供复核材料</h2></div><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。</p>
+<div class="section-heading"><h3>待复核募集书</h3></div><div class="material-row"><div class="file-info"><strong>示例募集说明书.docx</strong><span class="file-meta">待复核募集书 · 899 KB</span></div><span class="file-status">已保存</span></div>
+<div class="section-heading"><h3>审计报告 / 财务报表及附注</h3></div><div class="material-row"><div class="file-info"><strong>示例审计报告.pdf</strong><span class="file-meta">审计报告 · 132 KB</span></div><span class="file-status">已保存</span></div>
+<section class="requirements"><label for="requirements">补充复核要求（选填）</label><p>填写希望重点核对的内容、统计口径或特殊情况。要求自动保存，开始复核时一并采用。</p><textarea id="requirements" rows="4" placeholder="例如：请重点核对法定代表人信息是否准确，并核对各处披露是否一致。"></textarea><div class="save-row"><span class="saved" id="saved" role="status">要求已保存</span><button class="text-button" id="save">保存要求</button></div></section>
+<div class="action-footer"><div><strong>准备好了，就可以开始。</strong><p>确认材料与要求后，点击开始复核。</p></div><button class="button primary" id="start">开始复核</button></div><p class="saved" id="execution" role="status"></p>
+</div></section></div></main></div>
+<section class="floating-buddy" id="buddy" aria-label="BondBuddy 项目助手" hidden><div class="buddy-head"><strong>BondBuddy</strong><button class="icon-button" id="collapse" aria-label="收起项目助手">−</button></div><p>围绕项目提问、整理思路或准备下一项任务。</p><textarea rows="4" placeholder="说说你想完成什么…"></textarea><p class="saved">交互示例，未连接模型。</p></section>
+<script>
+const input=document.querySelector('#requirements'),status=document.querySelector('#saved'),buddy=document.querySelector('#buddy'),toggle=document.querySelector('#buddy-toggle');
+input.value=localStorage.getItem('review-requirements-prototype')||'';
+function save(){localStorage.setItem('review-requirements-prototype',input.value);status.textContent='要求已保存';}
+input.addEventListener('input',save);document.querySelector('#save').onclick=save;
+function show(open){buddy.hidden=!open;toggle.setAttribute('aria-expanded',String(open));if(!open)toggle.focus();}
+toggle.onclick=()=>show(buddy.hidden);document.querySelector('#collapse').onclick=()=>show(false);
+document.addEventListener('keydown',event=>{if(event.key==='Escape')show(false);});
+document.querySelector('#start').onclick=()=>{save();document.querySelector('#execution').textContent='示例：本次复核将采用上述已保存要求。原型未创建真实任务。';};
+</script>
+</body></html>
