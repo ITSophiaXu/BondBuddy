@@ -164,7 +164,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     credential,
     work_root: env.BB_CODEX_WORK_ROOT ?? join(tmpdir(), 'bb-codex'),
     timeout_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
-    authoring_timeout_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 2700000),
+    authoring_timeout_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 18000000),
     kill_grace_ms: 2000,
     max_output_bytes: 4 * 1024 * 1024,
     max_schema_reasks: Number(env.BB_CODEX_MAX_SCHEMA_REASKS ?? 1),
