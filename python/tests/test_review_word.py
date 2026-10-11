@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 from docx import Document
 from lxml import etree
-from bondbuddy_word_delivery.review import annotate, write_report, strip_comment_location_prefix
+from bondbuddy_word_delivery.review import annotate, write_report, strip_comment_location_prefix, is_source_only_comment, _remove_comment_references
 from bondbuddy_word_delivery.writer import Q, W, parse_xml, document_signature
 
 
@@ -89,12 +89,115 @@ class ReviewWordTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(), before)
         self.assertEqual(document_signature(self.xml(self.source)), document_signature(self.xml(out)))
 
-    def test_prefix_cleanup_does_not_remove_substantive_locations_or_empty_notes(self):
+    def test_prefix_cleanup_does_not_remove_substantive_locations(self):
         for text in ['根据合成报表第8页，金额应为120万元。', '正文位置285存在重复披露，请删除重复内容。',
-                     '合成函〔2025〕324号第3条要求补证。', '原文件：合成.docx；正文位置285；']:
+                     '合成函〔2025〕324号第3条要求补证。']:
             self.assertEqual(strip_comment_location_prefix(text), text)
+        self.assertEqual(strip_comment_location_prefix('原文件：合成.docx；正文位置285；'), '')
         self.assertEqual(strip_comment_location_prefix('正文位置 8 的表格 · 第 2 行 · 第 3 列；金额应为120万元。'), '金额应为120万元。')
         self.assertEqual(strip_comment_location_prefix('[正文位置 285]\n请补证。'), '请补证。')
+
+    def spreadsheet_note(self):
+        return ('原文件：合成报表20250930-1.14.xlsx；工作表《01合并资产负债表》D128、D78；'
+                '合成建设投资集团有限公司；2025年9月30日期末；合并口径；人民币元；计算：资产负债率=负债÷资产×100%。 '
+                '原文件：合成报表20250930-1.14.xlsx；工作表《02合并利润表》D44；'
+                '合成建设投资集团有限公司；2025年1—9月累计；合并口径；人民币元；计算：原值除以10,000，披露为万元、四舍五入保留两位。 ')
+
+    def test_spreadsheet_pdf_and_repeated_location_prefixes_keep_the_problem(self):
+        substance = '资产负债率应为60%，原文50%；按负债60÷资产100×100%计算，请更正。'
+        for prefix in [
+            '原文件：合成报表.xlsx；工作表《01合并资产负债表》D128、D78；',
+            '原文件: 合成报表.XLSM; 工作表 "资产表" · 单元格 $D$78:$D$128; ',
+            '原文件：合成报表.xls；工作表《利润表》D44；原文件：合成.docx；正文位置285；',
+            '原文件：合成.pdf；物理第 8 页；',
+        ]:
+            with self.subTest(prefix=prefix):
+                self.assertEqual(strip_comment_location_prefix(prefix + substance), substance)
+        self.assertEqual(strip_comment_location_prefix('工作表《利润表》D44的金额有误，应为120万元。'),
+                         '工作表《利润表》D44的金额有误，应为120万元。')
+
+    def test_source_only_classifier_does_not_drop_findings_or_computational_evidence(self):
+        self.assertTrue(is_source_only_comment(self.spreadsheet_note() * 2))
+        for text in [self.spreadsheet_note() + '但本次口径不一致，请核实。',
+                     self.spreadsheet_note().replace('资产负债率=负债÷资产×100%', '原文50%，复算60%，差异10个百分点'),
+                     '计算：资产负债率=负债÷资产×100%。',
+                     '原文件：合成.xlsx；工作表《资产表》D78；金额应为120万元。']:
+            self.assertFalse(is_source_only_comment(text), text)
+
+    def test_source_only_generated_notes_are_removed_with_anchors_but_human_notes_survive(self):
+        doc = Document(self.source)
+        note = self.spreadsheet_note() * 2
+        generated = doc.add_comment(doc.paragraphs[0].runs, author='BondBuddy-1c736c8976a1')
+        generated.paragraphs[0].add_run(note[:40]).bold = True
+        generated.paragraphs[0].add_run(note[40:]).italic = True
+        human = doc.add_comment(doc.paragraphs[0].runs, text=note, author='人工复核人')
+        locator = '原文件：合成.xlsx；工作表《资产表》D78；'
+        substantive = doc.add_comment(doc.paragraphs[0].runs, text=locator + '金额应为120万元，请更正。', author='BondBuddy')
+        generated_id, human_id, substantive_id = map(str, [generated.comment_id, human.comment_id, substantive.comment_id])
+        doc.save(self.source)
+        before = self.source.read_bytes()
+        out = self.root / 'source-notes-removed.docx'
+        placed, missing = annotate(self.source, out, self.report())
+        self.assertEqual((len(placed), len(missing)), (1, 0))
+        comments = {c.get(Q('id')): c for c in self.xml(out, 'word/comments.xml')}
+        self.assertNotIn(generated_id, comments)
+        self.assertEqual(''.join(comments[human_id].itertext()), note)
+        self.assertEqual(''.join(comments[substantive_id].itertext()), '金额应为120万元，请更正。')
+        for node in self.xml(out).iter():
+            if node.tag in (Q('commentRangeStart'), Q('commentRangeEnd'), Q('commentReference')):
+                self.assertIn(node.get(Q('id')), comments)
+        self.assertEqual(len(comments), 3)
+        self.assertEqual(self.source.read_bytes(), before)
+        self.assertEqual(document_signature(self.xml(self.source)), document_signature(self.xml(out)))
+        self.assertEqual(len(Document(out).comments), 3)
+
+    def test_removed_note_cleans_modern_metadata_and_header_anchors_without_deleting_reply(self):
+        w14 = 'http://schemas.microsoft.com/office/word/2010/wordml'
+        removed = etree.Element(Q('comment')); removed.set(Q('id'), '7')
+        etree.SubElement(removed, Q('p')).set('{' + w14 + '}paraId', '000000A1')
+        root = self.xml(self.source)
+        header = etree.Element(Q('hdr'), nsmap={'w': W})
+        paragraph = etree.SubElement(header, Q('p'))
+        etree.SubElement(paragraph, Q('r')).append(etree.Element(Q('t')))
+        paragraph[0][0].text = '原页眉'
+        for kind in ('commentRangeStart', 'commentRangeEnd', 'commentReference'):
+            etree.SubElement(paragraph, Q(kind)).set(Q('id'), '7')
+            etree.SubElement(paragraph, Q(kind)).set(Q('id'), '8')
+        parts = {'word/document.xml': etree.tostring(root), 'word/header1.xml': etree.tostring(header),
+                 'word/commentsExtended.xml': b'<commentsEx xmlns="urn:test"><commentEx paraId="000000A1"/><commentEx paraId="000000A2" paraIdParent="000000A1"/></commentsEx>',
+                 'word/commentsIds.xml': b'<commentsIds xmlns="urn:test"><commentId paraId="000000A1" durableId="000000B1"/><commentId paraId="000000A2" durableId="000000B2"/></commentsIds>',
+                 'word/commentsExtensible.xml': b'<commentsExtensible xmlns="urn:test"><commentExtensible durableId="000000B1"/><commentExtensible durableId="000000B2"/></commentsExtensible>'}
+        _remove_comment_references(parts, root, [removed], [])
+        header = parse_xml(parts['word/header1.xml'])
+        self.assertEqual(''.join(header.itertext()), '原页眉')
+        self.assertEqual([n.get(Q('id')) for n in header.iter() if n.get(Q('id'))], ['8'] * 3)
+        for name in ('word/commentsExtended.xml', 'word/commentsIds.xml', 'word/commentsExtensible.xml'):
+            entries = parse_xml(parts[name])
+            self.assertEqual(len(entries), 1)
+            self.assertNotIn('paraIdParent', entries[0].attrib)
+            self.assertNotIn('000000A1', parts[name].decode())
+            self.assertNotIn('000000B1', parts[name].decode())
+
+    def test_human_reply_inherits_removed_source_notes_anchor(self):
+        para_attr = '{http://schemas.microsoft.com/office/word/2010/wordml}paraId'
+        removed = etree.Element(Q('comment')); removed.set(Q('id'), '7')
+        etree.SubElement(removed, Q('p')).set(para_attr, '000000A1')
+        replies = []
+        for identity, para_id in [('8', '000000A2'), ('9', '000000A3')]:
+            reply = etree.Element(Q('comment')); reply.set(Q('id'), identity)
+            etree.SubElement(reply, Q('p')).set(para_attr, para_id)
+            replies.append(reply)
+        root = self.xml(self.source)
+        paragraph = root.find('.//' + Q('p'))
+        for kind in ('commentRangeStart', 'commentRangeEnd', 'commentReference'):
+            etree.SubElement(paragraph, Q(kind)).set(Q('id'), '7')
+        parts = {'word/document.xml': etree.tostring(root),
+                 'word/commentsExtended.xml': b'<commentsEx xmlns="urn:test"><commentEx paraId="000000A1"/><commentEx paraId="000000A2" paraIdParent="000000A1"/><commentEx paraId="000000A3" paraIdParent="000000A1"/></commentsEx>'}
+        _remove_comment_references(parts, root, [removed], replies)
+        self.assertEqual([n.get(Q('id')) for n in paragraph if n.get(Q('id'))], ['8'] * 3)
+        metadata = parse_xml(parts['word/commentsExtended.xml'])
+        self.assertNotIn('paraIdParent', metadata[0].attrib)
+        self.assertEqual(metadata[1].get('paraIdParent'), '000000A2')
 
     def test_structured_evidence_location_stays_in_report_not_comment(self):
         report = self.report()
