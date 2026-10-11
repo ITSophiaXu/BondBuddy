@@ -148,3 +148,17 @@
 @media(max-width:1100px){.review-grid.review-always-on{grid-template-columns:minmax(0,1fr) 320px}}
 @media(max-width:900px){.review-grid.review-always-on{grid-template-columns:minmax(0,1fr)}.review-agent.review-agent-always-on{position:static;inset:auto;width:100%;height:650px;min-height:450px}.review-agent-always-on .review-chat{min-height:140px;flex:1}}
 @media(max-width:600px){.review-create .period-row{grid-template-columns:1fr;gap:8px}.review-create .quarter-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.review-create .review-period .quarter{justify-content:center;padding:11px 5px}}
+
+/* Keep preparation actions together, with the primary action at the trailing edge. */
+.review-workspace .review-materials-footer{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;gap:16px 24px;padding-top:20px;margin-top:22px}
+.review-materials-footer .review-footer-copy{flex:1 1 240px;min-width:0}
+.review-materials-footer .review-footer-copy strong{font-size:14px;line-height:1.6}
+.review-materials-footer .review-footer-copy p{margin:4px 0 0;overflow-wrap:anywhere}
+.review-materials-footer .review-footer-buttons{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex:0 0 auto;margin-left:auto;max-width:100%}
+.review-materials-footer .review-footer-buttons .btn{min-height:44px;white-space:nowrap}
+@media(max-width:600px){
+  .review-workspace .review-materials-footer{gap:14px}
+  .review-materials-footer .review-footer-copy{flex-basis:100%}
+  .review-materials-footer .review-footer-buttons{width:100%;gap:10px}
+  .review-materials-footer .review-footer-buttons .btn{flex:1;min-width:0;padding-left:12px;padding-right:12px}
+}
