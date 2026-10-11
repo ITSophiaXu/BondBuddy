@@ -24,8 +24,8 @@ export const MONEY_UNITS = [
   { code: 'hundred_million', label: '亿元', multiplier: 100000000n }
 ] as const;
 export const FUNDING_PURPOSES = [
-  { code: 'refinance_bonds', label: '借新还旧', materials: '可提供拟偿还债券清单、余额、到期日及兑付安排。' },
-  { code: 'repay_debt', label: '偿还有息负债', materials: '可提供债务明细、借款合同、余额和拟偿还金额。' },
+  { code: 'refinance_bonds', label: '借新还旧', materials: '可提供拟偿还债券简称、余额、到期日及兑付安排。' },
+  { code: 'repay_debt', label: '偿还有息负债', materials: '可提供债务明细、余额和拟偿还金额。' },
   { code: 'working_capital', label: '补充流动资金', materials: '可补充业务需求、拟使用金额及测算依据。' },
   { code: 'construction', label: '项目建设', materials: '建议提供项目可研报告，以及实际适用的备案、土地和建设许可等文件。' },
   { code: 'equity_investment', label: '用于投资股权', materials: '建议提供投资方案、标的资料、相关协议及批准文件。' },

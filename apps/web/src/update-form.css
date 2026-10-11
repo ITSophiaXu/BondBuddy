@@ -2,6 +2,7 @@
 .update-form .update-section h2{margin-bottom:12px}.update-form .optional{font-size:12px;font-weight:400;color:var(--muted)}
 .update-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.update-field.full{grid-column:1/-1}
 .update-form .field-hint,.update-form small{font-size:12px;color:var(--muted);line-height:1.85}.update-form .field-hint{margin:10px 0 16px}
+.update-form .field-note{margin:7px 0 0;font-size:12px;line-height:1.75;color:#63725c;overflow-wrap:anywhere}
 .update-form label{display:block;font-size:13px;font-weight:500;margin:16px 0 9px}
 .update-form input,.update-form select,.update-form textarea{font:inherit;width:100%;min-width:0;border:1px solid #d5dece;border-radius:7px;background:white;padding:12px;color:var(--ink)}
 .update-form textarea{min-height:108px;resize:vertical;line-height:1.8;font-size:13px}.money-input{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:8px}
