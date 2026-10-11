@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>复核募集书 · 材料页底部操作区</title>
+<link rel="stylesheet" href="workspace-ux-preview.css">
+<style>
+body{margin:0;background:#fff}main{padding:0!important;margin:0!important;max-width:none!important}
+.review-workspace .review-materials-footer{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;gap:16px 24px;padding-top:20px;margin-top:22px}
+.review-materials-footer .review-footer-copy{flex:1 1 240px;min-width:0}
+.review-materials-footer .review-footer-copy strong{font-size:14px;line-height:1.6}
+.review-materials-footer .review-footer-copy p{margin:4px 0 0;overflow-wrap:anywhere}
+.review-materials-footer .review-footer-buttons{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex:0 0 auto;margin-left:auto;max-width:100%}
+.review-materials-footer .review-footer-buttons .btn{min-height:44px;white-space:nowrap}
+@media(max-width:600px){
+  .review-workspace .review-materials-footer{gap:14px}
+  .review-materials-footer .review-footer-copy{flex-basis:100%}
+  .review-materials-footer .review-footer-buttons{width:100%;gap:10px}
+  .review-materials-footer .review-footer-buttons .btn{flex:1;min-width:0;padding-left:12px;padding-right:12px}
+}
+</style>
+</head>
+<body class="prototype-app"><main class="review-workspace">
+<!-- Scoped synthetic prototype. Materials lead directly into this footer; no repeated scope or adopted-requirements block. -->
+<div class="review-footer-actions review-materials-footer">
+  <div class="review-footer-copy"><strong>准备好了，就可以开始。</strong><p class="review-muted">确认材料与要求后，点击开始复核。</p></div>
+  <div class="review-footer-buttons"><button type="button" class="btn secondary" id="discuss">与助手讨论</button><button type="button" class="btn primary" id="start">开始复核</button></div>
+</div>
+<p id="demo-status" role="status" hidden></p>
+</main>
+<script>
+const state=new URLSearchParams(location.search).get('state');
+if(state==='uploading'||state==='failed'||state==='running'){
+  document.querySelector('.review-footer-copy strong').textContent=state==='running'?'当前任务进行中':'材料保存完成后即可开始';
+  document.querySelector('.review-footer-copy p').textContent=state==='uploading'?'还有 2 份材料正在上传或保存，可继续添加文件。请保持页面打开。':state==='failed'?'1 份文件尚未保存，请重试或移除失败文件后开始。':'补充材料与要求将用于下一轮复核。';
+  document.querySelector('#start').disabled=true;
+  if(state==='running')document.querySelector('#start').textContent='当前任务进行中';
+}
+for(const id of ['discuss','start'])document.getElementById(id).onclick=()=>{const status=document.querySelector('#demo-status');status.hidden=false;status.textContent=id==='discuss'?'原型：打开项目助手。':'原型：进入现有执行确认，不会启动真实任务。';};
+</script>
+</body>
+</html>
