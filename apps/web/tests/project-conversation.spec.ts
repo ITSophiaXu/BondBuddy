@@ -430,7 +430,6 @@ test('create and material conversation use the prototype desktop and mobile work
   };
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto('/#update');
-  await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
@@ -463,7 +462,7 @@ test('create and material conversation use the prototype desktop and mobile work
 test('latest period derives source-independent windows; supplementary notes are saved on materials and editable after reload', async ({page}) => {
   const {state}=await setup(page);
   await page.goto('/#update');
-  await page.getByLabel('项目名称').fill('合成报告期项目');
+  await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');
   await page.getByLabel('最新报告期年份').selectOption('2026');
