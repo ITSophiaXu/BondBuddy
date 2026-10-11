@@ -14,7 +14,7 @@ test('M3 revision uses real native Codex sandbox + Python tool, saves actual fil
     const f = await revisionCliFixture();
     let prepared = 0, collected = 0;
     const journal = new MemoryCodexJournal();
-    const config = { ...loadCodexAdapterConfig({}), work_root: join(f.root, 'attempts'), timeout_ms: 5000, authoring_timeout_ms: 60000,
+    const config = { ...loadCodexAdapterConfig({BB_CODEX_PATH:process.env.BB_CODEX_PATH}), work_root: join(f.root, 'attempts'), timeout_ms: 5000, authoring_timeout_ms: 60000,
       command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/fake-review-revision-cli.mjs', import.meta.url))] };
     try {
       const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: async () => {}, model: options => ({

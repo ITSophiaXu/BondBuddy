@@ -32,7 +32,7 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
     const origin = 'http://bondbuddy.test', app = createServer({ pool, blobs, allowedOrigin: origin, enableRunRuntime: true,
       principal: async () => ({ userId: active, csrfVerified: true }) });
     const send = (method: string, url: string, payload?: unknown, headers = {}) => app.inject({ method: method as never, url, payload: payload as never, headers: { origin, ...headers } });
-    const config = { ...loadCodexAdapterConfig({}), command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/review-files.mjs', import.meta.url)), `--marker=${marker}`],
+    const config = { ...loadCodexAdapterConfig({BB_CODEX_PATH:process.env.BB_CODEX_PATH}), command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/review-files.mjs', import.meta.url)), `--marker=${marker}`],
       work_root: join(directory, 'calls'), authoring_timeout_ms: 60000, timeout_ms: 60000 };
     try {
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `rf_${randomUUID().slice(0, 8)}`]);
