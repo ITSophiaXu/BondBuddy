@@ -2,6 +2,8 @@
 
 2026-10-11，按用户本次红框截图调整。开发基线：`e2cba46b1a8b73978bf11c5417df5f5c2af1f58c`。
 
+提交前已 rebase 到最新 `develop 3faa8367`，该集成版本的 web TypeScript、Vite 和相同 9 项交互再次通过。新增基线只涉及并行 QA 修正，本页底栏源码未发生冲突；原型及布局源码 commit 为 `8f45184d`。GitHub hosted checks 未启动，annotation 明确为账户付款失败或 spending limit 原因，不能计为通过；以上为本地实测证据。
+
 材料分区后不再重复显示三个复核维度和“助手已采纳要求”。左侧保留简短准备状态，右侧将“与助手讨论”和“开始复核”组成一组，主操作位于最右侧；手机两个按钮并排占满可用宽度。运行时提示当前任务进行中，上传未完成时仍保留具体状态并禁用开始。
 
 - 实现：`apps/web/src/review-workspace.ts`、`review-workspace.css`。
