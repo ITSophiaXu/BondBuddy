@@ -211,7 +211,7 @@ test('authoring permits only fixed run-local material tools; default adapter sti
 test('authoring deadline is independently configurable and rejects invalid timers', () => {
   const defaults = loadCodexAdapterConfig({ BB_CODEX_TIMEOUT_MS: '600000' });
   assert.equal(defaults.timeout_ms, 600000);
-  assert.equal(defaults.authoring_timeout_ms, 2700000);
+  assert.equal(defaults.authoring_timeout_ms, 18000000);
   assert.equal(loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: '3600000' }).authoring_timeout_ms, 3600000);
   for (const value of ['0', '-1', 'abc', '1.5', '2147483648'])
     assert.throws(() => loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: value }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });

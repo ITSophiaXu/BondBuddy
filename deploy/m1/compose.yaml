@@ -149,7 +149,7 @@ services:
       # Per-call wall-clock limit. Long historical-generation segments exceed the 120 s code default.
       BB_CODEX_TIMEOUT_MS: ${BB_CODEX_TIMEOUT_MS:-600000}
       # Document authoring may legitimately take 20–30 min in one Codex execution.
-      BB_CODEX_AUTHORING_TIMEOUT_MS: ${BB_CODEX_AUTHORING_TIMEOUT_MS:-2700000}
+      BB_CODEX_AUTHORING_TIMEOUT_MS: ${BB_CODEX_AUTHORING_TIMEOUT_MS:-18000000}
       # M3 public review: opt in only after the configured provider's real web search is verified.
       BB_REVIEW_WEB_SEARCH_ENABLED: ${BB_REVIEW_WEB_SEARCH_ENABLED:-0}
       # #79/#16 operator-only platform probe (POST /api/v1/admin/probes/model). Off by default.
