@@ -75,7 +75,7 @@ test('quarter selection -> create -> upload -> original footer action -> refresh
   const state=await install(page); await page.goto('/#update');
   await page.setViewportSize({width:1440,height:960});
   await expect(page.locator('#create-form input[type=date]')).toHaveCount(0);
-  await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');await page.getByLabel('发行人全称').fill('合成发行人有限公司');
+  await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('radio',{name:'有',exact:true}).check();await page.getByLabel('发行市场',{exact:true}).selectOption('sse');await page.getByLabel('发行方式',{exact:true}).selectOption('private');
   await page.getByLabel('财务截止年份').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await capture(page,'create-desktop');
