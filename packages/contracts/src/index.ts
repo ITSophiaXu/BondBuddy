@@ -407,7 +407,7 @@ export const operations: readonly Operation[] = [
   op('get', '/runs/{run_id}/events', 'Read events after cursor (contract only)', 'RunEventsResponse', 200, undefined, [404]),
   op('post', '/runs/{run_id}/cancel', 'Cancel server run explicitly (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
   op('post', '/runs/{run_id}/pause', 'Freeze accrued authoring credits and pause at a durable boundary', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
-  op('post', '/runs/{run_id}/resume', 'Resume paused run after provider reconciliation (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
+  op('post', '/runs/{run_id}/resume', 'Resume the saved run after its blockers clear; exhausted credits require a positive balance', 'RunResponse', 200, 'RunActionRequest', [402, 404, 409]),
   op('get', '/artifacts/{artifact_id}', 'Get authorized checked Word artifact', 'ArtifactResponse', 200, undefined, [404]),
   op('get', '/projects/{project_id}/artifacts', 'List bounded, checked owner/project Word result history; no download grants', 'ArtifactHistoryResponse', 200, undefined, [404, 422, 503]),
   op('get', '/artifacts/{artifact_id}/download', 'Download checked owner Word artifact bytes', 'ArtifactResponse', 200, undefined, [404]),

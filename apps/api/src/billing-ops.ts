@@ -28,21 +28,25 @@ export async function auditCredits(pool:Pool){
   return transaction(pool,async c=>{
     await c.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
     const lotDrift=(await c.query(`WITH allocations AS (
-      SELECT a.*,r.state,EXISTS(SELECT 1 FROM bb_credit_lots compensation
+      SELECT a.*,r.state,r.billing_policy,EXISTS(SELECT 1 FROM bb_credit_lots compensation
         WHERE compensation.source_key='failure:'||r.id||':'||a.lot_id AND compensation.owner_user_id=r.owner_user_id) AS compensated
       FROM bb_credit_allocations a JOIN bb_credit_reservations r ON r.id=a.reservation_id)
       SELECT l.id,l.owner_user_id,l.remaining::text,l.frozen::text,
-        COALESCE(sum(a.points) FILTER(WHERE a.state='held'),0)::text AS expected_frozen,
+        COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)::text AS expected_frozen,
         (l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0))::text AS expected_remaining
       FROM bb_credit_lots l LEFT JOIN allocations a ON a.lot_id=l.id
-      GROUP BY l.id HAVING l.frozen<>COALESCE(sum(a.points) FILTER(WHERE a.state='held'),0)
+      GROUP BY l.id HAVING l.frozen<>COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)
       OR l.remaining<>l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0)`)).rows;
     const reservationDrift=(await c.query(`SELECT r.id,r.run_id,r.state,r.points::text FROM bb_credit_reservations r
       JOIN bb_runs run ON run.id=r.run_id JOIN bb_credit_quotes q ON q.id=r.quote_id
       WHERE r.points<>q.points OR r.owner_user_id<>run.owner_user_id OR run.reservation_id IS DISTINCT FROM r.id
-      OR r.points<>(SELECT COALESCE(sum(points),0) FROM bb_credit_allocations WHERE reservation_id=r.id)
+      OR (r.billing_policy<>'authoring_balance_v2' AND (r.points<>(SELECT COALESCE(sum(points),0) FROM bb_credit_allocations WHERE reservation_id=r.id)
       OR NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='reserve' AND e.points=r.points)
-      OR (r.state<>'held' AND (r.points<>(SELECT COALESCE(sum(e.points),0) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind IN ('settle','release')) OR COALESCE(r.charged_points,CASE WHEN r.state='settled' THEN r.points ELSE 0 END)<>(SELECT COALESCE(sum(e.points),0) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='settle')))`)).rows;
+      OR (r.state<>'held' AND (r.points<>(SELECT COALESCE(sum(e.points),0) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind IN ('settle','release')) OR COALESCE(r.charged_points,CASE WHEN r.state='settled' THEN r.points ELSE 0 END)<>(SELECT COALESCE(sum(e.points),0) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='settle')))))
+      OR (r.billing_policy='authoring_balance_v2' AND (
+        COALESCE(r.charged_points,0)<>(SELECT COALESCE(sum(points),0) FROM bb_credit_allocations WHERE reservation_id=r.id)
+        OR COALESCE(r.charged_points,0)<>(SELECT COALESCE(sum(points),0) FROM bb_credit_events WHERE reservation_id=r.id AND kind='settle')
+        OR EXISTS(SELECT 1 FROM bb_credit_events WHERE reservation_id=r.id AND kind IN ('reserve','release'))))`)).rows;
     const paymentDrift=(await c.query(`SELECT o.id,o.state FROM bb_recharge_orders o LEFT JOIN bb_credit_lots l
       ON l.owner_user_id=o.owner_user_id AND l.source_key='recharge:'||o.id
       WHERE (o.state='paid' AND (l.id IS NULL OR l.original_points<>o.points OR l.source<>'purchase' OR l.expires_at IS NOT NULL))

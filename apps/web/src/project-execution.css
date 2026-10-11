@@ -32,3 +32,7 @@
 .authoring-credit-meter summary{cursor:pointer;width:fit-content}
 .authoring-credit-meter details p{max-width:740px;line-height:1.8}
 @media(max-width:600px){.authoring-credit-meter{padding:18px}.authoring-credit-meter strong{font-size:26px}.authoring-credit-meta{gap:6px;flex-direction:column}}
+
+.credit-recharge-dialog { max-width: 480px; width: calc(100% - 40px); border: 1px solid #dce4dd; border-radius: 16px; padding: 28px; color: #183c34; box-sizing: border-box; }
+.credit-recharge-dialog::backdrop { background: rgb(15 35 29 / 38%); }
+.credit-recharge-dialog p { line-height: 1.7; }

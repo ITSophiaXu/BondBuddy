@@ -237,6 +237,7 @@ export class WorkerRuntime {
         // A failed material is decided on the next claim (the stage fails the run with its code).
         if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
       }
+      for (const r of await pausedRuns(pool, 'credits_exhausted', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'credits_recharged');
       for (const r of await pausedRuns(pool, 'provider_reconcile', 20, this.o.runKinds)) await this.reconcileRun(r.owner_user_id, r.run_id, r.job_id);
       for (const r of await pausedRuns(pool, 'trial_limit', 20, this.o.runKinds)) {
         const client = await pool.connect();
