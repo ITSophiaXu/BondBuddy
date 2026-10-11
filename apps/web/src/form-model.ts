@@ -1,5 +1,5 @@
 import { Value } from '@sinclair/typebox/value';
-import { schemas, MARKETS, MARKET_OFFERINGS, emptyUpdateDetails, updateDetailsErrors, type Market, type Offering, type Project, type UpdateDetails } from '@bondbuddy/contracts';
+import { schemas, MARKETS, MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, emptyUpdateDetails, updateDetailsErrors, type Market, type Offering, type Project, type UpdateDetails } from '@bondbuddy/contracts';
 import type { Dto } from './api.js';
 export type ProjectCreate = Dto<'ProjectCreateRequest'>;
 
@@ -9,6 +9,19 @@ export function projectKind(hasHistorical: boolean | null | undefined): 'generat
 }
 export function blankDraft(): ProjectCreate {
   return { name: '', kind: 'update', issuer_name: null, market: null, offering: null, update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', source_prospectuses: [] } };
+}
+export function generatedProjectName(issuer: string | null, market: Market | null, offering: Offering | null): string {
+  const name = issuer?.trim();
+  if (!name) return '';
+  const applicable = market && offering && (MARKET_OFFERINGS[market] as readonly Offering[]).includes(offering);
+  const suffix = [market && MARKET_LABELS[market], applicable && OFFERING_LABELS[offering!], '募集书更新'].filter(Boolean).join('-');
+  const limit = PROJECT_FIELD_LIMITS.name - suffix.length - 1;
+  let prefix = '';
+  for (const character of name) {
+    if (prefix.length + character.length > limit) break;
+    prefix += character;
+  }
+  return `${prefix}-${suffix}`;
 }
 export function draftFromProject(project: Project): ProjectCreate {
   return { name: project.name, kind: project.kind, issuer_name: project.issuer_name, market: project.market, offering: project.offering,

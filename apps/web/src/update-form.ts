@@ -1,7 +1,7 @@
 import { reportingWindow, FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from '@bondbuddy/contracts';
 import { prototypeIcon as icon } from './prototype-design.js';
 import { QUARTER_ENDS, cutoffSelection, quarterCutoff } from './reporting-cutoff.js';
-import { changeMarket, marketValue, materialHints, projectKind, type ProjectCreate } from './form-model.js';
+import { changeMarket, generatedProjectName, marketValue, materialHints, projectKind, type ProjectCreate } from './form-model.js';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const option = (value: string, label: string, active: unknown) => `<option value="${esc(value)}"${value === active ? ' selected' : ''}>${esc(label)}</option>`;
@@ -19,12 +19,12 @@ export function fundingRows(details: UpdateDetails) {
   return details.funding_uses.map((use, i) => `<section class="funding-row" aria-label="资金用途 ${i + 1}"><h3>资金用途 ${i + 1}</h3><div class="update-grid"><div class="update-field"><label for="purpose_${i}">用途</label><select id="purpose_${i}" name="purpose_${i}" data-purpose="${i}" aria-describedby="purpose_${i}-note"><option value="">请选择</option>${FUNDING_PURPOSES.map(p => option(p.code, p.label, use.purpose)).join('')}</select></div>${money(`use_amount_${i}`, '拟使用金额', use.amount)}${note(`use_target_${i}`, '涉及项目 / 投资标的 / 基金', use.target, '可填写名称、主体或尚待确定的安排')}${note(`use_details_${i}`, '具体安排', use.details, '分别说明拟使用金额、计划和相关依据。')}</div><p id="purpose_${i}-note" class="field-hint" data-purpose-hint="${i}" aria-live="polite">${esc(purposeHint(use.purpose))}</p><button type="button" class="text-button" data-remove-purpose="${i}">删除此用途</button></section>`).join('');
 }
 function purposeHint(purpose: UpdateDetails['funding_uses'][number]['purpose']) { return FUNDING_PURPOSES.find(p => p.code === purpose)?.materials ?? '用途未定可留空，已确定的安排可以先填写。'; }
-export function updateFormFields(value: ProjectCreate) {
+export function updateFormFields(value: ProjectCreate, autoName = false) {
   const d = value.update_details!;
   const selected = cutoffSelection(d.reporting_cutoff);
-  return `<section class="update-section"><h2>项目基本信息</h2><p class="field-hint">建议准确填写本次拟更新的目标。尚未确定的信息可留空保存。</p><div class="update-grid">
-    <div class="update-field"><label for="name">项目名称 <span class="required">必填</span></label><input id="name" name="name" required maxlength="${PROJECT_FIELD_LIMITS.name}" value="${esc(value.name)}" aria-describedby="name-note">${fieldNote('name', '例如：【发行人 简称】2026 年募集书更新')}</div>
-    <div class="update-field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(value.issuer_name)}" aria-describedby="issuer-note">${fieldNote('issuer', '填写发行人法定全称')}</div>
+  return `<section class="update-section"><h2>项目基本信息 <span class="required">必填</span></h2><p class="field-hint">${autoName ? '填写发行人全称即可自动生成项目名称，其他尚未确定的信息可留空保存。' : '填写本次更新的目标。尚未确定的信息可留空保存。'}</p><div class="update-grid">
+    <div class="update-field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer"${autoName ? ' required' : ''} maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(value.issuer_name)}" aria-describedby="issuer-note">${fieldNote('issuer', '填写发行人法定全称')}</div>
+    ${autoName ? `<div class="update-field"><label for="generated-project-name">项目名称 <span class="optional">自动生成</span></label><output id="generated-project-name" for="issuer market offering" aria-live="polite" aria-describedby="name-note">${esc(generatedProjectName(value.issuer_name ?? null, value.market ?? null, value.offering ?? null)) || '填写发行人后自动生成'}</output>${fieldNote('name', '根据发行人、发行市场和发行方式自动生成，无需填写。')}</div>` : `<div class="update-field"><label for="name">项目名称</label><input id="name" name="name" required maxlength="${PROJECT_FIELD_LIMITS.name}" value="${esc(value.name)}" aria-describedby="name-note">${fieldNote('name', '已保存的项目名称，可按需修改。')}</div>`}
     <div class="update-field"><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${MARKETS.map(m => option(m, MARKET_LABELS[m], value.market)).join('')}</select></div>
     <div class="update-field"><label for="offering">发行方式</label><select id="offering" name="offering"${!value.market ? ' disabled' : ''}>${offeringOptions(value)}</select></div>
     <div class="update-field full"><label for="reporting-year">最新报告期</label><div class="period-row"><select id="reporting-year" name="reporting_year" aria-label="最新报告期年份">${selected.years.map(y => option(y, `${y} 年`, selected.year)).join('')}</select><div class="quarter-grid">${QUARTER_ENDS.map(([q, label]) => `<label class="quarter"><input type="radio" name="reporting_quarter" value="${q}"${selected.quarter === q ? ' checked' : ''}>${label}</label>`).join('')}</div></div>${selected.legacy ? `<p id="legacy-cutoff" class="field-hint">已保存报告期：${esc(d.reporting_cutoff)}；选择期末后更新。</p>` : ''}<p class="field-hint" id="reporting-window" role="status"></p></div>
@@ -51,7 +51,9 @@ export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
   const periods = sameTarget && previous?.target_reporting_periods?.length
     ? structuredClone(previous.target_reporting_periods) : reportingWindow(market, offering, cutoff);
 
-  return { kind: projectKind(hasHistorical), name: String(data.get('name') ?? ''), issuer_name: text(data, 'issuer'), market, offering,
+  const issuer = text(data, 'issuer');
+  const name = form.querySelector('#generated-project-name') ? generatedProjectName(issuer, market, offering) : String(data.get('name') ?? '');
+  return { kind: projectKind(hasHistorical), name, issuer_name: issuer, market, offering,
     update_details: {
       ...structuredClone(retainedDetails.get(form) ?? {}),
       authoring_mode: 'unified_v1',
@@ -69,6 +71,8 @@ export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCr
   originalTarget.set(form, targetKey(readUpdateForm(form)));
   const emit = () => {
     const value = readUpdateForm(form);
+    const preview = form.querySelector<HTMLOutputElement>('#generated-project-name');
+    if (preview) preview.value = value.name || '填写发行人后自动生成';
     const periods = value.update_details?.target_reporting_periods ?? [];
     form.querySelector('#reporting-window')!.textContent = periods.length
       ? `报告期：${periods.map(p => p.period_kind === 'annual' ? `${p.end?.slice(0,4)}年` : `${p.end?.slice(0,4)}年1—${Number(p.end?.slice(5,7))}月`).join('、')}` : '';
