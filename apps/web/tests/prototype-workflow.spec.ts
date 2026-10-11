@@ -107,7 +107,7 @@ test('creating an update keeps its navigation active while the project loads',as
 
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.getByRole('status')).toContainText('正在读取项目');
+  await expect(page.getByRole('status').filter({hasText:'正在读取项目'})).toBeVisible();
   await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
   release();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
@@ -183,7 +183,7 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
     const pending = new Promise<void>(resolve => { release=resolve; });
     await setup(page,{beforeProjectRead:()=>pending,failProjectRead:true});
     await page.goto(`/#/projects/synthetic-design-project${suffix}`);
-    await expect(page.getByRole('status')).toContainText('正在读取项目');
+    await expect(page.getByRole('status').filter({hasText:'正在读取项目'})).toBeVisible();
     await expect(page.locator('.nav-item.active')).toHaveText(active);
     release();
     await expect(page.getByRole('heading',{name:'项目暂时无法打开'})).toBeVisible();
@@ -191,13 +191,15 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
   });
 }
 
-test('unavailable modules retain original navigation but never create demo work',async({page})=>{
+test('material workspace respects unavailable server resources without creating demo work',async({page})=>{
   const state=await setup(page);
-  for(const route of ['generate','qa']) {
-    await page.goto(`/#${route}`); await expect(page.getByRole('heading',{name:'这项功能尚未开放'})).toBeVisible();
-  }
-  await page.goto('/#review'); await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();
+  await page.goto('/#generate');
+  await expect(page.getByRole('heading',{name:'材料生成',exact:true})).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('无法访问这个项目');
+  await expect(page.getByRole('button',{name:'重新读取',exact:true})).toBeVisible();
+  await page.goto('/#review'); await expect(page.locator('#review-create-form')).toBeVisible();
   expect(state.writes).toEqual([]);
+  expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
   await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
   await page.goto('/'); await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
 });

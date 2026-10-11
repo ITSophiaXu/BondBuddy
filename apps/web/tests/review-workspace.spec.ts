@@ -210,8 +210,19 @@ for(const width of [1440,390])test(`review inline requirements and global floati
   const panel=await page.locator('.review-panel').boundingBox();
   await page.locator('[data-assistant-dock]').click();
   await expect(page.locator('.ba-panel')).toBeVisible();
-  const expanded=await page.locator('.review-panel').boundingBox();expect(expanded?.width).toBe(panel?.width);
+  const expanded=await page.locator('.review-panel').boundingBox();
+  const assistant=await page.locator('.ba-panel').boundingBox();
+  if(width>1100){
+    expect(expanded!.width).toBeLessThan(panel!.width);
+    expect(expanded!.x+expanded!.width).toBeLessThanOrEqual(assistant!.x+1);
+  }else{
+    await expect(page.locator('.prototype-app')).toHaveAttribute('inert','');
+    expect(assistant!.x).toBe(0);expect(assistant!.width).toBe(width);
+  }
   await page.getByRole('button',{name:'收起助手',exact:true}).click();await expect(page.locator('.ba-panel')).toBeHidden();
+  await expect(page.locator('[data-assistant-dock]')).toBeVisible();
+  await expect(page.locator('.prototype-app')).not.toHaveAttribute('inert','');
+  expect((await page.locator('.review-panel').boundingBox())!.width).toBe(panel!.width);
   await expect(field).toHaveValue('请重点核对法定代表人信息是否准确，并核对各处披露是否一致。');
   await page.route('http://prototype.test/**',async route=>{
     const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});
