@@ -1,0 +1,88 @@
+[
+  {
+    "label": "implementation",
+    "name": "desktop",
+    "width": 1004,
+    "height": 284.171875,
+    "overflow": false,
+    "columns": "315.328px 315.328px 315.344px"
+  },
+  {
+    "label": "prototype",
+    "name": "desktop",
+    "width": 1004,
+    "height": 284.171875,
+    "overflow": false,
+    "columns": "315.328px 315.328px 315.344px"
+  },
+  {
+    "label": "implementation",
+    "name": "tablet",
+    "width": 620,
+    "height": 360.171875,
+    "overflow": false,
+    "columns": "287px 287px"
+  },
+  {
+    "label": "prototype",
+    "name": "tablet",
+    "width": 620,
+    "height": 360.171875,
+    "overflow": false,
+    "columns": "287px 287px"
+  },
+  {
+    "label": "implementation",
+    "name": "narrow",
+    "width": 450,
+    "height": 504.5625,
+    "overflow": false,
+    "columns": "416px"
+  },
+  {
+    "label": "prototype",
+    "name": "narrow",
+    "width": 450,
+    "height": 504.5625,
+    "overflow": false,
+    "columns": "416px"
+  },
+  {
+    "label": "implementation",
+    "name": "mobile",
+    "width": 294,
+    "height": 545.34375,
+    "overflow": false,
+    "columns": "260px"
+  },
+  {
+    "label": "prototype",
+    "name": "mobile",
+    "width": 294,
+    "height": 524.953125,
+    "overflow": false,
+    "columns": "260px"
+  },
+  {
+    "label": "implementation",
+    "name": "small",
+    "width": 250,
+    "height": 545.34375,
+    "overflow": false,
+    "columns": "216px"
+  },
+  {
+    "label": "prototype",
+    "name": "small",
+    "width": 250,
+    "height": 545.34375,
+    "overflow": false,
+    "columns": "216px"
+  },
+  {
+    "label": "assistant",
+    "width": 326,
+    "height": 524.953125,
+    "overflow": false
+  }
+]

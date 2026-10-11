@@ -216,11 +216,6 @@ body:has(.bb-assistant.ba-open){overflow:hidden}
 .ba-files{list-style:none;padding:0;font-size:11px}
 .ba-files>li{padding:6px 0;overflow-wrap:anywhere}
 .ba-files small{color:#71917b}
-.ba-form .source-prospectus{grid-template-columns:1fr 1fr;font-size:11px;padding:10px;gap:8px;margin:10px 0;border:1px solid #dce7df;border-radius:8px}
-.ba-form .source-prospectus input[type=radio]{display:inline;width:auto}
-.ba-form .source-prospectus .quarter-grid{display:flex;flex-wrap:wrap}
-.ba-form .source-prospectus small,.ba-form .source-prospectus p,.ba-form .source-prospectus .source-period{grid-column:1/-1}
-
 
 .ba-fields{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .bb-assistant .task-progress{padding:14px;margin-bottom:10px;border-radius:10px}
@@ -232,7 +227,7 @@ body:has(.bb-assistant.ba-open){overflow:hidden}
 .bb-assistant .task-progress-steps li{display:block;font-size:10px;padding-top:8px;line-height:1.6}
 .bb-assistant .task-progress-steps span{margin-bottom:5px;width:17px;height:17px;font-size:9px}
 .bb-assistant .task-progress-footnote{font-size:11px!important;margin-top:12px!important}
-.ba-form .source-prospectus{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+
 .ba-card-actions,.ba-credits,.ba-task [data-delivery]{flex-wrap:wrap}
 .ba-form{margin:16px}
 .ba-message .ba-text{line-height:1.8}
