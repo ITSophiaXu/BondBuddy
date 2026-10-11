@@ -2,7 +2,7 @@
 
 用户于 2026-10-11 根据更新募集说明书创建页截图确认：必填标记移到项目基本信息，项目名称由发行人生成。对应产品决定 docs/product-decisions/2026-10-11-project-auto-name.md。
 
-线上独立发布基线：dcd89455fe02；本修复对应开发 PR #659 / 4ea5a96c。为不夹带尚未发布的 #657，本发布保留其余线上字段提示，只新增自动名称及发行人提示；原型 project-workspace.js / .css。原型与实现源码均随本 PR 提交。
+基线：develop 0359a4b4；原型 project-workspace.js / .css。原型与实现源码均随本 PR 提交。
 
 ## 同尺寸对照
 
@@ -19,12 +19,11 @@ Windows / Node 22.14 / Edge；使用 synthetic API 和合成发行人，无真�
 
 - npm run build：通过。最初仅构建 web 缺少其他工作区类型产物；完整依赖顺序构建后通过。
 - npm run check:contracts：通过。
-- draft.spec.ts、project-conversation.spec.ts、prototype-workflow.spec.ts（排除旧的 unavailable modules 场景）：29 项通过。首次旧工作台选择器失败，改为当前三个入口及具名导航后该场景复验通过。
+- draft.spec.ts、project-conversation.spec.ts、prototype-workflow.spec.ts（排除旧的 unavailable modules 场景）：31 项通过。首次旧工作台选择器失败，改为当前三个入口及具名导航后该场景复验通过。
 - project-auto-name-prototype.spec.ts：1 项通过。
 - 覆盖空白发行人不提交、仅发行人即可创建、市场/方式实时更新、不兼容方式清除、长 Unicode 名称、保存重开、旧自定义名称不被发行人编辑覆盖。
 
 未运行依赖独立 API/数据库的旧 live 测试；未把合成界面验证当作真实供应商或专业内容验收。此改动只涉及网页与原型，无契约、数据库、worker 或费用变化。
 
-GitHub 托管检查因账户付款或 spending limit 未启动，不计为通过；本地验证为上述通过依据。
 
-精确发布产物复验：先启动开发服务早于依赖构建导致模块解析缓存失败；完整构建后改测 dist 静态文件。首次 29/30，通过限定加载状态选择器消除新 output 的瞬时角色冲突后，该 1 项定向通过，总计 30 项。无需产品代码修复。
+统一发布整合（2026-10-11）：此目录保留 develop 的原始验证证据；稳定分支的独立回移验证及截图完整保存在 [stable-backport/README.md](stable-backport/README.md)。两次验证均保留，不把历史截图冒充本次集成测试。

@@ -24,6 +24,8 @@ import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { checkpointStage, claim, finish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
+import { beginRunStage, pauseAtCheckpoint, recordAuthoringActivity } from '@bondbuddy/api/queue';
+import { createAuthoringActivityObserver } from './authoring-action-progress.js';
 import { createReviewActionObserver, reviewActionMode } from './review-action-progress.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
 import { isMaterialModelEnvelope } from './material-tool-trace.js';
@@ -523,12 +525,14 @@ export function codexModelStage(options: {
         || (mode==='public_compare'&&options.materialTools) || (mode==='revision'&&options.fileWorkspace));
       const progress=observed?createReviewActionObserver({mode,signal:ctx.signal,
         persist:action=>recordReviewAction(pool,lease,action),onError:()=>{process.stderr.write('review_action_persist_failed\n');}}):undefined;
+      const authoring=['update','generation'].includes(run.task_kind)&&!options.logicalCallId.startsWith('m4-')
+        ?createAuthoringActivityObserver({signal:ctx.signal,persist:activity=>recordAuthoringActivity(pool,lease,activity)}):undefined;
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
-        ...((progress || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
-      } finally { await progress?.drain(); }
+        ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
+      } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       if(result.status==='needs_reconcile'&&['fixed_credits','metered_credits'].includes(run.billing_mode??'')&&!options.reviewTools){
@@ -610,6 +614,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       }
       const saved = checkpoint[stage.name];
       if (saved && !stage.replay) { ctx.values.set(stage.name, saved); continue; }
+      if(await pauseAtCheckpoint(pool,lease))return 'paused';
+      await beginRunStage(pool,lease,stage.name);
       const outcome = await stage.run(ctx);
       if (outcome.kind === 'done') {
         if (!saved) {
@@ -704,8 +710,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         await checkpointStage(pool, lease, 'word_delivery_pair', pair);
         ctx.checkpoint.word_delivery_pair = pair;
       }
-      await finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
-      return run.channel==='non_production_test'?'test_completed':'succeeded';
+      if(await pauseAtCheckpoint(pool,lease))return 'paused';
+      const finished=await finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
+      return finished.state==='paused'?'paused':run.channel==='non_production_test'?'test_completed':'succeeded';
     }
     // Every production pipeline ends in delivery; running out of stages is never success.
     await pauseRun(pool, lease, 'capability_not_ready', 'stage_not_implemented');

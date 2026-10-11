@@ -191,13 +191,15 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
   });
 }
 
-test('unavailable modules retain original navigation but never create demo work',async({page})=>{
+test('material workspace respects unavailable server resources without creating demo work',async({page})=>{
   const state=await setup(page);
-  for(const route of ['generate','qa']) {
-    await page.goto(`/#${route}`); await expect(page.getByRole('heading',{name:'这项功能尚未开放'})).toBeVisible();
-  }
-  await page.goto('/#review'); await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();
+  await page.goto('/#generate');
+  await expect(page.getByRole('heading',{name:'材料生成',exact:true})).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('无法访问这个项目');
+  await expect(page.getByRole('button',{name:'重新读取',exact:true})).toBeVisible();
+  await page.goto('/#review'); await expect(page.locator('#review-create-form')).toBeVisible();
   expect(state.writes).toEqual([]);
+  expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
   await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
   await page.goto('/'); await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
 });

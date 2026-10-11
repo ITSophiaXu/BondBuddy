@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent, recordOperation } from './observability.js';
-import { ERROR_CODES, RUN_PAUSE_STAGES, TASK_KINDS, ReviewActionSchema, type ReviewAction, type M4AssistantReply, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
+import { AuthoringActivitySchema, type AuthoringActivity, ERROR_CODES, RUN_PAUSE_STAGES, TASK_KINDS, ReviewActionSchema, type ReviewAction, type M4AssistantReply, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
@@ -10,6 +10,8 @@ import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
 import { inputManifestHash } from './production-rule-pin.js';
+
+import { syncAuthoringProgress } from './authoring-progress.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -21,6 +23,7 @@ export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind
 }
 
 async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string>={}) {
+  await syncAuthoringProgress(client,r,{state,stage,reason});
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
   const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
@@ -94,8 +97,8 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
       return null;
     }
     const token=uid();
-    await client.query("UPDATE bb_jobs SET state='running',stage=COALESCE(stage,'claimed'),lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
-    await event(client,r,'running',j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
+    await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
+    await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
     return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
   });
 }
@@ -108,7 +111,7 @@ async function lockedLease(client:PoolClient, lease:Lease) {
 }
 
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
-  await transaction(pool,async client=>{await lockedLease(client,lease);await client.query("UPDATE bb_jobs SET lease_until=now()+($2::integer * interval '1 second'),updated_at=now() WHERE id=$1",[lease.jobId,leaseSeconds]);});
+  await transaction(pool,async client=>{const {r}=await lockedLease(client,lease);await client.query("UPDATE bb_jobs SET lease_until=now()+($2::integer * interval '1 second'),updated_at=now() WHERE id=$1",[lease.jobId,leaseSeconds]);await syncAuthoringProgress(client,r);});
 }
 
 /** Progress is an owner/lease-checked projection; it never advances the execution stage. */
@@ -131,6 +134,43 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
       VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)`,[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
       VALUES($1,$2,'run',$3,'run.progress',$4)`,[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
+    return true;
+  });
+}
+
+
+/** A pause freezes billing immediately and stops execution at a durable boundary. */
+export async function pauseAtCheckpoint(pool:Pool,lease:Lease):Promise<boolean>{
+  return transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease);
+    if(!j.user_pause_requested)return false;
+    await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+    await event(client,r,'paused','user_paused','user_paused');
+    return true;
+  });
+}
+export async function beginRunStage(pool:Pool,lease:Lease,stage:string){
+  await transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease);
+    if(!['update','generation'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))return;
+    await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[j.id,stage]);
+    await event(client,r,'running',stage,'stage_started',undefined,'run.progress');
+  });
+}
+export async function recordAuthoringActivity(pool:Pool,lease:Lease,activity:AuthoringActivity):Promise<boolean>{
+  if(!Value.Check(AuthoringActivitySchema,activity))throw new Problem(422,'VALIDATION_FAILED','Invalid authoring activity');
+  return transaction(pool,async client=>{
+    let locked;
+    try{locked=await lockedLease(client,lease);}catch(error){if(error instanceof Problem&&['ALREADY_TERMINAL','NOT_FOUND'].includes(error.code))return false;throw error;}
+    const {r,j}=locked;
+    if(!['update','generation'].includes(r.task_kind)||r.state!=='running'||j.user_pause_requested||String(j.subtype).startsWith('m4_'))return false;
+    const prior=(await client.query("SELECT payload->'authoring_activity' AS activity FROM bb_run_events WHERE run_id=$1 AND owner_user_id=$2 AND payload->'authoring_activity'->>'activity_id'=$3 ORDER BY seq DESC LIMIT 1",[r.id,lease.owner,activity.activity_id])).rows[0]?.activity;
+    if(prior&&(prior.state===activity.state||prior.state!=='started'||prior.code!==activity.code))return false;
+    const seq=Number(r.event_cursor??0)+1,id=uid(),payload={reason:'authoring_activity',authoring_activity:activity};
+    await client.query('UPDATE bb_runs SET event_cursor=$2,updated_at=now() WHERE id=$1',[r.id,seq]);
+    await client.query("INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)",[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
+    await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'run',$3,'run.progress',$4)",[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
+    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
     return true;
   });
 }
@@ -199,12 +239,30 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
   });
 }
 
-export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume',requestId?:string) {
+export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume'|'pause',requestId?:string) {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+    if(kind==='pause'){
+      if(!['update','generation'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))
+        throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
+      if(j.user_pause_requested||r.state==='paused')return runDto(r);
+      if(!['queued','running'].includes(r.state))throw new Problem(409,'INPUT_REVISION_CONFLICT','Task cannot pause at this stage');
+      await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
+      if(j.state==='queued'){
+        await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL WHERE id=$1",[j.id]);
+        await event(client,r,'paused','user_paused','user_paused');
+      }else await event(client,r,r.state,r.stage,'user_pause_requested');
+      return runDto({...r,updated_at:new Date()});
+    }
+    // A user may undo a pending pause while the model is saving its current result.
+    if(kind==='resume'&&r.state==='running'&&j.user_pause_requested){
+      await client.query('UPDATE bb_jobs SET user_pause_requested=false WHERE id=$1',[j.id]);
+      await event(client,r,r.state,r.stage,'user_resumed');
+      return runDto({...r,updated_at:new Date()});
+    }
     if(kind==='resume'){
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs a durable result and verified usage before resume');
@@ -227,6 +285,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
         }
       }
     }
+    if(kind==='resume')await client.query('UPDATE bb_jobs SET user_pause_requested=false WHERE id=$1',[j.id]);
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');
     if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:kind==='cancel'?'run_cancel':'run_resume',status:'submitted'});
@@ -467,7 +526,13 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       throw new Problem(422,'DELIVERY_FAILED','Word artifact quality evidence mismatch');
   }
   return transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
+    const {r,j}=await lockedLease(client,lease);
+    // Pause acceptance and success settlement serialize on the same run/job locks.
+    if(outcome!=='failed'&&j.user_pause_requested){
+      await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+      await event(client,r,'paused','user_paused','user_paused');
+      return runDto({...r,updated_at:new Date()});
+    }
     if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
     if((r.channel==='non_production_test' && outcome==='succeeded') || (r.channel==='production' && outcome==='test_completed'))throw new Problem(409,'TEST_GRANT_MISMATCH','Run channel cannot enter this terminal state');
     if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
