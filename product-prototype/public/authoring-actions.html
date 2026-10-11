@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>更新募集书 · 底部操作区</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="project-workspace.css">
+<style>
+body{margin:0;padding:24px;background:#f8f9f4;color:var(--ink)}main{padding:0}.authoring-workspace{max-width:none}.authoring-actions{margin:0!important}#execution-actions{text-align:right}#execution-credit-hint{max-width:460px;font-size:12px;line-height:1.7;margin:0;text-align:left}.start-buttons{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}#start-disabled-reason{font-size:12px;line-height:1.7}.fixed-quote{padding:18px 20px;margin-bottom:16px;border:1px solid var(--line);border-radius:12px;background:#f5f8f0;text-align:left}.fixed-quote h3{font-size:18px;margin:0 0 8px}.fixed-quote p{font-size:14px;line-height:1.6;margin:8px 0}.fixed-quote .text-button{margin-left:12px}@media(max-width:600px){body{padding:16px}}
+</style>
+</head>
+<body><main class="authoring-workspace"><section id="workspace-materials">
+<div class="form-footer authoring-actions is-preparing">
+<button class="btn secondary" type="button" id="previous-details">上一步</button>
+<div id="execution-actions">
+<div id="fixed-quote" hidden><div class="fixed-quote"><h3>积分不足，请充值后继续更新</h3><p>项目材料与补充要求已保留，当前没有启动更新任务。</p><button class="btn primary" type="button">充值积分</button><button class="text-button" type="button">刷新余额</button></div></div>
+<p id="start-disabled-reason" role="status" hidden>请先补齐原稿信息。</p>
+<div class="execution-submit-row"><p class="muted" id="execution-credit-hint">成功交付成果后扣除积分；失败或取消不扣费。</p><div class="start-buttons"><button class="btn primary" type="button" id="execute-input" aria-describedby="execution-credit-hint start-disabled-reason">开始编制</button></div></div>
+</div></div></section></main>
+<script>
+const state=new URLSearchParams(location.search).get('state');
+if(state==='trial')document.querySelector('#execution-credit-hint').textContent='当前为试用编制，本次不扣积分。';
+if(state==='shortage'){document.querySelector('#fixed-quote').hidden=false;document.querySelector('#execution-credit-hint').hidden=true;document.querySelector('#execute-input').disabled=true;}
+if(state==='blocked'){document.querySelector('#start-disabled-reason').hidden=false;document.querySelector('#execute-input').disabled=true;}
+</script></body></html>
