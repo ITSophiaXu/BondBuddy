@@ -1,3 +1,4 @@
+import { syncAuthoringProgress } from './authoring-progress.js';
 import { Pool, type PoolClient } from 'pg';
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs, run as getRun } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
@@ -195,6 +196,7 @@ async function appendRunEvent(client: PoolClient, r: any, state: string, stage: 
   const seq = r.event_cursor + 1;
   const eventId = uid();
   const payload = providerRunEventPayload(reason, errorCode);
+  await syncAuthoringProgress(client,r,{state,stage,reason});
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
   await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[eventId,r.owner_user_id,r.id,seq,r.id,type,state,stage,payload]);
   await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:eventId,seq,state,stage,...payload}]);
