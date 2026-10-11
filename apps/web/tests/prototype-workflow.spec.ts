@@ -107,7 +107,7 @@ test('creating an update keeps its navigation active while the project loads',as
 
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.getByRole('status')).toContainText('正在读取项目');
+  await expect(page.getByRole('status').filter({hasText:'正在读取项目'})).toBeVisible();
   await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
   release();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
@@ -120,7 +120,7 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
     const pending = new Promise<void>(resolve => { release=resolve; });
     await setup(page,{beforeProjectRead:()=>pending,failProjectRead:true});
     await page.goto(`/#/projects/synthetic-design-project${suffix}`);
-    await expect(page.getByRole('status')).toContainText('正在读取项目');
+    await expect(page.getByRole('status').filter({hasText:'正在读取项目'})).toBeVisible();
     await expect(page.locator('.nav-item.active')).toHaveText(active);
     release();
     await expect(page.getByRole('heading',{name:'项目暂时无法打开'})).toBeVisible();
