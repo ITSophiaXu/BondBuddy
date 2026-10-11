@@ -114,6 +114,69 @@ test('creating an update keeps its navigation active while the project loads',as
   await expect(page.locator('.nav-item.active')).toHaveText('更新募集书');
 });
 
+for (const width of [1440, 390]) {
+  test(`project guidance stays visible through typing, funding changes and saved draft reload (${width}px)`, async ({page}) => {
+    await page.setViewportSize({width, height: 960});
+    const state = await setup(page);
+    await page.goto('/#update');
+    const form = page.locator('#create-form');
+    await expect(form.locator('.field-note')).toHaveCount(9);
+    await expect(form.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
+    await expect(page.locator('#underwriting-note')).toContainText('受托管理人、存续期管理人');
+    await expect(page.locator('#other_agencies-note')).toHaveText('如律师事务所等。');
+    const originalNotes = await form.locator('.field-note').allTextContents();
+    const fields: Record<string, string> = {
+      issuer: '合成发行人有限公司', registration_amount: '20', issuance_amount: '10',
+      bond_terms: '3年期，分两个品种', underwriting: '合成证券担任主承销商', other_agencies: '合成律师事务所',
+      rating_enhancement: '主体评级AA+', other_information: '合成授信资料待补充'
+    };
+    for (const [id, value] of Object.entries(fields)) {
+      const control = page.locator(`#${id}`);
+      await control.fill(value);
+      await expect(control).toHaveAccessibleDescription(await page.locator(`#${id}-note`).innerText());
+      await expect(page.locator(`#${id}-note`)).toBeVisible();
+    }
+    expect(await form.locator('.field-note').allTextContents()).toEqual(originalNotes);
+    await page.getByRole('button', {name:'＋ 添加资金用途'}).click();
+    await page.locator('#purpose_0').selectOption('refinance_bonds');
+    await expect(page.locator('#purpose_0-note')).toHaveText('可提供拟偿还债券简称、余额、到期日及兑付安排。');
+    await page.getByRole('button', {name:'＋ 添加资金用途'}).click();
+    await page.locator('#purpose_1').selectOption('repay_debt');
+    await page.locator('#use_amount_1').fill('1.5');
+    await page.locator('#use_target_1').fill('合成贷款');
+    await page.locator('#use_details_1').fill('按到期计划偿还');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-remove-purpose="0"]').click();
+    await expect(page.locator('#use_amount_0')).toHaveValue('1.5');
+    await expect(page.locator('#purpose_0')).toHaveAccessibleDescription('可提供债务明细、余额和拟偿还金额。');
+    for (const id of ['use_amount_0', 'use_target_0', 'use_details_0']) {
+      await expect(page.locator(`#${id}-note`)).toBeVisible();
+      await expect(page.locator(`#${id}`)).toHaveAccessibleDescription(await page.locator(`#${id}-note`).innerText());
+    }
+    await expect(form.locator('.field-note')).toHaveCount(12);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); scrollTo(0, 0); });
+    await page.screenshot({path:join(tmpdir(), `bb-project-notes-${width}-filled.png`), fullPage:true});
+    await page.getByRole('button', {name:'创建项目，继续提供材料'}).click();
+    await expect(page.getByRole('heading', {name:'提供项目材料'})).toBeVisible();
+    expect(state.projects[0].name).toBe(`${fields.issuer}-募集书更新`);
+    expect(state.projects[0].update_details?.underwriting).toBe(fields.underwriting);
+    expect(state.projects[0].update_details?.funding_uses[0].amount?.value).toBe('1.5');
+    expect(JSON.stringify(state.writes)).not.toContain('沿用历史募集说明书内容');
+    await page.getByRole('button', {name:'编辑项目信息'}).click();
+    await page.reload();
+    await expect(page.locator('#underwriting')).toHaveValue(fields.underwriting);
+    await expect(page.locator('#draft-form .field-note')).toHaveCount(12);
+    await expect(page.locator('#underwriting-note')).toBeVisible();
+    await expect(page.locator('#use_amount_0-note')).toBeVisible();
+    expect(await page.evaluate(() => {
+      const ids = [...document.querySelectorAll('#draft-form [id]')].map(e => e.id);
+      return new Set(ids).size === ids.length;
+    })).toBe(true);
+    expect(state.routes.some(path => path.includes('/runs/execute'))).toBe(false);
+  });
+}
+
 for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','工作台']]) {
   test(`project loading and error preserve the entry navigation: ${active}`,async({page})=>{
     let release!: () => void;
