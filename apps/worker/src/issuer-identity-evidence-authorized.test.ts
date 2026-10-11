@@ -195,14 +195,22 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
       headers: { origin: 'http://bondbuddy.test' }, payload: payload as never });
     const pending = await send('GET', url);
     assert.equal(pending.statusCode, 200, pending.body);
-    assert.deepEqual(pending.json().items.map((item: { evidence_record_id: string }) => item.evidence_record_id), expectedAnchorIds);
+    assert.equal(pending.json().items.length, expectedAnchorIds.length);
+    // Owner responses expose status summaries; raw anchors remain reviewer-only.
+    for (const item of pending.json().items as Record<string, unknown>[]) {
+      assert.deepEqual(Object.keys(item).sort(), ['identity_version', 'source_record_id', 'status', 'verified_entity_id']);
+      assert.equal(typeof item.source_record_id, 'string');
+      assert.equal(item.verified_entity_id, null);
+    }
+    assert.deepEqual(pending.json().items.map((item: { identity_version: number }) => item.identity_version), [1, 2]);
     assert.ok(pending.json().items.every((item: { status: string }) => item.status === 'needs_review'));
+    const reviewerUrl = `/api/v1/reviewer/projects/${projectId}/materials/${materialId}/versions/1/issuer-identity/observations`;
+    assert.equal((await send('GET', reviewerUrl)).statusCode, 404, 'owner status access does not grant raw reviewer evidence');
     await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants
       (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
       VALUES($1,$2,'issuer_identity_reviewer',$3,'authorized_test','authorized regression',$4,$5)`,
     [randomUUID(), reviewer, grantor, owner, projectId]);
     principal = reviewer;
-    const reviewerUrl = `/api/v1/reviewer/projects/${projectId}/materials/${materialId}/versions/1/issuer-identity/observations`;
     const reviewerRead=await send('GET',reviewerUrl);
     assert.equal(reviewerRead.statusCode,200,reviewerRead.body);
     assert.deepEqual(reviewerRead.json().items.map((item: { evidence_record_id: string }) => item.evidence_record_id),expectedAnchorIds);

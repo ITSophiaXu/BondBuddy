@@ -37,6 +37,23 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
+test('mobile navigation can log out while the assistant panel is open',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const s=await setup(page);let logouts=0;
+ await page.route('**/api/v1/auth/logout',async route=>{logouts++;await route.fulfill({status:204});});
+ await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ await expect(page.locator('.ba-panel')).toBeVisible();
+ await expect(page.locator('[data-composer]')).toBeEnabled();
+ // The narrow panel covers the header; the underlying navigation is still keyboard-accessible.
+ await page.getByRole('button',{name:'打开菜单',exact:true}).press('Enter');
+ await expect(page.locator('#sidebar')).toHaveClass(/mobile-open/);
+ await expect(page.locator('.ba-panel')).toBeVisible();
+ if(process.env.ASSISTANT_EVIDENCE){await mkdir(evidenceDir,{recursive:true});await page.screenshot({path:resolve(evidenceDir,'implementation-mobile-menu-open.png')});}
+ await page.getByRole('button',{name:'退出',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'登录工作区',exact:true})).toBeVisible();
+ await expect(page.locator('.bb-assistant')).toHaveCount(0);
+ expect(logouts).toBe(1);expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
+});
 test('global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs',async({page})=>{
  const s=await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
  await page.locator('[data-composer]').fill('这种表述是否合适？');await expect.poll(()=>s.w.view.unsent_content).toBe('这种表述是否合适？');
@@ -45,6 +62,27 @@ test('global launcher preserves unsent text across navigation, collapse, reload 
  await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message.assistant')).toContainText('可先说明');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);await expect(page.locator('.ba-task')).toHaveCount(0);
  await page.locator('[data-a=history]').click();await expect(page.locator('.ba-history')).toContainText('项目助手');
 });
+test('a slow autosave receipt survives background polling without a false conversation conflict',async({page})=>{
+ const s=await setup(page);await page.clock.install();
+ let releaseSave!:()=>void,saveStarted!:()=>void;const savedVersions:number[]=[],heldSave=new Promise<void>(resolve=>releaseSave=resolve),started=new Promise<void>(resolve=>saveStarted=resolve);
+ await page.route('**/api/v1/m4/topics/topic/view',async route=>{
+  const b=route.request().postDataJSON();savedVersions.push(b.expected_version);
+  if(savedVersions.length===1){saveStarted();await heldSave;}
+  if(b.expected_version!==s.w.view.version){await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({code:'INPUT_REVISION_CONFLICT',message:'Synthetic stale conversation view'})});return;}
+  s.w.view={...b.view,version:s.w.view.version+1};await route.fulfill({contentType:'application/json',body:JSON.stringify({view:s.w.view})});
+ });
+ await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
+ await page.locator('[data-composer]').fill('第一次未发送编辑');await page.clock.fastForward(500);await started;
+ // Seeing this server-only reply proves polling replaced the workspace during the held PUT.
+ s.w.messages.push({message_id:'poll-marker',role:'assistant',content:'合成后台轮询回执',created_at:now,reply_status:'completed',context:s.w.view.unsent_context});
+ await page.clock.fastForward(4000);await expect(page.locator('.ba-message.assistant')).toContainText('合成后台轮询回执');
+ const receipt=page.waitForResponse(response=>response.url().endsWith('/m4/topics/topic/view')&&response.request().method()==='PUT');releaseSave();await receipt;
+ await expect.poll(()=>s.w.view.version).toBe(1);
+ await page.locator('[data-composer]').fill('第二次未发送编辑');await page.clock.fastForward(500);
+ await expect.poll(()=>s.w.view.unsent_content).toBe('第二次未发送编辑');expect(savedVersions).toEqual([0,1]);
+ await expect(page.locator('[data-a=recover-view]')).toHaveCount(0);expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
+});
+
 test('paid QA shows real cap, sends only after confirmation and preserves requested content',async({page})=>{
  const s=await setup(page,{paid:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('20');expect(s.messages).toHaveLength(0);await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].content).toBe('解释担保条款');expect(s.messages[0].execute).toBeUndefined();expect(s.quoteReads()).toBe(1);

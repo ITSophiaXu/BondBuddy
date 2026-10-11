@@ -32,7 +32,9 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
 
   const { pdfSample, PDF } = await import('../../api/dist/upload-safety.samples.js');
   const completed = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/materials/uploads/`) && response.url().endsWith('/complete') && response.request().method() === 'POST');
-  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'real-api-recovery.pdf', mimeType: PDF, buffer: pdfSample() });
+  const fileInput = page.getByLabel('为审计报告（可含报表及附注）选择文件');
+  await expect(fileInput).toBeEnabled();
+  await fileInput.setInputFiles({ name: 'real-api-recovery.pdf', mimeType: PDF, buffer: pdfSample() });
   const completion = await completed;
   expect(completion.status()).toBe(200);
   const materialId = (await completion.json()).material_id as string;

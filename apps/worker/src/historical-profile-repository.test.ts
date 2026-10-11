@@ -76,7 +76,7 @@ class ProfileMock implements HistoricalProfileClient {
     if (sql.includes('FROM bb_projects')) return { rows: values[0] === owner && values[1] === project ? [{ ok: 1 }] : [] };
     if (sql.includes('SELECT * FROM bb_ocr_snapshots')) return { rows: this.ocrRow ? [this.ocrRow] : [] };
     if (sql.includes('FROM bb_ocr_corrections')) return { rows: [] };
-    if (sql.includes('ORDER BY version DESC LIMIT 1')) {
+    if (sql.includes('FROM bb_material_versions') && /ORDER BY (?:m\.)?version DESC LIMIT 1/.test(sql)) {
       return { rows: values[0] === owner && values[1] === project && values[2] === material
         ? [{ version: 2, sha256: 'c'.repeat(64), media_type: 'application/pdf' }] : [] };
     }

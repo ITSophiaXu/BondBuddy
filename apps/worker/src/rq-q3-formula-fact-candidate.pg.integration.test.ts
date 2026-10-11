@@ -105,7 +105,7 @@ function buildResponse(options: BuildOptions) {
   };
 }
 
-test('rq Q3 formula candidates persist as external needs_confirmation, replay idempotently, isolate owners, and fail closed without a cache or on a parser change',
+test('rq Q3 formula candidates persist as external needs_confirmation, replay idempotently, isolate owners, and fail closed without a cache or on an unsupported parser version',
   { skip: !testDatabaseUrl && 'set RQ_Q3_FORMULA_FACT_CANDIDATE_TEST_DATABASE_URL or BB_TEST_DATABASE_URL for migrated PostgreSQL 16' },
   async () => {
     const pool = new Pool({ connectionString: testDatabaseUrl, max: 8 });
@@ -220,13 +220,13 @@ test('rq Q3 formula candidates persist as external needs_confirmation, replay id
         'parent_only:total_assets',
       ]);
 
-      // Negative: a changed parser version fails the whole source closed to needs_review.
+      // Negative: an unsupported parser version fails the whole source closed to needs_review.
       const changedRequestId = `q3-parse-changed-${suffix}`;
       const changed = await persistParseSnapshot({ pool }, { ownerUserId: owner, projectId, materialId, materialVersion: 1,
         requestId: changedRequestId }, { mediaType: XLSX, sha256: RQ_Q3_FORMULA_SOURCE_SHA256 },
-      buildResponse({ parserVersion: 'bondbuddy-document-parser-1.0.8', materialId, requestId: changedRequestId }));
+      buildResponse({ parserVersion: 'bondbuddy-document-parser-1.0.9', materialId, requestId: changedRequestId }));
       const changedResult = await producer({ ...context, snapshotId: changed.snapshotId });
-      assert.equal(changedResult.inserted.length, 0, 'a changed parser version yields no candidates');
+      assert.equal(changedResult.inserted.length, 0, 'an unsupported parser version yields no candidates');
       assert.equal(changedResult.needsReview.length, 1);
       assert.equal(changedResult.needsReview[0]!.reason_code, 'RQ_Q3_FORMULA_SOURCE_OR_PARSER_UNSUPPORTED');
       assert.equal((await listFactCandidates({ pool }, ownerScope)).length, 15);

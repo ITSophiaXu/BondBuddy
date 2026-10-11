@@ -34,7 +34,7 @@ test('test input gate delegates an absent applicability review to the scoped cap
   const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try{
-    const project=(await send('POST','/api/v1/projects',{name:'Synthetic missing ref',kind:'review',issuer_name:null,market:null,offering:null})).json().project_id;
+    const project=(await send('POST','/api/v1/projects',{name:'Synthetic missing ref',kind:'generation',issuer_name:null,market:null,offering:null})).json().project_id;
     const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,
       {draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
     const grantId=randomUUID();
@@ -42,9 +42,11 @@ test('test input gate delegates an absent applicability review to the scoped cap
       (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
     [grantId,owner,project,input.input_hash,'a'.repeat(64),'b'.repeat(64),'c'.repeat(64)]);
-    const run=(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,
-      input_revision:1,input_hash:input.input_hash,task_kind:'review',input_manifest_ref:'synthetic',storage_origin:'cloud',
-      workspace_id:'synthetic',test_grant_id:grantId})).json();
+    const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,
+      input_revision:1,input_hash:input.input_hash,task_kind:'generation',input_manifest_ref:'synthetic',storage_origin:'cloud',
+      workspace_id:'synthetic',test_grant_id:grantId});
+    assert.equal(submitted.statusCode,202,submitted.body);
+    const run=submitted.json();
     let called=false;
     assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages:[inputLockStage],
       testRuleCapabilityLoader:async()=>{called=true;return {status:'not_ready',reason:'unexpected'};}}),'paused');
@@ -61,7 +63,7 @@ test('test input gate delegates an absent applicability review to the scoped cap
     const tampered={...locked.manifest,test_rule_applicability_ref:{context_id:'forged',version:1,content_hash:'a'.repeat(64),
       source_input_revision:1,source_input_hash:'b'.repeat(64)}};
     const gate=await inputLockStage.run({pool:{query:async()=>({rows:[{...locked,manifest:tampered}]})} as any,
-      run:{owner_user_id:owner,project_id:project,input_revision:1,input_hash:input.input_hash,task_kind:'review',
+      run:{owner_user_id:owner,project_id:project,input_revision:1,input_hash:input.input_hash,task_kind:'generation',
         channel:'non_production_test',test_grant_id:grantId},testRuleCapabilityLoader:async()=>{
         called=true;return {status:'not_ready',reason:'unexpected'};
       }} as any);
@@ -73,7 +75,7 @@ test('test input gate delegates an absent applicability review to the scoped cap
       test_rule_applicability_block_reason:'rule_applicability_overall_review_withdrawn'};
     const blockedHash=inputManifestHash(blocked);
     const blockedGate=await inputLockStage.run({pool:{query:async()=>({rows:[{...locked,manifest:blocked,input_hash:blockedHash}]})} as any,
-      run:{owner_user_id:owner,project_id:project,input_revision:1,input_hash:blockedHash,task_kind:'review',
+      run:{owner_user_id:owner,project_id:project,input_revision:1,input_hash:blockedHash,task_kind:'generation',
         channel:'non_production_test',test_grant_id:grantId},testRuleCapabilityLoader:async()=>{
         called=true;return {status:'not_ready',reason:'unexpected'};
       }} as any);
@@ -97,15 +99,17 @@ test('a revoked grant pauses an executing test run at its next gate', {skip:!dat
   const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try{
-    const project=(await send('POST','/api/v1/projects',{name:'Synthetic revoked run',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
+    const project=(await send('POST','/api/v1/projects',{name:'Synthetic revoked run',kind:'generation',issuer_name:null,market:null,offering:null})).json().project_id;
     const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
     const grantId=randomUUID(),sample='a'.repeat(64),taxonomy='b'.repeat(64),pack='c'.repeat(64);
     await pool.query(`INSERT INTO bb_non_production_test_grants
       (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
       [grantId,owner,project,input.input_hash,sample,taxonomy,pack]);
-    const run=(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.input_hash,
-      task_kind:'review',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId})).json();
+    const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.input_hash,
+      task_kind:'generation',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId});
+    assert.equal(submitted.statusCode,202,submitted.body);
+    const run=submitted.json();
     let reachedAfter=false;
     const stages:RunStage[]=[
       {name:'input_lock',run:async()=>({kind:'done'})},
@@ -272,7 +276,7 @@ test('test-only Word passes delivery inspection and stays isolated from another 
       [grantId,owner,project,input.input_revision,input.input_hash,sample,taxonomy,pack]);
     const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,
       input_revision:input.input_revision,input_hash:input.input_hash,
-      task_kind:'review',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId});
+      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId});
     assert.equal(submitted.statusCode,202,submitted.body);
     const stages:RunStage[]=[
       {name:'input_lock',run:async()=>({kind:'done'})},
