@@ -1,0 +1,40 @@
+import {AUTHORING_ACTIVITY_LABELS,type Run,type RunEvent,type AuthoringProgress} from '@bondbuddy/contracts';
+import {esc} from './ui.js';
+const ended=(r:Run)=>['succeeded','test_completed','failed','rejected','cancelled'].includes(r.state);
+export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?s+'秒':Math.floor(s/60)+'分'+String(s%60).padStart(2,'0')+'秒';}
+export function authoringEventLabel(event:RunEvent):string|null{
+  const a=event.payload.authoring_activity;
+  if(!a)return null;
+  const label=AUTHORING_ACTIVITY_LABELS[a.code];
+  return a.state==='failed'?label.replace('正在','本次未完成：'):a.state==='completed'?label.replace('正在','已完成一次：'):label;
+}
+export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
+  if(ended(run))return undefined;
+  if(p?.pause_requested&&run.state==='running')return {title:'正在保存进度后暂停',summary:'积分已冻结。当前模型处理结果保存后暂停，继续时会复用已保存的结果。',phase:2 as const};
+  if(run.state==='paused'&&run.stage==='user_paused')return {title:'任务已暂停',summary:'进度已保存，积分停止累计。可继续本次任务，或结束并结算已消耗积分。'};
+  if(run.state==='queued'){
+    const waiting=p?Math.max(0,Date.parse(p.sampled_at)-Date.parse(p.queued_at)):0;
+    return {title:waiting>=60000?'仍在排队，尚未开始处理':'正在安排编制任务',
+      summary:(p?.queue_ahead?('前方有 '+p.queue_ahead+' 个同类任务。'):'正在等待执行服务接单。')+(p?'已排队 '+elapsedLabel(waiting)+'。':'')+'排队期间不消耗积分。',phase:0 as const};
+  }
+  if(run.state!=='running')return undefined;
+  const last=events.slice().reverse().find(e=>e.payload.authoring_activity&&e.stage===run.stage);
+  const a=last?.payload.authoring_activity;
+  const fallback=run.stage==='claimed'||run.stage==='input_lock'?'正在准备本次任务':run.stage==='materials_ready'?'正在读取本次材料':run.stage?.includes('word_delivery')?'正在保存 Word 文件并准备下载':'正在编制募集书';
+  const stale=p&&(p.last_activity_at?Date.parse(p.sampled_at)-Date.parse(p.last_activity_at)>=60000:p.active_ms>=60000);
+  const title=a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
+  const summary=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':stale?'模型仍在处理，暂未返回新的状态；收到新状态后会自动展示。':a?.state==='failed'?'本次处理遇到问题，正在等待后续状态。':a?.state==='completed'?'已收到模型本次处理结果，正在继续后续工作。':'状态随模型处理自动更新。';
+  return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
+}
+export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:number;state:string},error=false):string{
+  if(run.billing_mode!=='fixed_credits')return '<p class="task-credit-receipt">本次任务按提交时的试用规则执行，不扣积分。</p>';
+  if(!p){
+    if(legacy&&legacy.state!=='held')return '<p class="task-credit-receipt">'+(legacy.state==='settled'?'已扣费 '+legacy.points.toLocaleString('zh-CN')+' 积分':'已返还，本次不扣费')+'</p>';
+    return '<p class="task-credit-receipt">'+(error?'积分状态暂未同步，恢复连接后自动更新。':'正在同步已消耗积分…')+'</p>';
+  }
+  const terminal=ended(run),n=terminal?p.charged_points:p.accrued_points;
+  const caption=terminal?'本次已扣费':'当前已消耗';
+  const note=terminal?(p.released_points?'未消耗的 '+p.released_points.toLocaleString('zh-CN')+' 积分已释放。':'结算已完成。'):
+    p.pause_requested||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':'按有效处理时间和已完成工作累计，完成后结算。';
+  return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+n.toLocaleString('zh-CN')+' <small>积分</small></strong></div><div class="authoring-credit-meta"><span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
+}

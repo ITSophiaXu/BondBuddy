@@ -32,6 +32,8 @@ function fixture() {
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    liveProgress: undefined as Dto<'RunCreditChargeResponse'>['progress'],
+    liveActivity: undefined as Dto<'RunEvent'>['payload']['authoring_activity'],
     chargeState: 'held' as 'held'|'settled'|'released', chargeFailure:false, frozen:0,
     paid:false,freeClassification:false,points:17900,available:17899,priceVersion:'test-v1',
     order:undefined as Dto<'RechargeOrderResponse'>|undefined,
@@ -139,8 +141,14 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
-      if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState});
-      if (method === 'POST' && (path.endsWith('/cancel') || path.endsWith('/resume'))) { state.runActions.push(path); run.state = path.endsWith('/cancel') ? 'cancelled' : 'running'; return json(route,200,run); }
+      if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState,...(state.liveProgress?{progress:state.liveProgress}:{})});
+      if (path.endsWith('/stream'))return route.fulfill({status:200,contentType:'text/event-stream',body:': synthetic stream; polling exercises refresh\n\n'});
+      if (method === 'POST' && ['/cancel','/resume','/pause'].some(a=>path.endsWith(a))) {
+        state.runActions.push(path);
+        if(path.endsWith('/pause')&&state.liveProgress){state.liveProgress.pause_requested=true;state.liveProgress.clock_running=false;}
+        else {run.state=path.endsWith('/cancel')?'cancelled':'running';if(state.liveProgress){state.liveProgress.pause_requested=false;state.liveProgress.clock_running=run.state==='running';if(run.state==='cancelled'){state.chargeState='settled';state.liveProgress.charged_points=state.liveProgress.accrued_points;state.liveProgress.released_points=state.points-state.liveProgress.charged_points;}}}
+        return json(route,200,run);
+      }
       if (path.endsWith('/events')) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
         const more = state.paginate && cursor === '0';
@@ -152,7 +160,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
         const seq = more ? 1 : state.eventSeq;
         return json(route, 200, { items: Number(cursor) >= state.eventSeq ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
           occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
-          payload: more ? {} : { ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
+          payload: more ? {} : { ...(state.liveActivity?{authoring_activity:state.liveActivity}:{}), ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
       }
       state.runReads++;
       const snapshot={...structuredClone(run),event_cursor:state.eventSeq};
@@ -722,10 +730,10 @@ test('manual task refresh invalidates a late paused poll without replaying task 
   await expect.poll(()=>Boolean(state.releaseRunRead)).toBe(true);
   const run=[...state.runs.values()][0]; run.state='running';
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
+  await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   state.releaseRunRead!();
   await expect.poll(()=>state.runReads).toBeGreaterThanOrEqual(3);
-  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
+  await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   await expect(page.locator('#recheck-paused')).toHaveCount(0);
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
   expect(state.runActions).toHaveLength(0); expect(state.runs.size).toBe(1);
@@ -751,7 +759,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   }
   state.checkStatus='ready'; await page.locator('#recheck-paused').click();
   await page.getByRole('button',{name:'继续更新',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
+  await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   const run=[...state.runs.values()][0]; run.state='paused'; state.eventSeq=4;
   state.eventHistory=[
     {seq:2,state:'paused',stage:'capability_not_ready',reason:state.runReason},
@@ -859,7 +867,7 @@ test('unknown blockers remain explicit; prototype workspace captures all states 
   await page.screenshot({path:join(tmpdir(),'bb361-paused-desktop.png'),fullPage:true});
   for (const [status, file] of [['running','running'],['awaiting_input','awaiting'],['failed','failed']] as const) {
     [...state.runs.values()][0].state=status; await page.getByRole('button',{name:'重新读取',exact:true}).click();
-    await expect(page.locator('#execution-progress')).toContainText(status==='running'?'正在根据材料编制募集书':status==='awaiting_input'?'等待补充信息':'本轮未完成');
+    await expect(page.locator('#execution-progress')).toContainText(status==='running'?'正在编制募集书':status==='awaiting_input'?'等待补充信息':'本轮未完成');
     await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),`bb361-${file}-desktop.png`),fullPage:true});
   }
@@ -965,7 +973,7 @@ test('trial stage stays honest without events; a different paused stage discards
   await page.locator('#recheck-paused').click();
   await expect(page.locator('#resume-run')).toBeVisible();
   await page.locator('#resume-run').click();
-  await expect(page.locator('#execution-progress')).toContainText('正在根据材料编制募集书');
+  await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
   expect(state.executes).toHaveLength(1);
 });
@@ -1179,7 +1187,7 @@ for (const scenario of [
 test('credit visibility: one click starts and running receipt follows settlement and retry',async({page})=>{
   const state=fixture(); state.paid=true; state.checkStatus='ready'; state.available=100000; state.runState='running'; state.runStage='provider_call';
   await page.setViewportSize({width:1440,height:960}); await setup(page,state);
-  await expect(page.locator('#execution-credit-hint')).toContainText('成功交付成果后扣除积分');
+  await expect(page.locator('#execution-credit-hint')).toContainText('处理开始后按进度累计积分');
   await expect(page.locator('#fixed-quote')).toBeHidden();
   const evidence=process.env.BB_UX_EVIDENCE_DIR;
   if(evidence){await mkdir(evidence,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:width===1440?960:844});await page.locator('#execute-input').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,`implementation-ready-${width}.png`)});}}
@@ -1187,7 +1195,7 @@ test('credit visibility: one click starts and running receipt follows settlement
   await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);
   state.available=82100;state.frozen=17900;await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));
   await expect(page.locator('#fixed-quote')).toBeHidden();
-  await expect(page.locator('.task-credit-receipt')).toContainText('17,900 积分 · 已预留');
+  await expect(page.locator('.task-credit-receipt')).toContainText('正在同步已消耗积分');
   await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('100,000');await expect(page.locator('.credit-wallet')).toContainText('可用 82,100');
   await expect(page.locator('.credit-wallet')).toContainText('任务已预留 17,900');
   if(evidence){await page.locator('#workspace-progress').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-running.png')});}
@@ -1195,10 +1203,10 @@ test('credit visibility: one click starts and running receipt follows settlement
   [...state.runs.values()][0].state='succeeded';
   await expect(page.locator('.task-credit-receipt')).toContainText('已扣费',{timeout:12000});
   await expect(page.locator('.credit-wallet')).toContainText('暂无预留积分');await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('82,100');
-  state.chargeFailure=true; await page.locator('#refresh-run-charge').click();
+  state.chargeFailure=true; await page.reload();
   await expect(page.locator('.task-credit-receipt')).toContainText('暂未同步');
   state.chargeFailure=false; state.chargeState='released'; state.available=100000;
-  await page.locator('#refresh-run-charge').click();
+  await page.reload();
   await expect(page.locator('.task-credit-receipt')).toContainText('已返还，本次不扣费');
   await expect(page.locator('.credit-wallet')).toContainText('100,000');
 });
@@ -1368,4 +1376,43 @@ test('M2 deferred charge prototype screenshots',async({page})=>{
   await page.setViewportSize({width,height:width===1440?960:844});await page.goto('http://prototype.test/credit-visibility.html?state='+state);
   await page.locator('.quote-area').scrollIntoViewIfNeeded();await page.screenshot({path:join(output!,`prototype-${state}-${width}.png`)});
  }
+});
+
+for(const width of [1440,390])test('live authoring: queue, model activity, growing credits, pause and partial settlement '+width,async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.points=48900;state.runState='queued';state.runStage='queued';
+ state.liveProgress={policy:'authoring_progress_v1',accrued_points:0,charged_points:0,released_points:0,active_ms:0,pause_requested:false,queued_at:'2026-10-11T07:31:00Z',sampled_at:'2026-10-11T07:32:30Z',last_activity_at:null,queue_ahead:2,clock_running:false};
+ await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
+ await page.locator('#execute-input').click();await expect(page.locator('.authoring-credit-meter')).toContainText('0 积分');
+ await expect(page.locator('#execution-progress')).toContainText('前方有 2 个同类任务');
+ await expect(page.locator('.authoring-credit-meter')).not.toContainText('48,900');
+ const run=[...state.runs.values()][0];run.state='running';run.stage='model_generation';
+ state.liveProgress={...state.liveProgress,accrued_points:1260,active_ms:60000,queue_ahead:null,clock_running:true,last_activity_at:'2026-10-11T07:32:30Z'};
+ state.liveActivity={activity_id:'a'.repeat(64),code:'read_materials',state:'started'};state.eventSeq++;
+ await expect(page.locator('.task-progress-heading')).toContainText('正在读取原稿与财务材料');
+ await expect(page.locator('.authoring-credit-meter')).toContainText('1,260 积分');
+ await page.locator('.authoring-credit-meter summary').click();
+ state.liveProgress.accrued_points=1830;state.liveProgress.active_ms=90000;
+ state.liveActivity={activity_id:'b'.repeat(64),code:'write_document',state:'started'};state.eventSeq++;
+ await expect(page.locator('.task-progress-heading')).toContainText('正在编制募集书内容');
+ await expect(page.locator('.authoring-credit-meter')).toContainText('1,830 积分');
+ await expect(page.locator('.authoring-credit-meter details')).toHaveJSProperty('open',true);
+ await expect(page.locator('.authoring-credit-meter summary')).toBeFocused();
+ await page.locator('.authoring-credit-meter summary').click();
+ const evidence=process.env.BB_UX_EVIDENCE_DIR;
+ if(evidence){await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0);});await page.screenshot({path:join(evidence,'implementation-running-'+width+'.png'),fullPage:true});}
+ await page.getByRole('button',{name:'暂停任务',exact:true}).click();
+ await expect(page.locator('#execution-progress')).toContainText('积分已冻结');
+ await expect(page.locator('.authoring-credit-meter')).toContainText('1,830 积分');
+ run.state='paused';run.stage='user_paused';state.eventSeq++;
+ await expect(page.locator('.task-progress-heading')).toContainText('任务已暂停');
+ if(evidence){await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0);});await page.screenshot({path:join(evidence,'implementation-paused-'+width+'.png'),fullPage:true});}
+ await page.reload();await expect(page.locator('.authoring-credit-meter')).toContainText('1,830 积分');
+ await page.getByRole('button',{name:'继续本次任务',exact:true}).click();
+ await expect.poll(()=>state.runActions.some(x=>x.endsWith('/resume'))).toBe(true);
+ await page.getByRole('button',{name:'停止本次任务',exact:true}).click();
+ await expect(page.locator('.authoring-credit-meter')).toContainText('本次已扣费');
+ await expect(page.locator('.authoring-credit-meter')).toContainText('1,830 积分');
+ await expect(page.locator('.authoring-credit-meter')).toContainText('47,070 积分已释放');
+ expect(state.executes).toHaveLength(1);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

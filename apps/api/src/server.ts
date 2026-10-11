@@ -1,3 +1,4 @@
+import { readAuthoringProgress } from './authoring-progress.js';
 import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
@@ -1294,10 +1295,11 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/runs/:run_id/credit-charge',{schema:{response:{200:schemas.RunCreditChargeResponse}}},async request=>{
     const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
-    if(!r.reservation_id)return {quote:null,state:null};
+    const progress=await readAuthoringProgress(db(),user,r.id);
+    if(!r.reservation_id)return {quote:null,state:null,...(progress?{progress}:{})};
     const row=(await db().query('SELECT q.*,r.state AS charge_state FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2',[user,r.reservation_id])).rows[0];
     if(!row)throw missing();
-    return {quote:quoteDto(row),state:row.charge_state};
+    return {quote:quoteDto(row),state:row.charge_state,...(progress?{progress}:{})};
   });
   app.post('/api/v1/projects/:project_id/credit-quote',{schema:{body:schemas.FixedQuoteRequest,response:{200:schemas.FixedQuoteResponse}}},async request=>{
     const user=await owner(request),id=param(request,'project_id');
@@ -1495,7 +1497,7 @@ export function createServer(settings: Settings = {}) {
     const items=q.rows.map(e=>({event_id:e.id,schema_version:1,trace_id:e.trace_id,run_id:e.run_id,seq:e.seq,occurred_at:date(e.occurred_at),stage:e.stage,type:e.type,state:e.state,payload:runEventPayloadDto(e.payload)}));
     return {items,next_cursor:items.length?items.at(-1)!.seq:after};
   });
-  for(const kind of ['cancel','resume'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
+  for(const kind of ['cancel','resume','pause'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
     const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
     if(!queueEnabled)throw unavailable();
     return queueAction(db(),user,id,kind,request.id);

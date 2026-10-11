@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { AuthoringProgressSchema } from './authoring-progress.js';
 
 export const AUTHORING_BILLING_TASKS = {
   interim: '一期更新', annual: '年度更新', two_years: '两年补更', three_years: '三年补更',
@@ -37,7 +38,7 @@ export const billingSchemas = {
   FixedQuoteRequest: obj({ input_revision: Type.Integer({ minimum: 1 }), input_hash: Type.String({ pattern: '^[a-f0-9]{64}$' }) }),
   FixedQuoteResponse: obj({ enabled: Type.Boolean(), quote: Type.Union([FixedQuoteSchema, Type.Null()]),
     balance: CreditBalanceSchema, shortage: points, reason: nullable(Type.String({ maxLength: 1000 })) }),
-  RunCreditChargeResponse: obj({ quote: Type.Union([FixedQuoteSchema, Type.Null()]),
+  RunCreditChargeResponse: obj({ progress: Type.Optional(AuthoringProgressSchema), quote: Type.Union([FixedQuoteSchema, Type.Null()]),
     state: Type.Union([Type.Literal('held'),Type.Literal('settled'),Type.Literal('released'),Type.Null()]) }),
   RechargeOrderRequest: obj({ request_id: id, pack_id: Type.Union(RECHARGE_PACKS.map(p => Type.Literal(p.id))),
     provider: Type.Union([Type.Literal('wechat'), Type.Literal('alipay')]), project_id: Type.Optional(id) }),

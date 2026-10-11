@@ -85,7 +85,7 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
   if ((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1', [quote.id])).rowCount)
     throw new Problem(409, 'IDEMPOTENCY_CONFLICT', 'Quote already used by another execution');
   const reservation = uid();
-  await c.query('INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points) VALUES($1,$2,$3,$4,$5)', [reservation, owner, run.id, quote.id, points]);
+  await c.query('INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,$6)', [reservation, owner, run.id, quote.id, points, !reviewIntentHash && quote.task_type in AUTHORING_BILLING_TASKS ? 'authoring_progress_v1' : 'on_delivery']);
   const lots = await c.query(`SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now())
     ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE`, [owner]);
   let remaining = points;

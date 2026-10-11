@@ -50,3 +50,5 @@ outputs/*
 *.pfx
 *.p12
 *credentials*.json
+
+!docs/product-decisions/2026-10-11-authoring-live-progress.md

@@ -1,3 +1,5 @@
+> 2026-10-11：按本次用户要求，募集书新任务采用实时模型活动与累计积分，暂停冻结、结束部分结算；旧任务保留原规则。见 docs/product-decisions/2026-10-11-authoring-live-progress.md。追加迁移 0103，未改任务总价或 M3/M4 计费。
+
 ## 2026-10-09 账号积分历史
 
 #630 新增只读 consumption-history / recharge-history 接口。前者从任务预留与 append-only settle/release/correction 事件投影，后者仅从支付订单读取；白名单 DTO、账号隔离、绑定账号/类别的 created_at/id 游标与 no-store。0102 仅增加查询索引，不改账务触发器或历史费用。契约/原型/验收见[产品决定](product-decisions/2026-10-09-account-credit-history.md)。
