@@ -23,23 +23,66 @@ ANCHOR_REASONS = {
 }
 
 
+_PREFIX_END = r"\s*(?:[；;]\s*|\r?\n\s*|$)"
+_SOURCE_PREFIX = re.compile(r"\A\s*原文件\s*[：:]\s*[^；;\r\n]*?\.(?:docx?|pdf|xlsx?|xlsm|csv)" + _PREFIX_END, re.I)
+_CELL = r"\$?[A-Z]{1,3}\$?[1-9]\d*(?:\s*[:：]\s*\$?[A-Z]{1,3}\$?[1-9]\d*)?"
+_SHEET = r"工作表\s*[：:]?\s*(?:《[^》\r\n]+》|[“\"][^”\"\r\n]+[”\"]|'[^'\r\n]+')\s*(?:[·，,]\s*)?(?:单元格\s*[：:]?\s*)?" + _CELL + r"(?:\s*[、，,]\s*" + _CELL + r")*"
+_POSITION = r"正文位置\s*\d+(?:\s*的表格\s*[·，,]?\s*第\s*\d+\s*行\s*[·，,]?\s*第\s*\d+\s*列)?"
+_LOCATION_PREFIX = re.compile(r"\A\s*(?:\[\s*" + _POSITION + r"\s*\]|" + _POSITION + "|" + _SHEET + r"|(?:PDF\s*)?(?:物理)?第\s*\d+\s*页)" + _PREFIX_END, re.I)
+# These old authoring notes describe only provenance and routine conversions.
+# Keep the whitelist narrow: a changed value, warning or unfamiliar calculation
+# is substantive evidence, not a source-only note that can be discarded.
+_LEGACY_CONTEXT = re.compile(
+    r"\A[^；;。\r\n]+(?:公司|集团)[；;]\s*20\d{2}年[^；;。\r\n]*(?:期末|累计|年度|月末|年末)[；;]\s*"
+    r"(?:合并|母公司)口径[；;]\s*人民币(?:元|万元|亿元)[；;]\s*计算\s*[：:]\s*"
+    r"(?:资产负债率\s*[=＝]\s*负债\s*[÷/]\s*资产\s*[×*]\s*100%|"
+    r"原值除以\s*10,?000[，,]\s*披露为万元[、，,]\s*四舍五入保留两位)[。.]\s*"
+)
+
+
 def strip_comment_location_prefix(text):
-    """Remove only explicit source/reader-position prefixes, never evidence prose."""
-    original = text
-    text = re.sub(r"\A\s*原文件\s*[：:]\s*[^；;]*?\.(?:docx?|pdf)\s*[；;]\s*", "", text, count=1, flags=re.I)
-    position = r"正文位置\s*\d+(?:\s*的表格\s*[·，,]?\s*第\s*\d+\s*行\s*[·，,]?\s*第\s*\d+\s*列)?"
-    text = re.sub(r"\A\s*(?:\[\s*" + position + r"\s*\]|" + position + r")\s*(?:[；;]\s*|\n\s*)", "", text, count=1)
-    return text if text.strip() else original
+    """Trim repeated explicit locators, keeping substantive evidence verbatim."""
+    while True:
+        match = _SOURCE_PREFIX.match(text) or _LOCATION_PREFIX.match(text)
+        if not match:
+            return text
+        text = text[match.end():]
+
+
+def is_source_only_comment(text):
+    """Recognize only empty locators or the known legacy spreadsheet note format."""
+    remaining = text
+    while remaining.strip():
+        source = _SOURCE_PREFIX.match(remaining)
+        if not source:
+            return False
+        remaining = remaining[source.end():]
+        location = _LOCATION_PREFIX.match(remaining)
+        if location:
+            remaining = remaining[location.end():]
+        if not remaining.strip():
+            return True
+        context = _LEGACY_CONTEXT.match(remaining) if location else None
+        if context:
+            remaining = remaining[context.end():]
+        elif not _SOURCE_PREFIX.match(remaining):
+            return False
+    return bool(text.strip())
 
 
 def _trim_generated_comment_prefixes(comments):
-    # Review copies may contain comments from an earlier BondBuddy draft. Retain
-    # IDs, authors, dates, runs and anchors; only trim a known redundant prefix.
-    for comment in comments:
+    # Retain substantive notes' IDs, authors, dates and runs. Pure provenance
+    # notes from earlier BondBuddy drafts do not belong in the review copy.
+    removed = []
+    for comment in list(comments):
         if not re.fullmatch(r"BondBuddy(?:-[a-f0-9]{12})?", comment.get(Q("author"), "")):
             continue
         nodes = list(comment.iter(Q("t")))
         text = "".join(node.text or "" for node in nodes)
+        if is_source_only_comment(text) or (text.strip() and not strip_comment_location_prefix(text).strip()):
+            removed.append(comment)
+            comments.remove(comment)
+            continue
         remaining = len(text) - len(strip_comment_location_prefix(text))
         for node in nodes:
             if remaining <= 0:
@@ -48,6 +91,60 @@ def _trim_generated_comment_prefixes(comments):
             cut = min(remaining, len(value))
             node.text = value[cut:]
             remaining -= cut
+    return removed
+
+
+def _remove_comment_references(parts, root, removed, comments):
+    """Remove only the discarded notes' anchors and modern-comment metadata."""
+    if not removed:
+        return
+    ids = {comment.get(Q("id")) for comment in removed}
+    para_attr = "{http://schemas.microsoft.com/office/word/2010/wordml}paraId"
+    removed_paras = {p.get(para_attr): comment.get(Q("id")) for comment in removed for p in comment.iter(Q("p")) if p.get(para_attr)}
+    retained_paras = {p.get(para_attr): comment.get(Q("id")) for comment in comments for p in comment.iter(Q("p")) if p.get(para_attr)}
+    para_ids = set(removed_paras)
+    roots = {name: root if name == "word/document.xml" else parse_xml(data)
+             for name, data in parts.items() if name.startswith("word/") and name.endswith(".xml")}
+    promoted = {}
+    for entry in roots.get("word/commentsExtended.xml", ()):
+        attrs = {etree.QName(key).localname: value for key, value in entry.attrib.items()}
+        if attrs.get("paraIdParent") in para_ids and attrs.get("paraId") in retained_paras:
+            promoted.setdefault(attrs["paraIdParent"], attrs["paraId"])
+    replacements = {removed_paras[parent]: retained_paras[reply] for parent, reply in promoted.items()}
+    anchored = {n.get(Q("id")) for node in roots.values() for n in node.iter(Q("commentRangeStart"))}
+    for name, node in roots.items():
+        changed = False
+        for marker in list(node.iter()):
+            if marker.tag in (Q("commentRangeStart"), Q("commentRangeEnd"), Q("commentReference")) and marker.get(Q("id")) in ids:
+                reply_id = replacements.get(marker.get(Q("id")))
+                if reply_id and reply_id not in anchored:
+                    # Thread replies may share only the removed parent's anchor.
+                    marker.set(Q("id"), reply_id)
+                else:
+                    marker.getparent().remove(marker)
+                changed = True
+        if changed and name != "word/document.xml":
+            parts[name] = etree.tostring(node, encoding="UTF-8", xml_declaration=True)
+    durable_ids = set()
+    for name in ("word/commentsExtended.xml", "word/commentsIds.xml", "word/commentsExtensible.xml"):
+        if name not in parts:
+            continue
+        node = parse_xml(parts[name])
+        for entry in list(node):
+            attributes = {etree.QName(key).localname: value for key, value in entry.attrib.items()}
+            if attributes.get("paraId") in para_ids or attributes.get("durableId") in durable_ids:
+                if attributes.get("durableId"):
+                    durable_ids.add(attributes["durableId"])
+                node.remove(entry)
+            elif attributes.get("paraIdParent") in para_ids:
+                promoted_para = promoted.get(attributes["paraIdParent"])
+                for key in list(entry.attrib):
+                    if etree.QName(key).localname == "paraIdParent":
+                        if promoted_para and attributes.get("paraId") != promoted_para:
+                            entry.set(key, promoted_para)
+                        else:
+                            del entry.attrib[key]
+        parts[name] = etree.tostring(node, encoding="UTF-8", xml_declaration=True)
 
 
 def _location(ref):
@@ -131,9 +228,10 @@ def annotate(source, destination, report):
         before = document_signature(root)
         anchors = paragraph_map(root)
         comments = parse_xml(parts["word/comments.xml"]) if "word/comments.xml" in parts else etree.Element(Q("comments"), nsmap={"w": W})
-        _trim_generated_comment_prefixes(comments)
+        removed = _trim_generated_comment_prefixes(comments)
+        _remove_comment_references(parts, root, removed, comments)
         used = [int(n.get(Q("id"))) for n in root.iter() if n.tag in (Q("commentRangeStart"), Q("commentReference")) and (n.get(Q("id")) or "").isdigit()]
-        used += [int(n.get(Q("id"))) for n in comments if (n.get(Q("id")) or "").isdigit()]
+        used += [int(n.get(Q("id"))) for n in [*comments, *removed] if (n.get(Q("id")) or "").isdigit()]
         next_id = max(used, default=-1) + 1
         placed, unanchored = [], []
         for finding in report["findings"]:

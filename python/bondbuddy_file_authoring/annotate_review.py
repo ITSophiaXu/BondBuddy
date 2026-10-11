@@ -46,7 +46,7 @@ def findings_from_markdown(markdown):
                 elif field == "原文件":
                     original = f"{field}：{plain(value)}"
                     concise = strip_comment_location_prefix(original)
-                    if concise != original:
+                    if concise.strip() and concise != original:
                         comment_lines.append(concise)
             elif field == "原文披露" and line.strip():
                 value = re.sub(r"^\s*[-*]\s+", "", line)
