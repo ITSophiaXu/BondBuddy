@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MARKET_OFFERINGS, emptyUpdateDetails, type Project } from '@bondbuddy/contracts';
-import { blankDraft, changeMarket, draftFromProject, materialHints, projectKind, validateDraft } from './form-model.js';
+import { blankDraft, changeMarket, generatedProjectName, draftFromProject, materialHints, projectKind, validateDraft } from './form-model.js';
 
 test('kind follows the historical-prospectus answer: only "no history" routes to generation', () => {
   assert.equal(projectKind(false), 'generation');
@@ -59,4 +59,13 @@ test('calendar, units, decimal precision, null and false are distinct', () => {
   d.issuance_amount = { value: '0', unit: 'yuan' }; assert.deepEqual(validateDraft(draft), []);
   d.registration_amount = null; assert.deepEqual(validateDraft(draft), []);
   (d as unknown as Record<string, unknown>).unexpected = 'not allowed'; assert.notDeepEqual(validateDraft(draft), []);
+});
+
+test('review names retain the purpose and length limit across market choices',()=>{
+ assert.equal(generatedProjectName('  合成公司  ',null,null,'review'),'合成公司-募集书复核');
+ assert.equal(generatedProjectName('合成公司','sse','dfi','review'),'合成公司-上交所-募集书复核');
+ assert.equal(generatedProjectName('合成公司','nafmii','ppn','review'),'合成公司-交易商协会-PPN · 定向债务融资工具-募集书复核');
+ assert.equal(generatedProjectName(' ',null,null,'review'),'');
+ assert.equal(generatedProjectName('合成公司',null,null),'合成公司-募集书更新');
+ const long=generatedProjectName('😀'.repeat(200),'sse','private','review');assert.ok(long.length<=160);assert.ok(long.endsWith('-募集书复核'));assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(long));
 });
