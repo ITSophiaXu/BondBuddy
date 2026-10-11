@@ -16,6 +16,7 @@ docs/testing/*
 !docs/M4-CORE-API.md
 !docs/product-decisions/
 docs/product-decisions/*
+!docs/product-decisions/2026-10-11-authoring-dynamic-balance.md
 !docs/product-decisions/2026-09-30-m1-simplification.md
 !docs/product-decisions/2026-10-02-generated-word-download.md
 !docs/product-decisions/2026-10-02-m3-cli-led-review.md

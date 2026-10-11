@@ -12,6 +12,8 @@ import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
 import { inputManifestHash } from './production-rule-pin.js';
 
 import { syncAuthoringProgress } from './authoring-progress.js';
+import { creditBalance,lockCreditAccount } from './billing.js';
+import { debitAuthoringCredits } from './authoring-credit-debit.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -143,6 +145,13 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
 export async function pauseAtCheckpoint(pool:Pool,lease:Lease):Promise<boolean>{
   return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
+    await syncAuthoringProgress(client,r);
+    const creditPause=(await client.query('SELECT credit_pause_requested FROM bb_jobs WHERE id=$1',[j.id])).rows[0].credit_pause_requested;
+    if(creditPause){
+      await client.query("UPDATE bb_jobs SET state='paused',stage='credits_exhausted',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+      await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
+      return true;
+    }
     if(!j.user_pause_requested)return false;
     await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
     await event(client,r,'paused','user_paused','user_paused');
@@ -248,6 +257,10 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     if(kind==='pause'){
       if(!['update','generation'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
+      if(r.stage==='credits_exhausted'){
+        await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
+        return runDto(r);
+      }
       if(j.user_pause_requested||r.state==='paused')return runDto(r);
       if(!['queued','running'].includes(r.state))throw new Problem(409,'INPUT_REVISION_CONFLICT','Task cannot pause at this stage');
       await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
@@ -256,6 +269,12 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
         await event(client,r,'paused','user_paused','user_paused');
       }else await event(client,r,r.state,r.stage,'user_pause_requested');
       return runDto({...r,updated_at:new Date()});
+    }
+    if(kind==='resume'&&j.credit_pause_requested){
+      await lockCreditAccount(client,owner);
+      if((await creditBalance(client,owner)).available<1)throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
+      if(r.state==='running')throw new Problem(409,'INPUT_REVISION_CONFLICT','正在保存当前进度，保存后自动继续。');
+      await client.query('UPDATE bb_jobs SET credit_pause_requested=false WHERE id=$1',[j.id]);
     }
     // A user may undo a pending pause while the model is saving its current result.
     if(kind==='resume'&&r.state==='running'&&j.user_pause_requested){
@@ -527,6 +546,30 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   }
   return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
+    // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
+    if(outcome==='succeeded'&&!j.user_pause_requested){
+      if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
+        const pair=j.checkpoint?.stages?.word_delivery_pair;
+        if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)
+          throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
+        for(const id of [pair.revision_artifact_id,pair.clean_artifact_id]){
+          const ready=await client.query(`SELECT 1 FROM bb_artifact_versions a JOIN bb_word_delivery_evidence e ON e.id=a.word_delivery_evidence_id
+            WHERE a.id=$1 AND a.owner_user_id=$2 AND a.run_id=$3 AND a.delivery_status='available'
+              AND e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.artifact_id=a.id AND e.artifact_version=a.version
+              AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=a.sha256 AND e.candidate_sha256=a.sha256
+            FOR UPDATE OF a`,[id,r.owner_user_id,r.id]);
+          if(!ready.rowCount)throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
+        }
+      }
+      if(r.channel!=='production')throw new Problem(409,'TEST_GRANT_MISMATCH','Run channel cannot enter this terminal state');
+      if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
+      const debit=await debitAuthoringCredits(client,r,Number.MAX_SAFE_INTEGER);
+      if(debit&&debit.charged<debit.ceiling){
+        await client.query("UPDATE bb_jobs SET credit_pause_requested=true,state='paused',stage='credits_exhausted',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+        await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
+        return runDto({...r,updated_at:new Date()});
+      }
+    }
     // Pause acceptance and success settlement serialize on the same run/job locks.
     if(outcome!=='failed'&&j.user_pause_requested){
       await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
@@ -665,26 +708,42 @@ export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAG
 }
 
 /** Trusted runtime resume (never a browser principal): re-queues a paused run whose blocker cleared. */
-export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared') {
+export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared'|'credits_recharged') {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    if(reason==='credits_recharged'){
+      if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
+      await lockCreditAccount(client,owner);
+      if((await creditBalance(client,owner)).available<1)return false;
+    }else if(j.user_pause_requested)return false;
     if(await providerCallNeedsReconciliation(client,j.id))return false;
+    // Another blocker may have won while the in-flight result was being saved.
+    // Once it clears, retain the credit blocker rather than strand the run in that old stage.
+    if(j.credit_pause_requested&&reason!=='credits_recharged'){
+      await lockCreditAccount(client,owner);
+      if((await creditBalance(client,owner)).available<1){
+        await client.query("UPDATE bb_jobs SET stage='credits_exhausted',updated_at=now() WHERE id=$1",[j.id]);
+        await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
+        return false;
+      }
+    }
     if(r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
       (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifacts WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rowCount)){
       const {settleM4Metering}=await import('./m4-billing.js');
       const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;
     }
-    await client.query("UPDATE bb_jobs SET state='queued',updated_at=now() WHERE id=$1",[j.id]);
-    await event(client,r,'queued',j.stage,reason);
+    const nextStage=reason==='credits_recharged'?'queued':j.stage;
+    await client.query("UPDATE bb_jobs SET state='queued',stage=$2,credit_pause_requested=false,updated_at=now() WHERE id=$1",[j.id,nextStage]);
+    await event(client,r,'queued',nextStage,reason);
     return true;
   });
 }
 
 /** Paused runs at a stage, oldest first; the runtime sweeps them after their blocker may have cleared. */
 export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20,runKinds?:readonly RunKind[]) {
-  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND (r.state='paused' OR r.state='settlement_pending' AND j.subtype IN ('m4_document_v1','m4_qa_v1')) AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
+  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND (r.state='paused' OR r.state='settlement_pending' AND j.subtype IN ('m4_document_v1','m4_qa_v1')) AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) AND ($1<>'credits_exhausted' OR (NOT j.user_pause_requested AND EXISTS(SELECT 1 FROM bb_credit_lots l WHERE l.owner_user_id=r.owner_user_id AND l.remaining>l.frozen AND (l.expires_at IS NULL OR l.expires_at>now())))) ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 

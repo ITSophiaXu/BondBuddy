@@ -138,6 +138,8 @@ export class ProjectExecution {
   private pauseBeforeResume?: Dto<'RunEvent'>;
   private repeatedPauseEvent?: Dto<'RunEvent'>;
   private message = '';
+  private creditDialog?: HTMLDialogElement;
+  private creditPromptShown = false;
   private progressMessage = '';
   private materials: Material[] = [];
   private sourceStamp = '';
@@ -291,21 +293,21 @@ export class ProjectExecution {
     this.conversation.setEditingVisible(!this.restoring && !activeRun && (!this.run || this.nextRequested));
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const blocked = this.startBlockReason();
-    this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote?.shortage);
+    this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote && this.quote.balance.available === 0);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…')
       : this.awaitingCredits ? '继续更新'
       : this.nextRequested ? '生成新版' : '开始编制';
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
-    quoteHost.hidden=!q?.shortage||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=q?.shortage?`<div class="fixed-quote"><h3>积分不足，请充值后继续更新</h3><p>项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
+    quoteHost.hidden=!(q && q.balance.available === 0)||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
+    quoteHost.innerHTML=q && q.balance.available === 0?`<div class="fixed-quote"><h3>积分不足，请充值后继续更新</h3><p>项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote());});
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
-    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q?.shortage);
+    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q && q.balance.available === 0);
     billingHint.textContent = this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
-      : '处理开始后按进度累计积分；暂停冻结，结束按已消耗结算，平台失败不扣费。';
+      : '有积分即可开始，处理时按进度扣减；积分用完暂停，充值到账后继续。';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -337,15 +339,28 @@ export class ProjectExecution {
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对编制服务响应；已保存材料会保留，无需重新上传。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
+    const needsRecharge = !!this.charge?.progress?.credit_exhausted && !!activeRun;
+    if (!needsRecharge) { this.creditPromptShown = false; this.creditDialog?.close(); }
+    if (needsRecharge && !this.creditPromptShown) {
+      this.creditPromptShown = true;
+      this.creditDialog?.remove();
+      const dialog = document.createElement('dialog');
+      dialog.className = 'credit-recharge-dialog';
+      dialog.setAttribute('aria-labelledby', 'credit-recharge-title');
+      dialog.innerHTML = `<h2 id="credit-recharge-title">积分已用完，充值后继续</h2><p>已完成的工作会保留，积分已停止扣减。当前处理保存后暂停，充值到账后自动继续本次任务。</p><div class="form-actions"><a class="button primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a><button type="button" class="button secondary">稍后充值</button></div>`;
+      dialog.querySelector('button')!.addEventListener('click', () => dialog.close());
+      document.body.append(dialog); this.creditDialog = dialog; dialog.showModal();
+    }
     const executionProgressHost = this.host.querySelector<HTMLElement>('#execution-progress')!;
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
     executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress))}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
+      ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>充值到账后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="#/account?project=${encodeURIComponent(this.id)}">充值积分</a></div>` : ''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{points:this.charge.quote.points,state:this.charge.state}:undefined,this.chargeError)}
       <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
-      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
+      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
           : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
@@ -380,8 +395,8 @@ export class ProjectExecution {
       // Backend admission is authoritative; uncertainty alone does not add an upload review step.
       if (this.preflight.status === 'blocked') return;
       if(this.preflight.billing_mode==='fixed_credits'){
-        if(!this.quote || this.quote.shortage)await this.action(()=>this.loadQuote());
-        if(!this.quote?.enabled || !this.quote.quote || this.quote.shortage)return;
+        if(!this.quote || this.quote.balance.available === 0)await this.action(()=>this.loadQuote());
+        if(!this.quote?.enabled || !this.quote.quote || this.quote.balance.available === 0)return;
       }
       await this.execute();
     } finally { this.starting = false; this.render(); }
@@ -391,10 +406,10 @@ export class ProjectExecution {
     const generation=this.generation,input=this.input;
     const quote=await this.api.creditQuote(this.id,{input_revision:input.input_revision,input_hash:input.input_hash},this.controller.signal);
     if(!quote.enabled||!quote.quote)throw new ApiError(409,'QUOTE_REQUIRED');
-    if(this.active&&generation===this.generation){this.quote=quote;if(quote.shortage)this.awaitingCredits=true;this.render();}
+    if(this.active&&generation===this.generation){this.quote=quote;if(quote.balance.available === 0)this.awaitingCredits=true;this.render();}
   }
   private async changeRun(action: 'cancel' | 'resume' | 'pause') {
-    if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
+    if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     const runId = this.run.run_id;
     const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
@@ -413,7 +428,7 @@ export class ProjectExecution {
     try { await work(); }
     catch (error) {
       if (this.active) {
-        if(error instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED','CREDITS_INSUFFICIENT'].includes(error.code)) {
+        if(!this.run && error instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED','CREDITS_INSUFFICIENT'].includes(error.code)) {
           this.quote=undefined;this.awaitingCredits=true;
           if(error.code==='QUOTE_REQUIRED')this.preflight=undefined;
           else {try{await this.loadQuote();}catch{/* Explicit retry keeps the task unstarted. */}}
@@ -611,7 +626,10 @@ export class ProjectExecution {
     try {
       const charge = await this.api.runCharge(run.run_id, this.controller.signal);
       if (this.active && this.run?.run_id === run.run_id && readVersion === this.runReadVersion && this.run.state === run.state) {
+        const balanceChanged = charge.progress?.policy === 'authoring_balance_v2' &&
+          (charge.progress.charged_points !== this.charge?.progress?.charged_points || charge.progress.available_points !== this.charge?.progress?.available_points);
         this.charge = charge; this.chargeError = run.billing_mode === 'fixed_credits' && (!charge.quote || !charge.state);
+        if (balanceChanged) window.dispatchEvent(new Event('bondbuddy:credits-changed'));
       } else if(this.active && this.run) this.chargeRefreshPending = true;
     } catch { if (this.active && this.run?.run_id === run.run_id && readVersion === this.runReadVersion && this.run.state === run.state) { this.charge = undefined; this.chargeError = true; } else if(this.active && this.run) this.chargeRefreshPending = true; }
     finally {
@@ -726,5 +744,5 @@ export class ProjectExecution {
       }
     }
   }
-  dispose() { clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
+  dispose() { this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
 }

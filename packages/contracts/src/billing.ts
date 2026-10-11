@@ -62,6 +62,7 @@ export const creditHistorySchemas = {
     reservation_id: id, run_id: id, project_id: nullable(id), project_name: Type.String({ maxLength: 200 }),
     task_name: Type.String({ maxLength: 200 }), created_at: utc, finalized_at: nullable(utc),
     state: Type.Union(['held','settled','released'].map(s=>Type.Literal(s))),
+    billing_policy: Type.Optional(Type.Union([Type.Literal('on_delivery'),Type.Literal('authoring_progress_v1'),Type.Literal('authoring_balance_v2')])),
     reserved_points: points, charged_points: points, released_points: points, corrected_points: points,
   })), page: historyPage }),
   RechargeHistoryResponse: obj({ items: Type.Array(obj({

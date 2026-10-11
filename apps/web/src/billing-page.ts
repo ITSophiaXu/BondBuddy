@@ -34,9 +34,9 @@ export class BillingPage {
     const provider=document.querySelector<HTMLSelectElement>('#payment-provider')?.value;
     const faqOpen=document.querySelector<HTMLDetailsElement>('.billing-faq')?.open;
     const b=this.balance,c=this.config,o=this.order;
-    const shortage=Math.max(0,(this.quote?.quote?.points??0)-(b?.available??0));
+    const shortage=this.reviewProject?Math.max(0,(this.quote?.quote?.points??0)-(b?.available??0)):(b?.available??0)===0;
     const returnLink=`<a class="btn secondary" href="${this.back()}">${this.projectId?(this.reviewProject?'返回项目确认开始':'返回项目继续更新'):'返回工作台'}</a>`;
-    const context=this.projectId?`<section class="notice"><span>${this.quote?.quote?shortage?'积分仍不足，请充值后继续更新。':'余额已满足更新条件，可返回项目继续更新。':'项目材料与补充说明已保留。'}充值到账不会自动开始任务。</span>${returnLink}</section>`:'';
+    const context=this.projectId?`<section class="notice"><span>${this.quote?.quote?shortage?'可用积分为 0，请充值后继续更新。':'已有可用积分，可返回项目继续更新。':'项目材料与补充说明已保留。'}${this.reviewProject?'充值到账不会自动开始任务。':'因积分用完而暂停的更新任务将在到账后自动继续；未开始的新任务仍需返回项目点击开始。'}</span>${returnLink}</section>`:'';
     this.shell(`<section class="credit-overview" aria-labelledby="account-balance-title"><h2 id="account-balance-title">可用积分</h2><p class="account-balance-value">${b?number(b.available):'—'}<span>积分</span></p><p class="account-balance-note">上传、保存项目和下载已有成果免费</p>${b && b.frozen > 0 ? `<p class="credit-reservation">进行中任务预留 <strong>${number(b.frozen)}</strong> 积分<span>已从可用积分中预留，成功后扣除，失败或取消后返还。</span></p>` : ''}</section>
       <div class="account-billing-content">${this.error?`<p class="account-billing-error" role="alert">${esc(this.error)}</p>`:''}${context}
       ${o?`<div class="simple-payment-wrap"><section class="panel payment-card simple-payment"><span class="eyebrow">CREDIT RECHARGE</span><h2>${{pending:'等待支付确认',paid:'积分已到账',expired:'订单已过期',failed:'支付未完成'}[o.state]}</h2><p>${number(o.points)} 积分</p><div class="payment-amount">¥${money(o.amount_fen)}</div>

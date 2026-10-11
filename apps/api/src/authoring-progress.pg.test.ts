@@ -39,7 +39,14 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    const m=ok(await send('POST','/api/v1/projects/'+p.project_id+'/materials/uploads/'+u.upload_id+'/complete',d));
    const i=ok(await send('POST','/api/v1/projects/'+p.project_id+'/input-revisions',{draft_revision:1,material_versions:[{material_id:m.material_id,material_version:1}],requirement_message_ids:[]}));
    const q=ok(await send('POST','/api/v1/projects/'+p.project_id+'/credit-quote',{input_revision:i.input_revision,input_hash:i.input_hash}));
-   return ok(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:p.project_id,quote_id:q.quote.quote_id}));
+   const run=ok(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:p.project_id,quote_id:q.quote.quote_id}));
+   // Synthetic persisted v1 reservation, representing a task created before this policy rollout.
+   await pool.query("UPDATE bb_credit_reservations SET billing_policy='authoring_progress_v1',charged_points=NULL WHERE run_id=$1",[run.run_id]);
+   const lot=(await pool.query('SELECT id FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining-frozen>=10000 ORDER BY created_at LIMIT 1',[owner])).rows[0];
+   await pool.query('UPDATE bb_credit_lots SET frozen=frozen+10000 WHERE id=$1',[lot.id]);
+   await pool.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,10000)',[run.reservation_id,lot.id]);
+   await pool.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$1,'reserve',10000,$3,$4,'test','synthetic_legacy')",[randomUUID(),owner,run.reservation_id,run.run_id]);
+   return run;
  };
  const charge=async(id:string)=>ok(await send('GET','/api/v1/runs/'+id+'/credit-charge'));
  const act=async(id:string,kind:string)=>send('POST','/api/v1/runs/'+id+'/'+kind,{reason:'synthetic-test'});
