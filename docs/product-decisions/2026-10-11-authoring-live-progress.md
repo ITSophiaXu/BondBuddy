@@ -29,3 +29,9 @@
 追加迁移 0103；新募集书 authoring reservation 固定 billing_policy=authoring_progress_v1，旧 reservation 默认 on_delivery。不影响复核、M4 文书和问答。公共活动与进度字段只在 packages/contracts 定义。
 
 原型：product-prototype/public/authoring-live-progress.html。已迁移页面：apps/web/src/project-execution.ts。交互变更依据是本次用户请求；具体累计曲线和交互设计由本任务实施并自测，未声称另有独立原型签认。原型采用合成状态；数据库与浏览器验证不冒充真实模型或生产账本验证。
+
+## 发布与回滚
+
+迁移 0103 是追加迁移，旧服务可使用其默认 on_delivery 规则。正式启用需要协调部署迁移、API、募集书 worker 与 web；不能只换前端或只换 API。发布前读取活动任务/租约并保留镜像、commit 和数据库备份，在当前模型调用安全结束后滚动替换执行器。禁止为发布强行结束真实任务。
+
+已有 authoring_progress_v1 任务时，不得把旧 worker 混入并继续执行这些任务（旧版本不认识暂停标志）。发现回归应先停止接收新编制任务，保留该版本处理已有任务/检查点，待排空后恢复已记录的镜像。保留新增迁移、累计记录和部分结算流水，不能用删表或撤销账本来回滚界面。
