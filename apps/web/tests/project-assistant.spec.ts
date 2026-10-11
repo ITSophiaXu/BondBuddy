@@ -37,21 +37,27 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
-test('mobile navigation can log out while the assistant panel is open',async({page})=>{
+test('mobile assistant keeps focus inside and restores navigation and logout after closing',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const s=await setup(page);let logouts=0;
  await page.route('**/api/v1/auth/logout',async route=>{logouts++;await route.fulfill({status:204});});
  await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
  await expect(page.locator('.ba-panel')).toBeVisible();
  await expect(page.locator('[data-composer]')).toBeEnabled();
- // The narrow panel covers the header; the underlying navigation is still keyboard-accessible.
- await page.getByRole('button',{name:'打开菜单',exact:true}).press('Enter');
+ await expect(page.locator('.prototype-app')).toHaveAttribute('inert','');
+ await page.locator('.ba-header [data-a=new]').focus();await page.keyboard.press('Shift+Tab');
+ await expect(page.locator('.ba-composer [data-file]')).toBeFocused();
+ await page.keyboard.press('Tab');await expect(page.locator('.ba-header [data-a=new]')).toBeFocused();
+ await page.getByRole('button',{name:'收起助手',exact:true}).click();
+ await expect(page.locator('.prototype-app')).not.toHaveAttribute('inert','');
+ await page.getByRole('button',{name:'打开菜单',exact:true}).click();
  await expect(page.locator('#sidebar')).toHaveClass(/mobile-open/);
- await expect(page.locator('.ba-panel')).toBeVisible();
+ await expect(page.locator('.ba-panel')).toHaveCount(0);
  if(process.env.ASSISTANT_EVIDENCE){await mkdir(evidenceDir,{recursive:true});await page.screenshot({path:resolve(evidenceDir,'implementation-mobile-menu-open.png')});}
  await page.getByRole('button',{name:'退出',exact:true}).click();
  await expect(page.getByRole('heading',{name:'登录工作区',exact:true})).toBeVisible();
  await expect(page.locator('.bb-assistant')).toHaveCount(0);
+ await expect(page.locator('[data-assistant-dock]')).toHaveCount(0);
  expect(logouts).toBe(1);expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
 });
 test('global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs',async({page})=>{
@@ -104,7 +110,7 @@ test('update card has no upfront price and recharge retains the project',async({
 test('fixed QA states the exact price and success/failure terms before confirmation',async({page})=>{
  const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('本次回答 60 积分');await expect(page.locator('[data-qa-price]')).toContainText('失败不扣费');await expect(page.locator('[data-qa-price]')).not.toContainText('按实际用量');expect(s.messages).toHaveLength(0);
- if(process.env.QA_PRICE_EVIDENCE){const dir=fileURLToPath(new URL('../test-evidence/assistant-qa-price/',import.meta.url));await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
+ if(process.env.QA_PRICE_EVIDENCE){const dir=fileURLToPath(new URL('../test-evidence/assistant-qa-price/',import.meta.url));await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
  await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].quote_id).toBe('quote');
 });
 test('editable task card uses quarters and optional requirements; insufficient input never executes',async({page})=>{
@@ -117,7 +123,9 @@ test('desktop, focus and narrow assistant stay within viewport and preserve norm
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();
  for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
- await page.setViewportSize({width:1440,height:960});await page.locator('[data-a=wide]').click();expect((await page.locator('.ba-panel').boundingBox())!.width).toBeGreaterThan(700);expect(errors).toEqual([]);
+ await page.setViewportSize({width:1440,height:960});const normal=(await page.locator('.ba-panel').boundingBox())!.width;
+ await page.locator('[data-a=wide]').click();expect((await page.locator('.ba-panel').boundingBox())!.width).toBeGreaterThan(normal);
+ const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(errors).toEqual([]);
 });
 
 test('attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload',async({page})=>{
@@ -155,37 +163,47 @@ test('approved prototype comparison capture',async({page})=>{
 });
 
 for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844],['narrow',320,740],['zoom-equivalent',720,480]] as const)
-test('assistant collapses into visible header without obstructing the page - '+name,async({page})=>{
+test('assistant closes to the bottom-right launcher and restores page space - '+name,async({page})=>{
  await page.setViewportSize({width,height});
  // Upgrade path: a user hid the assistant in the previous version.
  await page.addInitScript(()=>sessionStorage.setItem('bb-assistant-hidden:synthetic-assistant-user','true'));
  const s=await setup(page),dock=page.locator('[data-assistant-dock]');
  await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
  await expect(page.locator('.ba-launcher,[data-a=hide]')).toHaveCount(0);
- await page.evaluate(()=>{const b=document.createElement('button');b.id='underlying-action';b.textContent='保存项目';b.style.cssText='position:fixed;right:12px;bottom:12px;width:220px;height:56px;z-index:1';b.onclick=()=>b.dataset.clicked='true';document.querySelector('main')!.append(b);});
+ const closedWidth=(await page.locator('.shell').boundingBox())!.width;
+ await page.evaluate(()=>{const b=document.createElement('button');b.id='underlying-action';b.textContent='保存项目';b.style.cssText='display:block;margin:100vh 0 0 auto;width:220px;height:56px';b.onclick=()=>b.dataset.clicked='true';document.querySelector('main')!.append(b);window.scrollTo(0,document.body.scrollHeight);});
  await page.locator('#underlying-action').click();await expect(page.locator('#underlying-action')).toHaveAttribute('data-clicked','true');
  await dock.click();await expect(page.locator('[data-composer]')).toBeEnabled();
+ await expect(dock).toBeHidden();await expect(page.locator('.top-actions [data-assistant-dock]')).toHaveCount(0);
+ const panel=await page.locator('.ba-panel').boundingBox();expect(panel!.y).toBe(0);expect(panel!.height).toBe(height);
+ // Desktop keeps the page's native scrollbar gutter to the right of the panel.
+ expect(panel!.x+panel!.width).toBeLessThanOrEqual(width);expect(panel!.x+panel!.width).toBeGreaterThanOrEqual(width-20);
+ if(width>1100){const main=await page.locator('.shell').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(main!.width).toBeLessThan(closedWidth);}
  await page.locator('[data-composer]').fill('收起后仍保留的未发送文字');
  // Collapse immediately, before the autosave debounce; reopening must keep local input.
  await page.getByRole('button',{name:'收起助手',exact:true}).click();
  await expect(dock).toBeFocused();await expect(page.locator('.ba-panel')).toHaveCount(0);
+ expect((await page.locator('.shell').boundingBox())!.width).toBe(closedWidth);
+ await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
  await page.locator('#underlying-action').click();
  await dock.click();await expect(page.locator('[data-composer]')).toHaveValue('收起后仍保留的未发送文字');
  await page.locator('[data-composer]').press('Escape');await expect(dock).toBeFocused();
  await expect.poll(()=>s.w.view.unsent_content).toBe('收起后仍保留的未发送文字');
  await page.reload();await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
- const dockBox=await dock.boundingBox(),headerBox=await page.locator('.topbar').boundingBox();
+ const dockBox=await dock.boundingBox();
  expect(dockBox!.x).toBeGreaterThanOrEqual(0);expect(dockBox!.x+dockBox!.width).toBeLessThanOrEqual(width);
- expect(dockBox!.y).toBeGreaterThanOrEqual(0);expect(dockBox!.y+dockBox!.height).toBeLessThanOrEqual(headerBox!.y+headerBox!.height);
+ expect(dockBox!.y).toBeGreaterThan(height-100);expect(dockBox!.y+dockBox!.height).toBeLessThanOrEqual(height);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await dock.click();await expect(page.locator('[data-composer]')).toHaveValue('收起后仍保留的未发送文字');
  expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
- const evidence=process.env.BB_COLLAPSE_ASSISTANT_EVIDENCE_DIR;
+ const evidence=process.env.BB_RIGHT_PANEL_EVIDENCE_DIR;
  if(evidence&&['desktop','mobile'].includes(name)){
+   await page.evaluate(()=>window.scrollTo(0,0));
    await mkdir(evidence,{recursive:true});await page.screenshot({path:resolve(evidence,'implementation-open-'+name+'.png')});
    const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
    await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));
+   await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();
    await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('收起后仍保留的未发送文字');
    await prototype.screenshot({path:resolve(evidence,'prototype-open-'+name+'.png')});
    await prototype.getByRole('button',{name:'收起助手',exact:true}).click();await expect(prototype.locator('.bb-assistant')).toBeHidden();
@@ -193,5 +211,24 @@ test('assistant collapses into visible header without obstructing the page - '+n
    await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(prototype.getByRole('textbox')).toHaveValue('收起后仍保留的未发送文字');await prototype.close();
    await page.getByRole('button',{name:'收起助手',exact:true}).click();
    await page.screenshot({path:resolve(evidence,'implementation-collapsed-'+name+'.png')});
+ }
+});
+
+test('desktop pages reflow beside the assistant at standard and wide widths',async({page})=>{
+ await setup(page);await page.setViewportSize({width:1440,height:960});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ for(const width of [1440,1280,1120]){
+  await page.setViewportSize({width,height:960});
+  for(const [route,label] of [['dashboard','工作台'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','材料生成']]){
+   await page.evaluate(route=>{location.hash=route;},route);await expect(page.locator('.shell main')).toBeVisible();
+   await expect(page.locator('.breadcrumb>span').last()).toHaveText(label);
+   await expect(page.locator('.ba-panel')).toBeVisible();await expect(page.locator('[data-assistant-dock]')).toBeHidden();
+   for(const wide of [false,true]){
+    if(await page.locator('.bb-assistant').evaluate(el=>el.classList.contains('ba-wide'))!==wide)await page.locator('[data-a=wide]').click();
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${route} at ${width}, wide=${wide}`).toBe(true);
+    await expect.poll(()=>page.locator('.shell main').evaluate(el=>el.scrollWidth<=el.clientWidth+1),`main content ${route} at ${width}, wide=${wide}`).toBe(true);
+    const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);
+    if(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR&&width===1280&&!wide&&['update','review'].includes(route))await page.screenshot({path:resolve(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR,`implementation-${route}-1280.png`)});
+   }
+  }
  }
 });

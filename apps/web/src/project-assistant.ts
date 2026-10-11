@@ -31,6 +31,9 @@ export class ProjectAssistant {
   private controller=new AbortController();
   private m4:M4Api;
   private host=document.createElement('div');
+  private dock=document.createElement('button');
+  private narrow=window.matchMedia('(max-width:1100px)');
+  private resize=()=>this.syncLayout();
   private open=false;
   private active=false;
   private wide=false;
@@ -59,22 +62,24 @@ export class ProjectAssistant {
     this.open=true;this.formOpen=false;this.changed();});};
   constructor(private api:ApiClient,private owner:string){
     this.m4=new M4Api(api,this.controller.signal);this.host.className='bb-assistant';document.body.append(this.host);
+    this.dock.type='button';this.dock.className='ba-dock';this.dock.dataset.assistantDock='';
+    this.dock.setAttribute('aria-controls','ba-panel');
+    this.dock.innerHTML=icon('buddy')+'<span>BondBuddy</span><i data-active-dot aria-hidden="true"></i>';
+    this.dock.addEventListener('click',()=>void this.setOpen(true));document.body.append(this.dock);
+    this.narrow.addEventListener('change',this.resize);
     this.host.addEventListener('click',e=>void this.click(e));
     this.host.addEventListener('input',e=>this.input(e));
     this.host.addEventListener('change',e=>void this.change(e));
     this.host.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.open){e.preventDefault();void this.setOpen(false);}
+      if(e.key==='Tab'&&this.narrow.matches){const items=[...this.host.querySelectorAll<HTMLElement>('button:not(:disabled),textarea:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')].filter(el=>el.getClientRects().length);
+        const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}
       if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(e.target as HTMLElement).matches('[data-composer]')){e.preventDefault();void this.work(()=>this.send());}});
     window.addEventListener('bondbuddy:assistant',this.event);this.paint();
   }
-  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);this.host.remove();}
+  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);this.narrow.removeEventListener('change',this.resize);this.open=false;this.syncLayout();this.host.remove();this.dock.remove();}
   mount(){
     if(!this.host.isConnected)document.body.append(this.host);
-    const actions=document.querySelector('.top-actions');
-    if(actions&&!actions.querySelector('[data-assistant-dock]')){
-      const button=document.createElement('button');button.type='button';button.className='ba-dock';button.dataset.assistantDock='';
-      button.innerHTML=icon('buddy')+'<span>项目助手</span><i data-active-dot aria-hidden="true"></i>';
-      button.addEventListener('click',()=>void this.setOpen(!this.open));actions.prepend(button);
-    }
+    if(!this.dock.isConnected)document.body.append(this.dock);
     const navigation=document.querySelector('.sidebar nav[aria-label="账号"]');
     if(navigation&&!navigation.querySelector('[data-assistant-restore]')){
       const button=document.createElement('button');button.type='button';button.className='nav-item assistant-restore';button.dataset.assistantRestore='';
@@ -86,7 +91,7 @@ export class ProjectAssistant {
       });
       navigation.prepend(button);
     }
-    this.paintDock();
+    this.paintDock();this.syncLayout();
   }
   private async setOpen(open:boolean){
     this.open=open;this.paint();
@@ -96,11 +101,15 @@ export class ProjectAssistant {
     else document.querySelector<HTMLButtonElement>('[data-assistant-dock]')?.focus();
   }
   private paintDock(){
-    const dock=document.querySelector<HTMLButtonElement>('[data-assistant-dock]');if(!dock)return;
-    dock.setAttribute('aria-label',this.open?'收起项目助手':'打开项目助手');
+    const dock=this.dock;dock.hidden=this.open;
+    dock.setAttribute('aria-label','打开项目助手');
     dock.setAttribute('aria-expanded',String(this.open));
-    dock.title=this.open?'收起项目助手':'打开项目助手，继续对话';
+    dock.title='打开项目助手，继续对话';
     dock.querySelector('[data-active-dot]')?.classList.toggle('is-active',this.active);
+  }
+  private syncLayout(){
+    const app=document.querySelector<HTMLElement>('.prototype-app');if(app)app.inert=this.open&&this.narrow.matches;
+    this.host.querySelector('.ba-panel')?.setAttribute('aria-modal',String(this.narrow.matches));
   }
   private get live(){return !this.controller.signal.aborted;}
   private get view(){return this.workspace!.view;}
@@ -389,13 +398,14 @@ export class ProjectAssistant {
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
     const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
     this.host.innerHTML=this.open?`
-      <section class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原窗口':'展开宽屏'}" aria-label="${this.wide?'还原窗口':'展开宽屏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起到顶部“项目助手”" aria-label="收起助手">${icon('minus')}</button></div></header>
+      <section id="ba-panel" class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原宽度':'加宽侧栏'}" aria-label="${this.wide?'还原宽度':'加宽侧栏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手，回到右下角按钮" aria-label="收起助手">${icon('close')}</button></div></header>
       <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>${currentProject&&currentProject!==project?.project_id?'<button class="ba-current-project" data-a="current-project">使用当前项目</button>':''}
       ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
       ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
       ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
       <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
+    this.syncLayout();
     if(this.open){this.paintTimeline();this.paintStatus();this.sizeComposer();
       if(this.busy)this.host.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('.ba-form input:not([type=file]),.ba-form select,.ba-form textarea').forEach(el=>el.disabled=true);
     }
