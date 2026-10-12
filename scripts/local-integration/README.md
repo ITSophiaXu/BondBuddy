@@ -35,11 +35,28 @@ node scripts/local-integration/stop.mjs
 node scripts/local-integration/start.mjs
 ```
 
-停止脚本只处理 `services.json` 中本实例记录的进程，并核对帮助服务命令行、数据库目录和 PID。若有活动任务，先在本地页面暂停或结束。不会停止 Docker Desktop 或其他项目容器。
+停止脚本只处理 `services.json` 中本实例记录的进程，核对启动回执、可执行文件、参数、工作目录以及 PID 和创建时间。API/worker 用本次启动 UUID 请求有序退出，PostgreSQL 核对数据目录后使用 pg_ctl 停止。若有活动任务或连接中的后端回归库，拒绝停止。不会停止 Docker Desktop 或其他项目容器。
+
+Windows 服务通过 Python 标准库调用 CreateProcess，以 `CREATE_NEW_CONSOLE` 和 `SW_HIDE` 创建可继承的隐藏控制台。PostgreSQL 新连接的后端进程共用这个控制台，避免旧 `detached:true` 启动方式导致的逐连接弹窗。启动器使用命名互斥锁；回执在进程恢复执行前落盘，状态原子保存。重复启动实时核对进程和端口后复用服务；启动失败仅回退本次新启动的服务。旧版状态只有已记录停止时才迁移，无法核实的 PID 不会被盲目接管或终止。
+
+`status.mjs` 重新检查进程创建时间、网页和 API readiness；不要单独用历史 `services.json.ready` 判断可用性。诊断时可用 `start.mjs --database-only` 只恢复数据库。启动和停止请使用同一 Node 安装路径。
 
 所有数据、账号信息、日志和截图在 `../work/local-integration-runtime-20261012/`。不要将该目录当成产品输出提交。数据库从仓库迁移到 `0104_authoring_dynamic_balance.sql`，含两个独立的 `0103_*` 迁移；没有新增迁移。
 
 ## 回归命令
+
+启动器专项（只管理本批环境，不要在用户正在验收时运行启停测试）：
+
+```powershell
+node scripts/local-integration/test-hidden-process.mjs
+node scripts/local-integration/stop.mjs
+node scripts/local-integration/start.mjs --database-only
+node scripts/local-integration/test-postgres-console.mjs
+node scripts/local-integration/test-lifecycle.mjs
+node scripts/local-integration/test-receipt-recovery.mjs
+```
+
+连接专项创建并删除自己的临时库，检查 50 次真实连接存活期间的后端 PID 和窗口；启停专项验证并发拒绝、崩溃释放锁、端口冲突、创建时间不匹配、部分失败清理、失效回执、重复启动、停止及数据保留，最后恢复五项服务。证据保存在运行目录的 `console-postgres-proof.json`、`lifecycle-console-proof.json` 和 `receipt-recovery-proof.json`。不调用模型。
 
 ```powershell
 node scripts/local-integration/test-backend.mjs api

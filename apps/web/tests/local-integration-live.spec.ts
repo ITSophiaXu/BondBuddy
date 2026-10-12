@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {join} from 'node:path';
 import {mkdirSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {account,login} from './live-helpers';
 import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {pdfSample} from '../../api/dist/upload-safety.samples.js';
@@ -9,7 +10,7 @@ test.skip(process.env.BB_E2E_LOCAL_INTEGRATION!=='1','Dedicated local integratio
 test.beforeAll(()=>{
   if(process.env.BB_E2E_LOCAL_INTEGRATION==='1'&&process.env.BB_E2E_BASE_URL!=='http://localhost:5178')throw new Error('This suite only writes to the dedicated local integration instance.');
 });
-const evidence=join(process.cwd(),'../../../work/local-integration-runtime-20261012/evidence');
+const evidence=fileURLToPath(new URL('../../../../work/local-integration-runtime-20261012/evidence/',import.meta.url));
 test.beforeAll(()=>mkdirSync(evidence,{recursive:true}));
 
 test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and refresh',async({page,playwright})=>{
@@ -23,6 +24,8 @@ test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
   await expect(page.locator('#project-heading')).toHaveText('本地自动化验收有限公司-深交所-普通私募公司债-募集书更新');
+  // setInputFiles does not wait for enabled state; restoration intentionally locks this fieldset.
+  await expect(page.getByLabel('为历史／参考募集书选择文件',{exact:true})).toBeEnabled();
   await page.getByLabel('为历史／参考募集书选择文件',{exact:true}).setInputFiles({name:'合成历史募集书.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'Synthetic local source prospectus, not customer data.'})});
   await expect(page.getByLabel('原发行市场',{exact:true})).toBeVisible();
   await page.getByLabel('与目标发行人的关系',{exact:true}).selectOption({label:'同企业'});
