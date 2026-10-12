@@ -15,7 +15,10 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
  await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname.replace('/api/v1','');let body:unknown={},status=200;
   if(path==='/me')body={user_id:'synthetic-assistant-user',session_status:'active'};
   else if(path==='/account')body={user_id:'synthetic-assistant-user',username:'synthetic'};
+  else if(path==='/account/sessions')body={items:[]};
+  else if(path==='/account/recovery')body={enabled:false,support_operator:false,current:null,pending:null};
   else if(path==='/credits/balance')body={enabled:true,available:100000,frozen:0};
+  else if(path==='/credits/recharge-config')body={enabled:false,providers:[],packs:[{id:'cny200',amount_fen:20000,points:20000},{id:'cny500',amount_fen:50000,points:52500},{id:'cny2000',amount_fen:200000,points:220000},{id:'cny10000',amount_fen:1000000,points:1150000}],pack_version:'synthetic'};
   else if(path==='/projects')body={items:[],page:{has_more:false,next_cursor:null}};
   else if(path==='/m4/topics')body=req.method()==='GET'?{topics:[w.topic]}:{topic:w.topic};
   else if(path.endsWith('/workspace'))body=w;
@@ -162,13 +165,17 @@ test('approved prototype comparison capture',async({page})=>{
  }
 });
 
-for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844],['narrow',320,740],['zoom-equivalent',720,480]] as const)
+for(const [name,width,height] of [['desktop',1440,960],['small-desktop',1024,768],['mobile',390,844],['narrow',320,740],['zoom-equivalent',720,480]] as const)
 test('assistant closes to the bottom-right launcher and restores page space - '+name,async({page})=>{
  await page.setViewportSize({width,height});
  // Upgrade path: a user hid the assistant in the previous version.
  await page.addInitScript(()=>sessionStorage.setItem('bb-assistant-hidden:synthetic-assistant-user','true'));
  const s=await setup(page),dock=page.locator('[data-assistant-dock]');
  await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
+ // The collapsed entry is only an icon, with its accessible name retained.
+ expect((await dock.innerText()).trim()).toBe('');
+ const initialDock=await dock.boundingBox();expect(initialDock!.width).toBe(initialDock!.height);expect(initialDock!.width).toBeLessThanOrEqual(52);
+ if(width>960){const app=await page.locator('.prototype-app').boundingBox();expect(app!.x+app!.width).toBeLessThanOrEqual(initialDock!.x);}
  await expect(page.locator('.ba-launcher,[data-a=hide]')).toHaveCount(0);
  const closedWidth=(await page.locator('.shell').boundingBox())!.width;
  await page.evaluate(()=>{const b=document.createElement('button');b.id='underlying-action';b.textContent='保存项目';b.style.cssText='display:block;margin:100vh 0 0 auto;width:220px;height:56px';b.onclick=()=>b.dataset.clicked='true';document.querySelector('main')!.append(b);window.scrollTo(0,document.body.scrollHeight);});
@@ -178,7 +185,7 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
  const panel=await page.locator('.ba-panel').boundingBox();expect(panel!.y).toBe(0);expect(panel!.height).toBe(height);
  // Desktop keeps the page's native scrollbar gutter to the right of the panel.
  expect(panel!.x+panel!.width).toBeLessThanOrEqual(width);expect(panel!.x+panel!.width).toBeGreaterThanOrEqual(width-20);
- if(width>1100){const main=await page.locator('.shell').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(main!.width).toBeLessThan(closedWidth);}
+ if(width>960){const main=await page.locator('.shell').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(main!.width).toBeLessThan(closedWidth);await expect(page.locator('.prototype-app')).not.toHaveAttribute('inert','');await page.locator('#underlying-action').click();}
  await page.locator('[data-composer]').fill('收起后仍保留的未发送文字');
  // Collapse immediately, before the autosave debounce; reopening must keep local input.
  await page.getByRole('button',{name:'收起助手',exact:true}).click();
@@ -198,13 +205,14 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
  await dock.click();await expect(page.locator('[data-composer]')).toHaveValue('收起后仍保留的未发送文字');
  expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
  const evidence=process.env.BB_RIGHT_PANEL_EVIDENCE_DIR;
- if(evidence&&['desktop','mobile'].includes(name)){
+ if(evidence&&['desktop','small-desktop','mobile'].includes(name)){
    await page.evaluate(()=>window.scrollTo(0,0));
    await mkdir(evidence,{recursive:true});await page.screenshot({path:resolve(evidence,'implementation-open-'+name+'.png')});
-   const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+   const prototype=await page.context().newPage(),prototypeErrors:string[]=[];prototype.on('pageerror',error=>prototypeErrors.push(error.message));await prototype.setViewportSize({width,height});
    await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));
    await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();
    await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('收起后仍保留的未发送文字');
+   await expect(prototype.getByRole('button',{name:'发送消息',exact:true})).toBeEnabled();expect(prototypeErrors).toEqual([]);
    await prototype.screenshot({path:resolve(evidence,'prototype-open-'+name+'.png')});
    await prototype.getByRole('button',{name:'收起助手',exact:true}).click();await expect(prototype.locator('.bb-assistant')).toBeHidden();
    await prototype.screenshot({path:resolve(evidence,'prototype-collapsed-'+name+'.png')});
@@ -216,11 +224,12 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
 
 test('desktop pages reflow beside the assistant at standard and wide widths',async({page})=>{
  await setup(page);await page.setViewportSize({width:1440,height:960});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
- for(const width of [1440,1280,1120]){
+ for(const width of [1440,1280,1120,1024,961]){
   await page.setViewportSize({width,height:960});
-  for(const [route,label] of [['dashboard','工作台'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','材料生成']]){
+  for(const [route,label] of [['dashboard','工作台'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','材料生成'],['/account','我的账号']]){
    await page.evaluate(route=>{location.hash=route;},route);await expect(page.locator('.shell main')).toBeVisible();
    await expect(page.locator('.breadcrumb>span').last()).toHaveText(label);
+   if(route==='/account')await expect(page.locator('.credit-pack')).toHaveCount(4);
    await expect(page.locator('.ba-panel')).toBeVisible();await expect(page.locator('[data-assistant-dock]')).toBeHidden();
    for(const wide of [false,true]){
     if(await page.locator('.bb-assistant').evaluate(el=>el.classList.contains('ba-wide'))!==wide)await page.locator('[data-a=wide]').click();
@@ -228,6 +237,7 @@ test('desktop pages reflow beside the assistant at standard and wide widths',asy
     await expect.poll(()=>page.locator('.shell main').evaluate(el=>el.scrollWidth<=el.clientWidth+1),`main content ${route} at ${width}, wide=${wide}`).toBe(true);
     const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);
     if(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR&&width===1280&&!wide&&['update','review'].includes(route))await page.screenshot({path:resolve(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR,`implementation-${route}-1280.png`)});
+    if(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR&&width===1024&&!wide&&route==='/account')await page.screenshot({path:resolve(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR,'implementation-account-1024.png')});
    }
   }
  }
