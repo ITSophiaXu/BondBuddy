@@ -6,6 +6,7 @@ const paths = {
   expand: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
   contract: '<path d="M3 8h5V3m8 0v5h5M8 21v-5H3m18 0h-5v5"/>',
   minus: '<path d="M5 12h14"/>',
+  collapse: '<path d="m5 6 6 6-6 6m8-12 6 6-6 6"/>',
   folder: '<path d="M3 8V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/>',
   chevron: '<path d="m8 10 4 4 4-4"/>',
   paperclip: '<path d="m8 13 6.8-6.8a2.8 2.8 0 0 1 4 4L9.2 19.8a4.5 4.5 0 0 1-6.4-6.4L13 3.2"/>',
