@@ -1,6 +1,6 @@
 # 第一批验证记录（2026-10-12）
 
-产品基线：`6cd5d2cb254a25963b79f44313440a64c6c38660`。集成分支：`integration/local-20261012-batch1`。本分支新增测试工具、3 项真实浏览器回归及入口测试子进程清理；不修改产品运行逻辑，不新增迁移。
+产品基线：`6cd5d2cb254a25963b79f44313440a64c6c38660`。集成分支：`integration/local-20261012-batch1`。本分支新增测试工具、3 项常规真实浏览器回归、1 项显式开启的真实模型浏览器回归及入口测试子进程清理；不修改产品运行逻辑，不新增迁移。
 
 ## 已完成
 
@@ -36,10 +36,28 @@
 
 本地入口 `http://localhost:5178` 使用独立 Postgres 与 Azurite；测试账号及启停命令见 README。API readiness 200 说明基础服务可用，不代表模型生成已就绪。
 
-正式 Linux worker 镜像构建的官方 npm 请求报 `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE`。Docker Desktop 已恢复可用；没有降低 TLS 校验或文件隔离检查。未配置真实模型凭据，因此实际解析到生成、真实任务暂停/余额续跑、模型费用及成果质量均未通过端到端验收。
+早前正式 Linux worker 镜像构建的官方 npm 请求报 `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE`。21:07 已解决本地构建与真实生成：CLI 改从官方 GitHub 固定发布包取回并校验，Python 包经可信镜像下载后逐包核对官方 PyPI SHA256；没有降低 TLS 校验。原始失败日志保留。
 
 Windows 原始失败与 Linux 回归分开保留。合成 worker 测试里的模型/解析夹具不能作为真实模型效果证明。Linux 测试脚本把只读本地源码和依赖复制进容器临时文件系统，并重建 npm workspace 软链接，避免 Windows junction 和跨系统挂载导致的启动问题。
 
 本机完整日志及截图在相邻 `../work/local-integration-runtime-20261012`，共享交接在相邻 `../work/local-integration-handoff.md`（相对仓库根）。
 
-**限定范围本地可验收；用户尚未验收；尚未部署。**
+## 21:21 最终镜像真实生成补充验证
+
+| 检查 | 结果 |
+|---|---|
+| Codex CLI 0.154.0、Python 文档依赖 | 官方 SHA512 / SHA256 校验通过，Linux 依赖导入通过 |
+| 文件和网络沙箱 | 原件可读、scratch/output 可写；原件/任务根写入、邻目录/凭据/proc读取及命令网络均被拒绝 |
+| M3/M4 固定运行资源 | 10 份资源通过产品 manifest/hash 校验 |
+| 真实模型最小探针 | gpt-6-sol；12,768 ms；measured usage；两份实际 Word |
+| 真实网页生成与两份授权下载 | **1/1 通过，4.1 分钟**；合成原稿，未模拟 API 或模型 |
+| 持久化调用证据 | 任务 succeeded；1 次模型调用、227,650 ms、exit 0、usage measured、14 次工具执行 |
+| 下载文件核验 | ZIP/Word 可打开；目标报告期及合成声明保留；修订版 1,601 字节、1 删除 + 1 插入；清洁版 1,498 字节、无修订 |
+| Linux worker 单独重启 | 配置自动恢复；25 项目、25 材料、4 任务保持不变，其他服务未重启 |
+| 新增脚本语法与 web TypeScript | 通过 |
+
+最终 Linux 镜像 ID：`sha256:bf8a9d10635a910532912abf1579f152bb4e1bdd8c25eb02587d344c92634487`。真实任务 `9d4da8ad-94e8-4123-b3f8-7d8f704b5cfa` 在 21:15:44–21:19:35 成功；项目 `3f0162c9-c46f-48d3-9881-5fc73e32123f`。新证据为 `file-sandbox-proof.json`、`model-preflight.log`、`generation-e2e.json`、`generation-durable-proof.json`、`generation-word-proof.json`、`generation-browser.log`、`linux-worker-restart-proof.json` 和 `evidence/real-generation-success.png`。21:07 首轮真实生成及重启也通过，证据以 `initial-` 前缀单独保留；最终镜像补齐运行资源后重新完成模型探针、网页生成和重启恢复，没有沿用旧镜像的成功结论。
+
+Docker Desktop 不提供 AppArmor。固定 CLI 的新 procfs 挂载覆盖了 `/proc` deny mask；本地 seccomp 进一步限制该挂载，使 CLI 使用官方 no-proc 分支。没有放宽产品安全检查、修改官方二进制或启用 privileged/unconfined。具体实现与认证隔离见 README。
+
+**开发和自测完成，本地最小真实生成可验收；完整文书质量、复杂 PDF/OCR 与暂停/充值续跑仍需验收；用户尚未验收；尚未部署。**

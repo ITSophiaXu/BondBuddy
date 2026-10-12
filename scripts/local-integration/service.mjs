@@ -17,13 +17,19 @@ if(name==='api'){
   await app.listen({host:'127.0.0.1',port:ports.api});
   stop=async()=>{await app.close();await pool.end();};
 }else if(name==='worker'){
-  const {WorkerRuntime,workerRuntimeOptionsFromEnv}=await import('../../apps/worker/dist/runtime.js');
-  const {azureBlobs}=await import('../../apps/api/dist/data.js');
-  const worker=new WorkerRuntime({...workerRuntimeOptionsFromEnv(pool,azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING)),log:e=>console.log(JSON.stringify(e))}).start();
-  stop=async()=>{await worker.stop();await pool.end();};
+  const linux=await import('./linux-worker.mjs');
+  if(linux.configured()){
+    const worker=await linux.startLinuxWorker(launchId);
+    stop=async()=>{await worker.stop();await pool.end();};
+  }else{
+    const {WorkerRuntime,workerRuntimeOptionsFromEnv}=await import('../../apps/worker/dist/runtime.js');
+    const {azureBlobs}=await import('../../apps/api/dist/data.js');
+    const worker=new WorkerRuntime({...workerRuntimeOptionsFromEnv(pool,azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING)),log:e=>console.log(JSON.stringify(e))}).start();
+    stop=async()=>{await worker.stop();await pool.end();};
+  }
 }else throw Error('Unknown local service');
 writeFileSync(join(runtime,`${name}.ready.json`),JSON.stringify({pid:process.pid,launchId,startedAt:new Date().toISOString()}));
-console.log(JSON.stringify({service:name,pid:process.pid,ready:true,modelCredentialsConfigured:false}));
+console.log(JSON.stringify({service:name,pid:process.pid,ready:true,modelCredentialsConfigured:name==='worker'&&existsSync(join(runtime,'linux-worker.json'))}));
 let stopping=false;
 const shutdown=async()=>{if(stopping)return;stopping=true;clearInterval(timer);await stop();if(existsSync(stopFile))unlinkSync(stopFile);process.exit(0);};
 const timer=setInterval(()=>{if(existsSync(stopFile))void shutdown();},500);

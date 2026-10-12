@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {Pool} from 'pg';
 import {runtime,databaseURL,baseURL,ports} from './config.mjs';
 import {inspect,sameIdentity} from './processes.mjs';
+import {configured,containerStatus,generationConfig} from './linux-worker.mjs';
 
 const pool=new Pool({connectionString:databaseURL,connectionTimeoutMillis:5000});
 const result={checkedAt:new Date().toISOString(),baseURL,services:existsSync(join(runtime,'services.json'))?JSON.parse(readFileSync(join(runtime,'services.json'),'utf8')):null};
@@ -29,6 +30,15 @@ finally{
   await pool.end();
   result.ready=Object.values(result.liveProcesses??{}).length===5&&Object.values(result.liveProcesses).every(Boolean)&&result.web?.status===200&&result.apiReadiness?.status===200&&!result.error;
   result.modelGeneration={configured:false,verified:false};
+  if(configured())try{
+    const config=JSON.parse(readFileSync(generationConfig,'utf8')),container=containerStatus();
+    const live=!!container?.running&&container.image===config.imageId&&container.launchId===result.services?.processes.worker?.launchId;
+    const e2ePath=join(runtime,'generation-e2e.json');
+    const e2e=existsSync(e2ePath)?JSON.parse(readFileSync(e2ePath,'utf8')):null;
+    result.modelGeneration={configured:true,workerRunning:live,model:config.model,imageId:config.imageId,
+      verified:live&&config.preflight?.status==='completed',endToEndVerified:live&&e2e?.passed===true&&e2e.imageId===config.imageId,projectURL:e2e?.passed?e2e.projectURL:undefined};
+    if(!live)result.ready=false;
+  }catch(error){result.modelGeneration={configured:true,verified:false,error:String(error)};result.ready=false;}
   console.log(JSON.stringify(result,null,2));
   mkdirSync(runtime,{recursive:true});
   writeFileSync(join(runtime,'status.json'),JSON.stringify(result,null,2));

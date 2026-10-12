@@ -2,7 +2,7 @@
 
 本目录固定产品基线 `6cd5d2cb254a25963b79f44313440a64c6c38660`（develop，PR #692）。提供 Windows 本地启动、测试和证据脚本，并补齐 worker 入口测试失败时的子进程清理与错误诊断；没有改动产品运行逻辑，没有生产部署功能。
 
-**可验收范围：** 真实注册/登录、项目创建、名称与来源信息保存、DOCX/PDF 上传到本地 Azurite、补充说明/复核要求保存恢复、助手未发送草稿、桌面/手机布局。模型生成未配置；不能将健康检查或上传成功理解为生成链路已通过。
+**可验收范围：** 真实注册/登录、项目创建、名称与来源信息保存、DOCX/PDF 上传到本地 Azurite、补充说明/复核要求保存恢复、助手未发送草稿、桌面/手机布局。2026-10-12 21:19 最终镜像已通过真实模型最小生成自测：网页上传合成原稿、提交任务、持久化成功、下载修订版和清洁版。大篇幅募集书质量、真实余额用完后的续跑仍需另行验收。
 
 ## 本机依赖
 
@@ -10,7 +10,7 @@
 - PostgreSQL 16.14 与 Azurite 3.35 的可执行文件从相邻 `../work/local-ux-runtime/node_modules/` 只读复用。具体路径见 `config.mjs`；不使用该旧环境的数据目录。
 - Python 路径见 `config.mjs`。原生 Windows 不支持产品 Linux 解析隔离；`diagnose-parser.mjs` 会明确报告失败。
 - 浏览器回归使用 Playwright 1.63 对应的 Chromium 1243，位于 `../work/playwright-browsers`。
-- 可选 Linux 合成测试使用本机 Docker Desktop、Git 自带 GNU tar 和已有 `node:22-bookworm-slim` 镜像，独立临时容器不挂载凭据，不调用模型。
+- 真实生成使用 Docker Desktop、Git 自带 GNU tar 和本地 `bondbuddy-local-worker:20261012` 镜像；模型为产品已固定的 `gpt-6-sol`，复用本机已有 Copilot Enterprise 认证。Linux 合成测试仍不挂载凭据、不调用模型。
 
 ## 启动、状态与停止
 
@@ -23,7 +23,7 @@ node scripts/local-integration/create-samples.mjs
 node scripts/local-integration/status.mjs
 ```
 
-入口为 http://localhost:5178。API `127.0.0.1:3018`、Postgres `127.0.0.1:55438`、Blob `127.0.0.1:10018` 仅供本地测试。脚本移除继承的数据库/云存储/模型配置；数据库名与端口固定。端口被其他服务占用时拒绝覆盖。`ready` 表示基础服务已启动，`modelReady:false` 表示未配置真实模型。
+入口为 http://localhost:5178。API `127.0.0.1:3018`、Postgres `127.0.0.1:55438`、Blob `127.0.0.1:10018` 仅供本地测试。脚本移除继承的数据库/云存储/模型配置；数据库名与端口固定。端口被其他服务占用时拒绝覆盖。`ready` 表示基础服务已启动；状态另报 `modelGeneration.verified`（同一镜像的真实模型探针）与 `endToEndVerified`（同一镜像的网页生成及下载）。健康检查本身不等于生成验证。
 
 本机 Windows PostgreSQL 建立新连接较慢；本地 wrapper 在监听前建立连接并保持连接池至关闭，避免空闲回收后冷连接超出产品未修改的 2 秒 readiness 超时。
 
@@ -81,8 +81,41 @@ Pop-Location
 
 真实浏览器测试创建一次性本地用户及合成材料，等待实际保存回执后刷新。截图写入运行目录的 `evidence/`。现有模拟 UI 回归的结果应单独报告。
 
+## 真实生成配置与验收
+
+```powershell
+# 构建 Linux 依赖与当前固定产品构建快照；不包含任何运行数据或凭据
+node scripts/local-integration/build-linux-worker.mjs
+# 包含一次真实模型调用。探针通过后只替换本批空闲 worker，不重启网页/API/数据库
+node scripts/local-integration/configure-generation.mjs
+node scripts/local-integration/status.mjs
+```
+
+Codex 0.154.0 从 OpenAI 官方 GitHub Release 下载，与产品固定的 SHA512 一致。由于本地网络对 npm/files.pythonhosted.org 的 TLS 握手失败，Python 包经清华 PyPI 镜像获取，逐包对照官方 PyPI 发布的 SHA256。没有关闭 TLS 校验。Linux 镜像包含固定版本 Tesseract 与中文/英文/方向检测数据、Python 文档依赖和冻结的产品编译结果；详细依赖版本保存在镜像 `/opt/venv/install-report.json`。M3/M4 共 10 份运行资源通过产品 manifest/hash 校验；当前固定镜像为 `sha256:bf8a9d10635a910532912abf1579f152bb4e1bdd8c25eb02587d344c92634487`。
+
+模型认证从已有 `gh auth token --hostname github.com` 获取，经本机已配置的 `https://api.enterprise.githubcopilot.com` 直接认证。它与生产的 OAuth 交换 helper 不同，替换仅存在于本地镜像。令牌存于 `%LOCALAPPDATA%/BondBuddy/local-integration-20261012/model-token`，只允许当前用户和 SYSTEM 读取；不进入 OneDrive、仓库、镜像层或日志。worker 启动时刷新该文件，以只读方式挂载到容器。没有继承或访问生产数据库/存储。
+
+容器保持非 root、只读根目录、cap-drop ALL、no-new-privileges、固定 seccomp、独立暂存卷与进程/内存限额。Docker Desktop 不提供 AppArmor。CLI 0.154 会在应用 deny mask 后挂载新 procfs；本地 seccomp 额外禁止 bundled bwrap 的 proc 挂载标志 `14`，使 CLI 走官方 no-proc 分支并保留 `/proc` 拒绝规则。规则只收紧生产 seccomp，不启用 privileged/unconfined，不修改产品沙箱检查或官方二进制。实际正反向检查验证输入可读、scratch/output 可写，输入及任务根不可写，邻目录、凭据、`/proc/1/environ`、`/proc/self/environ` 和 mountinfo 不可读，命令网络被拒绝。
+
+Windows 启动器仍管理同一 worker 监督进程；其内部管理带工作区及启动 UUID 标签的唯一 Linux 容器。停止本实例时有序停止该容器，数据卷保留。发现未知或仍在运行的旧容器时拒绝接管，防止重复 worker；先检查运行记录，不按名称批量停止其他容器。21:21 只重启空闲 worker 的验证已通过，25 个项目、25 份材料、4 个任务数量保持不变，网页/API/数据库/存储进程均未重启。
+
+真实浏览器测试需要显式 opt-in，默认不会调用模型：
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH=(Resolve-Path '../work/playwright-browsers').Path
+$env:BB_E2E_BASE_URL='http://localhost:5178'
+$env:BB_E2E_REAL_MODEL='1'
+Push-Location apps/web
+node ../../node_modules/@playwright/test/cli.js test tests/local-generation-live.spec.ts --reporter=line
+Pop-Location
+```
+
+本次样例：http://localhost:5178/#/projects/3f0162c9-c46f-48d3-9881-5fc73e32123f 。仅使用合成原稿，最小修订报告期。最终镜像任务 `9d4da8ad-94e8-4123-b3f8-7d8f704b5cfa` 在 21:15:44–21:19:35 成功；一次真实模型调用，227,650 ms、usage measured、exit 0、14 次工具执行，浏览器测试 1/1 通过（4.1 分钟）。两个文件实际经浏览器下载并校验 hash：修订版 1,601 字节，含 1 处删除及 1 处插入；清洁版 1,498 字节，无修订标记。两者均可由 python-docx 打开，含目标报告期及合成测试声明。凭据使用实际模型权益；应用积分为本地合成测试账，不是真实支付。
+
+证据位于运行目录：`model-preflight.log`、`file-sandbox-proof.json`、`generation-e2e.json`、`generation-durable-proof.json`、`generation-word-proof.json`、`generation-browser.log`、`linux-worker-restart-proof.json`、`evidence/real-generation-success.png` 和两个 Word。21:07 首轮成功证据以 `initial-` 前缀另存。原始 Windows 和首轮依赖下载失败日志保留，不再是当前运行方式。
+
 ## 仍未完成
 
-Windows 原生 worker 的 Linux 文件隔离检查失败；本地正式 Linux worker 镜像构建在官方 npm 的 TLS 握手处失败。未降低 TLS 校验或解析安全检查。真实模型凭据未配置，因此尚未验证真实解析到生成、实际任务暂停续跑、模型扣费或成果下载链路，也未验证实际生成文书质量。
+用户尚未验收真实募集书内容质量、复杂 PDF/OCR 场景和完整暂停/充值续跑。成功的最小合成原稿不替代这些验收。当前代码和环境只用于本地测试，没有生产部署。
 
 用户验收与上线授权均待完成。完整功能与测试记录见共享交接 `../work/local-integration-handoff.md`（相对本仓库根）。

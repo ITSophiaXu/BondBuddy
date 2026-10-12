@@ -5,6 +5,7 @@ import {join,resolve} from 'node:path';
 import {Pool} from 'pg';
 import {repo,runtime,pgBin,binaries,ports,baseURL,databaseURL,templateURL,environment} from './config.mjs';
 import {windowsProcess,identity,sameIdentity,inspect,terminate,withLifecycleLock} from './processes.mjs';
+import {modelReady} from './linux-worker.mjs';
 
 const stateFile=join(runtime,'services.json'),receipts=join(runtime,'launch-receipts');
 const data=join(runtime,'data/postgres'),env=environment();
@@ -157,7 +158,7 @@ async function stopOne(state,name){
     }else terminate(ref);
     await waitFor(()=>{const now=identity(ref.pid);if(now&&!sameIdentity(now,ref))throw Error('PID reused during shutdown; preserving replacement');return !now;},`${name} shutdown`,40000);
   }
-  delete state.processes[name];state.ready=false;save(state);
+  delete state.processes[name];state.ready=false;if(name==='worker')state.modelReady=false;save(state);
 }
 
 export async function startServices({databaseOnly=false,afterStart=async()=>{}}={}){
@@ -178,7 +179,7 @@ export async function startServices({databaseOnly=false,afterStart=async()=>{}}=
         await waitFor(()=>{for(const name of order)requireAlive(state,name);return httpOK(`http://127.0.0.1:${ports.api}/api/v1/ready`);},'API readiness');
         state.ready=true;
       }
-      checkPorts(state);state.phase=state.ready?'running':'database-only';state.startedAt=new Date().toISOString();delete state.stoppedAt;save(state);
+      checkPorts(state);state.modelReady=modelReady();state.phase=state.ready?'running':'database-only';state.startedAt=new Date().toISOString();delete state.stoppedAt;save(state);
       return state;
     }catch(error){
       state.ready=false;state.phase='failed';state.error=String(error);state.cleanupErrors=[];save(state);
@@ -200,5 +201,17 @@ export async function stopServices(){
       for(const name of [...order].reverse())await stopOne(state,name);
       state.phase='stopped';state.stoppedAt=new Date().toISOString();delete state.error;save(state);return state;
     }catch(error){state.phase='failed';state.error=String(error);save(state);throw error;}
+  });
+}
+
+// Replace only this batch's idle worker. The user's API, uploads and database stay live.
+export async function restartWorker(){
+  return withLifecycleLock(runtime,async()=>{
+    const state=load();checkPorts(state);await assertIdle(state);
+    await stopOne(state,'worker');
+    const launched=[];
+    try{launch(state,'worker',launched);await serviceReady(state,'worker');
+      state.phase='running';state.ready=true;state.modelReady=modelReady();save(state);return state;
+    }catch(error){if(launched.includes('worker'))await stopOne(state,'worker');state.phase='failed';state.error=String(error);save(state);throw error;}
   });
 }
