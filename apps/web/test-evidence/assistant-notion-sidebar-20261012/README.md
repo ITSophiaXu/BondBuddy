@@ -21,7 +21,7 @@
 
 ## 验证
 
-- Windows / Node 22.14.0 / Edge / Playwright；独立 Vite 端口 54322。
+- Windows / Node 24.19.0 / Edge / Playwright；独立 Vite 端口 54322。
 - 全仓各 workspace 的 `build` 实际命令按依赖顺序执行：contracts、domain、rule-pack-registry、rule-applicability-context、api、worker 的 `tsc -p tsconfig.json`，web 的 `tsc --noEmit` 及 `vite build`。全部通过。新工作区第一次 web 类型检查缺少 API 等上游构建产物，补齐完整构建后通过。
 - contracts 的 `check-examples.js`、`check-data-lifecycle.js`、`ocr-v2.test.js`、`generation-issuer-binding.test.js` 全部通过：171 + 12 + 4 个示例及 40 项测试。
 - `BB_E2E_BASE_URL=http://127.0.0.1:54322 BB_E2E_BROWSER_CHANNEL=msedge playwright test project-assistant.spec.ts`：**15 passed / 1 skipped**。跳过的是旧的可选截图测试，本次以上六组同尺寸对照实际执行并保存。
