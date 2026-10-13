@@ -1,5 +1,7 @@
 # 2026-10-12 第一批本地集成环境
 
+> 2026-10-13 12:44：已纳入 [PR #698](https://github.com/ITSophiaXu/BondBuddy/pull/698) 批注来源区分，worker 产品源码 `f9ea165` / 镜像 `85e2a227…`。前端保留 #697 成果可读说明、清洁版优先、自动定位下载（`f13c8c6`），API 为 `0556ca5a`。入口 http://localhost:5178 可用；原数据和成果保留，仅空闲 worker 更换。Python Windows/Linux 各 30/30、worker 交付 4/4、真实原稿离线再生成通过，没有新模型调用或扣费。详见 [验证记录](validation-comments-20261013.md)。用户尚未验收，尚未部署。以下版本记录为历史。
+
 > 2026-10-13 11:09 最新版本已纳入 [PR #696](https://github.com/ITSophiaXu/BondBuddy/pull/696)：复核标题对齐、直接开始、实时过程与动态积分。运行产品源码 `0556ca5a673460ea73f4bd9805c54df180384c5a`，新镜像 `e6fe1694`；网页/API/worker 已一起切换。原用户复核成功结束后才切换，账号、材料、成果保留。真实本地 2/2（含实际一积分扣除/自动暂停/刷新）、新镜像最小模型探针通过。入口和账号不变，详见 [本次验证](validation-review-20261013.md)。下方为较早批次的历史记录，当前版本以本段为准；用户尚未验收，尚未部署。
 
 > 2026-10-13 局部更新：按用户要求纳入 [PR #694](https://github.com/ITSophiaXu/BondBuddy/pull/694) 操作栏随内容滚动，以及 [PR #695](https://github.com/ITSophiaXu/BondBuddy/pull/695) 助手图标居中、复核材料重复标题删除。已验证源码快照 `c4e8006b0b744c4dc8c675005814e77678f3d2a2`（保留原生成链路与工具提交 `facae54d`）；真实网页仍为 http://localhost:5178，刷新即可验收。仅网页布局和对应原型更新，API、数据库、存储与 Linux worker 沿用下述基线和镜像，未重启。当前来源及证据见 [2026-10-13 验证记录](validation-20261013.md)；用户尚未验收，尚未部署。
