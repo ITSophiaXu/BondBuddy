@@ -6,6 +6,49 @@ import {createHash} from 'node:crypto';
 import {login} from './live-helpers';
 
 test.skip(process.env.BB_E2E_LOCAL_RESULTS!=='1','Read-only verification against existing local completed projects.');
+test('existing local review results focus on report and downloads without starting an update',async({page})=>{
+  test.setTimeout(90000);
+  if(process.env.BB_E2E_BASE_URL!=='http://localhost:5178')throw Error('Dedicated local test URL required');
+  const username=process.env.BB_RESULTS_USER,password=process.env.BB_RESULTS_PASSWORD,output=process.env.BB_RESULTS_LOCAL_EVIDENCE;
+  if(!username||!password||!output)throw Error('Local test credentials and evidence directory required');
+  await mkdir(output,{recursive:true});const errors:string[]=[],mutations:string[]=[],files=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{if(request.method()!=='GET'&&request.url().includes('/api/v1/')&&!request.url().includes('/auth/'))mutations.push(request.method()+' '+new URL(request.url()).pathname);});
+  await login(page,{username,password});
+  const response=await page.request.get('/api/v1/projects?limit=100');expect(response.ok()).toBe(true);
+  const projects:Dto<'ProjectListResponse'>=await response.json();
+  const project=projects.items.find(p=>p.kind==='review'&&p.latest_run?.state==='succeeded');expect(project).toBeTruthy();
+  const workspace=await(await page.request.get(`/api/v1/projects/${project!.project_id}/review-workspace`)).json();
+  expect(workspace.artifact_run?.run_id).toBe(project!.latest_run!.run_id);
+  const screenshots=[];
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:width===1440?960:844});
+    await page.goto(`/#/projects/${project!.project_id}/review?tab=results`);await page.reload();
+    await expect(page.getByRole('heading',{name:'复核报告已生成'})).toBeVisible();
+    const panel=page.locator('#review-results-panel');
+    await expect(panel.locator('.review-run-details,.review-update-cta,[data-review-action="update-from-review"]')).toHaveCount(0);
+    await expect(panel).not.toContainText('任务详情');await expect(panel).not.toContainText('根据复核结果更新募集书');
+    await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
+    await expect(page.getByRole('button',{name:'下载原文批注版',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'下载复核报告（Word）',exact:true})).toBeEnabled();
+    for(const section of ['合规与披露','公开信息核验','财务核对'])await panel.locator('[data-readable-section]').filter({hasText:section}).click();
+    await expect(panel.locator('.readable-body')).toContainText('财务核对');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    const shot=`real-review-results-${width}.png`;await panel.screenshot({path:join(output,shot)});screenshots.push(shot);
+  }
+  for(const [kind,label] of [['comments','下载原文批注版'],['report','下载复核报告（Word）']] as const){
+    const artifact=workspace.artifacts.find((a:{kind:string})=>a.kind===kind);expect(artifact).toBeTruthy();
+    const metadata=await(await page.request.get('/api/v1/artifacts/'+artifact.artifact_id)).json();
+    const wait=page.waitForEvent('download');await page.getByRole('button',{name:label,exact:true}).click();
+    const download=await wait;expect(await download.failure()).toBeNull();const stream=await download.createReadStream(),chunks:Buffer[]=[];
+    for await(const chunk of stream!)chunks.push(Buffer.from(chunk));const bytes=Buffer.concat(chunks);
+    expect(bytes.length).toBeGreaterThan(1000);expect(createHash('sha256').update(bytes).digest('hex')).toBe(metadata.sha256);
+    expect(download.suggestedFilename()).toBe(metadata.filename??artifact.filename);files.push({kind,bytes:bytes.length,hashMatches:true});
+  }
+  expect(errors).toEqual([]);expect(mutations).toEqual([]);
+  await writeFile(join(output,'review-verification.json'),JSON.stringify({checkedAt:new Date().toISOString(),baseURL:process.env.BB_E2E_BASE_URL,projectId:project!.project_id,runId:workspace.artifact_run.run_id,files,screenshots,mutations,errors,apiMocked:false,newModelCalls:0,userAccepted:false},null,2));
+});
+
 test('existing local results open at downloads and preserve both real Word files',async({page})=>{
   test.setTimeout(90000);
   if(process.env.BB_E2E_BASE_URL!=='http://localhost:5178')throw Error('Dedicated local test URL required');
