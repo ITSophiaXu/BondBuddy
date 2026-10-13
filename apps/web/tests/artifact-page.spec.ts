@@ -410,14 +410,19 @@ test('download filenames stay canonical after reload without displaying technica
 
 test('readable delivery notes, clean-first cards and hidden diagnostics on desktop and mobile',async({page,context})=>{
   const data=state();data.generatedPair=true;
-  data.authoringSummary=['# 募集说明书 Word 交付说明\n\n**基线与范围。**本轮依据原募集书更新至2026年中期。\n\n**已经更新。**已更新正文、财务表格及风险提示。\n\n**缺材料未更新或尚待核实。**缺少本期授权文件，发行条款仍待人工确认。\n\n**知识、核对与局限。**未进行页面视觉检查，不代表已完成专业审核。'];
+  data.authoringSummary=['# 募集说明书 Word 交付说明\n\n**基线与范围。**本轮依据原募集书更新至2026年中期。\n\n**已经更新。**已更新正文、财务表格及风险提示，并同步核对封面、重大事项、释义及各章节引用的一致性。财务部分包括资产负债、利润、现金流量及主要财务指标，按同一报告期和单位呈现；需要补充资料或人工确认的事项在下方单独列明。历史事实及原稿中仍然适用的内容予以保留，便于结合修订版逐项检查。\n\n**缺材料未更新或尚待核实。**缺少本期授权文件，发行条款仍待人工确认。\n\n**知识、核对与局限。**未进行页面视觉检查，不代表已完成专业审核。'];
   await installApi(page,data);
-  for(const viewport of [{width:1440,height:960},{width:390,height:844}]){
+  for(const viewport of [{width:1920,height:1080},{width:1440,height:960},{width:390,height:844}]){
     await page.setViewportSize(viewport);await page.goto('/#/artifacts/word-revision');
     await expect(page.getByRole('heading',{name:'本次更新范围',exact:true})).toBeVisible();
     await expect(page.locator('.authoring-summary')).toContainText('发行条款仍待人工确认');
     await expect(page.locator('.authoring-summary')).toContainText('不代表已完成专业审核');
     await expect(page.locator('.authoring-summary')).not.toContainText('**');
+    const unusedWidth=await page.locator('.authoring-summary').evaluate(el=>{
+      const parent=el.parentElement!,style=getComputedStyle(parent);
+      return parent.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-el.getBoundingClientRect().width;
+    });
+    expect(Math.abs(unusedWidth)).toBeLessThanOrEqual(1);
     await expect(page.locator('main')).not.toContainText('来源与版本核对');
     await expect(page.locator('main')).not.toContainText('SHA-256');
     await expect(page.locator('main')).not.toContainText('下载已有文件不会发起新任务');
@@ -432,10 +437,12 @@ test('readable delivery notes, clean-first cards and hidden diagnostics on deskt
       await page.screenshot({path:join(evidence,`implementation-${viewport.width}.png`),fullPage:true});
       const panel=page.locator('.artifact-download-panel'),width=(await panel.boundingBox())!.width;
       await panel.screenshot({path:join(evidence,`implementation-downloads-${viewport.width}.png`)});
+      await page.locator('section[aria-labelledby="authoring-summary-title"]').screenshot({path:join(evidence,`implementation-summary-${viewport.width}.png`)});
       const prototype=await context.newPage();await prototype.setViewportSize(viewport);
       await prototype.setContent(await readFile('../../product-prototype/public/authoring-results.html','utf8'));
       await prototype.locator('main').evaluate((el,w)=>(el as HTMLElement).style.width=w+'px',width);
       await prototype.locator('.downloads').screenshot({path:join(evidence,`prototype-downloads-${viewport.width}.png`)});
+      await prototype.locator('.summary').screenshot({path:join(evidence,`prototype-summary-${viewport.width}.png`)});
       await prototype.close();
     }
   }
