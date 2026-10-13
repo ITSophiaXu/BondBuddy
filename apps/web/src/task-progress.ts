@@ -12,7 +12,7 @@ export function taskProgress(run: Run, kind: 'update'|'review'|'revision'|'mater
     : ['succeeded','test_completed'].includes(run.state)?4
     : ['delivering','settlement_pending'].includes(run.state)||['word_delivery','word_delivery_pair'].includes(stage)?3
     : observed?.phase??(stage==='input_lock'||stage==='materials_ready'||kind!=='material'&&stage.endsWith('_prompt')?1:2);
-  const labels=['等待开始','准备材料',kind==='review'?'逐项复核':kind==='revision'?'修订稿件':`${verb}${subject}`,'准备下载','已完成'];
+  const labels=['等待开始','准备材料',kind==='review'?'逐项复核':kind==='revision'?'修订稿件':`${verb}${subject}`,'保存文档','可下载'];
   const status:Partial<Record<Run['state'],string>>={paused:'任务已暂停',awaiting_input:'等待补充信息',failed:'本轮未完成',rejected:'本轮未启动',cancelled:'本轮已停止',test_completed:'内部测试稿已生成'};
   const title=(run.state==='paused'?observed?.title:undefined)??status[run.state]??observed?.title??(phase===4?'文档已生成，可下载':labels[phase]);
   const stopped:Partial<Record<Run['state'],string>>={paused:'正在等待处理条件恢复，当前输入与已保存结果保留。',awaiting_input:'请核对任务提示，当前材料与要求保留。',failed:'本轮未完成，已保存的材料和已有成果保留。',rejected:'本轮未启动，请核对任务提示。',cancelled:'任务已停止，已保存的材料和已有成果保留。'};

@@ -32,6 +32,7 @@ type State = {
   downloadBody?: Buffer;
   moreProjects?: boolean;
   generatedPair?: boolean;
+  authoringSummary?: string[];
 };
 const state = (): State => ({ calls: [], metadataReads: {}, grants: [], metadataStatus: 200, downloadStatus: 200,
   loggedOut: false, missingSummary: false, changedRun: false, runState: 'succeeded', wrongMediaType: false });
@@ -68,7 +69,7 @@ async function installApi(page: Page, data: State) {
         expires_at: '2026-09-26T02:05:00Z',
         ...(data.missingSummary ? {} : { word_delivery: { ...summary, variant,
           pending_review_count: data.pendingCount ?? summary.pending_review_count, pending_review: data.pendingItems ?? summary.pending_review,
-          ...(data.generatedPair ? {writer_version:'bondbuddy-file-word-1.0.0' as const,baseline_artifact_id:undefined,delivery_policy:'generated_pair_v1' as const,content_review:'not_performed' as const,replacements:null,columns:null,pending_review_count:null,pending_review:[]} : {}) } }) };
+          ...(data.generatedPair ? {writer_version:'bondbuddy-file-word-1.0.0' as const,baseline_artifact_id:undefined,delivery_policy:'generated_pair_v1' as const,content_review:'not_performed' as const,replacements:null,columns:null,pending_review_count:null,pending_review:[]} : {}),authoring_summary:data.authoringSummary } }) };
       return json(route, 200, artifact);
     }
     return json(route, 404, { code: 'NOT_FOUND' });
@@ -88,12 +89,26 @@ test('completed project shows checked summary and downloads in the continuous wo
   await expect(page.locator('#execution-progress')).toContainText('已生成');
   await expect(page.locator('#execution-delivery')).toContainText('工作稿已生成，含待人工确认事项');
   await expect(page.locator('.project-cowork')).toBeHidden();
+  await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeInViewport();
+  await expect(page.locator('.artifact-files article').first()).toContainText('清洁版');
+  await expect(page.locator('.artifact-file').first().locator('h3')).toBeVisible();
+  await expect(page.locator('.artifact-file').first()).toContainText('适合通读和继续编辑');
+  await expect(page.locator('.task-progress [aria-current=step]')).toContainText('可下载');
+  const sizes=await page.evaluate(()=>['#project-materials-details>summary','#artifact-downloads','#artifact-summary'].map(selector=>getComputedStyle(document.querySelector(selector)!).fontSize));
+  expect(new Set(sizes).size).toBe(1);
+  await page.evaluate(()=>scrollTo(0,0));
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(()=>scrollY)).toBe(0);
+  await page.reload();
+  await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeInViewport();
   await page.setViewportSize({width:1440,height:960}); await page.evaluate(()=>scrollTo(0,0));
   await page.screenshot({path:join(tmpdir(),'bb361-completed-desktop.png'),fullPage:true});
   const download=page.waitForEvent('download'); await page.getByRole('button',{name:'下载修订版',exact:true}).click();
   expect(await (await download).failure()).toBeNull();
   expect(data.calls.every(call=>call.method==='GET')).toBe(true);
   await page.setViewportSize({width:390,height:844}); await page.evaluate(()=>scrollTo(0,0));
+  await page.reload();
+  await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeInViewport();
   await page.screenshot({path:join(tmpdir(),'bb361-completed-mobile.png'),fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
@@ -106,14 +121,14 @@ test('latest failed run preserves access to successful Word summary and both use
   await expect(page.getByRole('heading', { name: '工作稿已生成，含待人工确认事项' })).toBeVisible();
   await expect(page.locator('.artifact-review')).toContainText(summary.pending_review[0].message);
   await expect(page.locator('.artifact-review img')).toHaveCount(0);
-  await expect(page.locator('.page-heading')).toContainText('输入版本 2');
+  await expect(page.locator('.page-heading')).toContainText('第 2 版');
   await expect(page.getByRole('button', { name: /^下载/ })).toHaveCount(2);
   for (const [variant, label] of [['revision', '修订版'], ['clean', '清洁版']] as const) {
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', { name: `下载${label}`, exact: true }).click();
     const download = await downloaded;
     expect(download.suggestedFilename()).toBe(filenames[variant]);
-    await expect(page.locator('.artifact-filename').filter({hasText:filenames[variant]})).toBeVisible();
+    await expect(page.locator('.artifact-filename')).toHaveCount(0);
     expect(await download.failure()).toBeNull();
     const stream = await download.createReadStream();
     const chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
@@ -138,7 +153,7 @@ for (const status of [404, 503]) {
     await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeVisible();
     data.downloadStatus = status;
     await page.getByRole('button', { name: '下载修订版', exact: true }).click();
-    await expect(page.locator('[data-download-status="0"]')).toContainText(status === 404 ? '成果或下载授权不可用' : '校验未通过');
+    await expect(page.locator('[data-download-status="1"]')).toContainText(status === 404 ? '成果或下载授权不可用' : '校验未通过');
     await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeEnabled();
     data.downloadStatus = 200;
     const downloaded = page.waitForEvent('download');
@@ -219,7 +234,7 @@ for (const scenario of ['external URL', 'wrong artifact URL', 'HTML bytes', 'cha
     if (scenario === 'HTML bytes') data.wrongMediaType = true;
     if (scenario === 'changed run') data.changedRun = true;
     await page.getByRole('button', { name: '下载修订版', exact: true }).click();
-    await expect(page.locator('[data-download-status="0"]')).toContainText('校验未通过');
+    await expect(page.locator('[data-download-status="1"]')).toContainText('校验未通过');
     expect(downloads).toBe(0);
     if (scenario !== 'HTML bytes') expect(data.grants).toEqual([]);
   });
@@ -260,7 +275,7 @@ for (const scenario of ['same-length corruption', 'truncated body', 'partial res
     // Even a 206 carrying the expected bytes is not a complete-download response.
     if (scenario === 'partial response') data.downloadStatus = 206;
     await page.getByRole('button', { name: '下载修订版', exact: true }).click();
-    await expect(page.locator('[data-download-status="0"]')).toContainText('校验未通过');
+    await expect(page.locator('[data-download-status="1"]')).toContainText('校验未通过');
     expect(downloads).toBe(0);
     await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeEnabled();
     data.downloadBody = undefined; data.downloadStatus = 200;
@@ -375,20 +390,54 @@ test('project-list pagination keeps a pending download disabled and releases it 
 });
 
 
-test('canonical filenames stay the same after reload and across project list with prototype captures',async({page})=>{
+test('download filenames stay canonical after reload without displaying technical names',async({page})=>{
   const data=state();data.pendingItems=[{record_id:'paragraph-42',message:'请补充授信截至日及证明材料。'}];await installApi(page,data);
   for(const viewport of [{width:1440,height:960},{width:390,height:844}]){
     await page.setViewportSize(viewport);
     const evidence=process.env.BB_FILENAME_EVIDENCE_DIR;
     if(evidence){await mkdir(evidence,{recursive:true});await page.setContent(await readFile('../../product-prototype/public/result-filenames.html','utf8'));await page.screenshot({path:join(evidence,`prototype-${viewport.width}.png`)});}
-    await page.goto('/?evidence='+viewport.width+'#/artifacts/word-revision');await expect(page.locator('[data-filename="1"]')).toHaveText(filenames.clean);
+    await page.goto('/?evidence='+viewport.width+'#/artifacts/word-revision');await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeVisible();
     await page.locator('#artifact-downloads').evaluate(el=>el.scrollIntoView({block:'start'}));
-    await expect(page.locator('[data-filename="0"]')).toBeInViewport();
+    await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeInViewport();
     if(evidence)await page.screenshot({path:join(evidence,`implementation-${viewport.width}.png`)});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
   }
-  await page.reload();await expect(page.locator('[data-filename="0"]')).toHaveText(filenames.revision);
+  await page.reload();await expect(page.locator('.artifact-filename')).toHaveCount(0);
   const first=page.waitForEvent('download');await page.getByRole('button',{name:'下载修订版',exact:true}).click();expect((await first).suggestedFilename()).toBe(filenames.revision);
   await page.goto('/#tasks');const second=page.waitForEvent('download');await page.getByRole('button',{name:'下载最近成果'}).click();expect((await second).suggestedFilename()).toBe(filenames.revision);
   expect(data.calls.every(call=>call.method==='GET')).toBe(true);
+});
+
+test('readable delivery notes, clean-first cards and hidden diagnostics on desktop and mobile',async({page,context})=>{
+  const data=state();data.generatedPair=true;
+  data.authoringSummary=['# 募集说明书 Word 交付说明\n\n**基线与范围。**本轮依据原募集书更新至2026年中期。\n\n**已经更新。**已更新正文、财务表格及风险提示。\n\n**缺材料未更新或尚待核实。**缺少本期授权文件，发行条款仍待人工确认。\n\n**知识、核对与局限。**未进行页面视觉检查，不代表已完成专业审核。'];
+  await installApi(page,data);
+  for(const viewport of [{width:1440,height:960},{width:390,height:844}]){
+    await page.setViewportSize(viewport);await page.goto('/#/artifacts/word-revision');
+    await expect(page.getByRole('heading',{name:'本次更新范围',exact:true})).toBeVisible();
+    await expect(page.locator('.authoring-summary')).toContainText('发行条款仍待人工确认');
+    await expect(page.locator('.authoring-summary')).toContainText('不代表已完成专业审核');
+    await expect(page.locator('.authoring-summary')).not.toContainText('**');
+    await expect(page.locator('main')).not.toContainText('来源与版本核对');
+    await expect(page.locator('main')).not.toContainText('SHA-256');
+    await expect(page.locator('main')).not.toContainText('下载已有文件不会发起新任务');
+    await expect(page.locator('main')).not.toContainText(filenames.revision);
+    await expect(page.locator('.artifact-files .button').first()).toHaveText('下载清洁版');
+    await expect(page.locator('.artifact-files .button').first()).toHaveClass(/primary/);
+    await expect(page.locator('.artifact-files article').nth(1)).toContainText('保留本轮新增、删除和修改痕迹');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    const evidence=process.env.BB_RESULTS_EVIDENCE;
+    if(evidence){
+      await mkdir(evidence,{recursive:true});
+      await page.screenshot({path:join(evidence,`implementation-${viewport.width}.png`),fullPage:true});
+      const panel=page.locator('.artifact-download-panel'),width=(await panel.boundingBox())!.width;
+      await panel.screenshot({path:join(evidence,`implementation-downloads-${viewport.width}.png`)});
+      const prototype=await context.newPage();await prototype.setViewportSize(viewport);
+      await prototype.setContent(await readFile('../../product-prototype/public/authoring-results.html','utf8'));
+      await prototype.locator('main').evaluate((el,w)=>(el as HTMLElement).style.width=w+'px',width);
+      await prototype.locator('.downloads').screenshot({path:join(evidence,`prototype-downloads-${viewport.width}.png`)});
+      await prototype.close();
+    }
+  }
+  expect(data.calls.every(c=>c.method==='GET')).toBe(true);
 });
