@@ -88,6 +88,11 @@ const actionCopy: Record<ReviewActionCode,{started:string;completed:string;faile
   prepare_report:{started:'正在整理复核报告',completed:'已整理复核报告',failed:'复核报告整理未完成',summary:'正在汇总复核发现、依据与覆盖限制。'},
 };
 export type ReviewTaskProgress = {title:string;summary:string;completed:{code:ReviewActionCode;label:string}[]};
+export function reviewActionLabel(event:RunEvent):string|undefined {
+  const action=event.payload.action;
+  if(!action||action.version!=='review-action-v1'||!/^[a-f0-9]{64}$/.test(action.action_id)||!Object.hasOwn(actionCopy,action.code)||!['started','completed','failed'].includes(action.state))return undefined;
+  return actionCopy[action.code][action.state];
+}
 
 /** Current state always wins over a late tool event; no stage transition implies a completed action. */
 export function reviewRunProgress(run: Run): Pick<ReviewTaskProgress,'title'|'summary'> {

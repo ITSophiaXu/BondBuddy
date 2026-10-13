@@ -522,7 +522,7 @@ export function codexModelStage(options: {
       if (callGate) return callGate;
       const mode=reviewActionMode(options.logicalCallId);
       const observed=mode && ((mode==='review'&&options.reviewTools) || (mode==='public_search'&&config.web_search==='live')
-        || (mode==='public_compare'&&options.materialTools) || (mode==='revision'&&options.fileWorkspace));
+        || (mode==='public_compare'&&options.materialTools) || ((mode==='revision'||mode==='file_review')&&options.fileWorkspace));
       const progress=observed?createReviewActionObserver({mode,signal:ctx.signal,
         persist:action=>recordReviewAction(pool,lease,action),onError:()=>{process.stderr.write('review_action_persist_failed\n');}}):undefined;
       const authoring=['update','generation'].includes(run.task_kind)&&!options.logicalCallId.startsWith('m4-')

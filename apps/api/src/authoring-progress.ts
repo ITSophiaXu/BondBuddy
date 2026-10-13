@@ -18,7 +18,7 @@ const milestones:Record<string,number>={input_lock:100,materials_ready:400,model
 /** Caller holds the run lock. Intervals are bounded by the last confirmed worker lease.
  * Persist before terminal UPDATE so SQL settlement uses the same amount as the UI. */
 export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:string;stage:string|null;reason:string}) {
-  if(!['update','generation'].includes(r.task_kind))return;
+  if(!['update','generation','review'].includes(r.task_kind))return;
   const j=(await c.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id])).rows[0];
   if(!j||String(j.subtype).startsWith('m4_'))return;
   await c.query('INSERT INTO bb_authoring_progress(run_id,owner_user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[r.id,r.owner_user_id]);
@@ -52,7 +52,7 @@ export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runI
     FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
     LEFT JOIN bb_authoring_progress m ON m.run_id=r.id AND m.owner_user_id=r.owner_user_id
     LEFT JOIN bb_credit_reservations c ON c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id
-    WHERE r.id=$1 AND r.owner_user_id=$2 AND r.task_kind IN ('update','generation') AND j.subtype NOT LIKE 'm4_%'`,[runId,owner])).rows[0];
+    WHERE r.id=$1 AND r.owner_user_id=$2 AND r.task_kind IN ('update','generation','review') AND j.subtype NOT LIKE 'm4_%'`,[runId,owner])).rows[0];
   if(!row)return undefined;
   const active=row.clock_at?measuredActiveMs(row,new Date(row.sampled_at)):0,points=Number(row.points??0);
   const terminal=['succeeded','test_completed','failed','cancelled','rejected'].includes(row.state);

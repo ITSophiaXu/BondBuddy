@@ -136,6 +136,8 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
       VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)`,[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
       VALUES($1,$2,'run',$3,'run.progress',$4)`,[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
+    await syncAuthoringProgress(client,r);
+    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
     return true;
   });
 }
@@ -255,7 +257,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
     if(kind==='pause'){
-      if(!['update','generation'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))
+      if(!['update','generation','review'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
       if(r.stage==='credits_exhausted'){
         await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);

@@ -151,10 +151,7 @@ test('inline requirements save before start and later edits do not change the fi
   await expect(page.getByLabel('补充复核要求（选填）')).toHaveValue('核对财务摘要引用。');
   await page.getByLabel('补充复核要求（选填）').fill('核对法定代表人信息。\n保留历史名称。');
   await page.getByRole('button',{name:'开始复核',exact:true}).click();
-  await expect(page.getByRole('dialog')).toContainText('核对法定代表人信息。');
-  await expect(page.getByRole('dialog')).toContainText('保留历史名称。');
-  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
-  await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.requests).toHaveLength(0);
   await expect.poll(()=>state.executes.length).toBe(1);
   const fixed=state.history.at(-1)!;
   expect(fixed.input.requirements).toEqual(['核对法定代表人信息。','保留历史名称。']);
@@ -190,8 +187,8 @@ test('finding requirements return to the inline field and task links open main-p
   await expect(page.locator('#review-agent')).toHaveCount(0);
   await page.getByRole('tab',{name:'复核结果',exact:true}).click();
   await page.locator('[data-review-action="task-focus"]').first().click();
-  await expect(page.locator('#review-making-panel [data-task-run="run-1"]')).toBeVisible();
-  await page.locator('#review-making-panel').getByRole('button',{name:'查看本轮结果',exact:true}).click();
+  await expect(page.locator('#review-making-panel .review-live-workspace')).toBeVisible();
+  await page.locator('#review-making-panel').getByRole('button',{name:'查看复核结果',exact:true}).click();
   await expect(page.getByRole('tab',{name:'复核结果',exact:true})).toHaveAttribute('aria-selected','true');
   expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
 });
@@ -357,7 +354,7 @@ test('handling remains unavailable on missing metadata, stale artifact associati
 
 test('result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded',async({page})=>{
   const state=await setup(page);await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.getByRole('tab')).toHaveCount(3);
-  await expect(page.locator('#review-credit-receipt')).toContainText('未扣积分');
+  await page.getByRole('tab',{name:'本轮任务',exact:true}).click();await expect(page.locator('#review-making-panel')).toContainText('不扣积分');await page.getByRole('tab',{name:'复核结果',exact:true}).click();
   const card=await openFinding(page,'F01');await card.getByRole('button',{name:'查看解释'}).click();await expect(page.getByRole('dialog')).toContainText('现金流 120');expect(state.requests).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await page.getByRole('button',{name:'核对修订计划'}).click();await page.getByRole('button',{name:'确认范围并执行修订'}).click();await expect(page.getByRole('dialog')).toContainText('请选择至少一项');expect(state.executes).toHaveLength(0);await page.getByRole('button',{name:'返回',exact:true}).click();
   await card.getByLabel('加入修订').check();await expect.poll(()=>state.workspace.plan?.finding_ids).toEqual(['F01']);await expect(card).toHaveAttribute('open','');
@@ -367,7 +364,7 @@ test('result buttons explain, download, plan and explicitly execute without chat
   await expect(page.getByRole('button',{name:'再次完整复核'})).toBeDisabled();
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载问题报告'}).click();expect((await download).suggestedFilename()).toBe('合成问题报告.docx');
   await page.locator('#review-progress-bar').getByRole('button',{name:'停止本次任务'}).click();await expect(page.locator('.review-run')).toContainText('已停止');
-  await page.getByRole('button',{name:'再次完整复核'}).click();state.dropExecutionOnce=true;await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(3);await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');expect(state.executes[2].execution_request_id).not.toBe(state.executes[0].execution_request_id);await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');expect(state.executes).toHaveLength(3);
+  state.dropExecutionOnce=true;await page.getByRole('button',{name:'再次完整复核'}).click();await expect.poll(()=>state.executes.length).toBe(3);await expect(page.locator('#review-status')).toContainText('提交结果暂未确认');expect(state.executes[2].execution_request_id).not.toBe(state.executes[0].execution_request_id);await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');expect(state.executes).toHaveLength(3);
 });
 
 
@@ -406,7 +403,7 @@ test('evidence upload retries the same session and pins original finding; differ
   const state=await setup(page);state.dropUploadOnce=true;await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('report-v1 · F02');
   await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'更名证明.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic name change evidence')});await page.getByRole('button',{name:'上传并保存'}).click();await expect(page.getByRole('dialog')).toContainText('可以重试原上传确认保存状态');
   await page.getByRole('button',{name:'上传并保存'}).click();await expect(page.getByRole('dialog')).toContainText('材料已补充，核对下一步');expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.workspace.draft.evidence_links).toEqual([{report_id:'report-v1',finding_id:'F02',material_ref:{material_id:'evidence-new',material_version:1,sha256:hash('Synthetic name change evidence')}}]);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
-  await page.getByRole('button',{name:'核对并重新核验'}).click();await expect(page.getByRole('dialog')).toContainText('差异复核');await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0]).toMatchObject({operation:'differential_review',source_report_id:'report-v1',finding_ids:['F02']});
+  await page.getByRole('button',{name:'核对并重新核验'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0]).toMatchObject({operation:'differential_review',source_report_id:'report-v1',finding_ids:['F02']});
 });
 
 function addTypedProposal(state:ReturnType<typeof fixture>,operation:ReviewProposalV2['operation']='differential_review'){
@@ -784,45 +781,44 @@ test('review navigation retains the app scale while keeping its own layout',asyn
  }
 });
 
-for(const width of [1440,390])test('paid review reserves on explicit start and shortage preserves inputs '+width,async({page})=>{
+for(const width of [1440,390])test('paid review starts with one point without confirmation and zero balance preserves inputs '+width,async({page})=>{
  const state=fixture();await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
- let available=13899;
+ let available=0;
  await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'synthetic-quote',task_type:'full_review',points:13900,reason:'用户Spec'},balance:{available,frozen:0},shortage:Math.max(0,13900-available),reason:null}));
  await page.goto(`/#/projects/${id}/review?tab=materials`);
  await page.getByRole('button',{name:'开始复核',exact:true}).click();
  await expect(page.getByRole('dialog')).not.toContainText('13,900');
  const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-ready-${width}.png`});}
- await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('积分不足，请充值后继续任务');
  await expect(page.getByRole('dialog').getByRole('link',{name:'充值积分'})).toHaveAttribute('href',`#/account?project=${id}`);
  expect(state.executes).toHaveLength(0);
  if(output)await page.screenshot({path:`${output}/implementation-shortage-${width}.png`});
- await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=13900;
+ await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();available=1;
  await page.reload();expect(state.executes).toHaveLength(0);
- await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();
  await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('synthetic-quote');
  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('enabled review never starts free when its price is missing',async({page})=>{
  const state=fixture();await setup(page,state);await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:null,balance:{available:20000,frozen:0},shortage:0,reason:null}));
- await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('积分价格尚未配置');expect(state.executes).toHaveLength(0);
+ await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.locator('#review-status')).toContainText('积分价格尚未配置');expect(state.executes).toHaveLength(0);
 });
 
 test('review task receipt displays the actual reserved, charged and released points',async({page})=>{
  const state=fixture();
  state.workspace.active_run={...state.makeRun('paid-run','running'),billing_mode:'fixed_credits',reservation_id:'synthetic-reservation'};
  let charge='held',reads=0;
- await setup(page,state);
+ await setup(page,state,`#/projects/${id}/review?tab=making`);
  await page.route('**/credit-charge',route=>{reads++;return reply(route,200,{quote:{points:300},state:charge});});
  await page.reload();
- await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已预留，交付后扣费');
+ await expect(page.locator('.review-legacy-credit')).toContainText('300 积分 · 已预留，成功交付后扣费');
  charge='settled';state.workspace.active_run.state='succeeded';await page.reload();
- await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已扣费');
+ await expect(page.locator('.review-legacy-credit')).toContainText('300 积分 · 已扣费');
  charge='released';state.workspace.active_run.state='failed';await page.reload();
- await expect(page.locator('#review-credit-receipt')).toHaveText('本次 300 积分 · 已返还，本次不扣费');
- expect(reads).toBe(3);expect(state.executes).toHaveLength(0);
+ await expect(page.locator('.review-legacy-credit')).toContainText('300 积分 · 已返还，本次不扣费');
+ expect(reads).toBeGreaterThanOrEqual(3);expect(state.executes).toHaveLength(0);
 });
 
 test('dashboard review progress keeps its collection context through tab changes and reload',async({page})=>{
@@ -835,9 +831,61 @@ test('dashboard review progress keeps its collection context through tab changes
 test('paid review response loss keeps quote and intent on explicit retry',async({page})=>{
  const state=fixture();state.dropExecutionOnce=true;await setup(page,state);let quotes=0;
  await page.route('**/review-executions/quote',route=>{quotes++;return reply(route,200,{enabled:true,quote:{quote_id:'original-quote',task_type:'full_review',points:13900},balance:{available:13900,frozen:0},shortage:0,reason:null});});
- await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('重试沿用同一请求');await page.getByRole('dialog').getByRole('button',{name:'开始复核',exact:true}).click();
+ await page.goto(`/#/projects/${id}/review?tab=materials`);await page.getByRole('button',{name:'开始复核',exact:true}).click();
+ await expect(page.locator('#review-status')).toContainText('提交结果暂未确认');await page.getByRole('button',{name:'开始复核',exact:true}).click();
  await expect.poll(()=>state.executes.length).toBe(2);expect(quotes).toBe(1);expect(state.executes[1]).toEqual(state.executes[0]);expect(state.executes[0].quote_id).toBe('original-quote');
+});
+
+for(const width of [1440,390])test(`review headings share one content edge at ${width}`,async({page})=>{
+  await page.setViewportSize({width,height:width===1440?960:844});
+  await setup(page,fixture(),`#/projects/${id}/review?tab=materials`);
+  const positions=await page.locator('#review-materials-panel .materials-heading h2,#review-materials-panel .material-partition>h3,#review-materials-panel .review-optional-requirements>label,#review-materials-panel .review-footer-copy>strong').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().x));
+  expect(positions).toHaveLength(6);expect(Math.max(...positions)-Math.min(...positions)).toBeLessThan(1);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  if(process.env.BB_REVIEW_LIVE_EVIDENCE){await mkdir(process.env.BB_REVIEW_LIVE_EVIDENCE,{recursive:true});await page.screenshot({path:`${process.env.BB_REVIEW_LIVE_EVIDENCE}/materials-${width}.png`,fullPage:true});}
+});
+
+test('repeated start clicks during quote lookup create one review without confirmation',async({page})=>{
+  const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials`);
+  let release!:()=>void,quotes=0;const held=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/review-executions/quote',async route=>{quotes++;await held;return reply(route,200,{enabled:false,quote:null,balance:{available:0,frozen:0},shortage:0,reason:null});});
+  await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect.poll(()=>quotes).toBe(1);
+  await page.locator('#review-materials-panel [data-review-action="review"]').evaluate(el=>{el.dispatchEvent(new MouseEvent('click',{bubbles:true}));el.dispatchEvent(new MouseEvent('click',{bubbles:true}));});
+  release();await expect.poll(()=>state.executes.length).toBe(1);expect(quotes).toBe(1);await expect(page.getByRole('dialog')).not.toBeVisible();
+});
+
+test('review live progress refreshes actual debit and activities, survives reload and exposes pause without another execution',async({page})=>{
+  const state=fixture();let points=60,available=940,paused=false,exhausted=false,pauses=0;
+  const run=state.workspace.active_run={...state.makeRun('paid-live','running'),stage:'provider_call',event_cursor:1,billing_mode:'fixed_credits' as const,reservation_id:'synthetic-reservation'};
+  const event={event_id:'live-event-1',schema_version:1 as const,trace_id:'live-trace',run_id:run.run_id,seq:1,occurred_at:now,stage:'provider_call',type:'run.progress' as const,state:'running' as const,payload:{reason:'review_action',action:{version:'review-action-v1' as const,action_id:hash('live-action'),code:'check_financial' as const,state:'started' as const}}};
+  state.workspace.timeline=[{kind:'task',entry_id:'task:paid-live',created_at:now,task:{run,operation:'full_review',version:1,input_version:1,input_revision:1,input_sha256:run.input_hash,source_report_id:null,report_id:null,finding_ids:[],origin:{version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null},artifacts:[],events:[event]}}];
+  await setup(page,state,`#/projects/${id}/review?tab=making`);
+  await page.route('**/credit-charge',route=>reply(route,200,{quote:{points:1000},state:'held',progress:{policy:'authoring_balance_v2',accrued_points:points,charged_points:points,released_points:0,active_ms:60000,credit_exhausted:exhausted,available_points:available,pause_requested:paused,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:!paused&&!exhausted}}));
+  await page.route('**/runs/paid-live/pause',route=>{pauses++;paused=true;run.state='paused';run.stage='user_paused';return reply(route,200,run);});
+  await page.reload();await expect(page.locator('.authoring-credit-meter')).toContainText('60 积分');
+  await expect(page.getByRole('region',{name:'复核过程'})).toContainText('正在核对财务数据');
+  points=120;available=880;run.event_cursor=2;
+  const task=state.workspace.timeline[0];if(task.kind==='task')task.task.events.push({...event,event_id:'live-event-2',seq:2,payload:{...event.payload,action:{...event.payload.action,state:'completed'}}});
+  await expect(page.locator('.authoring-credit-meter')).toContainText('120 积分');await expect(page.getByRole('region',{name:'复核过程'})).toContainText('已执行财务数据核对');
+  await page.reload();await expect(page.locator('.authoring-credit-meter')).toContainText('120 积分');
+  await expect(page.locator('#review-making-panel')).not.toContainText('SHA-256');await expect(page.locator('#review-making-panel .review-empty')).toHaveCount(0);
+  if(process.env.BB_REVIEW_LIVE_EVIDENCE){await mkdir(process.env.BB_REVIEW_LIVE_EVIDENCE,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:width===1440?960:844});await page.screenshot({path:`${process.env.BB_REVIEW_LIVE_EVIDENCE}/running-${width}.png`,fullPage:true});}}
+  await page.getByRole('button',{name:'暂停复核',exact:true}).click();await expect(page.getByRole('button',{name:'继续复核',exact:true})).toBeVisible();expect(pauses).toBe(1);
+  await expect(page.locator('.authoring-credit-meter')).toContainText('120 积分');expect(state.executes).toHaveLength(0);
+  exhausted=true;available=0;paused=false;run.stage='credits_exhausted';
+  await expect(page.getByRole('dialog',{name:'积分已用完'})).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();
+  await expect(page.locator('#review-making-panel')).toContainText('积分已用完，复核已暂停');
+  expect(state.executes).toHaveLength(0);
+});
+
+test('review live design comparison uses independent synthetic markup',async({page})=>{
+  const output=process.env.BB_REVIEW_LIVE_EVIDENCE;test.skip(!output,'Optional visual evidence');
+  await page.route('http://prototype.test/**',async route=>{const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});return route.fulfill({body:await readFile('../../product-prototype/public'+path),contentType:path.endsWith('.css')?'text/css':path.endsWith('.js')?'text/javascript':path.endsWith('.svg')?'image/svg+xml':path.endsWith('.json')?'application/json':'text/html'});});
+  for(const width of [1440,390])for(const scene of ['materials','running']){
+    await page.setViewportSize({width,height:width===1440?960:844});await page.goto('http://prototype.test/'+(scene==='materials'?'workspace-ux.html?scene=materials':'review-live-progress.html'));
+    await expect(page.locator(scene==='materials'?'#review-materials-panel':'.review-live-workspace')).toBeVisible();await page.locator('#design-controls').evaluate(el=>(el as HTMLElement).style.display='none');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:`${output}/prototype-${scene}-${width}.png`,fullPage:true});
+  }
 });
 
 test('review credit prototype comparison',async({page})=>{
