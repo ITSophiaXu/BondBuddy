@@ -19,7 +19,7 @@ test('approved review catalog preserves authoring and leaves unpriced independen
  for(const [key,points] of Object.entries(INITIAL_FIXED_PRICES))assert.equal(config.prices[key],points);
 });
 const connection=await isolatedTestDatabase(undefined,'approved-review');
-test('approved review prices: P-1/P, concurrency, delivered settlement, differential cancel/failure, history and old trial', {skip:!connection},async()=>{
+test('approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial', {skip:!connection},async()=>{
  const pool=new Pool({connectionString:connection}),owner=uid();let active=owner;
  const bytes=new Map<string,Buffer>();
  const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
@@ -43,10 +43,11 @@ test('approved review prices: P-1/P, concurrency, delivered settlement, differen
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[trial.run_id])).rows[0].n,0);
   const fresh={...request,execution_request_id:uid()},quote=ok(await send('POST',`${base}/review-executions/quote`,fresh));assert.equal(quote.quote.points,13900);
   const fund=(points:number,key:string)=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key,points,expiresAt:null,actor:'synthetic',reason:'isolated test'}));
-  await fund(13899,'p-minus-one');const body={...fresh,quote_id:quote.quote.quote_id};
-  assert.equal((await send('POST',`${base}/review-executions`,body)).statusCode,402);assert.deepEqual(await creditBalance(pool,owner),{available:13899,frozen:0});
+  const body={...fresh,quote_id:quote.quote.quote_id};
+  assert.equal((await send('POST',`${base}/review-executions`,body)).statusCode,402);assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
   await fund(1,'one');const runs=await Promise.all([send('POST',`${base}/review-executions`,body),send('POST',`${base}/review-executions`,body)]),run=ok(runs[0]);assert.equal(ok(runs[1]).run_id,run.run_id);
-  assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:13900});
+  assert.deepEqual(await creditBalance(pool,owner),{available:1,frozen:0});
+  await fund(13899,'remaining-price');
   const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
   const artifact=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic review report'}),blobs,'generated_pair_v1');
   await assert.rejects(()=>finish(pool,lease,'succeeded',{artifactId:artifact.artifactId,artifactVersion:1,blobs}),/Delivered review report/);
@@ -64,7 +65,7 @@ test('approved review prices: P-1/P, concurrency, delivered settlement, differen
   for(const state of ['cancelled','failed']){
    const next={...fresh,execution_request_id:uid(),operation:'differential_review',source_report_id:report.report_id,finding_ids:['F1']};
    const q=ok(await send('POST',`${base}/review-executions/quote`,next));assert.equal(q.quote.points,1200);
-   const nextRun=ok(await send('POST',`${base}/review-executions`,{...next,quote_id:q.quote.quote_id}));assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:1200});
+   const nextRun=ok(await send('POST',`${base}/review-executions`,{...next,quote_id:q.quote.quote_id}));assert.deepEqual(await creditBalance(pool,owner),{available:1200,frozen:0});
    await pool.query('UPDATE bb_runs SET state=$2 WHERE id=$1',[nextRun.run_id,state]);assert.deepEqual(await creditBalance(pool,owner),{available:1200,frozen:0});
   }
   const history=ok(await send('GET','/api/v1/credits/consumption-history'));

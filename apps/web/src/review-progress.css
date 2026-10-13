@@ -1,0 +1,20 @@
+/* Shared alignment for the material sections and the single live review panel. */
+.review-workspace #review-materials-panel .materials-heading,
+.review-workspace #review-materials-panel .material-partition{padding-left:0;padding-right:0}
+.review-workspace #review-materials-panel .materials-heading{padding-top:24px}
+.review-live-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
+.review-live-heading h2{margin:0;font-size:20px;line-height:1.4}
+.review-live-heading p{margin:8px 0 0;font-size:13px;color:var(--review-muted)}
+.review-live-workspace .task-progress{margin-bottom:0}
+.review-live-controls{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:20px 0 28px}
+.review-activity-log{padding-top:24px;border-top:1px solid var(--review-line)}
+.review-activity-log h3{margin:0 0 10px;font-size:15px}
+.review-activity-log ol{list-style:none;margin:20px 0;padding:0}
+.review-activity-log li{display:grid;grid-template-columns:76px minmax(0,1fr);gap:16px;padding:12px 0;border-bottom:1px solid #edf0e8;font-size:13px;line-height:1.7}
+.review-activity-log time{color:var(--review-muted);font-variant-numeric:tabular-nums}
+.review-activity-log li:last-child span{color:var(--review-green);font-weight:600}
+.review-activity-empty{padding:18px 0;color:var(--review-muted);font-size:13px}
+.review-live-workspace .review-fixed-input{margin:24px 0 0;padding-top:20px;border-top:1px solid var(--review-line);font-size:13px;line-height:1.8;overflow-wrap:anywhere}
+.review-live-workspace .review-fixed-input summary{cursor:pointer;font-weight:600}
+.review-legacy-credit{margin:22px 0;padding:20px 24px;border:1px solid var(--review-line);border-radius:12px;background:var(--review-soft);font-size:13px}
+@media(max-width:600px){.review-live-heading h2{font-size:18px}.review-live-controls .btn{flex:0 1 auto;min-width:112px;white-space:nowrap}.review-live-controls .text-btn{width:auto}.review-activity-log li{grid-template-columns:68px minmax(0,1fr);gap:10px}.review-legacy-credit{padding:18px}}

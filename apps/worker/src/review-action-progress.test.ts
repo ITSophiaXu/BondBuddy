@@ -28,6 +28,16 @@ test('M3 projection uses host tool/mode evidence, safe enums and opaque attempt-
   for(const call of ['unified-v3-abcd','project-assistant','review-cli-unknown','review-cli-v3-/private'])assert.equal(reviewActionMode(call),undefined);
 });
 
+test('file review publishes only explicit public progress codes and keeps phase identity stable',()=>{
+  assert.equal(reviewActionMode('review-file-v1'),'file_review');
+  const message=(id:string,text:string)=>({type:'item.completed',item:{id,type:'agent_message',text}});
+  const started=projectReviewAction(message('a','BB_REVIEW_PROGRESS:check_financial:started'),'file-call','file_review');
+  const completed=projectReviewAction(message('b','BB_REVIEW_PROGRESS:check_financial:completed'),'file-call','file_review');
+  assert.equal(started?.code,'check_financial');assert.equal(started?.state,'started');assert.equal(completed?.state,'completed');assert.equal(started?.action_id,completed?.action_id);
+  for(const text of ['private reasoning','BB_REVIEW_PROGRESS:unknown:started','BB_REVIEW_PROGRESS:check_financial:completed | private text','BB_REVIEW_PROGRESS:check_financial:completed\nsecret'])assert.equal(projectReviewAction(message('x',text),'call','file_review'),null);
+  assert.equal(projectReviewAction(message('x','BB_REVIEW_PROGRESS:check_financial:started'),'call','review'),null);
+});
+
 test('completed items with errors are failed actions, never completed checks',()=>{
   for(const extra of [{status:'failed'},{error:{message:'private'}},{result:{isError:true}},
     {result:{structuredContent:{status:'error',message:'private'}}},{result:{output:{isError:true}}},{output:{error:'private'}}]){
