@@ -145,6 +145,12 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
   await page.goto(`/${routePath}`);return state;
 }
 const finding=(page:Page,id:string)=>page.locator(`details.review-finding[data-finding-id="${id}"]`);
+async function expectFocusedResults(page:Page){
+  const panel=page.locator('#review-results-panel');
+  await expect(panel.locator('.review-run-details,.review-update-cta,[data-review-action="update-from-review"]')).toHaveCount(0);
+  await expect(panel).not.toContainText('任务详情');
+  await expect(panel).not.toContainText('根据复核结果更新募集书');
+}
 
 test('inline requirements save before start and later edits do not change the fixed task input',async({page})=>{
   const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials`);
@@ -277,6 +283,7 @@ for(const routePath of [`#/projects/${id}`,`#/projects/${id}/review?tab=material
   await expect(page.locator('#review-agent')).toHaveCount(0);
   await page.getByRole('tab',{name:'复核结果',exact:true}).click();
   await expect(page.getByRole('heading',{name:'还没有复核报告',exact:true})).toBeVisible();
+  await expectFocusedResults(page);
   await expect(page.locator('#review-status')).not.toContainText('状态暂未更新');
   await page.reload();
   await expect(page.getByRole('heading',{name:'还没有复核报告',exact:true})).toBeVisible();
@@ -289,11 +296,9 @@ test('review summary, counted filters and downloads stay ahead of findings',asyn
   await setup(page,state);
   await expect(page.locator('#review-tab-materials .review-tab-count')).toHaveText('2');await expect(page.locator('#review-tab-results .review-tab-count')).toHaveText('3');
   const results=page.locator('#review-results-panel');await expect(results.locator(':scope > :first-child')).toHaveClass('review-result-hero');
-  await expect(page.locator('.review-run-details')).not.toHaveAttribute('open','');
-  await expect(page.locator('.review-run-details').getByText('run-1',{exact:true})).toBeHidden();
+  await expectFocusedResults(page);
   await expect(page.locator('.review-findings-heading .review-result-actions')).toBeVisible();await expect(results.getByRole('heading',{name:'复核成果',exact:true})).toHaveCount(0);
   expect(await page.locator('.review-result-actions').evaluate(node=>Boolean(node.compareDocumentPosition(document.querySelector('.review-findings')!)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
-  expect(await results.locator('.review-footer-actions').evaluate(node=>Boolean(node.compareDocumentPosition(document.querySelector('.review-run-details')!)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   const chips=page.getByRole('group',{name:'筛选复核发现'});
   await expect(chips.locator('[data-review-filter-value="all"]')).toHaveText('全部3');await expect(chips.locator('[data-review-filter-value="priority"]')).toHaveText('优先关注2');
   await chips.locator('[data-review-filter-value="priority"]').click();await expect(finding(page,'F01')).toBeVisible();await expect(finding(page,'F02')).toBeVisible();await expect(finding(page,'F03')).toHaveCount(0);
@@ -463,6 +468,7 @@ for(const viewport of [{width:1360,height:900},{width:581,height:753}])test(`fil
   state.history[0].report_id=null;
   await setup(page,state);
   await expect(page.getByRole('heading',{name:'复核报告已生成'})).toBeVisible();
+  await expectFocusedResults(page);
   await expect(page.locator('.review-findings')).toHaveCount(0);
   await expect(page.locator('.review-filters')).toHaveCount(0);
   const button=page.getByRole('button',{name:'下载复核报告（Word）'});
@@ -480,6 +486,7 @@ for(const viewport of [{width:1360,height:900},{width:581,height:753}])test(`rea
   state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};state.history[0].report_id=null;
   await setup(page,state);
   await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
+  await expectFocusedResults(page);
   await expect(page.locator('.readable-body')).toContainText('财务差异需要优先核对');
   await page.locator('[data-readable-section]').filter({hasText:'财务核对'}).click();
   await expect(page.locator('details.readable-item')).toHaveCount(2);
@@ -542,6 +549,7 @@ for(const extension of ['docx','pdf'])test(`annotated source ${extension}: downl
       await page.locator('.review-readable-heading').scrollIntoViewIfNeeded();
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
       await page.screenshot({path:`${output}/implementation-${width}.png`});
+      await page.locator('#review-results-panel').screenshot({path:`${output}/implementation-content-${width}.png`});
     }
   }
   await page.route('**/readable-report',route=>reply(route,503,{code:'DATA_UNAVAILABLE'}));await page.reload();
@@ -559,10 +567,13 @@ test('annotated source prototype screenshots',async({page})=>{
   await page.goto('http://prototype.test/review-v2.html?delivery=files');
   await page.locator('[data-tab="results"]').click();
   await expect(page.getByRole('button',{name:'下载原文批注版',exact:true})).toBeVisible();
+  await expect(page.locator('#work-content')).not.toContainText('任务详情');
+  await expect(page.locator('#work-content')).not.toContainText('根据复核结果更新募集书');
   for(const width of [1440,390]){
     await page.setViewportSize({width,height:width===1440?960:844});
     await page.locator('.review-readable-heading').scrollIntoViewIfNeeded();
     await page.screenshot({path:`${output}/prototype-${width}.png`});
+    await page.locator('#work-content').screenshot({path:`${output}/prototype-content-${width}.png`});
   }
 });
 
@@ -675,18 +686,18 @@ test('real stage, paused state and cancellation appear in the main panel without
  await page.locator('#review-progress-bar').getByRole('button',{name:'停止本次任务',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('本轮已停止');expect(state.executes).toHaveLength(0);
 });
 
-test('file report update pins source and optional requirements, survives response loss and shows Word pair',async({page})=>{
+test('file report omits task metadata and update entry while historical Word pairs stay available',async({page})=>{
  const state=fixture();state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};state.history[0].report_id=null;
- await setup(page,state);const requests:any[]=[];let drop=true;
- await page.route('**/review-updates',async route=>{const body=route.request().postDataJSON();requests.push(body);if(drop){drop=false;return route.abort('connectionreset');}const run={...state.makeRun('update-run','queued',body.execution_request_id),stage:'queued'};state.workspace.active_run=run;return reply(route,200,run);});
- await expect(page.locator('#review-update-notes')).toHaveCount(0);await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();
- await expect(page.locator('#review-status')).toContainText('尚未确认更新结果');await page.reload();await expect(page.locator('#review-update-notes')).toHaveCount(0);
- await page.getByRole('button',{name:'根据复核结果更新募集书',exact:true}).click();await expect(page.locator('#review-progress-bar')).toContainText('等待开始');
- await expect.poll(()=>requests.length).toBe(2);expect(requests[0]).toEqual(requests[1]);expect(requests[0].source_run_id).toBe('run-1');expect(requests[0].requirements).toBe('');
+ const updateRequests:string[]=[];
+ page.on('request',request=>{if(request.url().includes('/review-updates'))updateRequests.push(request.url());});
+ await setup(page,state);
+ await expect(page.getByRole('heading',{name:'复核报告已生成'})).toBeVisible();await expectFocusedResults(page);
+ await page.reload();await expect(page.getByRole('button',{name:'下载复核报告（Word）'})).toBeVisible();await expectFocusedResults(page);
  state.workspace.active_run=null;state.workspace.artifact_run={run_id:'update-run',version:2,operation:'revision',source_report_id:null,source_run_id:'run-1'};
  state.workspace.artifacts=[{artifact_id:'tracked',artifact_version:1,filename:'修订版.docx',kind:'revision'},{artifact_id:'clean',artifact_version:1,filename:'清洁版.docx',kind:'clean'}];
  state.history.unshift({...structuredClone(state.history[0]),run:state.makeRun('update-run','succeeded'),operation:'revision',version:2,artifacts:state.workspace.artifacts,created_at:'2026-10-05T12:00:00Z'});
  await page.reload();await expect(page.getByRole('heading',{name:'更新后的募集书已生成'})).toBeVisible();await expect(page.getByRole('button',{name:'下载修订版 Word'})).toBeVisible();await expect(page.getByRole('button',{name:'下载清洁版 Word'})).toBeVisible();await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
+ await expectFocusedResults(page);expect(updateRequests).toEqual([]);
  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
 });
 
