@@ -1,5 +1,7 @@
 # 2026-10-12 第一批本地集成环境
 
+> 2026-10-13 13:45：材料生成已纳入 [PR #699](https://github.com/ITSophiaXu/BondBuddy/pull/699)。新任务动态扣积分、真实过程记录、暂停续跑；移除内部来源信息及标签 ×。实际 web/API/worker 产品源码 `de494b8`，镜像 `ac24565c…`，新增迁移 0105。真实本地 2/2、隔离账务 13/13、Linux 24/24；入口仍为 http://localhost:5178。原账号/成果保留。用户尚未验收，尚未部署，详见 [材料动态积分验证](validation-material-dynamic-20261013.md)。
+
 > 2026-10-13 12:53：PR #697 增量修复更新说明右侧大片留白，取消内层固定宽度。产品源码 `e21fb81`，来源 `31e97120`；5178 刷新即可看到。1920/1440/390 成果回归 30/30、真实旧成果验证 1/1，两个 Word 原文件不变；API/worker 和所有数据保留。详见 [宽度验证](validation-summary-width-20261013.md)。用户尚未验收，尚未部署。
 
 > 2026-10-13 12:44：已纳入 [PR #698](https://github.com/ITSophiaXu/BondBuddy/pull/698) 批注来源区分，worker 产品源码 `f9ea165` / 镜像 `85e2a227…`。前端保留 #697 成果可读说明、清洁版优先、自动定位下载（`f13c8c6`），API 为 `0556ca5a`。入口 http://localhost:5178 可用；原数据和成果保留，仅空闲 worker 更换。Python Windows/Linux 各 30/30、worker 交付 4/4、真实原稿离线再生成通过，没有新模型调用或扣费。详见 [验证记录](validation-comments-20261013.md)。用户尚未验收，尚未部署。以下版本记录为历史。
