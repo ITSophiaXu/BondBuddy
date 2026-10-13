@@ -66,6 +66,7 @@ async function fixture(kind:'document'|'qa'='document') {
     persisted.push({sql,args});
     if(sql.startsWith('SELECT r.*'))return {rows:[{...ctx.run,state:'running',event_cursor:0}]};
     if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:'job',state:'running',lease_token:'lease',lease_until:new Date(Date.now()+60000)}]};
+    if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
     if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
     if(sql.startsWith('SELECT event_cursor'))return {rows:[{event_cursor:0}]};
     return {rows:[],rowCount:1};

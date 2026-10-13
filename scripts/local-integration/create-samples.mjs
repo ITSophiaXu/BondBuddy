@@ -1,0 +1,10 @@
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {runtime} from './config.mjs';
+import {pdfSample} from '../../apps/api/dist/upload-safety.samples.js';
+import {makeSyntheticDocxFixture} from '../../apps/api/dist/docx-fixtures.js';
+mkdirSync(join(runtime,'samples'),{recursive:true});
+writeFileSync(join(runtime,'samples/合成历史募集书.docx'),makeSyntheticDocxFixture({text:'仅供本地集成测试的合成募集说明书，不含客户资料。发行人：本地验收示例有限公司。报告期：2025年度。'}));
+writeFileSync(join(runtime,'samples/合成审计报告.pdf'),pdfSample());
+writeFileSync(join(runtime,'samples/README.md'),'These files are synthetic upload fixtures, not actual financial reports or generated model results.');
+console.log('Synthetic upload samples ready.');

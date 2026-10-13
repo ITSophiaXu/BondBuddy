@@ -1,0 +1,13 @@
+import {Pool} from 'pg';
+import {WorkerRuntime,workerRuntimeOptionsFromEnv} from '../../apps/worker/dist/runtime.js';
+import {azureBlobs} from '../../apps/api/dist/data.js';
+const database=new URL(process.env.DATABASE_URL);
+if(database.hostname!=='host.docker.internal'||database.port!=='55438'||database.pathname!=='/bb_integration_20261012')throw Error('Local integration database required');
+if(!process.env.AZURE_STORAGE_CONNECTION_STRING?.includes('http://host.docker.internal:10018/'))throw Error('Local integration Blob required');
+const pool=new Pool({connectionString:process.env.DATABASE_URL,max:8,idleTimeoutMillis:0,connectionTimeoutMillis:10000});
+await pool.query('SELECT 1');
+const worker=new WorkerRuntime({...workerRuntimeOptionsFromEnv(pool,azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING)),log:e=>console.log(JSON.stringify(e))}).start();
+console.log(JSON.stringify({service:'linux-worker',ready:true,modelConfigured:true}));
+let stopping=false;
+const stop=async()=>{if(stopping)return;stopping=true;await worker.stop();await pool.end();process.exit(0);};
+process.on('SIGTERM',()=>void stop());process.on('SIGINT',()=>void stop());

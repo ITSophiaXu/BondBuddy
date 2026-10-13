@@ -522,10 +522,10 @@ export function codexModelStage(options: {
       if (callGate) return callGate;
       const mode=reviewActionMode(options.logicalCallId);
       const observed=mode && ((mode==='review'&&options.reviewTools) || (mode==='public_search'&&config.web_search==='live')
-        || (mode==='public_compare'&&options.materialTools) || (mode==='revision'&&options.fileWorkspace));
+        || (mode==='public_compare'&&options.materialTools) || ((mode==='revision'||mode==='file_review')&&options.fileWorkspace));
       const progress=observed?createReviewActionObserver({mode,signal:ctx.signal,
         persist:action=>recordReviewAction(pool,lease,action),onError:()=>{process.stderr.write('review_action_persist_failed\n');}}):undefined;
-      const authoring=['update','generation'].includes(run.task_kind)&&!options.logicalCallId.startsWith('m4-')
+      const authoring=['update','generation'].includes(run.task_kind)&&(!options.logicalCallId.startsWith('m4-')||options.logicalCallId==='m4-document-v1')
         ?createAuthoringActivityObserver({signal:ctx.signal,persist:activity=>recordAuthoringActivity(pool,lease,activity)}):undefined;
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,

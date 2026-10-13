@@ -3,6 +3,7 @@ import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
 import { billingSchemas, creditHistorySchemas } from './billing.js';
 import { m4Schemas } from './m4-workspace.js';
 export * from './m4-workspace.js';
+export * from './m4-input.js';
 export * from './billing.js';
 export * from './authoring-progress.js';
 import { AuthoringActivitySchema } from './authoring-progress.js';

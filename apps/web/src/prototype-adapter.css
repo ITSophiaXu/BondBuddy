@@ -82,22 +82,14 @@
 .execution-events li { display:flex; gap:12px; border-left:1px solid var(--line); padding:6px 0 14px 16px; font-size:12px; }
 .execution-events time { font-size:10px; color:var(--muted); }
 .embedded-artifact>.back-link, .embedded-artifact>.page-heading { display:none; }
-.embedded-artifact .artifact-files { grid-template-columns:1fr; gap:10px; }
-.embedded-artifact .artifact-file { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px; }
-.embedded-artifact .artifact-file>p:not(.artifact-download-status) { width:100%; font-size:11px; }
-.embedded-artifact .artifact-file .button { margin-left:auto; }
 .embedded-artifact .artifact-page { padding:20px; }
 .embedded-artifact .artifact-page { margin:0; border-radius:0; border-top:0; }
 .embedded-artifact .artifact-page:first-of-type { border-top:1px solid var(--line); border-radius:10px 10px 0 0; }
 .embedded-artifact .artifact-page:last-of-type { border-radius:0 0 10px 10px; margin-bottom:20px; }
-.embedded-artifact .artifact-files { display:flex; flex-wrap:wrap; }
-.embedded-artifact .artifact-file { display:block; border:0; padding:0; }
-.embedded-artifact .artifact-file h3, .embedded-artifact .artifact-file>p:not(.artifact-download-status) { display:none; }
-.embedded-artifact .artifact-download-status { max-width:210px; }
 .project-materials-details>summary { display:none; }
 .project-materials-details.has-run { border:1px solid var(--line); background:white; border-radius:10px; margin:20px 0; }
-.project-materials-details.has-run>summary { cursor:pointer; display:flex; justify-content:space-between; padding:18px 24px; font-size:12px; }
-.project-materials-details>summary>span { color:var(--muted); font-size:11px; }
+.project-materials-details.has-run>summary { cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding:18px 24px; font-size:18px; font-weight:600; line-height:1.6; }
+.project-materials-details>summary>span { color:var(--muted); font-size:13px; font-weight:400; }
 .project-materials-details.has-run .materials-panel { border:0; }
 #material-editing { border:0; padding:0; margin:0; min-width:0; }
 .materials-readonly .material-upload-guidance,

@@ -29,6 +29,9 @@ test('synthetic fixed M4: no rate dependency, immutable terms, competing wallets
       assert.equal(quote.price_version,M4_DOCUMENT_FIXED_PRICE.version);assert.equal(quote.amount_semantics,'fixed_price');
     }
     const quotes=await Promise.all([first,second].map(s=>transaction(pool,c=>quoteM4(c,owner,s.topic,'m4_G02',hash,{}))));
+    // Reconstruct unconsumed legacy fixed quotes; their default policy still freezes the whole price.
+    for(const result of quotes){const id=randomUUID();await pool.query(`INSERT INTO bb_m4_quotes(id,owner_user_id,topic_id,intent_hash,task_type,reserve_points,multiplier,snapshot,expires_at,billing_method,fixed_price_version)
+      SELECT $1,owner_user_id,topic_id,intent_hash,task_type,reserve_points,multiplier,snapshot,expires_at,billing_method,fixed_price_version FROM bb_m4_quotes WHERE id=$2`,[id,result.quote.quote_id]);result.quote.quote_id=id;}
     await transaction(pool,c=>grantCredits(c,{owner,points:4500,key:'synthetic-exact-fund',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const competition=await Promise.allSettled([first,second].map((s,i)=>transaction(pool,c=>reserveM4(c,owner,s.run,quotes[i].quote.quote_id,s.topic,hash))));
     assert.equal(competition.filter(r=>r.status==='fulfilled').length,1);

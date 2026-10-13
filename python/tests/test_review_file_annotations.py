@@ -8,9 +8,9 @@ from docx import Document
 from lxml import etree
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Text
-from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject, TextStringObject
 from bondbuddy_file_authoring.annotate_review import build, plain, findings_from_markdown
-from bondbuddy_word_delivery.review import annotate
+from bondbuddy_word_delivery.review import annotate, REVIEW_COMMENT_AUTHOR, SOURCE_COMMENT_AUTHOR, COMMENT_ORIGIN_NOTE
 from bondbuddy_word_delivery.writer import Q, parse_xml, document_signature
 
 
@@ -79,6 +79,23 @@ class FileAnnotationTests(unittest.TestCase):
         self.assertIn('R002 · 第一段 · 不存在的金额', report)
         self.assertIn('未自动添加批注', report)
 
+    def test_file_delivery_explains_original_and_current_comment_authors(self):
+        doc = Document(self.source)
+        original = '数据来源：《合成报表.xlsx》，期末余额1,000,000元，换算为100万元。'
+        doc.add_comment(doc.paragraphs[0].runs, text=original, author='募集书 Cowork')
+        doc.save(self.source)
+        before = self.source.read_bytes()
+        receipt = self.run_writer(self.issue())
+        self.assertEqual(len(receipt['placed']), 1)
+        with ZipFile(self.root / 'comments.docx') as z:
+            comments = parse_xml(z.read('word/comments.xml'))
+            self.assertEqual([c.get(Q('author')) for c in comments], [SOURCE_COMMENT_AUTHOR, REVIEW_COMMENT_AUTHOR])
+            self.assertEqual(''.join(comments[0].itertext()), original)
+            self.assertIn('R001', ''.join(comments[1].itertext()))
+        self.assertEqual(self.source.read_bytes(), before)
+        self.assertIn(COMMENT_ORIGIN_NOTE, (self.root / 'report.md').read_text(encoding='utf-8'))
+        self.assertIn(COMMENT_ORIGIN_NOTE, '\n'.join(p.text for p in Document(self.root / 'report.docx').paragraphs))
+
     def test_ambiguous_quote_and_missing_disclosure_are_not_guessed(self):
         doc = Document(self.source); doc.add_paragraph('100万元'); doc.save(self.source)
         receipt = self.run_writer(self.issue() + '### 缺失事项\n需要补充新的风险披露\n')
@@ -110,6 +127,7 @@ class FileAnnotationTests(unittest.TestCase):
         self.assertEqual(len(notes), 2)
         self.assertEqual(notes[0]['/Contents'], 'Original note')
         self.assertEqual(notes[1]['/Subtype'], '/Highlight')
+        self.assertEqual(notes[1]['/T'], REVIEW_COMMENT_AUTHOR)
         self.assertIn('R001', notes[1]['/Contents'])
         self.assertIn('合成报表金额120万元', notes[1]['/Contents'])
         self.assertNotIn('原文位置', notes[1]['/Contents'])
@@ -118,6 +136,25 @@ class FileAnnotationTests(unittest.TestCase):
         self.assertGreater(float(rect[0]), 50)
         self.assertLess(float(rect[1]), 700)
         self.assertGreater(float(rect[3]), 700)
+
+    def test_pdf_repeated_review_distinguishes_inherited_tool_notes_and_keeps_human_metadata(self):
+        source = self.pdf()
+        writer = PdfWriter(clone_from=source)
+        for author in ['募集书 Cowork', 'BondBuddy', REVIEW_COMMENT_AUTHOR, SOURCE_COMMENT_AUTHOR, '人工复核人']:
+            note = Text(rect=(20,20,40,40), text='数据来源与计算依据：100万元。')
+            note[NameObject('/T')] = TextStringObject(author)
+            note[NameObject('/M')] = TextStringObject('D:20260915071000Z')
+            writer.add_annotation(0, note)
+        writer.write(source)
+        original = source.read_bytes()
+        self.run_writer(self.issue('100 million'), source)
+        notes = [a.get_object() for a in PdfReader(self.root / 'comments.pdf').pages[0]['/Annots']]
+        self.assertEqual([n.get('/T') for n in notes], [None] + [SOURCE_COMMENT_AUTHOR]*4 + ['人工复核人', REVIEW_COMMENT_AUTHOR])
+        for note in notes[1:6]:
+            self.assertEqual(note['/Contents'], '数据来源与计算依据：100万元。')
+            self.assertEqual(note['/M'], 'D:20260915071000Z')
+        self.assertEqual(source.read_bytes(), original)
+        self.assertIn(COMMENT_ORIGIN_NOTE, (self.root / 'report.md').read_text(encoding='utf-8'))
 
     def test_pdf_missing_scan_text_and_rotated_page_report_limitations(self):
         source = self.pdf()

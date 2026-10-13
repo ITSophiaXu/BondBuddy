@@ -1,0 +1,9 @@
+.material-activity-log{margin-top:24px;padding-top:24px;border-top:1px solid #e3e8dd}
+.m4-page .m4-delivery .material-activity-log h3{margin:0 0 10px;font-size:18px;line-height:1.4}
+.material-activity-log ol{list-style:none;margin:16px 0 0;padding:0}
+.material-activity-log li{display:grid;grid-template-columns:76px minmax(0,1fr);gap:16px;padding:12px 0;border-bottom:1px solid #edf0e8;font-size:14px;line-height:1.7;overflow-wrap:anywhere}
+.material-activity-log time{color:#737b6c;font-variant-numeric:tabular-nums}
+.material-activity-log li:last-child span{color:#47693d;font-weight:600}
+.material-legacy-credit{margin:22px 0;padding:20px 24px;border:1px solid #e3e8dd;border-radius:12px;background:#f7f9f4;font-size:14px}
+.m4-delivery .authoring-credit-meter{margin-top:22px}
+@media(max-width:600px){.material-activity-log li{grid-template-columns:68px minmax(0,1fr);gap:10px}.material-legacy-credit{padding:18px}}

@@ -63,6 +63,7 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
   const send = (method: string, url: string, payload?: unknown, contentType?: string) => app.inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
   let runtime: WorkerRuntime | undefined;
+  let child: ReturnType<typeof spawn> | undefined;
   const root = await realpath(await mkdtemp(join(tmpdir(), 'bb-entry-')));
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, BB_PARSE_CACHE_OCR_VERSION: 'synthetic-ocr-1', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic-basis-1',
@@ -143,12 +144,14 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     await writeFile(join(orphan, 'source'), 'synthetic stale source', { mode: 0o600 });
     const expired = new Date(Date.now() - 31 * 60 * 1000);
     await utimes(join(orphan, '.owner.json'), expired, expired);
-    const child = spawn(process.execPath, [entry], { env: { ...env, BB_PARSE_STAGING_DIR: stagingRoot,
+    child = spawn(process.execPath, [entry], { env: { ...env, BB_PARSE_STAGING_DIR: stagingRoot,
       DATABASE_URL: connection, AZURE_STORAGE_CONNECTION_STRING: blobConnection }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
-    child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
-    const exited = new Promise<number | null>(resolve => child.on('exit', code => resolve(code)));
-    await until(async () => out.includes('"kind":"started"') && (await pool.query("SELECT 1 FROM bb_worker_heartbeats WHERE stopped_at IS NULL AND kinds=ARRAY['run','parse']")).rows[0], 20000);
+    child.stdout!.on('data', d => { out += d; }); child.stderr!.on('data', d => { out += d; });
+    const exited = new Promise<number | null>(resolve => child!.on('exit', code => resolve(code)));
+    await until(async () => out.includes('"kind":"started"') && (await pool.query("SELECT 1 FROM bb_worker_heartbeats WHERE stopped_at IS NULL AND kinds=ARRAY['run','parse']")).rows[0], 20000).catch(error=>{
+      throw new Error(`Worker entry did not become ready: ${out.replaceAll('synthetic-not-a-key','[redacted]') || 'no child output'}`,{cause:error});
+    });
     await assert.rejects(lstat(orphan), { code: 'ENOENT' }, 'entrypoint removes expired staging before claiming');
     assert.match(out, /"platform_probe":true/);
     child.kill('SIGTERM');
@@ -162,6 +165,13 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [runId])).rows[0].state, 'paused');
     assert.doesNotMatch(out, /synthetic-not-a-key/, 'the credential value is never logged');
   } finally {
+    if(child&&child.exitCode===null&&child.signalCode===null){
+      const stopped=new Promise<void>(resolve=>child!.once('exit',()=>resolve()));
+      const force=setTimeout(()=>child!.kill('SIGKILL'),5000);
+      child.kill('SIGTERM');
+      await stopped;
+      clearTimeout(force);
+    }
     await runtime?.stop();
     await rm(root, { recursive: true, force: true });
     await app.close();

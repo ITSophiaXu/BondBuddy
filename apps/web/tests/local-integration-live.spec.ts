@@ -1,0 +1,106 @@
+import {test,expect} from '@playwright/test';
+import {join} from 'node:path';
+import {mkdirSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {account,login} from './live-helpers';
+import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
+import {pdfSample} from '../../api/dist/upload-safety.samples.js';
+
+test.skip(process.env.BB_E2E_LOCAL_INTEGRATION!=='1','Dedicated local integration only; uses real HTTP API and private storage.');
+test.beforeAll(()=>{
+  if(process.env.BB_E2E_LOCAL_INTEGRATION==='1'&&process.env.BB_E2E_BASE_URL!=='http://localhost:5178')throw new Error('This suite only writes to the dedicated local integration instance.');
+});
+const evidence=fileURLToPath(new URL('../../../../work/local-integration-runtime-20261012/evidence/',import.meta.url));
+test.beforeAll(()=>mkdirSync(evidence,{recursive:true}));
+
+test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and refresh',async({page,playwright})=>{
+  test.setTimeout(120000);
+  await login(page,await account(playwright));
+  await page.goto('/#update');
+  await page.getByLabel('发行人全称',{exact:true}).fill('本地自动化验收有限公司');
+  await page.getByLabel('发行市场',{exact:true}).selectOption('szse');
+  await page.getByLabel('发行方式',{exact:true}).selectOption('private');
+  await page.getByLabel('最新报告期年份',{exact:true}).selectOption('2026');
+  await page.getByRole('radio',{name:'6月末',exact:true}).check();
+  await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
+  await expect(page.locator('#project-heading')).toHaveText('本地自动化验收有限公司-深交所-普通私募公司债-募集书更新');
+  // setInputFiles does not wait for enabled state; restoration intentionally locks this fieldset.
+  await expect(page.getByLabel('为历史／参考募集书选择文件',{exact:true})).toBeEnabled();
+  await page.getByLabel('为历史／参考募集书选择文件',{exact:true}).setInputFiles({name:'合成历史募集书.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'Synthetic local source prospectus, not customer data.'})});
+  await expect(page.getByLabel('原发行市场',{exact:true})).toBeVisible();
+  await page.getByLabel('与目标发行人的关系',{exact:true}).selectOption({label:'同企业'});
+  await page.getByLabel('原发行市场',{exact:true}).selectOption('szse');
+  await page.getByLabel('原品种',{exact:true}).selectOption('private');
+  await page.getByLabel('原稿最新报告期年份',{exact:true}).selectOption('2025');
+  await page.getByRole('radio',{name:'年末',exact:true}).check();
+  await expect(page.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2025');
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件',{exact:true}).setInputFiles({name:'合成审计报告.pdf',mimeType:'application/pdf',buffer:pdfSample()});
+  await expect(page.getByText('服务器已确认保存',{exact:false})).toHaveCount(2);
+  const note='仅供本地集成测试：合成材料；核对保存、刷新恢复和来源信息。';
+  await page.getByLabel('补充募集书更新说明',{exact:true}).fill(note);
+  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
+  await expect(page.getByText(note,{exact:true})).toBeVisible();
+  await expect(page.locator('#save-state')).toHaveText('已保存');
+  await expect(page.getByLabel('补充募集书更新说明',{exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeEnabled();
+  const url=page.url();
+  await page.reload();
+  await expect(page.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2025');
+  await expect(page.getByLabel('原品种',{exact:true})).toHaveValue('private');
+  await expect(page.getByText(note,{exact:true})).toBeVisible();
+  await expect(page.getByText('服务器已确认保存',{exact:false})).toHaveCount(2);
+  await page.setViewportSize({width:1440,height:1050});
+  await page.screenshot({path:join(evidence,'real-upload-desktop.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:join(evidence,'real-upload-mobile.png'),fullPage:true});
+  expect(page.url()).toBe(url);
+});
+
+test('real assistant: persisted unsent draft survives collapse and page reload without model call',async({page,playwright})=>{
+  test.setTimeout(60000);
+  await login(page,await account(playwright));
+  await page.setViewportSize({width:1440,height:960});
+  await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+  const draft='本地验收草稿，未发送，不调用模型。';
+  const saved=page.waitForResponse(r=>r.request().method()==='PUT'&&r.url().includes('/view')&&r.status()===200&&r.request().postDataJSON()?.view?.unsent_content===draft);
+  await page.locator('[data-composer]').fill(draft);
+  await saved;
+  await page.getByRole('button',{name:'收起助手',exact:true}).click();
+  await expect(page.getByRole('button',{name:'打开项目助手',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+  await expect(page.locator('[data-composer]')).toHaveValue(draft);
+  await page.reload();
+  if(await page.getByRole('button',{name:'打开项目助手',exact:true}).isVisible())await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+  await expect(page.locator('[data-composer]')).toHaveValue(draft);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:join(evidence,'real-assistant-desktop.png'),fullPage:true});
+});
+
+test('real review: scope, auto-name, source upload and inline requirements survive reload',async({page,playwright})=>{
+  test.setTimeout(90000);
+  await login(page,await account(playwright));
+  await page.goto('/#review');
+  await page.locator('#issuer').fill('本地复核验收有限公司');
+  await page.locator('#market').selectOption('szse');
+  await page.locator('#offering').selectOption('private');
+  await page.locator('[data-scope=compliance] summary').click();
+  await expect(page.locator('[data-scope=compliance]')).toHaveAttribute('open','');
+  await expect(page.locator('#generated-review-name')).toHaveText('本地复核验收有限公司-深交所-普通私募公司债-募集书复核');
+  await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'提供复核材料',exact:true})).toBeVisible();
+  await page.locator('[data-review-upload-role=historical]').setInputFiles({name:'合成待复核募集书.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'Synthetic local review input, not customer data.'})});
+  await expect(page.getByRole('button',{name:'删除 合成待复核募集书.docx',exact:true})).toBeEnabled();
+  const note='仅供本地验收：核对法定代表人披露与财务金额，不启动模型。';
+  await page.getByLabel('补充复核要求（选填）',{exact:true}).fill(note);
+  await page.getByRole('button',{name:'保存要求',exact:true}).click();
+  await expect(page.locator('#review-requirements-status')).toHaveText('要求已保存');
+  await page.reload();
+  await expect(page.getByLabel('补充复核要求（选填）',{exact:true})).toHaveValue(note);
+  await expect(page.getByRole('button',{name:'删除 合成待复核募集书.docx',exact:true})).toBeEnabled();
+  await page.setViewportSize({width:1440,height:1050});
+  await page.screenshot({path:join(evidence,'real-review-desktop.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:join(evidence,'real-review-mobile.png'),fullPage:true});
+});

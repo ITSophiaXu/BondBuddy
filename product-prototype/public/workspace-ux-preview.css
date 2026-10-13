@@ -797,3 +797,6 @@
   .start-buttons { flex-wrap:wrap; }
   #execution-actions { max-width:72%; }
 }
+
+/* 2026-10-13: review material headings share the content edge. */
+.review-workspace #review-materials-panel .materials-heading,.review-workspace #review-materials-panel .material-partition{padding-left:0;padding-right:0}.review-workspace #review-materials-panel .materials-heading{padding-top:24px}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>材料生成 · 必填信息提示</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="material-results.css">
+<link rel="stylesheet" href="../../apps/web/src/m4-workspace.css">
+<style>body{padding:24px;background:#f7f8f2}main{max-width:1050px;margin:auto;padding:0}.form-card{margin-bottom:20px}h1{font-size:26px}.form-card h2{font-size:18px}.form-card textarea{display:block;width:100%;box-sizing:border-box;min-height:156px;padding:16px;border:1px solid #ccd6c1;border-radius:8px;font:inherit;line-height:1.8;color:inherit}.m4-source-file{padding:16px;border:1px solid #dde3d7;border-radius:12px}small{display:block;color:#748074}.material-feedback-comparison{padding-bottom:16px}@media(max-width:600px){body{padding:20px}.form-footer{align-items:stretch;gap:12px;flex-direction:column}}</style>
+<main class="m4-content">
+  <h1>材料生成</h1><p>上传最新版募集书，或关联已有募集书项目，按对应模板生成材料。</p>
+  <section class="panel form-card"><h2>选择交易所</h2><label class="field"><span>交易所 <span class="required">*</span></span><select id="exchange" aria-invalid="true" aria-describedby="exchange-hint"><option value="">请选择交易所</option><option value="sse">上海证券交易所</option><option value="szse">深圳证券交易所</option></select><p id="exchange-hint" class="m4-input-hint">尚未选择交易所，请选择上海证券交易所或深圳证券交易所。</p></label><p class="authoring-help">按所选交易所采用对应材料的编制要求。</p></section>
+  <section class="panel form-card"><h2>这份材料依据哪份募集书</h2><div class="m4-source-file"><strong>合成示例募集说明书.docx</strong><small>本次生成使用此文件</small></div></section>
+  <section class="panel form-card"><h2>材料生成要求与说明 <small style="display:inline">选填</small></h2><textarea rows="5" placeholder="补充材料用途、写作重点、格式要求或其他需要说明的事项。"></textarea><p class="authoring-help">自动保存，点击生成时与本次材料一起提交。</p></section>
+  <div class="material-feedback-comparison"><div class="form-footer"><span>生成可编辑 Word 和编制说明。</span><button class="btn primary" id="generate">生成法律意见书</button></div>
+  <section class="m4-input-feedback" role="alert" aria-label="需要补充的信息"><p>请补充以下信息后，再点击“生成法律意见书”：</p><ul><li><span>尚未选择交易所，请选择上海证券交易所或深圳证券交易所。</span><button class="text-btn" id="fix">选择交易所</button></li></ul></section></div>
+</main>
+<script>
+const exchange=document.getElementById('exchange'),feedback=document.querySelector('.m4-input-feedback'),hint=document.getElementById('exchange-hint');
+document.getElementById('fix').onclick=()=>{exchange.scrollIntoView({block:'center'});exchange.focus({preventScroll:true});};
+function validate(){feedback.hidden=hint.hidden=Boolean(exchange.value);exchange.setAttribute('aria-invalid',String(!exchange.value));}
+exchange.onchange=validate;document.getElementById('generate').onclick=validate;
+</script>
+</html>

@@ -55,7 +55,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
     try {
       return await (options.model ?? codexModelStage)({name: 'm4_document_v1', logicalCallId: 'm4-document-v1',
         config: {...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'm4-documents'), max_output_bytes: 32 * 1024 * 1024},
-        buildPrompt: async () => `${skill.content}\n\n完整阅读 input.json 及 knowledge 指定的对应交易所编制知识 MD，按准确来源、模板、用户要求和底稿一次编制完整文书与独立编制说明。必须写出两份真实Word，不能以聊天文字冒充成果。固定方法：${methodHash}。`,
+        buildPrompt: async () => `${skill.content}\n\n完整阅读 input.json 及 knowledge 指定的对应交易所编制知识 MD，按准确来源、模板、用户要求和底稿一次编制完整文书与独立编制说明。必须写出两份真实Word，不能以聊天文字冒充成果。固定方法：${methodHash}。在读取材料、分析、编制正文和保存文件等实际操作切换时，简短报告用户可见进度，格式为 BB_PROGRESS:read_materials|正在核对本次材料。可用类型 read_materials、read_knowledge、analyze、write_document、check_document、prepare_download。只描述实际发生的工作，不写命令、路径、内部标识或推理内容。`,
         schema: {}, validate: value => validM4DocumentResult(value, ctx), resultSchemaVersion: 'codex-m4-document-v1', templateVersion: `m4-document-${methodHash}`,
         onActivity: event => observer.onEvent(event), fileWorkspace: {prepare, collect}}).run(ctx);
     } finally { await observer.drain(); }
