@@ -15,7 +15,7 @@ export function authoringSummary(items: string[]): string {
     .replace(/`?clean\.docx`?/g, '清洁版 Word')
     .replace(/`?baseline\.docx`?/g, '编制前的对照稿')
     .replace(/DOCX包/g, 'Word 文件').replace(/DOCX/g, 'Word')
-    .replace(/有效基线|原稿基线|编制基线/g, '编制前的对照稿')
+    .replace(/有效基线|原稿基线|编制基线|编辑基线/g, '编制前的对照稿')
     .replace(/原稿与基线文件哈希/g, '原稿与对照稿的文件一致性')
     .replace(/拒绝本轮新增修订后可回还原基线/g, '撤销本轮修改后能恢复编制前的内容');
   return reportBlocks(text).flatMap((block, index) => {
