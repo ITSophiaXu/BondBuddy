@@ -169,8 +169,8 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
     const config = options.config ?? loadCodexAdapterConfig();
     return (options.model ?? codexModelStage)({ name: 'review_file_v1', logicalCallId: 'review-file-v1',
       config: { ...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'review-files'), max_output_bytes: 32 * 1024 * 1024 },
-      buildPrompt: async () => `请完整阅读 review.md 和 input.json，自主复核并把完整报告写入 output/report.md 与 output/report.docx。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原文批注。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: 'review-file-v1',
+      buildPrompt: async () => `切换实际复核工作时，请发送独立的用户可见进度消息，严格使用 BB_REVIEW_PROGRESS:类别:状态。类别限 read_materials、read_knowledge、check_financial、check_compliance、search_public、compare_sources、prepare_report；状态限 started、completed、failed。只报告实际开始或结束的动作，不预先宣称完成，不附带思考过程、正文、路径或其他文本。请完整阅读 review.md 和 input.json，自主复核并把完整报告写入 output/report.md 与 output/report.docx。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原文批注。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。`,
+      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: 'review-file-progress-v2',
       fileWorkspace: { prepare, collect } }).run(ctx);
   } };
 }

@@ -1,5 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import { BILLING_TASKS, AUTHORING_BILLING_TASKS, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
+import { BILLING_TASKS, AUTHORING_BILLING_TASKS, DYNAMIC_REVIEW_BILLING_TASKS, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { classifyFixedPrice } from './billing-classification.js';
 import { assertAuthoringSourceInformation, isUnifiedInput } from './unified-authoring.js';
@@ -81,7 +81,7 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
     throw new Problem(409, 'QUOTE_CHANGED', '价格已更新，请查看新报价后确认。');
   await lockCreditAccount(c, owner);
   const balance = await creditBalance(c, owner), points = Number(quote.points);
-  const dynamic = !reviewIntentHash && quote.task_type in AUTHORING_BILLING_TASKS;
+  const dynamic = (!reviewIntentHash && quote.task_type in AUTHORING_BILLING_TASKS) || (!!reviewIntentHash && quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS);
   if (balance.available < (dynamic ? 1 : points)) throw new Problem(402, 'CREDITS_INSUFFICIENT', dynamic ? '可用积分为 0，请充值后开始；项目材料与补充要求已保留。' : `本次任务需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始。`);
   if ((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1', [quote.id])).rowCount)
     throw new Problem(409, 'IDEMPOTENCY_CONFLICT', 'Quote already used by another execution');
