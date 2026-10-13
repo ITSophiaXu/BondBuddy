@@ -320,7 +320,7 @@ test('live phases, terminal states and closed-tab recovery keep the same immutab
   task.events=[{event_id:'e1',schema_version:1,trace_id:'trace',run_id:task.run.run_id,seq:1,occurred_at:now,stage:'model_generation',type:'run.progress',state:'running',payload:{reason:'m4_reading_materials'}}];
   await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress [aria-current=step]')).toContainText('准备材料');
   await expect(page.locator('[data-m4-detail=input]')).toHaveAttribute('open','');
-  task.run.stage='word_delivery';await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress [aria-current=step]')).toContainText('准备下载');
+  task.run.stage='word_delivery';await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress [aria-current=step]')).toContainText('保存文档');
   await expect(page.locator('.task-progress')).not.toContainText('正在读取本轮材料');
   for(const state of ['paused','awaiting_input','failed','cancelled'] as const){task.run.state=state;s.workspace.active_run=['paused','awaiting_input'].includes(state)?task.run:null;await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).not.toContainText('文档已生成');await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);}
   await expect(page.getByRole('button',{name:'停止本次任务'})).toHaveCount(0);

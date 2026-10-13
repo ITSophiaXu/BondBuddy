@@ -31,7 +31,7 @@ export function reviewActivityEntries(run:Run,events:RunEvent[]){
   }).slice(-30);
 }
 
-export function reviewProgressPage(run:Run,task:ReviewTask|undefined,charge:Dto<'RunCreditChargeResponse'>|undefined,options:{chargeError?:boolean;source?:string;requirements?:string[];inputLoaded?:boolean}={}){
+export function reviewProgressPage(run:Run,task:ReviewTask|undefined,charge:Dto<'RunCreditChargeResponse'>|undefined,options:{chargeError?:boolean}={}){
   const p=charge?.progress,active=isActiveRun(run),status=reviewLiveStatus(run,task,p),entries=reviewActivityEntries(run,task?.events??[]);
   const revision=task?.operation==='revision'||charge?.quote?.task_type==='review_revision',verb=revision?'修订':'复核';
   if(revision){status.title=status.title.replaceAll('复核','修订');status.summary=status.summary.replaceAll('复核','修订');}
@@ -42,5 +42,5 @@ export function reviewProgressPage(run:Run,task:ReviewTask|undefined,charge:Dto<
   return `<div class="review-live-workspace"><header class="review-live-heading"><div><h2>${active?verb+'进度':'本轮'+verb}</h2><p>${revision?'按已选问题修订 · 完成后可另行复核':task?.operation==='differential_review'?'重核本轮选定问题 · 保留未涉及的原结论':'财务数据 · 合规与格式 · 公开信息'}</p></div><span class="review-tag">${task?`第 ${task.version} 轮`:'本轮任务'}</span></header>${taskProgress(run,revision?'revision':'review',status)}${credits}${options.chargeError&&charge?'<p class="review-muted" role="status">积分状态暂未同步，上方保留最近一次记录；恢复连接后自动更新。</p>':''}
   <div class="review-live-controls">${canPause?`<button class="btn secondary" data-review-action="pause">暂停${verb}</button>`:''}${canResume?`<button class="btn primary" data-review-action="resume">继续${verb}</button>`:''}${p?.credit_exhausted?'<button class="btn primary" data-review-action="recharge">充值积分</button>':''}${active?`<button class="text-btn" data-review-action="cancel">结束本次${verb}</button>`:`<button class="btn primary" data-review-tab="results">查看${verb}结果</button><button class="btn secondary" data-review-action="prepare">准备新任务</button>`}</div>
   <section class="review-activity-log" aria-label="${verb}过程"><h3>${verb}过程</h3><p class="review-muted">展示本轮已返回的处理状态，随${verb}自动更新。</p>${entries.length?`<ol>${entries.map(e=>`<li><time datetime="${esc(e.at)}">${esc(new Date(e.at).toLocaleTimeString('zh-CN',{hour12:false}))}</time><span>${esc(e.label)}</span></li>`).join('')}</ol>`:`<p class="review-activity-empty">${run.state==='queued'?'任务已提交，等待执行服务开始处理。':'尚未收到详细处理状态；新状态返回后会显示在这里。'}</p>`}</section>
-  <details class="review-fixed-input"><summary>本轮材料与要求</summary>${options.inputLoaded?`<p>待${verb}稿：${esc(options.source??'本轮已保存的募集书')}</p>${options.requirements?.length?`<ul>${options.requirements.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:`<p class="review-muted">本轮未填写补充${verb}要求。</p>`}`:'<p class="review-muted">正在读取本轮固定材料与要求；读取完成后展示。</p>'}<p class="review-muted">开始时已保存本轮材料与要求，之后的补充用于下一轮。</p></details></div>`;
+  </div>`;
 }

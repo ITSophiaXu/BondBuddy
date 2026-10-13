@@ -85,8 +85,6 @@ export class ReviewWorkspace {
   private adoptionKey: string;
   private adoptionPending?: ReviewProposalAdoptionRequest;
   private focusedTaskRunId?:string;
-  private fixedInputs=new Map<string,ReviewDraftInput>();
-  private fixedInputsLoading=false;
 
   constructor(private api: ApiClient, private owner: string, private projectId: string,
     private shell: (html: string, section: string) => void, private current: () => boolean, private reportId?: string, tab?: string,private handoffQuery=new URLSearchParams()) {
@@ -177,13 +175,9 @@ export class ReviewWorkspace {
     const task=this.progressTask(),run=task?.run??this.workspace?.active_run??this.run;
     tab.hidden=!run;tab.textContent=run&&isActiveRun(run)?'正在复核':'本轮任务';
     if(!run){host.innerHTML='<p class="review-muted">暂无本轮任务。</p>';return;}
-    const input=this.fixedInputs.get(run.run_id);
-    if(!input&&!this.fixedInputsLoading){this.fixedInputsLoading=true;void this.reviewApi.history().then(history=>{for(const item of history.items)this.fixedInputs.set(item.run.run_id,item.input);if(this.live())this.renderMaking();}).catch(error=>{if(this.live())this.message('本轮材料与要求暂不可读取。'+friendlyError(error),true);}).finally(()=>{this.fixedInputsLoading=false;});}
     const charge=this.chargeKey.startsWith(run.run_id+':')?this.charge:undefined;
-    const source=input?.source_material_ref?this.materialNames()[input.source_material_ref.material_id]:undefined;
-    const wasOpen=host.querySelector<HTMLDetailsElement>('.review-fixed-input')?.open;
-    const html=reviewProgressPage(run,task,charge,{chargeError:this.chargeError,source,requirements:input?.requirements,inputLoaded:!!input});
-    if(host.dataset.rendered!==html){host.innerHTML=html;host.dataset.rendered=html;if(wasOpen)host.querySelector<HTMLDetailsElement>('.review-fixed-input')!.open=true;}
+    const html=reviewProgressPage(run,task,charge,{chargeError:this.chargeError});
+    if(host.dataset.rendered!==html){host.innerHTML=html;host.dataset.rendered=html;}
   }
   private renderMeta(){
     this.renderCharge();

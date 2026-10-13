@@ -188,6 +188,9 @@ test('finding requirements return to the inline field and task links open main-p
   await page.getByRole('tab',{name:'复核结果',exact:true}).click();
   await page.locator('[data-review-action="task-focus"]').first().click();
   await expect(page.locator('#review-making-panel .review-live-workspace')).toBeVisible();
+  await expect(page.locator('#review-making-panel .review-fixed-input')).toHaveCount(0);
+  await expect(page.locator('#review-making-panel')).not.toContainText('SHA-256');
+  await expect(page.locator('#review-making-panel .review-activity-log')).toBeVisible();
   await page.locator('#review-making-panel').getByRole('button',{name:'查看复核结果',exact:true}).click();
   await expect(page.getByRole('tab',{name:'复核结果',exact:true})).toHaveAttribute('aria-selected','true');
   expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
