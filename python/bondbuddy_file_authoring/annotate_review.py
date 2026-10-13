@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from zipfile import ZipFile
 
-from bondbuddy_word_delivery.review import annotate, ANCHOR_REASONS, strip_comment_location_prefix, REVIEW_COMMENT_AUTHOR, COMMENT_ORIGIN_NOTE
+from bondbuddy_word_delivery.review import annotate, ANCHOR_REASONS, strip_comment_location_prefix, REVIEW_COMMENT_AUTHOR, SOURCE_COMMENT_AUTHOR, COMMENT_ORIGIN_NOTE, is_generated_comment_author
 from bondbuddy_word_delivery.writer import parse_xml, paragraph_map, visible
 from bondbuddy_file_authoring.report_from_text import export_report
 
@@ -103,6 +103,11 @@ def annotate_pdf(source, target, findings):
     if reader.is_encrypted:
         raise ValueError("REVIEW_ENCRYPTED_PDF_UNSUPPORTED")
     writer = PdfWriter(clone_from=reader)
+    for page in writer.pages:
+        for reference in page.get("/Annots", []):
+            note = reference.get_object()
+            if is_generated_comment_author(str(note.get("/T", ""))):
+                note[NameObject("/T")] = TextStringObject(SOURCE_COMMENT_AUTHOR)
     placed, missing = [], []
     with pdfplumber.open(source) as document:
         for finding in findings:
@@ -173,8 +178,7 @@ def build(source, text, output, pin, created_at, filename):
     summary = ["", "## 原文批注与待确认定位", "",
                f"底稿：{filename} · 上传版本 V{pin['material_version']}。正文未改写。",
                f"本报告识别 {len(findings)} 项问题，已添加 {len(placed)} 处原文批注，{len(missing)} 处无法自动定位。"]
-    if source.suffix == ".docx":
-        summary.append(COMMENT_ORIGIN_NOTE)
+    summary.append(COMMENT_ORIGIN_NOTE)
     if not findings:
         summary.append("报告没有提供可识别的问题条目，未自动添加批注；请结合报告核对，不能据此认定没有问题。")
     for item in missing:

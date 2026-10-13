@@ -75,12 +75,16 @@ def is_source_only_comment(text):
     return bool(text.strip())
 
 
+def is_generated_comment_author(author):
+    return bool(_GENERATED_COMMENT_AUTHOR.fullmatch(author))
+
+
 def _trim_generated_comment_prefixes(comments):
     # Retain substantive notes' IDs, dates and runs, but make their origin clear.
     # Only known tool identities are normalized; human attribution is untouched.
     removed = []
     for comment in list(comments):
-        if not _GENERATED_COMMENT_AUTHOR.fullmatch(comment.get(Q("author"), "")):
+        if not is_generated_comment_author(comment.get(Q("author"), "")):
             continue
         nodes = list(comment.iter(Q("t")))
         text = "".join(node.text or "" for node in nodes)
