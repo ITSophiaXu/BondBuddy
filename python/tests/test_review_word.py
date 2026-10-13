@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 from docx import Document
 from lxml import etree
-from bondbuddy_word_delivery.review import annotate, write_report, strip_comment_location_prefix, is_source_only_comment, _remove_comment_references
+from bondbuddy_word_delivery.review import annotate, write_report, strip_comment_location_prefix, is_source_only_comment, _remove_comment_references, REVIEW_COMMENT_AUTHOR, SOURCE_COMMENT_AUTHOR
 from bondbuddy_word_delivery.writer import Q, W, parse_xml, document_signature
 
 
@@ -51,7 +51,7 @@ class ReviewWordTests(unittest.TestCase):
         self.assertEqual(selected, '100万元')
         self.assertIsNotNone(para.find('.//' + Q('b')))
         comment = self.xml(out, 'word/comments.xml')[0]
-        self.assertEqual(comment.get(Q('author')), 'BondBuddy')
+        self.assertEqual(comment.get(Q('author')), REVIEW_COMMENT_AUTHOR)
         self.assertEqual(comment.get(Q('date')), '2026-10-02T00:00:00Z')
 
     def test_existing_comments_and_two_findings_same_location_survive_reopen(self):
@@ -83,11 +83,59 @@ class ReviewWordTests(unittest.TestCase):
         annotate(self.source, out, self.report())
         comments = self.xml(out, 'word/comments.xml')
         self.assertEqual(''.join(comments[0].itertext()), substance)
-        self.assertEqual(dict(comments[0].attrib), dict(before_comments[0].attrib))
+        self.assertEqual(dict(comments[0].attrib), {**dict(before_comments[0].attrib), Q('author'): SOURCE_COMMENT_AUTHOR, Q('initials'): 'BB'})
         self.assertIsNotNone(comments[0].find('.//' + Q('i')))
         self.assertEqual(etree.tostring(comments[1]), etree.tostring(before_comments[1]))
         self.assertEqual(self.source.read_bytes(), before)
         self.assertEqual(document_signature(self.xml(self.source)), document_signature(self.xml(out)))
+
+    def test_known_tool_aliases_distinguish_inherited_comments_without_losing_evidence(self):
+        doc = Document(self.source)
+        evidence = ('数据来源：《合成报表.xlsx》，原表单位人民币元，正文按1万元=10,000元换算。'
+                    '期末余额1,000,000元；原文50%，复算60%，差异10个百分点，请核对。')
+        aliases = ['募集书 Cowork', 'BondBuddy', 'BondBuddy-1c736c8976a1', REVIEW_COMMENT_AUTHOR, SOURCE_COMMENT_AUTHOR]
+        inherited, discarded, human = [], [], []
+        for author in aliases:
+            c = doc.add_comment(doc.paragraphs[0].runs, author=author)
+            c.paragraphs[0].add_run(evidence).bold = True
+            inherited.append(str(c.comment_id))
+            c = doc.add_comment(doc.paragraphs[0].runs, text=self.spreadsheet_note(), author=author)
+            discarded.append(str(c.comment_id))
+        for author in ['人工复核人', 'BondBuddy 张三', '募集书 Cowork 王五', '']:
+            c = doc.add_comment(doc.paragraphs[0].runs, text=self.spreadsheet_note(), author=author)
+            human.append(str(c.comment_id))
+        doc.save(self.source)
+        before = self.source.read_bytes()
+        originals = {c.get(Q('id')): c for c in self.xml(self.source, 'word/comments.xml')}
+        out = self.root / 'origins.docx'
+        annotate(self.source, out, self.report())
+        comments = {c.get(Q('id')): c for c in self.xml(out, 'word/comments.xml')}
+        for identity in inherited:
+            c = comments[identity]
+            self.assertEqual(c.get(Q('author')), SOURCE_COMMENT_AUTHOR)
+            self.assertEqual(c.get(Q('date')), originals[identity].get(Q('date')))
+            self.assertEqual(''.join(c.itertext()), evidence)
+            self.assertIsNotNone(c.find('.//' + Q('b')))
+        for identity in discarded:
+            self.assertNotIn(identity, comments)
+        for identity in human:
+            self.assertEqual(etree.tostring(comments[identity]), etree.tostring(originals[identity]))
+        current = [c for c in comments.values() if c.get(Q('author')) == REVIEW_COMMENT_AUTHOR]
+        self.assertEqual(len(current), 1)
+        self.assertIn('F001', ''.join(current[0].itertext()))
+        self.assertEqual(self.source.read_bytes(), before)
+        self.assertEqual(document_signature(self.xml(self.source)), document_signature(self.xml(out)))
+        for n in self.xml(out).iter():
+            if n.tag in (Q('commentRangeStart'), Q('commentRangeEnd'), Q('commentReference')):
+                self.assertIn(n.get(Q('id')), comments)
+
+        # On another review, this round becomes inherited; existing history stays so.
+        again = self.root / 'next-round.docx'
+        annotate(out, again, self.report())
+        next_comments = self.xml(again, 'word/comments.xml')
+        self.assertEqual(sum(c.get(Q('author')) == REVIEW_COMMENT_AUTHOR for c in next_comments), 1)
+        self.assertEqual(sum(c.get(Q('author')) == SOURCE_COMMENT_AUTHOR for c in next_comments), len(inherited) + 1)
+        self.assertEqual(len(Document(again).comments), len(comments) + 1)
 
     def test_prefix_cleanup_does_not_remove_substantive_locations(self):
         for text in ['根据合成报表第8页，金额应为120万元。', '正文位置285存在重复披露，请删除重复内容。',
