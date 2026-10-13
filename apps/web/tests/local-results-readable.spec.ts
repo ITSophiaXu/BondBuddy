@@ -23,9 +23,9 @@ test('existing local results open at downloads and preserve both real Word files
   const completed=projects.filter(p=>p.kind==='update'&&p.latest_run?.state==='succeeded'&&p.latest_artifact);
   const candidates=await Promise.all(completed.map(async p=>({project:p,artifact:await(await page.request.get('/api/v1/artifacts/'+p.latest_artifact.artifact_id)).json()})));
   const target=candidates.find(c=>(c.artifact.word_delivery?.authoring_summary?.join('').length??0)>500)??candidates[0];
-  expect(target).toBeTruthy();const screenshots=[];
-  for(const width of [1440,390]){
-    await page.setViewportSize({width,height:width===1440?960:844});
+  expect(target).toBeTruthy();const screenshots=[],summaryWidths=[];
+  for(const width of [1920,1440,390]){
+    await page.setViewportSize({width,height:width===1920?1080:width===1440?960:844});
     await page.goto('/#/projects/'+target.project.project_id);await page.reload();
     const clean=page.getByRole('button',{name:'下载清洁版',exact:true});await expect(clean).toBeInViewport();
     await expect(page.locator('.artifact-files .button').first()).toHaveText('下载清洁版');
@@ -35,7 +35,15 @@ test('existing local results open at downloads and preserve both real Word files
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     expect(new Set(await page.evaluate(()=>['#project-materials-details>summary','#artifact-downloads','#artifact-summary'].map(s=>getComputedStyle(document.querySelector(s)!).fontSize))).size).toBe(1);
     const shot=`real-results-${width}.png`;await page.screenshot({path:join(output,shot)});screenshots.push(shot);
-    if(width===1440&&target.artifact.word_delivery?.authoring_summary?.length)await page.locator('.authoring-summary').screenshot({path:join(output,'real-authoring-summary.png')});
+    if(target.artifact.word_delivery?.authoring_summary?.length){
+      const dimensions=await page.locator('.authoring-summary').evaluate(el=>{
+        const parent=el.parentElement!,style=getComputedStyle(parent);
+        return {contentWidth:parent.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),summaryWidth:el.getBoundingClientRect().width};
+      });
+      expect(Math.abs(dimensions.contentWidth-dimensions.summaryWidth)).toBeLessThanOrEqual(1);
+      summaryWidths.push({viewport:width,...dimensions});
+      await page.locator('section[aria-labelledby="authoring-summary-title"]').screenshot({path:join(output,`real-authoring-summary-${width}.png`)});
+    }
   }
   const files=[];
   for(const [variant,label] of [['clean','清洁版'],['revision','修订版']] as const){
@@ -49,5 +57,5 @@ test('existing local results open at downloads and preserve both real Word files
   const review=projects.find(p=>p.kind==='review'&&p.latest_run);
   if(review){await page.goto(`/#/projects/${review.project_id}/review?tab=making`);await expect(page.locator('#review-making-panel .review-live-workspace')).toBeVisible();await expect(page.locator('.review-fixed-input')).toHaveCount(0);await expect(page.locator('#review-making-panel')).not.toContainText('SHA-256');await page.screenshot({path:join(output,'real-review-progress.png')});}
   expect(errors).toEqual([]);expect(mutations).toEqual([]);
-  await writeFile(join(output,'verification.json'),JSON.stringify({checkedAt:new Date().toISOString(),baseURL:process.env.BB_E2E_BASE_URL,projectId:target.project.project_id,files,screenshots,reviewChecked:!!review,mutations,errors,apiMocked:false,newModelCalls:0,userAccepted:false},null,2));
+  await writeFile(join(output,'verification.json'),JSON.stringify({checkedAt:new Date().toISOString(),baseURL:process.env.BB_E2E_BASE_URL,projectId:target.project.project_id,files,screenshots,summaryWidths,reviewChecked:!!review,mutations,errors,apiMocked:false,newModelCalls:0,userAccepted:false},null,2));
 });
