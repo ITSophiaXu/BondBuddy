@@ -40,7 +40,7 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     assert.equal(await fund(),await fund());assert.deepEqual(await creditBalance(pool,owner),{available:5000,frozen:0});
     const concurrent=await Promise.all([send('POST',`${base}/review-executions`,paid),send('POST',`${base}/review-executions`,paid)]);
     const run=ok(concurrent[0]);assert.equal(ok(concurrent[1]).run_id,run.run_id);assert.equal(run.billing_mode,'fixed_credits');
-    assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:300});
+    assert.deepEqual(await creditBalance(pool,owner),{available:5000,frozen:0});
     await publishPrices(pool,{id:'review-prices-v2',prices:{...prices,full_review:350},effectiveAt:'2026-01-02T00:00:00Z',actor:'synthetic',reason:'test update'});
     const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
     const report=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic review report'}),blobs,'generated_pair_v1');

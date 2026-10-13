@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import type { ReviewAction, ReviewActionCode } from '@bondbuddy/contracts';
 
-export type ReviewActionMode = 'review' | 'public_search' | 'public_compare' | 'revision';
+export type ReviewActionMode = 'review' | 'file_review' | 'public_search' | 'public_compare' | 'revision';
 const readTools = new Set(['list_materials','search_material','read_records']);
 const object = (value:unknown):Record<string,unknown>|undefined =>
   value!==null && typeof value==='object' && !Array.isArray(value) ? value as Record<string,unknown> : undefined;
 
 /** Only existing M3 calls may publish activity; ordinary authoring and assistant replies are untouched. */
 export function reviewActionMode(call:string):ReviewActionMode|undefined {
+  if(call==='review-file-v1')return 'file_review';
   if(/^review-cli-v[23]-[a-f0-9]+$/.test(call))return 'review';
   if(call==='m3-public-search-v2'||call==='m3-public-search')return 'public_search';
   if(call==='m3-public-compare-v2'||/^m3-public-compare-\d+$/.test(call))return 'public_compare';
@@ -22,11 +23,16 @@ function failed(value:unknown,depth=0):boolean {
   return ['result','output','structuredContent'].some(key=>failed(v[key],depth+1));
 }
 
-/** No textual CLI items, arguments or output fields survive this projection. */
+/** Only explicit public status codes survive file-review messages; no prose, arguments or output. */
 export function projectReviewAction(event:Record<string,unknown>,callId:string,mode:ReviewActionMode):ReviewAction|null {
   if(event.type!=='item.started' && event.type!=='item.completed')return null;
   const item=object(event.item);
   if(!item || typeof item.id!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(item.id))return null;
+  if(mode==='file_review'&&event.type==='item.completed'&&item.type==='agent_message'&&typeof item.text==='string'){
+    const status=/^BB_REVIEW_PROGRESS:(read_materials|read_knowledge|check_financial|check_compliance|search_public|compare_sources|prepare_report):(started|completed|failed)$/.exec(item.text.trim());
+    if(!status)return null;
+    return {version:'review-action-v1',action_id:createHash('sha256').update(`${callId}:status:${status[1]}`).digest('hex'),code:status[1] as ReviewActionCode,state:status[2] as ReviewAction['state']};
+  }
   let code:ReviewActionCode|undefined;
   if(item.type==='mcp_tool_call'){
     if(mode==='review' && item.server==='bb_review'){

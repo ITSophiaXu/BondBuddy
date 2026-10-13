@@ -5,8 +5,25 @@
 .artifact-review ul { margin-bottom: 0; padding-left: 22px; }
 .artifact-review li + li { margin-top: 16px; }
 .artifact-review li p { margin-bottom: 4px; white-space: pre-wrap; }
-.artifact-files { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
-.artifact-file { border: 1px solid var(--line, #e3e6df); border-radius: 12px; padding: 20px; }
+.artifact-files { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.artifact-file { display:flex; flex-direction:column; align-items:flex-start; border: 1px solid var(--line, #e3e6df); border-radius: 12px; padding: 20px; }
+.artifact-file-primary { background:#f5f8f0; border-color:#bacbad; }
+.artifact-file h3 { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.artifact-file .button { margin-top:18px; }
+.artifact-file p:not(.artifact-download-status) { flex:1; font-size:14px; }
+.artifact-recommended { padding:3px 8px; border-radius:5px; background:#e8efdf; color:#3f623d; font-size:11px; font-weight:500; }
+.artifact-download-note { font-size:13px; color:var(--muted); margin-top:16px; }
+#artifact-downloads { scroll-margin-top:90px; }
+#artifact-downloads:focus { outline:none; }
+.prototype-app .artifact-page h2 { font-size:18px; font-weight:600; line-height:1.6; }
+.authoring-summary { width:100%; min-width:0; font-size:14px; line-height:1.85; }
+.artifact-page .authoring-summary h3 { font-size:16px; margin:24px 0 10px; }
+.authoring-summary p + p { margin-top:12px; }
+.authoring-summary ul,.authoring-summary ol { padding-left:22px; }
+.authoring-summary li + li { margin-top:8px; }
+.authoring-summary pre,.authoring-summary .readable-table { overflow:auto; max-width:100%; }
+.authoring-summary table { width:100%; border-collapse:collapse; }
+.authoring-summary th,.authoring-summary td { padding:10px; border:1px solid var(--line); text-align:left; }
 .artifact-file p { line-height: 1.7; }
 .artifact-download-status { font-size: 13px; margin-bottom: 0; }
 .artifact-provenance { display: grid; grid-template-columns: minmax(100px, 180px) minmax(0, 1fr); gap: 12px; }

@@ -65,6 +65,10 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE run_id=$1 AND owner_user_id=$2", [runId, owner]);
       assert.equal(await execute(), 'succeeded');
       const calls = (await readFile(marker, 'utf8')).trim().split('\n'); assert.equal(calls.length, 1);
+      const activity=(await pool.query("SELECT payload->'action' AS action FROM bb_run_events WHERE run_id=$1 AND payload ? 'action' ORDER BY seq",[runId])).rows.map(r=>r.action);
+      assert.deepEqual(activity.map(a=>[a.code,a.state]),[['read_materials','started'],['read_materials','completed'],['prepare_report','started'],['prepare_report','completed']]);
+      assert.equal(activity[0].action_id,activity[1].action_id,'checkpoint recovery preserves one observed action');
+      assert.ok((await pool.query('SELECT last_activity_at FROM bb_authoring_progress WHERE run_id=$1',[runId])).rows[0].last_activity_at);
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_reports WHERE run_id=$1', [runId])).rows[0].n, 0);
       const response = await send('GET', `/api/v1/projects/${project}/review-workspace`);
       assert.equal(response.statusCode, 200, response.body); const workspace = response.json();

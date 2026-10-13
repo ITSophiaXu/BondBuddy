@@ -136,6 +136,8 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
       VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)`,[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
       VALUES($1,$2,'run',$3,'run.progress',$4)`,[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
+    await syncAuthoringProgress(client,r);
+    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
     return true;
   });
 }
@@ -161,7 +163,7 @@ export async function pauseAtCheckpoint(pool:Pool,lease:Lease):Promise<boolean>{
 export async function beginRunStage(pool:Pool,lease:Lease,stage:string){
   await transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
-    if(!['update','generation'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))return;
+    if(!['update','generation'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))return;
     await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[j.id,stage]);
     await event(client,r,'running',stage,'stage_started',undefined,'run.progress');
   });
@@ -172,7 +174,7 @@ export async function recordAuthoringActivity(pool:Pool,lease:Lease,activity:Aut
     let locked;
     try{locked=await lockedLease(client,lease);}catch(error){if(error instanceof Problem&&['ALREADY_TERMINAL','NOT_FOUND'].includes(error.code))return false;throw error;}
     const {r,j}=locked;
-    if(!['update','generation'].includes(r.task_kind)||r.state!=='running'||j.user_pause_requested||String(j.subtype).startsWith('m4_'))return false;
+    if(!['update','generation'].includes(r.task_kind)||r.state!=='running'||j.user_pause_requested||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))return false;
     const prior=(await client.query("SELECT payload->'authoring_activity' AS activity FROM bb_run_events WHERE run_id=$1 AND owner_user_id=$2 AND payload->'authoring_activity'->>'activity_id'=$3 ORDER BY seq DESC LIMIT 1",[r.id,lease.owner,activity.activity_id])).rows[0]?.activity;
     if(prior&&(prior.state===activity.state||prior.state!=='started'||prior.code!==activity.code))return false;
     const seq=Number(r.event_cursor??0)+1,id=uid(),payload={reason:'authoring_activity',authoring_activity:activity};
@@ -255,7 +257,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
     if(kind==='pause'){
-      if(!['update','generation'].includes(r.task_kind)||String(j.subtype).startsWith('m4_'))
+      if(!['update','generation','review'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
       if(r.stage==='credits_exhausted'){
         await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
@@ -548,7 +550,17 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     const {r,j}=await lockedLease(client,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
-      if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
+      if(j.subtype==='m4_document_v1'){
+        const ready=await client.query(`SELECT a.kind,v.id FROM bb_m4_artifacts a
+          JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
+          JOIN bb_word_delivery_evidence e ON e.id=v.word_delivery_evidence_id AND e.owner_user_id=v.owner_user_id AND e.run_id=v.run_id
+          WHERE a.run_id=$1 AND a.owner_user_id=$2 AND a.kind IN ('document','preparation_note')
+            AND v.delivery_status='available' AND e.artifact_id=v.id AND e.artifact_version=v.version
+            AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=v.sha256 AND e.candidate_sha256=v.sha256
+          FOR UPDATE OF v`,[r.id,r.owner_user_id]);
+        if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id))
+          throw new Problem(422,'DELIVERY_FAILED','Material document and preparation note required for settlement');
+      }else if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
         const pair=j.checkpoint?.stages?.word_delivery_pair;
         if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)
           throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');

@@ -1,4 +1,6 @@
-> 2026-10-11：按本次用户要求，募集书新任务采用实时模型活动与累计积分，暂停冻结、结束部分结算；旧任务保留原规则。见 docs/product-decisions/2026-10-11-authoring-live-progress.md。追加迁移 0103，未改任务总价或 M3/M4 计费。
+> 2026-10-13：新完整/差异复核也使用现有 `authoring_balance_v2` 动态账本，文件复核以白名单公开状态回传活动；直接开始、余额归零暂停和旧费用兼容见 [复核过程与动态积分决定](product-decisions/2026-10-13-review-live-workflow.md)。复用 0103/0104，无新增迁移或价格；旧复核与独立修订保留原规则。
+
+> 2026-10-11：按当时用户要求，募集书新任务采用实时模型活动与累计积分，暂停冻结、结束部分结算；旧任务保留原规则。见 docs/product-decisions/2026-10-11-authoring-live-progress.md。追加迁移 0103，未改任务总价。
 
 ## 2026-10-09 账号积分历史
 
@@ -803,3 +805,7 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 ## 2026-10-11：募集书动态扣款与充值续跑
 
 按 [当前动态余额决定](product-decisions/2026-10-11-authoring-dynamic-balance.md)，新任务以 authoring_balance_v2 锁价但不整笔预留；有效进度同步事务按账户锁追加扣款，余额归零持久化 credit_pause_requested 并在检查点暂停。worker 独立扫描已到账的 credits_exhausted 任务并复用原 run/checkpoint。0104 追加迁移保持旧计费政策；三端和账本需要协调发布。
+
+## 2026-10-13：完成页可读说明与下载定位
+
+按[用户截图决定](product-decisions/2026-10-13-readable-authoring-results.md)，ArtifactPage 优先清洁版下载，复用安全 Markdown 工具呈现已保存说明，不发起模型重写。ProjectExecution 在首次成功加载成果后定位下载区一次；轮询和下载不创建任务。页面去除内部来源校验和复核固定输入面板，后台归属、快照、版本及下载 hash 校验不变。共用进度的“保存文档 / 可下载”仅调整文案，无 API、worker、契约、依赖或迁移变更。

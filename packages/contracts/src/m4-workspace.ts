@@ -3,6 +3,7 @@ import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import type { Project, Run, RunEvent } from './index.js';
 import type { CreditBalance } from './billing.js';
+import type { AuthoringProgress } from './authoring-progress.js';
 
 const obj = <T extends Parameters<typeof Type.Object>[0]>(p: T) => Type.Object(p, { additionalProperties: false });
 const id = Type.String({ minLength: 1, maxLength: 128 });
@@ -84,6 +85,7 @@ export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
 export const M4_DOCUMENT_FIXED_PRICE = { version: 'm4-document-fixed-20261008-v1', points: 4500 } as const;
 export type M4Quote = { quote_id: string; topic_id: string; input_hash: string; task_type: M4BillingTask | 'm4_Q00' | 'm4_task_assistance';
   points: number; price_version: string | null; reason: string; created_at: string;
+  billing_policy?: 'on_delivery' | 'authoring_balance_v2';
   billing_method: 'fixed' | 'metered_capped' | 'free'; multiplier: number; expires_at: string; amount_semantics: 'fixed_price' | 'reservation_cap' };
 export type M4QuoteResponse = { quote: M4Quote; balance: CreditBalance; shortage: number };
 export const M4KnowledgeSnapshotSchema = obj({version:id,document_type:M4DocumentTypeSchema,
@@ -123,7 +125,8 @@ export type M4Message = { message_id: string; role: 'user' | 'assistant'; conten
 export type M4Artifact = M4ArtifactPin & { topic_id: string; run_id: string; document_type: M4DocumentType | null;
   kind: 'document' | 'preparation_note' | 'qa_text'; filename: string; mime_type: string; byte_size: number; created_at: string;
   base_artifact: M4ArtifactPin | null; input_hash: string; revision_number: number | null };
-export type M4Task = { run: Run; manifest: M4Manifest; created_at: string; events: RunEvent[]; artifacts: M4Artifact[] };
+export type M4CreditCharge = {quote: M4Quote | null; state: 'held' | 'settled' | 'released' | null; progress?: AuthoringProgress};
+export type M4Task = { credit_charge?: M4CreditCharge; run: Run; manifest: M4Manifest; created_at: string; events: RunEvent[]; artifacts: M4Artifact[] };
 export type M4Topic = { surface?: 'materials'|'assistant'; topic_id: string; project_id: string; source_project_id: string | null; name: string; created_at: string; updated_at: string };
 export type M4Workspace = { topic: M4Topic; project: Project; drafts: Record<M4DocumentType, M4Draft>;
   materials: M4MaterialPin[]; material_details: (M4MaterialPin & {filename: string; state: string; media_type: string; role?:string})[];
