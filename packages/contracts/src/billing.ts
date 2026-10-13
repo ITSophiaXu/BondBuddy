@@ -7,6 +7,8 @@ export const AUTHORING_BILLING_TASKS = {
   migration_three_years: '迁移＋补三年', new_authoring: '新项目编制'
 } as const;
 export const REVIEW_BILLING_TASKS = { full_review: '完整三维复核', differential_review: '差异复核', review_revision: '根据复核结果修订' } as const;
+// New review executions share the existing capped dynamic policy. Revision fees stay unchanged.
+export const DYNAMIC_REVIEW_BILLING_TASKS = { full_review: REVIEW_BILLING_TASKS.full_review, differential_review: REVIEW_BILLING_TASKS.differential_review } as const;
 export const BILLING_TASKS = {...AUTHORING_BILLING_TASKS, ...REVIEW_BILLING_TASKS} as const;
 export type BillingTask = keyof typeof BILLING_TASKS;
 export const INITIAL_FIXED_PRICES: Record<keyof typeof AUTHORING_BILLING_TASKS, number> = {
