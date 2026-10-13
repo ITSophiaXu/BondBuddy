@@ -1,12 +1,12 @@
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
-import { isUploadInspectionPublicReason, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isUploadInspectionPublicReason, m4InputIssue, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[];
   } = {}) { super(code); }
 }
 
@@ -29,6 +29,11 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     }
   }
   return new ApiError(status, code, {
+    ...(code === 'INPUT_REQUIRED' ? { materialInputIssues: fields.flatMap(field => {
+      if (!isRecord(field)) return [];
+      const issue = m4InputIssue(field.code, field.field);
+      return issue ? [issue] : [];
+    }) } : {}),
     ...(correlationId ? { correlationId } : {}),
     ...(typeof problem.retryable === 'boolean' ? { retryable: problem.retryable } : {}),
     ...(uploadReason ? { uploadReason } : {}),
@@ -50,7 +55,9 @@ export function friendlyError(error: unknown): string {
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
     case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
-    case 'INPUT_REQUIRED': return `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
+    case 'INPUT_REQUIRED': return error.details.materialInputIssues?.length
+      ? `${error.details.materialInputIssues.map(issue => issue.message).join(' ')} 补齐后请重新点击生成。`
+      : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
     case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请充值后重新确认。';

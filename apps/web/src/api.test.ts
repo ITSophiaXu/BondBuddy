@@ -10,6 +10,19 @@ test('an active source-project run has a safe business message distinct from dra
 });
 import { uploadErrorMessage } from './upload-error.js';
 
+test('material input errors name missing fields without exposing server messages or diagnostic IDs',()=>{
+  const error=parseApiError(422,{code:'INPUT_REQUIRED',message:'private server detail',correlation_id:'internal-reference',field_errors:[
+    {field:'market',code:'M4_MARKET_REQUIRED',message:'untrusted replacement'},
+    {field:'template',code:'M4_TEMPLATE_REQUIRED',message:'untrusted replacement'},
+    {field:'market',code:'UNKNOWN',message:'secret'},
+    {field:'broker',code:'M4_MARKET_REQUIRED',message:'wrong target'},
+  ]});
+  assert.equal(error.details.materialInputIssues?.length,2);
+  assert.match(friendlyError(error),/尚未选择交易所/);assert.match(friendlyError(error),/尚未提供立项模板/);
+  assert.match(friendlyError(error),/补齐后请重新点击生成/);
+  assert.doesNotMatch(friendlyError(error),/private|untrusted|secret|internal-reference|错误编号/);
+});
+
 test('public inspection detail is carried from Error.field_errors to the upload row', () => {
   const error = parseApiError(422, {
     code: 'MATERIAL_UNREADABLE', retryable: false, correlation_id: 'synthetic-upload-1',
