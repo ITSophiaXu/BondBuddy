@@ -1,6 +1,6 @@
 # 2026-10-12 第一批本地集成环境
 
-> 2026-10-13 局部更新：按用户要求纳入 [PR #694](https://github.com/ITSophiaXu/BondBuddy/pull/694)，更新募集书操作栏改为随内容滚动。已验证源码快照 `7058471580a01084f0f1a77fe8c324661ed66728`（保留原生成链路与工具提交 `facae54d`）；真实网页仍为 http://localhost:5178。仅网页样式更新，API、数据库、存储与 Linux worker 沿用下述基线和镜像。当前版本及证据见 [2026-10-13 验证记录](validation-20261013.md)。
+> 2026-10-13 局部更新：按用户要求纳入 [PR #694](https://github.com/ITSophiaXu/BondBuddy/pull/694) 操作栏随内容滚动，以及 [PR #695](https://github.com/ITSophiaXu/BondBuddy/pull/695) 助手图标居中、复核材料重复标题删除。已验证源码快照 `c4e8006b0b744c4dc8c675005814e77678f3d2a2`（保留原生成链路与工具提交 `facae54d`）；真实网页仍为 http://localhost:5178，刷新即可验收。仅网页布局和对应原型更新，API、数据库、存储与 Linux worker 沿用下述基线和镜像，未重启。当前来源及证据见 [2026-10-13 验证记录](validation-20261013.md)；用户尚未验收，尚未部署。
 
 本目录固定产品基线 `6cd5d2cb254a25963b79f44313440a64c6c38660`（develop，PR #692）。提供 Windows 本地启动、测试和证据脚本，并补齐 worker 入口测试失败时的子进程清理与错误诊断；没有改动产品运行逻辑，没有生产部署功能。
 
