@@ -15,7 +15,7 @@ import { project, projectDto, runDto, transaction, uid, date, digest, executionK
 import { inputManifestHash } from './production-rule-pin.js';
 import { enqueue } from './queue.js';
 import { runEventPayloadDto } from './run-event-dto.js';
-import { quoteM4, reserveM4 } from './m4-billing.js';
+import { quoteM4, reserveM4, readM4CreditCharge } from './m4-billing.js';
 import {loadM4Knowledge} from './m4-knowledge.js';
 export { settleM4Metering } from './m4-billing.js';
 
@@ -268,7 +268,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
 async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
   JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
   JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')} WHERE a.owner_user_id=$1 AND a.topic_id=$2
-  AND v.quality_status='passed' AND v.delivery_status='available' ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
+  AND v.quality_status='passed' AND v.delivery_status='available' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2')) ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
 const artifactDto=(a:any):M4Artifact=>({source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim(),
   topic_id:a.topic_id,run_id:a.run_id,document_type:a.document_type,kind:a.kind,filename:artifactDownloadName(a).filename,mime_type:a.media_type,byte_size:Number(a.byte_size),
   created_at:date(a.created_at),base_artifact:a.base_artifact,input_hash:a.input_hash.trim(),revision_number:a.revision_number??null});
@@ -359,8 +359,8 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const artifacts=(await artifactRows(db,owner,id)).map(artifactDto);
   const rows=(await db.query(`SELECT r.*,e.manifest FROM bb_m4_executions e JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id
     WHERE e.owner_user_id=$1 AND e.topic_id=$2 ORDER BY e.created_at`,[owner,id])).rows;
-  const tasks=await Promise.all(rows.map(async r=>({run:runDto(r),manifest:r.manifest as M4Manifest,created_at:date(r.created_at),artifacts:artifacts.filter(a=>a.run_id===r.id),
-    events:(await db.query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq',[owner,r.id])).rows.map(ev=>({event_id:ev.id,schema_version:1 as const,trace_id:ev.trace_id,run_id:ev.run_id,seq:ev.seq,type:ev.type,state:ev.state,stage:ev.stage,payload:runEventPayloadDto(ev),occurred_at:date(ev.occurred_at)}))})));
+  const tasks=await Promise.all(rows.map(async r=>({run:runDto(r),manifest:r.manifest as M4Manifest,created_at:date(r.created_at),...(r.manifest.kind==='document'?{credit_charge:await readM4CreditCharge(db,owner,r.id)}:{}),artifacts:artifacts.filter(a=>a.run_id===r.id),
+    events:(await db.query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq',[owner,r.id])).rows.map(ev=>({event_id:ev.id,schema_version:1 as const,trace_id:ev.trace_id,run_id:ev.run_id,seq:ev.seq,type:ev.type,state:ev.state,stage:ev.stage,payload:runEventPayloadDto(ev.payload),occurred_at:date(ev.occurred_at)}))})));
   const view=(await db.query('SELECT * FROM bb_m4_views WHERE owner_user_id=$1 AND topic_id=$2',[owner,id])).rows[0];
   const templates=(await db.query(`SELECT t.* FROM bb_m4_templates t
     WHERE t.owner_user_id=$1 AND EXISTS (
@@ -470,7 +470,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
     const a=(await db().query(`SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
       JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
       JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id ${artifactNameJoins('v')}
-      WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed'`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};
+      WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2'))`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};
   app.get(`${base}/artifacts/:artifact_id/versions/:artifact_version/preview`,async request=>{const a=await readArtifact(request);return {artifact:artifactDto(a),content:a.preview_content??'此准确版本暂无文本预览，请下载原始 Word 查看。'};});
   app.get(`${base}/artifacts/:artifact_id/versions/:artifact_version/bytes`,async(request,reply)=>{const a=await readArtifact(request);
     const bytes=a.kind==='qa_text'?Buffer.from(a.body_content??'','utf8'):await blobs().getIfExistsBounded(a.object_key,100*1024*1024);

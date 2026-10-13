@@ -91,7 +91,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
     await ok('PUT',path('drafts/private_summary'),{expected_version:0,input:{document_type:'private_summary',source_material:pin,materials:[pin],template,edit_base:null,scope:'whole',fields:{issuer_name:'Synthetic issuer',market:'sse'},requirements:[]}});
     const rate={input_microyuan_per_million:1000000,cached_microyuan_per_million:1000000,output_microyuan_per_million:2000000};
     const cost:M4BillingConfig={model_id:config.model_id,rates:{[config.model_id]:rate},budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
-    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-m4-fund',points:100000,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-m4-fund',points:1,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const start=async()=>{const q=await ok('POST',path('quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
       const request={execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
       const r=(await ok('POST',path('execute'),request)).run;assert.equal((await ok('POST',path('execute'),request)).run.run_id,r.run_id);return {r,q};};
@@ -117,9 +117,20 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
       await action(pool,owner,reading.run_id,'cancel');
     };
     const first=await start();
+    assert.equal(await pipeline(),'paused');assert.equal(modelCalls,0,'one point is consumed at the durable input checkpoint');
+    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-partial-recharge',points:1000,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    assert.equal(await resumePausedRun(pool,owner,first.r.run_id,'credits_recharged'),true);
     await assert.rejects(pipeline(async stage=>{if(stage==='word_promoted')throw Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
     assert.equal(modelCalls,1);await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE run_id=$1",[first.r.run_id]);
-    assert.equal(await pipeline(),'succeeded');assert.equal(modelCalls,1,'completed durable result was reused after crash');
+    assert.equal(await pipeline(),'paused');assert.equal(modelCalls,1,'completed durable result was reused after crash');
+    assert.equal((await pool.query('SELECT stage FROM bb_runs WHERE id=$1',[first.r.run_id])).rows[0].stage,'credits_exhausted');
+    assert.equal((await ok('GET',path('workspace'))).artifacts.length,0,'saved files remain private until the locked price is settled');
+    const savedPair=(await pool.query('SELECT artifact_id FROM bb_m4_artifacts WHERE run_id=$1 ORDER BY kind',[first.r.run_id])).rows;
+    assert.equal(savedPair.length,2);
+    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-final-recharge',points:100000,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    assert.equal(await resumePausedRun(pool,owner,first.r.run_id,'credits_recharged'),true);
+    assert.equal(await pipeline(),'succeeded');assert.equal(modelCalls,1,'final payment reuses saved model result');
+    assert.deepEqual((await pool.query('SELECT artifact_id FROM bb_m4_artifacts WHERE run_id=$1 ORDER BY kind',[first.r.run_id])).rows,savedPair);
     const workspace=await ok('GET',path('workspace')),artifacts=workspace.artifacts.filter((a:{run_id:string})=>a.run_id===first.r.run_id);
     assert.deepEqual(artifacts.map((a:{kind:string})=>a.kind).sort(),['document','preparation_note']);
     for(const artifact of artifacts){const file=await send('GET',`/api/v1/m4/artifacts/${artifact.artifact_id}/versions/${artifact.artifact_version}/bytes`);
@@ -139,7 +150,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
     const unknownUsage=(await pool.query('SELECT a.usage_status FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id WHERE j.run_id=$1',[pending.r.run_id])).rows[0];
     assert.equal(unknownUsage.usage_status,'unknown','unknown supplier usage is retained, never invented for fixed settlement');
     assert.equal(Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[pending.r.run_id])).rows[0].charged_points),4500);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind=\'settle\'',[pending.r.run_id])).rows[0].n,1);
+    assert.equal(Number((await pool.query("SELECT sum(points) n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[pending.r.run_id])).rows[0].n),4500);
     assert.equal((await creditBalance(pool,owner)).frozen,0);
     // Pure QA follows the same durable pipeline but delivers authenticated text without any Word promotion.
     const context={document_type:null,draft_version:0,source_material:pin,citations:[],reading_artifact:null};
