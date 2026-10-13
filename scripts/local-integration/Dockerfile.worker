@@ -32,6 +32,6 @@ RUN mkdir -p node_modules/@bondbuddy /opt/bondbuddy \
     && chown node:node /var/lib/bondbuddy/parse-staging /var/lib/bb-logs \
     && chmod 0700 /var/lib/bondbuddy/parse-staging /var/lib/bb-logs
 ENV PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata NODE_ENV=development
-LABEL com.bondbuddy.local-integration=20261012 com.bondbuddy.product-commit=6cd5d2cb254a25963b79f44313440a64c6c38660
+LABEL com.bondbuddy.local-integration=20261012 com.bondbuddy.product-commit=0556ca5a673460ea73f4bd9805c54df180384c5a
 USER node
 CMD ["node", "scripts/local-integration/linux-worker-entry.mjs"]
