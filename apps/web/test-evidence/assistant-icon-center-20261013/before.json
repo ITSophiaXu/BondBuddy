@@ -1,0 +1,24 @@
+[
+  {
+    "label": "before-1440",
+    "x": 1359,
+    "y": 888,
+    "width": 52,
+    "height": 52,
+    "dx": 0,
+    "dy": -5.75,
+    "dotDisplay": "block",
+    "rows": "38.5px 11.5px"
+  },
+  {
+    "label": "before-390",
+    "x": 311,
+    "y": 780,
+    "width": 48,
+    "height": 48,
+    "dx": 0,
+    "dy": -4.75,
+    "dotDisplay": "block",
+    "rows": "36.5px 9.5px"
+  }
+]

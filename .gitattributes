@@ -49,3 +49,5 @@
 /knowledge/material-drafting/**/*.md text eol=lf linguist-generated=true
 /knowledge/material-drafting/**/catalog.json text eol=lf
 /knowledge/material-drafting/**/originals/* binary
+# This helper is executed through its Linux shebang in the local worker image.
+/scripts/local-integration/local-model-token.mjs text eol=lf

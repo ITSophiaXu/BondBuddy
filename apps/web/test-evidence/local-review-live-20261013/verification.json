@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-10-13T03:09:08.473Z",
+  "apiMocked": false,
+  "workerImage": "sha256:e6fe1694717c7b8e415e59293dcebc38ac10f32e62373562cbdcef09ac9713db",
+  "runId": "04e93cdb-0422-4586-8408-972a02659334",
+  "projectURL": "http://localhost:5178/#/projects/660c4fd8-5012-4a2c-ac5a-8d9a959d0d48/review?tab=making",
+  "directStart": true,
+  "chargedPoints": 1,
+  "modelCalls": 0,
+  "checkpointSaved": true,
+  "preservedAfterReload": true,
+  "endedSyntheticRun": true,
+  "passed": true
+}

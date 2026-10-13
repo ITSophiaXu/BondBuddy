@@ -380,7 +380,19 @@ export class ProjectExecution {
     if (artifactId && artifactId !== this.deliveryId) {
       this.delivery?.dispose(); this.deliveryId = artifactId;
       const host = this.host.querySelector<HTMLElement>('#execution-delivery')!;
-      this.delivery = new ArtifactPage(this.api, html => { host.innerHTML = html; }, () => this.active && this.deliveryId === artifactId);
+      let located = false;
+      this.delivery = new ArtifactPage(this.api, html => {
+        host.innerHTML = html;
+        const downloads = host.querySelector<HTMLElement>('#artifact-downloads');
+        if (downloads && !located) {
+          located = true;
+          requestAnimationFrame(() => {
+            if (!this.active || this.deliveryId !== artifactId || !downloads.isConnected || this.nextRequested) return;
+            downloads.focus({preventScroll:true});
+            downloads.scrollIntoView({block:'start', behavior:'instant'});
+          });
+        }
+      }, () => this.active && this.deliveryId === artifactId);
       void this.delivery.render(artifactId);
     } else if (!artifactId && this.deliveryId) { this.delivery?.dispose(); this.deliveryId = undefined; this.host.querySelector('#execution-delivery')!.innerHTML = ''; }
   }

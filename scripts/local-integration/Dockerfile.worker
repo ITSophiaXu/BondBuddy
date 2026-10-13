@@ -1,0 +1,37 @@
+FROM node:22-bookworm-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-venv ca-certificates util-linux \
+    tesseract-ocr=5.3.0-2 tesseract-ocr-eng=1:4.1.0-2 \
+    tesseract-ocr-chi-sim=1:4.1.0-2 tesseract-ocr-osd=1:4.1.0-2 \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt /tmp/requirements.txt
+COPY verify-python-packages.py /tmp/verify-python-packages.py
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple --report /opt/venv/install-report.json -r /tmp/requirements.txt \
+    && /opt/venv/bin/python /tmp/verify-python-packages.py
+COPY codex-npm-linux-x64-0.154.0.tgz /tmp/codex.tgz
+RUN node -e "const f=require('fs'),c=require('crypto');if(c.createHash('sha512').update(f.readFileSync('/tmp/codex.tgz')).digest('base64')!=='a4FI3A8sGtwGrOqltrPbrS2hajrHQG591EwmRfiRoLMb10VxdBtUGW4gu6IJVYENiYGA7k3P4jlRHEoCZU/s9Q==')process.exit(1)" \
+    && mkdir /tmp/codex && tar -xf /tmp/codex.tgz -C /tmp/codex \
+    && mv /tmp/codex/package/vendor/x86_64-unknown-linux-musl /opt/codex \
+    && chmod 0755 /opt/codex/bin/codex /opt/codex/codex-resources/bwrap \
+    && ln -s /opt/codex/bin/codex /usr/local/bin/codex \
+    && test "$(codex --version)" = 'codex-cli 0.154.0' \
+    && rm -rf /tmp/codex /tmp/codex.tgz
+ADD worker-snapshot.tar /app/
+ADD runtime-assets.tar /app/
+RUN mkdir -p node_modules/@bondbuddy /opt/bondbuddy \
+    && for p in contracts domain rule-pack-registry rule-applicability-context; do ln -s /app/packages/$p node_modules/@bondbuddy/$p; done \
+    && for p in api worker web; do ln -s /app/apps/$p node_modules/@bondbuddy/$p; done \
+    && cp deploy/m1/codex*-catalog.json /opt/bondbuddy/ \
+    && cp scripts/local-integration/local-model-token.mjs /usr/local/bin/bb-copilot-token \
+    && chmod 0755 /usr/local/bin/bb-copilot-token \
+    && find /app /opt/venv /opt/codex -type d -exec chmod a+rx,go-w {} + \
+    && find /app /opt/venv /opt/codex -type f -exec chmod a+r,go-w {} + \
+    && mkdir -p /var/lib/bondbuddy/parse-staging /var/lib/bb-logs \
+    && chown node:node /var/lib/bondbuddy/parse-staging /var/lib/bb-logs \
+    && chmod 0700 /var/lib/bondbuddy/parse-staging /var/lib/bb-logs
+ENV PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata NODE_ENV=development
+LABEL com.bondbuddy.local-integration=20261012 com.bondbuddy.product-commit=0556ca5a673460ea73f4bd9805c54df180384c5a
+USER node
+CMD ["node", "scripts/local-integration/linux-worker-entry.mjs"]

@@ -1,13 +1,14 @@
 import { ApiClient, ApiError, type Dto } from './api';
 import { ArtifactDownloads, artifactError, artifactFilename } from './artifact-download';
 import { date, esc } from './ui';
+import { authoringSummary } from './authoring-summary';
 import './artifact-page.css';
 
 type Artifact = Dto<'ArtifactResponse'>;
 type Variant = NonNullable<Artifact['word_delivery']>['variant'];
 const variants: Record<Variant, { label: string; description: string }> = {
-  revision: { label: '修订版', description: '查看本轮增删修改；待人工确认标记仍需逐项核对。' },
-  clean: { label: '清洁版', description: '查看接受本轮修订后的工作稿；保留未解决的待人工确认标记。' },
+  revision: { label: '修订版', description: '保留本轮新增、删除和修改痕迹，便于逐项对照原稿、审核改动。' },
+  clean: { label: '清洁版', description: '展示本轮修改后的完整正文，不显示修订痕迹，适合通读和继续编辑。' },
   baseline: { label: '有效基线', description: '本轮修改前的有效正文副本，用于对照；上传原件保持不变。' }
 };
 
@@ -55,32 +56,29 @@ export class ArtifactPage {
     const pending = delivery ? Math.max(delivery.pending_review_count ?? 0, delivery.pending_review.length) : 0;
     const generatedPair = delivery?.delivery_policy === 'generated_pair_v1';
     const files = delivery
-      ? (['revision', 'clean'] as const).map(variant => ({ id: delivery[`${variant}_artifact_id`], variant, ...variants[variant], ...(delivery.baseline_kind === 'none' ? { description: '本次为首次编制，没有旧文对照；两份均为可编辑首稿。' } : {}) }))
+      ? (['clean', 'revision'] as const).map(variant => ({ id: delivery[`${variant}_artifact_id`], variant, ...variants[variant], ...(delivery.baseline_kind === 'none' ? { description: '本次为首次编制，没有旧文对照；两份均为可编辑首稿。' } : {}) }))
       : [{ id: artifact.artifact_id, variant: undefined, label: 'Word 成果', description: '此历史成果未提供修订、清洁版和基线的分类信息。' }];
     this.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(project.project_id)}">← 返回项目工作区</a>
-      <div class="page-heading"><div><p class="eyebrow">成果与下载</p><h1>${esc(project.name)}</h1><p class="muted">成果 v${artifact.display_version ?? artifact.version} · 输入版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p></div><button class="button secondary" id="refresh-artifact">重新读取成果</button>${artifact.delivery_status==='available'&&delivery?'<button class="button secondary" id="assistant-artifact">与 BondBuddy 讨论／继续修改</button>':''}</div>
+      <div class="page-heading"><div><p class="eyebrow">成果与下载</p><h1>${esc(project.name)}</h1><p class="muted">第 ${artifact.display_version ?? artifact.version} 版 · ${esc(date(run.updated_at))}</p></div><button class="button secondary" id="refresh-artifact">重新读取成果</button>${artifact.delivery_status==='available'&&delivery?'<button class="button secondary" id="assistant-artifact">与 BondBuddy 讨论／继续修改</button>':''}</div>
+      <section class="panel artifact-page artifact-download-panel" aria-labelledby="artifact-downloads"><h2 id="artifact-downloads" tabindex="-1">下载募集书</h2>
+        ${artifact.delivery_status === 'test_only' ? '<p>内部测试工作稿·未经专业审核·不得对外使用</p>' : ''}
+        <div class="artifact-files">${files.map((file, index) => `<article class="artifact-file ${index === 0 ? 'artifact-file-primary' : ''}"><h3>${file.label}${file.variant === 'clean' ? '<span class="artifact-recommended">推荐阅读</span>' : ''}</h3><p>${file.description}</p><button class="button ${index === 0 ? 'primary' : 'secondary'}" data-artifact-file="${index}">下载${file.label}</button><p class="artifact-download-status" data-download-status="${index}" role="status"></p></article>`).join('')}</div>
+        ${delivery ? '<p class="artifact-download-note">两版均可能保留待人工确认的标记或批注，请在使用前核对。</p>' : ''}
+      </section>
       <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${artifact.delivery_status === 'test_only' ? '内部测试工作稿·未经专业审核·不得对外使用' : pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
         <p>${generatedPair ? '修订版和清洁版已生成，可以下载。' : '文件已通过服务端交付检查；生成完成不表示业务事实已全部确认或达到正式申报条件。'}</p>
-        ${delivery ? `<p>${delivery.baseline_kind === 'none' ? '本次为首次编制，没有历史修订对照。' : delivery.replacements !== null && delivery.columns !== null ? `本轮完成 ${delivery.replacements} 处替换、${delivery.columns} 处表格增列。` : ''}</p>${delivery.source_issuer ? `<p>${delivery.baseline_kind === 'project_output' ? '对照本项目上一版成果，发行人：' : '对照原稿企业：'}${esc(delivery.source_issuer)}${delivery.baseline_kind === 'reconstructed_pdf' ? '；PDF 重建基线，排版请核对。' : ''}</p>` : ''}${delivery.authoring_summary?.length ? `${generatedPair ? '<details><summary>编制说明</summary>' : ''}<ul>${delivery.authoring_summary.map(item => `<li>${esc(item)}</li>`).join('')}</ul>${generatedPair ? '</details>' : ''}` : ''}
+        ${delivery ? `<p>${delivery.baseline_kind === 'none' ? '本次为首次编制，没有历史修订对照。' : delivery.replacements !== null && delivery.columns !== null ? `本轮完成 ${delivery.replacements} 处替换、${delivery.columns} 处表格增列。` : ''}</p>${delivery.source_issuer ? `<p>${delivery.baseline_kind === 'project_output' ? '对照本项目上一版成果，发行人：' : '对照原稿企业：'}${esc(delivery.source_issuer)}${delivery.baseline_kind === 'reconstructed_pdf' ? '；原稿来自 PDF，请核对转换后的排版。' : ''}</p>` : ''}
           ${generatedPair ? '' : `
           <div class="artifact-review" aria-labelledby="artifact-review-title"><h3 id="artifact-review-title">待人工确认（${pending} 项）</h3>
           ${pending ? `<ul>${delivery.pending_review.map(item => `<li><p>${esc(item.message)}</p><span class="muted">原文记录：${esc(item.record_id)}</span></li>`).join('')}</ul>${pending > delivery.pending_review.length ? '<p>部分待确认详情尚未提供，请核对 Word 内的标记与批注。</p>' : ''}` : '<p>本轮交付摘要未列出待确认项，仍需核对原始材料和工作稿。</p>'}</div>`}` : '<p class="muted">此历史成果未提供变更摘要或待确认清单，请核对文档内容。</p>'}
       </section>
-      <section class="panel artifact-page" aria-labelledby="artifact-downloads"><h2 id="artifact-downloads">下载 Word</h2><p class="muted">下载已有文件不会发起新任务。WPS/Word 兼容范围以实际验收记录为准。</p>
-        <div class="artifact-files">${files.map((file, index) => `<article class="artifact-file"><h3>${file.label}</h3><p>${file.description}</p><small class="artifact-filename" data-filename="${index}"></small><button class="button ${index === 0 ? 'primary' : 'secondary'}" data-artifact-file="${index}" title="${esc(file.description)}">下载${file.label}</button><p class="artifact-download-status" data-download-status="${index}" role="status"></p></article>`).join('')}</div>
-      </section>
-      <section class="panel artifact-page"><details><summary>来源与版本核对</summary><dl class="artifact-provenance"><dt>任务编号</dt><dd>${esc(run.run_id)}</dd><dt>成果编号</dt><dd>${esc(artifact.artifact_id)}</dd><dt>输入版本</dt><dd>${run.input_revision}</dd><dt>当前文件 SHA-256</dt><dd>${esc(artifact.sha256)}</dd>${delivery ? `${delivery.source_sha256 ? `<dt>${delivery.baseline_kind === 'project_output' ? '上一版成果' : '原上传文件'} SHA-256</dt><dd>${esc(delivery.source_sha256)}</dd>` : ''}${delivery.effective_baseline_sha256 ? `<dt>${delivery.baseline_kind === 'none' ? '本次首稿 DOCX' : '有效基线 DOCX'} SHA-256</dt><dd>${esc(delivery.effective_baseline_sha256)}</dd>` : ''}` : ''}</dl></details></section>`, 'projects');
+      ${delivery?.authoring_summary?.length ? `<section class="panel artifact-page" aria-labelledby="authoring-summary-title"><h2 id="authoring-summary-title">本次更新说明</h2><div class="authoring-summary">${authoringSummary(delivery.authoring_summary)}</div></section>` : ''}`, 'projects');
     document.querySelector('#assistant-artifact')?.addEventListener('click',()=>window.dispatchEvent(new CustomEvent('bondbuddy:assistant',{detail:{projectId:project.project_id,artifactId:delivery?.clean_artifact_id}})));
     document.querySelector('#refresh-artifact')!.addEventListener('click', () => { void this.render(artifact.artifact_id); });
     document.querySelectorAll<HTMLButtonElement>('[data-artifact-file]').forEach(button => {
       const index = Number(button.dataset.artifactFile);
       const file = files[index];
       const status = document.querySelector<HTMLElement>(`[data-download-status="${index}"]`)!;
-      const filename = document.querySelector<HTMLElement>(`[data-filename="${index}"]`)!;
-      // Names come from the same immutable metadata as the eventual authorized download.
-      void (file.id === artifact.artifact_id ? Promise.resolve(artifact) : this.api.artifact(file.id, this.controller.signal)).then(meta => {
-        if (this.current() && generation === this.generation && meta.artifact_id === file.id && meta.run_id === artifact.run_id) filename.textContent = artifactFilename(meta);
-      }).catch(() => { /* Download remains retryable with a fresh grant. */ });
       button.addEventListener('click', async () => {
         if (button.disabled) return;
         button.disabled = true;
@@ -95,7 +93,6 @@ export class ArtifactPage {
             (file.variant && (fresh.word_delivery?.variant !== file.variant || fresh.word_delivery.revision_artifact_id !== delivery?.revision_artifact_id))) throw new ApiError(0, 'DATA_UNAVAILABLE');
           const bytes = await this.api.artifactBytes(fresh, signal);
           if (!this.current() || generation !== this.generation || signal.aborted) return;
-          filename.textContent = artifactFilename(fresh);
           this.downloads.save(bytes, artifactFilename(fresh));
           status.textContent = '文件已交给浏览器下载，请在浏览器下载列表中查看。';
         } catch (error) {

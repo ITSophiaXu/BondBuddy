@@ -1,3 +1,6 @@
+// 2026-10-13 approved result scope: report, annotation limits and downloads only.
+// Do not append task IDs/input metadata or an update-from-review call to action.
+// Existing revision deliveries remain available through their historical result view.
 const fileDeliveryPreview = new URLSearchParams(location.search).get('delivery') === 'files';
 import { mountReadablePreview } from './review-readable-preview.js';
 import { STORAGE, findings, freshState, readDemoState, demoRecordText } from './review-demo-data.js';

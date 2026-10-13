@@ -3,7 +3,7 @@ import { contentDisposition } from './material-download.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
-import { M4_API_BASE, M4_DOCUMENT_TYPES, M4_DOCUMENT_LABELS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_SUBTYPE, M4_QA_SUBTYPE, M4DraftRequestSchema, M4ViewRequestSchema,
+import { m4DocumentInputIssues, M4_API_BASE, M4_DOCUMENT_TYPES, M4_DOCUMENT_LABELS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_SUBTYPE, M4_QA_SUBTYPE, M4DraftRequestSchema, M4ViewRequestSchema,
   M4TopicCreateRequestSchema, M4TemplateCreateRequestSchema, M4MessageRequestSchema, M4QuoteRequestSchema, M4ExecuteRequestSchema,
   M4HandoffBindRequestSchema, M4HandoffBindResponseSchema,
   M4AssistantReplySchema, isM4Manifest, type M4Topic, type M4DraftInput, type M4Draft, type M4DocumentType, type M4MaterialPin,
@@ -15,7 +15,7 @@ import { project, projectDto, runDto, transaction, uid, date, digest, executionK
 import { inputManifestHash } from './production-rule-pin.js';
 import { enqueue } from './queue.js';
 import { runEventPayloadDto } from './run-event-dto.js';
-import { quoteM4, reserveM4 } from './m4-billing.js';
+import { quoteM4, reserveM4, readM4CreditCharge } from './m4-billing.js';
 import {loadM4Knowledge} from './m4-knowledge.js';
 export { settleM4Metering } from './m4-billing.js';
 
@@ -151,16 +151,12 @@ async function documentManifest(db:Db,owner:string,t:any,type:M4DocumentType,exp
   const market=input.fields.market;
   if(input.fields.offering && input.fields.offering!=='private' || input.fields.brokers || input.fields.scope && input.fields.scope!=='whole')
     throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持单承销商、交易所普通私募与全文制作，当前选择需后续能力。');
-  if(!['sse','szse'].includes(market))throw new Problem(422,'INPUT_REQUIRED','请为本次材料选择上海证券交易所或深圳证券交易所。');
   if(source?.offering && source.offering!=='private')throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持交易所普通私募，其他品种后续开放。');
   // Uploaded prospectuses can carry the issuer. The file task reads that source;
   // opening a chat to restate it is not a prerequisite for the material form.
   const template=await templateFor(db,owner,input.template);
-  if(type==='init' && !template)throw new Problem(422,'INPUT_REQUIRED','立项报告需要先选择本账号券商模板。');
-  if(template && (template.market!==market || template.document_type!==type))throw new Problem(422,'INPUT_REQUIRED','当前模板与文种或交易所不匹配。');
-  if(template && input.fields.broker && template.broker!==input.fields.broker)throw new Problem(422,'INPUT_REQUIRED','当前券商与已选模板不匹配，请核对准确版本。');
-  if(type==='private_summary' && !input.source_material && !input.edit_base)throw new Problem(422,'INPUT_REQUIRED','募集说明书摘要需要准确募集书原文或明确全文改稿底稿。');
-  if(!input.materials.length && !input.source_material && !input.edit_base)throw new Problem(422,'INPUT_REQUIRED','请先选择本次任务采用的材料。');
+  const inputIssues=m4DocumentInputIssues(input,template);
+  if(inputIssues.length)throw Object.assign(new Problem(422,'INPUT_REQUIRED','请补充所列信息后再生成。'),{inputIssues});
   const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name||'',market,broker:input.fields.broker||template?.broker||''}};
   return {version:'m4-document-input-v1',kind:'document',project_name:source?.name||p.name||t.name,topic_id:t.id,execution_scope_project_id:source?.execution_scope_project_id||source?.id||t.project_id,
     draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as 'sse'|'szse',offering:'private',
@@ -268,7 +264,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
 async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
   JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
   JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')} WHERE a.owner_user_id=$1 AND a.topic_id=$2
-  AND v.quality_status='passed' AND v.delivery_status='available' ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
+  AND v.quality_status='passed' AND v.delivery_status='available' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2')) ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
 const artifactDto=(a:any):M4Artifact=>({source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim(),
   topic_id:a.topic_id,run_id:a.run_id,document_type:a.document_type,kind:a.kind,filename:artifactDownloadName(a).filename,mime_type:a.media_type,byte_size:Number(a.byte_size),
   created_at:date(a.created_at),base_artifact:a.base_artifact,input_hash:a.input_hash.trim(),revision_number:a.revision_number??null});
@@ -359,8 +355,8 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const artifacts=(await artifactRows(db,owner,id)).map(artifactDto);
   const rows=(await db.query(`SELECT r.*,e.manifest FROM bb_m4_executions e JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id
     WHERE e.owner_user_id=$1 AND e.topic_id=$2 ORDER BY e.created_at`,[owner,id])).rows;
-  const tasks=await Promise.all(rows.map(async r=>({run:runDto(r),manifest:r.manifest as M4Manifest,created_at:date(r.created_at),artifacts:artifacts.filter(a=>a.run_id===r.id),
-    events:(await db.query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq',[owner,r.id])).rows.map(ev=>({event_id:ev.id,schema_version:1 as const,trace_id:ev.trace_id,run_id:ev.run_id,seq:ev.seq,type:ev.type,state:ev.state,stage:ev.stage,payload:runEventPayloadDto(ev),occurred_at:date(ev.occurred_at)}))})));
+  const tasks=await Promise.all(rows.map(async r=>({run:runDto(r),manifest:r.manifest as M4Manifest,created_at:date(r.created_at),...(r.manifest.kind==='document'?{credit_charge:await readM4CreditCharge(db,owner,r.id)}:{}),artifacts:artifacts.filter(a=>a.run_id===r.id),
+    events:(await db.query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq',[owner,r.id])).rows.map(ev=>({event_id:ev.id,schema_version:1 as const,trace_id:ev.trace_id,run_id:ev.run_id,seq:ev.seq,type:ev.type,state:ev.state,stage:ev.stage,payload:runEventPayloadDto(ev.payload),occurred_at:date(ev.occurred_at)}))})));
   const view=(await db.query('SELECT * FROM bb_m4_views WHERE owner_user_id=$1 AND topic_id=$2',[owner,id])).rows[0];
   const templates=(await db.query(`SELECT t.* FROM bb_m4_templates t
     WHERE t.owner_user_id=$1 AND EXISTS (
@@ -470,7 +466,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
     const a=(await db().query(`SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
       JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
       JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id ${artifactNameJoins('v')}
-      WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed'`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};
+      WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2'))`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};
   app.get(`${base}/artifacts/:artifact_id/versions/:artifact_version/preview`,async request=>{const a=await readArtifact(request);return {artifact:artifactDto(a),content:a.preview_content??'此准确版本暂无文本预览，请下载原始 Word 查看。'};});
   app.get(`${base}/artifacts/:artifact_id/versions/:artifact_version/bytes`,async(request,reply)=>{const a=await readArtifact(request);
     const bytes=a.kind==='qa_text'?Buffer.from(a.body_content??'','utf8'):await blobs().getIfExistsBounded(a.object_key,100*1024*1024);

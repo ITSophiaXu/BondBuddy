@@ -14,6 +14,11 @@ from bondbuddy_no_history_word.writer import _canonicalize_docx
 
 DIMENSIONS = {"financial": "财务核对", "compliance": "合规与格式", "public": "公开信息"}
 OUTCOMES = {"pass": "本项通过", "issue": "发现问题", "error": "存在差错", "conflict": "证据冲突", "needs_evidence": "需要补证", "manual": "待人工核对", "uncovered": "未覆盖", "not_applicable": "不适用"}
+REVIEW_COMMENT_AUTHOR = "BondBuddy · 本轮复核"
+SOURCE_COMMENT_AUTHOR = "BondBuddy · 原稿批注"
+COMMENT_ORIGIN_NOTE = ("批注中的“本轮复核”是本次添加的意见；“原稿批注”是上传文件已有的自动批注，"
+                       "保留原日期，不代表本轮已核验。人工批注保留原署名。")
+_GENERATED_COMMENT_AUTHOR = re.compile(r"(?:BondBuddy(?:-[a-f0-9]{12})?|募集书 Cowork|BondBuddy · (?:本轮复核|原稿批注))")
 ANCHOR_REASONS = {
     "no_source_anchor": "未提供可核对的原文位置，需人工确认。",
     "source_anchor_missing": "当前源稿中未找到指定位置，可能存在版本或位置变化，需人工确认。",
@@ -70,12 +75,16 @@ def is_source_only_comment(text):
     return bool(text.strip())
 
 
+def is_generated_comment_author(author):
+    return bool(_GENERATED_COMMENT_AUTHOR.fullmatch(author))
+
+
 def _trim_generated_comment_prefixes(comments):
-    # Retain substantive notes' IDs, authors, dates and runs. Pure provenance
-    # notes from earlier BondBuddy drafts do not belong in the review copy.
+    # Retain substantive notes' IDs, dates and runs, but make their origin clear.
+    # Only known tool identities are normalized; human attribution is untouched.
     removed = []
     for comment in list(comments):
-        if not re.fullmatch(r"BondBuddy(?:-[a-f0-9]{12})?", comment.get(Q("author"), "")):
+        if not is_generated_comment_author(comment.get(Q("author"), "")):
             continue
         nodes = list(comment.iter(Q("t")))
         text = "".join(node.text or "" for node in nodes)
@@ -83,6 +92,8 @@ def _trim_generated_comment_prefixes(comments):
             removed.append(comment)
             comments.remove(comment)
             continue
+        comment.set(Q("author"), SOURCE_COMMENT_AUTHOR)
+        comment.set(Q("initials"), "BB")
         remaining = len(text) - len(strip_comment_location_prefix(text))
         for node in nodes:
             if remaining <= 0:
@@ -270,7 +281,8 @@ def annotate(source, destination, report):
                 para[:] = list(trial)
                 comment = etree.SubElement(comments, Q("comment"))
                 comment.set(Q("id"), str(next_id))
-                comment.set(Q("author"), "BondBuddy")
+                comment.set(Q("author"), REVIEW_COMMENT_AUTHOR)
+                comment.set(Q("initials"), "BB")
                 comment.set(Q("date"), report["created_at"])
                 for line in _comment_text(finding).splitlines():
                     etree.SubElement(comment, Q("p")).append(make_run(line))
@@ -309,6 +321,7 @@ def write_report(destination, report, unanchored):
     document.add_heading("募集书复核报告", 0)
     document.add_paragraph(f"报告 {report['report_id']} · 版本 {report['version']}\n完成时间 {report['created_at']}")
     document.add_paragraph("复核结果用于辅助判断；零发现不保证合规。已修改、异议和补证不等于复核通过。")
+    document.add_paragraph(COMMENT_ORIGIN_NOTE)
     document.add_heading("范围与来源", level=1)
     source = report["source_material"]
     mode = "差异复核（仅重核明确选择的问题）" if report["scope"]["mode"] == "differential_review" else "完整复核"
