@@ -1,0 +1,133 @@
+{
+  "checks": [
+    {
+      "label": "before-1440",
+      "groups": [
+        {
+          "title": "待复核募集书",
+          "primaryTitles": 1,
+          "hint": "上传需要复核的募集书，支持 Word / PDF",
+          "inputs": [
+            {
+              "label": "为待复核募集书选择文件",
+              "accept": ".docx,.pdf"
+            },
+            {
+              "label": "为参考募集书选择文件",
+              "accept": ".docx,.pdf"
+            }
+          ],
+          "subtypes": [
+            "参考募集书"
+          ]
+        },
+        {
+          "title": "审计报告 / 财务报表及附注",
+          "primaryTitles": 1,
+          "hint": "选中文件后立即上传，也可直接拖入文件",
+          "inputs": [
+            {
+              "label": "为审计报告选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            },
+            {
+              "label": "为年度财务报表选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            },
+            {
+              "label": "为最近一期报表选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            },
+            {
+              "label": "为财务附注选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            }
+          ],
+          "subtypes": [
+            "年度财务报表",
+            "最近一期报表",
+            "财务附注"
+          ]
+        },
+        {
+          "title": "其他核验材料",
+          "primaryTitles": 1,
+          "hint": "选中文件后立即上传，也可直接拖入文件",
+          "inputs": [
+            {
+              "label": "为其他证据选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            }
+          ],
+          "subtypes": []
+        }
+      ],
+      "overflow": false
+    },
+    {
+      "label": "before-390",
+      "groups": [
+        {
+          "title": "待复核募集书",
+          "primaryTitles": 1,
+          "hint": "上传需要复核的募集书，支持 Word / PDF",
+          "inputs": [
+            {
+              "label": "为待复核募集书选择文件",
+              "accept": ".docx,.pdf"
+            },
+            {
+              "label": "为参考募集书选择文件",
+              "accept": ".docx,.pdf"
+            }
+          ],
+          "subtypes": [
+            "参考募集书"
+          ]
+        },
+        {
+          "title": "审计报告 / 财务报表及附注",
+          "primaryTitles": 1,
+          "hint": "选中文件后立即上传，也可直接拖入文件",
+          "inputs": [
+            {
+              "label": "为审计报告选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            },
+            {
+              "label": "为年度财务报表选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            },
+            {
+              "label": "为最近一期报表选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            },
+            {
+              "label": "为财务附注选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            }
+          ],
+          "subtypes": [
+            "年度财务报表",
+            "最近一期报表",
+            "财务附注"
+          ]
+        },
+        {
+          "title": "其他核验材料",
+          "primaryTitles": 1,
+          "hint": "选中文件后立即上传，也可直接拖入文件",
+          "inputs": [
+            {
+              "label": "为其他证据选择文件",
+              "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+            }
+          ],
+          "subtypes": []
+        }
+      ],
+      "overflow": false
+    }
+  ],
+  "errors": []
+}
