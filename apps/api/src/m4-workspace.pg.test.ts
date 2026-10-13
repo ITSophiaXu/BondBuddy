@@ -1,3 +1,4 @@
+import {debitAuthoringCredits} from './authoring-credit-debit.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -384,11 +385,11 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     const exec={execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
     assert.equal((await send('POST',path(t,'execute'),exec)).json().code,'CREDITS_INSUFFICIENT');
     await transaction(pool,c=>grantCredits(c,{owner:user,points:4499,key:'synthetic-below-price',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
-    assert.equal((await send('POST',path(t,'execute'),exec)).json().code,'CREDITS_INSUFFICIENT');
+    assert.equal((await send('POST',path(t,'execute'),exec)).statusCode,200,'any positive balance can start');
     assert.equal((await creditBalance(pool,user)).frozen,0);
     await transaction(pool,c=>grantCredits(c,{owner:user,points:1,key:'synthetic-exact-price',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const run=(await ok('POST',path(t,'execute'),exec)).run;assert.equal(run.billing_mode,'fixed_credits');assert.equal((await ok('POST',path(t,'execute'),exec)).run.run_id,run.run_id);
-    assert.equal((await creditBalance(pool,user)).frozen,4500);assert.equal((await creditBalance(pool,user)).available,0);
+    assert.equal((await creditBalance(pool,user)).frozen,0);assert.equal((await creditBalance(pool,user)).available,4500);
     await transaction(pool,c=>grantCredits(c,{owner:user,points:100000,key:'synthetic-fund',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const quote2=await ok('POST',path(t2,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
     assert.equal((await send('POST',path(t2,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote2.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
@@ -528,7 +529,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
       // Exercise database delivery guards independently of supplier reconciliation (the cost is explicitly synthetic).
       await assert.rejects(()=>transaction(pool,async c=>{await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);}),/document and preparation note must be delivered/);
       await transaction(pool,c=>registerM4Artifacts(c,user,r.run_id,[{kind:'preparation_note',artifact_id:note.artifactId,artifact_version:1,filename:'preparation-note.docx',byte_size:noteBytes.length,preview_content:`Synthetic notes ${number}`} ]));
-      await transaction(pool,async c=>{await c.query("UPDATE bb_jobs SET state='succeeded',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[r.run_id]);await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);});
+      await transaction(pool,async c=>{const row=(await c.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[r.run_id])).rows[0];await debitAuthoringCredits(c,row,4500);await c.query("UPDATE bb_jobs SET state='succeeded',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[r.run_id]);await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);});
       await pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[r.run_id]);
       assert.equal(Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[r.run_id])).rows[0].charged_points),4500);
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[r.run_id])).rows[0].n,1);
