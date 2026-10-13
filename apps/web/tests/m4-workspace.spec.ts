@@ -53,6 +53,69 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
 const start=async(page:Page)=>{await page.getByRole('button',{name:'生成募集说明书摘要',exact:true}).click();await expect(page.getByRole('button',{name:'正在提交…',exact:true})).toHaveCount(0);};
 
+test('missing exchange lists the action, focuses the field and only starts after it is filled',async({page})=>{
+  const s=fixture();s.workspace.drafts.private_summary.fields.market='';await mount(page,s);await choose(page,'private_summary');
+  await start(page);const feedback=page.getByRole('alert',{name:'需要补充的信息'});
+  await expect(feedback).toContainText('尚未选择交易所');await expect(feedback).toContainText('再点击“生成募集说明书摘要”');
+  await expect(feedback).not.toContainText('错误编号');expect(s.quotes).toHaveLength(0);expect(s.executions).toHaveLength(0);
+  await feedback.getByRole('button',{name:'选择交易所',exact:true}).click();await expect(page.locator('#m4-market')).toBeFocused();
+  await expect(page.locator('#m4-market')).toHaveAttribute('aria-invalid','true');await page.locator('#m4-market').selectOption('sse');
+  await expect(feedback).toHaveCount(0);await expect(page.locator('#m4-market')).not.toHaveAttribute('aria-invalid','true');
+  await start(page);expect(s.executions).toHaveLength(1);
+});
+
+test('initiation lists all missing fields while switching types removes irrelevant template requirements',async({page})=>{
+  const s=fixture();s.workspace.drafts.init.fields={};await mount(page,s);await choose(page,'init');
+  await page.getByRole('button',{name:'生成立项报告',exact:true}).click();const feedback=page.getByRole('alert',{name:'需要补充的信息'});
+  await expect(feedback.locator('li')).toHaveCount(4);await expect(feedback).toContainText('尚未填写立项券商全称');await expect(feedback).toContainText('尚未提供立项模板');
+  await feedback.getByRole('button',{name:'填写券商全称'}).click();await expect(page.locator('#m4-broker')).toBeFocused();
+  await page.locator('#m4-broker').fill('合成券商');await expect(feedback.locator('li')).toHaveCount(3);
+  await choose(page,'legal');await page.getByRole('button',{name:'生成法律意见书',exact:true}).click();
+  await expect(feedback.locator('li')).toHaveCount(1);await expect(feedback).toContainText('尚未选择本次生成使用的材料');
+  await expect(feedback).not.toContainText('立项模板');expect(s.quotes).toHaveLength(0);expect(s.executions).toHaveLength(0);
+});
+
+test('supplemental-only legal drafts remain eligible',async({page})=>{
+  const s=fixture();s.workspace.drafts.legal.materials=[s.workspace.materials[0]];await mount(page,s);await choose(page,'legal');
+  await page.getByRole('button',{name:'生成法律意见书',exact:true}).click();await expect.poll(()=>s.executions.length).toBe(1);
+});
+
+test('whole-document edit bases remain eligible without re-uploading the source',async({page})=>{
+  const other=fixture();other.workspace.drafts.private_summary.source_material=null;other.workspace.drafts.private_summary.edit_base={source_project_id:other.artifact.source_project_id,artifact_id:other.artifact.artifact_id,artifact_version:1,sha256:other.artifact.sha256};
+  await mount(page,other);await choose(page,'private_summary');await start(page);expect(other.executions).toHaveLength(1);
+});
+
+test('server-reported missing input shows safe field guidance and preserves the draft',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  await page.route('**/quote',route=>reply(route,{code:'INPUT_REQUIRED',correlation_id:'private-id',field_errors:[{field:'market',code:'M4_MARKET_REQUIRED',message:'internal path must stay hidden'}]},422));
+  await start(page);const feedback=page.getByRole('alert',{name:'需要补充的信息'});
+  await expect(feedback).toContainText('尚未选择交易所');await expect(feedback).not.toContainText('private-id');await expect(feedback).not.toContainText('internal path');
+  expect(s.executions).toHaveLength(0);await expect(page.locator('.m4-source-name')).toContainText('来源募集书.docx');
+});
+
+test('material input feedback matches the prototype on desktop and mobile',async({page})=>{
+  const output=resolve('test-evidence/material-input-feedback-20261013');await mkdir(output,{recursive:true});
+  const s=fixture();s.workspace.drafts.legal.fields.market='';s.workspace.drafts.legal.source_material=s.workspace.materials[0];
+  await mount(page,s);await choose(page,'legal');await page.getByRole('button',{name:'生成法律意见书',exact:true}).click();
+  const prototype=await page.context().newPage();
+  await prototype.route('http://prototype.test/**',async route=>{
+    const pathname=new URL(route.request().url()).pathname;
+    const allowed=['/product-prototype/public/material-input-feedback.html','/product-prototype/public/styles.css','/product-prototype/public/material-results.css','/apps/web/src/m4-workspace.css'];
+    if(!allowed.includes(pathname))return route.fulfill({status:404,body:''});
+    return route.fulfill({status:200,contentType:pathname.endsWith('.css')?'text/css':'text/html',body:await readFile(resolve('../..'+pathname))});
+  });
+  await prototype.goto('http://prototype.test/product-prototype/public/material-input-feedback.html');
+  for(const [name,viewport] of [['desktop',{width:1440,height:960}],['mobile',{width:390,height:844}]] as const){
+    await page.setViewportSize(viewport);await prototype.setViewportSize(viewport);
+    await page.locator('#m4-submit-status').scrollIntoViewIfNeeded();await prototype.locator('.m4-input-feedback').scrollIntoViewIfNeeded();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await page.screenshot({path:`${output}/implementation-${name}.png`});await prototype.screenshot({path:`${output}/prototype-${name}.png`});
+    await expect(page.locator('#m4-submit-status')).not.toContainText('错误编号');
+    await expect(page.getByText('材料已保存并加入当前草稿，不会自动开始制作。',{exact:true})).toHaveCount(0);
+  }
+  await prototype.close();
+});
+
 for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`legacy quotation: one click starts and balance drops only after success at ${viewport.width}px`,async({page})=>{
   await page.setViewportSize(viewport);const s=fixture();await mount(page,s);await choose(page,'private_summary');
   const wallet=page.locator(viewport.width>760?'.credit-wallet .wallet-value strong':'.mobile-credit-wallet strong');
@@ -171,6 +234,7 @@ test('replacing the source adopts only saved bytes and restores that exact file 
   await file.setInputFiles({name:material.filename,mimeType:mime,buffer:bytes});
   await expect.poll(()=>s.workspace.drafts.private_summary.source_material?.material_id).toBe(material.material_id);
   await expect(page.locator('.m4-source-file')).toContainText(material.filename);
+  await expect(page.locator('#m4-submit-status')).not.toContainText('材料已保存并加入当前草稿');
   await expect(page.locator('#m4-source')).toHaveCount(0);await expect(page.locator('.m4-source-file details')).toHaveCount(0);
   await page.reload();await expect(page.locator('.m4-source-file')).toContainText(material.filename);
   expect(s.workspace.drafts.private_summary.source_material?.sha256).toBe(material.sha256);

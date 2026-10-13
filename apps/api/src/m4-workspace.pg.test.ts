@@ -23,6 +23,32 @@ const fixedQaConnection=await isolatedTestDatabase(undefined,'m4-fixed-qa');
 const handoffConnection=await isolatedTestDatabase(undefined,'m4-handoff');
 const retentionConnection=await isolatedTestDatabase(undefined,'m4-retention');
 
+test('missing material generation input returns all actionable fields without tasks, quotes or charges', {skip:!connection}, async()=>{
+  const pool=new Pool({connectionString:connection}),user=`input-feedback-${randomUUID()}`;
+  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
+  try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'synthetic_input_feedback']);
+    const created=await send('POST','/api/v1/m4/topics',{creation_request_id:randomUUID(),name:'Synthetic missing input'});
+    assert.equal(created.statusCode,200,created.body);const path=`/api/v1/m4/topics/${created.json().topic.topic_id}`;
+    for(const [type,expected] of [
+      ['legal',['M4_MARKET_REQUIRED','M4_MATERIAL_REQUIRED']],
+      ['private_summary',['M4_MARKET_REQUIRED','M4_SOURCE_REQUIRED']],
+      ['init',['M4_MARKET_REQUIRED','M4_BROKER_REQUIRED','M4_TEMPLATE_REQUIRED','M4_MATERIAL_REQUIRED']],
+    ] as const){
+      const draft=await send('PUT',`${path}/drafts/${type}`,{expected_version:0,input:emptyM4Draft(type)});
+      assert.equal(draft.statusCode,200,draft.body);
+      const rejected=await send('POST',`${path}/quote`,{kind:'document',document_type:type,expected_draft_version:draft.json().draft.version});
+      assert.equal(rejected.statusCode,422,rejected.body);assert.equal(rejected.json().code,'INPUT_REQUIRED');
+      assert.deepEqual(rejected.json().field_errors.map((e:any)=>e.code),expected);
+      assert.ok(rejected.json().field_errors.every((e:any)=>e.message.includes('请')));
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[user])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[user])).rows[0].n,0);
+    assert.deepEqual(await creditBalance(pool,user),{available:0,frozen:0});
+  }finally{await app.close();await pool.end();}
+});
+
 test('synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes',
   {skip:!fixedQaConnection,timeout:90000},async()=>{
   const pool=new Pool({connectionString:fixedQaConnection}),user=`fixed-qa-${randomUUID()}`;
