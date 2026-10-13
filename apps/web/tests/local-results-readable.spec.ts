@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,type APIResponse} from '@playwright/test';
+import type {Dto} from '../src/api';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -16,8 +17,8 @@ test('existing local results open at downloads and preserve both real Word files
   await login(page,{username,password});
   const projects:any[]=[];let cursor:string|null=null;
   do{
-    const response=await page.request.get('/api/v1/projects?limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''));expect(response.ok()).toBe(true);
-    const result=await response.json();projects.push(...result.items);cursor=result.page.has_more?result.page.next_cursor:null;
+    const response:APIResponse=await page.request.get('/api/v1/projects?limit=100'+(cursor?'&cursor='+encodeURIComponent(cursor):''));expect(response.ok()).toBe(true);
+    const result:Dto<'ProjectListResponse'>=await response.json();projects.push(...result.items);cursor=result.page.has_more?result.page.next_cursor:null;
   }while(cursor);
   const completed=projects.filter(p=>p.kind==='update'&&p.latest_run?.state==='succeeded'&&p.latest_artifact);
   const candidates=await Promise.all(completed.map(async p=>({project:p,artifact:await(await page.request.get('/api/v1/artifacts/'+p.latest_artifact.artifact_id)).json()})));
