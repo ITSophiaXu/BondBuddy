@@ -34,6 +34,7 @@ function fixture() {
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
     liveProgress: undefined as Dto<'RunCreditChargeResponse'>['progress'],
     liveActivity: undefined as Dto<'RunEvent'>['payload']['authoring_activity'],
+    publicEvents: [] as Dto<'RunEvent'>[],
     chargeState: 'held' as 'held'|'settled'|'released', chargeFailure:false, frozen:0,
     paid:false,freeClassification:false,points:17900,available:0,priceVersion:'test-v1',
     order:undefined as Dto<'RechargeOrderResponse'>|undefined,
@@ -153,6 +154,10 @@ async function setup(page: Page, state = fixture(), canStart = true) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
         const more = state.paginate && cursor === '0';
         if (state.failEvents) return json(route, 503, { code: 'DATA_UNAVAILABLE' });
+        if(state.publicEvents.length){
+          const pending=state.publicEvents.filter(e=>e.seq>Number(cursor)),items=pending.slice(0,10);
+          return json(route,200,{items,next_cursor:pending.length>items.length?items.at(-1)!.seq:null});
+        }
         if (state.eventHistory.length) return json(route, 200, { items: state.eventHistory.filter(event => event.seq > Number(cursor)).map(event => ({
           event_id: `run-event-${event.seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq: event.seq,
           occurred_at: now, stage: event.stage, type: 'run.state_changed', state: event.state, payload: { reason: event.reason }
@@ -1376,6 +1381,49 @@ test('M2 deferred charge prototype screenshots',async({page})=>{
   await page.setViewportSize({width,height:width===1440?960:844});await page.goto('http://prototype.test/credit-visibility.html?state='+state);
   await page.locator('.quote-area').scrollIntoViewIfNeeded();await page.screenshot({path:join(output!,`prototype-${state}-${width}.png`)});
  }
+});
+
+for(const width of [1440,390])test('model progress summaries survive tool bursts, pagination and reload '+width,async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.runState='running';state.runStage='file_authoring';state.runReason='';
+  state.liveProgress={policy:'authoring_progress_v1',accrued_points:1830,charged_points:0,released_points:0,active_ms:90000,pause_requested:false,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:true};
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewportSize({width,height:width===1440?960:844});await setup(page,state);
+  await page.locator('#execute-input').click();await expect(page.locator('.task-progress-heading')).toContainText('暂未收到模型的具体进度说明');
+  await expect(page.locator('.execution-events li')).toHaveCount(1);
+  const run=[...state.runs.values()][0];
+  const append=(summary?:string,activityState:'started'|'completed'='completed')=>{
+    const seq=++state.eventSeq;
+    state.publicEvents.push({event_id:`progress-${seq}`,schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq,type:'run.progress',state:'running',stage:run.stage,occurred_at:now,
+      payload:{authoring_activity:{activity_id:hash(`activity-${seq}`),code:summary?'write_document':'process_document',state:activityState,...(summary?{summary}:{})}}});
+  };
+  const summary='已完成目录核对，正在更新财务章节。';append(summary,'started');
+  for(let i=0;i<40;i++)append(undefined,i%2?'completed':'started');
+  await expect(page.locator('.task-progress-heading')).toContainText(`最近一次模型进度：${summary}`);
+  await expect(page.locator('.execution-events li')).toHaveCount(3);
+  await expect(page.locator('.execution-events')).not.toContainText('已完成一次');
+  await page.reload();
+  await expect(page.locator('.task-progress-heading')).toContainText(summary);
+  await expect(page.locator('.execution-events li')).toHaveCount(2);
+  await expect(page.locator('.execution-events')).toContainText('处理步骤已返回：处理文档');
+  expect(state.eventPages).toContain(String(state.publicEvents[9].seq));
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;
+  if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#execution-progress').screenshot({path:join(evidence,`summary-implementation-running-${width}.png`)});}
+  state.liveProgress.sampled_at='2026-09-27T12:02:00Z';state.liveProgress.last_activity_at=state.liveProgress.sampled_at;append();
+  await expect(page.locator('.task-progress-heading')).toContainText('暂未收到新的进度说明');
+  await expect(page.locator('.task-progress-heading')).toContainText(summary);
+  if(evidence){await page.locator('#execution-progress').screenshot({path:join(evidence,`summary-implementation-stale-${width}.png`)});
+    const prototype=await page.context().newPage();await prototype.setViewportSize({width,height:width===1440?960:844});
+    await prototype.route('**/authoring-progress-prototype',async route=>route.fulfill({contentType:'text/html',body:await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8')}));
+    await prototype.goto('http://127.0.0.1:5173/authoring-progress-prototype');
+    await prototype.locator('#prototype-progress').screenshot({path:join(evidence,`summary-prototype-running-${width}.png`)});
+    await prototype.getByRole('button',{name:'暂无新摘要',exact:true}).click();
+    await prototype.locator('#prototype-progress').screenshot({path:join(evidence,`summary-prototype-stale-${width}.png`)});await prototype.close();
+  }
+  append('<img src=x onerror=alert(1)>','started');
+  await expect(page.locator('.task-progress-heading')).toContainText('<img src=x onerror=alert(1)>');
+  await expect(page.locator('.task-progress-heading img')).toHaveCount(0);
+  expect(state.executes).toHaveLength(1);expect(errors).toEqual([]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 for(const width of [1440,390])test('live authoring: queue, model activity, growing credits, pause and partial settlement '+width,async({page})=>{
