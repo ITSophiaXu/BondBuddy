@@ -144,6 +144,27 @@ async function login(page: Page, username: string, expectProject = true) {
   }
 }
 
+for (const width of [1440,390]) test(`duplicate feedback: update keeps named notices after mixed uploads at ${width}`, async ({page}) => {
+  await page.setViewportSize({width,height:960});
+  const s=state();await installApi(page,s);await login(page,'owner_a');
+  const input=page.locator('[data-upload-role="audit"]');
+  const original={name:'原审计报告.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic original')};
+  await input.setInputFiles(original);await expect.poll(()=>s.materials.size).toBe(1);
+  await input.setInputFiles([original,{...original,name:'改名的审计报告.pdf'},{...original,name:'新增审计报告.pdf',buffer:Buffer.from('%PDF synthetic new')}]);
+  const notices=page.locator('[data-material-role="audit"] .duplicate-upload-notice');
+  await expect(notices).toHaveCount(2);await expect(notices.first()).toContainText('原审计报告.pdf：重复文件');
+  await expect(notices.last()).toContainText('改名的审计报告.pdf');await expect(notices.last()).toContainText('已保留原文件“原审计报告.pdf”');
+  await expect.poll(()=>s.materials.size).toBe(2);
+  await expect(page.locator('[data-material-role="audit"] .material-file-row')).toHaveCount(2);
+  await page.getByRole('button',{name:'刷新已保存材料'}).click();await expect(notices).toHaveCount(2);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if(process.env.BB_DUPLICATE_EVIDENCE){await page.locator('[data-material-role="audit"]').screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/update-${width}.png`});await page.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/update-page-${width}.png`});}
+  // A matching name is not enough: changed contents and another role remain independent.
+  await input.setInputFiles({...original,buffer:Buffer.from('%PDF different contents')});await expect.poll(()=>s.materials.size).toBe(3);
+  await page.locator('[data-upload-role="other"]').setInputFiles(original);await expect.poll(()=>s.materials.size).toBe(4);
+  await expect(notices).toHaveCount(2);
+});
+
 test('three independent files, 100% remains saving, failed file retry, then owner-scoped relogin recovery', async ({ page }) => {
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));

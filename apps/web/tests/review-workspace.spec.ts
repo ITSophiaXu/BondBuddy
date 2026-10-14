@@ -133,7 +133,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       const uploadId=path.split('/').at(-2)!,index=Number(uploadId.match(/-(\d+)$/)?.[1]??1)-1;
       await state.uploadGates.complete?.(uploadId);
       const materialId='evidence-new'+(index?'-'+(index+1):'');
-      const upload=state.uploads[index];let material=state.workspace.materials.find(m=>m.material_id===materialId);
+      const upload=state.uploads[index];let material=state.workspace.materials.find(m=>m.material_id===materialId || m.sha256===upload.sha256&&m.role===upload.role);
       if(!material){material={...upload,material_id:materialId,material_version:1,upload_id:uploadId,state:'persisted',persisted_at:now,error:null};state.workspace.materials.push(material);}
       if(state.dropUploadOnce){state.dropUploadOnce=false;return route.abort('connectionreset');}return reply(route,200,material);
     }
@@ -593,6 +593,58 @@ for(const viewport of [{width:1360,height:900},{width:390,height:844}])test(`uni
  const output=process.env.BB_WORKSPACE_SCREENSHOTS;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/materials-${viewport.width}.png`,fullPage:true});}
 });
 
+for(const width of [1440,390])test(`duplicate feedback: review cached and renamed receipts remain visible at ${width}`,async({page})=>{
+  await page.setViewportSize({width,height:960});const s=fixture();
+  await setup(page,s,`#/projects/${id}/review?tab=materials`);
+  const input=page.locator('[data-review-upload-role="audit"]'),zone=page.locator('[data-review-drop="audit"]');
+  const file={name:'合成补充审计.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic duplicate evidence')};
+  await input.setInputFiles(file);await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);
+  await expect.poll(()=>s.workspace.materials.length).toBe(3);
+  await input.setInputFiles([file,{...file,name:'重命名补充审计.txt'},{...file,name:'新材料.txt',buffer:Buffer.from('Synthetic new evidence')}]);
+  await expect(zone.locator('.duplicate-upload-notice')).toHaveCount(2);
+  await expect(zone.locator('.duplicate-upload-notice').last()).toContainText('已保留原文件“合成补充审计.txt”');
+  await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);expect(s.workspace.materials).toHaveLength(4);
+  expect(new Set(s.workspace.draft.material_versions.map(m=>m.material_id)).size).toBe(s.workspace.draft.material_versions.length);
+  await page.getByRole('tab',{name:/复核结果/}).click();await page.getByRole('tab',{name:/材料与要求/}).click();
+  await expect(zone.locator('.duplicate-upload-notice')).toHaveCount(2);
+  if(process.env.BB_DUPLICATE_EVIDENCE){await zone.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/review-${width}.png`});await page.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/review-page-${width}.png`});}
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(s.executes).toHaveLength(0);
+  await page.reload();await input.setInputFiles(file);await expect(zone.locator('.duplicate-upload-notice')).toHaveCount(1);expect(s.workspace.materials).toHaveLength(4);
+});
+
+test('duplicate feedback: evidence dialog names reused material while preserving the finding link',async({page})=>{
+  const s=fixture(),bytes='Synthetic existing evidence';
+  s.workspace.materials.push({...s.workspace.materials[1],material_id:'existing-evidence',upload_id:'existing-upload',role:'other',filename:'既有证据.txt',sha256:hash(bytes),media_type:'text/plain',byte_size:Buffer.byteLength(bytes)});
+  await setup(page,s);await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();
+  await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'证据副本.txt',mimeType:'text/plain',buffer:Buffer.from(bytes)});
+  await page.getByRole('button',{name:'上传并保存'}).click();
+  await expect(page.getByRole('dialog').locator('.duplicate-upload-notice')).toContainText('证据副本.txt：重复文件');
+  await expect(page.getByRole('dialog')).toContainText('已保留原文件“既有证据.txt”');
+  expect(s.workspace.materials).toHaveLength(3);expect(s.workspace.draft.evidence_links?.[0]).toMatchObject({finding_id:'F02',material_ref:{material_id:'existing-evidence'}});expect(s.executes).toHaveLength(0);
+});
+
+test('duplicate feedback: selecting an in-flight file twice retains a named notice after completion',async({page})=>{
+  const s=fixture();let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);s.uploadGates.bytes=()=>gate;
+  await setup(page,s,`#/projects/${id}/review?tab=materials`);
+  const input=page.locator('[data-review-upload-role="audit"]');
+  const select=()=>input.evaluate(el=>{const transfer=new DataTransfer();transfer.items.add(new File(['Synthetic queued evidence'],'队列重复文件.txt',{type:'text/plain',lastModified:123456}));(el as HTMLInputElement).files=transfer.files;el.dispatchEvent(new Event('change',{bubbles:true}));});
+  await select();await expect.poll(()=>s.uploadBytes).toBe(1);await select();
+  await expect(page.locator('#review-status')).toContainText('队列重复文件.txt：已在上传队列中');release();
+  await expect(page.locator('[data-review-drop="audit"] .duplicate-upload-notice')).toContainText('队列重复文件.txt：重复文件');
+  expect(s.uploads).toHaveLength(1);expect(s.workspace.materials).toHaveLength(3);
+});
+
+test('duplicate feedback: cached duplicate retains its notice when saving the draft needs a retry',async({page})=>{
+ const s=fixture();await setup(page,s,`#/projects/${id}/review?tab=materials`);
+ const input=page.locator('[data-review-upload-role="audit"]'),zone=page.locator('[data-review-drop="audit"]');
+ const file={name:'重复草稿材料.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic draft retry duplicate')};
+ await input.setInputFiles(file);await expect.poll(()=>s.workspace.materials.length).toBe(3);await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);
+ s.failDrafts=true;await input.setInputFiles(file);await expect(zone.getByRole('button',{name:'重试此文件'})).toBeVisible();
+ s.failDrafts=false;await zone.getByRole('button',{name:'重试此文件'}).click();
+ await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);await expect(zone.locator('.duplicate-upload-notice')).toContainText('重复草稿材料.txt：重复文件');
+ expect(s.uploadBytes).toBe(1);expect(s.workspace.materials).toHaveLength(3);
+});
+
 test('direct upload retries saved bytes without a modal or duplicate upload',async({page})=>{
  const state=fixture();state.dropUploadOnce=true;
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
@@ -600,6 +652,7 @@ test('direct upload retries saved bytes without a modal or duplicate upload',asy
  await expect(page.getByRole('button',{name:'重试此文件'})).toBeVisible();expect(state.uploadBytes).toBe(1);
  await page.getByRole('button',{name:'重试此文件'}).click();await expect(page.getByRole('button',{name:'重试此文件'})).toHaveCount(0);
  expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.executes).toHaveLength(0);
+ await expect(page.locator('.duplicate-upload-notice')).toHaveCount(0);
  await expect.poll(()=>state.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(true);
 });
 
