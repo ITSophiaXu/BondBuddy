@@ -28,11 +28,12 @@ export async function lockUnifiedAuthoring(project: { market: Market | null; off
 }
 
 /** Shared source selection; callers persist the returned bytes in their input snapshot. */
-export async function loadAuthoringKnowledge(project: { market: Market | null; offering: Offering | null }) {
+export async function loadAuthoringKnowledge(project: { market: Market | null; offering: Offering | null }, purpose: 'authoring' | 'review' = 'authoring') {
   const knowledge: { path: string; sha256: string; markdown: string }[] = [];
   if (project.market && project.offering && isMarketOffering(project.market, project.offering)) {
     const paths = project.market === 'nafmii'
-      ? ['knowledge/nafmii/APPLICABILITY.md', ...(['ppn', 'dfi'].includes(project.offering!) ? [`knowledge/nafmii/drafts/${project.offering}/README.md`] : [])]
+      ? ['knowledge/nafmii/APPLICABILITY.md', ...(['ppn', 'dfi'].includes(project.offering!) ? [`knowledge/nafmii/drafts/${project.offering}/README.md`] : []),
+        ...(project.offering === 'ppn' && purpose === 'authoring' ? ['knowledge/nafmii/drafts/ppn/writing-20261013/writing-framework.md'] : [])]
       : [`knowledge/exchange-bonds/drafts/${project.market}-${project.offering}/README.md`, 'knowledge/exchange-bonds/共通方法与差异.md', 'knowledge/exchange-bonds/冲突与未覆盖项.md'];
     for (const path of paths) {
       const markdown = await readFile(resolve(repo, path), 'utf8');
