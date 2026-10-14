@@ -8,7 +8,7 @@ import { loadAuthoringKnowledge } from './unified-authoring.js';
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
 /** Snapshot reference bytes at submission, so deployment cannot change an accepted task. */
 export async function lockReviewFileDelivery(project: { market: Market | null; offering: Offering | null }): Promise<ReviewFileDeliveryPin> {
-  const knowledge = await loadAuthoringKnowledge(project);
+  const knowledge = await loadAuthoringKnowledge(project, 'review');
   const paths = ['knowledge/audit-reconciliation/METHODS.md'];
   if (project.market && project.offering && project.market !== 'nafmii' && isMarketOffering(project.market, project.offering))
     paths.push(`product-prototype/knowledge/${project.market}-${project.offering}-review.md`);

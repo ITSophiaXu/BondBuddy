@@ -7,7 +7,25 @@ export function authoringEventLabel(event:RunEvent):string|null{
   if(!a)return null;
   if(a.summary)return a.summary;
   const label=AUTHORING_ACTIVITY_LABELS[a.code];
-  return a.state==='failed'?label.replace('正在','本次未完成：'):a.state==='completed'?label.replace('正在','已完成一次：'):label;
+  return a.state==='failed'?label.replace('正在','本次处理未完成：'):a.state==='completed'?label.replace('正在','处理步骤已返回：'):label;
+}
+/** Keep public summaries separately from noisy tool events, including across paginated reloads. */
+export function retainAuthoringEvents(events:RunEvent[]):RunEvent[]{
+  const summaries=events.filter(e=>e.payload.authoring_activity?.summary).slice(-12);
+  const important=events.filter(e=>!e.payload.authoring_activity||e.payload.authoring_activity.state==='failed').slice(-12);
+  return [...new Map([...summaries,...important,...events.slice(-12)].map(e=>[e.event_id,e])).values()].sort((a,b)=>a.seq-b.seq);
+}
+function observedEvents(run:Run,events:RunEvent[]):RunEvent[]{
+  return events.filter(e=>e.run_id===run.run_id&&e.seq<=(run.event_cursor??Infinity)).sort((a,b)=>a.seq-b.seq);
+}
+/** Reserve history for model summaries and lifecycle/failure events; ordinary operations share one row. */
+export function authoringVisibleEvents(run:Run,events:RunEvent[]):RunEvent[]{
+  const observed=observedEvents(run,events);
+  const important=observed.filter(e=>!e.payload.authoring_activity||e.payload.authoring_activity.summary||e.payload.authoring_activity.state==='failed');
+  const last=observed.at(-1);
+  const activity=last?.payload.authoring_activity;
+  const trailingOperation=last&&activity&&!activity.summary&&activity.state!=='failed'&&last.seq>(important.at(-1)?.seq??-1)?last:undefined;
+  return trailingOperation?[...important.slice(-5),trailingOperation]:important.slice(-6);
 }
 export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   if(ended(run))return undefined;
@@ -20,13 +38,21 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
       summary:(p?.queue_ahead?('前方有 '+p.queue_ahead+' 个同类任务。'):'正在等待执行服务接单。')+(p?'已排队 '+elapsedLabel(waiting)+'。':'')+'排队期间不消耗积分。',phase:0 as const};
   }
   if(run.state!=='running')return undefined;
-  const last=events.slice().reverse().find(e=>e.payload.authoring_activity&&e.stage===run.stage);
+  const observed=observedEvents(run,events);
+  const boundary=observed.map(e=>e.stage!==run.stage||e.state!=='running'||e.payload.reason==='user_resumed'||e.payload.reason==='credits_recharged').lastIndexOf(true);
+  const current=observed.slice(boundary+1).reverse();
+  const last=current.find(e=>e.payload.authoring_activity);
   const a=last?.payload.authoring_activity;
+  const reported=current.find(e=>e.payload.authoring_activity?.summary);
+  const report=reported?.payload.authoring_activity;
   const fallback=run.stage==='claimed'||run.stage==='input_lock'?'正在准备本次任务':run.stage==='materials_ready'?'正在读取本次材料':run.stage?.includes('word_delivery')?'正在保存 Word 文件并准备下载':'正在编制募集书';
-  const stale=p&&(p.last_activity_at?Date.parse(p.sampled_at)-Date.parse(p.last_activity_at)>=60000:p.active_ms>=60000);
-  const title=a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
-  const summary=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':stale?'模型仍在处理，暂未返回新的状态；收到新状态后会自动展示。':a?.state==='failed'?'本次处理遇到问题，正在等待后续状态。':a?.state==='completed'?'已收到模型本次处理结果，正在继续后续工作。':'状态随模型处理自动更新。';
-  return {title,summary:a?.summary ? a.summary+' '+summary : summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
+  // Tool activity cannot refresh the age of a model's public progress sentence.
+  const stale=!!(reported&&p&&Date.parse(p.sampled_at)-Date.parse(reported.occurred_at)>=60000);
+  const failed=a?.state==='failed';
+  const title=failed?'本次处理遇到问题':report?AUTHORING_ACTIVITY_LABELS[report.code]:a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
+  const notice=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':failed?'本次处理未完成，正在等待后续状态。':!report?'暂未收到模型的具体进度说明；收到后会自动显示。':stale?'暂未收到新的进度说明；收到后会自动更新。':'';
+  const summary=report?.summary?`最近一次模型进度：${report.summary}${notice?' '+notice:''}`:notice;
+  return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }
 export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:number;state:string},error=false):string{
   if(run.billing_mode!=='fixed_credits')return '<p class="task-credit-receipt">本次任务按提交时的试用规则执行，不扣积分。</p>';
