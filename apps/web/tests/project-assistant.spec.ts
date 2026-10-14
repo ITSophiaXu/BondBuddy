@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const evidenceDir=fileURLToPath(new URL('../test-evidence/assistant-refined/',import.meta.url));
 import { createHash } from 'node:crypto';
+import { duplicateUploadFixture } from './duplicate-upload-fixture';
 const now='2026-10-08T10:00:00Z',hash='a'.repeat(64);
 function fixture(){return {topic:{topic_id:'topic',project_id:'scope',source_project_id:null,name:'项目助手',surface:'assistant',created_at:now,updated_at:now},
  project:{project_id:'scope',kind:'qa',name:'项目助手',draft_revision:1},materials:[],material_details:[],drafts:{},templates:[],messages:[] as any[],tasks:[],artifacts:[],pending_requirements:[],active_run:null,
@@ -40,6 +41,24 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
+test('duplicate feedback: assistant attachments identify renamed duplicates without another material',async({page})=>{
+ const s=await setup(page);await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ await expect(page.locator('[data-composer]')).toBeEnabled();
+ const receipts=await duplicateUploadFixture(page,m=>{
+   if(!s.w.materials.some((p:any)=>p.material_id===m.material_id)){const pin={source_project_id:'scope',material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};s.w.materials.push(pin);s.w.material_details.push({...pin,...m});}
+ });
+ const picker=page.locator('.ba-composer [data-file]'),file={name:'合成助手附件.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic assistant attachment')};
+ const nativeInput=await picker.elementHandle();
+ await picker.setInputFiles(file);await expect(page.locator('[data-uploads]')).toContainText('已保存');
+ await picker.setInputFiles({...file,name:'合成助手附件副本.txt'});
+ const notice=page.locator('[data-uploads] .duplicate-upload-notice');await expect(notice).toHaveCount(1);
+ await expect(notice).toContainText('合成助手附件副本.txt：重复文件');await expect(notice).toContainText('已保留原文件“合成助手附件.txt”');
+ expect(receipts.materials).toHaveLength(1);expect(s.w.materials).toHaveLength(1);expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
+ await expect(page.locator('[data-composer]')).toBeEnabled();expect(await nativeInput!.evaluate(el=>el.isConnected)).toBe(true);
+ await page.getByRole('button',{name:'收起助手',exact:true}).click();await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(notice).toHaveCount(1);
+ if(process.env.BB_DUPLICATE_EVIDENCE)await notice.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/assistant.png`});
+});
+
 test('mobile assistant keeps focus inside and restores navigation and logout after closing',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const s=await setup(page);let logouts=0;

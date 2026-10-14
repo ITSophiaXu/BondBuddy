@@ -1,3 +1,4 @@
+import { duplicateUploadMessage, isReusedUpload } from './duplicate-upload';
 import { artifactFilename } from './artifact-download';
 import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
   sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
@@ -290,7 +291,7 @@ export class ProjectAssistant {
       u.session??=await this.api.createUpload(u.project,{filename:u.file.name,media_type:mime,byte_size:u.file.size,sha256:u.hash,role:u.role},this.controller.signal);
       if(!u.bytesSaved){await this.api.uploadBytes(u.session.upload_url,u.file,(n,total)=>state(`上传 ${Math.round(n/total*100)}%`),this.controller.signal);u.bytesSaved=true;}
       state('正在确认保存');u.material??=await this.api.completeUpload(u.project,u.session.upload_id,{byte_size:u.file.size,sha256:u.hash},this.controller.signal);
-      await this.m4.material(u.topic,pin(u.project,u.material));state('已保存');
+      await this.m4.material(u.topic,pin(u.project,u.material));state(isReusedUpload(u.material,u.session)?duplicateUploadMessage(u.file.name,u.material.filename):'已保存');
     }catch(e){u.error=assistantError(e);state('上传未完成');throw e;}
   }
   private addFiles(files:File[],role:Upload['role']){
@@ -338,7 +339,7 @@ export class ProjectAssistant {
     if(el.matches('[data-primary-source]')){this.view.unsent_context.source_material=this.workspace?.materials.find(m=>m.material_id===el.value)??null;this.invalidateTask();return;}
     if(el.matches('[data-project-select]')){const id=el.value;if(id)await this.work(async()=>{this.projects=[];await this.newConversation(id);});return;}
     if(el.matches('[data-template]')){this.view.assistant!.template_key=el.value;this.invalidateTask();return;}
-    if(el.matches('[data-template-upload]')){const file=el.files?.[0];if(file)await this.work(async()=>{if(!this.action?.fields.broker)throw new AssistantInputError('请先填写模板所属券商。');const u:Upload={id:crypto.randomUUID(),topic:this.workspace!.topic.topic_id,started:true,file,role:'other',project:this.workspace!.topic.project_id,status:'等待上传'};this.uploads.push(u);await this.upload(u);const {template}=await this.m4.template({creation_request_id:u.id,name:file.name,broker:this.action.fields.broker,document_type:'init',material:pin(u.project,u.material!),market:this.action.fields.market as 'sse'|'szse'});this.view.assistant!.template_key=`${template.template_id}/${template.template_version}`;this.changed();await this.flush();await this.poll();});return;}
+    if(el.matches('[data-template-upload]')){const file=el.files?.[0];el.value='';if(file)await this.work(async()=>{if(!this.action?.fields.broker)throw new AssistantInputError('请先填写模板所属券商。');const u:Upload={id:crypto.randomUUID(),topic:this.workspace!.topic.topic_id,started:true,file,role:'other',project:this.workspace!.topic.project_id,status:'等待上传'};this.uploads.push(u);await this.upload(u);const {template}=await this.m4.template({creation_request_id:u.id,name:file.name,broker:this.action.fields.broker,document_type:'init',material:pin(u.project,u.material!),market:this.action.fields.market as 'sse'|'szse'});this.view.assistant!.template_key=`${template.template_id}/${template.template_version}`;this.changed();await this.flush();await this.poll();});return;}
     if(el.matches('[data-file]')){const files=Array.from(el.files??[]);el.value='';if(files.length)this.addFiles(files,el.dataset.file as Upload['role']);return;}
     if(el.matches('[data-baseline]')){this.view.unsent_context.reading_artifact=this.data?.results.find(r=>r.pin.artifact_id===el.value)?.pin??null;this.qaQuote=undefined;this.invalidateTask();return;}
     if(el.matches('[data-year],[data-quarter]')&&this.action){const year=this.host.querySelector<HTMLSelectElement>('[data-year]')!.value,q=this.host.querySelector<HTMLSelectElement>('[data-quarter]')!.value;const date=quarterCutoff(year,q);if(date)this.action.fields.reporting_cutoff=date;this.invalidateTask();}
@@ -385,7 +386,7 @@ export class ProjectAssistant {
     }catch{/* project result remains available for a fresh authorized read */}
   }
   private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
-    const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>`<div>${esc(u.file.name)} · ${esc(u.status)}${u.error?`<p>${esc(u.error)}</p><button data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button><button data-a="remove-upload" data-id="${esc(u.id)}">移除</button>`:''}</div>`).join('');
+    const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>`<div role="status" class="${!u.error&&u.material&&isReusedUpload(u.material,u.session)?'duplicate-upload-notice':''}">${!u.error&&u.material&&isReusedUpload(u.material,u.session)?'':esc(u.file.name)+' · '}${esc(u.status)}${u.error?`<p>${esc(u.error)}</p><button data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button><button data-a="remove-upload" data-id="${esc(u.id)}">移除</button>`:''}</div>`).join('');
     const quote=this.host.querySelector<HTMLElement>('[data-qa-price]');if(quote){const q=this.qaQuote?.value.quote;
       quote.textContent=q?.points?(q.billing_method==='fixed'?`本次回答 ${q.points.toLocaleString()} 积分，回答成功后扣费，失败不扣费。再次点击发送确认。`:`本次回答最多 ${q.points.toLocaleString()} 积分，按实际用量结算。再次点击发送确认。`):'';}
     const send=this.host.querySelector<HTMLButtonElement>('[data-a="send"]');if(send)send.disabled=this.busy||!this.workspace||!this.text.trim();
@@ -393,6 +394,10 @@ export class ProjectAssistant {
   private sizeComposer(){const input=this.host.querySelector<HTMLTextAreaElement>('[data-composer]');if(input){input.style.height='auto';input.style.height=`${Math.min(160,input.scrollHeight)}px`;}}
   private paint(){
     if(!this.live)return;
+    const uploadContext=`${this.workspace?.topic.topic_id??''}:${this.data?.project.project_id??this.workspace?.topic.project_id??''}`;
+    const pickerKey=(input:HTMLInputElement)=>`${input.closest('.ba-composer')?'composer':'form'}:${input.dataset.file??'template'}`;
+    const pickers=new Map([...this.host.querySelectorAll<HTMLInputElement>('input[type="file"]')]
+      .filter(input=>input.dataset.uploadContext===uploadContext).map(input=>[pickerKey(input),input]));
     this.host.hidden=!this.open;this.paintDock();
     this.host.classList.toggle('ba-wide',this.wide);this.host.classList.toggle('ba-open',this.open);
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
@@ -405,6 +410,12 @@ export class ProjectAssistant {
       ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
       ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
       <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
+    // Keep the selected native input alive while upload completion redraws the panel.
+    // Only reuse it within the same conversation/project, never across contexts.
+    for(const fresh of this.host.querySelectorAll<HTMLInputElement>('input[type="file"]')){
+      const old=pickers.get(pickerKey(fresh));
+      if(old)fresh.replaceWith(old);else fresh.dataset.uploadContext=uploadContext;
+    }
     this.syncLayout();
     if(this.open){this.paintTimeline();this.paintStatus();this.sizeComposer();
       if(this.busy)this.host.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('.ba-form input:not([type=file]),.ba-form select,.ba-form textarea').forEach(el=>el.disabled=true);
