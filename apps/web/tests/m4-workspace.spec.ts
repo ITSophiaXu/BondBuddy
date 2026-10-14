@@ -2,6 +2,7 @@ import { test,expect,type Page,type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { duplicateUploadFixture } from './duplicate-upload-fixture';
 import { Value } from '@sinclair/typebox/value';
 import { M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
   type M4Workspace,type M4DocumentType,type M4Draft,type M4Artifact,type M4Task,type M4MessageRequest,type M4ExecuteRequest,type M4QuoteRequest,type Run } from '@bondbuddy/contracts';
@@ -52,6 +53,25 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
 
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
 const start=async(page:Page)=>{await page.getByRole('button',{name:'生成募集说明书摘要',exact:true}).click();await expect(page.getByRole('button',{name:'正在提交…',exact:true})).toHaveCount(0);};
+
+for(const purpose of ['source','material'] as const)test(`duplicate feedback: material generation ${purpose} keeps the original and explains reuse`,async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  const receipts=await duplicateUploadFixture(page,m=>{
+    const pin={source_project_id:'m4-project',material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};
+    if(!s.workspace.materials.some(p=>p.material_id===m.material_id)){s.workspace.materials.push(pin);s.workspace.material_details!.push({...pin,filename:m.filename,state:m.state,media_type:m.media_type});}
+  });
+  const picker=page.locator(`[data-m4-upload="${purpose}"]`),file={name:'合成材料.docx',mimeType:mime,buffer:Buffer.from('Synthetic repeated material')};
+  await picker.setInputFiles(file);await expect.poll(()=>s.workspace.materials.length).toBe(2);
+  await expect(page.locator('.m4-status').filter({hasText:'正在'})).toHaveCount(0);
+  await picker.setInputFiles({...file,name:'合成材料副本.docx'});
+  const notice=page.locator('.duplicate-upload-notice');await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText('合成材料副本.docx：重复文件，已存在，未重复添加');await expect(notice).toContainText('已保留原文件“合成材料.docx”');
+  expect(receipts.materials).toHaveLength(1);expect(s.workspace.materials).toHaveLength(2);
+  if(purpose==='source')await expect(page.locator('.m4-source-file')).toContainText('合成材料.docx');
+  else expect(s.workspace.drafts.private_summary.materials).toHaveLength(1);
+  expect(s.executions).toHaveLength(0);expect(s.messages).toHaveLength(0);
+  if(process.env.BB_DUPLICATE_EVIDENCE)await notice.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/material-${purpose}.png`});
+});
 
 test('missing exchange lists the action, focuses the field and only starts after it is filled',async({page})=>{
   const s=fixture();s.workspace.drafts.private_summary.fields.market='';await mount(page,s);await choose(page,'private_summary');

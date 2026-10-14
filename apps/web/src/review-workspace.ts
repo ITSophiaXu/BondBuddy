@@ -1,3 +1,4 @@
+import { duplicateUploadMessage, duplicateUploadNotices, isReusedUpload, type DuplicateUploadNotice } from './duplicate-upload';
 import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewDraftInputSchema, ReviewExecutionRequestSchema,
   type ReviewWorkspace as Workspace, type ReviewContext, type ReviewDraftInput, type ReviewExecutionRequest,
   ReviewProposalAdoptionRequestSchema, type ReviewMaterialPin, type ReviewFinding, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal, type ReviewPlanRequest, type Run, type Market, type Offering } from '@bondbuddy/contracts';
@@ -23,7 +24,7 @@ import './review-workspace.css';
 import { reviewScope, reviewRuleScope } from './review-scope';
 
 type Operation = ReviewExecutionRequest['operation'];
-type UploadRow = {file:File;role:Dto<'MaterialResponse'>['role'];state:string;error:boolean;target?:ReviewContext;material?:Dto<'MaterialResponse'>};
+type UploadRow = {file:File;role:Dto<'MaterialResponse'>['role'];state:string;error:boolean;target?:ReviewContext;material?:Dto<'MaterialResponse'>;duplicateSelection?:boolean;reused?:boolean};
 const operationLabels: Record<Operation, string> = {full_review:'完整三维复核',differential_review:'差异复核',revision:'按已选问题修订'};
 const materialPin = (material: Dto<'MaterialResponse'>): ReviewMaterialPin => ({material_id:material.material_id,material_version:material.material_version,sha256:material.sha256});
 const sameMaterial = (a: ReviewMaterialPin, b: ReviewMaterialPin) => a.material_id===b.material_id&&a.material_version===b.material_version&&a.sha256===b.sha256;
@@ -38,6 +39,7 @@ export class ReviewWorkspace {
   private fromList = projectListContext();
   private deletingMaterial?: string;
   private uploadRows = new Map<string,UploadRow>();
+  private duplicateUploads = new Map<string,DuplicateUploadNotice>();
   private uploadQueue: {key:string;row:UploadRow;done:(saved:boolean)=>void}[] = [];
   private workspace?: Workspace;
   private page?: HTMLElement;
@@ -308,7 +310,7 @@ export class ReviewWorkspace {
     const pendingMaterialIds=new Set([...this.uploadRows.values()].flatMap(row=>row.material?[row.material.material_id]:[]));
     const groups=[{title:'待复核募集书',roles:['historical','reference'],primary:'historical'}, {title:'审计报告 / 财务报表及附注',roles:['audit','financial','interimFinancial','notes'],primary:'audit'}, {title:'其他核验材料',roles:Object.keys(roleLabels).filter(r=>!['historical','reference','audit','financial','interimFinancial','notes'].includes(r)),primary:'other'}];
     const fileRow=(m:Dto<'MaterialResponse'>)=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(m.filename)}</strong><span>${esc(roleLabels[m.role]??'其他材料')} · ${(m.byte_size/1024).toFixed(1)} KB</span><p class="material-file-status">已保存</p></div><div class="material-file-actions"><button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(m.material_id)}" aria-label="删除 ${esc(m.filename)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>${this.deletingMaterial===m.material_id?'正在删除…':'删除'}</button></div></li>`;
-    const role=(r:string,showTitle=true)=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div>${showTitle?`<strong>${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}</strong>`:''}<span>${r==='historical'?'上传需要复核的募集书，支持 Word / PDF':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" multiple accept="${r==='historical'||r==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${materials.filter(m=>m.role===r&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>row.role===r).map(([key,row])=>`<li class="material-file-row" data-review-upload-key="${esc(key)}"><div class="material-file-main"><strong>${esc(row.file.name)}</strong><p class="material-file-status ${row.error?'material-file-error':''}" role="status">${esc(row.state)}</p></div>${row.error?`<div class="material-file-actions"><button class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}">重试此文件</button>${row.material?`<button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(row.material.material_id)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>删除</button>`:``}${!row.material?`<button class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}">移除此行</button>`:''}</div>`:''}</li>`).join('')}</ul></li>`;
+    const role=(r:string,showTitle=true)=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div>${showTitle?`<strong>${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}</strong>`:''}<span>${r==='historical'?'上传需要复核的募集书，支持 Word / PDF':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" multiple accept="${r==='historical'||r==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${materials.filter(m=>m.role===r&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>row.role===r).map(([key,row])=>`<li class="material-file-row" data-review-upload-key="${esc(key)}"><div class="material-file-main"><strong>${esc(row.file.name)}</strong><p class="material-file-status ${row.error?'material-file-error':''}" role="status">${esc(row.state)}</p></div>${row.error?`<div class="material-file-actions"><button class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}">重试此文件</button>${row.material?`<button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(row.material.material_id)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>删除</button>`:``}${!row.material?`<button class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}">移除此行</button>`:''}</div>`:''}</li>`).join('')}${duplicateUploadNotices([...this.duplicateUploads.values()].filter(n=>n.material.role===r))}</ul></li>`;
     if(!host.querySelector('#review-upload-groups'))host.innerHTML='<div id="review-materials-before"></div><div id="review-upload-groups"></div><div id="review-materials-after"></div>';
     host.querySelector('#review-materials-before')!.innerHTML=`${this.projectInfo()}${this.inputConflictVersion!==undefined?'<div class="review-notice error">其他页面已修改材料与要求，本页内容已保留。<button class="text-btn" data-review-action="reload-input">采用服务器版本</button><button class="text-btn" data-review-action="adopt-local-input">核对本页内容</button></div>':''}<div class="panel-heading materials-heading"><div><h2>提供复核材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。上传过程中可继续添加文件。</p></div></div><p class="review-upload-summary" role="status">${esc(uploadNotice)}</p>${running?'<p class="review-muted">当前任务使用的材料已锁定；请先停止任务，停止完成后可删除误传文件并重新上传。</p>':''}`;
     const groupsHost=host.querySelector('#review-upload-groups')!;
@@ -645,6 +647,7 @@ export class ReviewWorkspace {
       if(this.draftInput.source_material_ref?.material_id===id)this.draftInput.source_material_ref=null;
       if(this.draftInput.evidence_links)this.draftInput.evidence_links=this.draftInput.evidence_links.filter(link=>link.material_ref.material_id!==id);
       for(const [key,row] of this.uploadRows)if(row.material?.material_id===id)this.uploadRows.delete(key);
+      for(const [key,notice] of this.duplicateUploads)if(notice.material.material_id===id)this.duplicateUploads.delete(key);
       for(const [key,attempt] of this.uploadAttempts)if(attempt.material?.material_id===id)this.uploadAttempts.delete(key);
       this.inputDirty=true;this.cacheInput();this.renderMaterials();
       if(await this.saveInput())this.message('材料已删除，可以重新上传正确文件。');
@@ -657,22 +660,28 @@ export class ReviewWorkspace {
     if(!this.workspace||!this.draftInput||!this.live())return;
     const dialog=this.dialog?.open?this.dialog:undefined;
     const pending:Promise<boolean>[]=[];
+    const batchKeys:string[]=[];
+    const queuedNames:string[]=[];
     for(const file of files){
       const key=JSON.stringify([file.name,role,file.size,file.lastModified,target?.report_id,target?.finding_ids]);
+      batchKeys.push(key);
       const existing=this.uploadRows.get(key);
-      if(existing&&!existing.error)continue;
-      const row:UploadRow={file,role,target,material:existing?.material,state:'等待上传…',error:false};
+      if(existing&&!existing.error){existing.duplicateSelection=true;queuedNames.push(file.name);continue;}
+      const row:UploadRow={file,role,target,material:existing?.material,duplicateSelection:existing?.duplicateSelection,reused:existing?.reused,state:'等待上传…',error:false};
       this.uploadRows.set(key,row);
       pending.push(new Promise<boolean>(done=>this.uploadQueue.push({key,row,done})));
     }
-    if(!pending.length){this.message('这些文件已在上传队列中，无需重复选择。');return;}
-    this.message('文件已加入队列，可继续选择其他材料。请保持页面打开，等待保存完成。');
+    const queuedNotice=queuedNames.length?`${queuedNames.join('、')}：已在上传队列中，无需重复选择。`:'';
+    if(!pending.length){this.message(queuedNotice);this.dialogStatus(queuedNotice);this.renderMaterials();return;}
+    this.message(`${queuedNotice}文件已加入队列，可继续选择其他材料。请保持页面打开，等待保存完成。`);
     void this.drainUploads();
     this.renderMaterials();
     const saved=await Promise.all(pending);
     if(!this.live()||saved.some(value=>!value))return;
+    const duplicates=[...new Set(batchKeys)].flatMap(key=>{const notice=this.duplicateUploads.get(key);return notice?[notice]:[];});
+    if(duplicates.length)this.message(duplicates.map(n=>duplicateUploadMessage(n.filename,n.material.filename)).join('\n'));
     if(dialog&&this.dialog===dialog)dialog.close();
-    if(target?.report_id&&!this.uploading)this.openDialog('材料已补充，核对下一步',`<p>原补证对象：<strong>${esc(target.report_id)} · ${target.finding_ids.map(esc).join('、')}</strong></p><p>新材料用于下一轮。只重核已列问题；未触及问题仍沿用原结果。</p>`,[{label:'核对并重新核验',primary:true,action:async()=>{this.dialog?.close();await this.previewExecution('differential_review',target.report_id,target.finding_ids);}}]);
+    if(target?.report_id&&!this.uploading)this.openDialog('材料已补充，核对下一步',`<ul class="duplicate-upload-notices">${duplicateUploadNotices(duplicates)}</ul><p>原补证对象：<strong>${esc(target.report_id)} · ${target.finding_ids.map(esc).join('、')}</strong></p><p>所选材料用于下一轮。只重核已列问题；未触及问题仍沿用原结果。</p>`,[{label:'核对并重新核验',primary:true,action:async()=>{this.dialog?.close();await this.previewExecution('differential_review',target.report_id,target.finding_ids);}}]);
   }
   private async drainUploads(){
     if(this.uploading||!this.workspace||!this.draftInput)return;
@@ -697,14 +706,17 @@ export class ReviewWorkspace {
         if(!attempt){const session=await this.api.createUpload(this.projectId,{filename:file.name,media_type:media,byte_size:file.size,sha256,role},this.controller.signal);attempt={session,bytesSaved:false};this.uploadAttempts.set(key,attempt);}
         if(!attempt.bytesSaved){state('正在上传 0%…');await this.api.uploadBytes(attempt.session.upload_url,file,(loaded,total)=>{const percent=Math.min(100,Math.round(100*loaded/Math.max(total,1)));state(percent===100?'传输完成，正在保存到服务器…':`正在上传 ${percent}%…`);},this.controller.signal);attempt.bytesSaved=true;}
         state('传输完成，正在保存到服务器…');
+        const previouslySaved=Boolean(attempt.material&&!row.material);
         const material=attempt.material??await this.api.completeUpload(this.projectId,attempt.session.upload_id,{byte_size:file.size,sha256},this.controller.signal);attempt.material=material;
         if(!this.live()){done(false);break;}if(material.sha256!==sha256||material.state!=='persisted')throw new ApiError(0,'DATA_UNAVAILABLE');
+        row.reused ||= previouslySaved||isReusedUpload(material,attempt.session);
         row.material=material;state('文件已保存，正在保存材料选择…');
         const pin=materialPin(material);this.workspace.materials=this.workspace.materials.filter(m=>m.material_id!==material.material_id).concat(material);
         this.draftInput.material_versions=this.draftInput.material_versions.filter(m=>m.material_id!==pin.material_id).concat(pin);
         if(['historical','reference'].includes(role)&&!this.draftInput.source_material_ref)this.draftInput.source_material_ref=pin;
         if(target?.report_id){const links=this.draftInput.evidence_links??[];for(const finding_id of target.finding_ids)if(!links.some(link=>link.report_id===target.report_id&&link.finding_id===finding_id&&sameMaterial(link.material_ref,pin)))links.push({report_id:target.report_id,finding_id,material_ref:pin});this.draftInput.evidence_links=links;}
         this.inputDirty=true;this.cacheInput();if(!await this.saveInput())throw new Error('文件已上传，材料选择尚未保存。重试此文件将继续保存，不重复上传。');
+        if(row.duplicateSelection||row.reused)this.duplicateUploads.set(rowKey,{filename:file.name,material});
         this.uploadRows.delete(rowKey);done(true);
         }catch(error){
           const text=error instanceof ApiError||error instanceof TypeError||error instanceof DOMException?friendlyError(error)+' 可以重试原上传确认保存状态。':error instanceof Error?error.message:'上传未确认，请重新读取材料状态。';

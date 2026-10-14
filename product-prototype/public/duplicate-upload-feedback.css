@@ -1,0 +1,13 @@
+.duplicate-upload-notice {
+  list-style: none;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #e8c987;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #765315;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.duplicate-upload-notices { margin: 0; padding: 0; }
