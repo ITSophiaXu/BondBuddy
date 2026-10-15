@@ -1,0 +1,11 @@
+.optional-material-partition { container-type: inline-size; }
+.optional-material-help, .optional-material-formats { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.optional-material-help { margin: 0 0 4px; color: #526846; }
+.optional-material-formats { margin: 0 0 18px; color: var(--muted); }
+.prototype-app .optional-material-partition .material-role-list { gap: 18px; }
+.prototype-app .optional-material-partition .material-role-heading .material-picker { min-height: 48px; margin-bottom: 0; padding: 12px; }
+.prototype-app .optional-material-partition .material-role-heading > div > span { min-height: 34px; }
+.prototype-app .optional-material-partition .material-file-list:empty { margin: 0; }
+@container (min-width: 660px) {
+  .prototype-app .optional-material-partition > .material-role-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
