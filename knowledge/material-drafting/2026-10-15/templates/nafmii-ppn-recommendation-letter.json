@@ -1,0 +1,260 @@
+{
+  "id": "nafmii-ppn-recommendation-letter",
+  "version": "case-templates-20261015-v1",
+  "market": "nafmii",
+  "offering": "ppn",
+  "document_type": "recommendation",
+  "default": false,
+  "source_sha256": "b64c62211b4bd35be498035c7d0aee3bd3c686b6b26181abb01c117ead88b2a3",
+  "source_format": "docx",
+  "template_sha256": "a2bae28053a507569f2a168e858cc8e55379aefdebb9db586fc274f25309c970",
+  "template_path": "knowledge/material-drafting/2026-10-15/templates/nafmii-ppn-recommendation-letter.docx",
+  "headings": [
+    {
+      "text": "一、推荐人的基本资质情况",
+      "source_body_index": 8,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">一、推荐人的基本资质情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "二、发行人的情况概要",
+      "source_body_index": 12,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">二、发行人的情况概要</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）基本情况",
+      "source_body_index": 13,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）基本情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）历史沿革及财务状况",
+      "source_body_index": 21,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）历史沿革及财务状况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.发行人历史沿革",
+      "source_body_index": 22,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:sz ns0:val=\"32\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:sz ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.发行人历史沿革</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.发行人财务状况",
+      "source_body_index": 25,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:widowControl/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:color ns0:val=\"auto\"/><ns0:sz ns0:val=\"32\"/><ns0:highlight ns0:val=\"none\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:color ns0:val=\"auto\"/><ns0:sz ns0:val=\"32\"/><ns0:highlight ns0:val=\"none\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.发行人财务状况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "三、尽职调查的主要结论和推荐的主要理由",
+      "source_body_index": 28,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">三、尽职调查的主要结论和推荐的主要理由</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "四、履行注册发行申请程序的合法完备情况",
+      "source_body_index": 34,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">四、履行注册发行申请程序的合法完备情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "(一)发行人权力机关的批准程序",
+      "source_body_index": 35,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">(一)发行人权力机关的批准程序</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "(二){{主承销商}}对发行人本次申请注册发行定向债务融资工具的内部核查程序",
+      "source_body_index": 37,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">(二){{主承销商}}对发行人本次申请注册发行定向债务融资工具的内部核查程序</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "五、结论",
+      "source_body_index": 39,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"574\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"643\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">五、结论</ns0:t></ns0:r></ns0:p>"
+    }
+  ],
+  "slots": [
+    {
+      "id": "title-0",
+      "part": "word/document.xml",
+      "source_body_index": 0,
+      "kind": "title",
+      "text": "{{主承销商}}文件"
+    },
+    {
+      "id": "title-1",
+      "part": "word/document.xml",
+      "source_body_index": 2,
+      "kind": "title",
+      "text": "{{文号}}"
+    },
+    {
+      "id": "title-2",
+      "part": "word/document.xml",
+      "source_body_index": 4,
+      "kind": "title",
+      "text": "关于推荐{{发行人}}"
+    },
+    {
+      "id": "title-3",
+      "part": "word/document.xml",
+      "source_body_index": 5,
+      "kind": "title",
+      "text": "申请发行定向债务融资工具的函"
+    },
+    {
+      "id": "内容_1",
+      "part": "word/document.xml",
+      "source_body_index": 7,
+      "kind": "body",
+      "section": "引言",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_2",
+      "part": "word/document.xml",
+      "source_body_index": 9,
+      "kind": "body",
+      "section": "一、推荐人的基本资质情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_3",
+      "part": "word/document.xml",
+      "source_body_index": 14,
+      "kind": "body",
+      "section": "（一）基本情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_4",
+      "part": "word/document.xml",
+      "source_body_index": 23,
+      "kind": "body",
+      "section": "1.发行人历史沿革",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_5",
+      "part": "word/document.xml",
+      "source_body_index": 26,
+      "kind": "body",
+      "section": "2.发行人财务状况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_6",
+      "part": "word/document.xml",
+      "source_body_index": 29,
+      "kind": "body",
+      "section": "三、尽职调查的主要结论和推荐的主要理由",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_7",
+      "part": "word/document.xml",
+      "source_body_index": 36,
+      "kind": "body",
+      "section": "(一)发行人权力机关的批准程序",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_8",
+      "part": "word/document.xml",
+      "source_body_index": 38,
+      "kind": "body",
+      "section": "(二){{主承销商}}对发行人本次申请注册发行定向债务融资工具的内部核查程序",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_9",
+      "part": "word/document.xml",
+      "source_body_index": 40,
+      "kind": "body",
+      "section": "五、结论",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    }
+  ],
+  "sections": [
+    "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<w:sectPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:wpc=\"http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w10=\"urn:schemas-microsoft-com:office:word\" xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\" xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" xmlns:wpi=\"http://schemas.microsoft.com/office/word/2010/wordprocessingInk\" xmlns:wne=\"http://schemas.microsoft.com/office/word/2006/wordml\" xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" xmlns:wpsCustomData=\"http://www.wps.cn/officeDocument/2013/wpsCustomData\"><w:footerReference r:id=\"rId3\" w:type=\"default\"/><w:footerReference r:id=\"rId4\" w:type=\"even\"/><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1300\" w:right=\"1800\" w:bottom=\"1246\" w:left=\"1800\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\" w:num=\"1\"/><w:docGrid w:type=\"lines\" w:linePitch=\"312\" w:charSpace=\"0\"/></w:sectPr>"
+  ],
+  "deviations": [
+    "去除案例事实、公司名称、数字、签署、批注、图片、嵌入文件与元数据。",
+    "连续正文缩为可扩展槽位；数据表保留表头和样式行，窄数据格留白以免占位符撑高；目录随实际生成正文重建。"
+  ],
+  "source_parts": [
+    {
+      "part": "[Content_Types].xml",
+      "sha256": "5e044d165c2d31906f45f77b51be5b5280b2e844892404aaa0d92464b5548d4d",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "_rels/.rels",
+      "sha256": "514e1846381cb6bcfff105a4b0a17d666cf0ed1f0c120bff73b82226ab7ed977",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "customXml/_rels/item1.xml.rels",
+      "sha256": "80482f86e196171d66001e0e74d1900408a3aaf2463e54005d251b5f2db9a0b0",
+      "policy": "removed"
+    },
+    {
+      "part": "customXml/item1.xml",
+      "sha256": "1055a368a3a05dbeb1c4d9692ad2bafe33a19126a8fa0453a0dedf0f68c62e4c",
+      "policy": "removed"
+    },
+    {
+      "part": "customXml/itemProps1.xml",
+      "sha256": "16c9a9ab07e137bbf93dbcfe36c21a778cdccdd1d2b152085354b53a2f17d1c1",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/app.xml",
+      "sha256": "ea44eef5340f325ffa625aa13e783d43d61620cccd1150621cceec2c8b108e81",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/core.xml",
+      "sha256": "fa2112a495df8793f33c8757b47be4cc540f8ce630e2bc36ae631f1dc5fa4996",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/custom.xml",
+      "sha256": "f838984efaea12a9715d00734a301123f558a8525ff9228bac2dd779b2a4af62",
+      "policy": "removed"
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "sha256": "b103929c6a4a3a6124a5eac1cd3c5ca1460b30f0a53ee40f53ad1414322b0fdf",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/document.xml",
+      "sha256": "279b183083e7bde908a526c8dd2a715ffd0fe5ee4df72ea3db13225491268a92",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/fontTable.xml",
+      "sha256": "fefe63c40866881c4def8775160d9d3420a3367d151892f7d2478e13302f6ed0",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/footer1.xml",
+      "sha256": "f7c662c7bd53b7116b26da14441696bc21eaec093c3658a2d57146157825b082",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/footer2.xml",
+      "sha256": "562947f8a70a3cdeb2173101d73ff80bdb3f8c9f3c0d868ed888d89839a6b1cd",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/settings.xml",
+      "sha256": "8d1dceb31ac286c441e5de004aa50af83f694489c8e84653fe57a7e05714bf5f",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/styles.xml",
+      "sha256": "440430acbeb318c5fecdc8d0f6184f04464ca3867a330b0733edac1cf2062718",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/theme/theme1.xml",
+      "sha256": "20b1cf0f6bd861afd2ee727424bf2da47b72e5e70232e7477547132a50c1f809",
+      "policy": "source-derived formatting"
+    }
+  ]
+}

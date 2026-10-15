@@ -1,0 +1,962 @@
+{
+  "id": "szse-private-application",
+  "version": "case-templates-20261015-v1",
+  "market": "szse",
+  "offering": "private",
+  "document_type": "application",
+  "default": true,
+  "source_sha256": "6211fea61110b9cbc81de89c6adc397f17c5ff1a8d560e1a449833d5f2f290f9",
+  "source_format": "docx",
+  "template_sha256": "55017093c58929eeea85490855f30effbacdd4fea7daed58d8c736545b708b18",
+  "template_path": "knowledge/material-drafting/2026-10-15/templates/szse-private-application.docx",
+  "headings": [
+    {
+      "text": "一、公司债券发行方案",
+      "source_body_index": 5,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:widowControl ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:left=\"0\" ns0:leftChars=\"0\" ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">一、公司债券发行方案</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "二、发行人概况",
+      "source_body_index": 21,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">二、发行人概况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）发行人情况及报告期的历史沿革",
+      "source_body_index": 22,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）发行人情况及报告期的历史沿革</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）股权结构及相关主体信息",
+      "source_body_index": 25,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）股权结构及相关主体信息</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（三）主营业务",
+      "source_body_index": 34,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（三）主营业务</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "三、发行人主要财务状况",
+      "source_body_index": 45,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"黑体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">三、发行人主要财务状况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）主要财务数据及财务指标表",
+      "source_body_index": 46,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）主要财务数据及财务指标表</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）资产结构分析",
+      "source_body_index": 48,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）资产结构分析</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.货币资金",
+      "source_body_index": 52,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.货币资金</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.应收账款",
+      "source_body_index": 54,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.应收账款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3.预付款项",
+      "source_body_index": 57,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3.预付款项</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "4.其他应收款",
+      "source_body_index": 60,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">4.其他应收款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "5.存货",
+      "source_body_index": 63,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">5.存货</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "6.投资性房地产",
+      "source_body_index": 65,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">6.投资性房地产</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "7.{{事项标题_67}}",
+      "source_body_index": 67,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">7.{{事项标题_67}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "8.{{事项标题_69}}",
+      "source_body_index": 69,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">8.{{事项标题_69}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（三）负债及所有者权益结构分析",
+      "source_body_index": 71,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（三）负债及所有者权益结构分析</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.短期借款",
+      "source_body_index": 75,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.短期借款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.应付账款",
+      "source_body_index": 77,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.应付账款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3.合同负债",
+      "source_body_index": 80,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3.合同负债</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "4.其他应付款",
+      "source_body_index": 83,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">4.其他应付款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "5.一年内到期的非流动负债",
+      "source_body_index": 86,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">5.一年内到期的非流动负债</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "6.长期借款",
+      "source_body_index": 88,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">6.长期借款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "7.{{事项标题_90}}",
+      "source_body_index": 90,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"756\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd/><ns0:snapToGrid/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">7.{{事项标题_90}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（四）现金流量分析",
+      "source_body_index": 92,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（四）现金流量分析</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（五）盈利能力分析",
+      "source_body_index": 96,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（五）盈利能力分析</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（六）有息负债情况",
+      "source_body_index": 100,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（六）有息负债情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（七）信用类债券情况",
+      "source_body_index": 108,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（七）信用类债券情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.概况",
+      "source_body_index": 109,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:spacing ns0:beforeLines=\"0\" ns0:beforeAutospacing=\"0\" ns0:afterLines=\"0\" ns0:afterAutospacing=\"0\" ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.概况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（1）{{事项标题_110}}",
+      "source_body_index": 110,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:bidi ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（1）{{事项标题_110}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（2）{{事项标题_112}}",
+      "source_body_index": 112,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:bidi ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（2）{{事项标题_112}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.存续债券情况",
+      "source_body_index": 114,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:spacing ns0:beforeLines=\"0\" ns0:beforeAutospacing=\"0\" ns0:afterLines=\"0\" ns0:afterAutospacing=\"0\" ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.存续债券情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3.在手批文情况",
+      "source_body_index": 119,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:spacing ns0:beforeLines=\"0\" ns0:beforeAutospacing=\"0\" ns0:afterLines=\"0\" ns0:afterAutospacing=\"0\" ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3.在手批文情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "4.报告期内申报情况",
+      "source_body_index": 121,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:spacing ns0:beforeLines=\"0\" ns0:beforeAutospacing=\"0\" ns0:afterLines=\"0\" ns0:afterAutospacing=\"0\" ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"Times New Roman\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">4.报告期内申报情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "四、公司本次债券担保人或信用增进机构概况",
+      "source_body_index": 125,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:widowControl ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:left=\"0\" ns0:leftChars=\"0\" ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">四、公司本次债券担保人或信用增进机构概况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "五、本次债券评级情况",
+      "source_body_index": 127,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:widowControl ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:left=\"0\" ns0:leftChars=\"0\" ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">五、本次债券评级情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "六、关于本次公司债券发行合规性情况",
+      "source_body_index": 129,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:widowControl ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:left=\"0\" ns0:leftChars=\"0\" ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">六、关于本次公司债券发行合规性情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）发行条件核查",
+      "source_body_index": 130,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）发行条件核查</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）地方政府债务相关核查",
+      "source_body_index": 133,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）地方政府债务相关核查</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.地方政府债务核查",
+      "source_body_index": 135,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"30\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.地方政府债务核查</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（三）大额资金拆借或非经营性占用核查",
+      "source_body_index": 137,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（三）大额资金拆借或非经营性占用核查</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（四）其他关注事项",
+      "source_body_index": 139,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（四）其他关注事项</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "9.受限资产情况",
+      "source_body_index": 148,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:afterLines=\"0\" ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">9.受限资产情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "七、募集资金用途",
+      "source_body_index": 153,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:widowControl ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:left=\"0\" ns0:leftChars=\"0\" ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">七、募集资金用途</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）偿还存量公司债券外其他有息债务",
+      "source_body_index": 156,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）偿还存量公司债券外其他有息债务</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "八、诚信、失信、涉贿核查情况",
+      "source_body_index": 158,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext/><ns0:keepLines/><ns0:widowControl ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:left=\"0\" ns0:leftChars=\"0\" ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"both\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"auto\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"黑体\" ns0:hAnsi=\"黑体\" ns0:eastAsia=\"黑体\" ns0:cs=\"Times New Roman\"/><ns0:b ns0:val=\"0\"/><ns0:bCs/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"auto\"/><ns0:kern ns0:val=\"44\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"44\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">八、诚信、失信、涉贿核查情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）诚信核查情况",
+      "source_body_index": 159,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）诚信核查情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.{{事项标题_160}}",
+      "source_body_index": 160,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:bidi ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"仿宋\" ns0:hAnsi=\"仿宋\" ns0:eastAsia=\"仿宋\" ns0:cs=\"仿宋\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.{{事项标题_160}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）失信核查情况",
+      "source_body_index": 164,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）失信核查情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（三）涉贿核查情况",
+      "source_body_index": 171,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:kinsoku/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:bidi ns0:val=\"0\"/><ns0:spacing ns0:line=\"560\" ns0:lineRule=\"exact\"/><ns0:ind ns0:firstLine=\"640\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cs=\"楷体\"/><ns0:b ns0:val=\"0\"/><ns0:bCs ns0:val=\"0\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"楷体\" ns0:hAnsi=\"楷体\" ns0:eastAsia=\"楷体\" ns0:cstheme=\"majorBidi\"/><ns0:i ns0:val=\"0\"/><ns0:iCs ns0:val=\"0\"/><ns0:kern ns0:val=\"2\"/><ns0:sz ns0:val=\"32\"/><ns0:szCs ns0:val=\"32\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\" ns0:bidi=\"ar-SA\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（三）涉贿核查情况</ns0:t></ns0:r></ns0:p>"
+    }
+  ],
+  "slots": [
+    {
+      "id": "title-0",
+      "part": "word/document.xml",
+      "source_body_index": 0,
+      "kind": "title",
+      "text": "{{发行人全称}}"
+    },
+    {
+      "id": "title-1",
+      "part": "word/document.xml",
+      "source_body_index": 1,
+      "kind": "title",
+      "text": "关于本次债券挂牌条件确认的申请书"
+    },
+    {
+      "id": "title-2",
+      "part": "word/document.xml",
+      "source_body_index": 3,
+      "kind": "title",
+      "text": "深圳证券交易所："
+    },
+    {
+      "id": "内容_1",
+      "part": "word/document.xml",
+      "source_body_index": 4,
+      "kind": "body",
+      "section": "引言",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_2",
+      "part": "word/document.xml",
+      "source_body_index": 6,
+      "kind": "body",
+      "section": "一、公司债券发行方案",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-1",
+      "part": "word/document.xml",
+      "source_body_index": 18,
+      "kind": "table",
+      "section": "一、公司债券发行方案",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_3",
+      "part": "word/document.xml",
+      "source_body_index": 19,
+      "kind": "body",
+      "section": "一、公司债券发行方案",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-2",
+      "part": "word/document.xml",
+      "source_body_index": 23,
+      "kind": "table",
+      "section": "（一）发行人情况及报告期的历史沿革",
+      "source_rows": 9,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_4",
+      "part": "word/document.xml",
+      "source_body_index": 24,
+      "kind": "body",
+      "section": "（一）发行人情况及报告期的历史沿革",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_5",
+      "part": "word/document.xml",
+      "source_body_index": 26,
+      "kind": "body",
+      "section": "（二）股权结构及相关主体信息",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-3",
+      "part": "word/document.xml",
+      "source_body_index": 30,
+      "kind": "table",
+      "section": "（二）股权结构及相关主体信息",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_6",
+      "part": "word/document.xml",
+      "source_body_index": 31,
+      "kind": "body",
+      "section": "（二）股权结构及相关主体信息",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_7",
+      "part": "word/document.xml",
+      "source_body_index": 35,
+      "kind": "body",
+      "section": "（三）主营业务",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-4",
+      "part": "word/document.xml",
+      "source_body_index": 37,
+      "kind": "table",
+      "section": "（三）主营业务",
+      "source_rows": 17,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_8",
+      "part": "word/document.xml",
+      "source_body_index": 38,
+      "kind": "body",
+      "section": "（三）主营业务",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-5",
+      "part": "word/document.xml",
+      "source_body_index": 40,
+      "kind": "table",
+      "section": "（三）主营业务",
+      "source_rows": 17,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_9",
+      "part": "word/document.xml",
+      "source_body_index": 41,
+      "kind": "body",
+      "section": "（三）主营业务",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-6",
+      "part": "word/document.xml",
+      "source_body_index": 44,
+      "kind": "table",
+      "section": "（三）主营业务",
+      "source_rows": 17,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "table-7",
+      "part": "word/document.xml",
+      "source_body_index": 47,
+      "kind": "table",
+      "section": "（一）主要财务数据及财务指标表",
+      "source_rows": 14,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_10",
+      "part": "word/document.xml",
+      "source_body_index": 49,
+      "kind": "body",
+      "section": "（二）资产结构分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-8",
+      "part": "word/document.xml",
+      "source_body_index": 51,
+      "kind": "table",
+      "section": "（二）资产结构分析",
+      "source_rows": 21,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_11",
+      "part": "word/document.xml",
+      "source_body_index": 53,
+      "kind": "body",
+      "section": "1.货币资金",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_12",
+      "part": "word/document.xml",
+      "source_body_index": 55,
+      "kind": "body",
+      "section": "2.应收账款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_13",
+      "part": "word/document.xml",
+      "source_body_index": 58,
+      "kind": "body",
+      "section": "3.预付款项",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_14",
+      "part": "word/document.xml",
+      "source_body_index": 61,
+      "kind": "body",
+      "section": "4.其他应收款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_15",
+      "part": "word/document.xml",
+      "source_body_index": 64,
+      "kind": "body",
+      "section": "5.存货",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_16",
+      "part": "word/document.xml",
+      "source_body_index": 66,
+      "kind": "body",
+      "section": "6.投资性房地产",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_17",
+      "part": "word/document.xml",
+      "source_body_index": 68,
+      "kind": "body",
+      "section": "7.{{事项标题_67}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_18",
+      "part": "word/document.xml",
+      "source_body_index": 70,
+      "kind": "body",
+      "section": "8.{{事项标题_69}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_19",
+      "part": "word/document.xml",
+      "source_body_index": 72,
+      "kind": "body",
+      "section": "（三）负债及所有者权益结构分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-9",
+      "part": "word/document.xml",
+      "source_body_index": 74,
+      "kind": "table",
+      "section": "（三）负债及所有者权益结构分析",
+      "source_rows": 19,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_20",
+      "part": "word/document.xml",
+      "source_body_index": 76,
+      "kind": "body",
+      "section": "1.短期借款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_21",
+      "part": "word/document.xml",
+      "source_body_index": 78,
+      "kind": "body",
+      "section": "2.应付账款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_22",
+      "part": "word/document.xml",
+      "source_body_index": 81,
+      "kind": "body",
+      "section": "3.合同负债",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_23",
+      "part": "word/document.xml",
+      "source_body_index": 84,
+      "kind": "body",
+      "section": "4.其他应付款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_24",
+      "part": "word/document.xml",
+      "source_body_index": 87,
+      "kind": "body",
+      "section": "5.一年内到期的非流动负债",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_25",
+      "part": "word/document.xml",
+      "source_body_index": 89,
+      "kind": "body",
+      "section": "6.长期借款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_26",
+      "part": "word/document.xml",
+      "source_body_index": 91,
+      "kind": "body",
+      "section": "7.{{事项标题_90}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_27",
+      "part": "word/document.xml",
+      "source_body_index": 93,
+      "kind": "body",
+      "section": "（四）现金流量分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-10",
+      "part": "word/document.xml",
+      "source_body_index": 95,
+      "kind": "table",
+      "section": "（四）现金流量分析",
+      "source_rows": 14,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_28",
+      "part": "word/document.xml",
+      "source_body_index": 97,
+      "kind": "body",
+      "section": "（五）盈利能力分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-11",
+      "part": "word/document.xml",
+      "source_body_index": 98,
+      "kind": "table",
+      "section": "（五）盈利能力分析",
+      "source_rows": 9,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_29",
+      "part": "word/document.xml",
+      "source_body_index": 99,
+      "kind": "body",
+      "section": "（五）盈利能力分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_30",
+      "part": "word/document.xml",
+      "source_body_index": 101,
+      "kind": "body",
+      "section": "（六）有息负债情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-12",
+      "part": "word/document.xml",
+      "source_body_index": 103,
+      "kind": "table",
+      "section": "（六）有息负债情况",
+      "source_rows": 11,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_31",
+      "part": "word/document.xml",
+      "source_body_index": 104,
+      "kind": "body",
+      "section": "（六）有息负债情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-13",
+      "part": "word/document.xml",
+      "source_body_index": 107,
+      "kind": "table",
+      "section": "（六）有息负债情况",
+      "source_rows": 8,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_32",
+      "part": "word/document.xml",
+      "source_body_index": 111,
+      "kind": "body",
+      "section": "（1）{{事项标题_110}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_33",
+      "part": "word/document.xml",
+      "source_body_index": 113,
+      "kind": "body",
+      "section": "（2）{{事项标题_112}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_34",
+      "part": "word/document.xml",
+      "source_body_index": 115,
+      "kind": "body",
+      "section": "2.存续债券情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-14",
+      "part": "word/document.xml",
+      "source_body_index": 117,
+      "kind": "table",
+      "section": "2.存续债券情况",
+      "source_rows": 8,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_35",
+      "part": "word/document.xml",
+      "source_body_index": 118,
+      "kind": "body",
+      "section": "2.存续债券情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_36",
+      "part": "word/document.xml",
+      "source_body_index": 120,
+      "kind": "body",
+      "section": "3.在手批文情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_37",
+      "part": "word/document.xml",
+      "source_body_index": 122,
+      "kind": "body",
+      "section": "4.报告期内申报情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-15",
+      "part": "word/document.xml",
+      "source_body_index": 123,
+      "kind": "table",
+      "section": "4.报告期内申报情况",
+      "source_rows": 10,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_38",
+      "part": "word/document.xml",
+      "source_body_index": 124,
+      "kind": "body",
+      "section": "4.报告期内申报情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_39",
+      "part": "word/document.xml",
+      "source_body_index": 126,
+      "kind": "body",
+      "section": "四、公司本次债券担保人或信用增进机构概况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_40",
+      "part": "word/document.xml",
+      "source_body_index": 128,
+      "kind": "body",
+      "section": "五、本次债券评级情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_41",
+      "part": "word/document.xml",
+      "source_body_index": 131,
+      "kind": "body",
+      "section": "（一）发行条件核查",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_42",
+      "part": "word/document.xml",
+      "source_body_index": 134,
+      "kind": "body",
+      "section": "（二）地方政府债务相关核查",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_43",
+      "part": "word/document.xml",
+      "source_body_index": 136,
+      "kind": "body",
+      "section": "2.地方政府债务核查",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_44",
+      "part": "word/document.xml",
+      "source_body_index": 138,
+      "kind": "body",
+      "section": "（三）大额资金拆借或非经营性占用核查",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_45",
+      "part": "word/document.xml",
+      "source_body_index": 140,
+      "kind": "body",
+      "section": "（四）其他关注事项",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_46",
+      "part": "word/document.xml",
+      "source_body_index": 149,
+      "kind": "body",
+      "section": "9.受限资产情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-16",
+      "part": "word/document.xml",
+      "source_body_index": 150,
+      "kind": "table",
+      "section": "9.受限资产情况",
+      "source_rows": 6,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_47",
+      "part": "word/document.xml",
+      "source_body_index": 151,
+      "kind": "body",
+      "section": "9.受限资产情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_48",
+      "part": "word/document.xml",
+      "source_body_index": 152,
+      "kind": "body",
+      "section": "9.受限资产情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_49",
+      "part": "word/document.xml",
+      "source_body_index": 154,
+      "kind": "body",
+      "section": "七、募集资金用途",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-17",
+      "part": "word/document.xml",
+      "source_body_index": 155,
+      "kind": "table",
+      "section": "七、募集资金用途",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "table-18",
+      "part": "word/document.xml",
+      "source_body_index": 157,
+      "kind": "table",
+      "section": "（一）偿还存量公司债券外其他有息债务",
+      "source_rows": 13,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_50",
+      "part": "word/document.xml",
+      "source_body_index": 161,
+      "kind": "body",
+      "section": "1.{{事项标题_160}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_51",
+      "part": "word/document.xml",
+      "source_body_index": 165,
+      "kind": "body",
+      "section": "（二）失信核查情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_52",
+      "part": "word/document.xml",
+      "source_body_index": 172,
+      "kind": "body",
+      "section": "（三）涉贿核查情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    }
+  ],
+  "sections": [
+    "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<w:sectPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:wpc=\"http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w10=\"urn:schemas-microsoft-com:office:word\" xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\" xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" xmlns:wpi=\"http://schemas.microsoft.com/office/word/2010/wordprocessingInk\" xmlns:wne=\"http://schemas.microsoft.com/office/word/2006/wordml\" xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" xmlns:wpsCustomData=\"http://www.wps.cn/officeDocument/2013/wpsCustomData\"><w:footerReference r:id=\"rId3\" w:type=\"default\"/><w:footerReference r:id=\"rId4\" w:type=\"even\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1985\" w:right=\"1418\" w:bottom=\"1418\" w:left=\"1418\" w:header=\"851\" w:footer=\"992\" w:gutter=\"0\"/><w:pgNumType w:fmt=\"numberInDash\"/><w:cols w:space=\"720\" w:num=\"1\"/><w:docGrid w:type=\"lines\" w:linePitch=\"312\" w:charSpace=\"0\"/></w:sectPr>"
+  ],
+  "deviations": [
+    "去除案例事实、公司名称、数字、签署、批注、图片、嵌入文件与元数据。",
+    "连续正文缩为可扩展槽位；数据表保留表头和样式行，窄数据格留白以免占位符撑高；目录随实际生成正文重建。"
+  ],
+  "source_parts": [
+    {
+      "part": "[Content_Types].xml",
+      "sha256": "a7c678a2c137c2b444caef1991d073f2d6b24e43505292f12e5bce92ee9b799f",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "_rels/.rels",
+      "sha256": "514e1846381cb6bcfff105a4b0a17d666cf0ed1f0c120bff73b82226ab7ed977",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "docProps/app.xml",
+      "sha256": "f834b313f98a1ee6f4014cfe33c057813ee7e40d7f9722a98194b3ff9566d82c",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/core.xml",
+      "sha256": "f4483da496be0a035a3544de9e90c23a9c708472ff19c72434faae589b8d6df4",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/custom.xml",
+      "sha256": "2fa98f6e0f8eafb01eb2ef82f62f9ef526591f03ace7d88caee7e119a6c61e0a",
+      "policy": "removed"
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "sha256": "78048d08fbec931fda41c63016ac97320dc8f00760e60772a496b45dad9e1462",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/document.xml",
+      "sha256": "d342f2edf1ce1fedb49926472a8d4426da0f8d24735782fa727a95ce07827d10",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/fontTable.xml",
+      "sha256": "ce3b99f9cdd6bb69010777444cafa62f46cfbff679259e8714a494dc40526dbb",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/footer1.xml",
+      "sha256": "6d59855496c6dcc8f0f8de3303b3c3b46f811a6686c09368881761817534aa12",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/footer2.xml",
+      "sha256": "a98bee1578cd549bfbf28abc30f6822b16bd6d130aff4af4885a654abe011481",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/numbering.xml",
+      "sha256": "ed011d62fe391ace423cf9fa9a049eca6d0c55e04b26b3e8d90a55bc3ecb6933",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/settings.xml",
+      "sha256": "610de23f3dd8a6158790607213832a3d59072b4b6c5c7cff7df32c2c920473b0",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/styles.xml",
+      "sha256": "3129be443c1703f3eff23c55b3c66f653a2165a6112ed560ff5502ff6aac881b",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/theme/theme1.xml",
+      "sha256": "877930300f41fcf60d3edea108678078177c4c20b65ced288432470652e6b4a1",
+      "policy": "source-derived formatting"
+    }
+  ]
+}

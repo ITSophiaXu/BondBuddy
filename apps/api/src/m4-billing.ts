@@ -31,7 +31,9 @@ async function activeQaPrice(c:PoolClient){
   await c.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-m4-qa-price',0))");
   return (await c.query('SELECT * FROM bb_m4_qa_price_versions WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
 }
-export const M4_MULTIPLIERS: Record<M4BillingTask, number> = { m4_G01: 8, m4_G02: 12, m4_G03: 15, m4_G05: 6, m4_Q01: 2, m4_Q02: 2.5, m4_Q03: 3, m4_Q04: 4, m4_Q05: 5 };
+// Application letters use the existing fixed document price only; no new
+// metered tariff is introduced. Other multipliers retain their legacy values.
+export const M4_MULTIPLIERS: Partial<Record<M4BillingTask, number>> = { m4_G01: 8, m4_G02: 12, m4_G03: 15, m4_G05: 6, m4_G04: 5, m4_Q01: 2, m4_Q02: 2.5, m4_Q03: 3, m4_Q04: 4, m4_Q05: 5 };
 export type M4CostRate = { input_microyuan_per_million: number; cached_microyuan_per_million: number; output_microyuan_per_million: number };
 export type M4BillingConfig = { model_id: string; rates: Record<string, M4CostRate>; budgets: Record<M4BillingTask, {input_tokens: number; output_tokens: number; reserve_factor: number}> };
 const invalid = () => { throw new Problem(422, 'VALIDATION_FAILED', 'M4 requires published cost rates and task estimation budgets'); };
@@ -43,7 +45,7 @@ export function validateM4BillingConfig(value: unknown): asserts value is M4Bill
   for (const task of Object.keys(M4_BILLING_TASKS) as M4BillingTask[]) {
     const b = c.budgets[task];
     // Existing published configurations need not price newly introduced document types.
-    if (!b && (task==='m4_G02'||task==='m4_G03')) continue;
+    if (!b && (isDocumentTask(task)&&task!=='m4_G01'&&task!=='m4_G05')) continue;
     if (!b || !Number.isSafeInteger(b.input_tokens) || b.input_tokens < 1 || !Number.isSafeInteger(b.output_tokens) || b.output_tokens < 1
       || !Number.isFinite(b.reserve_factor) || b.reserve_factor < 1 || b.reserve_factor > 10) invalid();
   }
@@ -84,7 +86,9 @@ export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4Bill
     config=(await c.query('SELECT * FROM bb_m4_billing_configs WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
     if(!config)throw new Problem(503,'BILLING_NOT_READY','M4 成本率与预留预算尚未发布；当前输入已保存，可以继续讨论。');
     validateM4BillingConfig(config.config);
-    multiplier=M4_MULTIPLIERS[task];const b=config.config.budgets[task],r=config.config.rates[config.config.model_id];
+    const rateMultiplier=M4_MULTIPLIERS[task];
+    if(rateMultiplier===undefined)throw new Problem(503,'BILLING_NOT_READY','该任务尚未配置计费方式。');
+    multiplier=rateMultiplier;const b=config.config.budgets[task],r=config.config.rates[config.config.model_id];
     if(!b)throw new Problem(503,'BILLING_NOT_READY','该材料的预留预算尚未发布；当前输入已保存，可以继续准备材料。');
     points=Math.max(1,Math.ceil(roundedPoints(b.input_tokens,0,b.output_tokens,r,multiplier)*b.reserve_factor));
   }

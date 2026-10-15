@@ -149,22 +149,23 @@ async function documentManifest(db:Db,owner:string,t:any,type:M4DocumentType,exp
   const p=await project(db,owner,t.project_id),sourceId=input.source_material?.source_project_id||input.edit_base?.source_project_id||t.source_project_id;
   const source=sourceId?await project(db,owner,sourceId):null;
   const market=input.fields.market;
-  if(input.fields.offering && input.fields.offering!=='private' || input.fields.brokers || input.fields.scope && input.fields.scope!=='whole')
+  const offering=type==='recommendation'?input.fields.offering:'private';
+  if(input.fields.brokers || input.fields.scope && input.fields.scope!=='whole')
     throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持单承销商、交易所普通私募与全文制作，当前选择需后续能力。');
-  if(source?.offering && source.offering!=='private')throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持交易所普通私募，其他品种后续开放。');
+  if(source && source.kind!=='generation' && source.offering && source.offering!==offering)throw new Problem(422,'CAPABILITY_NOT_READY','来源项目的品种与本次材料不一致，请选择对应品种的项目或上传本次材料。');
   // Uploaded prospectuses can carry the issuer. The file task reads that source;
   // opening a chat to restate it is not a prerequisite for the material form.
   const template=await templateFor(db,owner,input.template);
   const inputIssues=m4DocumentInputIssues(input,template);
   if(inputIssues.length)throw Object.assign(new Problem(422,'INPUT_REQUIRED','请补充所列信息后再生成。'),{inputIssues});
-  const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name||'',market,broker:input.fields.broker||template?.broker||''}};
+  const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name||'',market,offering,broker:input.fields.broker||template?.broker||''}};
   return {version:'m4-document-input-v1',kind:'document',project_name:source?.name||p.name||t.name,topic_id:t.id,execution_scope_project_id:source?.execution_scope_project_id||source?.id||t.project_id,
-    draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as 'sse'|'szse',offering:'private',
-    knowledge:loadM4Knowledge(market as 'sse'|'szse',type),billing_task:M4_DOCUMENT_BILLING_TASKS[type]};
+    draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as M4DocumentManifest['market'],offering:offering as M4DocumentManifest['offering'],
+    knowledge:loadM4Knowledge(market as M4DocumentManifest['market'],type,offering,input.fields.case_template_id),billing_task:M4_DOCUMENT_BILLING_TASKS[type]};
 }
 export function m4UnavailableDocument(content:string):boolean{return content.split(/[，。；;\n]/).some(clause=>{
-  if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:生成|制作|起草|编制|撰写|准备|写|出具).{0,30}(?:推荐函|公募.{0,8}摘要|DFI)/.test(clause))return false;
-  return /(?:生成|制作|起草|编制|撰写|准备|写一份|出具).{0,30}(?:推荐函|公募.{0,8}摘要|DFI)|(?:推荐函).{0,15}(?:生成|制作|起草|编制|出具)/.test(clause);
+  if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:生成|制作|起草|编制|撰写|准备|写|出具).{0,30}(?:公募.{0,8}摘要|DFI)/.test(clause))return false;
+  return /(?:生成|制作|起草|编制|撰写|准备|写一份|出具).{0,30}(?:公募.{0,8}摘要|DFI)/.test(clause);
 });}
 export function m4UnavailableLocalScope(content:string):boolean{return content.split(/[，。；;\n]/).some(clause=>{
   if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:只|仅|局部)(?:修改|改|更新)/.test(clause))return false;
@@ -192,7 +193,7 @@ export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingT
   if(m4UnavailableDocument(content)||m4UnavailableResearch(content)||m4UnavailableLocalScope(content))return 'm4_task_assistance';
   const analysis=/解释|解读|查询|分析|计算|比较|对比|概念|条款|有哪些|是否|为什么|是什么意思|是什么|有什么|怎么理解|如何理解|同比|比率|公式/.test(content);
   if(context.document_type && !analysis)return 'm4_task_assistance';
-  if(!analysis && /立项报告|募集说明书摘要|主承销商核查意见|法律意见书|材料生成|任务要求|当前任务|开始制作|开始执行|准备材料|补充材料|采用.*模板|券商.*是|发行人.*是|要求.*(?:保存|记录)|保留|不要(?:生成|新增)|(?:作为|列为).*(?:重点|要求)|重点关注|(?:更新|复核).{0,15}(?:募集说明书|募集书)/.test(content))return 'm4_task_assistance';
+  if(!analysis && /立项报告|募集说明书摘要|主承销商核查意见|法律意见书|申请书|推荐函|材料生成|任务要求|当前任务|开始制作|开始执行|准备材料|补充材料|采用.*模板|券商.*是|发行人.*是|要求.*(?:保存|记录)|保留|不要(?:生成|新增)|(?:作为|列为).*(?:重点|要求)|重点关注|(?:更新|复核).{0,15}(?:募集说明书|募集书)/.test(content))return 'm4_task_assistance';
   if(/比较|对比|两期|两年/.test(content))return 'm4_Q04';
   if(/计算|同比|资产负债率|流动比率|速动比率|公式/.test(content))return 'm4_Q03';
   return context.citations.length||context.source_material||context.reading_artifact?'m4_Q02':'m4_Q01';
@@ -310,7 +311,7 @@ export async function completeM4Qa(db:Db,owner:string,runId:string,reply:M4Assis
       const current=await readDraft(db,owner,t.id,reply.document_type);
       if(manifest.context.document_type===reply.document_type && current.version===manifest.context.draft_version || manifest.context.document_type===null && current.version===0){
         const {version,sha256:_s,updated_at:_u,...input}=current;
-        const fields={...input.fields};for(const [key,value] of Object.entries(replyFields))if(['issuer_name','broker','market','reporting_period','reporting_cutoff','bond_name','amount','term','use_of_proceeds'].includes(key))fields[key]=value;
+        const fields={...input.fields};for(const [key,value] of Object.entries(replyFields))if(['issuer_name','broker','market','offering','case_template_id','reporting_period','reporting_cutoff','bond_name','amount','term','use_of_proceeds'].includes(key))fields[key]=value;
         const requirements=[...input.requirements,...reply.requirements.filter(s=>!input.requirements.some(r=>r.text===s)).map((text,i)=>({requirement_id:`${messageId}:${i}`,text,message_id:messageId,message_version:1}))];
         const pending=await pendingDraftRequirements(db,owner,t.id),adopted={...input,fields,requirements:[...requirements,...pending.filter(r=>!requirements.some(x=>x.requirement_id===r.requirement_id))]};
         // Repeating the already displayed task must preserve its version and quote. A newly consumed pending requirement is an input change.

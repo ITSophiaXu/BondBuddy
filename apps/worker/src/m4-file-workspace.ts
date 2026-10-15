@@ -17,7 +17,7 @@ export const M4_FILE_MAX = 100 * 1024 * 1024;
 export const M4_TEXT_MAX = 4 * 1024 * 1024;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 type Skill = ReturnType<typeof loadM4RuntimeSkill>;
-const helpers = [['python/bondbuddy_file_authoring/read_material.py','read_material.py'],
+const helpers = [['python/bondbuddy_m4_render_template.py','render_template.py'],['python/bondbuddy_file_authoring/read_material.py','read_material.py'],
   ['python/bondbuddy_file_authoring/report_from_text.py','report_from_text.py'],
   ['python/bondbuddy_m4_finance.py','bondbuddy_m4_finance.py'],
   ['python/bondbuddy_m4_finance_tool.py','finance.py']] as const;
@@ -89,10 +89,12 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
   let knowledge=null;
   if(input.manifest.kind==='document'&&input.manifest.knowledge){
     const pin=input.manifest.knowledge;
-    if(!validM4Knowledge(pin,input.manifest.market,input.manifest.input.document_type))throw Error('INPUT_REVISION_CONFLICT');
-    const {content,...metadata}=pin,path='knowledge/material-drafting.md';
+    if(!validM4Knowledge(pin,input.manifest.market,input.manifest.input.document_type,input.manifest.offering))throw Error('INPUT_REVISION_CONFLICT');
+    const {content,template,...metadata}=pin,path='knowledge/material-drafting.md';
+    let template_path:string|undefined;
+    if(template){template_path='knowledge/case-template.docx';await writeFile(join(cwd,template_path),Buffer.from(template.docx_base64,'base64'),{mode:0o400});originals.set(template_path,template.sha256);}
     await writeFile(join(cwd,path),content,{mode:0o400});originals.set(path,pin.sha256);
-    knowledge={...metadata,path};
+    knowledge={...metadata,path,...(template?{template_id:template.id,template_version:template.version,template_sha256:template.sha256,template_path}:{})};
   }
   const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,
     requirements: input.manifest.kind === 'document' ? [...input.manifest.input.requirements.map(r => r.text),
