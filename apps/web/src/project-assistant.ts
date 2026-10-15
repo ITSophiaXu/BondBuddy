@@ -3,7 +3,7 @@ import { artifactFilename } from './artifact-download';
 import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,M4_DOCUMENT_MARKETS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
   sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
   type AssistantAction,type AssistantCard,type AssistantCardRequest,type AssistantResult,type M4Workspace,type M4Topic,
-  type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
+  type M4Message,type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
 import { ApiClient,ApiError,friendlyError,type Dto } from './api';
 import { M4Api } from './m4-api';
 import { ReviewApi } from './review-api';
@@ -16,7 +16,7 @@ import { assistantIcon as icon } from './assistant-icons';
 import './project-assistant.css';
 
 type ProjectData={project:Dto<'ProjectResponse'>;materials:Dto<'MaterialResponse'>[];results:AssistantResult[]};
-type Upload={id:string;topic:string;started?:boolean;file:File;role:Dto<'UploadCreateRequest'>['role'];project:string;status:string;error?:string;hash?:string;session?:Dto<'UploadSessionResponse'>;bytesSaved?:boolean;material?:Dto<'MaterialResponse'>};
+type Upload={id:string;topic:string;started?:boolean;saved?:boolean;file:File;role:Dto<'UploadCreateRequest'>['role'];project:string;status:string;error?:string;hash?:string;session?:Dto<'UploadSessionResponse'>;bytesSaved?:boolean;material?:Dto<'MaterialResponse'>};
 const emptyContext=():M4MessageContext=>({document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null});
 const finished=(state:string)=>['succeeded','test_completed','failed','cancelled','rejected'].includes(state);
 const businessName=(b:AssistantAction['business'])=>({update:'更新募集书',review:'复核募集书',generation:'材料生成'})[b];
@@ -183,11 +183,14 @@ export class ProjectAssistant {
   private async send(){
     if(!this.text.trim()||!this.workspace)return;
     if(this.workspace.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)))throw new AssistantInputError('请等待本轮回复后继续。');
-    if(this.currentUploads().some(u=>u.status!=='已保存'))throw new AssistantInputError('请等待附件保存完成，或先处理失败的上传。');
+    if(this.currentUploads().some(u=>!u.saved))throw new AssistantInputError('请等待附件保存完成，或先处理失败的上传。');
+    const submittedUploads=new Set(this.currentUploads().map(u=>u.id));
     await this.flush();const id=this.workspace.topic.topic_id,content=this.text.trim(),context=this.context();
     if(!this.qaQuote||this.qaQuote.content!==content){const value=await this.m4.quote(id,{kind:'qa',content,context});this.qaQuote={value,content,key:crypto.randomUUID()};if(value.quote.points>0)return;}
     const q=this.qaQuote;if(q.value.shortage>0)throw new AssistantInputError('积分不足，请充值后重新发送。');
-    await this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id});
+    const {message}=await this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id});
+    if(!this.workspace.messages.some(m=>m.message_id===message.message_id))this.workspace.messages.push(message);
+    this.uploads=this.uploads.filter(u=>!submittedUploads.has(u.id));
     this.text='';this.qaQuote=undefined;this.changed();await this.flush();await this.poll();
   }
   private async useAction(action:AssistantAction){
@@ -233,7 +236,7 @@ export class ProjectAssistant {
   }
   private async prepare(){
     if(!this.action||!this.workspace)return;await this.flush();
-    if(this.currentUploads().some(u=>u.status!=='已保存'))throw new AssistantInputError('附件尚未保存完成，请处理后继续。');
+    if(this.currentUploads().some(u=>!u.saved))throw new AssistantInputError('附件尚未保存完成，请处理后继续。');
     let b:AssistantCardRequest={card_id:crypto.randomUUID(),execution_request_id:crypto.randomUUID(),operation:this.action.business,project_id:''};
     if(this.action.business==='generation'){
       const type=this.action.fields.document_type as M4DocumentType|undefined;if(!type||!M4_DOCUMENT_TYPES.includes(type))throw new AssistantInputError('请选择材料类型。');
@@ -284,14 +287,14 @@ export class ProjectAssistant {
     this.status='已开始处理。可以收起助手，任务会继续运行。';this.view.assistant!.action=null;this.changed();await this.flush();await this.poll();
   }
   private async upload(u:Upload){
-    const state=(s:string)=>{u.status=s;this.paintStatus();};u.error=undefined;
+    const state=(s:string)=>{u.status=s;this.paintStatus();};u.error=undefined;u.saved=false;
     try{const ext=u.file.name.split('.').pop()?.toLowerCase(),mime=({docx:M1_UPLOAD_MIME_TYPES[0],pdf:M1_UPLOAD_MIME_TYPES[1],xlsx:M1_UPLOAD_MIME_TYPES[2],csv:M1_UPLOAD_MIME_TYPES[3],txt:M1_UPLOAD_MIME_TYPES[4],png:M1_UPLOAD_MIME_TYPES[5],jpg:M1_UPLOAD_MIME_TYPES[6],jpeg:M1_UPLOAD_MIME_TYPES[6]} as Record<string,typeof M1_UPLOAD_MIME_TYPES[number]>)[ext??''];
       if(!mime||!u.file.size||u.file.size>M1_UPLOAD_LIMITS.fileBytes)throw new AssistantInputError('文件格式或大小不符合上传要求。');
       if(!u.hash){state('正在校验文件');const digest=await crypto.subtle.digest('SHA-256',await u.file.arrayBuffer());u.hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');}
       u.session??=await this.api.createUpload(u.project,{filename:u.file.name,media_type:mime,byte_size:u.file.size,sha256:u.hash,role:u.role},this.controller.signal);
       if(!u.bytesSaved){await this.api.uploadBytes(u.session.upload_url,u.file,(n,total)=>state(`上传 ${Math.round(n/total*100)}%`),this.controller.signal);u.bytesSaved=true;}
       state('正在确认保存');u.material??=await this.api.completeUpload(u.project,u.session.upload_id,{byte_size:u.file.size,sha256:u.hash},this.controller.signal);
-      await this.m4.material(u.topic,pin(u.project,u.material));state(isReusedUpload(u.material,u.session)?duplicateUploadMessage(u.file.name,u.material.filename):'已保存');
+      await this.m4.material(u.topic,pin(u.project,u.material));u.saved=true;state(isReusedUpload(u.material,u.session)?duplicateUploadMessage(u.file.name,u.material.filename):'已保存');
     }catch(e){u.error=assistantError(e);state('上传未完成');throw e;}
   }
   private addFiles(files:File[],role:Upload['role']){
@@ -370,12 +373,28 @@ export class ProjectAssistant {
       ${r?`<a href="#/projects/${encodeURIComponent(c.project_id)}${c.operation==='review'?'/review?tab=results':'?from=projects'}">查看项目${finished(r.state)?'结果':'进度'}</a>${r.state==='succeeded'?` <button data-a="continue" data-id="${esc(c.card_id)}">继续修改</button><div data-delivery="${esc(r.run_id)}"></div>`:''}${['failed','paused'].includes(r.state)?'<p>原材料和要求已保留，可在项目页查看原因与恢复状态。</p>':''}`:
         `<div class="ba-card-actions"><button data-a="edit">修改信息</button>${stale?'<span>输入已变化，请重新核对任务。</span>':insufficient?`<a href="#/account?project=${encodeURIComponent(c.project_id)}" class="ba-primary">积分不足，去充值</a>`:`<button class="ba-primary" data-a="execute" data-id="${esc(c.card_id)}"${this.busy?' disabled':''}>${c.operation==='update'?'开始更新':'确认并开始'}</button>`}</div><small>成功交付后扣费；失败或取消释放预留积分。</small>`}</section>`;
   }
+  private messageHtml(m:M4Message){
+    const user=m.role==='user';
+    // Show this turn's immutable input, never today's (possibly expanded) topic materials.
+    const manifest=this.workspace?.tasks.find(t=>t.manifest.kind==='qa'&&t.manifest.message_id===m.message_id)?.manifest;
+    const materials=user&&manifest?.kind==='qa'?manifest.materials:[];
+    const files=materials.length?`<details class="ba-message-files"><summary>${icon('paperclip')}本轮使用 ${materials.length} 份材料</summary><ul>${materials.map((p,i)=>{
+      const material=this.workspace?.material_details.find(d=>d.source_project_id===p.source_project_id&&d.material_id===p.material_id&&d.material_version===p.material_version&&d.sha256===p.sha256);
+      return `<li>${esc(material?.filename??`材料 ${i+1}（版本 ${p.material_version}）`)}</li>`;
+    }).join('')}</ul></details>`:'';
+    const waiting=user&&!['completed','failed'].includes(m.reply_status);
+    const status=waiting?(m.reply_status==='running'?'正在阅读并整理回复…':m.reply_status==='queued'?'已收到，等待处理…':'正在查询回复状态…'):'';
+    const error=m.error?`<p role="alert">${esc(m.error)}</p>`:user&&m.reply_status==='failed'?'<p role="alert">本轮回复未完成，请稍后重试。</p>':'';
+    return `<article class="ba-message ba-message-${m.role}" data-message-id="${esc(m.message_id)}"><small>${user?'你':'BondBuddy'}</small><div class="ba-text">${esc(m.content)}</div>${files}${!user?error:''}${m.reply?.assistant_action?`<button class="ba-suggestion" data-a="action" data-id="${esc(m.message_id)}">核对${businessName(m.reply.assistant_action.business)}的信息与要求 →</button>`:''}</article>${user&&(waiting||error)?`<div class="ba-reply-status" role="status"><small>BondBuddy</small>${status?`<p class="ba-thinking">${status}</p>`:''}${error}</div>`:''}`;
+  }
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
-    const messages=this.workspace?.messages??[];const entries=[...messages.map(m=>({time:m.created_at,html:`<article class="ba-message ${m.role}"><small>${m.role==='user'?'你':'BondBuddy'}</small><div class="ba-text">${esc(m.content)}</div>${m.error?`<p role="alert">${esc(m.error)}</p>`:''}${m.role==='user'&&!['completed','failed'].includes(m.reply_status)?`<p class="ba-thinking">${m.reply_status==='running'?'正在阅读并整理回复…':'已收到，等待处理…'}</p>`:''}${m.reply?.assistant_action?`<button class="ba-suggestion" data-a="action" data-id="${esc(m.message_id)}">核对${businessName(m.reply.assistant_action.business)}的信息与要求 →</button>`:''}</article>`})),...this.cards.map(c=>({time:c.created_at,html:this.card(c)}))].sort((a,b)=>a.time.localeCompare(b.time));
+    const messages=this.workspace?.messages??[];const expanded=new Set([...box.querySelectorAll<HTMLElement>('.ba-message:has(.ba-message-files[open])')].map(el=>el.dataset.messageId));
+    const entries=[...messages.map(m=>({time:m.created_at,html:this.messageHtml(m)})),...this.cards.map(c=>({time:c.created_at,html:this.card(c)}))].sort((a,b)=>a.time.localeCompare(b.time));
     box.hidden=this.formOpen&&!entries.length;
     box.classList.toggle('ba-empty',!entries.length);
     box.innerHTML=entries.map(e=>e.html).join('')||`<div class="ba-welcome"><span class="ba-welcome-mark">${icon('buddy')}</span><h2>有什么可以帮你？</h2><p>讨论项目、完善文稿，或开始一项新任务。</p><div class="ba-shortcuts"><button data-a="shortcut" data-kind="update"><span class="ba-shortcut-icon">${icon('update')}</span><span><strong>更新募集书</strong><small>更新内容，或继续修改已有成果</small></span>${icon('arrow')}</button><button data-a="shortcut" data-kind="review"><span class="ba-shortcut-icon">${icon('review')}</span><span><strong>复核募集书</strong><small>检查内容，梳理需要完善的地方</small></span>${icon('arrow')}</button><button data-a="shortcut" data-kind="generation"><span class="ba-shortcut-icon">${icon('generation')}</span><span><strong>生成项目材料</strong><small>根据材料和要求，编制所需文书</small></span>${icon('arrow')}</button></div></div>`;
+    for(const details of box.querySelectorAll<HTMLDetailsElement>('.ba-message-files'))if(expanded.has(details.closest<HTMLElement>('[data-message-id]')?.dataset.messageId))details.open=true;
     if(atEnd)box.scrollTop=box.scrollHeight;else box.scrollTop=scroll;
     for(const c of this.cards.filter(c=>c.run?.state==='succeeded'))void this.delivery(c);
   }
