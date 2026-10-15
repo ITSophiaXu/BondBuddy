@@ -1,0 +1,126 @@
+{
+  "version": "case-templates-20261015-v1",
+  "templates": [
+    {
+      "id": "sse-private-application",
+      "version": "case-templates-20261015-v1",
+      "market": "sse",
+      "offering": "private",
+      "document_type": "application",
+      "default": true,
+      "source_sha256": "e602664f88e62c62e5f3e5812c47f816c4cc5c115d704f026d9299b5b392b4ca",
+      "template_sha256": "f6908fb9337913f34fc572aa2426f757ecebbf9cede060e59bacacdcbf913d91",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/sse-private-application.docx"
+    },
+    {
+      "id": "sse-private-underwriter",
+      "version": "case-templates-20261015-v1",
+      "market": "sse",
+      "offering": "private",
+      "document_type": "underwriter",
+      "default": true,
+      "source_sha256": "4daf531228b7fc65aa3bd7877ef738d5b7ddcca5957895ba420841a5ab068236",
+      "template_sha256": "95961d1b32f3e37462d5a0b3649fbc4dfd55be5d45c62c0a795fb1bff12335ef",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/sse-private-underwriter.docx"
+    },
+    {
+      "id": "szse-private-application",
+      "version": "case-templates-20261015-v1",
+      "market": "szse",
+      "offering": "private",
+      "document_type": "application",
+      "default": true,
+      "source_sha256": "6211fea61110b9cbc81de89c6adc397f17c5ff1a8d560e1a449833d5f2f290f9",
+      "template_sha256": "55017093c58929eeea85490855f30effbacdd4fea7daed58d8c736545b708b18",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/szse-private-application.docx"
+    },
+    {
+      "id": "szse-private-application-alt",
+      "version": "case-templates-20261015-v1",
+      "market": "szse",
+      "offering": "private",
+      "document_type": "application",
+      "default": false,
+      "source_sha256": "a853ffbc32bf6558cde0ec3eb9dd78a2bedf81561a035e60ad5e8586915f27ba",
+      "template_sha256": "ba407e0221734c1ac7a6102281f96d0bf11bc946df8519a61b430ba07ebb93f4",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/szse-private-application-alt.docx"
+    },
+    {
+      "id": "szse-private-underwriter",
+      "version": "case-templates-20261015-v1",
+      "market": "szse",
+      "offering": "private",
+      "document_type": "underwriter",
+      "default": true,
+      "source_sha256": "7327c42af42dc157c76e0c28306e7991bd86393cd4ba14f390abfb385a9d1beb",
+      "template_sha256": "c670f840c6d11d3ba9049f5d1896fd1c7a23a6aa0a505884b9b6d35d96be7a63",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/szse-private-underwriter.docx"
+    },
+    {
+      "id": "szse-private-underwriter-alt",
+      "version": "case-templates-20261015-v1",
+      "market": "szse",
+      "offering": "private",
+      "document_type": "underwriter",
+      "default": false,
+      "source_sha256": "f8f37a1ed1435abbc3dc800f354799b1e1ffd0fb8a34a9d11559daf97a7f605a",
+      "template_sha256": "807780b772a0f58d4772c1fbd1971de1bb41335dccbe29ca1bc8a2287b14e65b",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/szse-private-underwriter-alt.docx"
+    },
+    {
+      "id": "nafmii-ppn-recommendation",
+      "version": "case-templates-20261015-v1",
+      "market": "nafmii",
+      "offering": "ppn",
+      "document_type": "recommendation",
+      "default": true,
+      "source_sha256": "8fd3e487381db3bf7a4ecc65b57579db42812fe5a5b74716065694f64cae4f6e",
+      "template_sha256": "3c04e9b862e48eec0d97a1c3b8aeb8d791a3b8791a55b9a86a88ee1bc690d809",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/nafmii-ppn-recommendation.docx"
+    },
+    {
+      "id": "nafmii-ppn-recommendation-alt",
+      "version": "case-templates-20261015-v1",
+      "market": "nafmii",
+      "offering": "ppn",
+      "document_type": "recommendation",
+      "default": false,
+      "source_sha256": "2e8c2078aa5d797d562092f4b2751f882008de77b0d24d049397b01000ce6687",
+      "template_sha256": "c6e4c7a60a6a5fcefb8dc56b80c3b659ecb71c78833ff4611be03fb78c5509fb",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/nafmii-ppn-recommendation-alt.docx"
+    },
+    {
+      "id": "nafmii-ppn-recommendation-letter",
+      "version": "case-templates-20261015-v1",
+      "market": "nafmii",
+      "offering": "ppn",
+      "document_type": "recommendation",
+      "default": false,
+      "source_sha256": "b64c62211b4bd35be498035c7d0aee3bd3c686b6b26181abb01c117ead88b2a3",
+      "template_sha256": "a2bae28053a507569f2a168e858cc8e55379aefdebb9db586fc274f25309c970",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/nafmii-ppn-recommendation-letter.docx"
+    },
+    {
+      "id": "nafmii-mtn-recommendation",
+      "version": "case-templates-20261015-v1",
+      "market": "nafmii",
+      "offering": "mtn",
+      "document_type": "recommendation",
+      "default": true,
+      "source_sha256": "66c72314ff908d43f1b4b3bc6ac24c90823468564a76d3a77387158f2473580c",
+      "template_sha256": "d726fbb7a47e5fa4e36394fbb91de30a6ffaf08b96e688adfb1806bb24b1e825",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/nafmii-mtn-recommendation.docx"
+    },
+    {
+      "id": "nafmii-mtn-recommendation-alt",
+      "version": "case-templates-20261015-v1",
+      "market": "nafmii",
+      "offering": "mtn",
+      "document_type": "recommendation",
+      "default": false,
+      "source_sha256": "7d0244d68fed6a5b71c1422b9e9b0f948dabdebf5479dc636fb0892f3618dd15",
+      "template_sha256": "42c3c87f43e23f650c67e8bf878bc9498848be4f0ce4a148b7091b8ce89e09ea",
+      "template_path": "knowledge/material-drafting/2026-10-15/templates/nafmii-mtn-recommendation-alt.docx"
+    }
+  ]
+}

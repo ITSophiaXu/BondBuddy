@@ -1,6 +1,6 @@
 import { duplicateUploadMessage, isReusedUpload } from './duplicate-upload';
 import { artifactFilename } from './artifact-download';
-import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
+import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,M4_DOCUMENT_MARKETS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
   sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
   type AssistantAction,type AssistantCard,type AssistantCardRequest,type AssistantResult,type M4Workspace,type M4Topic,
   type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
@@ -242,7 +242,7 @@ export class ProjectAssistant {
       const sources=w.materials.filter(m=>w.material_details.find(d=>d.material_id===m.material_id)?.role==='historical');
       input.source_material=sources.find(m=>m.material_id===this.view.unsent_context.source_material?.material_id)??(sources.length===1?sources[0]:null);
       if(sources.length>1&&!input.source_material)throw new AssistantInputError('请选择本次采用的募集说明书，其他文件仍作为补充材料。');
-      input.fields={...input.fields,...this.action.fields,market:this.action.fields.market??'',offering:'private'};
+      input.fields={...input.fields,...this.action.fields,market:this.action.fields.market??'',offering:type==='recommendation'?(this.action.fields.offering??''):'private'};
       if(type==='init'){const t=w.templates.find(t=>`${t.template_id}/${t.template_version}`===this.view.assistant?.template_key);if(!t)throw new AssistantInputError('请选择或上传本账号的券商立项报告模板。');input.template={template_id:t.template_id,template_version:t.template_version,sha256:t.sha256};input.fields.broker=t.broker;}input.supplemental_requirements=this.action.requirements;
       input.edit_base=this.view.unsent_context.reading_artifact??null;
       const result=await this.m4.draft(w.topic.topic_id,{expected_version:version,input});
@@ -350,7 +350,8 @@ export class ProjectAssistant {
   private form(){const a=this.action;if(!a)return '';const f=a.fields,s=cutoffSelection(f.reporting_cutoff??null),materials=this.data?.materials??[],sources=(this.workspace?.material_details??[]).filter(m=>m.role==='historical'&&(!this.data||m.source_project_id===this.data.project.project_id));
     return `<section class="ba-form"><div class="ba-card-head"><strong>${businessName(a.business)} · 核对信息</strong><button class="ba-icon-button" data-a="hide-form" title="收起任务信息" aria-label="收起任务信息">${icon('minus')}</button></div>
       <div class="ba-fields">${a.business==='generation'?`<label>材料类型<select data-field="document_type"><option value="">请选择</option>${M4_DOCUMENT_TYPES.map(t=>option(t,M4_DOCUMENT_LABELS[t],f.document_type)).join('')}</select></label>`:`<label>项目名称<input data-field="name" maxlength="120" value="${esc(f.name??'')}"></label><label>发行人全称<input data-field="issuer_name" maxlength="200" value="${esc(f.issuer_name??'')}"></label>`}
-      <label>发行市场<select data-field="market"><option value="">请选择</option>${(a.business==='generation'?MARKETS.filter(m=>m!=='nafmii'):MARKETS).map(m=>option(m,MARKET_LABELS[m],f.market)).join('')}</select></label>
+      <label>发行市场<select data-field="market"><option value="">请选择</option>${(a.business==='generation'?(f.document_type?M4_DOCUMENT_MARKETS[f.document_type]:MARKETS):MARKETS).map(m=>option(m,MARKET_LABELS[m],f.market)).join('')}</select></label>
+      ${a.business==='generation'&&f.document_type==='recommendation'?`<label>品种<select data-field="offering"><option value="">请选择</option>${(['ppn','mtn'] as const).map(o=>option(o,OFFERING_LABELS[o],f.offering)).join('')}</select></label>`:''}
       ${a.business!=='generation'?`<label>品种<select data-field="offering"><option value="">请选择</option>${(f.market?MARKET_OFFERINGS[f.market]:[]).map(o=>option(o,OFFERING_LABELS[o],f.offering)).join('')}</select></label>
       <label>最新报告期<select data-year>${s.years.map(y=>option(y,`${y}年`,s.year)).join('')}</select></label><label>期末<select data-quarter><option value="">请选择</option>${QUARTER_ENDS.map(([q,l])=>option(q,l,s.quarter)).join('')}</select></label>`:''}</div>
       ${a.business==='generation'&&f.document_type==='init'?`<label>券商立项模板<select data-template><option value="">请选择</option>${(this.workspace?.templates??[]).filter(t=>t.status==='active'&&t.document_type==='init'&&t.market===f.market).map(t=>option(`${t.template_id}/${t.template_version}`,`${t.broker} · ${t.name}`,this.view.assistant?.template_key)).join('')}</select></label><label>模板所属券商<input data-field="broker" value="${esc(f.broker??'')}"></label><label class="ba-attach">＋ 上传券商模板<input type="file" data-template-upload accept=".docx"></label>`:''}

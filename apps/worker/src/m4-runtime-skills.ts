@@ -3,9 +3,9 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type M4SkillId = 'm4-init-report' | 'm4-private-summary' | 'm4-underwriter' | 'm4-legal' | 'm4-project-qa' | 'global-project-assistant';
+export type M4SkillId = 'm4-application' | 'm4-recommendation' | 'm4-init-report' | 'm4-private-summary' | 'm4-underwriter' | 'm4-legal' | 'm4-project-qa' | 'global-project-assistant';
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
-const manifestHash = '1d43d62a5e02979002d6f71213e702d263bc8c2b68616a432853f4f1db45171a';
+const manifestHash = 'aee143f06ce089b6836b3a22e97d361171bfe1ca5c243c824594eae37e7a66d0';
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 /** Load only the bundled, pinned bytes; never discover personal CLI skills. */

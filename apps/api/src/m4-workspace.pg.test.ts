@@ -450,7 +450,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     actor=other;assert.equal((await send('GET',`/api/v1/m4/artifacts/${qa.artifact_id}/versions/1/bytes`)).statusCode,404);actor=user;
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_executions WHERE owner_user_id=$1',[user])).rows[0].n,4);
     // Unsupported requests receive free capability feedback without a selected document or a paid QA fallback.
-    for(const content of ['请生成推荐函','请实时查询公开信息','请检索最新法规并判断法规适用性']){
+    for(const content of ['请生成DFI推荐函','请实时查询公开信息','请检索最新法规并判断法规适用性']){
       const capability=(await ok('POST',path(t,'messages'),{submission_request_id:randomUUID(),content,context})).run;
       assert.equal(capability.billing_mode,'platform_trial');const capabilityLease=await claim(pool,30,{runKinds:['qa']});assert.ok(capabilityLease);assert.equal(capabilityLease.runId,capability.run_id);
       await finishM4Qa(pool,capabilityLease,{...reply,content:'Synthetic capability feedback: 此项 M4 尚未开放，没有执行。',intent:'clarify'});

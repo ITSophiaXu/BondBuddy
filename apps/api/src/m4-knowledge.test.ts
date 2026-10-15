@@ -8,7 +8,7 @@ import {M4_MULTIPLIERS,validateM4BillingConfig} from './m4-billing.js';
 
 test('all material/exchange combinations select actual source knowledge with distinct immutable bytes',()=>{
   const hashes=new Set<string>();
-  for(const market of ['sse','szse'] as const)for(const type of M4_DOCUMENT_TYPES){
+  for(const market of ['sse','szse'] as const)for(const type of M4_DOCUMENT_TYPES.filter(t=>!['application','recommendation'].includes(t))){
     const pin=loadM4Knowledge(market,type);hashes.add(pin.sha256);
     assert.equal(Value.Check(M4KnowledgeSnapshotSchema,pin),true);
     assert.ok(validM4Knowledge(pin,market,type));
@@ -23,12 +23,15 @@ test('all material/exchange combinations select actual source knowledge with dis
   assert.equal(hashes.size,8);
   assert.throws(()=>loadM4Knowledge('sse','../legal' as never),/M4_KNOWLEDGE_UNAVAILABLE/);
 });
-test('protected template is not misrepresented and existing billing config remains usable',()=>{
+test('readable SSE opinion replaces missing case layout while historical guide evidence remains unchanged',()=>{
   const knowledge=loadM4Knowledge('sse','underwriter');
-  assert.deepEqual(knowledge.source_ids,['sse-guide']);assert.match(knowledge.content,/IRM 保护，未读取/);
+  assert.deepEqual(knowledge.source_ids,['sse-guide','sse-private-underwriter']);
+  assert.equal(knowledge.template?.id,'sse-private-underwriter');
+  assert.match(knowledge.content,/第四节 主承销商内核程序及内核意见/);
+  assert.match(knowledge.content,/IRM 保护，未读取/); // historical October 7 source, not the replacement case
   assert.equal(m4UnavailableDocument('请编制主承销商核查意见'),false);
   assert.equal(m4UnavailableDocument('请生成法律意见书'),false);
-  assert.equal(m4UnavailableDocument('请生成推荐函'),true);
+  assert.equal(m4UnavailableDocument('请生成推荐函'),false);
   assert.equal(M4_MULTIPLIERS.m4_G02,12);assert.equal(M4_MULTIPLIERS.m4_G03,15);
   const config={model_id:'synthetic',rates:{synthetic:{input_microyuan_per_million:1,cached_microyuan_per_million:1,output_microyuan_per_million:1}},
     budgets:Object.fromEntries(['m4_G01','m4_G05','m4_Q01','m4_Q02','m4_Q03','m4_Q04','m4_Q05'].map(k=>[k,{input_tokens:10,output_tokens:10,reserve_factor:1}]))};
