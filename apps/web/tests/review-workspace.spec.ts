@@ -239,7 +239,7 @@ for(const width of [1440,390])test(`review inline requirements and global floati
   await page.getByLabel('补充复核要求（选填）').scrollIntoViewIfNeeded();
   if(output)await page.screenshot({path:`${output}/prototype-${width}.png`});
   await page.locator('#buddy-toggle').click();await expect(page.locator('#buddy')).toBeVisible();
-  await page.getByRole('button',{name:'收起项目助手'}).click();await expect(page.locator('#buddy')).toBeHidden();
+  await page.getByRole('button',{name:'收起BondBuddy'}).click();await expect(page.locator('#buddy')).toBeHidden();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 

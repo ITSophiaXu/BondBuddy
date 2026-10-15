@@ -28,6 +28,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-07-material-drafting-knowledge.md
 !docs/product-decisions/2026-10-07-pdf-original-upload.md
 !docs/product-decisions/2026-10-08-global-project-assistant.md
+!docs/product-decisions/2026-10-15-bondbuddy-brand-name.md
 !docs/acceptance/
 docs/acceptance/*
 !docs/acceptance/m4-implementation-2026-10-06.md

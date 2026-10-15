@@ -177,8 +177,8 @@ export function m4UnavailableResearch(content:string):boolean{return content.spl
 });}
 export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingTask|'m4_Q00'|'m4_task_assistance'{
   // Capability explanations and preparing a task never reserve user credits. Basic analysis still uses its actual QA category.
-  const greeting=/^(?:(?:你好|您好|嗨|hi|hello)(?:[，,\s]*(?:bondbuddy|项目助手))?|你是谁|你(?:能|可以)(?:帮我)?做什么|你有什么功能|介绍一下你自己)[\s!！?？。,.，]*$/i;
-  const productSurface='(?:bondbuddy|项目助手|产品|本产品|这个产品|材料生成|这个页面|这个功能)';
+  const greeting=/^(?:(?:你好|您好|嗨|hi|hello)(?:[，,\s]*(?:bondbuddy|券商助手|项目助手))?|你是谁|你(?:能|可以)(?:帮我)?做什么|你有什么功能|介绍一下你自己)[\s!！?？。,.，]*$/i;
+  const productSurface='(?:bondbuddy|券商助手|项目助手|产品|本产品|这个产品|材料生成|这个页面|这个功能)';
   const uploadTarget='(?:(?:财务|审计)?材料|附件|文件|原稿|模板|募集说明书|募集书|参考稿|历史稿|资料)';
   const outputTarget='(?:(?:已(?:经)?(?:生成|完成)(?:的)?|生成的|当前任务的|本次任务的|本项目的|我的|复核|财务|审计)?(?:成果|结果|文件|报告|word|pdf|修订版|清洁版)(?:文件|报告)?)';
   const outputOperation='(?:下载|查看|打开|找到|查找)';
