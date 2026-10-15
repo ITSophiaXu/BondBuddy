@@ -84,8 +84,8 @@ export class ProjectAssistant {
     const navigation=document.querySelector('.sidebar nav[aria-label="账号"]');
     if(navigation&&!navigation.querySelector('[data-assistant-restore]')){
       const button=document.createElement('button');button.type='button';button.className='nav-item assistant-restore';button.dataset.assistantRestore='';
-      button.innerHTML=icon('buddy')+'<span>BondBuddy 助手</span>';
-      button.title='打开或恢复项目助手';
+      button.innerHTML=icon('buddy')+'<span>BondBuddy</span>';
+      button.title='打开或恢复 BondBuddy';
       button.addEventListener('click',()=>{
         const menu=document.querySelector<HTMLButtonElement>('#toggle-menu');if(menu?.getAttribute('aria-expanded')==='true')menu.click();
         void this.setOpen(true);
@@ -103,9 +103,9 @@ export class ProjectAssistant {
   }
   private paintDock(){
     const dock=this.dock;dock.hidden=this.open;
-    dock.setAttribute('aria-label','打开项目助手');
+    dock.setAttribute('aria-label','打开 BondBuddy');
     dock.setAttribute('aria-expanded',String(this.open));
-    dock.title='BondBuddy · 打开项目助手';
+    dock.title='打开 BondBuddy';
     dock.querySelector('[data-active-dot]')?.classList.toggle('is-active',this.active);
   }
   private syncLayout(){
@@ -136,7 +136,7 @@ export class ProjectAssistant {
   private async newConversation(projectId?:string){
     await this.flush();const source=projectId?await this.api.project(projectId,this.controller.signal):null;
     if(!this.conversationRequest||this.conversationRequest.projectId!==projectId)this.conversationRequest={projectId,key:crypto.randomUUID()};
-    const result=await this.m4.create({creation_request_id:this.conversationRequest.key,name:source?`${source.name} · 项目助手`:'新对话',surface:'assistant',...(source?{source_project_id:source.project_id}:{})});
+    const result=await this.m4.create({creation_request_id:this.conversationRequest.key,name:source?`${source.name} · BondBuddy`:'新对话',surface:'assistant',...(source?{source_project_id:source.project_id}:{})});
     this.conversationRequest=undefined;this.topics.unshift(result.topic);await this.select(result.topic.topic_id);
     this.view.assistant={project_id:source?.project_id??null,action:null};
     if(source){this.data=await this.projectData(source.project_id);for(const m of this.data.materials.filter(m=>m.state==='persisted'))await this.m4.material(this.workspace!.topic.topic_id,pin(source.project_id,m));}
@@ -403,13 +403,13 @@ export class ProjectAssistant {
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
     const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
     this.host.innerHTML=this.open?`
-      <section id="ba-panel" class="ba-panel" role="dialog" aria-label="BondBuddy 项目助手"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>项目助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原宽度':'加宽侧栏'}" aria-label="${this.wide?'还原宽度':'加宽侧栏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手，回到右下角图标" aria-label="收起助手">${icon('collapse')}</button></div></header>
+      <section id="ba-panel" class="ba-panel" role="dialog" aria-label="BondBuddy"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>券商助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原宽度':'加宽侧栏'}" aria-label="${this.wide?'还原宽度':'加宽侧栏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手，回到右下角图标" aria-label="收起助手">${icon('collapse')}</button></div></header>
       <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>${currentProject&&currentProject!==project?.project_id?'<button class="ba-current-project" data-a="current-project">使用当前项目</button>':''}
       ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
       ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
       ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
-      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给项目助手">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
+      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给 BondBuddy">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
     // Keep the selected native input alive while upload completion redraws the panel.
     // Only reuse it within the same conversation/project, never across contexts.
     for(const fresh of this.host.querySelectorAll<HTMLInputElement>('input[type="file"]')){
