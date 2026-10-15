@@ -1,6 +1,7 @@
 import { AssistantActionSchema, AssistantViewSchema } from './project-assistant.js';
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import { MARKETS, OFFERINGS } from './public-enums.js';
 import type { Project, Run, RunEvent } from './index.js';
 import type { CreditBalance } from './billing.js';
 import type { AuthoringProgress } from './authoring-progress.js';
@@ -79,7 +80,7 @@ export type M4QuoteRequest = Static<typeof M4QuoteRequestSchema>;
 export const M4ExecuteRequestSchema = obj({ execution_request_id: id, document_type: M4DocumentTypeSchema,
   expected_draft_version: version, quote_id: id, entrypoint: Type.Union([Type.Literal('workspace'), Type.Literal('assistant')]) });
 export type M4ExecuteRequest = Static<typeof M4ExecuteRequestSchema>;
-export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_Q01: '通用解释',
+export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_G04:'推荐函', m4_application:'申请书', m4_Q01: '通用解释',
   m4_Q02: '授权资料定位', m4_Q03: '确定性计算', m4_Q04: '基础资料比较', m4_Q05: '基础资料解读' } as const;
 export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
 export const M4_DOCUMENT_FIXED_PRICE = { version: 'm4-document-fixed-20261008-v1', points: 4500 } as const;
@@ -88,17 +89,20 @@ export type M4Quote = { quote_id: string; topic_id: string; input_hash: string; 
   billing_policy?: 'on_delivery' | 'authoring_balance_v2';
   billing_method: 'fixed' | 'metered_capped' | 'free'; multiplier: number; expires_at: string; amount_semantics: 'fixed_price' | 'reservation_cap' };
 export type M4QuoteResponse = { quote: M4Quote; balance: CreditBalance; shortage: number };
+export const M4CaseTemplateSchema = obj({id,version:id,sha256:hash,
+  docx_base64:Type.String({minLength:1,maxLength:2000000,pattern:'^[A-Za-z0-9+/]+={0,2}$'})});
 export const M4KnowledgeSnapshotSchema = obj({version:id,document_type:M4DocumentTypeSchema,
-  market:Type.Union([Type.Literal('sse'),Type.Literal('szse')]),title:nonempty,sha256:hash,
+  market:Type.Union(MARKETS.map(v=>Type.Literal(v))),offering:Type.Optional(Type.Union(OFFERINGS.map(v=>Type.Literal(v)))),
+  template:Type.Optional(M4CaseTemplateSchema),title:nonempty,sha256:hash,
   source_ids:Type.Array(id,{minItems:1,maxItems:20}),content:Type.String({minLength:1,maxLength:500000})});
 export type M4KnowledgeSnapshot = Static<typeof M4KnowledgeSnapshotSchema>;
 export const M4DocumentManifestSchema = obj({ version: Type.Literal('m4-document-input-v1'), kind: Type.Literal('document'),
   project_name: Type.Optional(Type.String({ maxLength: 200 })),
   topic_id: id, execution_scope_project_id: id, draft_version: version, input: M4DraftInputSchema,
-  template_material: nullable(M4MaterialPinSchema), market: Type.Union([Type.Literal('sse'), Type.Literal('szse')]),
+  template_material: nullable(M4MaterialPinSchema), market: Type.Union(MARKETS.map(v=>Type.Literal(v))),
   // Optional only for persisted pre-knowledge v1 tasks; the API pins it on every new task.
   knowledge:Type.Optional(M4KnowledgeSnapshotSchema),
-  offering: Type.Literal('private'), billing_task: Type.Union(Object.values(M4_DOCUMENT_BILLING_TASKS).map(v=>Type.Literal(v))) });
+  offering: Type.Union([Type.Literal('private'),Type.Literal('ppn'),Type.Literal('mtn')]), billing_task: Type.Union(Object.values(M4_DOCUMENT_BILLING_TASKS).map(v=>Type.Literal(v))) });
 export type M4DocumentManifest = Static<typeof M4DocumentManifestSchema>;
 export const M4QaManifestSchema = obj({ version: Type.Literal('m4-qa-input-v1'), kind: Type.Literal('qa'),
   topic_id: id, message_id: id, content: nonempty, context: M4MessageContextSchema,

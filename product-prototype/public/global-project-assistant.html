@@ -1,5 +1,5 @@
 <!-- 2026-10-09: floating panel and icon refinement: project-assistant-refined.html. Business flows below remain the reference. -->
-<div id="bb-agent-experience" aria-label="BondBuddy 全站项目助手交互设计">
+<div id="bb-agent-experience" aria-label="BondBuddy 全站助手交互设计">
   <div class="ba-app">
     <aside class="ba-sidebar">
       <div class="ba-brand"><span class="ba-logo">b.</span>BondBuddy</div>
@@ -22,15 +22,15 @@
       <nav class="ba-mobile-nav" aria-label="移动端导航"><button data-page="dashboard">工作台</button><button data-page="review">复核项目</button><button data-page="generate">材料生成</button><button data-page="projects">全部项目</button></nav>
       <main class="ba-main" data-main></main>
     </div>
-    <section class="ba-assistant" data-assistant aria-label="BondBuddy 项目助手" hidden>
+    <section class="ba-assistant" data-assistant aria-label="BondBuddy" hidden>
       <header class="ba-assistant-header">
         <span class="ba-assistant-mark"><i data-lucide="sparkles" aria-hidden="true"></i></span>
-        <div class="ba-assistant-name">BondBuddy<small>项目助手</small></div>
+        <div class="ba-assistant-name">BondBuddy<small>券商助手</small></div>
         <div class="ba-header-actions">
           <button data-action="history" class="ba-icon-button" aria-label="最近对话" data-tooltip="最近对话"><i data-lucide="history" aria-hidden="true"></i></button>
           <button data-action="new-chat" class="ba-icon-button" aria-label="新对话" data-tooltip="新对话"><i data-lucide="square-pen" aria-hidden="true"></i></button>
           <button data-action="expand" class="ba-icon-button" aria-label="展开为专注视图" data-tooltip="展开 / 收起"><i data-lucide="maximize-2" aria-hidden="true"></i></button>
-          <button data-action="close" class="ba-icon-button" aria-label="收起项目助手" data-tooltip="收起，任务继续运行"><i data-lucide="minus" aria-hidden="true"></i></button>
+          <button data-action="close" class="ba-icon-button" aria-label="收起BondBuddy" data-tooltip="收起，任务继续运行"><i data-lucide="minus" aria-hidden="true"></i></button>
         </div>
       </header>
       <div class="ba-context-bar"><button data-action="project-picker" class="ba-context-button"><i data-lucide="folder" aria-hidden="true"></i><span data-context>未关联项目</span><i data-lucide="chevron-down" aria-hidden="true"></i></button><button data-action="materials" class="ba-context-materials" data-material-label>选择材料</button></div>
@@ -45,7 +45,7 @@
       </form>
       <div class="ba-assistant-foot" data-footer>更新任务核对材料与要求后开始，成功交付后扣费。</div>
     </section>
-    <button class="ba-launcher" data-action="open" aria-label="展开 BondBuddy 项目助手" aria-expanded="false"><span class="ba-launcher-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="ba-launcher-copy"><strong>BondBuddy</strong><small data-launcher-sub>项目助手</small></span><span class="ba-unread" data-unread hidden>1</span></button>
+    <button class="ba-launcher" data-action="open" aria-label="展开 BondBuddy" aria-expanded="false"><span class="ba-launcher-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="ba-launcher-copy"><strong>BondBuddy</strong><small data-launcher-sub>BondBuddy</small></span><span class="ba-unread" data-unread hidden>1</span></button>
     <div class="ba-toast" role="status" data-toast hidden></div>
     <div class="ba-sr-only" aria-live="polite" data-announcer></div>
   </div>
@@ -295,7 +295,7 @@
  if(saved?.version===1){state={...defaults,...saved.state};stateRevision=saved.revision||0;if(state.job?.status==='running'){state.job={...state.job,status:'done',stage:3};state.view='done';}}
  const project=()=>state.chatProject==='custom'?state.custom:projects[state.chatProject];
  const label=()=>project()?.name||'未关联项目';
- function save(){if(window.openai?.setWidgetState){stateRevision+=1;window.openai.setWidgetState({modelContent:{design:'全站悬浮 BondBuddy 项目助手',mode:state.focus?'专注视图':'悬浮窗口',page:state.page,conversationProject:label(),scenario:state.view,taskType:typeNames[state.taskType],prototypeOnly:true},privateContent:{version:1,revision:stateRevision,state:{...state,draft:$('#ba-message').value,history:state.history.slice(-5)}}}).catch(()=>{});}}
+ function save(){if(window.openai?.setWidgetState){stateRevision+=1;window.openai.setWidgetState({modelContent:{design:'全站悬浮 BondBuddy',mode:state.focus?'专注视图':'悬浮窗口',page:state.page,conversationProject:label(),scenario:state.view,taskType:typeNames[state.taskType],prototypeOnly:true},privateContent:{version:1,revision:stateRevision,state:{...state,draft:$('#ba-message').value,history:state.history.slice(-5)}}}).catch(()=>{});}}
  function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:17,height:17}});}
  function announce(t){$('[data-announcer]').textContent=t;}
  function toast(t){clearTimeout(toastTimer);$('[data-toast]').textContent=t;$('[data-toast]').hidden=false;announce(t);toastTimer=setTimeout(()=>{$('[data-toast]').hidden=true;},4200);}
@@ -332,7 +332,7 @@
  function renderAssistant(){
   const panel=$('[data-assistant]');panel.hidden=!state.open;panel.classList.toggle('is-focus',state.focus);$('[data-action="expand"]').setAttribute('aria-label',state.focus?'恢复悬浮窗口':'展开为专注视图');
   $('[data-action="open"]').hidden=state.open;$('[data-action="open"]').setAttribute('aria-expanded',String(state.open));
-  $('[data-unread]').hidden=!state.unread;$('[data-launcher-sub]').textContent=state.unread?'成果已就绪':state.job?.status==='running'?'有任务正在进行':'项目助手';
+  $('[data-unread]').hidden=!state.unread;$('[data-launcher-sub]').textContent=state.unread?'成果已就绪':state.job?.status==='running'?'有任务正在进行':'BondBuddy';
   $('[data-context]').textContent=label();$('[data-material-label]').textContent=project()?(state.selectedFiles.length+' 份材料'):'选择材料';
   const mismatch=state.pageProject&&state.pageProject!==state.chatProject;
   $('[data-switch-notice]').innerHTML=mismatch?'<div class="ba-switch-notice"><span>当前页面：'+esc(projects[state.pageProject].name)+'</span><button data-action="switch-current">为此项目新建对话</button></div>':'';
@@ -393,7 +393,7 @@
   else if(a==='ask-results'){state.open=true;if(state.chatProject!==state.pageProject)resetChat(state.pageProject);state.userText='这份募集书，哪些地方最需要更新？';state.view='answer';renderAssistant();save();}
   else if(a==='sample-progress'||a==='my-progress'){state.open=true;state.userText='我的项目现在进展到哪里了？';state.view='generic';renderAssistant();$('[data-conversation]').innerHTML=userBubble(state.userText)+assistantLabel()+'<div class="ba-response"><p>示例项目中，远山建设的募集书正在更新财务分析章节；澄川实业的复核结果和青禾产业的核查意见已经可以查看。</p><button class="ba-button" style="margin-top:14px" data-page="projects">查看全部项目</button></div>';icons();fit();save();}
   else if(a==='earlier'){b.outerHTML='<div class="ba-more-history">'+state.history.slice(-3).map(h=>'<p>'+esc(h.title)+'<br><small>'+esc(h.projectName)+'</small></p>').join('')+'</div>';fit();}
-  else if(a==='form-continue')toast('常规表单流程继续保留。项目助手可以在任意页面随时唤起。');
+  else if(a==='form-continue')toast('常规表单流程继续保留。BondBuddy可以在任意页面随时唤起。');
  });
  root.addEventListener('change',e=>{if(e.target.matches('[data-material-index]')){const i=Number(e.target.dataset.materialIndex);if(e.target.checked&&!state.selectedFiles.includes(i))state.selectedFiles.push(i);else if(!e.target.checked)state.selectedFiles=state.selectedFiles.filter(n=>n!==i);renderAttachments();$('[data-material-label]').textContent=state.selectedFiles.length+' 份材料';icons();save();}
   if(e.target.matches('[data-file-input]')){toast('已演示选择 '+e.target.files.length+' 个文件。原型不读取、不上传文件内容。');}

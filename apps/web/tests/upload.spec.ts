@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { mkdir, readFile } from 'node:fs/promises';
 import type { MaterialParseJob, Recognition } from '@bondbuddy/contracts';
 
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
@@ -9,7 +10,7 @@ const projectId = 'project-synthetic-owner-a';
 type Material = { material_id: string; material_version: number; upload_id: string; role: string; filename: string; media_type: string; byte_size: number; sha256: string; state: 'persisted'; persisted_at: string; error: null };
 type FixtureState = {
   owner: string | null;
-  uploads: Map<string, { owner: string; filename: string; role: string; bytes: number; failedOnce: boolean }>;
+  uploads: Map<string, { owner: string; filename: string; role: string; media_type: string; bytes: number; failedOnce: boolean }>;
   materials: Map<string, Material>;
   sequence: number;
   failNextComplete: Set<string>;
@@ -68,14 +69,14 @@ async function installApi(page: Page, state: FixtureState) {
     }
     const uploadCreate = path === `/api/v1/projects/${projectId}/materials/uploads` && request.method() === 'POST';
     if (uploadCreate) {
-      const body = request.postDataJSON() as { filename: string; role: string };
+      const body = request.postDataJSON() as { filename: string; role: string; media_type: string };
       if (state.holdNextCreate) {
         state.holdNextCreate = false;
         await new Promise<void>(resolve => { state.releaseCreate = resolve; });
       }
       if (state.owner !== 'user-owner_a') return json(route, 404, { code: 'NOT_FOUND' });
       const uploadId = randomUUID();
-      state.uploads.set(uploadId, { owner: state.owner, filename: body.filename, role: body.role, bytes: 0, failedOnce: false });
+      state.uploads.set(uploadId, { owner: state.owner, filename: body.filename, role: body.role, media_type: body.media_type, bytes: 0, failedOnce: false });
       return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
     }
     const bytesMatch = path.match(new RegExp(`/api/v1/projects/${projectId}/materials/uploads/([^/]+)/bytes$`));
@@ -112,7 +113,7 @@ async function installApi(page: Page, state: FixtureState) {
       }
       if (upload.filename === 'slow-save.pdf' && state.releaseSlowComplete === undefined) await new Promise<void>(resolve => { state.releaseSlowComplete = resolve; });
       const body = request.postDataJSON() as { byte_size: number; sha256: string };
-      const material: Material = [...state.materials.values()].find(item => item.role === upload.role && item.sha256 === body.sha256) ?? { material_id: randomUUID(), material_version: 1, upload_id: decodeURIComponent(completeMatch[1]), role: upload.role, filename: upload.filename, media_type: 'application/pdf', byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
+      const material: Material = [...state.materials.values()].find(item => item.role === upload.role && item.sha256 === body.sha256) ?? { material_id: randomUUID(), material_version: 1, upload_id: decodeURIComponent(completeMatch[1]), role: upload.role, filename: upload.filename, media_type: upload.media_type, byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
       state.materials.set(material.material_id, material);
       state.sequence++;
       if (state.dropNextComplete.delete(upload.filename)) return route.abort('failed');
@@ -125,6 +126,52 @@ async function installApi(page: Page, state: FixtureState) {
 function state(): FixtureState {
   return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), unavailableNextComplete: new Map(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, inspectionFailures: new Map(), byteAttempts: [], putNames: [] };
 }
+
+for (const width of [1440, 390]) test(`optional materials expose examples and preserve mixed format uploads at ${width}`, async ({page}) => {
+  await page.setViewportSize({width, height:960});
+  const s=state(); await installApi(page,s); await login(page,'owner_a');
+  for (const [role,label] of [['debt','有息债务明细表'],['guarantee','担保明细 / 担保合同'],['governance','公司章程 / 治理制度'],['bankFacilities','银行授信情况表'],['corporate','营业执照 / 公司基本资料'],['rating','评级报告（主体 / 债项 / 跟踪）'],['business','业务经营资料']]) {
+    const card=page.locator(`[data-material-role="${role}"]`);
+    await expect(card).toBeVisible(); await expect(card).toContainText(label); await expect(card).toContainText('选填');
+    expect(await card.evaluate(el=>el.closest('details.material-subtypes'))).toBeNull();
+    await expect(card.locator('input[type=file]')).toHaveAttribute('multiple','');
+    await expect(card.locator('input[type=file]')).toHaveAttribute('accept','.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg');
+  }
+  const partitions=page.locator('.optional-material-partition');
+  await expect(partitions.first()).toContainText('未上传这些可选材料也可继续编制');
+  await expect(partitions.first()).toContainText('Word（DOCX）、PDF、Excel（XLSX）、CSV、TXT 和图片（PNG / JPG / JPEG）');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if (process.env.BB_OPTIONAL_EVIDENCE) {
+    const output=process.env.BB_OPTIONAL_EVIDENCE; await mkdir(output,{recursive:true});
+    const sectionWidth=(await partitions.first().boundingBox())!.width;
+    for(let i=0;i<2;i++) await partitions.nth(i).screenshot({path:join(output,`implementation-${width}-${i}.png`)});
+    const preview=await page.context().newPage(); await preview.setViewportSize({width,height:960});
+    const root=new URL('../../../',import.meta.url);
+    await preview.setContent((await readFile(new URL('product-prototype/public/optional-materials.html',root),'utf8')).replace(/<link[^>]+>/g,''));
+    for(const css of ['apps/web/src/style.css','product-prototype/public/styles.css','product-prototype/public/project-workspace.css','apps/web/src/prototype-adapter.css','product-prototype/public/optional-materials.css']) await preview.addStyleTag({content:await readFile(new URL(css,root),'utf8')});
+    await preview.locator('main').evaluate((el,w)=>{el.style.width=`${w}px`;el.style.maxWidth='100%';el.style.padding='0';},sectionWidth);
+    for(let i=0;i<2;i++) await preview.locator('.optional-material-partition').nth(i).screenshot({path:join(output,`prototype-${width}-${i}.png`)});
+    await preview.close();
+  }
+  // Real browser selection and transport; HTTP receipts are synthetic, not parser/model acceptance.
+  const files=[
+    ['debt','有息债务.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['debt','借款.csv','text/csv'],['guarantee','担保.pdf','application/pdf'],
+    ['guarantee','担保扫描.png','image/png'],['guarantee','担保扫描.jpg','image/jpeg'],
+    ['guarantee','担保补充.jpeg','image/jpeg'],
+    ['governance','公司章程.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['governance','章程说明.txt','text/plain'],
+  ];
+  for(const role of ['debt','guarantee','governance']) await page.locator(`[data-upload-role="${role}"]`).setInputFiles(files.filter(f=>f[0]===role).map(([,name,mimeType])=>({name,mimeType,buffer:Buffer.from(`synthetic ${name}`)})));
+  await expect.poll(()=>s.materials.size).toBe(files.length);
+  for(const [role,name,mime] of files) {
+    expect([...s.uploads.values()].find(u=>u.filename===name)).toMatchObject({role,media_type:mime});
+    await expect(page.locator(`[data-material-role="${role}"] .material-file-list`)).toContainText(name);
+  }
+  await page.reload();
+  for(const [role,name] of files) await expect(page.locator(`[data-material-role="${role}"] .material-file-list`)).toContainText(name);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
 
 async function login(page: Page, username: string, expectProject = true) {
   await page.goto('/');
@@ -169,7 +216,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
-  for (const partition of ['历史／参考募集书（选填）', '审计报告 / 财务报表及附注', '募投项目与权证材料', '其他项目材料']) {
+  for (const partition of ['历史／参考募集书（选填）', '审计报告 / 财务报表及附注', '募投项目与权证材料', '债务、授信与担保（选填）', '公司、经营与信用（选填）', '其他补充材料（选填）']) {
     await expect(page.getByRole('heading', { name: partition, exact: true })).toBeVisible();
   }
   await expect(page.locator('#material-partitions select')).toHaveCount(0);

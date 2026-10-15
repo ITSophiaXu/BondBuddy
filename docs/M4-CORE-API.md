@@ -1,3 +1,9 @@
+## 2026-10-15 案例模板与新增材料
+
+以 [案例模板决定](product-decisions/2026-10-15-material-case-templates.md) 为准。材料枚举新增 `application`、`recommendation`；前者支持沪深普通私募，后者支持 `nafmii/ppn` 和 `nafmii/mtn`。`input.fields.case_template_id` 可明确指定该范围的版式变体；服务端校验匹配，不接受跨范围回退。
+
+`M4KnowledgeSnapshot` 新增可选 `offering` 和 `template:{id,version,sha256,docx_base64}`。API 将模板字节固定进不可变输入，worker 按原 hash 检查并提供只读文件。旧快照不要求新字段；新增材料任务必须有对应模板。继续使用已有双 Word 交付、归属隔离、幂等和材料固定总价及动态扣费规则。新增迁移为 `0106_m4_case_templates.sql`，web/API/worker 需在统一发布批次中共同升级。
+
 ## 2026-10-08 全站助手增量
 
 以[全站项目助手决定](product-decisions/2026-10-08-global-project-assistant.md)为最新口径。材料页表单保留，新增登录会话级悬浮助手；旧 M4/M5 排期不限制本次已授权范围。

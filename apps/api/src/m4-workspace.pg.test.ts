@@ -341,13 +341,13 @@ test('product help remains free with selected sources while mixed professional q
   const contexts=[context,{...context,source_material:material},{...context,citations:[{kind:'material' as const,ref:material,locator:'paragraph 1'}]},
     {...context,reading_artifact:artifact}];
   for(const selected of contexts){
-    for(const help of ['你好！','你好，项目助手','Hello BondBuddy','你能帮我做什么？','使用帮助','如何使用项目助手？','BondBuddy怎么使用？','如何使用材料生成？','如何上传材料','怎么上传募集书？','你好，如何上传财务材料？','产品帮助：如何上传材料',
+    for(const help of ['你好！','你好，项目助手','你好，券商助手','Hello BondBuddy','你能帮我做什么？','使用帮助','如何使用项目助手？','如何使用券商助手？','能告诉我怎么使用券商助手吗','券商助手怎么使用？','BondBuddy怎么使用？','如何使用材料生成？','如何上传材料','怎么上传募集书？','你好，如何上传财务材料？','产品帮助：如何上传材料',
       '怎么下载已生成文件','文件怎么下载','在哪下载报告','怎么查看清洁版','成果在哪里','怎么找到已生成的Word文件',
       '请告诉我如何上传材料','能告诉我怎么使用项目助手吗','怎么上传文件到当前项目','你好，请告诉我怎么下载已生成文件','请你解释怎么上传财务材料到本项目吗',
       '怎么查看任务进度','请告诉我如何查看任务状态吗','怎么充值积分','如何查看积分余额','如何查看积分流水','余额在哪里查看','怎么取消当前任务','怎么取消正在运行的任务'])
       assert.equal(classifyM4Qa(help,selected),'m4_Q00',help);
     for(const [question,category] of [['如何上传材料，并计算资产负债率','m4_Q03'],['解释担保条款，并告诉我怎么上传材料',selected===context?'m4_Q01':'m4_Q02'],
-      ['如何使用净现值公式计算本期债券价格','m4_Q03'],['如何使用项目助手，对比两年流动比率','m4_Q04'],['你好，解释担保条款',selected===context?'m4_Q01':'m4_Q02'],
+      ['如何使用净现值公式计算本期债券价格','m4_Q03'],['如何使用项目助手，对比两年流动比率','m4_Q04'],['如何使用券商助手，对比两年流动比率','m4_Q04'],['你好，券商助手，解释担保条款',selected===context?'m4_Q01':'m4_Q02'],['你好，解释担保条款',selected===context?'m4_Q01':'m4_Q02'],
       ['怎么下载已生成文件，并分析现金流',selected===context?'m4_Q01':'m4_Q02'],['请告诉我怎么上传材料，并计算资产负债率','m4_Q03'],
       ['能告诉我如何使用净现值公式计算债券价格吗','m4_Q03'],['怎么充值积分，并分析现金流',selected===context?'m4_Q01':'m4_Q02'],
       ['如何查看积分流水，并计算资产负债率','m4_Q03'],['怎么取消正在运行的任务，比较两期偿债能力','m4_Q04'],['如何计算积分余额','m4_Q03']] as const)
@@ -450,7 +450,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     actor=other;assert.equal((await send('GET',`/api/v1/m4/artifacts/${qa.artifact_id}/versions/1/bytes`)).statusCode,404);actor=user;
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_executions WHERE owner_user_id=$1',[user])).rows[0].n,4);
     // Unsupported requests receive free capability feedback without a selected document or a paid QA fallback.
-    for(const content of ['请生成推荐函','请实时查询公开信息','请检索最新法规并判断法规适用性']){
+    for(const content of ['请生成DFI推荐函','请实时查询公开信息','请检索最新法规并判断法规适用性']){
       const capability=(await ok('POST',path(t,'messages'),{submission_request_id:randomUUID(),content,context})).run;
       assert.equal(capability.billing_mode,'platform_trial');const capabilityLease=await claim(pool,30,{runKinds:['qa']});assert.ok(capabilityLease);assert.equal(capabilityLease.runId,capability.run_id);
       await finishM4Qa(pool,capabilityLease,{...reply,content:'Synthetic capability feedback: 此项 M4 尚未开放，没有执行。',intent:'clarify'});

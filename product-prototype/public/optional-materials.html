@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>募集书更新 · 可选材料上传原型</title>
+<link rel="stylesheet" href="../../apps/web/src/style.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="project-workspace.css">
+<link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css">
+<link rel="stylesheet" href="optional-materials.css">
+<style>body{margin:0}main{max-width:100%;width:1000px;margin:auto;background:white}</style>
+</head>
+<body class="prototype-app">
+<main>
+<section class="material-partition optional-material-partition" aria-labelledby="optional-0">
+<h3 id="optional-0">债务、授信与担保（选填）</h3>
+<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p>
+<p class="optional-material-formats" id="formats-0">支持 Word（DOCX）、PDF、Excel（XLSX）、CSV、TXT 和图片（PNG / JPG / JPEG）。每类可多选或拖入多份文件。</p>
+<ul class="material-role-list">
+<li class="material-role" data-material-role="debt">
+<div class="material-role-heading">
+<div>
+<strong>有息债务明细表</strong>
+<span>选填 · 借款、债券、非标融资等余额、利率、到期日及担保方式。</span>
+</div>
+<label class="button secondary material-picker" for="upload-debt">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-debt" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为有息债务明细表选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="bankFacilities">
+<div class="material-role-heading">
+<div>
+<strong>银行授信情况表</strong>
+<span>选填 · 各银行授信总额、已用额度、未用额度及有效期。</span>
+</div>
+<label class="button secondary material-picker" for="upload-bankFacilities">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-bankFacilities" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为银行授信情况表选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="guarantee">
+<div class="material-role-heading">
+<div>
+<strong>担保明细 / 担保合同</strong>
+<span>选填 · 对外担保明细，或本期债券的担保合同、增信安排。</span>
+</div>
+<label class="button secondary material-picker" for="upload-guarantee">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-guarantee" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为担保明细 / 担保合同选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="collateralMaterials">
+<div class="material-role-heading">
+<div>
+<strong>抵质押资产资料</strong>
+<span>选填 · 抵质押资产清单、权属证明、评估报告等。</span>
+</div>
+<label class="button secondary material-picker" for="upload-collateralMaterials">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-collateralMaterials" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为抵质押资产资料选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+</ul>
+<details class="material-subtypes">
+<summary>按细分类别补充材料（选填）</summary>
+<ul class="material-role-list">
+<li class="material-role" data-material-role="facilityEvidence">
+<div class="material-role-heading">
+<div>
+<strong>银行授信证明材料</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-facilityEvidence">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-facilityEvidence" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为银行授信证明材料选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="outstandingBonds">
+<div class="material-role-heading">
+<div>
+<strong>存续及历史债券资料</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-outstandingBonds">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-outstandingBonds" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为存续及历史债券资料选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="guarantorMaterials">
+<div class="material-role-heading">
+<div>
+<strong>担保人财务、评级及资质材料</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-guarantorMaterials">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-guarantorMaterials" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为担保人财务、评级及资质材料选择文件" aria-describedby="formats-0"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+</ul>
+</details>
+</section>
+<section class="material-partition optional-material-partition" aria-labelledby="optional-1">
+<h3 id="optional-1">公司、经营与信用（选填）</h3>
+<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p>
+<p class="optional-material-formats" id="formats-1">支持 Word（DOCX）、PDF、Excel（XLSX）、CSV、TXT 和图片（PNG / JPG / JPEG）。每类可多选或拖入多份文件。</p>
+<ul class="material-role-list">
+<li class="material-role" data-material-role="business">
+<div class="material-role-heading">
+<div>
+<strong>业务经营资料</strong>
+<span>选填 · 主营业务介绍、分板块经营数据及重大合同等。</span>
+</div>
+<label class="button secondary material-picker" for="upload-business">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-business" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为业务经营资料选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="governance">
+<div class="material-role-heading">
+<div>
+<strong>公司章程 / 治理制度</strong>
+<span>选填 · 现行公司章程、章程修正案、治理制度及组织架构。</span>
+</div>
+<label class="button secondary material-picker" for="upload-governance">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-governance" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为公司章程 / 治理制度选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="corporate">
+<div class="material-role-heading">
+<div>
+<strong>营业执照 / 公司基本资料</strong>
+<span>选填 · 营业执照、公司简介、股权结构及子公司情况。</span>
+</div>
+<label class="button secondary material-picker" for="upload-corporate">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-corporate" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为营业执照 / 公司基本资料选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="rating">
+<div class="material-role-heading">
+<div>
+<strong>评级报告（主体 / 债项 / 跟踪）</strong>
+<span>选填 · 主体评级、债项评级或最新跟踪评级报告。</span>
+</div>
+<label class="button secondary material-picker" for="upload-rating">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-rating" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为评级报告（主体 / 债项 / 跟踪）选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+</ul>
+<details class="material-subtypes">
+<summary>按细分类别补充材料（选填）</summary>
+<ul class="material-role-list">
+<li class="material-role" data-material-role="personnel">
+<div class="material-role-heading">
+<div>
+<strong>董监高及其他人员资料</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-personnel">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-personnel" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为董监高及其他人员资料选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="industry">
+<div class="material-role-heading">
+<div>
+<strong>行业研究 / 行业统计资料</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-industry">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-industry" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为行业研究 / 行业统计资料选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="registry">
+<div class="material-role-heading">
+<div>
+<strong>工商登记 / 企业信息公示材料</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-registry">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-registry" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为工商登记 / 企业信息公示材料选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="credit">
+<div class="material-role-heading">
+<div>
+<strong>征信报告</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-credit">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-credit" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为征信报告选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="creditCompliance">
+<div class="material-role-heading">
+<div>
+<strong>诉讼、失信、处罚及信用核查</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-creditCompliance">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-creditCompliance" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为诉讼、失信、处罚及信用核查选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="issuerStatement">
+<div class="material-role-heading">
+<div>
+<strong>发行人自查 / 专项说明</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-issuerStatement">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-issuerStatement" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为发行人自查 / 专项说明选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+<li class="material-role" data-material-role="legal">
+<div class="material-role-heading">
+<div>
+<strong>法律意见书及其他法律文件</strong>
+<span>选填，按项目核验需要添加</span>
+</div>
+<label class="button secondary material-picker" for="upload-legal">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-legal" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为法律意见书及其他法律文件选择文件" aria-describedby="formats-1"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+</ul>
+</details>
+</section>
+<section class="material-partition optional-material-partition" aria-labelledby="optional-2">
+<h3 id="optional-2">其他补充材料（选填）</h3>
+<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p>
+<p class="optional-material-formats" id="formats-2">支持 Word（DOCX）、PDF、Excel（XLSX）、CSV、TXT 和图片（PNG / JPG / JPEG）。每类可多选或拖入多份文件。</p>
+<ul class="material-role-list">
+<li class="material-role" data-material-role="other">
+<div class="material-role-heading">
+<div>
+<strong>其他补充材料</strong>
+<span>选填 · 上述类别未涵盖的专项说明、证明文件等。</span>
+</div>
+<label class="button secondary material-picker" for="upload-other">
+<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+<path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/>
+</svg>
+<span>点击或拖入文件</span>
+<input id="upload-other" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg" aria-label="为其他补充材料选择文件" aria-describedby="formats-2"/>
+</label>
+</div>
+<ul class="material-file-list">
+</ul>
+</li>
+</ul>
+<details class="material-subtypes">
+<summary>按细分类别补充材料（选填）</summary>
+<ul class="material-role-list">
+</ul>
+</details>
+</section>
+</main>
+<!-- Synthetic interaction preview. Selecting files here does not upload or save them. -->
+<script>document.addEventListener('change',event=>{const input=event.target;if(input.type!=='file')return;const list=input.closest('.material-role').querySelector('.material-file-list');list.replaceChildren(...Array.from(input.files,file=>{const row=document.createElement('li');row.className='material-file-row';row.textContent=file.name+' · 已选择（原型演示，未上传）';return row}));});</script>
+</body>
+</html>

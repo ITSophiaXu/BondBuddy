@@ -264,7 +264,7 @@ test('new opinion types preserve explicit execution and local restrictions, but 
 test('M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable',()=>{
   const manifest={content:''} as M4QaManifest;
   const invented=reply({content:'模型假称已完成最新检索并已生成法律意见。'});
-  for(const content of ['请出具推荐函','只修改第二章并导出','请联网查询现行法规','请检索最新法规','请开展深度研究']){
+  for(const content of ['请出具DFI推荐函','只修改第二章并导出','请联网查询现行法规','请检索最新法规','请开展深度研究']){
     const guarded=constrainM4Reply(invented,{...manifest,content});assert.equal(guarded.intent,'clarify');assert.doesNotMatch(guarded.content,/已完成最新检索|已生成法律意见/);
   }
   const conceptual=reply({content:'法规效力的基础概念包括生效、失效与适用时间。'});
