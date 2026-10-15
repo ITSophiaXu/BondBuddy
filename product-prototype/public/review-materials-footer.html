@@ -36,7 +36,7 @@ if(state==='uploading'||state==='failed'||state==='running'){
   document.querySelector('#start').disabled=true;
   if(state==='running')document.querySelector('#start').textContent='当前任务进行中';
 }
-for(const id of ['discuss','start'])document.getElementById(id).onclick=()=>{const status=document.querySelector('#demo-status');status.hidden=false;status.textContent=id==='discuss'?'原型：打开项目助手。':'原型：进入现有执行确认，不会启动真实任务。';};
+for(const id of ['discuss','start'])document.getElementById(id).onclick=()=>{const status=document.querySelector('#demo-status');status.hidden=false;status.textContent=id==='discuss'?'原型：打开 BondBuddy。':'原型：进入现有执行确认，不会启动真实任务。';};
 </script>
 </body>
 </html>

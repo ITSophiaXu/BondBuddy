@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { isM4Manifest, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_SUBTYPE, M4_QA_SUBTYPE, type M4Manifest, type M4MaterialPin, type M4ArtifactPin } from '@bondbuddy/contracts';
+import { isM4Manifest, m4DocumentScopeSupported, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_SUBTYPE, M4_QA_SUBTYPE, type M4Manifest, type M4MaterialPin, type M4ArtifactPin } from '@bondbuddy/contracts';
 import {validM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { StageContext, RunRow, InputRevisionRow, StageOutcome } from './run-pipeline.js';
@@ -62,10 +62,12 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
   if (!scope || String(scope.input_hash).trim() !== run.input_hash.trim() || !same(scope.manifest,manifest)
     || scope.subtype !== (manifest.kind === 'document' ? M4_DOCUMENT_SUBTYPE : M4_QA_SUBTYPE)) return fail;
   if (manifest.kind === 'document') {
+    if(!m4DocumentScopeSupported(manifest.input.document_type,manifest.market,manifest.offering))return fail;
     if(manifest.billing_task!==M4_DOCUMENT_BILLING_TASKS[manifest.input.document_type])return fail;
-    if(manifest.knowledge && !validM4Knowledge(manifest.knowledge,manifest.market,manifest.input.document_type))return fail;
-    if(['underwriter','legal'].includes(manifest.input.document_type)&&!manifest.knowledge)return fail;
-    if (scope.scope_id !== manifest.execution_scope_project_id || manifest.offering !== 'private' || !['sse', 'szse'].includes(manifest.market)
+    if(manifest.knowledge && !validM4Knowledge(manifest.knowledge,manifest.market,manifest.input.document_type,manifest.offering))return fail;
+    if(['underwriter','legal','application','recommendation'].includes(manifest.input.document_type)&&!manifest.knowledge)return fail;
+    if(['application','recommendation'].includes(manifest.input.document_type)&&!manifest.knowledge?.template)return fail;
+    if (scope.scope_id !== manifest.execution_scope_project_id
       || manifest.input.scope !== 'whole') return fail;
     if (manifest.input.document_type === 'init' && (!manifest.input.template || !manifest.template_material))
       return {kind: 'pause', stage: 'awaiting_materials', reason: 'm4_broker_template_required'};

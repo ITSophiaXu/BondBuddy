@@ -7,7 +7,7 @@ export type M3RuntimeSkillId = 'm3-review' | 'm3-public-review' | 'm3-review-rev
 export type M3RuntimeSkill = { id: M3RuntimeSkillId; version: string; sha256: string; content: string };
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 const manifestPath = resolve(repo, 'apps/worker/skills/m3-runtime-manifest.json');
-const manifestSHA = 'b4d2898a669561255c2df61731e50e9b7c502807bd7c3310eacec23231eaa853';
+const manifestSHA = '15aa64b800f4032009870cfddb93a4178847a3c5bffc14287ebf527b4f45cf1b';
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 /** Explicit trusted injection: worker calls ignore user config and do not discover skills. */

@@ -8,7 +8,68 @@ import { M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4Me
   type M4Workspace,type M4DocumentType,type M4Draft,type M4Artifact,type M4Task,type M4MessageRequest,type M4ExecuteRequest,type M4QuoteRequest,type Run } from '@bondbuddy/contracts';
 
 // Owner-scoped synthetic HTTP fixtures. These verify browser behavior, not model or DOCX quality.
+test('SSE opinion template exposes recovered headings and is pinned in the submitted draft',async({page})=>{
+  const s=fixture();s.workspace.drafts.underwriter.materials=[s.workspace.materials[0]];
+  await mount(page,s);await choose(page,'underwriter');
+  await page.locator('#m4-case-template').selectOption('sse-private-underwriter');
+  await page.getByText('查看模板结构',{exact:true}).click();
+  await expect(page.locator('.studio-template-details')).toContainText('内核关注的主要问题及解决情况');
+  await expect(page.locator('#m4-case-template option[value="szse-private-underwriter"]')).toHaveCount(0);
+  await page.getByRole('button',{name:'生成主承销商核查意见',exact:true}).click();
+  await expect.poll(()=>s.executions.length).toBe(1);
+  expect(s.workspace.drafts.underwriter.fields.case_template_id).toBe('sse-private-underwriter');
+  expect(s.executions[0].document_type).toBe('underwriter');
+});
+for(const width of [1440,390])test(`case template application and recommendation selectors preserve scope and drafts at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:960});
+  const s=fixture();s.workspace.drafts.application.materials=[s.workspace.materials[0]];s.workspace.drafts.recommendation.materials=[s.workspace.materials[0]];
+  await mount(page,s);await choose(page,'application');
+  await expect(page.locator('[data-m4-type]')).toHaveCount(6);
+  await expect(page.locator('#m4-case-template')).toBeVisible();
+  await page.locator('#m4-market').selectOption('szse');await page.locator('#m4-case-template').selectOption('szse-private-application-alt');
+  await page.getByText('查看模板结构',{exact:true}).click();await expect(page.locator('.studio-template-details')).toContainText('一、发行人概况');
+  const dir=resolve('test-evidence/case-templates-20261015');await mkdir(dir,{recursive:true});
+  await page.screenshot({path:resolve(dir,`application-${width}.png`),fullPage:true});
+  await choose(page,'recommendation');await page.getByRole('button',{name:'生成推荐函',exact:true}).click();
+  await expect(page.getByRole('alert',{name:'需要补充的信息'})).toContainText('请选择推荐函对应的品种');expect(s.executions).toHaveLength(0);
+  await page.locator('#m4-market').selectOption('nafmii');await page.locator('#m4-offering').selectOption('mtn');
+  await expect(page.locator('#m4-market option[value="sse"]')).toHaveCount(0);
+  await page.locator('#m4-case-template').selectOption('nafmii-mtn-recommendation-alt');
+  await page.locator('#m4-offering').selectOption('ppn');await expect(page.locator('#m4-case-template')).toHaveValue('');
+  await expect(page.locator('#m4-case-template option[value="nafmii-mtn-recommendation-alt"]')).toHaveCount(0);
+  await page.screenshot({path:resolve(dir,`recommendation-${width}.png`),fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.getByRole('button',{name:'生成推荐函',exact:true}).click();await expect.poll(()=>s.executions.length).toBe(1);
+  expect(s.executions[0].document_type).toBe('recommendation');expect(s.workspace.drafts.recommendation.fields.offering).toBe('ppn');
+  expect(s.workspace.drafts.application.fields.case_template_id).toBe('szse-private-application-alt');
+});
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+test('case template prototype and implementation expose the same six materials and scoped market controls',async({page})=>{
+  const s=fixture();await mount(page,s);await choose(page,'application');
+  const prototype=await page.context().newPage(),dir=resolve('test-evidence/case-templates-20261015');
+  await prototype.route('http://prototype.test/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    const allowed=['/product-prototype/public/material-case-templates.html','/product-prototype/public/styles.css','/product-prototype/public/project-workspace.css','/product-prototype/public/material-results.css','/apps/web/src/m4-workspace.css','/apps/web/src/m4-prototype.css'];
+    if(!allowed.includes(path))return route.fulfill({status:404,body:''});
+    return route.fulfill({contentType:path.endsWith('.css')?'text/css':'text/html',body:await readFile(resolve('../..'+path))});
+  });
+  await prototype.goto('http://prototype.test/product-prototype/public/material-case-templates.html');
+  await expect(prototype.locator('.material-type')).toHaveCount(6);
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:960});await prototype.setViewportSize({width,height:960});
+    for(const type of ['application','recommendation'] as const){
+      await choose(page,type);await prototype.locator(`[name=type][value=${type}]`).check();
+      await expect(prototype.locator('#generate')).toHaveText(type==='application'?'生成申请书':'生成推荐函');
+      if(type==='recommendation')await expect(prototype.locator('#offering-label')).toBeVisible();
+      else await expect(prototype.locator('#offering-label')).toBeHidden();
+      for(const [name,target] of [['prototype',prototype],['implementation',page]] as const){
+        expect(await target.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+        await target.evaluate(()=>scrollTo(0,0));await target.screenshot({path:resolve(dir,`${name}-${type}-${width}.png`)});
+      }
+    }
+  }
+  await prototype.close();
+});
 const now='2026-10-06T00:00:00Z',mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const reply=(route:Route,body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 function fixture(dynamic=false){
@@ -16,7 +77,7 @@ function fixture(dynamic=false){
   const draft=(type:M4DocumentType):M4Draft=>({document_type:type,version:1,sha256:hash(type),updated_at:now,source_material:type==='private_summary'?source:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{issuer_name:'合成发行人',market:'sse',broker:'合成券商'},requirements:[{requirement_id:'req1',text:'保留已采纳要求',message_id:'m0',message_version:1}]});
   const artifact:M4Artifact={source_project_id:'m4-project',artifact_id:'old-artifact',artifact_version:1,sha256:hash('Synthetic DOCX bytes'),topic_id:'topic-a',run_id:'run-old',document_type:'private_summary',kind:'document',filename:'合成摘要.docx',mime_type:mime,byte_size:Buffer.byteLength('Synthetic DOCX bytes'),created_at:now,base_artifact:null,input_hash:hash('old-input'),revision_number:1};
   const run=(id:string,state:Run['state']='running'):Run=>({run_id:id,project_id:'m4-project',execution_request_id:'execution-'+id,input_revision:1,input_hash:hash(id),state,stage:'m4_document_prompt',channel:'production',test_grant_id:null,uncovered_items:[],event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?artifact.artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
-  const workspace:M4Workspace={topic:{topic_id:'topic-a',project_id:'m4-project',source_project_id:'source-project',name:'合成材料工作区',created_at:now,updated_at:now},project:{project_id:'m4-project',draft_revision:1,input_revision:null,input_hash:null,name:'合成材料工作区',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',updated_at:now},drafts:{init:draft('init'),underwriter:draft('underwriter'),legal:draft('legal'),private_summary:draft('private_summary')},materials:[source],material_details:[{...source,filename:'来源募集书.docx',state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[],pending_requirements:[],artifacts:[artifact],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null};
+  const workspace:M4Workspace={topic:{topic_id:'topic-a',project_id:'m4-project',source_project_id:'source-project',name:'合成材料工作区',created_at:now,updated_at:now},project:{project_id:'m4-project',draft_revision:1,input_revision:null,input_hash:null,name:'合成材料工作区',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',updated_at:now},drafts:{init:draft('init'),underwriter:draft('underwriter'),legal:draft('legal'),private_summary:draft('private_summary'),application:draft('application'),recommendation:draft('recommendation')},materials:[source],material_details:[{...source,filename:'来源募集书.docx',state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[],pending_requirements:[],artifacts:[artifact],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null};
   const addDocumentTask=(id:string,type:M4DocumentType='private_summary',version=workspace.drafts[type].version)=>{const current=run(id);workspace.active_run=current;const task:M4Task={run:current,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:'topic-a',execution_scope_project_id:'source-project',draft_version:version,input:structuredClone(workspace.drafts[type]),template_material:null,market:'sse',offering:'private',billing_task:M4_DOCUMENT_BILLING_TASKS[type]},created_at:now,events:[],artifacts:[]};workspace.tasks.push(task);return task;};
   return {dynamic,controls:[] as string[],workspace,artifact,run,addDocumentTask,messages:[] as M4MessageRequest[],executions:[] as M4ExecuteRequest[],quotes:[] as M4QuoteRequest[],startDocumentOnMessage:false,dropMessage:false,dropExecution:false,charged:0,balance:{available:10000,frozen:0},balanceReads:0};
 }
@@ -220,7 +281,7 @@ test('prototype material navigation, cards, source modes and only one optional r
   await expect(page.locator('.sidebar').getByRole('link',{name:'材料生成',exact:true})).toHaveCount(1);
   await expect(page.locator('.sidebar').getByRole('link',{name:'项目问答',exact:true})).toHaveCount(0);
   await expect(page.locator('#m4-agent,#m4-message,[data-m4-action=discuss],#m4-topic,[data-m4-action=new-topic],#m4-source')).toHaveCount(0);
-  await expect(page.locator('[data-m4-type]')).toHaveCount(4);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
+  await expect(page.locator('[data-m4-type]')).toHaveCount(6);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
   await choose(page,'legal');await expect(page.getByRole('heading',{name:'这份材料依据哪份募集书'})).toBeVisible();
   await expect(page.locator('#m4-content textarea')).toHaveCount(1);await expect(page.locator('#m4-requirements')).toBeVisible();
   await page.getByRole('radio',{name:'关联募集书项目',exact:true}).check();await expect(page.getByRole('button',{name:'选择募集书项目'})).toBeVisible();

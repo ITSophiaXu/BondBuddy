@@ -1,0 +1,1593 @@
+{
+  "id": "szse-private-application-alt",
+  "version": "case-templates-20261015-v1",
+  "market": "szse",
+  "offering": "private",
+  "document_type": "application",
+  "default": false,
+  "source_sha256": "a853ffbc32bf6558cde0ec3eb9dd78a2bedf81561a035e60ad5e8586915f27ba",
+  "source_format": "docx",
+  "template_sha256": "ba407e0221734c1ac7a6102281f96d0bf11bc946df8519a61b430ba07ebb93f4",
+  "template_path": "knowledge/material-drafting/2026-10-15/templates/szse-private-application-alt.docx",
+  "headings": [
+    {
+      "text": "一、发行人概况",
+      "source_body_index": 6,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">一、发行人概况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）发行人情况及报告期的历史沿革",
+      "source_body_index": 7,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）发行人情况及报告期的历史沿革</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、发行人基本情况",
+      "source_body_index": 8,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、发行人基本情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、发行人历史沿革",
+      "source_body_index": 10,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、发行人历史沿革</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）股权结构",
+      "source_body_index": 12,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）股权结构</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、发行人股权结构",
+      "source_body_index": 13,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、发行人股权结构</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、控股股东、实际控制人情况",
+      "source_body_index": 16,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、控股股东、实际控制人情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（三）报告期内发行人的重大资产重组情况",
+      "source_body_index": 23,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（三）报告期内发行人的重大资产重组情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、{{事项标题_25}}",
+      "source_body_index": 25,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"9\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、{{事项标题_25}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（1）重组基本情况",
+      "source_body_index": 26,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（1）重组基本情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（2）{{事项标题_28}}",
+      "source_body_index": 28,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（2）{{事项标题_28}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（3）{{事项标题_31}}",
+      "source_body_index": 31,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（3）{{事项标题_31}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（4）{{事项标题_34}}",
+      "source_body_index": 34,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（4）{{事项标题_34}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（5）重大资产重组对发行人公司治理可能产生的影响",
+      "source_body_index": 38,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（5）重大资产重组对发行人公司治理可能产生的影响</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（四）主营业务",
+      "source_body_index": 42,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（四）主营业务</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、公司经营范围及主营业务",
+      "source_body_index": 43,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:contextualSpacing/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"28\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"28\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、公司经营范围及主营业务</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "source_body_index": 46,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:contextualSpacing/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"28\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"28\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、公司报告期内营业收入、毛利润及毛利率情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3、公司报告期内主营业务情况",
+      "source_body_index": 64,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3、公司报告期内主营业务情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（1）{{事项标题_67}}",
+      "source_body_index": 67,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:widowControl/><ns0:numPr><ns0:ilvl ns0:val=\"255\"/><ns0:numId ns0:val=\"0\"/></ns0:numPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（1）{{事项标题_67}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.{{事项标题_78}}",
+      "source_body_index": 78,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.{{事项标题_78}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.{{事项标题_80}}",
+      "source_body_index": 80,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.{{事项标题_80}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3.{{事项标题_82}}",
+      "source_body_index": 82,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3.{{事项标题_82}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（2）{{事项标题_90}}",
+      "source_body_index": 90,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:widowControl/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（2）{{事项标题_90}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（3）{{事项标题_112}}",
+      "source_body_index": 112,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl/><ns0:numPr><ns0:ilvl ns0:val=\"255\"/><ns0:numId ns0:val=\"0\"/></ns0:numPr><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（3）{{事项标题_112}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.{{事项标题_116}}",
+      "source_body_index": 116,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.{{事项标题_116}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.{{事项标题_119}}",
+      "source_body_index": 119,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.{{事项标题_119}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3.{{事项标题_137}}",
+      "source_body_index": 137,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:numPr><ns0:ilvl ns0:val=\"-1\"/><ns0:numId ns0:val=\"0\"/></ns0:numPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\" ns0:themeColor=\"text1\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:textFill><w14:solidFill><w14:schemeClr w14:val=\"tx1\"/></w14:solidFill></w14:textFill></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\" ns0:themeColor=\"text1\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:textFill><w14:solidFill><w14:schemeClr w14:val=\"tx1\"/></w14:solidFill></w14:textFill></ns0:rPr><ns0:t xml:space=\"preserve\">3.{{事项标题_137}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1.{{事项标题_140}}",
+      "source_body_index": 140,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1.{{事项标题_140}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2.{{事项标题_143}}",
+      "source_body_index": 143,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"20\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"none\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"20\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"none\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2.{{事项标题_143}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3.{{事项标题_157}}",
+      "source_body_index": 157,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2700\"/></ns0:tabs><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"baseline\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3.{{事项标题_157}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（4）{{事项标题_166}}",
+      "source_body_index": 166,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl/><ns0:numPr><ns0:ilvl ns0:val=\"255\"/><ns0:numId ns0:val=\"0\"/></ns0:numPr><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（4）{{事项标题_166}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（5）{{事项标题_172}}",
+      "source_body_index": 172,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:widowControl/><ns0:numPr><ns0:ilvl ns0:val=\"255\"/><ns0:numId ns0:val=\"0\"/></ns0:numPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:jc ns0:val=\"left\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/><w14:ligatures w14:val=\"standardContextual\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（5）{{事项标题_172}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "二、发行人财务状况",
+      "source_body_index": 177,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">二、发行人财务状况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）发行人主要财务数据和财务指标（合并口径）",
+      "source_body_index": 178,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"1\"/><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）发行人主要财务数据和财务指标（合并口径）</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、资产结构分析",
+      "source_body_index": 182,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、资产结构分析</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（1）货币资金",
+      "source_body_index": 191,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（1）货币资金</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（2）应收账款",
+      "source_body_index": 201,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（2）应收账款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（3）预付款项",
+      "source_body_index": 204,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（3）预付款项</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（4）其他应收款",
+      "source_body_index": 207,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（4）其他应收款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（5）存货",
+      "source_body_index": 229,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（5）存货</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（6）其他非流动金融资产",
+      "source_body_index": 234,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（6）其他非流动金融资产</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（7）投资性房地产",
+      "source_body_index": 239,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（7）投资性房地产</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（8）在建工程",
+      "source_body_index": 244,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（8）在建工程</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、负债结构分析",
+      "source_body_index": 249,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、负债结构分析</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（1）短期借款",
+      "source_body_index": 255,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（1）短期借款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（2）应付票据",
+      "source_body_index": 262,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（2）应付票据</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（3）应付账款",
+      "source_body_index": 268,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl ns0:val=\"0\"/><ns0:kinsoku/><ns0:wordWrap/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（3）应付账款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（4）合同负债",
+      "source_body_index": 271,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（4）合同负债</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（5）其他应付款",
+      "source_body_index": 273,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（5）其他应付款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（6）一年内到期的非流动负债",
+      "source_body_index": 275,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"0\" ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"9\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（6）一年内到期的非流动负债</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（7）长期借款",
+      "source_body_index": 280,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:keepNext ns0:val=\"0\"/><ns0:keepLines ns0:val=\"0\"/><ns0:pageBreakBefore ns0:val=\"0\"/><ns0:widowControl/><ns0:kinsoku/><ns0:wordWrap ns0:val=\"0\"/><ns0:overflowPunct/><ns0:topLinePunct ns0:val=\"0\"/><ns0:autoSpaceDE/><ns0:autoSpaceDN/><ns0:bidi ns0:val=\"0\"/><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"157\" ns0:beforeLines=\"50\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:textAlignment ns0:val=\"auto\"/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:b/><ns0:bCs/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（7）长期借款</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "三、公司债券发行方案",
+      "source_body_index": 285,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">三、公司债券发行方案</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "四、公司本次债券增信措施情况（如有）",
+      "source_body_index": 320,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">四、公司本次债券增信措施情况（如有）</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "五、本次债券评级情况（如有）",
+      "source_body_index": 322,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">五、本次债券评级情况（如有）</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "六、投资者保护机制",
+      "source_body_index": 324,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">六、投资者保护机制</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（一）偿债计划",
+      "source_body_index": 325,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:contextualSpacing/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（一）偿债计划</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（二）偿债资金来源",
+      "source_body_index": 329,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:contextualSpacing/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（二）偿债资金来源</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、{{事项标题_330}}",
+      "source_body_index": 330,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、{{事项标题_330}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、{{事项标题_332}}",
+      "source_body_index": 332,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、{{事项标题_332}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3、{{事项标题_334}}",
+      "source_body_index": 334,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3、{{事项标题_334}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "4、{{事项标题_337}}",
+      "source_body_index": 337,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:adjustRightInd ns0:val=\"0\"/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:beforeLines=\"0\" ns0:after=\"0\" ns0:afterLines=\"0\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"eastAsia\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">4、{{事项标题_337}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（三）偿债保障措施",
+      "source_body_index": 339,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:contextualSpacing/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（三）偿债保障措施</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、{{事项标题_341}}",
+      "source_body_index": 341,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、{{事项标题_341}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、{{事项标题_343}}",
+      "source_body_index": 343,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、{{事项标题_343}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3、{{事项标题_345}}",
+      "source_body_index": 345,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:bCs/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3、{{事项标题_345}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "4、{{事项标题_347}}",
+      "source_body_index": 347,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">4、{{事项标题_347}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "5、{{事项标题_349}}",
+      "source_body_index": 349,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"2\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">5、{{事项标题_349}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（四）资信维持承诺及救济措施",
+      "source_body_index": 353,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:contextualSpacing/><ns0:outlineLvl ns0:val=\"3\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\"/><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/><ns0:szCs ns0:val=\"21\"/><ns0:lang ns0:val=\"en-US\" ns0:eastAsia=\"zh-CN\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（四）资信维持承诺及救济措施</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、{{事项标题_354}}",
+      "source_body_index": 354,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:before=\"72\" ns0:beforeLines=\"30\" ns0:after=\"72\" ns0:afterLines=\"30\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:snapToGrid ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:snapToGrid ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、{{事项标题_354}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "（1）{{事项标题_355}}",
+      "source_body_index": 355,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:widowControl/><ns0:snapToGrid ns0:val=\"0\"/><ns0:spacing ns0:before=\"72\" ns0:beforeLines=\"30\" ns0:after=\"72\" ns0:afterLines=\"30\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"480\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">（1）{{事项标题_355}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、{{事项标题_362}}",
+      "source_body_index": 362,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:before=\"72\" ns0:beforeLines=\"30\" ns0:after=\"72\" ns0:afterLines=\"30\" ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:snapToGrid ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:rFonts ns0:hint=\"default\" ns0:ascii=\"Times New Roman\" ns0:hAnsi=\"Times New Roman\" ns0:eastAsia=\"宋体\" ns0:cs=\"Times New Roman\"/><ns0:b/><ns0:snapToGrid ns0:val=\"0\"/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、{{事项标题_362}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "七、其他重要事项",
+      "source_body_index": 366,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">七、其他重要事项</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "八、关于本次公司债券发行挂牌转让合规性情况",
+      "source_body_index": 368,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:tabs><ns0:tab ns0:val=\"left\" ns0:pos=\"2250\"/></ns0:tabs><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:outlineLvl ns0:val=\"0\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:kern ns0:val=\"0\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">八、关于本次公司债券发行挂牌转让合规性情况</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "1、{{事项标题_370}}",
+      "source_body_index": 370,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">1、{{事项标题_370}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "2、{{事项标题_373}}",
+      "source_body_index": 373,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">2、{{事项标题_373}}</ns0:t></ns0:r></ns0:p>"
+    },
+    {
+      "text": "3、{{事项标题_390}}",
+      "source_body_index": 390,
+      "paragraph_xml": "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<ns0:p xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:pPr><ns0:spacing ns0:line=\"360\" ns0:lineRule=\"auto\"/><ns0:ind ns0:firstLine=\"482\" ns0:firstLineChars=\"200\"/><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr></ns0:pPr><ns0:r><ns0:rPr><ns0:b/><ns0:color ns0:val=\"000000\"/><ns0:sz ns0:val=\"24\"/></ns0:rPr><ns0:t xml:space=\"preserve\">3、{{事项标题_390}}</ns0:t></ns0:r></ns0:p>"
+    }
+  ],
+  "slots": [
+    {
+      "id": "title-0",
+      "part": "word/document.xml",
+      "source_body_index": 1,
+      "kind": "title",
+      "text": "{{发行人全称}}"
+    },
+    {
+      "id": "title-1",
+      "part": "word/document.xml",
+      "source_body_index": 2,
+      "kind": "title",
+      "text": "关于本次债券挂牌条件确认的申请书"
+    },
+    {
+      "id": "title-2",
+      "part": "word/document.xml",
+      "source_body_index": 4,
+      "kind": "title",
+      "text": "深圳证券交易所："
+    },
+    {
+      "id": "内容_1",
+      "part": "word/document.xml",
+      "source_body_index": 5,
+      "kind": "body",
+      "section": "引言",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-1",
+      "part": "word/document.xml",
+      "source_body_index": 9,
+      "kind": "table",
+      "section": "1、发行人基本情况",
+      "source_rows": 12,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "table-2",
+      "part": "word/document.xml",
+      "source_body_index": 11,
+      "kind": "table",
+      "section": "2、发行人历史沿革",
+      "source_rows": 8,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_2",
+      "part": "word/document.xml",
+      "source_body_index": 14,
+      "kind": "body",
+      "section": "1、发行人股权结构",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_3",
+      "part": "word/document.xml",
+      "source_body_index": 17,
+      "kind": "body",
+      "section": "2、控股股东、实际控制人情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-3",
+      "part": "word/document.xml",
+      "source_body_index": 21,
+      "kind": "table",
+      "section": "2、控股股东、实际控制人情况",
+      "source_rows": 10,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_4",
+      "part": "word/document.xml",
+      "source_body_index": 22,
+      "kind": "body",
+      "section": "2、控股股东、实际控制人情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_5",
+      "part": "word/document.xml",
+      "source_body_index": 24,
+      "kind": "body",
+      "section": "（三）报告期内发行人的重大资产重组情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_6",
+      "part": "word/document.xml",
+      "source_body_index": 27,
+      "kind": "body",
+      "section": "（1）重组基本情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_7",
+      "part": "word/document.xml",
+      "source_body_index": 29,
+      "kind": "body",
+      "section": "（2）{{事项标题_28}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_8",
+      "part": "word/document.xml",
+      "source_body_index": 32,
+      "kind": "body",
+      "section": "（3）{{事项标题_31}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_9",
+      "part": "word/document.xml",
+      "source_body_index": 35,
+      "kind": "body",
+      "section": "（4）{{事项标题_34}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-4",
+      "part": "word/document.xml",
+      "source_body_index": 37,
+      "kind": "table",
+      "section": "（4）{{事项标题_34}}",
+      "source_rows": 8,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_10",
+      "part": "word/document.xml",
+      "source_body_index": 39,
+      "kind": "body",
+      "section": "（5）重大资产重组对发行人公司治理可能产生的影响",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_11",
+      "part": "word/document.xml",
+      "source_body_index": 44,
+      "kind": "body",
+      "section": "1、公司经营范围及主营业务",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_12",
+      "part": "word/document.xml",
+      "source_body_index": 47,
+      "kind": "body",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-5",
+      "part": "word/document.xml",
+      "source_body_index": 50,
+      "kind": "table",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "source_rows": 10,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_13",
+      "part": "word/document.xml",
+      "source_body_index": 51,
+      "kind": "body",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-6",
+      "part": "word/document.xml",
+      "source_body_index": 56,
+      "kind": "table",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "source_rows": 10,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_14",
+      "part": "word/document.xml",
+      "source_body_index": 57,
+      "kind": "body",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-7",
+      "part": "word/document.xml",
+      "source_body_index": 59,
+      "kind": "table",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "source_rows": 9,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_15",
+      "part": "word/document.xml",
+      "source_body_index": 60,
+      "kind": "body",
+      "section": "2、公司报告期内营业收入、毛利润及毛利率情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_16",
+      "part": "word/document.xml",
+      "source_body_index": 66,
+      "kind": "body",
+      "section": "3、公司报告期内主营业务情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_17",
+      "part": "word/document.xml",
+      "source_body_index": 68,
+      "kind": "body",
+      "section": "（1）{{事项标题_67}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-8",
+      "part": "word/document.xml",
+      "source_body_index": 77,
+      "kind": "table",
+      "section": "（1）{{事项标题_67}}",
+      "source_rows": 14,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_18",
+      "part": "word/document.xml",
+      "source_body_index": 79,
+      "kind": "body",
+      "section": "1.{{事项标题_78}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_19",
+      "part": "word/document.xml",
+      "source_body_index": 81,
+      "kind": "body",
+      "section": "2.{{事项标题_80}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_20",
+      "part": "word/document.xml",
+      "source_body_index": 83,
+      "kind": "body",
+      "section": "3.{{事项标题_82}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_21",
+      "part": "word/document.xml",
+      "source_body_index": 86,
+      "kind": "body",
+      "section": "3.{{事项标题_82}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_22",
+      "part": "word/document.xml",
+      "source_body_index": 87,
+      "kind": "body",
+      "section": "3.{{事项标题_82}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-9",
+      "part": "word/document.xml",
+      "source_body_index": 88,
+      "kind": "table",
+      "section": "3.{{事项标题_82}}",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_23",
+      "part": "word/document.xml",
+      "source_body_index": 89,
+      "kind": "body",
+      "section": "3.{{事项标题_82}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_24",
+      "part": "word/document.xml",
+      "source_body_index": 91,
+      "kind": "body",
+      "section": "（2）{{事项标题_90}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-10",
+      "part": "word/document.xml",
+      "source_body_index": 99,
+      "kind": "table",
+      "section": "（2）{{事项标题_90}}",
+      "source_rows": 22,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_25",
+      "part": "word/document.xml",
+      "source_body_index": 100,
+      "kind": "body",
+      "section": "（2）{{事项标题_90}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-11",
+      "part": "word/document.xml",
+      "source_body_index": 102,
+      "kind": "table",
+      "section": "（2）{{事项标题_90}}",
+      "source_rows": 16,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_26",
+      "part": "word/document.xml",
+      "source_body_index": 103,
+      "kind": "body",
+      "section": "（2）{{事项标题_90}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-12",
+      "part": "word/document.xml",
+      "source_body_index": 108,
+      "kind": "table",
+      "section": "（2）{{事项标题_90}}",
+      "source_rows": 9,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_27",
+      "part": "word/document.xml",
+      "source_body_index": 109,
+      "kind": "body",
+      "section": "（2）{{事项标题_90}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-13",
+      "part": "word/document.xml",
+      "source_body_index": 111,
+      "kind": "table",
+      "section": "（2）{{事项标题_90}}",
+      "source_rows": 11,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_28",
+      "part": "word/document.xml",
+      "source_body_index": 113,
+      "kind": "body",
+      "section": "（3）{{事项标题_112}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_29",
+      "part": "word/document.xml",
+      "source_body_index": 117,
+      "kind": "body",
+      "section": "1.{{事项标题_116}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_30",
+      "part": "word/document.xml",
+      "source_body_index": 120,
+      "kind": "body",
+      "section": "2.{{事项标题_119}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-14",
+      "part": "word/document.xml",
+      "source_body_index": 124,
+      "kind": "table",
+      "section": "2.{{事项标题_119}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_31",
+      "part": "word/document.xml",
+      "source_body_index": 125,
+      "kind": "body",
+      "section": "2.{{事项标题_119}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-15",
+      "part": "word/document.xml",
+      "source_body_index": 129,
+      "kind": "table",
+      "section": "2.{{事项标题_119}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_32",
+      "part": "word/document.xml",
+      "source_body_index": 130,
+      "kind": "body",
+      "section": "2.{{事项标题_119}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-16",
+      "part": "word/document.xml",
+      "source_body_index": 132,
+      "kind": "table",
+      "section": "2.{{事项标题_119}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_33",
+      "part": "word/document.xml",
+      "source_body_index": 133,
+      "kind": "body",
+      "section": "2.{{事项标题_119}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-17",
+      "part": "word/document.xml",
+      "source_body_index": 135,
+      "kind": "table",
+      "section": "2.{{事项标题_119}}",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_34",
+      "part": "word/document.xml",
+      "source_body_index": 136,
+      "kind": "body",
+      "section": "2.{{事项标题_119}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_35",
+      "part": "word/document.xml",
+      "source_body_index": 138,
+      "kind": "body",
+      "section": "3.{{事项标题_137}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_36",
+      "part": "word/document.xml",
+      "source_body_index": 139,
+      "kind": "body",
+      "section": "3.{{事项标题_137}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_37",
+      "part": "word/document.xml",
+      "source_body_index": 141,
+      "kind": "body",
+      "section": "1.{{事项标题_140}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_38",
+      "part": "word/document.xml",
+      "source_body_index": 144,
+      "kind": "body",
+      "section": "2.{{事项标题_143}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-18",
+      "part": "word/document.xml",
+      "source_body_index": 147,
+      "kind": "table",
+      "section": "2.{{事项标题_143}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_39",
+      "part": "word/document.xml",
+      "source_body_index": 148,
+      "kind": "body",
+      "section": "2.{{事项标题_143}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-19",
+      "part": "word/document.xml",
+      "source_body_index": 150,
+      "kind": "table",
+      "section": "2.{{事项标题_143}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_40",
+      "part": "word/document.xml",
+      "source_body_index": 151,
+      "kind": "body",
+      "section": "2.{{事项标题_143}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-20",
+      "part": "word/document.xml",
+      "source_body_index": 153,
+      "kind": "table",
+      "section": "2.{{事项标题_143}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_41",
+      "part": "word/document.xml",
+      "source_body_index": 154,
+      "kind": "body",
+      "section": "2.{{事项标题_143}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-21",
+      "part": "word/document.xml",
+      "source_body_index": 156,
+      "kind": "table",
+      "section": "2.{{事项标题_143}}",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_42",
+      "part": "word/document.xml",
+      "source_body_index": 158,
+      "kind": "body",
+      "section": "3.{{事项标题_157}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-22",
+      "part": "word/document.xml",
+      "source_body_index": 161,
+      "kind": "table",
+      "section": "3.{{事项标题_157}}",
+      "source_rows": 3,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_43",
+      "part": "word/document.xml",
+      "source_body_index": 162,
+      "kind": "body",
+      "section": "3.{{事项标题_157}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-23",
+      "part": "word/document.xml",
+      "source_body_index": 165,
+      "kind": "table",
+      "section": "3.{{事项标题_157}}",
+      "source_rows": 3,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_44",
+      "part": "word/document.xml",
+      "source_body_index": 167,
+      "kind": "body",
+      "section": "（4）{{事项标题_166}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_45",
+      "part": "word/document.xml",
+      "source_body_index": 173,
+      "kind": "body",
+      "section": "（5）{{事项标题_172}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_46",
+      "part": "word/document.xml",
+      "source_body_index": 179,
+      "kind": "body",
+      "section": "（一）发行人主要财务数据和财务指标（合并口径）",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-24",
+      "part": "word/document.xml",
+      "source_body_index": 180,
+      "kind": "table",
+      "section": "（一）发行人主要财务数据和财务指标（合并口径）",
+      "source_rows": 28,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_47",
+      "part": "word/document.xml",
+      "source_body_index": 183,
+      "kind": "body",
+      "section": "1、资产结构分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-25",
+      "part": "word/document.xml",
+      "source_body_index": 186,
+      "kind": "table",
+      "section": "1、资产结构分析",
+      "source_rows": 23,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_48",
+      "part": "word/document.xml",
+      "source_body_index": 187,
+      "kind": "body",
+      "section": "1、资产结构分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_49",
+      "part": "word/document.xml",
+      "source_body_index": 192,
+      "kind": "body",
+      "section": "（1）货币资金",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-26",
+      "part": "word/document.xml",
+      "source_body_index": 197,
+      "kind": "table",
+      "section": "（1）货币资金",
+      "source_rows": 5,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_50",
+      "part": "word/document.xml",
+      "source_body_index": 198,
+      "kind": "body",
+      "section": "（1）货币资金",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-27",
+      "part": "word/document.xml",
+      "source_body_index": 200,
+      "kind": "table",
+      "section": "（1）货币资金",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_51",
+      "part": "word/document.xml",
+      "source_body_index": 202,
+      "kind": "body",
+      "section": "（2）应收账款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_52",
+      "part": "word/document.xml",
+      "source_body_index": 205,
+      "kind": "body",
+      "section": "（3）预付款项",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_53",
+      "part": "word/document.xml",
+      "source_body_index": 208,
+      "kind": "body",
+      "section": "（4）其他应收款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-28",
+      "part": "word/document.xml",
+      "source_body_index": 213,
+      "kind": "table",
+      "section": "（4）其他应收款",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_54",
+      "part": "word/document.xml",
+      "source_body_index": 214,
+      "kind": "body",
+      "section": "（4）其他应收款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-29",
+      "part": "word/document.xml",
+      "source_body_index": 216,
+      "kind": "table",
+      "section": "（4）其他应收款",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_55",
+      "part": "word/document.xml",
+      "source_body_index": 217,
+      "kind": "body",
+      "section": "（4）其他应收款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_56",
+      "part": "word/document.xml",
+      "source_body_index": 230,
+      "kind": "body",
+      "section": "（5）存货",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-30",
+      "part": "word/document.xml",
+      "source_body_index": 233,
+      "kind": "table",
+      "section": "（5）存货",
+      "source_rows": 7,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_57",
+      "part": "word/document.xml",
+      "source_body_index": 235,
+      "kind": "body",
+      "section": "（6）其他非流动金融资产",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-31",
+      "part": "word/document.xml",
+      "source_body_index": 238,
+      "kind": "table",
+      "section": "（6）其他非流动金融资产",
+      "source_rows": 31,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_58",
+      "part": "word/document.xml",
+      "source_body_index": 240,
+      "kind": "body",
+      "section": "（7）投资性房地产",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-32",
+      "part": "word/document.xml",
+      "source_body_index": 243,
+      "kind": "table",
+      "section": "（7）投资性房地产",
+      "source_rows": 5,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_59",
+      "part": "word/document.xml",
+      "source_body_index": 245,
+      "kind": "body",
+      "section": "（8）在建工程",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-33",
+      "part": "word/document.xml",
+      "source_body_index": 248,
+      "kind": "table",
+      "section": "（8）在建工程",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_60",
+      "part": "word/document.xml",
+      "source_body_index": 250,
+      "kind": "body",
+      "section": "2、负债结构分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-34",
+      "part": "word/document.xml",
+      "source_body_index": 253,
+      "kind": "table",
+      "section": "2、负债结构分析",
+      "source_rows": 16,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_61",
+      "part": "word/document.xml",
+      "source_body_index": 254,
+      "kind": "body",
+      "section": "2、负债结构分析",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_62",
+      "part": "word/document.xml",
+      "source_body_index": 256,
+      "kind": "body",
+      "section": "（1）短期借款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-35",
+      "part": "word/document.xml",
+      "source_body_index": 261,
+      "kind": "table",
+      "section": "（1）短期借款",
+      "source_rows": 6,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_63",
+      "part": "word/document.xml",
+      "source_body_index": 263,
+      "kind": "body",
+      "section": "（2）应付票据",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-36",
+      "part": "word/document.xml",
+      "source_body_index": 267,
+      "kind": "table",
+      "section": "（2）应付票据",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_64",
+      "part": "word/document.xml",
+      "source_body_index": 269,
+      "kind": "body",
+      "section": "（3）应付账款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_65",
+      "part": "word/document.xml",
+      "source_body_index": 272,
+      "kind": "body",
+      "section": "（4）合同负债",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_66",
+      "part": "word/document.xml",
+      "source_body_index": 274,
+      "kind": "body",
+      "section": "（5）其他应付款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_67",
+      "part": "word/document.xml",
+      "source_body_index": 276,
+      "kind": "body",
+      "section": "（6）一年内到期的非流动负债",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-37",
+      "part": "word/document.xml",
+      "source_body_index": 279,
+      "kind": "table",
+      "section": "（6）一年内到期的非流动负债",
+      "source_rows": 4,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_68",
+      "part": "word/document.xml",
+      "source_body_index": 281,
+      "kind": "body",
+      "section": "（7）长期借款",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "table-38",
+      "part": "word/document.xml",
+      "source_body_index": 284,
+      "kind": "table",
+      "section": "（7）长期借款",
+      "source_rows": 5,
+      "retained_rows": 3,
+      "rule": "按当前事实填写空白数据格和占位格并增删数据行；表头期间按目标报告期填写，保留列宽、合并与样式。签署栏只留待真实签认，不生成签字。"
+    },
+    {
+      "id": "内容_69",
+      "part": "word/document.xml",
+      "source_body_index": 286,
+      "kind": "body",
+      "section": "三、公司债券发行方案",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_70",
+      "part": "word/document.xml",
+      "source_body_index": 321,
+      "kind": "body",
+      "section": "四、公司本次债券增信措施情况（如有）",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_71",
+      "part": "word/document.xml",
+      "source_body_index": 323,
+      "kind": "body",
+      "section": "五、本次债券评级情况（如有）",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_72",
+      "part": "word/document.xml",
+      "source_body_index": 326,
+      "kind": "body",
+      "section": "（一）偿债计划",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_73",
+      "part": "word/document.xml",
+      "source_body_index": 331,
+      "kind": "body",
+      "section": "1、{{事项标题_330}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_74",
+      "part": "word/document.xml",
+      "source_body_index": 333,
+      "kind": "body",
+      "section": "2、{{事项标题_332}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_75",
+      "part": "word/document.xml",
+      "source_body_index": 335,
+      "kind": "body",
+      "section": "3、{{事项标题_334}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_76",
+      "part": "word/document.xml",
+      "source_body_index": 338,
+      "kind": "body",
+      "section": "4、{{事项标题_337}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_77",
+      "part": "word/document.xml",
+      "source_body_index": 340,
+      "kind": "body",
+      "section": "（三）偿债保障措施",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_78",
+      "part": "word/document.xml",
+      "source_body_index": 342,
+      "kind": "body",
+      "section": "1、{{事项标题_341}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_79",
+      "part": "word/document.xml",
+      "source_body_index": 344,
+      "kind": "body",
+      "section": "2、{{事项标题_343}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_80",
+      "part": "word/document.xml",
+      "source_body_index": 346,
+      "kind": "body",
+      "section": "3、{{事项标题_345}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_81",
+      "part": "word/document.xml",
+      "source_body_index": 348,
+      "kind": "body",
+      "section": "4、{{事项标题_347}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_82",
+      "part": "word/document.xml",
+      "source_body_index": 351,
+      "kind": "body",
+      "section": "5、{{事项标题_349}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_83",
+      "part": "word/document.xml",
+      "source_body_index": 356,
+      "kind": "body",
+      "section": "（1）{{事项标题_355}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_84",
+      "part": "word/document.xml",
+      "source_body_index": 363,
+      "kind": "body",
+      "section": "2、{{事项标题_362}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_85",
+      "part": "word/document.xml",
+      "source_body_index": 367,
+      "kind": "body",
+      "section": "七、其他重要事项",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_86",
+      "part": "word/document.xml",
+      "source_body_index": 369,
+      "kind": "body",
+      "section": "八、关于本次公司债券发行挂牌转让合规性情况",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_87",
+      "part": "word/document.xml",
+      "source_body_index": 371,
+      "kind": "body",
+      "section": "1、{{事项标题_370}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_88",
+      "part": "word/document.xml",
+      "source_body_index": 374,
+      "kind": "body",
+      "section": "2、{{事项标题_373}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    },
+    {
+      "id": "内容_89",
+      "part": "word/document.xml",
+      "source_body_index": 391,
+      "kind": "body",
+      "section": "3、{{事项标题_390}}",
+      "rule": "仅填写本项目材料有依据的内容；缺项标明待核，不沿用案例事实、签署或结论。"
+    }
+  ],
+  "sections": [
+    "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<w:sectPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:wpc=\"http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w10=\"urn:schemas-microsoft-com:office:word\" xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\" xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" xmlns:wpi=\"http://schemas.microsoft.com/office/word/2010/wordprocessingInk\" xmlns:wne=\"http://schemas.microsoft.com/office/word/2006/wordml\" xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" xmlns:wpsCustomData=\"http://www.wps.cn/officeDocument/2013/wpsCustomData\"><w:footerReference r:id=\"rId3\" w:type=\"default\"/><w:footerReference r:id=\"rId4\" w:type=\"even\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1985\" w:right=\"1418\" w:bottom=\"1418\" w:left=\"1418\" w:header=\"851\" w:footer=\"992\" w:gutter=\"0\"/><w:pgNumType w:fmt=\"numberInDash\"/><w:cols w:space=\"720\" w:num=\"1\"/><w:docGrid w:type=\"lines\" w:linePitch=\"312\" w:charSpace=\"0\"/></w:sectPr>"
+  ],
+  "deviations": [
+    "去除案例事实、公司名称、数字、签署、批注、图片、嵌入文件与元数据。",
+    "连续正文缩为可扩展槽位；数据表保留表头和样式行，窄数据格留白以免占位符撑高；目录随实际生成正文重建。"
+  ],
+  "source_parts": [
+    {
+      "part": "[Content_Types].xml",
+      "sha256": "970a839a16baab9e42490dff5ad944677b99abe4297b9379c12ce7a4aa870599",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "_rels/.rels",
+      "sha256": "514e1846381cb6bcfff105a4b0a17d666cf0ed1f0c120bff73b82226ab7ed977",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "docProps/app.xml",
+      "sha256": "e77f2f6a12605a267b7cc2fd1a422b814c36410ded0fbade72a1929ee723338f",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/core.xml",
+      "sha256": "ca5ad5675850fd2ad258822584fa8b5e58690e1c35309ab9a6667434a24df3cf",
+      "policy": "removed"
+    },
+    {
+      "part": "docProps/custom.xml",
+      "sha256": "efb87d5d50d5afb18e763b5c87e6744a2f3979d3b7c1efc00e27b025dff2f264",
+      "policy": "removed"
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "sha256": "bb65ee5d954efd01d8c5b8a455cb2d387a4bc26ef3513e48d5b1222862b4cf16",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/document.xml",
+      "sha256": "0f1b50039ef4e2a77575872a6b6caf9e6d8484d350e71e786dbe1411580d56fb",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/fontTable.xml",
+      "sha256": "ffcde71edefc22077ddf428adef9cf2d58bab0feec932a35a6026570e74f8dbf",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/footer1.xml",
+      "sha256": "b922178eef188b0ec45b0f7a74eab8c4112f9e2399c78bd25ff7a8c4075c3a87",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/footer2.xml",
+      "sha256": "76b8cedd68f226d799fac1c4a08f3e5b8d264254837b22fe65ce3f71b5174f33",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/media/image1.png",
+      "sha256": "282f3a69af65d3218dcc9e0a47e0cd9ff30bdfb46ee1cc63ec00939cc051a351",
+      "policy": "removed"
+    },
+    {
+      "part": "word/numbering.xml",
+      "sha256": "428cd89997333cce03e578695803a86e6c9792e9f12d2ecf3916d5acdd507292",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/settings.xml",
+      "sha256": "fb09a154254e693467a76a92aef58c24f4e507e2cb70dadb9eca18ed4009f3f0",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/styles.xml",
+      "sha256": "182c3b79c526cacbfa5924197da5817227298269b7d926825b8a8ca355268c22",
+      "policy": "source-derived formatting"
+    },
+    {
+      "part": "word/theme/theme1.xml",
+      "sha256": "877930300f41fcf60d3edea108678078177c4c20b65ced288432470652e6b4a1",
+      "policy": "source-derived formatting"
+    }
+  ]
+}

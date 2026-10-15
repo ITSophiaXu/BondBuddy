@@ -1,5 +1,6 @@
 import { duplicateUploadNotices, isReusedUpload } from './duplicate-upload';
 import { renderFinancialUploadGuidance } from './financial-upload-guidance';
+import { OPTIONAL_MATERIAL_GUIDANCE, OPTIONAL_MATERIAL_FORMATS } from './optional-materials';
 import { Dashboard } from './dashboard';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
@@ -37,6 +38,7 @@ import '../../../product-prototype/public/styles.css';
 import '../../../product-prototype/public/project-workspace.css';
 import './prototype-adapter.css';
 import './quarter-controls.css';
+import '../../../product-prototype/public/optional-materials.css';
 import '../../../product-prototype/public/source-prospectus.css';
 import './credit-wallet.css';
 
@@ -578,6 +580,8 @@ function updateSaveState() {
 }
 
 function roleLabel(role: UploadRole) {
+  const label = OPTIONAL_MATERIAL_GUIDANCE[role]?.label;
+  if (label) return label;
   for (const partition of M1_MATERIAL_PARTITIONS as readonly { roles: readonly { code: string; label: string }[] }[]) {
     const match = partition.roles.find(item => item.code === role);
     if (match) return match.label;
@@ -586,6 +590,8 @@ function roleLabel(role: UploadRole) {
 }
 
 function roleGuidance(role: UploadRole) {
+  const guidance = OPTIONAL_MATERIAL_GUIDANCE[role];
+  if (guidance) return `选填 · ${guidance.hint}`;
   if (role === 'historical') return '选填：同企业、母公司、子公司或相似业务企业原稿。优先 Word；PDF 重建后需核对排版。';
   if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
   if (role === 'audit') return '必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传';
@@ -682,17 +688,20 @@ function renderMaterialPartitions(projectId: string) {
   const materials = recoveredMaterials.get(projectId) ?? [];
   const history = null;
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
-  // Product partitions from project-workspace.js; detailed role values still come from contracts.
-  const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: UploadRole }[] = [
-    {label:'历史／参考募集书（选填）',roles:M1_MATERIAL_PARTITIONS[0].roles.filter(role => role.code === 'historical' || materials.some(m => m.role === role.code)).map(role => ({...role,label:role.code === 'historical' ? '历史／参考募集书' : '已保存参考稿'})),primary:'historical'},
-    {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:'audit'},
-    {label:'募投项目与权证材料',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:'fundUse'},
-    {label:'其他项目材料',roles:M1_MATERIAL_PARTITIONS.slice(3).flatMap(p => [...p.roles]),primary:'other'}
+  // Optional-materials.html extends the workspace prototype; role values still come from contracts.
+  const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: readonly UploadRole[]; optional?: boolean }[] = [
+    {label:'历史／参考募集书（选填）',roles:M1_MATERIAL_PARTITIONS[0].roles.filter(role => role.code === 'historical' || materials.some(m => m.role === role.code)).map(role => ({...role,label:role.code === 'historical' ? '历史／参考募集书' : '已保存参考稿'})),primary:['historical']},
+    {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:['audit']},
+    {label:'募投项目与权证材料',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:['fundUse']},
+    {label:'债务、授信与担保（选填）',roles:M1_MATERIAL_PARTITIONS[4].roles,primary:['debt','bankFacilities','guarantee','collateralMaterials'],optional:true},
+    {label:'公司、经营与信用（选填）',roles:[...M1_MATERIAL_PARTITIONS[5].roles,...M1_MATERIAL_PARTITIONS[3].roles].filter(role=>role.code!=='other'),primary:['governance','corporate','business','rating'],optional:true},
+    {label:'其他补充材料（选填）',roles:M1_MATERIAL_PARTITIONS[5].roles.filter(role=>role.code==='other'),primary:['other'],optional:true}
   ];
-  const groups = partitions.map((partition, index) => `<section class="material-partition" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => (role.code === partition.primary) === primary).filter(role => {
+  const groups = partitions.map((partition, index) => `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => partition.primary.includes(role.code) === primary).filter(role => {
     const relevant = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     return relevant || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code);
-  }).map(role => {
+  }).map(rawRole => {
+    const role = {...rawRole,label:OPTIONAL_MATERIAL_GUIDANCE[rawRole.code]?.label ?? rawRole.label};
     const canAdd = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     const roleUploads = uploads.filter(upload => upload.role === role.code);
     const duplicates = (localUploads.get(projectId) ?? []).filter(upload => upload.role === role.code && upload.phase === 'persisted' && upload.material && isReusedUpload(upload.material, upload.session)).map(upload => ({filename: upload.file.name, material: upload.material!}));
@@ -701,7 +710,7 @@ function renderMaterialPartitions(projectId: string) {
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
     const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}</div><div class="material-file-actions"><button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
-    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
+    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
   return groups;

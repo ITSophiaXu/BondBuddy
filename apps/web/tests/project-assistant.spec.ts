@@ -6,8 +6,8 @@ const evidenceDir=fileURLToPath(new URL('../test-evidence/assistant-refined/',im
 import { createHash } from 'node:crypto';
 import { duplicateUploadFixture } from './duplicate-upload-fixture';
 const now='2026-10-08T10:00:00Z',hash='a'.repeat(64);
-function fixture(){return {topic:{topic_id:'topic',project_id:'scope',source_project_id:null,name:'项目助手',surface:'assistant',created_at:now,updated_at:now},
- project:{project_id:'scope',kind:'qa',name:'项目助手',draft_revision:1},materials:[],material_details:[],drafts:{},templates:[],messages:[] as any[],tasks:[],artifacts:[],pending_requirements:[],active_run:null,
+function fixture(){return {topic:{topic_id:'topic',project_id:'scope',source_project_id:null,name:'BondBuddy',surface:'assistant',created_at:now,updated_at:now},
+ project:{project_id:'scope',kind:'qa',name:'BondBuddy',draft_revision:1},materials:[],material_details:[],drafts:{},templates:[],messages:[] as any[],tasks:[],artifacts:[],pending_requirements:[],active_run:null,
  view:{version:0,selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},assistant:{project_id:null,action:null}}};}
 async function setup(page:Page,{paid=false,fixed=false}={}){
  const w:any=fixture(),messages:any[]=[],executions:any[]=[],cards:any[]=[],uploads:any[]=[];let quoteReads=0,releaseUpload:(()=>void)|undefined;
@@ -42,7 +42,7 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
 test('duplicate feedback: assistant attachments identify renamed duplicates without another material',async({page})=>{
- const s=await setup(page);await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
  await expect(page.locator('[data-composer]')).toBeEnabled();
  const receipts=await duplicateUploadFixture(page,m=>{
    if(!s.w.materials.some((p:any)=>p.material_id===m.material_id)){const pin={source_project_id:'scope',material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};s.w.materials.push(pin);s.w.material_details.push({...pin,...m});}
@@ -55,7 +55,7 @@ test('duplicate feedback: assistant attachments identify renamed duplicates with
  await expect(notice).toContainText('合成助手附件副本.txt：重复文件');await expect(notice).toContainText('已保留原文件“合成助手附件.txt”');
  expect(receipts.materials).toHaveLength(1);expect(s.w.materials).toHaveLength(1);expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
  await expect(page.locator('[data-composer]')).toBeEnabled();expect(await nativeInput!.evaluate(el=>el.isConnected)).toBe(true);
- await page.getByRole('button',{name:'收起助手',exact:true}).click();await page.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(notice).toHaveCount(1);
+ await page.getByRole('button',{name:'收起助手',exact:true}).click();await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(notice).toHaveCount(1);
  if(process.env.BB_DUPLICATE_EVIDENCE)await notice.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/assistant.png`});
 });
 
@@ -63,7 +63,7 @@ test('mobile assistant keeps focus inside and restores navigation and logout aft
  await page.setViewportSize({width:390,height:844});
  const s=await setup(page);let logouts=0;
  await page.route('**/api/v1/auth/logout',async route=>{logouts++;await route.fulfill({status:204});});
- await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
  await expect(page.locator('.ba-panel')).toBeVisible();
  await expect(page.locator('[data-composer]')).toBeEnabled();
  await expect(page.locator('.prototype-app')).toHaveAttribute('inert','');
@@ -83,12 +83,12 @@ test('mobile assistant keeps focus inside and restores navigation and logout aft
  expect(logouts).toBe(1);expect(s.messages).toHaveLength(0);expect(s.executions).toHaveLength(0);
 });
 test('global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs',async({page})=>{
- const s=await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
+ const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
  await page.locator('[data-composer]').fill('这种表述是否合适？');await expect.poll(()=>s.w.view.unsent_content).toBe('这种表述是否合适？');
- await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar a[href="#tasks"]').click();await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
- await page.reload();await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
+ await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar a[href="#tasks"]').click();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
+ await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
  await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message.assistant')).toContainText('可先说明');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);await expect(page.locator('.ba-task')).toHaveCount(0);
- await page.locator('[data-a=history]').click();await expect(page.locator('.ba-history')).toContainText('项目助手');
+ await page.locator('[data-a=history]').click();await expect(page.locator('.ba-history')).toContainText('BondBuddy');
 });
 test('a slow autosave receipt survives background polling without a false conversation conflict',async({page})=>{
  const s=await setup(page);await page.clock.install();
@@ -99,7 +99,7 @@ test('a slow autosave receipt survives background polling without a false conver
   if(b.expected_version!==s.w.view.version){await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({code:'INPUT_REVISION_CONFLICT',message:'Synthetic stale conversation view'})});return;}
   s.w.view={...b.view,version:s.w.view.version+1};await route.fulfill({contentType:'application/json',body:JSON.stringify({view:s.w.view})});
  });
- await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
+ await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
  await page.locator('[data-composer]').fill('第一次未发送编辑');await page.clock.fastForward(500);await started;
  // Seeing this server-only reply proves polling replaced the workspace during the held PUT.
  s.w.messages.push({message_id:'poll-marker',role:'assistant',content:'合成后台轮询回执',created_at:now,reply_status:'completed',context:s.w.view.unsent_context});
@@ -112,7 +112,7 @@ test('a slow autosave receipt survives background polling without a false conver
 });
 
 test('paid QA shows real cap, sends only after confirmation and preserves requested content',async({page})=>{
- const s=await setup(page,{paid:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
+ const s=await setup(page,{paid:true});await page.getByRole('button',{name:'打开 BondBuddy'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('20');expect(s.messages).toHaveLength(0);await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].content).toBe('解释担保条款');expect(s.messages[0].execute).toBeUndefined();expect(s.quoteReads()).toBe(1);
 });
 
@@ -121,7 +121,7 @@ test('update card has no upfront price and recharge retains the project',async({
  const key=createHash('sha256').update(JSON.stringify(['source-project',1,hash])).digest('hex');
  const card:any={card_id:'update-card',operation:'update',project_id:'source-project',project_name:'合成更新项目',draft_token:'draft',created_at:now,
   input_revision:1,input_hash:hash,execution_request_id:'web-update-'+key,quote_id:'update-quote',quote:{points:17900},balance:{available:1,frozen:0},material_names:['原稿.docx'],requirements:'仅更新本期',baseline:null,run:null};s.cards.push(card);
- await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task')).toContainText('仅更新本期');
+ await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('.ba-task')).toContainText('仅更新本期');
  await expect(page.locator('.ba-task .ba-credits')).toHaveCount(0);
  await expect(page.locator('.ba-task a.ba-primary')).toHaveAttribute('href','#/account?project=source-project');
  card.balance.available=17900;
@@ -130,19 +130,19 @@ test('update card has no upfront price and recharge retains the project',async({
  await expect.poll(()=>s.executions.length).toBe(1);expect(s.executions[0].quote_id).toBe('update-quote');
 });
 test('fixed QA states the exact price and success/failure terms before confirmation',async({page})=>{
- const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
+ const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开 BondBuddy'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('本次回答 60 积分');await expect(page.locator('[data-qa-price]')).toContainText('失败不扣费');await expect(page.locator('[data-qa-price]')).not.toContainText('按实际用量');expect(s.messages).toHaveLength(0);
- if(process.env.QA_PRICE_EVIDENCE){const dir=fileURLToPath(new URL('../test-evidence/assistant-qa-price/',import.meta.url));await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
+ if(process.env.QA_PRICE_EVIDENCE){const dir=fileURLToPath(new URL('../test-evidence/assistant-qa-price/',import.meta.url));await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await prototype.getByRole('textbox',{name:'发送给 BondBuddy'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
  await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].quote_id).toBe('quote');
 });
 test('editable task card uses quarters and optional requirements; insufficient input never executes',async({page})=>{
- const s=await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();await page.locator('[data-kind=update]').click();await expect(page.locator('.ba-form')).toBeVisible();
+ const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();await page.locator('[data-kind=update]').click();await expect(page.locator('.ba-form')).toBeVisible();
  await expect(page.locator('.ba-form input[type=date]')).toHaveCount(0);await page.locator('[data-field=issuer_name]').fill('合成发行人');await page.locator('[data-requirements]').fill('只改偿债能力文字，不改数字');
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-status]')).toContainText('请先填写');expect(s.executions).toHaveLength(0);
  await expect.poll(()=>s.w.view.assistant.action).toMatchObject({requirements:'只改偿债能力文字，不改数字',fields:{issuer_name:'合成发行人'}});
 });
 test('desktop, focus and narrow assistant stay within viewport and preserve normal page layout',async({page})=>{
- const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();
  for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
  await page.setViewportSize({width:1440,height:960});const normal=(await page.locator('.ba-panel').boundingBox())!.width;
@@ -151,7 +151,7 @@ test('desktop, focus and narrow assistant stay within viewport and preserve norm
 });
 
 test('attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload',async({page})=>{
- const s=await setup(page);await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('[data-composer]')).toBeEnabled();
+ const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toBeEnabled();
  await page.locator('.ba-composer [data-file]').setInputFiles({name:'first.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic first')});
  await expect.poll(()=>s.uploads.length).toBe(1);
  await page.locator('.ba-composer [data-file]').setInputFiles({name:'second.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic second')});
@@ -162,9 +162,9 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-a=execute]')).toHaveCount(1);await page.locator('[data-a=execute]').click();await expect.poll(()=>s.executions.length).toBe(1);
  await page.locator('.ba-header [data-a=toggle]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
  expect(s.cards.at(-1).run.state).toBe('queued');expect(s.executions).toHaveLength(1);
- await page.getByRole('button',{name:'BondBuddy 助手',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
+ await page.getByRole('button',{name:'BondBuddy',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
  if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
- await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开项目助手'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
+ await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});
  const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('合成项目_复核报告_V2_20261009.txt');expect(s.executions).toHaveLength(1);
 });
@@ -176,7 +176,7 @@ test('approved prototype comparison capture',async({page})=>{
  for(const file of ['project-assistant-refined']){
   const source=await readFile(new URL('../../../product-prototype/public/'+file+'.html',import.meta.url),'utf8');
   await page.setContent('<!doctype html><meta charset="utf-8"><style>:root{color-scheme:light}body{margin:0}</style>'+source);
-  await page.getByRole('textbox',{name:'发送给项目助手'}).focus();
+  await page.getByRole('textbox',{name:'发送给 BondBuddy'}).focus();
   await page.screenshot({path:resolve(evidenceDir,'prototype-1440.png')});
   await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir,'prototype-panel.png')});
   await page.setViewportSize({width:390,height:960});
@@ -229,20 +229,20 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
    await mkdir(evidence,{recursive:true});await page.screenshot({path:resolve(evidence,'implementation-open-'+name+'.png')});
    const prototype=await page.context().newPage(),prototypeErrors:string[]=[];prototype.on('pageerror',error=>prototypeErrors.push(error.message));await prototype.setViewportSize({width,height});
    await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));
-   await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();
-   await prototype.getByRole('textbox',{name:'发送给项目助手'}).fill('收起后仍保留的未发送文字');
+   await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+   await prototype.getByRole('textbox',{name:'发送给 BondBuddy'}).fill('收起后仍保留的未发送文字');
    await expect(prototype.getByRole('button',{name:'发送消息',exact:true})).toBeEnabled();expect(prototypeErrors).toEqual([]);
    await prototype.screenshot({path:resolve(evidence,'prototype-open-'+name+'.png')});
    await prototype.getByRole('button',{name:'收起助手',exact:true}).click();await expect(prototype.locator('.bb-assistant')).toBeHidden();
    await prototype.screenshot({path:resolve(evidence,'prototype-collapsed-'+name+'.png')});
-   await prototype.getByRole('button',{name:'打开项目助手',exact:true}).click();await expect(prototype.getByRole('textbox')).toHaveValue('收起后仍保留的未发送文字');await prototype.close();
+   await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(prototype.getByRole('textbox')).toHaveValue('收起后仍保留的未发送文字');await prototype.close();
    await page.getByRole('button',{name:'收起助手',exact:true}).click();
    await page.screenshot({path:resolve(evidence,'implementation-collapsed-'+name+'.png')});
  }
 });
 
 test('desktop pages reflow beside the assistant at standard and wide widths',async({page})=>{
- await setup(page);await page.setViewportSize({width:1440,height:960});await page.getByRole('button',{name:'打开项目助手',exact:true}).click();
+ await setup(page);await page.setViewportSize({width:1440,height:960});await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
  for(const width of [1440,1280,1120,1024,961]){
   await page.setViewportSize({width,height:960});
   for(const [route,label] of [['dashboard','工作台'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','材料生成'],['/account','我的账号']]){

@@ -1,9 +1,9 @@
 <!-- 2026-10-09: floating panel and icon refinement: project-assistant-refined.html. Business flows below remain the reference. -->
 <div id="bb-conversation-flows">
-  <div class="viz-carousel viz-dotted-background" aria-label="项目助手的三种对话场景" data-previous-label="上一个场景" data-next-label="下一个场景">
+  <div class="viz-carousel viz-dotted-background" aria-label="BondBuddy的三种对话场景" data-previous-label="上一个场景" data-next-label="下一个场景">
     <section data-variant="基于成果继续修改" aria-label="基于已有成果继续修改"><div class="bc-product" data-scenario="revise"></div></section>
     <section data-variant="简单问答" aria-label="简单问答" hidden><div class="bc-product" data-scenario="chat"></div></section>
-    <section data-variant="直接更新募集书" aria-label="通过项目助手更新募集书" hidden><div class="bc-product" data-scenario="create"></div></section>
+    <section data-variant="直接更新募集书" aria-label="通过BondBuddy更新募集书" hidden><div class="bc-product" data-scenario="create"></div></section>
   </div>
 </div>
 <style>
@@ -158,7 +158,7 @@
   if(s.stage==='done')h=label()+'<div class="bc-answer"><p>募集书更新完成，两份 Word 都可以下载了。</p></div><div class="bc-result"><div class="bc-result-top"><strong>'+icon('circle-check')+'募集说明书 · v1</strong><span class="bc-tag">已完成</span></div><div class="bc-result-body">'+download(1)+'<div class="bc-action-row"><button class="bc-button" data-action="continue-revise">继续修改这份成果</button><button class="bc-link" data-action="view-project">查看项目</button></div></div></div><div class="bc-suggestions"><button data-prompt="create-question">这次更新了哪些内容？</button></div>';
   return h;
  }
- function render(k){const el=panel(k);const ctx=context(k);el.innerHTML='<header class="bc-head"><span class="bc-logo">'+icon('sparkles')+'</span><span class="bc-name">BondBuddy<small>项目助手</small></span><span class="bc-preview">交互预览</span></header><div class="bc-context">'+icon(k==='chat'&&!state.chat.linked?'message-circle':'folder-open')+'<span>'+ctx+'</span>'+(k==='revise'?'<span class="bc-tag">成果 v'+state.revise.version+'</span>':k==='chat'?'<button class="bc-link" data-action="toggle-link">'+(state.chat.linked?'解除关联':'引用项目')+'</button>':'')+'</div><div class="bc-body">'+({revise:reviseBody,chat:chatBody,create:createBody})[k]()+(state[k].extra?'<div class="bc-mini-answer">'+state[k].extra+'</div>':'')+'</div><div class="bc-inline-notice" role="status" hidden></div>'+composer(k)+'<div class="bc-footnote">'+(k==='revise'?'修改生成新版本，旧版随时可查看。':k==='chat'?'可以连续追问，也可以直接告诉我下一步要做什么。':'项目、对话和成果保存在一起。')+'</div>';icons();}
+ function render(k){const el=panel(k);const ctx=context(k);el.innerHTML='<header class="bc-head"><span class="bc-logo">'+icon('sparkles')+'</span><span class="bc-name">BondBuddy<small>券商助手</small></span><span class="bc-preview">交互预览</span></header><div class="bc-context">'+icon(k==='chat'&&!state.chat.linked?'message-circle':'folder-open')+'<span>'+ctx+'</span>'+(k==='revise'?'<span class="bc-tag">成果 v'+state.revise.version+'</span>':k==='chat'?'<button class="bc-link" data-action="toggle-link">'+(state.chat.linked?'解除关联':'引用项目')+'</button>':'')+'</div><div class="bc-body">'+({revise:reviseBody,chat:chatBody,create:createBody})[k]()+(state[k].extra?'<div class="bc-mini-answer">'+state[k].extra+'</div>':'')+'</div><div class="bc-inline-notice" role="status" hidden></div>'+composer(k)+'<div class="bc-footnote">'+(k==='revise'?'修改生成新版本，旧版随时可查看。':k==='chat'?'可以连续追问，也可以直接告诉我下一步要做什么。':'项目、对话和成果保存在一起。')+'</div>';icons();}
  function notice(k,text){const n=panel(k).querySelector('.bc-inline-notice');n.hidden=false;n.textContent=text;}
  function finishRevise(){clearTimeout(timers.revise);state.revise.stage='working';state.revise.showDiff=false;state.revise.showOld=false;render('revise');save();timers.revise=setTimeout(()=>{state.revise.stage='done';state.revise.version=2;render('revise');save();},2800);}
  function send(k){const input=panel(k).querySelector('textarea');const text=input.value.trim();if(!text)return;input.value='';

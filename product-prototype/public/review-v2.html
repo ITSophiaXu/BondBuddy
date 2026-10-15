@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#173e33">
-  <meta name="description" content="BondBuddy 复核工作区设计预览：材料、复核结果与项目助手在同一工作区。">
+  <meta name="description" content="BondBuddy 复核工作区设计预览：材料、复核结果与BondBuddy在同一工作区。">
   <title>复核工作区 · BondBuddy</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/review-v2.css">
@@ -48,8 +48,8 @@
           <nav class="work-tabs" aria-label="项目内容"><button class="tab" data-tab="materials">材料与要求<span class="tab-count">4</span></button><button class="tab active" data-tab="results">复核结果<span class="tab-count">6</span></button></nav>
           <div id="work-content"></div>
         </section>
-        <aside class="agent-panel" id="agent-panel" aria-label="项目助手">
-          <header class="agent-header"><span class="agent-avatar" data-icon="sparkles"></span><div class="agent-title"><h2>项目助手</h2><span class="agent-status"><i></i>补充背景 · 澄清口径 · 讨论异议</span></div><button class="icon-button agent-close" aria-label="收起项目助手" data-action="close-agent"><span data-icon="close"></span></button></header>
+        <aside class="agent-panel" id="agent-panel" aria-label="BondBuddy">
+          <header class="agent-header"><span class="agent-avatar" data-icon="sparkles"></span><div class="agent-title"><h2>BondBuddy</h2><span class="agent-status"><i></i>补充背景 · 澄清口径 · 讨论异议</span></div><button class="icon-button agent-close" aria-label="收起BondBuddy" data-action="close-agent"><span data-icon="close"></span></button></header>
           <p class="agent-purpose">快捷操作与对话共用任务记录。补充口径或异议后，先确认范围，再重新核验。</p>
           <div class="agent-context" id="agent-context"></div>
           <button class="saved-notes-button" data-action="notes"><span data-icon="check-circle"></span><span id="notes-count">已记录 2 项要求</span><span data-icon="chevron-right"></span></button>
@@ -58,7 +58,7 @@
             <div id="reference-chip"></div>
             <div id="suggestions" class="suggestion-row"></div>
             <form id="chat-form" class="composer">
-              <label class="sr-only" for="chat-input">向项目助手发送消息</label>
+              <label class="sr-only" for="chat-input">向BondBuddy发送消息</label>
               <textarea id="chat-input" rows="3" maxlength="4000" placeholder="例如：这段应使用母公司口径，请保留历史名称…"></textarea>
               <div class="composer-bottom"><button type="button" class="icon-button" data-action="attach-evidence" aria-label="添加补充依据"><span data-icon="paperclip"></span></button><span class="composer-hint" id="save-status">保存在此浏览器</span><button class="send-button" type="submit" aria-label="发送消息"><span data-icon="arrow-up"></span></button></div>
             </form>
@@ -69,7 +69,7 @@
       <p class="preview-footnote">M3 交互设计预览 · 示例发行人与材料 · 不调用模型，不产生费用 <a href="/#review">对照原复核页<span data-icon="arrow-up-right"></span></a></p>
     </main>
   </div>
-  <button class="mobile-agent-toggle" data-action="open-agent" aria-controls="agent-panel" aria-expanded="false"><span data-icon="sparkles"></span>项目助手<span id="mobile-message-count"></span></button>
+  <button class="mobile-agent-toggle" data-action="open-agent" aria-controls="agent-panel" aria-expanded="false"><span data-icon="sparkles"></span>BondBuddy<span id="mobile-message-count"></span></button>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <dialog id="modal" class="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
   <input type="file" id="local-file" accept=".docx,.pdf,.xlsx,.csv,.txt" multiple hidden aria-label="添加本地文件信息">

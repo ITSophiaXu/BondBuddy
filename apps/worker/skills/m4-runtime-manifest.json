@@ -11,11 +11,11 @@
     },
     "m4-project-qa": {
       "path": "apps/worker/skills/m4-project-qa/SKILL.md",
-      "sha256": "ddae8379a24cff4e42afeb5b21b1aace71eedfd293f2c07ad9aa4982b1e95013"
+      "sha256": "820b993ab543e531e87a67e1b0d10582e485498ec5d03a46a9814efd02f9ac47"
     },
     "m4-underwriter": {
       "path": "apps/worker/skills/m4-underwriter/SKILL.md",
-      "sha256": "9ed73db42882d27d0fd4bd0da4f987d1cce71a278bc95fe143a39baf43419327"
+      "sha256": "7d59eede20bbd9a3f496b583bd097c10a1649a2cd23cdbd919b69d5dab12f137"
     },
     "m4-legal": {
       "path": "apps/worker/skills/m4-legal/SKILL.md",
@@ -23,7 +23,15 @@
     },
     "global-project-assistant": {
       "path": "apps/worker/skills/global-project-assistant/SKILL.md",
-      "sha256": "806d92279275134ae54737c896e25622c0f73f4ebe585bb75bd5af34694dea07"
+      "sha256": "862236f73dcbb72e1d68f69cb3b7b928056d0ab1c8a9238b551ce8ba745d8bba"
+    },
+    "m4-application": {
+      "path": "apps/worker/skills/m4-application/SKILL.md",
+      "sha256": "f5a485bbb1744e5e4a45639689a99c35372291ffb13b3566ba3140f979be0d19"
+    },
+    "m4-recommendation": {
+      "path": "apps/worker/skills/m4-recommendation/SKILL.md",
+      "sha256": "cbfeda9555ad7ac1e00aa67c7ed92b7971ff16904958bc778e95023ce07c68a2"
     }
   }
 }
