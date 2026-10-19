@@ -1,0 +1,189 @@
+{
+  "checkedOn": "2026-10-19",
+  "sources": [
+    "https://www.csrc.gov.cn/",
+    "https://www.chinatax.gov.cn/"
+  ],
+  "portals": [
+    {
+      "name": "北京",
+      "csrc": "https://www.csrc.gov.cn/beijing/index.shtml",
+      "tax": "http://beijing.chinatax.gov.cn/"
+    },
+    {
+      "name": "天津",
+      "csrc": "https://www.csrc.gov.cn/tianjin/index.shtml",
+      "tax": "http://tianjin.chinatax.gov.cn/"
+    },
+    {
+      "name": "河北",
+      "csrc": "https://www.csrc.gov.cn/hebei/index.shtml",
+      "tax": "http://hebei.chinatax.gov.cn/"
+    },
+    {
+      "name": "山西",
+      "csrc": "https://www.csrc.gov.cn/shanxi/index.shtml",
+      "tax": "http://shanxi.chinatax.gov.cn/"
+    },
+    {
+      "name": "内蒙古",
+      "csrc": "https://www.csrc.gov.cn/neimenggu/index.shtml",
+      "tax": "http://neimenggu.chinatax.gov.cn/"
+    },
+    {
+      "name": "辽宁",
+      "csrc": "https://www.csrc.gov.cn/liaoning/index.shtml",
+      "tax": "http://liaoning.chinatax.gov.cn/"
+    },
+    {
+      "name": "吉林",
+      "csrc": "https://www.csrc.gov.cn/jilin/index.shtml",
+      "tax": "http://jilin.chinatax.gov.cn/"
+    },
+    {
+      "name": "黑龙江",
+      "csrc": "https://www.csrc.gov.cn/heilongjiang/index.shtml",
+      "tax": "http://heilongjiang.chinatax.gov.cn/"
+    },
+    {
+      "name": "上海",
+      "csrc": "https://www.csrc.gov.cn/shanghai/index.shtml",
+      "tax": "http://shanghai.chinatax.gov.cn/"
+    },
+    {
+      "name": "江苏",
+      "csrc": "https://www.csrc.gov.cn/jiangsu/index.shtml",
+      "tax": "http://jiangsu.chinatax.gov.cn/"
+    },
+    {
+      "name": "浙江",
+      "csrc": "https://www.csrc.gov.cn/zhejiang/index.shtml",
+      "tax": "http://zhejiang.chinatax.gov.cn/"
+    },
+    {
+      "name": "安徽",
+      "csrc": "https://www.csrc.gov.cn/anhui/index.shtml",
+      "tax": "http://anhui.chinatax.gov.cn/"
+    },
+    {
+      "name": "福建",
+      "csrc": "https://www.csrc.gov.cn/fujian/index.shtml",
+      "tax": "http://fujian.chinatax.gov.cn/"
+    },
+    {
+      "name": "江西",
+      "csrc": "https://www.csrc.gov.cn/jiangxi/index.shtml",
+      "tax": "http://jiangxi.chinatax.gov.cn/"
+    },
+    {
+      "name": "山东",
+      "csrc": "https://www.csrc.gov.cn/shandong/index.shtml",
+      "tax": "http://shandong.chinatax.gov.cn/"
+    },
+    {
+      "name": "河南",
+      "csrc": "https://www.csrc.gov.cn/henan/index.shtml",
+      "tax": "https://henan.chinatax.gov.cn/"
+    },
+    {
+      "name": "湖北",
+      "csrc": "https://www.csrc.gov.cn/hubei/index.shtml",
+      "tax": "http://hubei.chinatax.gov.cn/"
+    },
+    {
+      "name": "湖南",
+      "csrc": "https://www.csrc.gov.cn/hunan/index.shtml",
+      "tax": "http://hunan.chinatax.gov.cn/"
+    },
+    {
+      "name": "广东",
+      "csrc": "https://www.csrc.gov.cn/guangdong/index.shtml",
+      "tax": "http://guangdong.chinatax.gov.cn/"
+    },
+    {
+      "name": "广西",
+      "csrc": "https://www.csrc.gov.cn/guangxi/index.shtml",
+      "tax": "https://guangxi.chinatax.gov.cn/"
+    },
+    {
+      "name": "海南",
+      "csrc": "https://www.csrc.gov.cn/hainan/index.shtml",
+      "tax": "http://hainan.chinatax.gov.cn/"
+    },
+    {
+      "name": "重庆",
+      "csrc": "https://www.csrc.gov.cn/chongqing/index.shtml",
+      "tax": "http://chongqing.chinatax.gov.cn/"
+    },
+    {
+      "name": "四川",
+      "csrc": "https://www.csrc.gov.cn/sichuan/index.shtml",
+      "tax": "http://sichuan.chinatax.gov.cn/"
+    },
+    {
+      "name": "贵州",
+      "csrc": "https://www.csrc.gov.cn/guizhou/index.shtml",
+      "tax": "http://guizhou.chinatax.gov.cn/"
+    },
+    {
+      "name": "云南",
+      "csrc": "https://www.csrc.gov.cn/yunnan/index.shtml",
+      "tax": "http://yunnan.chinatax.gov.cn/"
+    },
+    {
+      "name": "西藏",
+      "csrc": "https://www.csrc.gov.cn/xizang/index.shtml",
+      "tax": "https://xizang.chinatax.gov.cn/"
+    },
+    {
+      "name": "陕西",
+      "csrc": "https://www.csrc.gov.cn/shaanxi/index.shtml",
+      "tax": "https://shaanxi.chinatax.gov.cn/"
+    },
+    {
+      "name": "甘肃",
+      "csrc": "https://www.csrc.gov.cn/gansu/index.shtml",
+      "tax": "http://gansu.chinatax.gov.cn/"
+    },
+    {
+      "name": "青海",
+      "csrc": "https://www.csrc.gov.cn/qinghai/index.shtml",
+      "tax": "http://qinghai.chinatax.gov.cn/"
+    },
+    {
+      "name": "宁夏",
+      "csrc": "https://www.csrc.gov.cn/ningxia/index.shtml",
+      "tax": "http://ningxia.chinatax.gov.cn/"
+    },
+    {
+      "name": "新疆",
+      "csrc": "https://www.csrc.gov.cn/xinjiang/index.shtml",
+      "tax": "https://xinjiang.chinatax.gov.cn/"
+    },
+    {
+      "name": "深圳",
+      "csrc": "https://www.csrc.gov.cn/shenzhen/index.shtml",
+      "tax": "https://shenzhen.chinatax.gov.cn/"
+    },
+    {
+      "name": "大连",
+      "csrc": "https://www.csrc.gov.cn/dalian/index.shtml",
+      "tax": "http://dalian.chinatax.gov.cn/"
+    },
+    {
+      "name": "宁波",
+      "csrc": "https://www.csrc.gov.cn/ningbo/index.shtml",
+      "tax": "http://ningbo.chinatax.gov.cn/"
+    },
+    {
+      "name": "厦门",
+      "csrc": "https://www.csrc.gov.cn/xiamen/index.shtml",
+      "tax": "http://xiamen.chinatax.gov.cn/"
+    },
+    {
+      "name": "青岛",
+      "csrc": "https://www.csrc.gov.cn/qingdao/index.shtml",
+      "tax": "http://qingdao.chinatax.gov.cn/"
+    }
+  ]
+}

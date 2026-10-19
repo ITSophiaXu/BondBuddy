@@ -1,0 +1,146 @@
+[
+  {
+    "name": "北京",
+    "url": "https://www.csrc.gov.cn/beijing/index.shtml"
+  },
+  {
+    "name": "天津",
+    "url": "https://www.csrc.gov.cn/tianjin/index.shtml"
+  },
+  {
+    "name": "河北",
+    "url": "https://www.csrc.gov.cn/hebei/index.shtml"
+  },
+  {
+    "name": "山西",
+    "url": "https://www.csrc.gov.cn/shanxi/index.shtml"
+  },
+  {
+    "name": "内蒙古",
+    "url": "https://www.csrc.gov.cn/neimenggu/index.shtml"
+  },
+  {
+    "name": "辽宁",
+    "url": "https://www.csrc.gov.cn/liaoning/index.shtml"
+  },
+  {
+    "name": "吉林",
+    "url": "https://www.csrc.gov.cn/jilin/index.shtml"
+  },
+  {
+    "name": "黑龙江",
+    "url": "https://www.csrc.gov.cn/heilongjiang/index.shtml"
+  },
+  {
+    "name": "上海",
+    "url": "https://www.csrc.gov.cn/shanghai/index.shtml"
+  },
+  {
+    "name": "江苏",
+    "url": "https://www.csrc.gov.cn/jiangsu/index.shtml"
+  },
+  {
+    "name": "浙江",
+    "url": "https://www.csrc.gov.cn/zhejiang/index.shtml"
+  },
+  {
+    "name": "安徽",
+    "url": "https://www.csrc.gov.cn/anhui/index.shtml"
+  },
+  {
+    "name": "福建",
+    "url": "https://www.csrc.gov.cn/fujian/index.shtml"
+  },
+  {
+    "name": "江西",
+    "url": "https://www.csrc.gov.cn/jiangxi/index.shtml"
+  },
+  {
+    "name": "山东",
+    "url": "https://www.csrc.gov.cn/shandong/index.shtml"
+  },
+  {
+    "name": "河南",
+    "url": "https://www.csrc.gov.cn/henan/index.shtml"
+  },
+  {
+    "name": "湖北",
+    "url": "https://www.csrc.gov.cn/hubei/index.shtml"
+  },
+  {
+    "name": "湖南",
+    "url": "https://www.csrc.gov.cn/hunan/index.shtml"
+  },
+  {
+    "name": "广东",
+    "url": "https://www.csrc.gov.cn/guangdong/index.shtml"
+  },
+  {
+    "name": "广西",
+    "url": "https://www.csrc.gov.cn/guangxi/index.shtml"
+  },
+  {
+    "name": "海南",
+    "url": "https://www.csrc.gov.cn/hainan/index.shtml"
+  },
+  {
+    "name": "重庆",
+    "url": "https://www.csrc.gov.cn/chongqing/index.shtml"
+  },
+  {
+    "name": "四川",
+    "url": "https://www.csrc.gov.cn/sichuan/index.shtml"
+  },
+  {
+    "name": "贵州",
+    "url": "https://www.csrc.gov.cn/guizhou/index.shtml"
+  },
+  {
+    "name": "云南",
+    "url": "https://www.csrc.gov.cn/yunnan/index.shtml"
+  },
+  {
+    "name": "西藏",
+    "url": "https://www.csrc.gov.cn/xizang/index.shtml"
+  },
+  {
+    "name": "陕西",
+    "url": "https://www.csrc.gov.cn/shaanxi/index.shtml"
+  },
+  {
+    "name": "甘肃",
+    "url": "https://www.csrc.gov.cn/gansu/index.shtml"
+  },
+  {
+    "name": "青海",
+    "url": "https://www.csrc.gov.cn/qinghai/index.shtml"
+  },
+  {
+    "name": "宁夏",
+    "url": "https://www.csrc.gov.cn/ningxia/index.shtml"
+  },
+  {
+    "name": "新疆",
+    "url": "https://www.csrc.gov.cn/xinjiang/index.shtml"
+  },
+  {
+    "name": "深圳",
+    "url": "https://www.csrc.gov.cn/shenzhen/index.shtml"
+  },
+  {
+    "name": "大连",
+    "url": "https://www.csrc.gov.cn/dalian/index.shtml"
+  },
+  {
+    "name": "宁波",
+    "url": "https://www.csrc.gov.cn/ningbo/index.shtml"
+  },
+  {
+    "name": "厦门",
+    "url": "https://www.csrc.gov.cn/xiamen/index.shtml"
+  },
+  {
+    "name": "青岛",
+    "url": "https://www.csrc.gov.cn/qingdao/index.shtml"
+  }
+]

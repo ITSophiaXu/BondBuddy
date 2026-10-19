@@ -1,3 +1,4 @@
+import { regionalPortal } from './regions.js';
 import type { Project, Subject } from './model.js';
 
 export type IntegritySite = { id: string; name: string; group: string; topic: string; companyOnly?: boolean; links: { label: string; url: string }[] };
@@ -23,10 +24,11 @@ export const INTEGRITY_SITES: IntegritySite[] = [
   site('agriculture', '国家农业农村部', '行业监管', '农业农村领域行政处罚与通报', 'https://www.moa.gov.cn/'),
   site('housing', '住房和城乡建设部', '行业监管', '住房城乡建设领域信用及处罚', 'https://www.mohurd.gov.cn/'),
   site('samr', '国家市场监督管理总局', '税务与综合监管', '市场监管行政处罚及失信信息', 'https://www.samr.gov.cn/'),
-  { ...site('local-tax', '所在省税务局', '税务与综合监管', '从税务总局选择企业所在省局；实际查询入口待确认', 'https://www.chinatax.gov.cn/'), links: [{ label: '选择省税务局', url: 'https://www.chinatax.gov.cn/' }] },
+  site('local-csrc', '当地证监局', '属地监管', '按企业注册地选择证监局，核查行政处罚与监管措施', 'https://www.csrc.gov.cn/', true),
+  site('local-tax', '当地税务局', '属地监管', '按企业注册地选择税务局，核查税收违法失信与处罚公告', 'https://www.chinatax.gov.cn/', true),
 ];
 export type IntegrityDraft = { siteIds: string[]; notes: string };
-export type IntegrityRecord = { subjectId: string; siteId: string; condition: string; status: 'pending' | 'not-applicable'; note: string };
+export type IntegrityRecord = { subjectId: string; siteId: string; condition: string; status: 'pending' | 'not-applicable'; note: string; site?: IntegritySite; registration?: Subject['registration'] };
 export type IntegritySnapshot = { subjects: Subject[]; sites: IntegritySite[]; records: IntegrityRecord[]; notes: string };
 export function integrityDraft(p: Project): IntegrityDraft {
   return p.draft.integrity ??= { siteIds: INTEGRITY_SITES.map(s => s.id), notes: '' };
@@ -37,8 +39,15 @@ export function integritySnapshot(subjects: Subject[], draft: IntegrityDraft): I
   if (draft.siteIds.some(id => !INTEGRITY_SITES.some(s => s.id === id))) throw new Error('网站范围已发生变化，请重新选择本轮网站。');
   if (subjects.some(s => !sites.some(site => s.kind === 'company' || !site.companyOnly))) throw new Error('人员名单需要选择支持人员查询的网站。');
   return structuredClone({ subjects, sites, notes: draft.notes, records: subjects.flatMap(s => sites.map(site => ({
-    subjectId: s.id, siteId: site.id, condition: [s.name, s.identifier, s.role].filter(Boolean).join(' · '),
+    subjectId: s.id, siteId: site.id, ...(site.id.startsWith('local-') && s.kind === 'company' ? { registration: s.registration, site: regionalSite(site, s) } : {}), condition: [s.name, s.identifier, s.role].filter(Boolean).join(' · '),
     status: s.kind === 'person' && site.companyOnly ? 'not-applicable' as const : 'pending' as const,
-    note: s.kind === 'person' && site.companyOnly ? '该入口查询企业登记信息，人员不适用。' : site.id === 'local-tax' ? '待确认所在省及具体查询入口。' : !s.identifier ? '识别信息待补充；需核对同名主体。' : '待核对网站支持的查询条件并采集证据。',
+    note: s.kind === 'person' && site.companyOnly ? '该入口查询企业登记信息，人员不适用。' : site.id.startsWith('local-') ? (regionalPortal(s.registration) ? '已按注册地匹配官网；具体查询与证据待采集。' : '注册地未补全或暂未覆盖；请补充注册地或联系我们加网站。') : !s.identifier ? '识别信息待补充；需核对同名主体。' : '待核对网站支持的查询条件并采集证据。',
   }))) });
+}
+
+export function regionalSite(site: IntegritySite, subject: Subject): IntegritySite {
+  const portal = regionalPortal(subject.registration);
+  if (!portal) return { ...site, links: [], topic: '注册地未补全或暂未覆盖，待补充网站。' };
+  const csrc = site.id === 'local-csrc';
+  return { ...site, name: portal.name + (csrc ? '证监局' : '税务局'), links: [{label: portal.name + '官网', url: csrc ? portal.csrc : portal.tax}] };
 }

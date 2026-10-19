@@ -1,3 +1,11 @@
+import { regionalPortal } from './regions';
+import { qaView, bindQA, qaDocument } from './qa-view';
+import { qaParagraphs } from './qa-model';
+import { reviewDocument } from './review-view';
+import { reviewParagraphs } from './review-model';
+import { downloadWord } from './word-export';
+import { templatePreparation, templateLibrary, openTemplate } from './template-view';
+import { missingTemplates } from './templates';
 import { FLOWS, workView, projectDashboard, bindWork, bindProjectDashboard, type FlowMode } from './workflows';
 import { workspaceShell } from '../workspace-shell';
 import { prototypeIcon as ico } from '../prototype-design';
@@ -23,7 +31,7 @@ import '../../../../product-prototype/public/source-prospectus.css';
 import './design.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
-document.title = 'BondBuddy · 项目工作台 · 本地设计稿 v3';
+document.title = 'BondBuddy · 项目工作台 · 本地设计稿 v4';
 let state: DesignState = seedState();
 let storageWarning = '';
 let storageBlocked = false;
@@ -74,6 +82,7 @@ function projectContext(p: Project, mode: string) {
 }
 function projectPicker(mode: FlowMode) {
   const flow = FLOWS[mode];
+  if (mode === 'update') return `${pageHead(flow.eyebrow, flow.title, '为新一期发行建立项目，补充材料与要求，开始更新募集说明书。')}<section class="pd-update-start"><div class="pd-update-start-icon">${ico('update')}</div><div><span class="eyebrow">开始新一期工作</span><h2>新建项目，更新募集书</h2><p>项目资料、更新要求和各轮成果独立保存，便于后续迭代。</p>${button(ico('plus') + '新建项目并更新', 'new-project', true, 'data-mode="update"')}</div></section><details class="pd-panel pd-existing-update"><summary>继续已有项目 <span class="muted">已有项目的材料与填写内容可继续使用</span></summary><div class="pd-search">${ico('search')}<input id="project-picker-search" aria-label="搜索已有项目" placeholder="搜索项目名称或发行人" value="${esc(projectSearch)}" type="search"></div><div id="picker-list">${pickerRows()}</div><div class="pd-footer"><span id="picker-summary" class="muted">${selectedProject ? '已选择 1 个项目' : '请选择一个已有项目'}</span>${button('进入已有项目', 'continue-project', false, `${selectedProject ? '' : 'disabled'} data-mode="update"`)}</div></details>`;
   return `${pageHead(flow.eyebrow, flow.title, '先选择一个项目，沿用项目资料和已保存的工作；也可以新建项目。')}
     ${steps([...flow.labels], 0)}
     <section class="pd-panel"><div class="pd-section-head"><div><h2>选择本次工作的项目</h2><p class="muted">项目文件、填写内容与任务记录都归属于所选项目。</p></div>${button(ico('plus') + '新建项目', 'new-project', false, `data-mode="${mode}"`)}</div>
@@ -102,8 +111,8 @@ function materialPicker(p: Project) {
     <div class="pd-columns"><section class="pd-panel"><div class="pd-section-head"><h2>关联文件 <span class="pd-count">${GENERATABLE.length}</span></h2><div class="pd-actions">${button('全选', 'select-all')}${button('清空', 'select-none')}</div></div>
     ${FOLDERS.filter(f => ['1', '2', '3', '4'].includes(f.id)).map(folder => `<section class="pd-material-group"><h3>${ico('folder')} ${folder.id} ${folder.name}</h3><div class="pd-material-grid">${GENERATABLE.filter(d => belongsTo(d.folder, folder.id)).map(d => `<label class="pd-material-choice"><input type="checkbox" name="material" value="${d.id}" ${p.draft.selected.includes(d.id) ? 'checked' : ''}><span><strong>${d.name}</strong><small>${d.hint}</small></span></label>`).join('')}</div></section>`).join('')}
     <div class="pd-inline-note">${ico('shield')}<div>诚信核查底稿通过独立核查流程准备。<a class="text-button" href="#${flowLink('integrity', p, 'subjects')}">前往诚信核查 ${ico('arrow')}</a></div></div></section>
-    <aside class="pd-panel pd-summary"><h2>本次文件包</h2><p id="selected-count" class="pd-big-number">${p.draft.selected.length}<small> 份文件</small></p><p class="muted">生成后保存到对应目录，已有版本保留。</p><label class="pd-field">文件生成要求与说明 <span class="muted">选填</span><textarea id="requirements" rows="5" maxlength="12000" placeholder="例如：统一使用本期发行方案，保留待补充信息的标记。">${esc(p.draft.requirements)}</textarea></label><label class="pd-field">补充模板或依据 <span class="muted">选填</span><input id="support-upload" type="file" multiple accept=".docx,.pdf,.xlsx"></label><p id="support-names" class="pd-note">${p.draft.attachments.length ? esc(p.draft.attachments.join('、')) : '立项模板、财务报告、核查依据等可在此补充；设计稿仅记录文件名。'}</p></aside></div>
-    <div class="pd-footer">${link('上一步', flowLink('generate', p, 'source'))}<div class="pd-actions"><span class="muted">演示生成 · 不调用模型、不扣费</span>${button(ico('spark') + '开始生成', 'run-generation', true, p.draft.selected.length ? '' : 'disabled')}</div></div>`;
+    <aside class="pd-panel pd-summary"><h2>本次文件包</h2><p id="selected-count" class="pd-big-number">${p.draft.selected.length}<small> 份文件</small></p><p class="muted">生成后保存到对应目录，已有版本保留。</p><label class="pd-field">文件生成要求与说明 <span class="muted">选填</span><textarea id="requirements" rows="5" maxlength="12000" placeholder="例如：统一使用本期发行方案，保留待补充信息的标记。">${esc(p.draft.requirements)}</textarea></label><label class="pd-field">补充编制依据 <span class="muted">选填</span><input id="support-upload" type="file" multiple accept=".docx,.pdf,.xlsx"></label><p id="support-names" class="pd-note">${p.draft.attachments.length ? esc(p.draft.attachments.join('、')) : '财务报告、核查依据等可在此补充；对应模板请在下方单独添加；设计稿仅记录文件名。'}</p></aside></div>
+    <div id="template-preparation">${templatePreparation(p)}</div><div class="pd-footer">${link('上一步', flowLink('generate', p, 'source'))}<div class="pd-actions"><span class="muted">演示生成 · 不调用模型、不扣费</span>${button(ico('spark') + '开始生成', 'run-generation', true, p.draft.selected.length && !missingTemplates(p).length ? '' : 'disabled')}</div></div>`;
 }
 function subjectRows(p: Project) {
   return p.draft.subjects.length ? p.draft.subjects.map((s, index) => `<div class="pd-subject" data-subject-row="${s.id}"><span class="pd-row-number">${String(index + 1).padStart(2, '0')}</span><label>对象类型<select data-subject="${s.id}" data-field="kind" aria-label="对象 ${index + 1} 类型"><option value="company" ${s.kind === 'company' ? 'selected' : ''}>企业</option><option value="person" ${s.kind === 'person' ? 'selected' : ''}>个人</option></select></label><label>名称 / 姓名<input data-subject="${s.id}" data-field="name" aria-label="对象 ${index + 1} 名称" value="${esc(s.name)}" maxlength="150" placeholder="填写完整名称"></label><label>关系 / 职务<input data-subject="${s.id}" data-field="role" aria-label="对象 ${index + 1} 关系" value="${esc(s.role)}" maxlength="80" placeholder="如发行人、董事"></label><label>${s.kind === 'company' ? '统一社会信用代码' : '识别信息'} <span class="muted">选填</span><input data-subject="${s.id}" data-field="identifier" aria-label="对象 ${index + 1} 识别信息" value="${esc(s.identifier)}" maxlength="${s.kind === 'company' ? 18 : 80}" placeholder="${s.kind === 'company' ? '18 位信用代码' : '任职公司等消歧信息'}"></label><button type="button" class="icon-btn" data-action="remove-subject" data-id="${s.id}" aria-label="删除对象 ${index + 1}">${ico('close')}</button></div>`).join('') : '<div class="pd-empty">名单还是空的。添加发行人、相关企业或董事及高级管理人员。</div>';
@@ -145,16 +154,18 @@ function filesView(p: Project) {
   return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), link('项目工作台', flowLink('dashboard', p, 'overview')) + link('文件生成', flowLink('generate', p, 'source')) + link('诚信核查', flowLink('integrity', p, 'subjects')) + button('导入底稿 / 文件', 'import-project-file'))}
     <div class="pd-file-breadcrumb"><a href="#tasks">全部项目</a>${ico('chevron')}<span>${esc(p.name)}</span>${ico('chevron')}<strong>${folder === 'all' ? '全部成果文件' : folderName(folder)}</strong></div>
     <div class="pd-file-workspace"><nav class="pd-folder-tree" aria-label="项目文件目录">${fileTree(p, folder)}</nav>
-    <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><span class="muted">${count(folder)} 份已有文件</span></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option></select></div><div id="file-list">${fileRows(p, folder)}</div></section></div>`;
+    <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><span class="muted">${count(folder)} 份已有文件</span></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option></select></div><div id="file-list">${fileRows(p, folder)}</div></section></div>${['all','sources'].includes(folder) ? templateLibrary(p) : ''}`;
 }
 function notFound(title: string, target = 'tasks') { return `${pageHead('WORKSPACE', title, '请返回项目列表重新选择。')}${link('返回', target, true)}`; }
 function render() {
   const { path, query } = route();
   const p = projectForRoute();
-  let section = path === 'update' ? 'workspace' : ['generate', 'integrity', 'dashboard', 'review'].includes(path) ? path : 'projects';
+  let section = path === 'update' ? 'workspace' : ['generate', 'integrity', 'dashboard', 'review', 'qa'].includes(path) ? path : 'projects';
   let html: string;
-  if (path === 'dashboard' || path === 'update' || path === 'review') {
-    html = !query.has('project') ? projectPicker(path) : !p ? notFound('项目不存在') : projectContext(p, path) + (path === 'dashboard' ? projectDashboard(p) : workView(p, path, query, state));
+  if (path === 'dashboard') html = query.has('project') && !p ? notFound('项目不存在') : (p ? projectContext(p, path) : '') + projectDashboard(p);
+  else if (path === 'qa') html = query.has('project') && !p ? notFound('项目不存在') : qaView(p, state, query);
+  else if (path === 'update' || path === 'review') {
+    html = !query.has('project') ? projectPicker(path) : !p ? notFound('项目不存在') : projectContext(p, path) + workView(p, path, query, state);
   } else if (path === 'generate' || path === 'integrity') {
     if (!query.has('project')) html = projectPicker(path);
     else if (!p) html = notFound('项目不存在');
@@ -175,12 +186,13 @@ function render() {
   root.querySelector('.prototype-app')?.classList.add('pd-app');
   root.querySelector('[data-account-name]')!.textContent = '本地设计预览';
   root.querySelector('#logout')?.remove();
-  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v3 · 本地保存';
+  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v4 · 本地保存';
   root.querySelector('.credit-wallet')!.innerHTML = '<div class="pd-local-save">本地独立数据<br><small>不连接线上账号和项目</small></div>';
   notification = '';
   bind();
   if (p && (path === 'update' || path === 'review')) bindWork(root, p, path, state, { save, render, go, error: showError, preview });
-  if (p && path === 'dashboard') bindProjectDashboard(root, p, state);
+  if (path === 'dashboard' && root.querySelector('#dashboard-projects')) bindProjectDashboard(root, p, state);
+  if (path === 'qa') bindQA(root, p, state, {save, render, go, error: showError, modal});
   save();
 }
 function showError(error: unknown) { const element = root.querySelector<HTMLElement>('#flow-error')!; element.hidden = false; element.textContent = error instanceof Error ? error.message : '操作未完成，请重试。'; element.scrollIntoView({ block: 'nearest' }); }
@@ -195,9 +207,16 @@ function modal(title: string, content: string) {
   return dialog;
 }
 function preview(p: Project, file: ProjectFile) {
+  if (file.qa || file.review) {
+    const job = state.jobs.find(j => j.id === file.jobId && j.projectId === p.id);
+    const clean = file.type === 'review-clean';
+    const dialog = modal(file.name, (file.qa ? qaDocument(file.qa) : reviewDocument(file.review!, job?.reviewDecisions, clean ? 'clean' : 'tracked')) + '<div class="pd-footer"><span class="muted">合成文档示例 · 未修改上传原文</span><button class="btn primary" id="download-word-example">下载 Word 示例</button></div>');
+    dialog.querySelector('#download-word-example')!.addEventListener('click', () => downloadWord(file.name.replace(/\.docx$/i,''), file.qa ? qaParagraphs(file.qa) : reviewParagraphs(file.review!,job?.reviewDecisions), !!file.review && !clean));
+    return;
+  }
   const d = DOCUMENTS.find(d => d.id === file.type);
   const dialog = modal(file.name, `<div class="pd-preview-meta"><span class="pd-chip">v${file.version}</span><span>${folderPath(file.folder)}</span></div><p class="pd-note">${file.origin === 'upload' ? '本地选择记录：文件内容未上传或解析。' : '设计稿内容示例，不是实际生成成果或真实核查结论。'}</p>
-    ${file.sourceName ? `<div class="pd-source-strip">${ico('file')}<div>依据：${esc(file.sourceName)}<small>固定募集书 v${file.sourceVersion}</small></div></div>` : ''}
+    ${file.template ? `<p class="pd-feedback">本轮模板：${esc(file.template.name)} · v${file.template.version} · 快照已保存</p>` : ''}${file.sourceName ? `<div class="pd-source-strip">${ico('file')}<div>依据：${esc(file.sourceName)}<small>固定募集书 v${file.sourceVersion}</small></div></div>` : ''}
     <article class="pd-document"><div class="eyebrow">${file.origin === 'integrity' ? '核查底稿 · 演示记录' : '项目文件 · 预览'}</div><h2>${esc(file.name)}</h2><p>项目：${esc(p.name)}</p>${file.integrity ? integrityDocument(file.integrity) : file.subjects ? file.subjects.map(s => `<section><h3>${esc(s.name)}</h3><p>${esc(s.role)} · ${s.kind === 'company' ? '企业' : '个人'}<br>识别信息：${esc(s.identifier || '待补充')}<br>查询条件：${esc(s.name)}<br>查询网站 / 查询时间 / 原始截图：尚未检索<br>核查状态：未执行检索，待核实</p></section>`).join('') : `<h3>${d ? d.hint : '文件信息'}</h3><p>${d ? '正式生成后，这里展示可核对、可修改的材料正文。本设计稿仅固定所选项目、募集书版本与归档位置。' : '正式接入后可在此阅读原文件。本设计稿保留文件名称、来源及版本信息。'}</p>${file.requirements ? `<h3>本次编制要求</h3><p>${esc(file.requirements)}</p>` : ''}`}</article><div class="pd-footer"><span class="muted">${esc(date(file.createdAt))}</span>${file.integrity ? '<button class="btn primary" id="download-workpaper">导出核查底稿（HTML 设计稿）</button>' : ''}<button class="btn secondary" id="download-design">导出设计说明（TXT）</button></div>`);
   dialog.querySelector('#download-workpaper')?.addEventListener('click', () => {
     const content = dialog.querySelector('.pd-document')!.innerHTML;
@@ -266,6 +285,15 @@ function acceptSources(files?: FileList | null) {
 }
 root.addEventListener('input', event => {
   const input = event.target as HTMLInputElement; const p = projectForRoute(); if (!p) return;
+  if (input.dataset.regionSubject && input.dataset.regionField === 'city') {
+    const subject = p.draft.subjects.find(s => s.id === input.dataset.regionSubject);
+    if (subject) {
+      (subject.registration ??= {province:'',city:''}).city = input.value;
+      const portal = regionalPortal(subject.registration), links = input.closest('.pd-region-row')?.querySelector('.pd-region-links');
+      if (links) links.innerHTML = portal ? '<a href="' + portal.csrc + '" target="_blank" rel="noopener noreferrer">' + portal.name + '证监局 ↗</a><a href="' + portal.tax + '" target="_blank" rel="noopener noreferrer">' + portal.name + '税务局 ↗</a><small>根据注册地匹配，未执行查询</small>' : '<span class="pd-chip amber">待补注册地 / 网站</span>';
+      p.updatedAt = new Date().toISOString(); save();
+    }
+  }
   if (input.id === 'integrity-notes') { integrityDraft(p).notes = input.value; save(); }
   if (input.id === 'requirements') { p.draft.requirements = input.value; save(); }
   if (input.dataset.subject && input.dataset.field && input.dataset.field !== 'kind') {
@@ -277,6 +305,7 @@ root.addEventListener('change', event => {
   const input = event.target as HTMLInputElement; const p = projectForRoute();
   if (input.name === 'project') { selectedProject = input.value; const b = root.querySelector<HTMLButtonElement>('[data-action="continue-project"]')!; b.disabled = false; root.querySelector('#picker-summary')!.textContent = '已选择 1 个项目'; root.querySelectorAll('.pd-project-choice').forEach(row => row.classList.toggle('selected', !!row.querySelector('input:checked'))); return; }
   if (!p) return;
+  if (input.dataset.regionSubject && input.dataset.regionField === 'province') { const subject = p.draft.subjects.find(s => s.id === input.dataset.regionSubject); if (subject) { const registration = subject.registration ??= {province:'',city:''}; registration[input.dataset.regionField as 'province' | 'city'] = input.value; if (input.dataset.regionField === 'province') registration.city = ''; p.updatedAt = new Date().toISOString(); save(); render(); } }
   if (input.name === 'integrity-site') { const d = integrityDraft(p); d.siteIds = input.checked ? [...new Set([...d.siteIds, input.value])] : d.siteIds.filter(id => id !== input.value); save(); updateIntegrityScope(p); }
   if (input.id === 'original-group') { originalGroup = input.value; root.querySelector('#file-list')!.innerHTML = fileRows(p, route().query.get('folder') ?? 'all'); }
   if (input.name === 'source') { p.draft.sourceId = input.value; save(); render(); }
@@ -289,20 +318,23 @@ root.addEventListener('change', event => {
     }
     save(); root.querySelector('#support-names')!.textContent = p.draft.attachments.join('、') || '未选择补充文件';
   }
-  if (input.name === 'material') { p.draft.selected = input.checked ? [...new Set([...p.draft.selected, input.value])] : p.draft.selected.filter(id => id !== input.value); save(); root.querySelector('#selected-count')!.innerHTML = `${p.draft.selected.length}<small> 份文件</small>`; root.querySelector<HTMLButtonElement>('[data-action="run-generation"]')!.disabled = !p.draft.selected.length; }
+  if (input.name === 'material') { p.draft.selected = input.checked ? [...new Set([...p.draft.selected, input.value])] : p.draft.selected.filter(id => id !== input.value); save(); root.querySelector('#selected-count')!.innerHTML = `${p.draft.selected.length}<small> 份文件</small>`; root.querySelector('#template-preparation')!.innerHTML = templatePreparation(p); root.querySelector<HTMLButtonElement>('[data-action="run-generation"]')!.disabled = !p.draft.selected.length || !!missingTemplates(p).length; }
   if (input.dataset.field === 'kind') { const s = p.draft.subjects.find(s => s.id === input.dataset.subject); if (s) { s.kind = input.value as Subject['kind']; s.identifier = ''; save(); render(); } }
 });
 root.addEventListener('click', event => {
+  const templateTrigger = (event.target as HTMLElement).closest<HTMLElement>('[data-template-type]');
+  if (templateTrigger) { const project = projectForRoute(); if (project) openTemplate(project, templateTrigger.dataset.templateType!, state, {modal,save,render}); return; }
   const trigger = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!trigger) return;
   const action = trigger.dataset.action; const p = projectForRoute();
   try {
     if (action === 'new-project') { openNewProject(trigger.dataset.mode as typeof newProjectMode); return; }
     if (action === 'continue-project') { const selected = state.projects.find(p => p.id === selectedProject); if (selected) go(flowLink(trigger.dataset.mode!, selected, FLOWS[trigger.dataset.mode as FlowMode].step)); return; }
     if (action === 'design-info') {
-      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：项目工作台、更新与复核募集书、文件生成、诚信核查、项目文件与历史版本。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
-      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v3.json', JSON.stringify(state, null, 2), 'application/json')); return;
+      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：全局工作台、更新与复核募集书、模板复用、文件生成、诚信核查、项目问答、项目文件与历史版本。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
+      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v4.json', JSON.stringify(state, null, 2), 'application/json')); return;
     }
     if (!p) return;
+    if (action === 'contact-sites') { modal('联系我们加网站', '<p>网站还在持续补充。请向 BondBuddy 服务团队提供所需网站，便于后续接入。</p><label class="pd-field">希望补充的网站 / 地区<textarea rows="4" placeholder="网站名称、官网链接、对应地区和核查内容"></textarea></label><p class="pd-note">设计预览：联系渠道待接入；这里填写的内容不会发送。</p>'); return; }
     if (action === 'sites-all' || action === 'sites-none') { integrityDraft(p).siteIds = action === 'sites-all' ? INTEGRITY_SITES.map(s => s.id) : []; root.querySelectorAll<HTMLInputElement>('[name="integrity-site"]').forEach(input => input.checked = action === 'sites-all'); save(); updateIntegrityScope(p); }
     else if (action === 'evidence') { const job = state.jobs.find(j => j.id === trigger.dataset.job && j.projectId === p.id); const snapshot = job?.integrity; const record = snapshot?.records[Number(trigger.dataset.record)]; if (snapshot && record) modal('查询与取证记录', evidenceContent(snapshot, record)); }
     else if (action === 'catalog-document') { const type = trigger.dataset.type!; const f = latestFiles(p).find(f => f.type === type); if (f) preview(p,f); else go(type.includes('integrity') ? flowLink('integrity',p,'subjects') : flowLink('generate',p,type === 'prospectus' || !sourceOf(p) ? 'source' : 'materials') + (type === 'prospectus' ? '' : '&document=' + type)); }
@@ -324,7 +356,7 @@ root.addEventListener('click', event => {
     }
     else if (action === 'preview') { const f = p.files.find(f => f.id === trigger.dataset.id); if (f) preview(p, f); }
     else if (action === 'history') {
-      const files = p.files.filter(f => trigger.dataset.catalog ? f.catalogId === trigger.dataset.catalog : ['source', 'original'].includes(trigger.dataset.type!) ? f.id === trigger.dataset.id : f.type === trigger.dataset.type).sort((a, b) => b.version - a.version);
+      const files = p.files.filter(f => trigger.dataset.catalog ? f.catalogId === trigger.dataset.catalog : ['source', 'original', 'qa-input'].includes(trigger.dataset.type!) ? f.id === trigger.dataset.id : f.type === trigger.dataset.type).sort((a, b) => b.version - a.version);
       const dialog = modal('文件版本记录', `<p class="muted">每次准备新版本均保留旧文件及原始依据。</p>${files.map(f => `<div class="pd-result-row"><div class="pd-grow"><strong>v${f.version} · ${esc(f.name)}</strong><small>${esc(date(f.createdAt))}${f.sourceVersion ? ` · 依据募集书 v${f.sourceVersion}` : ''}</small></div><button class="btn secondary" data-version="${f.id}">查看</button></div>`).join('')}`);
       dialog.querySelectorAll<HTMLElement>('[data-version]').forEach(b => b.addEventListener('click', () => { const f = files.find(f => f.id === b.dataset.version)!; dialog.close(); preview(p, f); }));
     }

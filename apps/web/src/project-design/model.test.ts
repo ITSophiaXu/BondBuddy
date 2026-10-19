@@ -1,3 +1,9 @@
+import { saveTemplate, templateFor, missingTemplates } from './templates.js';
+import { regionalPortal } from './regions.js';
+import { qaFor, addQAFile, exampleQuestions, runQAPreview, qaParagraphs } from './qa-model.js';
+import { reviewParagraphs, reviewExample } from './review-model.js';
+import { wordParts, wordBytes } from './word-export.js';
+import { dashboardItems } from './dashboard-state.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { seedState, uploadSource, runPreview, createProject, latestFiles } from './model.js';
@@ -86,6 +92,7 @@ test('generation cannot borrow a source from another project', () => {
 test('regeneration retains previous files and their immutable source and requirements', () => {
   const state = seedState(), p = state.projects[0];
   p.draft.sourceId = p.files[1].id; p.draft.selected = ['application']; p.draft.requirements = '第一轮要求';
+  saveTemplate(p, 'application', {name:'申请书模板.docx',size:100});
   const first = runPreview(state, p, 'generation');
   const firstFile = structuredClone(p.files.find(f => f.jobId === first.id)!);
   uploadSource(p, { name: '新募集书.docx', size: 128 }); p.draft.requirements = '第二轮要求';
@@ -139,7 +146,7 @@ test('v3 adds website defaults without rewriting historical jobs or project draf
   const state = seedState(), p = state.projects[0], other = structuredClone(state.projects[1]);
   p.draft.subjects = [{ id: 'c', name: '示例企业', role: '发行人', kind: 'company', identifier: '' }];
   const oldJob = { id: 'old', kind: 'integrity' as const, projectId: p.id, fileIds: [], createdAt: '2026-10-18' }; state.jobs.push(oldJob);
-  assert.equal(integrityDraft(p).siteIds.length, 19);
+  assert.equal(integrityDraft(p).siteIds.length, 20);
   assert.equal(oldJob, state.jobs[0]); assert.equal(state.jobs[0].integrity, undefined);
   assert.deepEqual(state.projects[1], other);
   integrityDraft(p).siteIds = []; assert.equal(integrityDraft(p).siteIds.length, 0);
@@ -184,4 +191,96 @@ test('original catalog stays separate from files and imported replacements retai
   assert.throws(() => importProjectFile(p,{name:'空.docx',size:0},'4.2'),/不能为空/);
   assert.throws(() => importProjectFile(p,{name:'报告.pdf',size:2},'sources','wp001'),/目录项/);
   assert.equal(state.projects[1].files.length,other.files.length);
+});
+
+test('generation requires a separate template for each selected document and freezes its version', () => {
+  const state=seedState(),p=state.projects[0];p.draft.sourceId=p.files[0].id;p.draft.selected=['application','legal'];
+  const before=p.files.length;
+  assert.throws(()=>runPreview(state,p,'generation'),/历史文件/);
+  const firstTemplate=saveTemplate(p,'application',{name:'历史申请书.docx',size:100});
+  assert.equal(missingTemplates(p).length,1);assert.throws(()=>runPreview(state,p,'generation'),/法律意见书/);
+  saveTemplate(p,'legal',{name:'历史法律意见书.docx',size:200});
+  const job=runPreview(state,p,'generation'), frozen=structuredClone(p.files.find(f=>f.jobId===job.id&&f.type==='application')!);
+  saveTemplate(p,'application',{name:'新模板.docx',size:300});
+  assert.equal(templateFor(p,'application')!.version,2);assert.equal(frozen.template!.id,firstTemplate.id);
+  assert.deepEqual(p.files.find(f=>f.id===frozen.id),frozen);
+  assert.equal(state.projects[1].templates,undefined);assert.equal(p.files.length,before+2);
+  assert.throws(()=>saveTemplate(p,'application',{name:'错误.pdf',size:1}),/Word/);
+  const restored=JSON.parse(JSON.stringify(state));assert.equal(templateFor(restored.projects[0],'application')!.name,'新模板.docx');
+});
+
+test('regional portals handle provinces, independent cities, aliases and unknown registration', () => {
+  assert.match(regionalPortal({province:'江苏省',city:'南京市'})!.csrc,/jiangsu/);
+  assert.match(regionalPortal({province:'广东',city:'深圳市'})!.tax,/shenzhen/);
+  assert.match(regionalPortal({province:'广东',city:'广州市'})!.tax,/guangdong/);
+  assert.match(regionalPortal({province:'浙江',city:'宁波'})!.csrc,/ningbo/);
+  assert.match(regionalPortal({province:'辽宁',city:'大连市'})!.csrc,/dalian/);
+  assert.match(regionalPortal({province:'福建',city:'厦门'})!.tax,/xiamen/);
+  assert.match(regionalPortal({province:'山东',city:'青岛市'})!.csrc,/qingdao/);
+  assert.match(regionalPortal({province:'广西壮族自治区',city:'南宁'})!.csrc,/guangxi/);
+  assert.equal(regionalPortal({province:'其他',city:''}),undefined);
+  assert.equal(regionalPortal(undefined),undefined);
+  assert.equal(regionalPortal({province:'广东',city:''}),undefined);
+  assert.equal(regionalPortal({province:'江苏',city:'深圳市'}),undefined);
+});
+
+test('integrity snapshots keep each company jurisdiction and do not invent a regional URL', () => {
+  const state=seedState(),p=state.projects[0];p.draft.subjects=[
+    {id:'a',kind:'company',name:'深圳示例企业',role:'发行人',identifier:'',registration:{province:'广东',city:'深圳'}},
+    {id:'b',kind:'company',name:'南京示例企业',role:'子公司',identifier:'',registration:{province:'江苏',city:'南京'}},
+    {id:'c',kind:'company',name:'未知注册地企业',role:'子公司',identifier:''},
+    {id:'d',kind:'person',name:'示例人员',role:'董事',identifier:''},
+  ];integrityDraft(p).siteIds=['local-csrc','local-tax','credit-china'];
+  const job=runPreview(state,p,'integrity');const records=job.integrity!.records;
+  assert.match(records.find(r=>r.subjectId==='a'&&r.siteId==='local-csrc')!.site!.links[0].url,/shenzhen/);
+  assert.match(records.find(r=>r.subjectId==='b'&&r.siteId==='local-tax')!.site!.links[0].url,/jiangsu/);
+  assert.equal(records.find(r=>r.subjectId==='c'&&r.siteId==='local-tax')!.site!.links.length,0);
+  assert.equal(records.find(r=>r.subjectId==='d'&&r.siteId==='local-tax')!.status,'not-applicable');
+  p.draft.subjects[0].registration!.city='广州';assert.equal(records.find(r=>r.subjectId==='a'&&r.siteId==='local-csrc')!.registration!.city,'深圳');
+});
+
+test('QA retains missing material instructions inside document and isolates historical rounds', () => {
+  const state=seedState(),p=state.projects[0],d=qaFor(p);
+  assert.throws(()=>runQAPreview(state,p),/Word/);
+  addQAFile(p,{name:'问题清单.docx',size:200});d.questions=exampleQuestions();
+  const first=runQAPreview(state,p),frozen=structuredClone(first);
+  const text=qaParagraphs(first.qa!).map(p=>p.text).join('\n');assert.match(text,/往来占款明细/);assert.match(text,/暂无法定稿/);
+  addQAFile(p,{name:'新增依据.pdf',size:100},true);d.questions[1].answer='用户补充的回答';
+  runQAPreview(state,p);assert.deepEqual(first,frozen);
+  assert.equal(p.files.find(f=>f.id===first.fileIds[0])!.folder,'4.2');
+  assert.equal(state.projects[1].qa,undefined);
+  d.fileId=state.projects[1].files[0].id;assert.throws(()=>runQAPreview(state,p),/本项目/);
+});
+
+test('review archives tracked and clean examples and retains uncertainty in clean text', () => {
+  const state=seedState(),p=state.projects[0];selectWorkSource(p,'review',p.files[0].id);
+  const j=runWorkPreview(state,p,'review'), files=p.files.filter(f=>j.fileIds.includes(f.id));
+  assert.equal(files.length,3);assert.equal(files.filter(f=>f.folder==='2').length,2);
+  assert.match(j.review!.issues.find(i=>i.id==='policy')!.reason,/不能套用于本项目/);
+  const parts=reviewParagraphs(j.review!,{consistency:{mode:'original'},chinese:{mode:'manual',text:'手动修改。'}});
+  assert.equal(parts.find(p=>p.before===j.review!.issues[0].original)!.text,j.review!.issues[0].original);
+  assert.ok(parts.some(p=>p.text==='手动修改。'));assert.ok(parts.some(p=>p.text.includes('待人工确认')));
+  j.review!.issues[0].original='changed';assert.notEqual(files.find(f=>f.type==='review-tracked')!.review!.issues[0].original,'changed');
+});
+
+test('Word examples encode genuine revisions, linked comments, clean output and escaped text', () => {
+  const paragraphs=reviewParagraphs(reviewExample('上交所'));
+  paragraphs.push({text:'<示例 & 引用>',before:'原文',comment:'解释 & 依据'});
+  const tracked=wordParts('修订示例',paragraphs,true),clean=wordParts('清洁示例',paragraphs,false);
+  assert.match(tracked['word/document.xml'],/<w:del /);assert.match(tracked['word/document.xml'],/<w:ins /);
+  assert.match(tracked['word/document.xml'],/w:commentRangeStart/);assert.match(tracked['word/comments.xml']!,/第十一条/);
+  assert.match(tracked['word/document.xml'],/&lt;示例 &amp; 引用&gt;/);
+  assert.doesNotMatch(clean['word/document.xml'],/<w:(ins|del|comment)/);assert.equal('word/comments.xml' in clean,false);
+  assert.match(clean['word/document.xml'],/待人工确认/);
+  const bytes=wordBytes('修订示例',paragraphs,true),view=new DataView(bytes.buffer);assert.equal(view.getUint32(0,true),0x04034b50);assert.equal(view.getUint32(bytes.length-22,true),0x06054b50);
+});
+
+test('global dashboard aggregates projects, exposes QA missing materials and suppresses completed generation drafts', () => {
+  const state=seedState(),[a,b]=state.projects;
+  a.draft.sourceId=a.files[0].id;a.draft.selected=['application'];saveTemplate(a,'application',{name:'模板.docx',size:1});runPreview(state,a,'generation');
+  addQAFile(b,{name:'问题.docx',size:1});qaFor(b).questions=exampleQuestions();runQAPreview(state,b);
+  const items=dashboardItems(state);assert.equal(items.filter(i=>i.kind==='generation').length,1);
+  assert.equal(items.filter(i=>i.project===b.name)[0].label,'待补材料 · 演示');
+  assert.ok(items.some(i=>i.project===a.name));assert.ok(items.some(i=>i.project===b.name));
+  assert.ok(dashboardItems(state,a).every(i=>i.project===a.name));
 });

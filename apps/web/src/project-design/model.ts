@@ -1,3 +1,7 @@
+import type { KnowledgeCase } from './qa-model.js';
+import { missingTemplates, templateFor, type DocumentTemplate } from './templates.js';
+import type { QADraft, QASnapshot } from './qa-model.js';
+import type { ReviewSnapshot, ReviewDecisions } from './review-model.js';
 import { DOCUMENTS, type FolderId } from './catalog.js';
 import { integrityDraft, integritySnapshot, type IntegrityDraft, type IntegritySnapshot } from './integrity.js';
 import type { Static } from '@sinclair/typebox';
@@ -8,12 +12,12 @@ export type WorkKind = 'update' | 'review';
 export type WorkDraft = { sourceId: string; attachments: { fileId: string; role: string }[]; requirements: string; sources: SourceProspectus[]; touchedAt?: string };
 export type ProjectWork = { details: ProjectDetails; update: WorkDraft; review: WorkDraft };
 
-export type Subject = { id: string; kind: 'company' | 'person'; name: string; role: string; identifier: string };
-export type ProjectFile = { id: string; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | WorkKind; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number; integrity?: IntegritySnapshot; catalogId?: string };
-export type FlowDraft = { sourceId: string; selected: string[]; requirements: string; attachments: string[]; subjects: Subject[]; integrity?: IntegrityDraft };
-export type Project = { id: string; name: string; issuer: string; market: string; updatedAt: string; files: ProjectFile[]; draft: FlowDraft; work?: ProjectWork };
-export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity' | WorkKind; fileIds: string[]; createdAt: string; subjectCount?: number; integrity?: IntegritySnapshot; input?: { draft: WorkDraft; details: ProjectDetails } };
-export type DesignState = { schema: 1; projects: Project[]; jobs: Job[] };
+export type Subject = { id: string; kind: 'company' | 'person'; name: string; role: string; identifier: string; registration?: { province: string; city: string } };
+export type ProjectFile = { id: string; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | 'qa' | WorkKind; template?: DocumentTemplate; qa?: QASnapshot; review?: ReviewSnapshot; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number; integrity?: IntegritySnapshot; catalogId?: string };
+export type FlowDraft = { sourceId: string; selected: string[]; requirements: string; attachments: string[]; subjects: Subject[]; templateIds?: Record<string, string>; integrity?: IntegrityDraft };
+export type Project = { id: string; name: string; issuer: string; market: string; updatedAt: string; files: ProjectFile[]; draft: FlowDraft; work?: ProjectWork; templates?: DocumentTemplate[]; qa?: QADraft };
+export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity' | 'qa' | WorkKind; qa?: QASnapshot; review?: ReviewSnapshot; reviewDecisions?: ReviewDecisions; fileIds: string[]; createdAt: string; subjectCount?: number; integrity?: IntegritySnapshot; input?: { draft: WorkDraft; details: ProjectDetails } };
+export type DesignState = { schema: 1; projects: Project[]; jobs: Job[]; knowledge?: KnowledgeCase[] };
 export const STORAGE_KEY = 'bondbuddy:project-materials-design:v1';
 export const newId = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -65,6 +69,7 @@ export function runPreview(state: DesignState, project: Project, kind: 'generati
   const types = kind === 'generation' ? DOCUMENTS.filter(d => d.kind === 'generation' && draft.selected.includes(d.id)) : DOCUMENTS.filter(d => d.kind === 'integrity' && draft.subjects.some(s => s.kind === (d.id === 'company-integrity' ? 'company' : 'person')));
   if (kind === 'generation' && !source) throw new Error('请选择当前项目的募集说明书版本。');
   if (kind === 'generation' && !types.length) throw new Error('请至少选择一份需要生成的文件。');
+  if (kind === 'generation' && missingTemplates(project).length) throw new Error('请先为以下文件添加历史文件 / 模板：' + missingTemplates(project).map(d => d.name).join('、'));
   if (kind === 'integrity') { const error = subjectError(draft.subjects); if (error) throw new Error(error); }
   const snapshot = kind === 'integrity' ? integritySnapshot(draft.subjects, integrityDraft(project)) : undefined;
   const job: Job = { id: newId(), projectId: project.id, kind, fileIds: [], createdAt: now(), ...(snapshot ? { subjectCount: draft.subjects.length, integrity: snapshot } : {}) };
@@ -73,7 +78,7 @@ export function runPreview(state: DesignState, project: Project, kind: 'generati
     const file: ProjectFile = {
       id: newId(), type: type.id, name: type.name, folder: type.folder, version: Math.max(0, ...project.files.filter(f => f.type === type.id).map(f => f.version)) + 1,
       createdAt: job.createdAt, origin: kind, jobId: job.id,
-      ...(kind === 'generation' ? { sourceId: source!.id, sourceName: source!.name, sourceVersion: source!.version, requirements: draft.requirements } : { subjects: structuredClone(subjects), integrity: structuredClone({ ...snapshot!, subjects: subjects!, records: snapshot!.records.filter(r => subjects!.some(s => s.id === r.subjectId)) }) }),
+      ...(kind === 'generation' ? { template: structuredClone(templateFor(project, type.id)), sourceId: source!.id, sourceName: source!.name, sourceVersion: source!.version, requirements: draft.requirements } : { subjects: structuredClone(subjects), integrity: structuredClone({ ...snapshot!, subjects: subjects!, records: snapshot!.records.filter(r => subjects!.some(s => s.id === r.subjectId)) }) }),
     };
     project.files.push(file); job.fileIds.push(file.id);
   }
@@ -83,7 +88,7 @@ export function runPreview(state: DesignState, project: Project, kind: 'generati
 export function latestFiles(project: Project): ProjectFile[] {
   const latest = new Map<string, ProjectFile>();
   for (const file of project.files) {
-    const key = file.catalogId ? `catalog:${file.catalogId}` : ['source', 'original'].includes(file.type) ? file.id : file.type;
+    const key = file.catalogId ? `catalog:${file.catalogId}` : ['source', 'original', 'qa-input'].includes(file.type) ? file.id : file.type;
     if (!latest.has(key) || latest.get(key)!.version < file.version) latest.set(key, file);
   }
   return [...latest.values()];

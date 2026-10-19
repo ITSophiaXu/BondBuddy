@@ -1,3 +1,4 @@
+import { reviewExample } from './review-model.js';
 import { emptyUpdateDetails, MARKET_LABELS, OFFERING_LABELS } from '@bondbuddy/contracts';
 import { newId, uploadSource, type DesignState, type Project, type ProjectDetails, type WorkKind, type WorkDraft, type Job } from './model.js';
 
@@ -56,6 +57,13 @@ export function runWorkPreview(state: DesignState, p: Project, kind: WorkKind): 
   const type = kind === 'update' ? 'prospectus' : 'prospectus-review';
   const version = Math.max(0, ...p.files.filter(f => f.type === type).map(f => f.version)) + 1;
   const file = { id: newId(), type, name: `${p.issuer}_${kind === 'update' ? '募集说明书_更新稿' : '募集说明书复核报告'}（设计示例）`, folder: kind === 'update' ? '2' as const : '4.2' as const, version, createdAt: job.createdAt, origin: kind, sourceId: source.id, sourceName: source.name, sourceVersion: source.version, jobId: job.id, requirements: draft.requirements };
-  p.files.push(file); job.fileIds.push(file.id); state.jobs.unshift(job); p.updatedAt = job.createdAt;
+  if (kind === 'review') {
+    job.review = reviewExample(p.market);
+    for (const mode of ['tracked', 'clean'] as const) {
+      const artifact = { ...file, id: newId(), type: 'review-' + mode, folder: '2' as const, name: p.issuer + (mode === 'tracked' ? '_募集说明书_复核修订版' : '_募集说明书_复核清洁版') + '（设计示例）.docx', review: structuredClone(job.review) };
+      p.files.push(artifact); job.fileIds.push(artifact.id);
+    }
+  }
+  p.files.push(file); job.fileIds.unshift(file.id); state.jobs.unshift(job); p.updatedAt = job.createdAt;
   return job;
 }
