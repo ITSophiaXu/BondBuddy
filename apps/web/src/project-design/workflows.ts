@@ -17,8 +17,8 @@ export const FLOWS = {
   dashboard: { title: '工作台', eyebrow: 'WORKBENCH', labels: ['选择项目', '项目工作台'], step: 'overview' },
   update: { title: '更新募集书', eyebrow: 'PROSPECTUS WORKSPACE', labels: ['选择项目', '项目信息', '材料与要求'], step: 'details' },
   review: { title: '复核募集书', eyebrow: 'PROSPECTUS REVIEW', labels: ['选择项目', '材料与要求', '复核结果'], step: 'materials' },
-  generate: { title: '材料生成', eyebrow: 'MATERIAL GENERATION', labels: ['选择项目', '选择募集说明书', '生成关联材料'], step: 'source' },
-  integrity: { title: '诚信核查', eyebrow: 'INTEGRITY CHECK', labels: ['选择项目', '添加核查对象', '核查结果与底稿'], step: 'subjects' },
+  generate: { title: '文件生成', eyebrow: 'FILE GENERATION', labels: ['选择项目', '选择募集说明书', '生成关联文件'], step: 'source' },
+  integrity: { title: '诚信核查', eyebrow: 'INTEGRITY CHECK', labels: ['选择项目', '名单与网站范围', '核查结果与底稿'], step: 'subjects' },
 } as const;
 export type FlowMode = keyof typeof FLOWS;
 const href = (kind: string, p: Project, step = 'materials') => `#${kind}?project=${encodeURIComponent(p.id)}&step=${step}`;
@@ -60,9 +60,9 @@ function workResult(p: Project, kind: WorkKind, query: URLSearchParams, state: D
   return `<div class="pd-section-head"><div><h2>${kind === 'review' ? '复核结果' : '更新成果'} <span class="pd-chip amber">设计示例</span></h2><p class="muted">${esc(date(job.createdAt))} · 未执行真实${kind === 'review' ? '复核' : '编制'}</p></div><label>版本记录<select id="work-job">${jobs.map((j, i) => `<option value="${j.id}" ${j.id === job.id ? 'selected' : ''}>第 ${jobs.length - i} 轮 · ${esc(date(j.createdAt))}</option>`).join('')}</select></label></div><div class="pd-inline-note">${icon('file')}<div>本轮依据：${esc(files[0]?.sourceName ?? '')} · v${files[0]?.sourceVersion}<p>要求：${esc(job.input?.draft.requirements || '未补充特殊要求')}</p><small>材料、要求和项目信息已固定为本轮快照。</small></div></div>${kind === 'review' ? `<div class="pd-review-dimensions">${['财务数据核对', '合规与披露', '公开信息核验'].map((name, i) => `<article><span>0${i + 1}</span><h3>${name}</h3><b class="pd-chip amber">未执行 · 待核实</b><p>接入真实复核后展示问题、原文位置和核验依据。本轮没有真实核查结论。</p></article>`).join('')}</div>` : ''}<div class="pd-result-list">${files.map(f => `<div class="pd-result-row">${icon('file')}<div class="pd-grow"><strong>${esc(f.name)}</strong><small>v${f.version} · ${kind === 'update' ? '2 申报、发行备案文件' : '4 底稿文件 / 4.2 核查记录'}</small></div>${action('查看设计说明', 'preview', false, `data-file="${f.id}"`)}</div>`).join('')}</div><div class="pd-footer"><a class="btn secondary" href="${href('dashboard', p, 'overview')}">返回项目工作台</a><div class="pd-actions"><a class="btn secondary" href="${href(kind, p)}">准备下一轮</a><a class="btn primary" href="#/projects/${p.id}/files?folder=${kind === 'update' ? '2' : '4.2'}">查看项目文件 ${icon('arrow')}</a></div></div>`;
 }
 
-const allKinds = { ...dashboardKinds, integrity: '诚信核查' };
+const allKinds = { ...dashboardKinds, generation: '文件生成', integrity: '诚信核查' };
 export function projectDashboard(p: Project) {
-  return dashboardFrame({ description: '继续当前项目的任务，查看生成结果。', starts: [['update', 'update', '更新募集书'], ['review', 'review', '复核募集书'], ['generate', 'spark', '生成材料'], ['integrity', 'shield', '诚信核查']].map(([route, ico, label]) => [`${route}?project=${p.id}&step=${FLOWS[route as FlowMode].step}`, ico, label]), kinds: allKinds, footnote: '本地设计中的任务为即时演示；不会启动后台任务或调用模型。' });
+  return dashboardFrame({ description: '继续当前项目的任务，查看生成结果。', starts: [['update', 'update', '更新募集书'], ['review', 'review', '复核募集书'], ['generate', 'spark', '文件生成'], ['integrity', 'shield', '诚信核查']].map(([route, ico, label]) => [`${route}?project=${p.id}&step=${FLOWS[route as FlowMode].step}`, ico, label]), kinds: allKinds, footnote: '本地设计中的任务为即时演示；不会启动后台任务或调用模型。' });
 }
 type Hooks = { save: () => void; render: () => void; go: (hash: string) => void; error: (error: unknown) => void; preview: (p: Project, f: ProjectFile) => void };
 export function bindWork(root: HTMLElement, p: Project, kind: WorkKind, state: DesignState, hooks: Hooks) {
@@ -121,7 +121,7 @@ export function bindProjectDashboard(root: HTMLElement, p: Project, state: Desig
   type Item = { id: string; kind: Job['kind']; group: string; title: string; time: string; url: string; detail: string };
   const items: Item[] = state.jobs.filter(j => j.projectId === p.id).map(j => ({ id: j.id, kind: j.kind, group: 'done', title: `${allKinds[j.kind]} · 第 ${state.jobs.filter(x => x.projectId === p.id && x.kind === j.kind).length - state.jobs.filter(x => x.projectId === p.id && x.kind === j.kind).findIndex(x => x.id === j.id)} 轮`, time: j.createdAt, url: `${href(j.kind === 'generation' ? 'generate' : j.kind, p, 'result')}&job=${j.id}`, detail: `${j.fileIds.length} 份设计示例 · 已归入项目文件` }));
   for (const k of ['update', 'review'] as const) { const d = workFor(p)[k], last = items.filter(i => i.kind === k).sort((a, b) => b.time.localeCompare(a.time))[0]; if (d.touchedAt && (!last || d.touchedAt > last.time)) items.push({ id: `draft-${k}`, kind: k, group: 'attention', title: `${allKinds[k]} · 草稿`, time: d.touchedAt, url: href(k, p), detail: '已保存，可继续填写材料与要求' }); }
-  if (p.draft.sourceId || p.draft.selected.length) items.push({ id: 'draft-generation', kind: 'generation', group: 'attention', title: '材料生成 · 草稿', time: p.updatedAt, url: href('generate', p, p.draft.sourceId ? 'materials' : 'source'), detail: `${p.draft.selected.length} 类已选材料，可继续准备` });
+  if (p.draft.sourceId || p.draft.selected.length) items.push({ id: 'draft-generation', kind: 'generation', group: 'attention', title: '文件生成 · 草稿', time: p.updatedAt, url: href('generate', p, p.draft.sourceId ? 'materials' : 'source'), detail: `${p.draft.selected.length} 类已选材料，可继续准备` });
   if (p.draft.subjects.length) items.push({ id: 'draft-integrity', kind: 'integrity', group: 'attention', title: '诚信核查 · 名单', time: p.updatedAt, url: href('integrity', p, 'subjects'), detail: `${p.draft.subjects.length} 个已保存对象，可准备下一轮` });
   items.sort((a, b) => b.time.localeCompare(a.time));
   const paint = () => {

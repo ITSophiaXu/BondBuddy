@@ -1,4 +1,4 @@
-// Design B reference: http://127.0.0.1:4319/#project, reviewed 2026-10-19.
+// Design B reference: http://127.0.0.1:4321/#project, reviewed 2026-10-19.
 // This is a UI catalog, not a declaration of server generation capabilities.
 export const FOLDERS = [
   { id: '1', name: '投标文件及立项申请文件' },
@@ -7,7 +7,7 @@ export const FOLDERS = [
   { id: '3', name: '受托管理材料' },
   { id: '4', name: '底稿文件' },
   { id: '4.1', name: '说明性文件', parent: '4' },
-  { id: '4.2', name: '核查记录', parent: '4' },
+  { id: '4.2', name: '核查记录 / 已导入底稿', parent: '4' },
   { id: '4.3', name: '诚信核查', parent: '4' },
   { id: 'sources', name: '原始资料' },
 ] as const;
@@ -30,6 +30,7 @@ export const DOCUMENTS: DocumentType[] = [
   { id: 'people-integrity', name: '董事及高级管理人员诚信信息汇总清单及查询记录', code: '1-5-3-4', folder: '4.3', hint: '从诚信核查入口准备人员查询记录', kind: 'integrity' },
 ];
 export const GENERATABLE = DOCUMENTS.filter(d => d.kind === 'generation');
+export const preparationFor = (type: string) => type === 'initiation' ? { label: '上传 / 选择模板', hint: '上传并保存本公司模板' } : type === 'legal' ? { label: '补充资料', hint: '补充律师核查依据' } : ['annual', 'semiannual'].includes(type) ? { label: '补充资料', hint: '补充本期财务报告及附注' } : { label: '准备文件', hint: '可从募集书准备' };
 export const belongsTo = (folder: string, parent: string) => parent === 'all' ? folder !== 'sources' : folder === parent || folder.startsWith(parent + '.');
 export const folderName = (id: string): string => FOLDERS.find(f => f.id === id)?.name ?? id;
 export const folderPath = (id: string): string => {

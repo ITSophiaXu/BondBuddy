@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { seedState, uploadSource, runPreview, createProject, latestFiles } from './model.js';
 import { workFor, saveDetails, selectWorkSource, addWorkFiles, runWorkPreview } from './work-model.js';
+import { INTEGRITY_SITES, integrityDraft } from './integrity.js';
+import { importProjectFile, migrateCatalogRefs, originalSlots } from './project-files.js';
 
 test('opening the v2 workbench extends v1 storage without replacing files or existing drafts', () => {
   const state = seedState(), p = state.projects[0];
@@ -131,4 +133,55 @@ test('new project starts empty and source validation never changes an existing v
   assert.throws(() => uploadSource(p, { name: 'empty.pdf', size: 0 }), /不能为空/);
   assert.equal(p.files.length, 0);
   assert.equal(uploadSource(p, { name: 'example.pdf', size: 10 }).version, 1);
+});
+
+test('v3 adds website defaults without rewriting historical jobs or project drafts', () => {
+  const state = seedState(), p = state.projects[0], other = structuredClone(state.projects[1]);
+  p.draft.subjects = [{ id: 'c', name: '示例企业', role: '发行人', kind: 'company', identifier: '' }];
+  const oldJob = { id: 'old', kind: 'integrity' as const, projectId: p.id, fileIds: [], createdAt: '2026-10-18' }; state.jobs.push(oldJob);
+  assert.equal(integrityDraft(p).siteIds.length, 19);
+  assert.equal(oldJob, state.jobs[0]); assert.equal(state.jobs[0].integrity, undefined);
+  assert.deepEqual(state.projects[1], other);
+  integrityDraft(p).siteIds = []; assert.equal(integrityDraft(p).siteIds.length, 0);
+});
+
+test('integrity freezes website, subject, query and note snapshots separately in jobs and outputs', () => {
+  const state = seedState(), p = state.projects[0];
+  p.draft.subjects = [{ id: 'c', name: '示例企业', role: '发行人', kind: 'company', identifier: '' }, { id: 'p', name: '示例人员', role: '董事', kind: 'person', identifier: '示例企业' }];
+  const draft = integrityDraft(p); draft.siteIds = ['gsxt','judgments']; draft.notes = '首轮说明';
+  const first = runPreview(state,p,'integrity'), frozen = structuredClone(first);
+  const company = p.files.find(f => f.id === first.fileIds[0])!, person = p.files.find(f => f.id === first.fileIds[1])!;
+  assert.equal(first.integrity!.records.length, 4); assert.equal(person.integrity!.records.find(r => r.siteId === 'gsxt')!.status,'not-applicable');
+  assert.ok(company.integrity!.records.every(r => r.subjectId === 'c' && r.status === 'pending'));
+  draft.siteIds = ['credit-china']; draft.notes = '第二轮说明'; p.draft.subjects[0].name = '已修改名单'; runPreview(state,p,'integrity');
+  assert.deepEqual(first,frozen); assert.equal(company.integrity!.notes,'首轮说明');
+  first.integrity!.sites[0].name = '修改测试'; assert.equal(company.integrity!.sites[0].name,'国家企业信用信息公示系统');
+  assert.equal(INTEGRITY_SITES[0].name,'国家企业信用信息公示系统');
+});
+
+test('empty, unknown or wholly inapplicable website scope cannot create files', () => {
+  const state = seedState(), p = state.projects[0], count = p.files.length;
+  p.draft.subjects = [{ id: 'p', name: '示例人员', role: '董事', kind: 'person', identifier: '' }];
+  const draft = integrityDraft(p); draft.siteIds = [];
+  assert.throws(() => runPreview(state,p,'integrity'),/至少选择一个核查网站/);
+  draft.siteIds = ['gsxt']; assert.throws(() => runPreview(state,p,'integrity'),/支持人员查询/);
+  draft.siteIds = ['judgments','unknown']; assert.throws(() => runPreview(state,p,'integrity'),/范围已发生变化/);
+  assert.equal(state.jobs.length,0); assert.equal(p.files.length,count);
+});
+
+test('original catalog stays separate from files and imported replacements retain versions', () => {
+  const state = seedState(), p = state.projects[0], other = structuredClone(state.projects[1]);
+  const count = p.files.length; migrateCatalogRefs(state); const snapshot = structuredClone(state); migrateCatalogRefs(state);
+  assert.deepEqual(state,snapshot); assert.equal(p.files.length,count);
+  assert.equal(originalSlots(p,'','all').length,147); assert.equal(originalSlots(p,'','ready').length,1);
+  assert.equal(originalSlots(p,'股东名册','missing').length,2);
+  const old = structuredClone(p.files.find(f => f.catalogId === 'wp000'));
+  importProjectFile(p,{name:'核查原件.docx',size:100},'4.2','wp000');
+  assert.deepEqual(p.files.find(f => f.id === old!.id),old);
+  assert.equal(latestFiles(p).find(f => f.catalogId === 'wp000')!.version,2);
+  assert.equal(originalSlots(p,'','ready').length,1);
+  assert.throws(() => importProjectFile(p,{name:'错误.exe',size:1},'4.2'),/文档/);
+  assert.throws(() => importProjectFile(p,{name:'空.docx',size:0},'4.2'),/不能为空/);
+  assert.throws(() => importProjectFile(p,{name:'报告.pdf',size:2},'sources','wp001'),/目录项/);
+  assert.equal(state.projects[1].files.length,other.files.length);
 });
