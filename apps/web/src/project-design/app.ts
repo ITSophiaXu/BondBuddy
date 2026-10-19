@@ -1,4 +1,6 @@
 import { regionalPortal } from './regions';
+import { consistencyView, bindConsistency, consistencyDocument } from './consistency-view';
+import { startConsistency, finishConsistency, resultProspectus, currentProspectus, associatedFiles, consistencyParagraphs, fileConsistencyState } from './consistency-model';
 import { qaView, bindQA, qaDocument } from './qa-view';
 import { qaParagraphs } from './qa-model';
 import { reviewDocument } from './review-view';
@@ -12,11 +14,12 @@ import { prototypeIcon as ico } from '../prototype-design';
 import { esc, date } from '../ui';
 import { FOLDERS, DOCUMENTS, GENERATABLE, belongsTo, folderName, folderPath } from './catalog';
 import { ORIGINAL_CATALOG } from './original-catalog';
-import { fileTree, fileRows as renderFileRows } from './project-files-view';
+import { fileTree, bindFileTree, fileConsistencySummary, fileRows as renderFileRows } from './project-files-view';
+import { projectRowsDesign, openProjectMenu } from './project-list-view';
 import { importProjectFile, migrateCatalogRefs } from './project-files';
 import { INTEGRITY_SITES, integrityDraft } from './integrity';
 import { websiteScope, integrityTotals, queryRecords, evidenceContent, integrityDocument } from './integrity-view';
-import { STORAGE_KEY, seedState, createProject, uploadSource, runPreview, latestFiles, newId, type DesignState, type Project, type ProjectFile, type Subject } from './model';
+import { STORAGE_KEY, seedState, createProject, uploadSource, runPreview, latestFiles, fileFamily, newId, type DesignState, type Project, type ProjectFile, type Subject } from './model';
 import '../style.css';
 import '../../../../product-prototype/public/styles.css';
 import '../../../../product-prototype/public/project-workspace.css';
@@ -31,7 +34,8 @@ import '../../../../product-prototype/public/source-prospectus.css';
 import './design.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
-document.title = 'BondBuddy · 项目工作台 · 本地设计稿 v4';
+document.title = 'BondBuddy · 项目工作台 · 本地设计稿 v5';
+let checkTimer: ReturnType<typeof setTimeout> | undefined;
 let state: DesignState = seedState();
 let storageWarning = '';
 let storageBlocked = false;
@@ -143,27 +147,30 @@ function projectsView() {
 }
 function projectRows() {
   const items = state.projects.filter(p => `${p.name} ${p.issuer}`.toLowerCase().includes(projectSearch.trim().toLowerCase())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  return items.length ? `<div class="pd-table-wrap"><table class="pd-table"><thead><tr><th>项目名称</th><th>最近更新</th><th>项目文件</th><th>开始工作</th></tr></thead><tbody>${items.map(p => `<tr><td><a class="pd-project-title" href="#${projectLink(p)}">${esc(p.name)}</a><small>${esc(p.issuer)}</small><span class="pd-chip">${esc(p.market)}</span></td><td><time>${esc(date(p.updatedAt))}</time></td><td><a class="pd-files-entry" href="#${projectLink(p)}">${ico('folder')} 项目文件 <b>${latestFiles(p).filter(f => f.folder !== 'sources').length}</b>${ico('chevron')}</a><small>募集书 · 关联文件 · 核查底稿</small></td><td><div class="pd-row-links"><a href="#${flowLink('dashboard', p, 'overview')}">工作台</a><a href="#${flowLink('update', p, 'details')}">更新募集书</a><a href="#${flowLink('review', p, 'materials')}">复核募集书</a><a href="#${flowLink('generate', p, 'source')}">文件生成</a><a href="#${flowLink('integrity', p, 'subjects')}">诚信核查</a></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="pd-empty">没有找到匹配的项目。</div>';
+  return projectRowsDesign(items,state);
 }
-function fileRows(p: Project, folder: string) { return renderFileRows(p, folder, fileSearch, fileStatus, originalGroup); }
+function fileRows(p: Project, folder: string) { return renderFileRows(p, folder, fileSearch, fileStatus, originalGroup, state); }
 function filesView(p: Project) {
   const requested = route().query.get('folder') ?? 'all';
   const folder = requested === 'all' || FOLDERS.some(f => f.id === requested) ? requested : 'all';
   const latest = latestFiles(p);
   const count = (id: string) => latest.filter(f => belongsTo(f.folder, id)).length;
-  return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), link('项目工作台', flowLink('dashboard', p, 'overview')) + link('文件生成', flowLink('generate', p, 'source')) + link('诚信核查', flowLink('integrity', p, 'subjects')) + button('导入底稿 / 文件', 'import-project-file'))}
+  return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), button('导入底稿 / 文件', 'import-project-file') + `<button class="btn primary" data-consistency-start data-project="${p.id}">检查文件一致性</button><button class="btn secondary pd-start-trigger" data-action="project-menu" data-project="${p.id}" aria-haspopup="menu" aria-expanded="false">开始工作 ${ico('chevron')}</button>`)}
     <div class="pd-file-breadcrumb"><a href="#tasks">全部项目</a>${ico('chevron')}<span>${esc(p.name)}</span>${ico('chevron')}<strong>${folder === 'all' ? '全部成果文件' : folderName(folder)}</strong></div>
-    <div class="pd-file-workspace"><nav class="pd-folder-tree" aria-label="项目文件目录">${fileTree(p, folder)}</nav>
-    <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><span class="muted">${count(folder)} 份已有文件</span></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option></select></div><div id="file-list">${fileRows(p, folder)}</div></section></div>${['all','sources'].includes(folder) ? templateLibrary(p) : ''}`;
+    ${fileConsistencySummary(p,state)}<div class="pd-file-workspace"><nav class="pd-folder-tree" aria-label="项目文件目录">${fileTree(p, folder)}</nav>
+    <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><span class="muted">${count(folder)} 份已有文件</span></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option>${[['conflict','不一致'],['updated','已同步'],['manual','需人工确认'],['stale','待重新检查']].map(([value,label]) => `<option value="${value}" ${fileStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div><div id="file-list">${fileRows(p, folder)}</div></section></div>${['all','sources'].includes(folder) ? templateLibrary(p) : ''}`;
 }
 function notFound(title: string, target = 'tasks') { return `${pageHead('WORKSPACE', title, '请返回项目列表重新选择。')}${link('返回', target, true)}`; }
 function render() {
+  clearTimeout(checkTimer);
+  finishConsistency(state);
   const { path, query } = route();
   const p = projectForRoute();
   let section = path === 'update' ? 'workspace' : ['generate', 'integrity', 'dashboard', 'review', 'qa'].includes(path) ? path : 'projects';
   let html: string;
   if (path === 'dashboard') html = query.has('project') && !p ? notFound('项目不存在') : (p ? projectContext(p, path) : '') + projectDashboard(p);
   else if (path === 'qa') html = query.has('project') && !p ? notFound('项目不存在') : qaView(p, state, query);
+  else if (path === 'consistency') html = p ? consistencyView(p, state, query) : notFound('项目不存在');
   else if (path === 'update' || path === 'review') {
     html = !query.has('project') ? projectPicker(path) : !p ? notFound('项目不存在') : projectContext(p, path) + workView(p, path, query, state);
   } else if (path === 'generate' || path === 'integrity') {
@@ -186,13 +193,16 @@ function render() {
   root.querySelector('.prototype-app')?.classList.add('pd-app');
   root.querySelector('[data-account-name]')!.textContent = '本地设计预览';
   root.querySelector('#logout')?.remove();
-  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v4 · 本地保存';
+  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v5 · 本地保存';
   root.querySelector('.credit-wallet')!.innerHTML = '<div class="pd-local-save">本地独立数据<br><small>不连接线上账号和项目</small></div>';
   notification = '';
   bind();
   if (p && (path === 'update' || path === 'review')) bindWork(root, p, path, state, { save, render, go, error: showError, preview });
   if (path === 'dashboard' && root.querySelector('#dashboard-projects')) bindProjectDashboard(root, p, state);
   if (path === 'qa') bindQA(root, p, state, {save, render, go, error: showError, modal});
+  if (path.startsWith('/projects/')) bindFileTree(root);
+  if (path === 'consistency' && p) bindConsistency(root, p, state, query, {save, render, go, error: showError, notify});
+  if (['consistency','dashboard'].includes(path) && state.jobs.some(j => j.consistency?.phase === 'checking')) checkTimer = setTimeout(render, 550);
   save();
 }
 function showError(error: unknown) { const element = root.querySelector<HTMLElement>('#flow-error')!; element.hidden = false; element.textContent = error instanceof Error ? error.message : '操作未完成，请重试。'; element.scrollIntoView({ block: 'nearest' }); }
@@ -207,6 +217,13 @@ function modal(title: string, content: string) {
   return dialog;
 }
 function preview(p: Project, file: ProjectFile) {
+  const check = latestFiles(p).some(f=>f.id===file.id) ? fileConsistencyState(state,p,file) : undefined;
+  const checkNote = check?.kind === 'conflict' ? `<div class="pd-project-consistency-banner attention"><div><span><strong>与募集说明书不一致 · ${check.count} 处</strong><small>确认冲突后，生成更新版本并保留当前文件。</small></span></div><a class="btn secondary" href="#consistency?project=${p.id}&job=${check.jobId}&file=${check.fileId}">查看冲突并更新</a></div>` : '';
+  if (file.consistency) {
+    const dialog = modal(file.name, checkNote + consistencyDocument(file) + '<div class="pd-footer"><span class="muted">已接受修改 · 合成 Word 片段</span><button class="btn primary" id="download-consistency-word">下载修订版示例</button></div>');
+    dialog.querySelector('#download-consistency-word')!.addEventListener('click', () => downloadWord(file.name.replace(/\.docx$/i,'') + '_一致性更新_v' + file.version, consistencyParagraphs(file), true));
+    return;
+  }
   if (file.qa || file.review) {
     const job = state.jobs.find(j => j.id === file.jobId && j.projectId === p.id);
     const clean = file.type === 'review-clean';
@@ -215,7 +232,7 @@ function preview(p: Project, file: ProjectFile) {
     return;
   }
   const d = DOCUMENTS.find(d => d.id === file.type);
-  const dialog = modal(file.name, `<div class="pd-preview-meta"><span class="pd-chip">v${file.version}</span><span>${folderPath(file.folder)}</span></div><p class="pd-note">${file.origin === 'upload' ? '本地选择记录：文件内容未上传或解析。' : '设计稿内容示例，不是实际生成成果或真实核查结论。'}</p>
+  const dialog = modal(file.name, checkNote + `<div class="pd-preview-meta"><span class="pd-chip">v${file.version}</span><span>${folderPath(file.folder)}</span></div><p class="pd-note">${file.origin === 'upload' ? '本地选择记录：文件内容未上传或解析。' : '设计稿内容示例，不是实际生成成果或真实核查结论。'}</p>
     ${file.template ? `<p class="pd-feedback">本轮模板：${esc(file.template.name)} · v${file.template.version} · 快照已保存</p>` : ''}${file.sourceName ? `<div class="pd-source-strip">${ico('file')}<div>依据：${esc(file.sourceName)}<small>固定募集书 v${file.sourceVersion}</small></div></div>` : ''}
     <article class="pd-document"><div class="eyebrow">${file.origin === 'integrity' ? '核查底稿 · 演示记录' : '项目文件 · 预览'}</div><h2>${esc(file.name)}</h2><p>项目：${esc(p.name)}</p>${file.integrity ? integrityDocument(file.integrity) : file.subjects ? file.subjects.map(s => `<section><h3>${esc(s.name)}</h3><p>${esc(s.role)} · ${s.kind === 'company' ? '企业' : '个人'}<br>识别信息：${esc(s.identifier || '待补充')}<br>查询条件：${esc(s.name)}<br>查询网站 / 查询时间 / 原始截图：尚未检索<br>核查状态：未执行检索，待核实</p></section>`).join('') : `<h3>${d ? d.hint : '文件信息'}</h3><p>${d ? '正式生成后，这里展示可核对、可修改的材料正文。本设计稿仅固定所选项目、募集书版本与归档位置。' : '正式接入后可在此阅读原文件。本设计稿保留文件名称、来源及版本信息。'}</p>${file.requirements ? `<h3>本次编制要求</h3><p>${esc(file.requirements)}</p>` : ''}`}</article><div class="pd-footer"><span class="muted">${esc(date(file.createdAt))}</span>${file.integrity ? '<button class="btn primary" id="download-workpaper">导出核查底稿（HTML 设计稿）</button>' : ''}<button class="btn secondary" id="download-design">导出设计说明（TXT）</button></div>`);
   dialog.querySelector('#download-workpaper')?.addEventListener('click', () => {
@@ -322,16 +339,30 @@ root.addEventListener('change', event => {
   if (input.dataset.field === 'kind') { const s = p.draft.subjects.find(s => s.id === input.dataset.subject); if (s) { s.kind = input.value as Subject['kind']; s.identifier = ''; save(); render(); } }
 });
 root.addEventListener('click', event => {
+  const check = (event.target as HTMLElement).closest<HTMLElement>('[data-consistency-start]');
+  if (check) {
+    try {
+      const p = state.projects.find(p => p.id === check.dataset.project);
+      if (!p) throw new Error('项目不存在。');
+      const from = check.dataset.fromJob ? state.jobs.find(j => j.id === check.dataset.fromJob && j.projectId === p.id) : undefined;
+      if (check.dataset.fromJob && !from) throw new Error('任务记录不存在。');
+      const source = from ? resultProspectus(p,from) : currentProspectus(p);
+      if (!source || !associatedFiles(p).length) { go(`consistency?project=${p.id}`); return; }
+      const job = startConsistency(state,p,source.id,from?.id); save(); go(`consistency?project=${p.id}&job=${job.id}`);
+    } catch(e) { showError(e); }
+    return;
+  }
   const templateTrigger = (event.target as HTMLElement).closest<HTMLElement>('[data-template-type]');
   if (templateTrigger) { const project = projectForRoute(); if (project) openTemplate(project, templateTrigger.dataset.templateType!, state, {modal,save,render}); return; }
   const trigger = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!trigger) return;
   const action = trigger.dataset.action; const p = projectForRoute();
   try {
+    if (action === 'project-menu') { const project=state.projects.find(p=>p.id===trigger.dataset.project);if(project)openProjectMenu(trigger,project);return; }
     if (action === 'new-project') { openNewProject(trigger.dataset.mode as typeof newProjectMode); return; }
     if (action === 'continue-project') { const selected = state.projects.find(p => p.id === selectedProject); if (selected) go(flowLink(trigger.dataset.mode!, selected, FLOWS[trigger.dataset.mode as FlowMode].step)); return; }
     if (action === 'design-info') {
-      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：全局工作台、更新与复核募集书、模板复用、文件生成、诚信核查、项目问答、项目文件与历史版本。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
-      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v4.json', JSON.stringify(state, null, 2), 'application/json')); return;
+      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：全局工作台、更新与复核募集书、模板复用、文件生成、诚信核查、项目问答、项目文件与历史版本、一致性检查与接受更新。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
+      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v5.json', JSON.stringify(state, null, 2), 'application/json')); return;
     }
     if (!p) return;
     if (action === 'contact-sites') { modal('联系我们加网站', '<p>网站还在持续补充。请向 BondBuddy 服务团队提供所需网站，便于后续接入。</p><label class="pd-field">希望补充的网站 / 地区<textarea rows="4" placeholder="网站名称、官网链接、对应地区和核查内容"></textarea></label><p class="pd-note">设计预览：联系渠道待接入；这里填写的内容不会发送。</p>'); return; }
@@ -356,7 +387,8 @@ root.addEventListener('click', event => {
     }
     else if (action === 'preview') { const f = p.files.find(f => f.id === trigger.dataset.id); if (f) preview(p, f); }
     else if (action === 'history') {
-      const files = p.files.filter(f => trigger.dataset.catalog ? f.catalogId === trigger.dataset.catalog : ['source', 'original', 'qa-input'].includes(trigger.dataset.type!) ? f.id === trigger.dataset.id : f.type === trigger.dataset.type).sort((a, b) => b.version - a.version);
+      const selected = p.files.find(f => f.id === trigger.dataset.id);
+      const files = p.files.filter(f => selected ? fileFamily(f) === fileFamily(selected) : trigger.dataset.catalog ? f.catalogId === trigger.dataset.catalog : f.type === trigger.dataset.type).sort((a, b) => b.version - a.version);
       const dialog = modal('文件版本记录', `<p class="muted">每次准备新版本均保留旧文件及原始依据。</p>${files.map(f => `<div class="pd-result-row"><div class="pd-grow"><strong>v${f.version} · ${esc(f.name)}</strong><small>${esc(date(f.createdAt))}${f.sourceVersion ? ` · 依据募集书 v${f.sourceVersion}` : ''}</small></div><button class="btn secondary" data-version="${f.id}">查看</button></div>`).join('')}`);
       dialog.querySelectorAll<HTMLElement>('[data-version]').forEach(b => b.addEventListener('click', () => { const f = files.find(f => f.id === b.dataset.version)!; dialog.close(); preview(p, f); }));
     }

@@ -1,4 +1,5 @@
 import type { KnowledgeCase } from './qa-model.js';
+import type { ConsistencyRun, ConsistencyUpdate, ConsistencyArtifact } from './consistency-model.js';
 import { missingTemplates, templateFor, type DocumentTemplate } from './templates.js';
 import type { QADraft, QASnapshot } from './qa-model.js';
 import type { ReviewSnapshot, ReviewDecisions } from './review-model.js';
@@ -13,10 +14,10 @@ export type WorkDraft = { sourceId: string; attachments: { fileId: string; role:
 export type ProjectWork = { details: ProjectDetails; update: WorkDraft; review: WorkDraft };
 
 export type Subject = { id: string; kind: 'company' | 'person'; name: string; role: string; identifier: string; registration?: { province: string; city: string } };
-export type ProjectFile = { id: string; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | 'qa' | WorkKind; template?: DocumentTemplate; qa?: QASnapshot; review?: ReviewSnapshot; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number; integrity?: IntegritySnapshot; catalogId?: string };
+export type ProjectFile = { id: string; familyId?: string; consistency?: ConsistencyArtifact; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | 'qa' | 'consistency' | WorkKind; template?: DocumentTemplate; qa?: QASnapshot; review?: ReviewSnapshot; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number; integrity?: IntegritySnapshot; catalogId?: string };
 export type FlowDraft = { sourceId: string; selected: string[]; requirements: string; attachments: string[]; subjects: Subject[]; templateIds?: Record<string, string>; integrity?: IntegrityDraft };
 export type Project = { id: string; name: string; issuer: string; market: string; updatedAt: string; files: ProjectFile[]; draft: FlowDraft; work?: ProjectWork; templates?: DocumentTemplate[]; qa?: QADraft };
-export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity' | 'qa' | WorkKind; qa?: QASnapshot; review?: ReviewSnapshot; reviewDecisions?: ReviewDecisions; fileIds: string[]; createdAt: string; subjectCount?: number; integrity?: IntegritySnapshot; input?: { draft: WorkDraft; details: ProjectDetails } };
+export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity' | 'qa' | 'consistency' | WorkKind; consistency?: ConsistencyRun; consistencyUpdates?: Record<string, ConsistencyUpdate>; qa?: QASnapshot; review?: ReviewSnapshot; reviewDecisions?: ReviewDecisions; fileIds: string[]; createdAt: string; subjectCount?: number; integrity?: IntegritySnapshot; input?: { draft: WorkDraft; details: ProjectDetails } };
 export type DesignState = { schema: 1; projects: Project[]; jobs: Job[]; knowledge?: KnowledgeCase[] };
 export const STORAGE_KEY = 'bondbuddy:project-materials-design:v1';
 export const newId = () => crypto.randomUUID();
@@ -85,10 +86,11 @@ export function runPreview(state: DesignState, project: Project, kind: 'generati
   state.jobs.unshift(job); project.updatedAt = job.createdAt;
   return job;
 }
+export const fileFamily = (file: ProjectFile) => file.familyId ?? (file.catalogId ? `catalog:${file.catalogId}` : ['source', 'original', 'qa-input'].includes(file.type) ? file.id : file.type);
 export function latestFiles(project: Project): ProjectFile[] {
   const latest = new Map<string, ProjectFile>();
   for (const file of project.files) {
-    const key = file.catalogId ? `catalog:${file.catalogId}` : ['source', 'original', 'qa-input'].includes(file.type) ? file.id : file.type;
+    const key = fileFamily(file);
     if (!latest.has(key) || latest.get(key)!.version < file.version) latest.set(key, file);
   }
   return [...latest.values()];

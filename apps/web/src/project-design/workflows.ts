@@ -1,5 +1,7 @@
 import { TASK_KINDS, dashboardItems } from './dashboard-state';
 import { reviewScopeDesign, reviewResultDesign, bindReviewResult } from './review-view';
+import { updateDelivery, updateParagraphs } from './update-result';
+import { downloadWord } from './word-export';
 import { MARKET_OFFERINGS, OFFERING_LABELS, sourceProspectusMissingFields, type Market } from '@bondbuddy/contracts';
 import { dashboardFrame } from '../dashboard-view';
 import { dashboardGroups } from '../dashboard-model';
@@ -61,16 +63,21 @@ function workResult(p: Project, kind: WorkKind, query: URLSearchParams, state: D
   if (!job) return `<div class="review-empty"><h2>${id ? '本轮任务不存在' : kind === 'review' ? '暂无复核结果' : '暂无更新成果'}</h2><p>选好本项目的募集书并补充要求后，即可演示完整流程。</p><a class="btn primary" href="${href(kind, p)}">返回材料与要求</a></div>`;
   if (kind === 'review' && job.review) return reviewResultDesign(p, job, jobs);
   const files = p.files.filter(f => job.fileIds.includes(f.id));
-  return `<div class="pd-section-head"><div><h2>${kind === 'review' ? '复核结果' : '更新成果'} <span class="pd-chip amber">设计示例</span></h2><p class="muted">${esc(date(job.createdAt))} · 未执行真实${kind === 'review' ? '复核' : '编制'}</p></div><label>版本记录<select id="work-job">${jobs.map((j, i) => `<option value="${j.id}" ${j.id === job.id ? 'selected' : ''}>第 ${jobs.length - i} 轮 · ${esc(date(j.createdAt))}</option>`).join('')}</select></label></div><div class="pd-inline-note">${icon('file')}<div>本轮依据：${esc(files[0]?.sourceName ?? '')} · v${files[0]?.sourceVersion}<p>要求：${esc(job.input?.draft.requirements || '未补充特殊要求')}</p><small>材料、要求和项目信息已固定为本轮快照。</small></div></div>${kind === 'review' ? `<div class="pd-review-dimensions">${['财务数据核对', '合规与披露', '公开信息核验'].map((name, i) => `<article><span>0${i + 1}</span><h3>${name}</h3><b class="pd-chip amber">未执行 · 待核实</b><p>接入真实复核后展示问题、原文位置和核验依据。本轮没有真实核查结论。</p></article>`).join('')}</div>` : ''}<div class="pd-result-list">${files.map(f => `<div class="pd-result-row">${icon('file')}<div class="pd-grow"><strong>${esc(f.name)}</strong><small>v${f.version} · ${kind === 'update' ? '2 申报、发行备案文件' : '4 底稿文件 / 4.2 核查记录'}</small></div>${action('查看设计说明', 'preview', false, `data-file="${f.id}"`)}</div>`).join('')}</div><div class="pd-footer"><a class="btn secondary" href="${href('dashboard', p, 'overview')}">返回项目工作台</a><div class="pd-actions"><a class="btn secondary" href="${href(kind, p)}">准备下一轮</a><a class="btn primary" href="#/projects/${p.id}/files?folder=${kind === 'update' ? '2' : '4.2'}">查看项目文件 ${icon('arrow')}</a></div></div>`;
+  return `<div class="pd-section-head"><div><h2>${kind === 'review' ? '复核结果' : '更新成果'} <span class="pd-chip amber">设计示例</span></h2><p class="muted">${esc(date(job.createdAt))} · 未执行真实${kind === 'review' ? '复核' : '编制'}</p></div><label>版本记录<select id="work-job">${jobs.map((j, i) => `<option value="${j.id}" ${j.id === job.id ? 'selected' : ''}>第 ${jobs.length - i} 轮 · ${esc(date(j.createdAt))}</option>`).join('')}</select></label></div><div class="pd-inline-note">${icon('file')}<div>本轮依据：${esc(files[0]?.sourceName ?? '')} · v${files[0]?.sourceVersion}<p>要求：${esc(job.input?.draft.requirements || '未补充特殊要求')}</p><small>材料、要求和项目信息已固定为本轮快照。</small></div></div>${kind === 'review' ? `<div class="pd-review-dimensions">${['财务数据核对', '合规与披露', '公开信息核验'].map((name, i) => `<article><span>0${i + 1}</span><h3>${name}</h3><b class="pd-chip amber">未执行 · 待核实</b><p>接入真实复核后展示问题、原文位置和核验依据。本轮没有真实核查结论。</p></article>`).join('')}</div>` : ''}${kind === 'update' ? updateDelivery(p,job) : `<div class="pd-actions"><button class="btn secondary" data-consistency-start data-project="${p.id}" data-from-job="${job.id}">检查文件一致性</button></div>`}<div class="pd-result-list">${files.map(f => `<div class="pd-result-row">${icon('file')}<div class="pd-grow"><strong>${esc(f.name)}</strong><small>v${f.version} · ${kind === 'update' ? '2 申报、发行备案文件' : '4 底稿文件 / 4.2 核查记录'}</small></div>${action('查看设计说明', 'preview', false, `data-file="${f.id}"`)}</div>`).join('')}</div><div class="pd-footer"><a class="btn secondary" href="${href('dashboard', p, 'overview')}">返回项目工作台</a><div class="pd-actions"><a class="btn secondary" href="${href(kind, p)}">准备下一轮</a><a class="btn primary" href="#/projects/${p.id}/files?folder=${kind === 'update' ? '2' : '4.2'}">查看项目文件 ${icon('arrow')}</a></div></div>`;
 }
 
 const allKinds = TASK_KINDS;
 export function projectDashboard(p?: Project) {
-  return dashboardFrame({ description: p ? '继续当前项目的任务，查看生成结果。' : '继续手上的任务，查看所有项目的任务状态与成果。', starts: [['update', 'update', '更新募集书'], ['review', 'review', '复核募集书'], ['generate', 'spark', '文件生成'], ['integrity', 'shield', '诚信核查'], ['qa', 'chat', '项目问答']].map(([route, ico, label]) => [p ? `${route}?project=${p.id}&step=${FLOWS[route as FlowMode].step}` : route, ico, label]), kinds: allKinds, footnote: '本地设计中的任务为即时演示；不会启动后台任务或调用模型。' });
+  return dashboardFrame({ description: p ? '继续当前项目的任务，查看生成结果。' : '继续手上的任务，查看所有项目的任务状态与成果。', starts: [['update', 'update', '更新募集书'], ['review', 'review', '复核募集书'], ['generate', 'spark', '文件生成'], ['integrity', 'shield', '诚信核查'], ['qa', 'chat', '项目问答']].map(([route, ico, label]) => [p ? `${route}?project=${p.id}&step=${FLOWS[route as FlowMode].step}` : route, ico, label]), kinds: allKinds, footnote: '本地设计仅演示任务与检查进度；不会启动后台任务或调用模型。' });
 }
 type Hooks = { save: () => void; render: () => void; go: (hash: string) => void; error: (error: unknown) => void; preview: (p: Project, f: ProjectFile) => void };
 export function bindWork(root: HTMLElement, p: Project, kind: WorkKind, state: DesignState, hooks: Hooks) {
   if (kind === 'review') bindReviewResult(root, p, state, hooks);
+  if (kind === 'update') root.querySelectorAll<HTMLElement>('[data-update-download]').forEach(button => button.addEventListener('click', () => {
+    const id = new URLSearchParams(location.hash.split('?')[1]).get('job');
+    const job = state.jobs.find(j => j.projectId === p.id && j.kind === 'update' && (!id || j.id === id));
+    if (job) downloadWord(`${job.input?.details.issuer_name ?? p.issuer}_更新${button.dataset.updateDownload === 'tracked' ? '修订版' : '清洁版'}`, updateParagraphs(job), button.dataset.updateDownload === 'tracked');
+  }));
   const work = workFor(p), draft = work[kind];
   const saved = () => { hooks.save(); root.querySelectorAll('[data-work-save]').forEach(el => el.textContent = '已保存到本地'); };
   const form = root.querySelector<HTMLFormElement>('#pd-work-form');
@@ -125,7 +132,7 @@ export function bindProjectDashboard(root: HTMLElement, p: Project | undefined, 
   if (!(kind in allKinds)) kind = 'all'; if (!(group in dashboardGroups)) group = 'all';
   const items = dashboardItems(state, p);
   const paint = () => {
-    root.querySelectorAll<HTMLElement>('[data-dashboard-group]').forEach(b => { const g = b.dataset.dashboardGroup!; b.setAttribute('aria-pressed', String(g === group)); b.querySelector('[data-dashboard-count]')!.textContent = String(items.filter(i => i.group === g).length); b.querySelector('[data-dashboard-sub]')!.textContent = g === 'done' ? '设计示例可查看' : g === 'active' ? '当前无后台任务' : '已保存的准备内容'; });
+    root.querySelectorAll<HTMLElement>('[data-dashboard-group]').forEach(b => { const g = b.dataset.dashboardGroup!; b.setAttribute('aria-pressed', String(g === group)); b.querySelector('[data-dashboard-count]')!.textContent = String(items.filter(i => i.group === g).length); b.querySelector('[data-dashboard-sub]')!.textContent = g === 'done' ? '设计示例可查看' : g === 'active' ? '本地检查演示进度' : '已保存的准备内容'; });
     root.querySelectorAll<HTMLElement>('[data-dashboard-kind]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.dashboardKind === kind)));
     root.querySelector<HTMLSelectElement>('#dashboard-status')!.value = group;
     const filtered = items.filter(i => (kind === 'all' || i.kind === kind) && (group === 'all' || i.group === group)), shown = filtered.slice(0, limit);

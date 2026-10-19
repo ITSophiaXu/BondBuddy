@@ -1,7 +1,8 @@
 import { workFor } from './work-model.js';
 import { templateFor } from './templates.js';
+import { pendingIssues } from './consistency-model.js';
 import type { DesignState, Project, Job } from './model.js';
-export const TASK_KINDS = { update: '更新募集书', review: '复核募集书', generation: '文件生成', integrity: '诚信核查', qa: '项目问答' };
+export const TASK_KINDS = { update: '更新募集书', review: '复核募集书', generation: '文件生成', integrity: '诚信核查', qa: '项目问答', consistency: '文件一致性检查' };
 export type DashboardItem = { id: string; project: string; kind: Job['kind']; group: 'attention' | 'active' | 'done'; title: string; time: string; url: string; detail: string; label: string; action: string };
 export function dashboardItems(state: DesignState, project?: Project): DashboardItem[] {
   const projects = project ? [project] : state.projects, items: DashboardItem[] = [];
@@ -9,6 +10,14 @@ export function dashboardItems(state: DesignState, project?: Project): Dashboard
   for (const p of projects) {
     const jobs = state.jobs.filter(j => j.projectId === p.id);
     for (const j of jobs) {
+      if (j.consistency) {
+        const latest = jobs.find(x => x.kind === 'consistency')?.id === j.id;
+        const pending = j.consistency.snapshot.files.filter(f => pendingIssues(j,f).length).length;
+        const manual = j.consistency.snapshot.files.filter(f => f.status === 'manual').length;
+        const checking = j.consistency.phase === 'checking', attention = latest && (pending > 0 || manual > 0);
+        items.push({ id:j.id, project:p.name, kind:j.kind, group:checking ? 'active' : attention ? 'attention' : 'done', title:'文件一致性检查', time:j.createdAt, url:`#consistency?project=${p.id}&job=${j.id}`, detail:checking ? `${j.consistency.snapshot.files.length} 份文件 · 本地演示进度` : `${pending} 份待更新 · ${manual} 份需人工确认`, label:checking ? '正在检查 · 演示' : !latest ? '已归档 · 演示' : attention ? '待确认 · 演示' : '已完成 · 演示', action:checking ? '查看进度' : attention ? '查看文件冲突' : '查看结果' });
+        continue;
+      }
       const missing = j.qa?.questions.filter(q => q.status === 'missing').length ?? 0;
       const superseded = j.kind === 'qa' && jobs.find(x => x.kind === 'qa')?.id !== j.id;
       const awaiting = missing > 0 && !superseded;

@@ -10,6 +10,7 @@ import { seedState, uploadSource, runPreview, createProject, latestFiles } from 
 import { workFor, saveDetails, selectWorkSource, addWorkFiles, runWorkPreview } from './work-model.js';
 import { INTEGRITY_SITES, integrityDraft } from './integrity.js';
 import { importProjectFile, migrateCatalogRefs, originalSlots } from './project-files.js';
+import { startConsistency, finishConsistency, acceptConsistency, currentProspectus, resultProspectus, pendingIssues, associatedFiles, consistencyParagraphs, fileConsistencyState, CHECK_DURATION } from './consistency-model.js';
 
 test('opening the v2 workbench extends v1 storage without replacing files or existing drafts', () => {
   const state = seedState(), p = state.projects[0];
@@ -283,4 +284,97 @@ test('global dashboard aggregates projects, exposes QA missing materials and sup
   assert.equal(items.filter(i=>i.project===b.name)[0].label,'待补材料 · 演示');
   assert.ok(items.some(i=>i.project===a.name));assert.ok(items.some(i=>i.project===b.name));
   assert.ok(dashboardItems(state,a).every(i=>i.project===a.name));
+});
+
+test('consistency freezes exact project inputs and exposes checking, pending and historical dashboard states', () => {
+  const state=seedState(),p=state.projects[0],other=structuredClone(state.projects[1]);
+  const job=startConsistency(state,p), frozen=structuredClone(job.consistency!.snapshot);
+  assert.equal(job.consistency!.snapshot.source.id,p.files[1].id);
+  assert.equal(job.consistency!.snapshot.files.length,2);
+  assert.equal(dashboardItems(state,p).find(i=>i.id===job.id)!.group,'active');
+  assert.throws(()=>acceptConsistency(state,p,job.id,[]),/等待/);
+  finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION-1);assert.equal(job.consistency!.phase,'checking');
+  finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION);assert.equal(job.consistency!.phase,'complete');
+  assert.equal(dashboardItems(state,p).find(i=>i.id===job.id)!.group,'attention');
+  p.files[1].name='重命名输入';assert.deepEqual(job.consistency!.snapshot,frozen);
+  startConsistency(state,p);assert.equal(dashboardItems(state,p).find(i=>i.id===job.id)!.label,'已归档 · 演示');
+  assert.deepEqual(state.projects[1],other);
+});
+
+test('consistency rejects missing prerequisites, foreign inputs and foreign acceptance without mutations', () => {
+  const state=seedState(),p=state.projects[0],empty=state.projects[2];
+  assert.throws(()=>startConsistency(state,empty),/添加募集说明书/);
+  uploadSource(empty,{name:'只有募集书.docx',size:1});assert.throws(()=>startConsistency(state,empty),/没有可检查/);
+  assert.throws(()=>startConsistency(state,p,state.projects[1].files[0].id),/当前项目/);
+  assert.equal(state.jobs.length,0);
+  const job=startConsistency(state,p);finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION);
+  const before=structuredClone(state);
+  assert.throws(()=>acceptConsistency(state,state.projects[1],job.id,[]),/当前项目/);
+  assert.throws(()=>acceptConsistency(state,p,job.id,[{fileId:'foreign',issueIds:['income']}]),/不属于/);
+  assert.deepEqual(state,before);
+});
+
+test('accepting selected conflicts appends versions, preserves snapshots and supports idempotent partial updates', () => {
+  const state=seedState(),p=state.projects[0],job=startConsistency(state,p);
+  finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION);
+  const snapshot=structuredClone(job.consistency!.snapshot), item=job.consistency!.snapshot.files.find(f=>f.status==='conflict')!, old=structuredClone(p.files.find(f=>f.id===item.file.id)!);
+  const first=acceptConsistency(state,p,job.id,[{fileId:old.id,issueIds:['income']}])[0];
+  assert.equal(first.version,2);assert.equal(first.folder,old.folder);assert.equal(pendingIssues(job,item).length,1);
+  assert.equal(latestFiles(p).filter(f=>f.type==='original').length,1);
+  assert.equal(acceptConsistency(state,p,job.id,[{fileId:old.id,issueIds:['income']}]).length,0);
+  const second=acceptConsistency(state,p,job.id,[{fileId:old.id,issueIds:['debt']}])[0];
+  assert.equal(second.version,3);assert.equal(second.consistency!.issues.length,2);assert.equal(pendingIssues(job,item).length,0);
+  assert.deepEqual(p.files.find(f=>f.id===old.id),old);assert.deepEqual(job.consistency!.snapshot,snapshot);
+  assert.equal(job.fileIds.length,2);assert.equal(latestFiles(p).find(f=>f.type==='original')!.id,second.id);
+  const next=startConsistency(state,p);assert.equal(next.consistency!.snapshot.files.find(f=>f.file.id===second.id)!.status,'consistent');
+  assert.match(wordParts('更新示例',consistencyParagraphs(second),true)['word/document.xml'],/<w:ins /);
+  const restored=JSON.parse(JSON.stringify(state));assert.equal(restored.jobs[1].consistencyUpdates[old.id].fileId,second.id);
+});
+
+test('batch acceptance validates all files first and refuses a concurrently regenerated target', () => {
+  const state=seedState(),p=state.projects[0];p.draft.sourceId=p.files[1].id;p.draft.selected=['initiation','application'];
+  for(const type of p.draft.selected)saveTemplate(p,type,{name:type+'.docx',size:1});
+  runPreview(state,p,'generation');const job=startConsistency(state,p);finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION);
+  const requests=job.consistency!.snapshot.files.filter(f=>f.status==='conflict').map(f=>({fileId:f.file.id,issueIds:f.issues.map(i=>i.id)}));
+  p.draft.selected=['application'];runPreview(state,p,'generation');const before=structuredClone(p.files);
+  assert.throws(()=>acceptConsistency(state,p,job.id,requests),/关联文件已有/);
+  assert.deepEqual(p.files,before);assert.equal(job.fileIds.length,0);
+  const next=startConsistency(state,p);finishConsistency(state,Date.parse(next.createdAt)+CHECK_DURATION);
+  const nextRequests=next.consistency!.snapshot.files.filter(f=>f.status==='conflict').map(f=>({fileId:f.file.id,issueIds:f.issues.map(i=>i.id)}));
+  const files=acceptConsistency(state,p,next.id,nextRequests);assert.equal(files.length,3);
+  assert.equal(files.find(f=>f.type==='application')!.version,3);
+  assert.equal(acceptConsistency(state,p,next.id,nextRequests).length,0);
+});
+
+test('review result checks use the reviewed text and block acceptance after a new manual edit or source version', () => {
+  const state=seedState(),p=state.projects[0];selectWorkSource(p,'review',p.files[1].id);
+  const review=runWorkPreview(state,p,'review');review.reviewDecisions={consistency:{mode:'manual',text:'营业收入为 13.0 亿元（手动示例）。'}};
+  const source=resultProspectus(p,review)!;assert.equal(source.type,'review-clean');assert.equal(currentProspectus(p)!.id,source.id);
+  assert.ok(associatedFiles(p).every(f=>!f.type.startsWith('review-')&&f.type!=='prospectus-review'));
+  const job=startConsistency(state,p,source.id,review.id);finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION);
+  const file=job.consistency!.snapshot.files.find(f=>f.status==='conflict')!;
+  assert.match(file.issues[0].sourceText,/13.0/);
+  review.reviewDecisions.consistency.text='营业收入为 14.0 亿元（再次修改）。';
+  assert.throws(()=>acceptConsistency(state,p,job.id,[{fileId:file.file.id,issueIds:['income']}]),/复核修改已变化/);
+  const next=startConsistency(state,p);finishConsistency(state,Date.parse(next.createdAt)+CHECK_DURATION);
+  uploadSource(p,{name:'更新的募集书.docx',size:1});
+  assert.throws(()=>acceptConsistency(state,p,next.id,[{fileId:file.file.id,issueIds:['income']}]),/募集说明书/);
+  assert.match(file.issues[0].sourceText,/13.0/);assert.equal(job.fileIds.length,0);
+});
+
+test('project file markers follow the current scan and turn from conflict to synced without losing the deep link', () => {
+  const state=seedState(),p=state.projects[0],file=p.files[3];
+  assert.equal(fileConsistencyState(state,p,file)!.kind,'unchecked');
+  const job=startConsistency(state,p);assert.equal(fileConsistencyState(state,p,file)!.kind,'checking');
+  finishConsistency(state,Date.parse(job.createdAt)+CHECK_DURATION);
+  assert.deepEqual(fileConsistencyState(state,p,file),{kind:'conflict',count:2,jobId:job.id,fileId:file.id});
+  const part=acceptConsistency(state,p,job.id,[{fileId:file.id,issueIds:['income']}])[0];
+  assert.equal(fileConsistencyState(state,p,part)!.count,1);
+  const done=acceptConsistency(state,p,job.id,[{fileId:file.id,issueIds:['debt']}])[0];
+  assert.equal(fileConsistencyState(state,p,done)!.kind,'updated');
+  const next=startConsistency(state,p);finishConsistency(state,Date.parse(next.createdAt)+CHECK_DURATION);
+  assert.equal(fileConsistencyState(state,p,done)!.kind,'updated');
+  assert.equal(fileConsistencyState(state,p,p.files[2])!.kind,'manual');
+  uploadSource(p,{name:'较新募集书.docx',size:1});assert.equal(fileConsistencyState(state,p,done)!.kind,'stale');
+  assert.equal(fileConsistencyState(state,state.projects[1],state.projects[1].files[3])!.kind,'unchecked');
 });
