@@ -55,3 +55,10 @@ outputs/*
 
 !docs/product-decisions/2026-10-11-authoring-live-progress.md
 !docs/product-decisions/2026-10-15-material-case-templates.md
+
+# Local project-flow design preview (not production output).
+/.local-design/
+/apps/web/dist-project-design/
+!docs/design/
+!docs/design/project-materials-20261019/
+!docs/design/project-materials-20261019/**
