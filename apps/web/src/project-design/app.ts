@@ -1,3 +1,4 @@
+import { FLOWS, workView, projectDashboard, bindWork, bindProjectDashboard, type FlowMode } from './workflows';
 import { workspaceShell } from '../workspace-shell';
 import { prototypeIcon as ico } from '../prototype-design';
 import { esc, date } from '../ui';
@@ -8,10 +9,16 @@ import '../../../../product-prototype/public/styles.css';
 import '../../../../product-prototype/public/project-workspace.css';
 import '../prototype-adapter.css';
 import '../project-browser.css';
+import '../update-form.css';
+import '../quarter-controls.css';
+import '../review-workspace.css';
+import '../dashboard.css';
+import '../../../../product-prototype/public/optional-materials.css';
+import '../../../../product-prototype/public/source-prospectus.css';
 import './design.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
-document.title = 'BondBuddy · 项目材料与诚信核查 · 本地设计稿';
+document.title = 'BondBuddy · 项目工作台 · 本地设计稿 v2';
 let state: DesignState = seedState();
 let storageWarning = '';
 let storageBlocked = false;
@@ -28,7 +35,7 @@ let selectedProject = '';
 let projectSearch = '';
 let fileSearch = '';
 let fileStatus = 'all';
-let newProjectMode: 'generate' | 'integrity' | 'tasks' = 'tasks';
+let newProjectMode: FlowMode | 'tasks' = 'tasks';
 let activeModalTrigger: HTMLElement | null = null;
 const route = () => {
   const [path, query] = location.hash.replace(/^#/, '').split('?');
@@ -58,13 +65,13 @@ function steps(labels: string[], active: number) {
 function projectContext(p: Project, mode: string) {
   return `<div class="pd-context"><div class="pd-project-icon">${ico('folder')}</div><div><strong>${esc(p.name)}</strong><small>${esc(p.issuer)} · ${esc(p.market)}</small></div><a class="text-button" href="#${mode}">更换项目</a><a class="text-button" href="#${projectLink(p)}">项目文件 ${ico('chevron')}</a></div>`;
 }
-function projectPicker(mode: 'generate' | 'integrity') {
-  const material = mode === 'generate';
-  return `${pageHead(material ? 'MATERIAL GENERATION' : 'INTEGRITY CHECK', material ? '材料生成' : '诚信核查', material ? '选定项目和募集说明书，一次准备所需关联材料。' : '按项目管理核查对象，查询记录统一归入底稿文件。')}
-    ${steps(material ? ['选择项目', '选择募集说明书', '生成关联材料'] : ['选择项目', '添加核查对象', '核查结果与底稿'], 0)}
-    <section class="pd-panel"><div class="pd-section-head"><div><h2>选择本次工作的项目</h2><p class="muted">沿用项目资料，也可以从一个新项目开始。</p></div>${button(ico('plus') + '新建项目', 'new-project', false, `data-mode="${mode}"`)}</div>
+function projectPicker(mode: FlowMode) {
+  const flow = FLOWS[mode];
+  return `${pageHead(flow.eyebrow, flow.title, '先选择一个项目，沿用项目资料和已保存的工作；也可以新建项目。')}
+    ${steps([...flow.labels], 0)}
+    <section class="pd-panel"><div class="pd-section-head"><div><h2>选择本次工作的项目</h2><p class="muted">项目文件、填写内容与任务记录都归属于所选项目。</p></div>${button(ico('plus') + '新建项目', 'new-project', false, `data-mode="${mode}"`)}</div>
     <div class="pd-search">${ico('search')}<input id="project-picker-search" aria-label="搜索已有项目" placeholder="搜索项目名称或发行人" value="${esc(projectSearch)}" type="search"></div><div id="picker-list">${pickerRows()}</div>
-    <div class="pd-footer"><span id="picker-summary" class="muted">${selectedProject ? '已选择 1 个项目' : '请选择一个项目以继续'}</span>${button(`下一步：${material ? '选择募集说明书' : '添加核查对象'} ${ico('arrow')}`, 'continue-project', true, `${selectedProject ? '' : 'disabled'} data-mode="${mode}"`)}</div></section>`;
+    <div class="pd-footer"><span id="picker-summary" class="muted">${selectedProject ? '已选择 1 个项目' : '请选择一个项目以继续'}</span>${button(`下一步：${flow.labels[1]} ${ico('arrow')}`, 'continue-project', true, `${selectedProject ? '' : 'disabled'} data-mode="${mode}"`)}</div></section>`;
 }
 function pickerRows() {
   const items = state.projects.filter(p => `${p.name} ${p.issuer}`.toLowerCase().includes(projectSearch.trim().toLowerCase()));
@@ -118,7 +125,7 @@ function projectsView() {
 }
 function projectRows() {
   const items = state.projects.filter(p => `${p.name} ${p.issuer}`.toLowerCase().includes(projectSearch.trim().toLowerCase())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  return items.length ? `<div class="pd-table-wrap"><table class="pd-table"><thead><tr><th>项目名称</th><th>最近更新</th><th>项目文件</th><th>开始工作</th></tr></thead><tbody>${items.map(p => `<tr><td><a class="pd-project-title" href="#${projectLink(p)}">${esc(p.name)}</a><small>${esc(p.issuer)}</small><span class="pd-chip">${esc(p.market)}</span></td><td><time>${esc(date(p.updatedAt))}</time></td><td><a class="pd-files-entry" href="#${projectLink(p)}">${ico('folder')} 项目文件 <b>${latestFiles(p).filter(f => f.folder !== 'sources').length}</b>${ico('chevron')}</a><small>募集书 · 关联材料 · 核查底稿</small></td><td><div class="pd-row-links"><a href="#${flowLink('generate', p, 'source')}">材料生成</a><a href="#${flowLink('integrity', p, 'subjects')}">诚信核查</a></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="pd-empty">没有找到匹配的项目。</div>';
+  return items.length ? `<div class="pd-table-wrap"><table class="pd-table"><thead><tr><th>项目名称</th><th>最近更新</th><th>项目文件</th><th>开始工作</th></tr></thead><tbody>${items.map(p => `<tr><td><a class="pd-project-title" href="#${projectLink(p)}">${esc(p.name)}</a><small>${esc(p.issuer)}</small><span class="pd-chip">${esc(p.market)}</span></td><td><time>${esc(date(p.updatedAt))}</time></td><td><a class="pd-files-entry" href="#${projectLink(p)}">${ico('folder')} 项目文件 <b>${latestFiles(p).filter(f => f.folder !== 'sources').length}</b>${ico('chevron')}</a><small>募集书 · 关联材料 · 核查底稿</small></td><td><div class="pd-row-links"><a href="#${flowLink('dashboard', p, 'overview')}">工作台</a><a href="#${flowLink('update', p, 'details')}">更新募集书</a><a href="#${flowLink('review', p, 'materials')}">复核募集书</a><a href="#${flowLink('generate', p, 'source')}">材料生成</a><a href="#${flowLink('integrity', p, 'subjects')}">诚信核查</a></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="pd-empty">没有找到匹配的项目。</div>';
 }
 function fileRows(p: Project, folder: string) {
   const existing = latestFiles(p);
@@ -135,21 +142,20 @@ function filesView(p: Project) {
   const folder = requested === 'all' || FOLDERS.some(f => f.id === requested) ? requested : 'all';
   const latest = latestFiles(p);
   const count = (id: string) => latest.filter(f => belongsTo(f.folder, id)).length;
-  return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), link('材料生成', flowLink('generate', p, 'source')) + link('诚信核查', flowLink('integrity', p, 'subjects')))}
+  return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), link('项目工作台', flowLink('dashboard', p, 'overview')) + link('材料生成', flowLink('generate', p, 'source')) + link('诚信核查', flowLink('integrity', p, 'subjects')))}
     <div class="pd-file-breadcrumb"><a href="#tasks">全部项目</a>${ico('chevron')}<span>${esc(p.name)}</span>${ico('chevron')}<strong>${folder === 'all' ? '全部成果文件' : folderName(folder)}</strong></div>
     <div class="pd-file-workspace"><nav class="pd-folder-tree" aria-label="项目文件目录"><a class="pd-tree-all ${folder === 'all' ? 'active' : ''}" href="#${projectLink(p)}" ${folder === 'all' ? 'aria-current="page"' : ''}>全部成果文件 <span>${count('all')}</span></a>${FOLDERS.map(f => `<a class="pd-tree-row ${'parent' in f ? 'child' : ''} ${folder === f.id ? 'active' : ''}" href="#${projectLink(p, f.id)}" ${folder === f.id ? 'aria-current="page"' : ''}>${ico('folder')}<span>${f.id === 'sources' ? '' : f.id + ' '}${f.name}</span><small>${count(f.id)}</small></a>`).join('')}<p class="pd-note">原券商编号保留。原始材料单独保存，供项目内其他工作复用。</p></nav>
     <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><span class="muted">${count(folder)} 份已有文件</span></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option></select></div><div id="file-list">${fileRows(p, folder)}</div></section></div>`;
 }
 function notFound(title: string, target = 'tasks') { return `${pageHead('WORKSPACE', title, '请返回项目列表重新选择。')}${link('返回', target, true)}`; }
-function dashboardView() {
-  return `${pageHead('WORKSPACE', '开始本次工作', '围绕同一个项目，准备材料、完成核查、管理文件。')}<div class="pd-dashboard-grid">${[{ title: '材料生成', desc: '选择项目与募集书，按目录准备 12 类关联材料。', href: 'generate', icon: 'spark' }, { title: '诚信核查', desc: '添加企业与人员名单，核查记录自动归入底稿文件。', href: 'integrity', icon: 'shield' }, { title: '全部项目', desc: '查看每个项目的募集书、材料、底稿及原始资料。', href: 'tasks', icon: 'folder' }].map(x => `<a class="pd-dashboard-card" href="#${x.href}">${ico(x.icon)}<h2>${x.title}</h2><p>${x.desc}</p><span>开始 ${ico('arrow')}</span></a>`).join('')}</div>`;
-}
 function render() {
   const { path, query } = route();
   const p = projectForRoute();
-  let section = path === 'generate' || path === 'integrity' || path === 'dashboard' ? path : 'projects';
+  let section = path === 'update' ? 'workspace' : ['generate', 'integrity', 'dashboard', 'review'].includes(path) ? path : 'projects';
   let html: string;
-  if (path === 'generate' || path === 'integrity') {
+  if (path === 'dashboard' || path === 'update' || path === 'review') {
+    html = !query.has('project') ? projectPicker(path) : !p ? notFound('项目不存在') : projectContext(p, path) + (path === 'dashboard' ? projectDashboard(p) : workView(p, path, query, state));
+  } else if (path === 'generate' || path === 'integrity') {
     if (!query.has('project')) html = projectPicker(path);
     else if (!p) html = notFound('项目不存在');
     else if (query.get('step') === 'result') html = resultView(p, query.get('job') ?? '');
@@ -163,17 +169,19 @@ function render() {
       html = path === 'integrity' ? integrityPicker(p) : query.get('step') === 'materials' ? materialPicker(p) : sourcePicker(p);
     }
   } else if (path.startsWith('/projects/')) html = p ? filesView(p) : notFound('项目不存在');
-  else if (path === 'dashboard') html = dashboardView();
   else if (path === 'tasks' || path === '/') html = projectsView();
-  else { section = path; html = `${pageHead('DESIGN PREVIEW', path === 'update' ? '更新募集说明书' : path === 'review' ? '复核募集说明书' : '设计预览', '本轮可交互设计覆盖材料生成、诚信核查和项目文件。')}${link('查看本轮设计', 'dashboard', true)}`; }
+  else { section = path; html = `${pageHead('DESIGN PREVIEW', '账号与服务', '本地设计使用独立数据，无需登录。请从工作台选择项目开始。')}${link('查看本轮设计', 'dashboard', true)}`; }
   root.innerHTML = workspaceShell(`<div class="pd-design-notice"><span><b>本地设计稿</b> · 合成项目 · 生成与核查为演示</span>${button('预览说明', 'design-info')}</div>${storageWarning ? `<p class="pd-alert" role="alert">${esc(storageWarning)}</p>` : ''}${notification ? `<p class="pd-feedback" role="status">${esc(notification)}</p>` : ''}<div id="flow-error" class="pd-alert" role="alert" hidden></div>${html}`, section, true);
   root.querySelector('.prototype-app')?.classList.add('pd-app');
   root.querySelector('[data-account-name]')!.textContent = '本地设计预览';
   root.querySelector('#logout')?.remove();
-  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v1 · 本地保存';
+  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v2 · 本地保存';
   root.querySelector('.credit-wallet')!.innerHTML = '<div class="pd-local-save">本地独立数据<br><small>不连接线上账号和项目</small></div>';
   notification = '';
   bind();
+  if (p && (path === 'update' || path === 'review')) bindWork(root, p, path, state, { save, render, go, error: showError, preview });
+  if (p && path === 'dashboard') bindProjectDashboard(root, p, state);
+  save();
 }
 function showError(error: unknown) { const element = root.querySelector<HTMLElement>('#flow-error')!; element.hidden = false; element.textContent = error instanceof Error ? error.message : '操作未完成，请重试。'; element.scrollIntoView({ block: 'nearest' }); }
 function modal(title: string, content: string) {
@@ -201,7 +209,7 @@ function openNewProject(mode: typeof newProjectMode) {
   const dialog = modal('新建项目', `<form id="new-project-form"><p class="muted">建立项目后，募集书、关联材料和核查底稿都保存在这里。</p><label class="pd-field">项目名称<input name="name" required maxlength="150" placeholder="例如：澄川城投 2026 年公司债"></label><label class="pd-field">发行人名称<input name="issuer" required maxlength="150" placeholder="填写发行人全称"></label><label class="pd-field">发行市场与品种<select name="market"><option>深交所 · 普通私募公司债</option><option>上交所 · 普通私募公司债</option><option>上交所 · 公开发行公司债</option><option>深交所 · 公开发行公司债</option><option>交易商协会 · MTN</option><option>交易商协会 · PPN</option><option>其他</option></select></label><p id="create-error" class="pd-alert" role="alert" hidden></p><div class="pd-footer"><span class="muted">仅保存到本地设计稿</span><button class="btn primary" type="submit">创建并继续 ${ico('arrow')}</button></div></form>`);
   dialog.querySelector('form')!.addEventListener('submit', e => {
     e.preventDefault(); const form = new FormData(e.target as HTMLFormElement);
-    try { const p = createProject(state, String(form.get('name')), String(form.get('issuer')), String(form.get('market'))); selectedProject = p.id; save(); dialog.close(); notify('项目已创建。'); go(newProjectMode === 'tasks' ? projectLink(p) : flowLink(newProjectMode, p, newProjectMode === 'generate' ? 'source' : 'subjects')); }
+    try { const p = createProject(state, String(form.get('name')), String(form.get('issuer')), String(form.get('market'))); selectedProject = p.id; save(); dialog.close(); notify('项目已创建。'); go(newProjectMode === 'tasks' ? projectLink(p) : flowLink(newProjectMode, p, FLOWS[newProjectMode as FlowMode].step)); }
     catch (error) { const target = dialog.querySelector<HTMLElement>('#create-error')!; target.hidden = false; target.textContent = (error as Error).message; }
   });
 }
@@ -257,10 +265,10 @@ root.addEventListener('click', event => {
   const action = trigger.dataset.action; const p = projectForRoute();
   try {
     if (action === 'new-project') { openNewProject(trigger.dataset.mode as typeof newProjectMode); return; }
-    if (action === 'continue-project') { const selected = state.projects.find(p => p.id === selectedProject); if (selected) go(flowLink(trigger.dataset.mode!, selected, trigger.dataset.mode === 'generate' ? 'source' : 'subjects')); return; }
+    if (action === 'continue-project') { const selected = state.projects.find(p => p.id === selectedProject); if (selected) go(flowLink(trigger.dataset.mode!, selected, FLOWS[trigger.dataset.mode as FlowMode].step)); return; }
     if (action === 'design-info') {
-      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：选择或新建项目、记录募集书、批量选择关联材料、维护诚信核查名单、按项目浏览文件及历史版本。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
-      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v1.json', JSON.stringify(state, null, 2), 'application/json')); return;
+      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：项目工作台、更新与复核募集书、材料生成、诚信核查、项目文件与历史版本。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
+      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v2.json', JSON.stringify(state, null, 2), 'application/json')); return;
     }
     if (!p) return;
     if (action === 'continue-source') { if (!sourceOf(p)) throw new Error('请先选择募集说明书。'); go(flowLink('generate', p, 'materials')); }

@@ -1,6 +1,77 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { seedState, uploadSource, runPreview, createProject, latestFiles } from './model.js';
+import { workFor, saveDetails, selectWorkSource, addWorkFiles, runWorkPreview } from './work-model.js';
+
+test('opening the v2 workbench extends v1 storage without replacing files or existing drafts', () => {
+  const state = seedState(), p = state.projects[0];
+  p.draft.sourceId = p.files[0].id; p.draft.requirements = '保留原设计输入';
+  const before = structuredClone(p); workFor(p);
+  assert.deepEqual(p.files, before.files); assert.deepEqual(p.draft, before.draft);
+  assert.equal(workFor(p).details.issuer_name, p.issuer);
+  assert.equal(workFor(p).details.market, 'szse');
+  assert.equal(workFor(state.projects[1]).details.offering, 'mtn');
+  assert.equal(JSON.parse(JSON.stringify(state)).schema, 1);
+});
+
+test('update, review and generation keep independent source choices within the same project', () => {
+  const state = seedState(), p = state.projects[0]; p.draft.sourceId = p.files[0].id;
+  selectWorkSource(p, 'review', p.files[1].id);
+  addWorkFiles(p, 'update', 'historical', [{ name: '更新依据.docx', size: 300 }]);
+  assert.equal(p.draft.sourceId, p.files[0].id);
+  assert.equal(workFor(p).review.sourceId, p.files[1].id);
+  assert.notEqual(workFor(p).update.sourceId, workFor(p).review.sourceId);
+  assert.throws(() => selectWorkSource(p, 'update', state.projects[1].files[0].id), /当前项目/);
+});
+
+test('update and review results retain immutable inputs, versions and their project folders', () => {
+  const state = seedState(), p = state.projects[0], work = workFor(p);
+  selectWorkSource(p, 'update', p.files[1].id); work.update.requirements = '第一轮更新';
+  const first = runWorkPreview(state, p, 'update'), frozen = structuredClone(first);
+  work.update.requirements = '第二轮更新'; work.details.update_details!.underwriting = '新承销安排';
+  const second = runWorkPreview(state, p, 'update');
+  assert.deepEqual(first, frozen); assert.equal(first.input!.draft.requirements, '第一轮更新');
+  assert.equal(p.files.find(f => f.id === first.fileIds[0])!.version, 3);
+  assert.equal(p.files.find(f => f.id === second.fileIds[0])!.version, 4);
+  selectWorkSource(p, 'review', second.fileIds[0]);
+  const review = runWorkPreview(state, p, 'review'), output = p.files.find(f => f.id === review.fileIds[0])!;
+  assert.equal(output.folder, '4.2'); assert.equal(output.sourceVersion, 4);
+  assert.equal(state.projects[1].files.length, 4);
+});
+
+test('work execution rejects missing or cross-project inputs before creating any result', () => {
+  const state = seedState(), p = state.projects[0], work = workFor(p);
+  assert.throws(() => runWorkPreview(state, p, 'review'), /募集说明书/);
+  work.review.sourceId = state.projects[1].files[0].id;
+  assert.throws(() => runWorkPreview(state, p, 'review'), /募集说明书/);
+  selectWorkSource(p, 'review', p.files[0].id);
+  work.review.attachments = [{ fileId: state.projects[1].files[2].id, role: 'audit' }];
+  assert.throws(() => runWorkPreview(state, p, 'review'), /当前项目/);
+  assert.equal(state.jobs.length, 0); assert.equal(p.files.length, 4);
+});
+
+test('support uploads validate atomically and reuse original files without crossing workflows', () => {
+  const p = seedState().projects[0], count = p.files.length;
+  assert.throws(() => addWorkFiles(p, 'review', 'audit', [{ name: '报告.pdf', size: 50 }, { name: '空文件.pdf', size: 0 }]), /不能为空/);
+  assert.equal(p.files.length, count);
+  addWorkFiles(p, 'review', 'audit', [{ name: '报告.pdf', size: 50 }]);
+  addWorkFiles(p, 'update', 'audit', [{ name: '报告.pdf', size: 50 }]);
+  assert.equal(p.files.length, count + 1);
+  assert.equal(workFor(p).review.attachments[0].fileId, workFor(p).update.attachments[0].fileId);
+  workFor(p).review.attachments = [];
+  assert.equal(workFor(p).update.attachments.length, 1); assert.equal(p.files.length, count + 1);
+});
+
+test('shared project details preserve rich update inputs and the other project identity', () => {
+  const state = seedState(), p = state.projects[0], other = structuredClone(state.projects[1]);
+  const details = structuredClone(workFor(p).details); details.update_details!.underwriting = '示例承销安排';
+  saveDetails(p, 'update', details);
+  const reviewEdit = structuredClone(workFor(p).details); reviewEdit.update_details!.reporting_cutoff = '2026-06-30';
+  saveDetails(p, 'review', reviewEdit);
+  assert.equal(workFor(p).details.update_details!.underwriting, '示例承销安排');
+  assert.equal(workFor(p).details.update_details!.reporting_cutoff, '2026-06-30');
+  assert.deepEqual(state.projects[1], other);
+});
 
 test('generation cannot borrow a source from another project', () => {
   const state = seedState(), p = state.projects[0];

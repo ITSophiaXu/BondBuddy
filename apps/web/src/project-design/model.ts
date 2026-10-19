@@ -1,10 +1,17 @@
 import { DOCUMENTS, type FolderId } from './catalog.js';
+import type { Static } from '@sinclair/typebox';
+import type { schemas, SourceProspectus } from '@bondbuddy/contracts';
+
+export type ProjectDetails = Static<typeof schemas.ProjectCreateRequest>;
+export type WorkKind = 'update' | 'review';
+export type WorkDraft = { sourceId: string; attachments: { fileId: string; role: string }[]; requirements: string; sources: SourceProspectus[]; touchedAt?: string };
+export type ProjectWork = { details: ProjectDetails; update: WorkDraft; review: WorkDraft };
 
 export type Subject = { id: string; kind: 'company' | 'person'; name: string; role: string; identifier: string };
-export type ProjectFile = { id: string; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity'; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number };
+export type ProjectFile = { id: string; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | WorkKind; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number };
 export type FlowDraft = { sourceId: string; selected: string[]; requirements: string; attachments: string[]; subjects: Subject[] };
-export type Project = { id: string; name: string; issuer: string; market: string; updatedAt: string; files: ProjectFile[]; draft: FlowDraft };
-export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity'; fileIds: string[]; createdAt: string; subjectCount?: number };
+export type Project = { id: string; name: string; issuer: string; market: string; updatedAt: string; files: ProjectFile[]; draft: FlowDraft; work?: ProjectWork };
+export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity' | WorkKind; fileIds: string[]; createdAt: string; subjectCount?: number; input?: { draft: WorkDraft; details: ProjectDetails } };
 export type DesignState = { schema: 1; projects: Project[]; jobs: Job[] };
 export const STORAGE_KEY = 'bondbuddy:project-materials-design:v1';
 export const newId = () => crypto.randomUUID();
@@ -51,7 +58,7 @@ export function subjectError(subjects: Subject[]) {
   }
   return '';
 }
-export function runPreview(state: DesignState, project: Project, kind: Job['kind']): Job {
+export function runPreview(state: DesignState, project: Project, kind: 'generation' | 'integrity'): Job {
   const draft = project.draft;
   const source = project.files.find(f => f.id === draft.sourceId && f.type === 'prospectus');
   const types = kind === 'generation' ? DOCUMENTS.filter(d => d.kind === 'generation' && draft.selected.includes(d.id)) : DOCUMENTS.filter(d => d.kind === 'integrity' && draft.subjects.some(s => s.kind === (d.id === 'company-integrity' ? 'company' : 'person')));

@@ -1,3 +1,4 @@
+import { updateMaterialPartitions } from './workspace-material-groups';
 import { workspaceShell } from './workspace-shell';
 import { duplicateUploadNotices, isReusedUpload } from './duplicate-upload';
 import { renderFinancialUploadGuidance } from './financial-upload-guidance';
@@ -684,14 +685,7 @@ function renderMaterialPartitions(projectId: string) {
   const history = null;
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
   // Optional-materials.html extends the workspace prototype; role values still come from contracts.
-  const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: readonly UploadRole[]; optional?: boolean }[] = [
-    {label:'历史／参考募集书（选填）',roles:M1_MATERIAL_PARTITIONS[0].roles.filter(role => role.code === 'historical' || materials.some(m => m.role === role.code)).map(role => ({...role,label:role.code === 'historical' ? '历史／参考募集书' : '已保存参考稿'})),primary:['historical']},
-    {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:['audit']},
-    {label:'募投项目与权证材料',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:['fundUse']},
-    {label:'债务、授信与担保（选填）',roles:M1_MATERIAL_PARTITIONS[4].roles,primary:['debt','bankFacilities','guarantee','collateralMaterials'],optional:true},
-    {label:'公司、经营与信用（选填）',roles:[...M1_MATERIAL_PARTITIONS[5].roles,...M1_MATERIAL_PARTITIONS[3].roles].filter(role=>role.code!=='other'),primary:['governance','corporate','business','rating'],optional:true},
-    {label:'其他补充材料（选填）',roles:M1_MATERIAL_PARTITIONS[5].roles.filter(role=>role.code==='other'),primary:['other'],optional:true}
-  ];
+  const partitions = updateMaterialPartitions(materials);
   const groups = partitions.map((partition, index) => `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => partition.primary.includes(role.code) === primary).filter(role => {
     const relevant = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     return relevant || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code);

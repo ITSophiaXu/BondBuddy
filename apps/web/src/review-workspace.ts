@@ -1,7 +1,10 @@
+import { reviewProjectFields, bindReviewProjectFields, type ReviewProjectFields } from './review-project-fields';
+export { reviewProjectFields, bindReviewProjectFields } from './review-project-fields';
+import { reviewMaterialGroups } from './workspace-material-groups';
 import { duplicateUploadMessage, duplicateUploadNotices, isReusedUpload, type DuplicateUploadNotice } from './duplicate-upload';
-import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewDraftInputSchema, ReviewExecutionRequestSchema,
+import { MARKET_LABELS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewDraftInputSchema, ReviewExecutionRequestSchema,
   type ReviewWorkspace as Workspace, type ReviewContext, type ReviewDraftInput, type ReviewExecutionRequest,
-  ReviewProposalAdoptionRequestSchema, type ReviewMaterialPin, type ReviewFinding, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal, type ReviewPlanRequest, type Run, type Market, type Offering } from '@bondbuddy/contracts';
+  ReviewProposalAdoptionRequestSchema, type ReviewMaterialPin, type ReviewFinding, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewAcceptedProposal, type ReviewPlanRequest, type Run } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { ArtifactDownloads, artifactError } from './artifact-download';
 import { ReviewApi } from './review-api';
@@ -13,7 +16,7 @@ import { DYNAMIC_REVIEW_BILLING_TASKS } from '@bondbuddy/contracts';
 import { projectListContext, withProjectContext, projectBackLink, projectSection } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { QUARTER_ENDS, cutoffSelection, quarterCutoff } from './reporting-cutoff';
-import { blankDraft, generatedProjectName, validateDraft } from './form-model';
+import { blankDraft, validateDraft } from './form-model';
 import { RevisionHandlingDialog } from './review-revision-handling';
 import { dimensionLabels, conclusionLabels, findingHtml, reportSummary, followUpHtml, evidenceHtml, rulesHtml, sourceLocator } from './review-presentation';
 import { executionIdentity, isActiveRun, runStateLabel } from './review-state';
@@ -308,7 +311,7 @@ export class ReviewWorkspace {
       ? `还有 ${pending} 份材料正在上传或保存，可继续添加文件。请保持页面打开。`
       : failed ? `${failed} 份文件尚未保存，请重试或移除失败文件后开始。` : '';
     const pendingMaterialIds=new Set([...this.uploadRows.values()].flatMap(row=>row.material?[row.material.material_id]:[]));
-    const groups=[{title:'待复核募集书',roles:['historical','reference'],primary:'historical'}, {title:'审计报告 / 财务报表及附注',roles:['audit','financial','interimFinancial','notes'],primary:'audit'}, {title:'其他核验材料',roles:Object.keys(roleLabels).filter(r=>!['historical','reference','audit','financial','interimFinancial','notes'].includes(r)),primary:'other'}];
+    const groups=reviewMaterialGroups();
     const fileRow=(m:Dto<'MaterialResponse'>)=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(m.filename)}</strong><span>${esc(roleLabels[m.role]??'其他材料')} · ${(m.byte_size/1024).toFixed(1)} KB</span><p class="material-file-status">已保存</p></div><div class="material-file-actions"><button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(m.material_id)}" aria-label="删除 ${esc(m.filename)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>${this.deletingMaterial===m.material_id?'正在删除…':'删除'}</button></div></li>`;
     const role=(r:string,showTitle=true)=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div>${showTitle?`<strong>${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}</strong>`:''}<span>${r==='historical'?'上传需要复核的募集书，支持 Word / PDF':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" multiple accept="${r==='historical'||r==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${materials.filter(m=>m.role===r&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>row.role===r).map(([key,row])=>`<li class="material-file-row" data-review-upload-key="${esc(key)}"><div class="material-file-main"><strong>${esc(row.file.name)}</strong><p class="material-file-status ${row.error?'material-file-error':''}" role="status">${esc(row.state)}</p></div>${row.error?`<div class="material-file-actions"><button class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}">重试此文件</button>${row.material?`<button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(row.material.material_id)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>删除</button>`:``}${!row.material?`<button class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}">移除此行</button>`:''}</div>`:''}</li>`).join('')}${duplicateUploadNotices([...this.duplicateUploads.values()].filter(n=>n.material.role===r))}</ul></li>`;
     if(!host.querySelector('#review-upload-groups'))host.innerHTML='<div id="review-materials-before"></div><div id="review-upload-groups"></div><div id="review-materials-after"></div>';
@@ -775,25 +778,6 @@ export class ReviewWorkspace {
   private dialogStatus(text:string){const target=this.dialog?.querySelector('#review-dialog-status');if(target)target.textContent=text;}
 }
 
-type ReviewProjectFields=Pick<Dto<'ProjectResponse'>,'name'|'issuer_name'|'market'|'offering'|'update_details'>;
-export function reviewProjectFields(value:ReviewProjectFields,autoName=false){
-  const period=cutoffSelection(value.update_details?.reporting_cutoff??null);
-  const option=(key:string,label:string,selected:unknown)=>`<option value="${esc(key)}"${key===selected?' selected':''}>${esc(label)}</option>`;
-  return `<div class="review-form-row"><div><label for="issuer">发行人全称</label><input id="issuer" name="issuer"${autoName?' required':''} maxlength="200" value="${esc(value.issuer_name??'')}" placeholder="填写待复核募集书的发行人" aria-describedby="review-issuer-note"><p id="review-issuer-note" class="review-field-note">填写法定全称，用于识别本次复核主体。</p></div>${autoName?`<div><label for="generated-review-name">项目名称 <span class="optional">自动生成</span></label><output id="generated-review-name" for="issuer market offering" aria-live="polite" aria-describedby="review-name-note">${esc(generatedProjectName(value.issuer_name,value.market,value.offering,'review'))||'填写发行人后自动生成'}</output><p id="review-name-note" class="review-field-note">无需填写，创建后可在项目信息中修改。</p></div>`:`<div><label for="name">项目名称</label><input id="name" name="name" required maxlength="160" value="${esc(value.name)}"></div>`}<div><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${Object.entries(MARKET_LABELS).map(([key,label])=>option(key,label,value.market)).join('')}</select></div><div><label for="offering">品种</label><select id="offering" name="offering"${value.market?'':' disabled'}><option value="">${value.market?'请选择':'请先选择发行市场'}</option>${(value.market?MARKET_OFFERINGS[value.market]:[]).map(key=>option(key,OFFERING_LABELS[key],value.offering)).join('')}</select></div></div><div class="review-period"><label for="reporting-year">最新报告期</label><div class="period-row"><select id="reporting-year" name="reporting_year" aria-label="最新报告期年份">${period.years.map(year=>option(year,`${year} 年`,period.year)).join('')}</select><div class="quarter-grid">${QUARTER_ENDS.map(([q,label])=>`<label class="quarter"><input type="radio" name="reporting_quarter" value="${q}"${period.quarter===q?' checked':''}>${label}</label>`).join('')}</div></div>${period.legacy?`<p class="review-muted" id="legacy-cutoff">已保存报告期：${esc(value.update_details?.reporting_cutoff)}；选择期末后更新。</p>`:''}</div>`;
-}
-export function bindReviewProjectFields(form:HTMLFormElement,changed?:(value:ReviewProjectFields)=>void,initial?:ReviewProjectFields){
-  const market=form.querySelector<HTMLSelectElement>('#market')!,offering=form.querySelector<HTMLSelectElement>('#offering')!;
-  // Editing the compact review form must retain earlier project details that it does not display.
-  const details=structuredClone(initial?.update_details??blankDraft().update_details!);
-  let periodChanged=false;
-  const preview=form.querySelector<HTMLOutputElement>('#generated-review-name');
-  const read=()=>{const data=new FormData(form),issuer=String(data.get('issuer')??'').trim()||null;return {name:preview?generatedProjectName(issuer,market.value as Market||null,offering.value as Offering||null,'review'):String(data.get('name')??'').trim(),issuer_name:issuer,market:market.value as Market||null,offering:offering.value as Offering||null,kind:'review' as const,update_details:{...details,reporting_cutoff:periodChanged?quarterCutoff(String(data.get('reporting_year')),String(data.get('reporting_quarter'))):details.reporting_cutoff}};};
-  const notify=()=>{const {kind,...fields}=read();if(preview)preview.textContent=fields.name||'填写发行人后自动生成';changed?.(fields);};
-  market.addEventListener('change',()=>{const options=market.value?MARKET_OFFERINGS[market.value as Market]:[];offering.disabled=!market.value;offering.innerHTML='<option value="">请选择</option>'+options.map(value=>`<option value="${value}">${OFFERING_LABELS[value]}</option>`).join('');});
-  form.addEventListener('input',event=>{const target=event.target as HTMLInputElement;if(target.name==='reporting_year'||target.name==='reporting_quarter'){periodChanged=true;form.querySelector('#legacy-cutoff')?.remove();}if(target instanceof HTMLInputElement)notify();});
-  form.addEventListener('change',event=>{if((event.target as HTMLSelectElement).name==='reporting_year')periodChanged=true;notify();});
-  return read;
-}
 export function renderNewReview(api:ApiClient,shell:(html:string,section:string)=>void,current:()=>boolean,handoffQuery=new URLSearchParams()){
   shell(`<div class="review-workspace"><div class="page-head"><div><div class="eyebrow">PROSPECTUS REVIEW</div><h1>复核募集说明书</h1><p>提供复核材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1,'复核流程')}<div id="business-handoff"></div><form id="review-create-form" class="review-panel review-create"><h2>准备复核项目</h2><p class="review-muted review-create-intro"><span>填写待复核募集书的基本信息，再上传募集书和核验材料。</span><span class="required">必填：发行人全称</span></p>${reviewScope()}${reviewProjectFields({...blankDraft(),kind:'review'} as ReviewProjectFields,true)}<p id="review-create-status" class="form-message" role="status"></p><div class="review-form-actions"><button class="btn primary" type="submit">创建项目，继续提供材料</button><a class="btn secondary" href="#dashboard">取消</a></div></form></div>`,'review');
   void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,current);const form=document.querySelector<HTMLFormElement>('#review-create-form')!,read=bindReviewProjectFields(form);
