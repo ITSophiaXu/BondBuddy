@@ -20,7 +20,8 @@ export class ProspectusPanel {
   async refresh(){
     if(this.busy)return;
     const state=await this.api.prospectusVersions(this.id,this.controller.signal);
-    if(this.controller.signal.aborted)return;this.state=state;this.render();
+    if(this.controller.signal.aborted||this.state&&(state.selection_revision<this.state.selection_revision||state.versions.length<this.state.versions.length))return;
+    this.state=state;this.render();
   }
   private render(){
     if(!this.state)return;
@@ -69,8 +70,17 @@ export class ProspectusPanel {
         sha256:[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('')};
       const pending=this.pendingUpload,{sha256}=pending;
       const input={byte_size:file.size,sha256};
+      // A lost PUT/completion response must be reconciled before retransmitting bytes.
+      if(pending.upload&&!pending.material){
+        try{pending.material=await this.api.completeUpload(this.id,pending.upload.upload_id,input,this.controller.signal);}
+        catch(e){
+          if(!(e instanceof ApiError)||![404,422].includes(e.status)||e.status!==404&&e.code!=='MATERIAL_UNREADABLE')throw e;
+          if(e.status===404||Date.parse(pending.upload.expires_at)<=Date.now())pending.upload=undefined;
+          pending.sent=false;
+        }
+      }
       pending.upload??=await this.api.createUpload(this.id,{...input,filename:file.name,media_type:ext==='docx'?M1_UPLOAD_MIME_TYPES[0]:M1_UPLOAD_MIME_TYPES[1],role:'historical'},this.controller.signal);
-      if(!pending.sent){
+      if(!pending.material&&!pending.sent){
         await this.api.uploadBytes(pending.upload.upload_url,file,(bytes,total)=>this.status(`正在上传 ${Math.floor(bytes/total*100)}%…`),this.controller.signal);
         pending.sent=true;
       }

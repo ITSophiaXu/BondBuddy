@@ -711,9 +711,11 @@ export class ProjectExecution {
       const run = await this.api.run(id, this.controller.signal);
       if (!this.active || readVersion !== this.runReadVersion || this.run?.run_id !== id) return;
       if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      const delivered=run.state==='succeeded'&&this.run.state!=='succeeded';
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
       this.run = run;this.watchRun(run);
+      if(delivered)this.onDelivered?.();
       // Billing may settle/release independently of the run state; refresh on every poll.
       void this.loadCharge();
       // Read all new pages: a reconnect must not lose the actual pause/error reason.
