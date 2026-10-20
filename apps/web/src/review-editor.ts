@@ -19,7 +19,7 @@ export class ReviewEditor {
     try{
       const [state,history]=await Promise.all([this.api.request<ReviewEditorResponse>('GET',this.path(`review-executions/${encodeURIComponent(run)}/editor`),undefined,{},this.signal),this.api.request<{items:ReviewHistoryEntry[]}>('GET',this.path('review-history'),undefined,{},this.signal)]);
       if(!this.live()||generation!==this.generation)return;
-      this.state=state;this.history=history.items.filter(h=>h.artifacts.some(a=>a.kind==='clean'));this.dirty=false;this.pending=undefined;
+      this.state=state;this.history=history.items.filter(h=>['succeeded','test_completed'].includes(h.run.state)&&h.operation!=='revision'&&h.artifacts.some(a=>a.kind==='clean'));this.dirty=false;this.pending=undefined;
       try{const saved=JSON.parse(localStorage.getItem(this.cache)??'null');if(saved?.sha256===state.sha256&&Array.isArray(saved.decisions)&&saved.decisions.length===state.snapshot.issues.length){for(const issue of state.snapshot.issues){const d=saved.decisions.find((d:any)=>d.id===issue.id);if(d&&['suggested','original','manual'].includes(d.decision)&&typeof d.manual_text==='string')Object.assign(issue,d);}this.dirty=true;this.pending=saved.pending;}}catch{/* Server version remains available. */}
       this.selected=state.snapshot.issues[0]?.id??'';this.paint();
     }catch(e){if(this.live()&&generation===this.generation){host.innerHTML=`<p role="alert">${esc(friendlyError(e))}</p><button class="btn secondary" data-reload-editor>重试读取复核结果</button>`;host.querySelector('[data-reload-editor]')!.addEventListener('click',()=>void this.mount(host,run,artifacts));}}
