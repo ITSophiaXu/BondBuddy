@@ -63,7 +63,7 @@ function load(){
     if(!state.stoppedAt||state.ready)throw Error('Legacy state has no verified stop; inspect its processes before migration');
     writeFileSync(join(runtime,'services-legacy-'+randomUUID()+'.json'),JSON.stringify(state,null,2));state=null;
   }
-  state??={schemaVersion:2,productCommit:'6cd5d2cb254a25963b79f44313440a64c6c38660',baseURL,phase:'stopped',ready:false,modelReady:false,processes:{},pending:{}};
+  state??={schemaVersion:2,baseURL,phase:'stopped',ready:false,modelReady:false,processes:{},pending:{}};
   reconcile(state);return state;
 }
 function checkPorts(state){
@@ -110,7 +110,7 @@ async function postgresReady(state){
 async function setupDatabases(){
   const admin=new Pool({connectionString:databaseURL.replace(/\/[^/]+$/,'/postgres'),connectionTimeoutMillis:5000,query_timeout:5000});
   try{
-    for(const name of ['bb_integration_20261012','bb_integration_template_20261012'])
+    for(const name of [new URL(databaseURL).pathname.slice(1),new URL(templateURL).pathname.slice(1)])
       if(!(await admin.query('SELECT 1 FROM pg_database WHERE datname=$1',[name])).rowCount)await admin.query(`CREATE DATABASE ${name}`);
   }finally{await admin.end();}
   for(const [name,url] of [['app',databaseURL],['template',templateURL]])
@@ -134,7 +134,8 @@ async function assertIdle(state){
   await postgresReady(state);
   const pool=new Pool({connectionString:databaseURL,connectionTimeoutMillis:5000,query_timeout:5000});
   try{
-    const tests=await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname LIKE 'bb_integration_template_20261012_t%'");
+    const prefix=new URL(templateURL).pathname.slice(1,41)+'_t';
+    const tests=await pool.query('SELECT count(*)::int AS n FROM pg_stat_activity WHERE starts_with(datname,$1)',[prefix]);
     if(tests.rows[0].n)throw Error('Local regression databases have connected clients; leave them running');
     const active=await pool.query("SELECT count(*)::int AS n FROM bb_runs WHERE state NOT IN ('succeeded','test_completed','failed','cancelled','rejected','paused')");
     if(active.rows[0].n)throw Error('Active local tasks exist; pause or end them in the local UI before stopping');
@@ -165,6 +166,11 @@ export async function startServices({databaseOnly=false,afterStart=async()=>{}}=
   return withLifecycleLock(runtime,async()=>{
     const state=load();checkPorts(state);const launched=[];
     state.harnessCommit=command('git',['rev-parse','HEAD']).trim();
+    // Record the checkout at product startup, never relabel an already running process.
+    if(!state.processes.api&&!state.processes.worker){
+      state.productCommit=state.harnessCommit;
+      state.productDirty=Boolean(command('git',['status','--porcelain']).trim());
+    }
     state.ready=false;state.phase='starting';delete state.error;delete state.cleanupErrors;save(state);
     try{
       if(!existsSync(join(data,'PG_VERSION')))appendFileSync(join(runtime,'initdb.log'),command(join(pgBin,'initdb.exe'),['-D',data,'-U','bondbuddy_integration','-A','trust','--encoding=UTF8','--locale=C']));

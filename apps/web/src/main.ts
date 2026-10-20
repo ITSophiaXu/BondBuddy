@@ -1,3 +1,5 @@
+import { UpdateEntry } from './update-entry';
+import { ProspectusPanel } from './prospectus-panel';
 import { duplicateUploadNotices, isReusedUpload } from './duplicate-upload';
 import { renderFinancialUploadGuidance } from './financial-upload-guidance';
 import { OPTIONAL_MATERIAL_GUIDANCE, OPTIONAL_MATERIAL_FORMATS } from './optional-materials';
@@ -54,6 +56,8 @@ let draft: Draft | undefined;
 let newDirty = false;
 let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
+let updateEntry:UpdateEntry|undefined;
+let prospectusPanel:ProspectusPanel|undefined;
 let dashboard: Dashboard | undefined;
 let billingPage: BillingPage | undefined;
 let creditWallet: CreditWallet | undefined;
@@ -93,6 +97,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   globalAssistant?.dispose(); globalAssistant = undefined;
   accountIdentity = undefined;
   creditWallet?.dispose(); creditWallet = undefined;
@@ -324,7 +329,7 @@ async function logout() {
 async function renderRoute() {
   if (!identity) return;
   const raw = location.hash.slice(1);
-  const requested = !raw || raw === 'dashboard' || raw.startsWith('dashboard?') ? '/dashboard'+raw.slice(9) : raw === 'update' || raw.startsWith('update?') ? '/new'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
+  const requested = !raw || raw === 'dashboard' || raw.startsWith('dashboard?') ? '/dashboard'+raw.slice(9) : raw === 'update' || raw.startsWith('update?') ? '/update'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
@@ -338,6 +343,7 @@ async function renderRoute() {
       !window.confirm('还有未发送或保存结果未确认的消息。离开后本页输入将无法恢复，是否继续？')) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
+  if(prospectusPanel?.busy){history.replaceState(null,'',`${location.pathname}${location.search}#${currentRoute}`);return;}
   newDirty = false;
   const token = ++epoch;
   if (draft && (draft.dirty || draft.state === 'saving')) {
@@ -359,6 +365,7 @@ async function renderRoute() {
   materialWorkspace?.dispose(); materialWorkspace = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
+  updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   currentRoute = nextRoute;
   if (requested === '/dashboard' || requested.startsWith('/dashboard?')) { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
   if (/^review(\?|$)/.test(requested)) { renderNewReview(api, shell, () => token === epoch,new URLSearchParams(requested.split('?')[1]??'')); return; }
@@ -378,6 +385,7 @@ async function renderRoute() {
     materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'));
     await materialWorkspace.render(); return;
   }
+  if (/^\/update(\?|$)/.test(requested)) {updateEntry=new UpdateEntry(api,shell,()=>token===epoch);await updateEntry.render(new URLSearchParams(requested.split('?')[1]).get('project')??undefined);return;}
   if (/^\/new(\?|$)/.test(requested)) { renderNew(new URLSearchParams(requested.split('?')[1]??'')); return; }
   if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch); await projectBrowser.render(); return; }
   const artifactMatch = requested.match(/^\/artifacts\/([^/]+)$/);
@@ -419,6 +427,7 @@ async function renderRoute() {
 
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
+  const creationRequestId=crypto.randomUUID();
   shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section></div></form>`, 'new');
@@ -437,7 +446,7 @@ function renderNew(handoffQuery=new URLSearchParams()) {
     button.textContent = '正在保存…';
     const token = epoch;
     try {
-      const project = await api.create(value);
+      const project = await api.create({...value,creation_request_id:creationRequestId});
       if (token !== epoch) return;
       newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}${handoffQuery.has('handoff_topic')?'?step=materials'+carryHandoff(handoffQuery):''}`;
     } catch (error) { if (token === epoch) showError(error); }
@@ -467,7 +476,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     materialProcessing.setVisible(document.visibilityState === 'visible');
   }
   const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
-  shell(`${projectListContext()?projectBackLink():''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
+  shell(`${projectListContext()?projectBackLink():''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span>${project.source_project_id?`<a class="text-button" href="#/projects/${encodeURIComponent(project.source_project_id)}">返回原项目</a>`:'<button class="text-button" type="button" id="delete-project">删除项目</button>'}</div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="workspace-layout authoring-workspace"><div class="workspace-main">
@@ -475,13 +484,19 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
       <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}><div id="business-handoff"></div>
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
-        <div id="workspace-progress"></div>
+        <div id="workspace-progress"></div><div id="prospectus-panel"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span id="materials-state-label">开始编制前可补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted" id="materials-state-description">请在开始编制前补齐材料；开始后材料锁定，仅可查看。</p><p class="muted material-upload-guidance">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><fieldset id="material-editing" aria-label="项目材料" disabled><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div></fieldset>
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote material-upload-guidance">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
         <div class="form-footer authoring-actions"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
       </div></div></div>`, projectSection('workspace'));
+  const prospectusEpoch=epoch;
+  prospectusPanel=new ProspectusPanel(api,project.project_id,document.querySelector<HTMLElement>('#prospectus-panel')!,async()=>!!draft&&await draft.save(),async()=>{
+    if(prospectusEpoch!==epoch)return;
+    prospectusPanel?.dispose();prospectusPanel=undefined;
+    await renderRoute();
+  },()=>syncProjectExecution(project.project_id));
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
     const details = { ...draft.fields.update_details, supplementary_notes: text || null };
@@ -519,7 +534,12 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         }
         void renderRoute();
       },
-      staleInputNoticeProjectId === project.project_id ? '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。' : '');
+      staleInputNoticeProjectId === project.project_id ? '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。' : '',
+      ()=>{void (async()=>{
+        await prospectusPanel?.refresh();
+        const fresh=await api.project(project.project_id);
+        if(prospectusEpoch===epoch)draft?.adoptUnchanged(fresh);
+      })().catch(()=>{});});
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
@@ -632,7 +652,7 @@ function uploadStatus(upload: LocalUpload) {
 function confirmedMaterials(projectId: string) {
   const materials = new Map((recoveredMaterials.get(projectId) ?? []).map(material => [material.material_id, material]));
   for (const upload of localUploads.get(projectId) ?? []) if (upload.phase === 'persisted' && upload.material && !materials.has(upload.material.material_id)) materials.set(upload.material.material_id, upload.material);
-  return [...materials.values()];
+  return [...materials.values()].filter(m=>!prospectusPanel?.inactive.has(m.material_id));
 }
 
 function isCurrentProjectWorkspace(projectId: string) {
@@ -658,6 +678,12 @@ function updateProcessingRows(projectId: string) {
   }
 }
 
+function materialDeleteControl(id:string) {
+  return prospectusPanel?.state?.versions.some(v=>v.material_id===id)
+    ? '<span class="muted">已保留在版本历史</span>'
+    : `<button type="button" class="text-button" data-delete-material="${esc(id)}">删除</button>`;
+}
+
 function renderUploadRow(upload: LocalUpload) {
   const active = ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase);
   const showProgress = ['uploading', 'saving'].includes(upload.phase);
@@ -670,7 +696,7 @@ function renderUploadRow(upload: LocalUpload) {
         ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= upload.file.size ? '停止等待' : '取消此文件'}</button>`
         : '';
   const canRemove = upload.phase === 'persisted' && upload.material
-    ? `<button type="button" class="text-button" data-delete-material="${esc(upload.material.material_id)}">删除</button>`
+    ? materialDeleteControl(upload.material.material_id)
     : ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
@@ -681,11 +707,12 @@ function renderUploadRow(upload: LocalUpload) {
 function renderMaterialPartitions(projectId: string) {
   const seen = new Set<string>();
   const uploads = (localUploads.get(projectId) ?? []).filter(upload => {
+    if(upload.material&&prospectusPanel?.inactive.has(upload.material.material_id))return false;
     if (upload.phase !== 'persisted' || !upload.material) return true;
     if (seen.has(upload.material.material_id)) return false;
     seen.add(upload.material.material_id); return true;
   });
-  const materials = recoveredMaterials.get(projectId) ?? [];
+  const materials = (recoveredMaterials.get(projectId) ?? []).filter(m=>!prospectusPanel?.inactive.has(m.material_id));
   const history = null;
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
   // Optional-materials.html extends the workspace prototype; role values still come from contracts.
@@ -709,7 +736,7 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}</div><div class="material-file-actions"><button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
@@ -718,11 +745,11 @@ function renderMaterialPartitions(projectId: string) {
 
 function syncProjectExecution(projectId: string) {
   if (!isCurrentProjectWorkspace(projectId)) return;
-  const unsettled = (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
+  const unsettled = Boolean(prospectusPanel?.busy) || (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
   const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${confirmedMaterials(projectId).length} 份已保存材料`;
   const recovery = recoveryStates.get(projectId);
   const pending = (localUploads.get(projectId) ?? []).find(upload => upload.phase !== 'persisted');
-  const message = recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
+  const message = prospectusPanel?.busy ? '募集书版本正在保存，请完成后再开始更新。' : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
     : pending ? `${pending.file.name}：${uploadStatus(pending)}`
     : recovery?.state !== 'ready' ? '正在读取已保存材料…' : '';
   projectExecution?.sync(confirmedMaterials(projectId), recovery?.state === 'ready' && !unsettled, message);
@@ -920,6 +947,7 @@ async function refreshProjectMaterials(projectId: string, token: number) {
   recoveredMaterials.delete(projectId);
   recoveryStates.set(projectId, { state: 'loading' }); updateMaterialWorkspace(projectId);
   try {
+    await prospectusPanel?.refresh();
     const ids = new Set<string>();
     let cursor = 0;
     while (!controller.signal.aborted) {

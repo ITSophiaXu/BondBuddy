@@ -10,6 +10,7 @@ import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
 import { inputManifestHash } from './production-rule-pin.js';
+import { registerGeneratedProspectus } from './prospectus-versions.js';
 
 import { syncAuthoringProgress } from './authoring-progress.js';
 import { creditBalance,lockCreditAccount } from './billing.js';
@@ -606,6 +607,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     await client.query('UPDATE bb_jobs SET state=$2,stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[lease.jobId,outcome]);
     if(outcome==='failed')await recordRunFailure(client,r,lease.jobId,options.errorCode,options.failedStage);
     await event(client,r,outcome,outcome,outcome==='failed'?'processor_failed':'word_delivered',options.errorCode);
+    if(outcome==='succeeded')await registerGeneratedProspectus(client,r,j.checkpoint?.stages?.word_delivery_pair);
     return runDto({...r,artifact_id:artifact?.id??null,updated_at:new Date()});
   });
 }

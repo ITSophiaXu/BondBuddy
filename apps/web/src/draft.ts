@@ -25,6 +25,12 @@ export class Draft {
   get dirty() { return !Value.Equal(this.fields, fieldsFromProject(this.project)); }
   get validationErrors() { return this.fields.name.trim() ? validateDraft(createFromFields(this.fields)) : ['请填写项目名称。']; }
   get valid() { return this.validationErrors.length === 0; }
+  /** A completed task may advance only the project revision. Never overwrite local/remote field edits. */
+  adoptUnchanged(project:Dto<'ProjectResponse'>) {
+    if(this.disposed||this.pending||this.dirty||this.state!=='saved'||project.project_id!==this.project.project_id||
+      project.draft_revision<this.project.draft_revision||!Value.Equal(this.fields,fieldsFromProject(project)))return false;
+    this.project=project;this.changed();return true;
+  }
   edit(fields: Partial<DraftFields>) {
     this.fields = { ...this.fields, ...structuredClone(fields) };
     clearTimeout(this.timer);

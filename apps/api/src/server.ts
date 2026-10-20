@@ -2,6 +2,8 @@ import { readAuthoringProgress } from './authoring-progress.js';
 import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
+import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions } from './prospectus-versions.js';
+import { registerUpdateWorkspace } from './update-workspace.js';
 import { listArtifactHistory } from './artifact-history.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contracts';
@@ -11,7 +13,7 @@ import { registerM4Routes } from './m4-workspace.js';
 import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
-import { ReviewRevisionHandlingSchema } from '@bondbuddy/contracts';
+import { ReviewRevisionHandlingSchema, reportingWindow } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
@@ -303,6 +305,8 @@ export function createServer(settings: Settings = {}) {
   installProductionRulePackReleaseRoutes(app,{db,actor:owner});
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
+  registerProspectusRoutes(app,db,owner,blob);
+  registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
     reply.header('cache-control','private, no-store');
     return listArtifactHistory(db(),await owner(request),param(request,'project_id'),
@@ -660,13 +664,17 @@ export function createServer(settings: Settings = {}) {
       const found=await client.query('SELECT deleted_at FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,id]);
       if(!found.rows[0])throw missing();
       if(found.rows[0].deleted_at!==null)return; // Owned repeat deletion is idempotent.
-      const active=await client.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected') LIMIT 1",[user,id]);
+      const childIds=(await client.query('SELECT update_project_id FROM bb_update_workspaces WHERE owner_user_id=$1 AND source_project_id=$2',[user,id])).rows.map(r=>r.update_project_id);
+      const ids=[id,...childIds];
+      if((await client.query('SELECT 1 FROM bb_update_workspaces WHERE owner_user_id=$1 AND update_project_id=$2',[user,id])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','请从原项目管理或删除项目。');
+      await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) ORDER BY id FOR UPDATE',[user,ids]);
+      const active=await client.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=ANY($2::text[]) AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected') LIMIT 1",[user,ids]);
       if(active.rows[0])throw conflict('PROJECT_DELETE_BLOCKED','Cancel or finish active runs before deleting the project');
       // Material soft deletion writes 0006 storage tombstones; 0026 purges derived content after the same window.
-      const materials=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id]);
-      const artifacts=await client.query("UPDATE bb_artifact_versions a SET delivery_status='revoked' FROM bb_runs r WHERE r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.owner_user_id=$1 AND r.project_id=$2 AND a.delivery_status<>'revoked' RETURNING a.id,a.version",[user,id]);
+      const materials=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=ANY($2::text[]) AND deleted_at IS NULL',[user,ids]);
+      const artifacts=await client.query("UPDATE bb_artifact_versions a SET delivery_status='revoked' FROM bb_runs r WHERE r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.owner_user_id=$1 AND r.project_id=ANY($2::text[]) AND a.delivery_status<>'revoked' RETURNING a.id,a.version",[user,ids]);
       for(const a of artifacts.rows)await client.query('DELETE FROM bb_artifact_download_grants WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[user,a.id,a.version]);
-      await client.query('UPDATE bb_projects SET deleted_at=now(),updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id]);
+      await client.query('UPDATE bb_projects SET deleted_at=now(),updated_at=now() WHERE owner_user_id=$1 AND id=ANY($2::text[])',[user,ids]);
       await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'project.deleted',$4)",[uid(),user,id,{material_versions_deleted:materials.rowCount??0,artifacts_revoked:artifacts.rowCount??0}]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_delete',status:'submitted'});
     });
@@ -674,7 +682,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
+    const b=body<{prospectus_selection_revision?:number;edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
     if(b.test_rule_applicability_context_ref && !testChannelEnabled())
       throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
     const result=await transaction(db(),async client=>{
@@ -691,10 +699,16 @@ export function createServer(settings: Settings = {}) {
           throw error;
         }
       }
+      const prospectus=await prospectusVersions(client,user,id);
+      if(b.prospectus_selection_revision!==undefined&&b.prospectus_selection_revision!==prospectus.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','当前募集书已变化，请刷新后重新开始。');
+      const currentProspectus=prospectus.versions.find(v=>v.version_id===prospectus.current_version_id);
+      if(currentProspectus && b.edit_base===undefined)b.edit_base=currentProspectus.artifact_id?{artifact_id:currentProspectus.artifact_id,artifact_version:currentProspectus.artifact_version!,sha256:currentProspectus.sha256}:null;
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
       for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      if(prospectus.inactive_material_ids.some(id=>refs.some(ref=>ref.material_id===id)))throw conflict('INPUT_REVISION_CONFLICT','选择中包含旧募集书版本，请刷新后使用当前版本。');
+      if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
         assertAuthoringSourceInformation(resolved, p.update_details.source_prospectuses);
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
@@ -823,11 +837,15 @@ export function createServer(settings: Settings = {}) {
         if (b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
             sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved)) {
           authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
-          if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,reporting_periods:previous.manifest.update_details.target_reporting_periods??[]};
+          if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,
+            reporting_periods:previous.manifest.update_details.target_reporting_periods?.length
+              ? previous.manifest.update_details.target_reporting_periods
+              : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
+      Object.assign(manifest,{prospectus_selection:{revision:prospectus.selection_revision,version_id:prospectus.current_version_id}});
       const hash=inputManifestHash(manifest);
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),JSON.stringify(requirementMessageIds),ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
       if(targetConfirmation)await client.query(`INSERT INTO bb_input_revision_target_confirmations
@@ -1165,6 +1183,7 @@ export function createServer(settings: Settings = {}) {
       let excepted=false;
       // The storage receipt and operation commit together. Legacy projects retain auxiliary parsing.
       const accepted=async (m:any)=>{
+        if(uploadProject.kind==='update' && m.role==='historical')await registerUploadedProspectus(client,user,id,m);
         // Unified authoring reads the original in the Codex task. Do not start an
         // independent parsing/OCR pass simply because the original has been stored.
         if (uploadProject.update_details?.authoring_mode !== 'unified_v1')
@@ -1260,6 +1279,7 @@ export function createServer(settings: Settings = {}) {
       await project(client,user,id,true);
       const found=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ORDER BY version DESC FOR UPDATE',[user,id,materialId]);
       if(!found.rows.length)throw missing();
+      if((await client.query('SELECT 1 FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3',[user,id,materialId])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','此文件已保留在募集书版本历史中，请上传或切换版本。');
       const live=found.rows.filter(row=>row.deleted_at===null);
       if(!live.length)return; // Owned repeat deletion is idempotent and emits no duplicate side effects.
       const deleted=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL RETURNING *',[user,id,materialId]);

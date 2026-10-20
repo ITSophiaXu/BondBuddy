@@ -158,7 +158,7 @@ export class ProjectExecution {
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
-    private initialNotice = '') {}
+    private initialNotice = '', private onDelivered?:()=>void) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get materialsEditable() {
@@ -169,7 +169,7 @@ export class ProjectExecution {
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
     host.innerHTML = '<section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div>';
-    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始编制 ${icon('arrow')}</button></div></div>`;
+    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
     this.button('select-saved-input').addEventListener('click', () => {
@@ -219,13 +219,13 @@ export class ProjectExecution {
     const reference = selectedReference(selected, this.draft.fields.update_details.has_historical);
     if (!reference) return { status: 'none' };
     if (!project.market || !project.offering) {
-      return { status: 'blocked', message: '用户指定参考稿的目标市场与发行方式尚未保存，请刷新项目信息并重新选择参考稿后再开始编制。' };
+      return { status: 'blocked', message: '用户指定参考稿的目标市场与发行方式尚未保存，请刷新项目信息并重新选择参考稿后再开始更新。' };
     }
     let fresh: Material;
     try {
       fresh = this.referenceSnapshots ? await this.referenceSnapshots(this.id, reference) : reference;
     } catch {
-      return { status: 'blocked', message: '用户指定参考稿信息暂时无法读取，请刷新已保存材料并重新选择参考稿后再开始编制。' };
+      return { status: 'blocked', message: '用户指定参考稿信息暂时无法读取，请刷新已保存材料并重新选择参考稿后再开始更新。' };
     }
     const resolved = referencePin(reference, fresh, project.offering);
     return 'note' in resolved ? { status: 'blocked', message: resolved.note } : { status: 'pinned', choice: resolved.choice };
@@ -281,11 +281,11 @@ export class ProjectExecution {
     if (materialDetails) {
       materialDetails.classList.toggle('materials-readonly', materialsLocked);
       materialDetails.querySelector<HTMLFieldSetElement>('#material-editing')!.disabled = !this.materialsEditable;
-      materialDetails.querySelector('#materials-state-label')!.textContent = materialsLocked ? '材料已锁定，仅可查看' : this.nextRequested ? '为下一轮补充材料' : '开始编制前可补充';
+      materialDetails.querySelector('#materials-state-label')!.textContent = materialsLocked ? '材料已锁定，仅可查看' : this.nextRequested ? '为下一轮补充材料' : '开始更新前可补充';
       materialDetails.querySelector('#materials-title')!.textContent = materialsLocked ? '查看项目材料' : '提供项目材料';
       materialDetails.querySelector('#materials-state-description')!.textContent = materialsLocked
         ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : '本次编制材料已锁定。需要补充材料时，请点击“继续修改”，用于下一轮编制。'
-        : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始编制前补齐材料；开始后材料锁定，仅可查看。';
+        : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始更新前补齐材料；开始后材料锁定，仅可查看。';
       materialDetails.querySelectorAll('.material-subtypes>summary').forEach(summary => {
         summary.textContent = materialsLocked ? '按细分类别查看材料' : '按细分类别补充材料（选填）';
       });
@@ -294,9 +294,9 @@ export class ProjectExecution {
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote && this.quote.balance.available === 0);
-    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…')
+    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…')
       : this.awaitingCredits ? '继续更新'
-      : this.nextRequested ? '生成新版' : '开始编制';
+      : this.nextRequested ? '生成新版' : '开始更新';
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
@@ -490,7 +490,8 @@ export class ProjectExecution {
       }
       let result: Input;
       try {
-        result = await this.api.createInputRevision(this.id, { draft_revision: p.draft_revision,
+        const versions=await this.api.prospectusVersions(this.id,this.controller.signal);
+        result = await this.api.createInputRevision(this.id, { prospectus_selection_revision:versions.selection_revision,draft_revision: p.draft_revision,
           material_versions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })),
           requirement_message_ids: messages.message_ids, project_message_set_ref: messages,
           ...(reference.status === 'pinned' ? { user_reference: reference.choice } : {}),
@@ -602,6 +603,7 @@ export class ProjectExecution {
     }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    const delivered=run.state==='succeeded'&&(this.run?.run_id!==run.run_id||this.run?.state!=='succeeded');
     this.runReadVersion++;
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
@@ -612,6 +614,7 @@ export class ProjectExecution {
     if (this.run?.run_id !== run.run_id) this.resumedPause = undefined;
     if (this.run?.run_id !== run.run_id || this.run?.state !== run.state || this.run?.stage !== run.stage) this.resumeVerified = false;
     this.run = run; this.nextRequested = false;
+    if(delivered)this.onDelivered?.();
     this.watchRun(run);
     void this.loadCharge();
   }

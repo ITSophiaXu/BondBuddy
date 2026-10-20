@@ -256,6 +256,10 @@ export class ApiClient {
     }
   }
   project(id: string, signal?: AbortSignal) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`, undefined, {}, signal); }
+  updateWorkspace(id:string,signal?:AbortSignal){return this.request<Dto<'UpdateWorkspaceResponse'>>('POST',`/projects/${encodeURIComponent(id)}/update-workspace`,{}, {},signal);}
+  prospectusVersions(id:string,signal?:AbortSignal){return this.request<Dto<'ProspectusVersionsResponse'>>('GET',`/projects/${encodeURIComponent(id)}/prospectus-versions`,undefined,{},signal);}
+  saveProspectus(id:string,input:Dto<'ProspectusVersionSaveRequest'>,signal?:AbortSignal){return this.request<Dto<'ProspectusVersionsResponse'>>('POST',`/projects/${encodeURIComponent(id)}/prospectus-versions`,input,{},signal);}
+  selectProspectus(id:string,input:Dto<'ProspectusVersionSelectRequest'>,signal?:AbortSignal){return this.request<Dto<'ProspectusVersionsResponse'>>('POST',`/projects/${encodeURIComponent(id)}/prospectus-versions/current`,input,{},signal);}
   material(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }

@@ -60,7 +60,7 @@ export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Pro
   finally { client.release(); }
 }
 export const date = (value: Date | string) => new Date(value).toISOString();
-export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
+export const projectDto = (p: any) => ({ ...(p.source_project_id?{source_project_id:p.source_project_id}:{}), project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
 export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error, signature_assessment: m.signature_assessment ?? null, parse_snapshot_id: typeof m.parse_snapshot_id === 'string' && m.parse_snapshot_id.length > 0 ? m.parse_snapshot_id : null });
 const inputCreditSupplementRefs = (manifest: unknown) => {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || !Object.hasOwn(manifest, 'credit_facility_supplements')) return undefined;
@@ -89,7 +89,7 @@ export const inputDto = (i: any) => {
 };
 export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), channel: r.channel ?? 'production', test_grant_id: r.test_grant_id ?? null, uncovered_items: r.uncovered_items ?? [], state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: r.channel==='non_production_test'?'non_billable_test':r.billing_mode ?? 'platform_trial', reservation_id: r.reservation_id ?? null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
 export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
-  const result = await pool.query(`SELECT p.*,i.input_hash FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
+  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }

@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {copyFileSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
-import {repo,runtime} from './config.mjs';
+import {repo,runtime,workerImage} from './config.mjs';
 const dir=join(runtime,'linux-worker-build');mkdirSync(dir,{recursive:true});
 const codexArchive=join(dir,'codex-npm-linux-x64-0.154.0.tgz');
 const codexBytes=existsSync(codexArchive)?readFileSync(codexArchive):Buffer.from(await (await fetch(
@@ -27,5 +27,5 @@ copyFileSync(join(repo,'python/requirements.txt'),join(dir,'requirements.txt'));
 copyFileSync(join(repo,'scripts/local-integration/verify-python-packages.py'),join(dir,'verify-python-packages.py'));
 // Only an allow-listed build context is sent to Docker; runtime files and credentials stay outside it.
 writeFileSync(join(dir,'.dockerignore'),'*\n!Dockerfile\n!requirements.txt\n!verify-python-packages.py\n!worker-snapshot.tar\n!runtime-assets.tar\n!codex-npm-linux-x64-0.154.0.tgz\n');
-const result=spawnSync('C:/Program Files/Docker/Docker/resources/bin/docker.exe',['build','--progress=plain','-t','bondbuddy-local-worker:20261012',dir],{cwd:repo,windowsHide:true,stdio:'inherit'});
+const result=spawnSync('C:/Program Files/Docker/Docker/resources/bin/docker.exe',['build','--progress=plain','-t',workerImage,dir],{cwd:repo,windowsHide:true,stdio:'inherit'});
 process.exitCode=result.status??1;

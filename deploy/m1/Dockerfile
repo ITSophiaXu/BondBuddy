@@ -17,7 +17,7 @@ RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY apps apps
 # The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
-COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/
+COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
 COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
 COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
