@@ -406,7 +406,7 @@ export class ReviewWorkspace {
       if(this.editorRun!==resultRun||!host.querySelector('[data-review-editor]')){
         this.editor?.dispose();this.editorRun=resultRun;
         host.innerHTML=progress+'<div data-review-editor></div>';
-        this.editor=new ReviewEditor(this.api,this.projectId,this.owner,this.controller.signal,run=>{this.run=run;this.workspace!.active_run=run;this.setTab('making');this.renderBody();void this.refresh();});
+        this.editor=new ReviewEditor(this.api,this.projectId,this.owner,this.controller.signal,run=>{this.run=run;this.workspace!.active_run=run;void this.refresh().then(()=>{if(this.live()){this.setTab('making');this.renderBody();}});},()=>{this.sourceVersionsKey='';void this.refresh();});
         void this.editor.mount(host.querySelector<HTMLElement>('[data-review-editor]')!,resultRun,this.workspace.artifacts);
       }
       return;

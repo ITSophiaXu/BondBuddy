@@ -8,7 +8,7 @@ export class ReviewEditor {
   private downloads=new ArtifactDownloads();
   private state?:ReviewEditorResponse;private host?:HTMLElement;private selected='';private view='tracked';private category='all';private dirty=false;private busy=false;private disposed=false;private generation=0;
   private artifacts:ReviewArtifact[]=[];private history:ReviewHistoryEntry[]=[];private pending?:ReviewExportRequest;
-  constructor(private api:ApiClient,private project:string,private owner:string,private signal:AbortSignal,private submitted:(run:Run)=>void){}
+  constructor(private api:ApiClient,private project:string,private owner:string,private signal:AbortSignal,private submitted:(run:Run)=>void,private currentChanged:()=>void){}
   dispose(){this.downloads.dispose();this.disposed=true;this.generation++;}
   private path(s:string){return `/projects/${encodeURIComponent(this.project)}/${s}`;}
   private get cache(){return `bb-review-editor:${this.owner}:${this.project}:${this.state?.run_id}`;}
@@ -74,7 +74,7 @@ export class ReviewEditor {
   }
   private async selectCurrent(){
     if(this.busy||!this.state)return;const runId=this.state.run_id;this.busy=true;this.paint();
-    try{const versions=await this.api.prospectusVersions(this.project,this.signal);const v=versions.versions.find(v=>v.run_id===runId);if(!v)throw Error('成果版本尚未登记，请稍后重试。');await this.api.selectProspectus(this.project,{request_id:crypto.randomUUID(),version_id:v.version_id,expected_selection_revision:versions.selection_revision},this.signal);if(this.live())this.status('已将本成果清洁版设为项目当前募集书，历史版本保留。');}
+    try{const versions=await this.api.prospectusVersions(this.project,this.signal);const v=versions.versions.find(v=>v.run_id===runId);if(!v)throw Error('成果版本尚未登记，请稍后重试。');await this.api.selectProspectus(this.project,{request_id:crypto.randomUUID(),version_id:v.version_id,expected_selection_revision:versions.selection_revision},this.signal);if(this.live()){this.status('已将本成果清洁版设为项目当前募集书，历史版本保留。');this.currentChanged();}}
     catch(e){if(this.live())this.status(friendlyError(e));}finally{this.busy=false;if(this.live()){const message=this.host!.querySelector('[data-editor-status]')?.textContent??'';this.paint();this.status(message);}}
   }
 }
