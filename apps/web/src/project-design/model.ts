@@ -14,7 +14,7 @@ export type WorkDraft = { sourceId: string; attachments: { fileId: string; role:
 export type ProjectWork = { details: ProjectDetails; update: WorkDraft; review: WorkDraft };
 
 export type Subject = { id: string; kind: 'company' | 'person'; name: string; role: string; identifier: string; registration?: { province: string; city: string } };
-export type ProjectFile = { id: string; familyId?: string; consistency?: ConsistencyArtifact; type: string; name: string; folder: FolderId; version: number; createdAt: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | 'qa' | 'consistency' | WorkKind; template?: DocumentTemplate; qa?: QASnapshot; review?: ReviewSnapshot; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number; integrity?: IntegritySnapshot; catalogId?: string };
+export type ProjectFile = { id: string; familyId?: string; consistency?: ConsistencyArtifact; type: string; name: string; folder: FolderId; version: number; createdAt: string; modifiedAt?: string; deletedAt?: string; origin: 'sample' | 'upload' | 'generation' | 'integrity' | 'qa' | 'consistency' | WorkKind; template?: DocumentTemplate; qa?: QASnapshot; review?: ReviewSnapshot; sourceId?: string; sourceName?: string; sourceVersion?: number; jobId?: string; requirements?: string; subjects?: Subject[]; size?: number; integrity?: IntegritySnapshot; catalogId?: string };
 export type FlowDraft = { sourceId: string; selected: string[]; requirements: string; attachments: string[]; subjects: Subject[]; templateIds?: Record<string, string>; integrity?: IntegrityDraft };
 export type Project = { id: string; name: string; issuer: string; market: string; updatedAt: string; files: ProjectFile[]; draft: FlowDraft; work?: ProjectWork; templates?: DocumentTemplate[]; qa?: QADraft };
 export type Job = { id: string; projectId: string; kind: 'generation' | 'integrity' | 'qa' | 'consistency' | WorkKind; consistency?: ConsistencyRun; consistencyUpdates?: Record<string, ConsistencyUpdate>; qa?: QASnapshot; review?: ReviewSnapshot; reviewDecisions?: ReviewDecisions; fileIds: string[]; createdAt: string; subjectCount?: number; integrity?: IntegritySnapshot; input?: { draft: WorkDraft; details: ProjectDetails } };
@@ -44,10 +44,10 @@ export function createProject(state: DesignState, name: string, issuer: string, 
   state.projects.unshift(project);
   return project;
 }
-export function uploadSource(project: Project, file: Pick<File, 'name' | 'size'>) {
+export function uploadSource(project: Project, file: Pick<File, 'name' | 'size'> & { lastModified?: number }) {
   if (!/\.(docx|pdf)$/i.test(file.name)) throw new Error('请选择 DOCX 或 PDF 格式的募集说明书。');
   if (file.size <= 0 || file.size > 100 * 1024 * 1024) throw new Error('文件不能为空，且单份不超过 100 MB。');
-  const source: ProjectFile = { id: newId(), type: 'prospectus', name: file.name, folder: '2', version: Math.max(0, ...project.files.filter(f => f.type === 'prospectus').map(f => f.version)) + 1, createdAt: now(), origin: 'upload', size: file.size };
+  const source: ProjectFile = { id: newId(), type: 'prospectus', name: file.name, folder: '2', version: Math.max(0, ...project.files.filter(f => f.type === 'prospectus').map(f => f.version)) + 1, createdAt: now(), ...(file.lastModified ? { modifiedAt: new Date(file.lastModified).toISOString() } : {}), origin: 'upload', size: file.size };
   project.files.push(source); project.draft.sourceId = source.id; project.updatedAt = now();
   return source;
 }
@@ -66,7 +66,7 @@ export function subjectError(subjects: Subject[]) {
 }
 export function runPreview(state: DesignState, project: Project, kind: 'generation' | 'integrity'): Job {
   const draft = project.draft;
-  const source = project.files.find(f => f.id === draft.sourceId && f.type === 'prospectus');
+  const source = project.files.find(f => !f.deletedAt && f.id === draft.sourceId && f.type === 'prospectus');
   const types = kind === 'generation' ? DOCUMENTS.filter(d => d.kind === 'generation' && draft.selected.includes(d.id)) : DOCUMENTS.filter(d => d.kind === 'integrity' && draft.subjects.some(s => s.kind === (d.id === 'company-integrity' ? 'company' : 'person')));
   if (kind === 'generation' && !source) throw new Error('请选择当前项目的募集说明书版本。');
   if (kind === 'generation' && !types.length) throw new Error('请至少选择一份需要生成的文件。');
@@ -90,6 +90,7 @@ export const fileFamily = (file: ProjectFile) => file.familyId ?? (file.catalogI
 export function latestFiles(project: Project): ProjectFile[] {
   const latest = new Map<string, ProjectFile>();
   for (const file of project.files) {
+    if (file.deletedAt) continue;
     const key = fileFamily(file);
     if (!latest.has(key) || latest.get(key)!.version < file.version) latest.set(key, file);
   }

@@ -22,7 +22,7 @@ export function saveDetails(p: Project, kind: WorkKind, value: ProjectDetails) {
   touchWork(p, kind);
 }
 export function selectWorkSource(p: Project, kind: WorkKind, id: string) {
-  if (id && !p.files.some(f => f.id === id && f.type === 'prospectus')) throw new Error('请选择当前项目中的募集说明书。');
+  if (id && !p.files.some(f => !f.deletedAt && f.id === id && f.type === 'prospectus')) throw new Error('请选择当前项目中的募集说明书。');
   workFor(p)[kind].sourceId = id; touchWork(p, kind);
 }
 export function addWorkFiles(p: Project, kind: WorkKind, role: string, files: Pick<File, 'name' | 'size'>[]) {
@@ -40,7 +40,7 @@ export function addWorkFiles(p: Project, kind: WorkKind, role: string, files: Pi
       draft.sourceId = uploadSource(p, f).id;
       p.draft.sourceId = generationSource;
     } else {
-      let file = p.files.find(existing => existing.folder === 'sources' && existing.name === f.name && existing.size === f.size);
+      let file = p.files.find(existing => !existing.deletedAt && existing.folder === 'sources' && existing.name === f.name && existing.size === f.size);
       if (!file) { file = { id: newId(), type: 'source', name: f.name, folder: 'sources', version: 1, createdAt: new Date().toISOString(), origin: 'upload', size: f.size }; p.files.push(file); }
       if (!draft.attachments.some(a => a.fileId === file!.id && a.role === role)) draft.attachments.push({ fileId: file.id, role });
     }
@@ -49,10 +49,10 @@ export function addWorkFiles(p: Project, kind: WorkKind, role: string, files: Pi
 }
 export function runWorkPreview(state: DesignState, p: Project, kind: WorkKind): Job {
   const work = workFor(p), draft = work[kind];
-  const source = p.files.find(f => f.id === draft.sourceId && f.type === 'prospectus');
+  const source = p.files.find(f => !f.deletedAt && f.id === draft.sourceId && f.type === 'prospectus');
   if (!source) throw new Error('请先选用或上传本项目的募集说明书。');
   if (!work.details.name.trim() || !work.details.issuer_name?.trim()) throw new Error('请先补全项目名称和发行人。');
-  if (draft.attachments.some(a => !p.files.some(f => f.id === a.fileId))) throw new Error('补充材料不属于当前项目，请重新选择。');
+  if (draft.attachments.some(a => !p.files.some(f => !f.deletedAt && f.id === a.fileId))) throw new Error('补充材料不属于当前项目，请重新选择。');
   const job: Job = { id: newId(), projectId: p.id, kind, fileIds: [], createdAt: new Date().toISOString(), input: structuredClone({ draft, details: work.details }) };
   const type = kind === 'update' ? 'prospectus' : 'prospectus-review';
   const version = Math.max(0, ...p.files.filter(f => f.type === type).map(f => f.version)) + 1;

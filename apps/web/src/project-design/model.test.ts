@@ -9,8 +9,45 @@ import assert from 'node:assert/strict';
 import { seedState, uploadSource, runPreview, createProject, latestFiles } from './model.js';
 import { workFor, saveDetails, selectWorkSource, addWorkFiles, runWorkPreview } from './work-model.js';
 import { INTEGRITY_SITES, integrityDraft } from './integrity.js';
-import { importProjectFile, migrateCatalogRefs, originalSlots } from './project-files.js';
+import { importProjectFile, migrateCatalogRefs, originalSlots, deleteProjectFile, restoreProjectFile, modifiedTime } from './project-files.js';
 import { startConsistency, finishConsistency, acceptConsistency, currentProspectus, resultProspectus, pendingIssues, associatedFiles, consistencyParagraphs, fileConsistencyState, CHECK_DURATION } from './consistency-model.js';
+
+test('file import supports every project directory and preserves the original modification time', () => {
+  const p = seedState().projects[2], lastModified = Date.parse('2026-10-19T06:38:00Z');
+  for (const folder of ['1','2','2.2','3','4','4.1','4.2','4.3','sources']) {
+    const f = importProjectFile(p,{name:'发行方案.docx',size:100,lastModified},folder);
+    assert.equal(f.folder,folder);assert.equal(modifiedTime(f),'2026-10-19T06:38:00.000Z');assert.equal(f.version,1);
+  }
+  assert.throws(()=>importProjectFile(p,{name:'a.pdf',size:2},'unknown'),/有效/);
+});
+test('same-name uploads create explicit versions, with independent files and directories kept separate', () => {
+  const p = seedState().projects[2], file = {name:'发行方案.docx',size:100};
+  const first=importProjectFile(p,file,'2.2'),second=importProjectFile(p,file,'2.2');
+  assert.equal(second.version,2);assert.equal(first.familyId,second.familyId);assert.equal(latestFiles(p).length,1);
+  const separate=importProjectFile(p,file,'2.2',undefined,true);
+  assert.equal(separate.version,1);assert.notEqual(separate.familyId,first.familyId);
+  const other=importProjectFile(p,file,'3');assert.equal(other.version,1);assert.equal(latestFiles(p).length,3);
+});
+test('deleting one version restores the previous version to the list and is reversible without changing time', () => {
+  const p=seedState().projects[2],file={name:'测试.docx',size:2,lastModified:Date.parse('2026-10-18T00:00:00Z')};
+  const v1=importProjectFile(p,file,'1'),v2=importProjectFile(p,file,'1'),before=structuredClone(v2);
+  deleteProjectFile(p,v2.id);assert.equal(latestFiles(p)[0].id,v1.id);assert.equal(p.files.length,2);
+  restoreProjectFile(p,v2.id);assert.equal(latestFiles(p)[0].id,v2.id);assert.deepEqual(v2,before);
+  assert.throws(()=>deleteProjectFile(p,'another-project-id'),/不存在/);
+});
+test('deleted sources and attachments cannot be reused as new task inputs, while old files remain available to snapshots', () => {
+  const state=seedState(),p=state.projects[0],f=p.files.find(f=>f.type==='prospectus'&&f.version===2)!;
+  p.draft.sourceId=f.id;selectWorkSource(p,'update',f.id);
+  workFor(p).update.attachments=[{fileId:f.id,role:'other'}];
+  deleteProjectFile(p,f.id);assert.equal(p.draft.sourceId,'');assert.equal(workFor(p).update.sourceId,'');assert.equal(workFor(p).update.attachments.length,0);
+  assert.throws(()=>selectWorkSource(p,'review',f.id),/当前项目/);
+  assert.notEqual(currentProspectus(p)?.id,f.id);assert.ok(p.files.some(x=>x.id===f.id));
+});
+test('legacy upload records never substitute their upload time for an unknown modification time', () => {
+  const p=seedState().projects[2],f=importProjectFile(p,{name:'旧文件.pdf',size:2},'sources');
+  assert.equal(modifiedTime(f),undefined);
+  f.origin='generation';assert.equal(modifiedTime(f),f.createdAt);
+});
 
 test('opening the v2 workbench extends v1 storage without replacing files or existing drafts', () => {
   const state = seedState(), p = state.projects[0];

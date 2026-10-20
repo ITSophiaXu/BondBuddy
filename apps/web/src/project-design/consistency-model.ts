@@ -11,7 +11,7 @@ export type ConsistencyArtifact = { checkId: string; sourceFingerprint: string; 
 export const CHECK_DURATION = 6500;
 const isProspectus = (f: ProjectFile) => ['prospectus', 'review-clean'].includes(f.type);
 export function currentProspectus(p: Project) {
-  return p.files.map((file,index) => ({file,index})).filter(x => isProspectus(x.file)).sort((a,b) => b.file.createdAt.localeCompare(a.file.createdAt) || b.index-a.index)[0]?.file;
+  return p.files.map((file,index) => ({file,index})).filter(x => !x.file.deletedAt && isProspectus(x.file)).sort((a,b) => b.file.createdAt.localeCompare(a.file.createdAt) || b.index-a.index)[0]?.file;
 }
 export function resultProspectus(p: Project, job: Job) {
   return p.files.find(f => job.fileIds.includes(f.id) && f.type === (job.kind === 'review' && job.review ? 'review-clean' : 'prospectus')) ?? p.files.find(f => f.id === job.input?.draft.sourceId && isProspectus(f));
@@ -47,7 +47,7 @@ function checkFile(state: DesignState, p: Project, source: ProjectFile, sourceFi
 }
 export function startConsistency(state: DesignState, p: Project, sourceId?: string, fromJob?: string): Job {
   if (!state.projects.includes(p)) throw new Error('项目不存在。');
-  const source = sourceId ? p.files.find(f => f.id === sourceId && isProspectus(f)) : currentProspectus(p);
+  const source = sourceId ? p.files.find(f => !f.deletedAt && f.id === sourceId && isProspectus(f)) : currentProspectus(p);
   if (!source) throw new Error('请先为当前项目添加募集说明书。');
   const files = associatedFiles(p);
   if (!files.length) throw new Error('当前项目还没有可检查的关联文件，请先生成或导入项目文件。');
@@ -89,7 +89,7 @@ export function acceptConsistency(state: DesignState, p: Project, jobId: string,
     const previous = p.files.find(f => f.id === (job.consistencyUpdates?.[item.file.id]?.fileId ?? item.file.id))!;
     const allIssues = [...new Map([...(previous.consistency?.issues ?? []), ...issues].map(i => [i.id,i])).values()];
     const source = job.consistency.snapshot.source;
-    const f: ProjectFile = { ...structuredClone(previous), id: newId(), familyId: fileFamily(previous), version: Math.max(...p.files.filter(f => fileFamily(f) === fileFamily(previous)).map(f => f.version)) + 1, createdAt: at, origin: 'consistency', jobId: job.id, sourceId: source.id, sourceName: source.name, sourceVersion: source.version, consistency: { checkId: job.id, sourceFingerprint: job.consistency.snapshot.sourceFingerprint, sourceName: source.name, sourceVersion: source.version, originalId: item.file.id, previousId: previous.id, issues: allIssues } };
+    const f: ProjectFile = { ...structuredClone(previous), id: newId(), familyId: fileFamily(previous), version: Math.max(...p.files.filter(f => fileFamily(f) === fileFamily(previous)).map(f => f.version)) + 1, createdAt: at, modifiedAt: at, origin: 'consistency', jobId: job.id, sourceId: source.id, sourceName: source.name, sourceVersion: source.version, consistency: { checkId: job.id, sourceFingerprint: job.consistency.snapshot.sourceFingerprint, sourceName: source.name, sourceVersion: source.version, originalId: item.file.id, previousId: previous.id, issues: allIssues } };
     p.files.push(f); job.fileIds.push(f.id); files.push(f);
     (job.consistencyUpdates ??= {})[item.file.id] = { fileId: f.id, issueIds: [...new Set([...(job.consistencyUpdates?.[item.file.id]?.issueIds ?? []), ...issues.map(i => i.id)])], acceptedAt: at };
   }

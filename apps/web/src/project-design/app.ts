@@ -8,7 +8,7 @@ import { reviewParagraphs } from './review-model';
 import { downloadWord } from './word-export';
 import { templatePreparation, templateLibrary, openTemplate } from './template-view';
 import { missingTemplates } from './templates';
-import { FLOWS, workView, projectDashboard, bindWork, bindProjectDashboard, type FlowMode } from './workflows';
+import { FLOWS, workView, bindWork, type FlowMode } from './workflows';
 import { workspaceShell } from '../workspace-shell';
 import { prototypeIcon as ico } from '../prototype-design';
 import { esc, date } from '../ui';
@@ -16,7 +16,10 @@ import { FOLDERS, DOCUMENTS, GENERATABLE, belongsTo, folderName, folderPath } fr
 import { ORIGINAL_CATALOG } from './original-catalog';
 import { fileTree, bindFileTree, fileConsistencySummary, fileRows as renderFileRows } from './project-files-view';
 import { projectRowsDesign, openProjectMenu } from './project-list-view';
-import { importProjectFile, migrateCatalogRefs } from './project-files';
+import { projectSummary, projectTaskView, TASK_GROUPS } from './project-overview';
+import { dashboardItems } from './dashboard-state';
+import { openFileImport, openFileDelete, openDeletedFiles, fileTime } from './file-management-view';
+import { restoreProjectFile, migrateCatalogRefs } from './project-files';
 import { INTEGRITY_SITES, integrityDraft } from './integrity';
 import { websiteScope, integrityTotals, queryRecords, evidenceContent, integrityDocument } from './integrity-view';
 import { STORAGE_KEY, seedState, createProject, uploadSource, runPreview, latestFiles, fileFamily, newId, type DesignState, type Project, type ProjectFile, type Subject } from './model';
@@ -32,9 +35,10 @@ import '../dashboard.css';
 import '../../../../product-prototype/public/optional-materials.css';
 import '../../../../product-prototype/public/source-prospectus.css';
 import './design.css';
+import './overview-files.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
-document.title = 'BondBuddy · 项目工作台 · 本地设计稿 v5';
+document.title = 'BondBuddy · 全部项目 · 本地设计稿 v6';
 let checkTimer: ReturnType<typeof setTimeout> | undefined;
 let state: DesignState = seedState();
 let storageWarning = '';
@@ -50,6 +54,7 @@ try {
 migrateCatalogRefs(state);
 let originalGroup = 'all';
 let notification = '';
+let undoFile: {projectId: string; fileId: string} | undefined;
 let selectedProject = '';
 let projectSearch = '';
 let fileSearch = '';
@@ -68,7 +73,7 @@ const projectForRoute = () => {
 const go = (hash: string) => { if (location.hash === '#' + hash) render(); else location.hash = hash; };
 const projectLink = (p: Project, folder = 'all') => `/projects/${p.id}/files?folder=${folder}`;
 const flowLink = (mode: string, p: Project, step: string) => `${mode}?project=${p.id}&step=${step}`;
-const sourceOf = (p: Project) => p.files.find(f => f.id === p.draft.sourceId && f.type === 'prospectus');
+const sourceOf = (p: Project) => p.files.find(f => !f.deletedAt && f.id === p.draft.sourceId && f.type === 'prospectus');
 const button = (name: string, action: string, primary = false, attrs = '') => `<button type="button" class="btn ${primary ? 'primary' : 'secondary'}" data-action="${action}" ${attrs}>${name}</button>`;
 const link = (name: string, href: string, primary = false) => `<a class="btn ${primary ? 'primary' : 'secondary'}" href="#${esc(href)}">${name}</a>`;
 function save() {
@@ -95,10 +100,10 @@ function projectPicker(mode: FlowMode) {
 }
 function pickerRows() {
   const items = state.projects.filter(p => `${p.name} ${p.issuer}`.toLowerCase().includes(projectSearch.trim().toLowerCase()));
-  return `<div class="pd-picker-list">${items.length ? items.map(p => `<label class="pd-project-choice ${selectedProject === p.id ? 'selected' : ''}"><input type="radio" name="project" value="${p.id}" ${selectedProject === p.id ? 'checked' : ''}><div class="pd-project-icon">${ico('folder')}</div><div class="pd-grow"><strong>${esc(p.name)}</strong><small>${esc(p.issuer)} · ${esc(p.market)}</small></div><span class="pd-chip">${p.files.filter(f => f.type === 'prospectus').length ? '有募集说明书' : '待添加募集说明书'}</span></label>`).join('') : '<div class="pd-empty">没有找到项目，可以更换搜索词或新建项目。</div>'}</div>`;
+  return `<div class="pd-picker-list">${items.length ? items.map(p => `<label class="pd-project-choice ${selectedProject === p.id ? 'selected' : ''}"><input type="radio" name="project" value="${p.id}" ${selectedProject === p.id ? 'checked' : ''}><div class="pd-project-icon">${ico('folder')}</div><div class="pd-grow"><strong>${esc(p.name)}</strong><small>${esc(p.issuer)} · ${esc(p.market)}</small></div><span class="pd-chip">${p.files.filter(f => !f.deletedAt && f.type === 'prospectus').length ? '有募集说明书' : '待添加募集说明书'}</span></label>`).join('') : '<div class="pd-empty">没有找到项目，可以更换搜索词或新建项目。</div>'}</div>`;
 }
 function sourcePicker(p: Project) {
-  const sources = p.files.filter(f => f.type === 'prospectus').sort((a, b) => b.version - a.version);
+  const sources = p.files.filter(f => !f.deletedAt && f.type === 'prospectus').sort((a, b) => b.version - a.version);
   const selected = sourceOf(p);
   return `${pageHead('FILE GENERATION', '选择募集说明书', '本次关联文件将引用同一份募集说明书，保留所选版本。')}${steps(['选择项目', '选择募集说明书', '生成关联文件'], 1)}${projectContext(p, 'generate')}
     <div class="pd-columns"><section class="pd-panel"><div class="pd-section-head"><div><h2>使用项目里的募集说明书</h2><p class="muted">选择一份已有文件，无需重复上传。</p></div><span class="pd-chip">${sources.length} 个版本</span></div>
@@ -142,34 +147,36 @@ function resultView(p: Project, jobId: string) {
     <div class="pd-footer">${link('返回全部项目', 'tasks')}${link(integrity ? '准备下一轮核查' : '继续生成文件', flowLink(integrity ? 'integrity' : 'generate', p, integrity ? 'subjects' : 'materials'))}</div>`;
 }
 function projectsView() {
-  return `${pageHead('ALL PROJECTS', '全部项目', '每个项目的募集书、关联文件与核查底稿，都在同一个文件目录。', button(ico('plus') + '新建项目', 'new-project', true, 'data-mode="tasks"'))}
-    <section class="pd-panel"><div class="pd-section-head"><h2>项目列表 <span class="pd-count">${state.projects.length}</span></h2><span class="muted">按最近活动排序</span></div><div class="pd-search">${ico('search')}<input id="all-project-search" type="search" placeholder="搜索项目名称或发行人" aria-label="搜索项目名称或发行人" value="${esc(projectSearch)}"></div><div id="projects-table">${projectRows()}</div></section>`;
+  return `${pageHead('ALL PROJECTS', '全部项目', '一眼掌握每个项目的任务进展，继续待办，管理项目文件。', button(ico('plus') + '新建项目', 'new-project', true, 'data-mode="tasks"'))}
+    ${projectSummary(state, route().query.get('status') ?? 'all')}<section class="pd-panel pd-projects-panel"><div class="pd-section-head"><h2>项目列表 <span class="pd-count" id="project-match-count">${matchingProjects().length}</span></h2><span class="muted">${TASK_GROUPS[route().query.get('status') as keyof typeof TASK_GROUPS] ? '含' + TASK_GROUPS[route().query.get('status') as keyof typeof TASK_GROUPS] + '任务的项目 · ' : ''}按最近活动排序</span></div><div class="pd-search">${ico('search')}<input id="all-project-search" type="search" placeholder="搜索项目名称或发行人" aria-label="搜索项目名称或发行人" value="${esc(projectSearch)}"></div><div id="projects-table">${projectRows()}</div></section>`;
 }
-function projectRows() {
+function matchingProjects() {
   const items = state.projects.filter(p => `${p.name} ${p.issuer}`.toLowerCase().includes(projectSearch.trim().toLowerCase())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  return projectRowsDesign(items,state);
+  const status = route().query.get('status');
+  return status && status in TASK_GROUPS ? items.filter(p => dashboardItems(state,p).some(i => i.group === status)) : items;
 }
+function projectRows() { return projectRowsDesign(matchingProjects(),state); }
 function fileRows(p: Project, folder: string) { return renderFileRows(p, folder, fileSearch, fileStatus, originalGroup, state); }
 function filesView(p: Project) {
   const requested = route().query.get('folder') ?? 'all';
   const folder = requested === 'all' || FOLDERS.some(f => f.id === requested) ? requested : 'all';
   const latest = latestFiles(p);
   const count = (id: string) => latest.filter(f => belongsTo(f.folder, id)).length;
-  return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), button('导入底稿 / 文件', 'import-project-file') + `<button class="btn primary" data-consistency-start data-project="${p.id}">检查文件一致性</button><button class="btn secondary pd-start-trigger" data-action="project-menu" data-project="${p.id}" aria-haspopup="menu" aria-expanded="false">开始工作 ${ico('chevron')}</button>`)}
+  return `${pageHead('PROJECT FILES', '项目文件', esc(p.name), button(ico('upload') + '上传 / 添加文件', 'import-project-file', true) + button('已删除文件' + (p.files.some(f=>f.deletedAt) ? ' ' + p.files.filter(f=>f.deletedAt).length : ''), 'deleted-files') + `<button class="btn secondary" data-consistency-start data-project="${p.id}">检查文件一致性</button><button class="btn secondary pd-start-trigger" data-action="project-menu" data-project="${p.id}" aria-haspopup="menu" aria-expanded="false">开始工作 ${ico('chevron')}</button>`)}
     <div class="pd-file-breadcrumb"><a href="#tasks">全部项目</a>${ico('chevron')}<span>${esc(p.name)}</span>${ico('chevron')}<strong>${folder === 'all' ? '全部成果文件' : folderName(folder)}</strong></div>
-    ${fileConsistencySummary(p,state)}<div class="pd-file-workspace"><nav class="pd-folder-tree" aria-label="项目文件目录">${fileTree(p, folder)}</nav>
-    <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><span class="muted">${count(folder)} 份已有文件</span></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option>${[['conflict','不一致'],['updated','已同步'],['manual','需人工确认'],['stale','待重新检查']].map(([value,label]) => `<option value="${value}" ${fileStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div><div id="file-list">${fileRows(p, folder)}</div></section></div>${['all','sources'].includes(folder) ? templateLibrary(p) : ''}`;
+    ${fileConsistencySummary(p,state)}<label class="pd-mobile-folder">文件目录<select id="file-folder-select"><option value="all">全部成果文件</option>${FOLDERS.map(f=>`<option value="${f.id}" ${f.id===folder ? 'selected' : ''}>${esc(folderPath(f.id))}</option>`).join('')}</select></label><div class="pd-file-workspace"><nav class="pd-folder-tree" aria-label="项目文件目录">${fileTree(p, folder)}</nav>
+    <section class="pd-panel pd-file-panel"><div class="pd-section-head"><h2>${folder === 'all' ? '全部成果文件' : folderName(folder)}</h2><div class="pd-actions"><span class="muted">${count(folder)} 份当前文件</span>${folder !== 'all' ? button(ico('plus') + '添加到此目录', 'import-project-file') : ''}</div></div><div class="pd-file-filter"><div class="pd-search">${ico('search')}<input type="search" id="file-search" aria-label="搜索文件名或底稿编号" placeholder="搜索文件名或底稿编号" value="${esc(fileSearch)}"></div><select id="file-status" aria-label="文件状态"><option value="all" ${fileStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="ready" ${fileStatus === 'ready' ? 'selected' : ''}>已有文件</option><option value="missing" ${fileStatus === 'missing' ? 'selected' : ''}>尚未生成</option>${[['conflict','不一致'],['updated','已同步'],['manual','需人工确认'],['stale','待重新检查']].map(([value,label]) => `<option value="${value}" ${fileStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div><p class="pd-time-explainer">修改时间为北京时间 · 当前列表显示最新版本，旧版可在“版本记录”查看</p><div id="file-list">${fileRows(p, folder)}</div></section></div>${['all','sources'].includes(folder) ? templateLibrary(p) : ''}`;
 }
 function notFound(title: string, target = 'tasks') { return `${pageHead('WORKSPACE', title, '请返回项目列表重新选择。')}${link('返回', target, true)}`; }
 function render() {
   clearTimeout(checkTimer);
   finishConsistency(state);
   const { path, query } = route();
+  if (path === 'dashboard') { history.replaceState(null, '', location.pathname + location.search + '#tasks'); render(); return; }
   const p = projectForRoute();
   let section = path === 'update' ? 'workspace' : ['generate', 'integrity', 'dashboard', 'review', 'qa'].includes(path) ? path : 'projects';
   let html: string;
-  if (path === 'dashboard') html = query.has('project') && !p ? notFound('项目不存在') : (p ? projectContext(p, path) : '') + projectDashboard(p);
-  else if (path === 'qa') html = query.has('project') && !p ? notFound('项目不存在') : qaView(p, state, query);
+  if (path === 'qa') html = query.has('project') && !p ? notFound('项目不存在') : qaView(p, state, query);
   else if (path === 'consistency') html = p ? consistencyView(p, state, query) : notFound('项目不存在');
   else if (path === 'update' || path === 'review') {
     html = !query.has('project') ? projectPicker(path) : !p ? notFound('项目不存在') : projectContext(p, path) + workView(p, path, query, state);
@@ -188,21 +195,20 @@ function render() {
     }
   } else if (path.startsWith('/projects/')) html = p ? filesView(p) : notFound('项目不存在');
   else if (path === 'tasks' || path === '/') html = projectsView();
-  else { section = path; html = `${pageHead('DESIGN PREVIEW', '账号与服务', '本地设计使用独立数据，无需登录。请从工作台选择项目开始。')}${link('查看本轮设计', 'dashboard', true)}`; }
-  root.innerHTML = workspaceShell(`<div class="pd-design-notice"><span><b>本地设计稿</b> · 合成项目 · 生成与核查为演示</span>${button('预览说明', 'design-info')}</div>${storageWarning ? `<p class="pd-alert" role="alert">${esc(storageWarning)}</p>` : ''}${notification ? `<p class="pd-feedback" role="status">${esc(notification)}</p>` : ''}<div id="flow-error" class="pd-alert" role="alert" hidden></div>${html}`, section, true);
+  else { section = path; html = `${pageHead('DESIGN PREVIEW', '账号与服务', '本地设计使用独立数据，无需登录。请从全部项目选择项目开始。')}${link('查看本轮设计', 'tasks', true)}`; }
+  root.innerHTML = workspaceShell(`<div class="pd-design-notice"><span><b>本地设计稿</b> · 合成项目 · 生成与核查为演示</span>${button('预览说明', 'design-info')}</div>${storageWarning ? `<p class="pd-alert" role="alert">${esc(storageWarning)}</p>` : ''}${notification ? `<p class="pd-feedback" role="status">${esc(notification)}${undoFile ? button('撤销删除', 'undo-delete') : ''}</p>` : ''}<div id="flow-error" class="pd-alert" role="alert" hidden></div>${html}`, section, true);
   root.querySelector('.prototype-app')?.classList.add('pd-app');
   root.querySelector('[data-account-name]')!.textContent = '本地设计预览';
   root.querySelector('#logout')?.remove();
-  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v5 · 本地保存';
+  root.querySelector('.top-plan-link')!.textContent = '设计迭代 v6 · 本地保存';
   root.querySelector('.credit-wallet')!.innerHTML = '<div class="pd-local-save">本地独立数据<br><small>不连接线上账号和项目</small></div>';
   notification = '';
   bind();
   if (p && (path === 'update' || path === 'review')) bindWork(root, p, path, state, { save, render, go, error: showError, preview });
-  if (path === 'dashboard' && root.querySelector('#dashboard-projects')) bindProjectDashboard(root, p, state);
   if (path === 'qa') bindQA(root, p, state, {save, render, go, error: showError, modal});
   if (path.startsWith('/projects/')) bindFileTree(root);
   if (path === 'consistency' && p) bindConsistency(root, p, state, query, {save, render, go, error: showError, notify});
-  if (['consistency','dashboard'].includes(path) && state.jobs.some(j => j.consistency?.phase === 'checking')) checkTimer = setTimeout(render, 550);
+  if (['consistency','tasks'].includes(path) && state.jobs.some(j => j.consistency?.phase === 'checking')) checkTimer = setTimeout(render, 550);
   save();
 }
 function showError(error: unknown) { const element = root.querySelector<HTMLElement>('#flow-error')!; element.hidden = false; element.textContent = error instanceof Error ? error.message : '操作未完成，请重试。'; element.scrollIntoView({ block: 'nearest' }); }
@@ -263,30 +269,18 @@ function updateIntegrityScope(p: Project) {
   root.querySelector('#integrity-total')!.textContent = integrityTotals(p);
   root.querySelector<HTMLButtonElement>('[data-action="run-integrity"]')!.disabled = !count || !p.draft.subjects.length;
 }
-function openImport(p: Project, catalogId?: string) {
-  const slot = ORIGINAL_CATALOG.find(d => d.id === catalogId);
-  const folder = slot ? '4.2' : route().query.get('folder') === 'sources' ? 'sources' : '4.2';
-  const dialog = modal(slot ? '导入底稿 · ' + slot.code : '导入项目文件', `<form id="import-project-form"><p>${slot ? esc(slot.name) : '把底稿原件和编制依据保存到对应目录。'}</p><label class="pd-field">归档位置<select id="import-folder"><option value="4.2" ${folder === '4.2' ? 'selected' : ''}>4.2 核查记录 / 已导入底稿</option><option value="sources" ${folder === 'sources' ? 'selected' : ''}>原始资料</option></select></label><label class="pd-field" id="import-catalog-field">关联底稿目录<select id="import-catalog"><option value="">独立文件（不关联固定目录项）</option>${ORIGINAL_CATALOG.map(d => `<option value="${d.id}" ${d.id === catalogId ? 'selected' : ''}>${esc(d.code)} ${esc(d.name)}</option>`).join('')}</select></label><label class="pd-field">选择本地文件<input id="project-file-upload" required type="file" accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"></label><p class="pd-note">本地设计仅记录文件名和版本，文件内容未上传。同一目录项再次导入会保留旧版本。</p><p id="import-error" class="pd-alert" role="alert" hidden></p><div class="pd-footer"><span class="muted">归属 ${esc(p.name)}</span><button type="submit" class="btn primary">保存到项目文件</button></div></form>`);
-  const select = dialog.querySelector<HTMLSelectElement>('#import-folder')!;
-  const sync = () => { dialog.querySelector<HTMLElement>('#import-catalog-field')!.hidden = select.value !== '4.2'; };
-  select.addEventListener('change', sync); sync();
-  dialog.querySelector('form')!.addEventListener('submit', event => {
-    event.preventDefault();
-    try {
-      const file = dialog.querySelector<HTMLInputElement>('#project-file-upload')!.files?.[0];
-      if (!file) throw new Error('请先选择一个文件。');
-      const id = select.value === '4.2' ? dialog.querySelector<HTMLSelectElement>('#import-catalog')!.value || undefined : undefined;
-      const imported = importProjectFile(p, file, select.value, id); save(); dialog.close();
-      originalGroup = ORIGINAL_CATALOG.find(d => d.id === id)?.group ?? 'all'; fileSearch = ''; fileStatus = 'all';
-      notify(`已记录 ${file.name}，保存为 v${imported.version}；文件内容未上传。`); go(projectLink(p, imported.folder));
-    } catch (error) { const el = dialog.querySelector<HTMLElement>('#import-error')!; el.hidden = false; el.textContent = (error as Error).message; }
-  });
+function fileHooks(p: Project) { return {modal,save,render,notify,go,deleted:(file:ProjectFile)=>{undoFile={projectId:p.id,fileId:file.id};}}; }
+function openProjectTasks(p: Project, group: string) {
+  const dialog=modal('项目任务',projectTaskView(p,state,group));
+  dialog.querySelectorAll<HTMLElement>('[data-task-tab]').forEach(b=>b.addEventListener('click',()=>{dialog.close();openProjectTasks(p,b.dataset.taskTab!);}));
 }
 function bind() {
   root.querySelector('#toggle-menu')!.addEventListener('click', () => { const open = root.querySelector('#sidebar')!.classList.toggle('mobile-open'); root.querySelector('#toggle-menu')!.setAttribute('aria-expanded', String(open)); });
   root.querySelector('#close-menu')!.addEventListener('click', () => { root.querySelector('#sidebar')!.classList.remove('mobile-open'); root.querySelector('#toggle-menu')!.setAttribute('aria-expanded', 'false'); });
   root.querySelector('#project-picker-search')?.addEventListener('input', e => { projectSearch = (e.target as HTMLInputElement).value; root.querySelector('#picker-list')!.innerHTML = pickerRows(); });
   root.querySelector('#all-project-search')?.addEventListener('input', e => { projectSearch = (e.target as HTMLInputElement).value; root.querySelector('#projects-table')!.innerHTML = projectRows(); });
+  root.querySelector('#all-project-search')?.addEventListener('input', () => { root.querySelector('#project-match-count')!.textContent=String(matchingProjects().length); });
+  root.querySelector('#file-folder-select')?.addEventListener('change', e => { const p=projectForRoute(); if(p)go(projectLink(p,(e.target as HTMLSelectElement).value)); });
   const filterFiles = () => { const p = projectForRoute(); if (p) root.querySelector('#file-list')!.innerHTML = fileRows(p, route().query.get('folder') ?? 'all'); };
   root.querySelector('#file-search')?.addEventListener('input', e => { fileSearch = (e.target as HTMLInputElement).value; filterFiles(); });
   root.querySelector('#file-status')?.addEventListener('change', e => { fileStatus = (e.target as HTMLSelectElement).value; filterFiles(); });
@@ -357,19 +351,23 @@ root.addEventListener('click', event => {
   const trigger = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!trigger) return;
   const action = trigger.dataset.action; const p = projectForRoute();
   try {
+    if (action === 'project-tasks') { const project=state.projects.find(p=>p.id===trigger.dataset.project); if(project)openProjectTasks(project,trigger.dataset.group ?? 'all'); return; }
+    if (action === 'undo-delete' && undoFile) { const project=state.projects.find(p=>p.id===undoFile!.projectId); if(project)restoreProjectFile(project,undoFile.fileId); undoFile=undefined;save();notify('已撤销删除，文件已恢复。');render();return; }
     if (action === 'project-menu') { const project=state.projects.find(p=>p.id===trigger.dataset.project);if(project)openProjectMenu(trigger,project);return; }
     if (action === 'new-project') { openNewProject(trigger.dataset.mode as typeof newProjectMode); return; }
     if (action === 'continue-project') { const selected = state.projects.find(p => p.id === selectedProject); if (selected) go(flowLink(trigger.dataset.mode!, selected, FLOWS[trigger.dataset.mode as FlowMode].step)); return; }
     if (action === 'design-info') {
-      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：全局工作台、更新与复核募集书、模板复用、文件生成、诚信核查、项目问答、项目文件与历史版本、一致性检查与接受更新。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
-      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v5.json', JSON.stringify(state, null, 2), 'application/json')); return;
+      const dialog = modal('本轮设计说明', '<p>基于当前线上版本 1742fe6a，沿用 BondBuddy 的导航、配色和工作台外框。</p><p>本轮可操作：全部项目及任务概览、目录上传、修改时间、版本删除与恢复、更新与复核募集书、模板复用、文件生成、诚信核查、项目问答、项目文件与历史版本、一致性检查与接受更新。工作台布局、更新表单和复核准备界面复用线上源码。</p><p>全部项目为合成数据；上传仅记录文件名；生成正文、网站检索及核查截图均未接通。示例结果不构成真实业务成果。</p><p>输入保存在此浏览器的独立设计数据中。可导出 JSON 留存本轮迭代记录。</p><button class="btn secondary" id="export-design-state">导出本地设计数据</button>');
+      dialog.querySelector('#export-design-state')!.addEventListener('click', () => download('bondbuddy-project-design-v6.json', JSON.stringify(state, null, 2), 'application/json')); return;
     }
     if (!p) return;
     if (action === 'contact-sites') { modal('联系我们加网站', '<p>网站还在持续补充。请向 BondBuddy 服务团队提供所需网站，便于后续接入。</p><label class="pd-field">希望补充的网站 / 地区<textarea rows="4" placeholder="网站名称、官网链接、对应地区和核查内容"></textarea></label><p class="pd-note">设计预览：联系渠道待接入；这里填写的内容不会发送。</p>'); return; }
     if (action === 'sites-all' || action === 'sites-none') { integrityDraft(p).siteIds = action === 'sites-all' ? INTEGRITY_SITES.map(s => s.id) : []; root.querySelectorAll<HTMLInputElement>('[name="integrity-site"]').forEach(input => input.checked = action === 'sites-all'); save(); updateIntegrityScope(p); }
     else if (action === 'evidence') { const job = state.jobs.find(j => j.id === trigger.dataset.job && j.projectId === p.id); const snapshot = job?.integrity; const record = snapshot?.records[Number(trigger.dataset.record)]; if (snapshot && record) modal('查询与取证记录', evidenceContent(snapshot, record)); }
     else if (action === 'catalog-document') { const type = trigger.dataset.type!; const f = latestFiles(p).find(f => f.type === type); if (f) preview(p,f); else go(type.includes('integrity') ? flowLink('integrity',p,'subjects') : flowLink('generate',p,type === 'prospectus' || !sourceOf(p) ? 'source' : 'materials') + (type === 'prospectus' ? '' : '&document=' + type)); }
-    else if (action === 'import-project-file' || action === 'original-slot') openImport(p, trigger.dataset.catalog);
+    else if (action === 'import-project-file' || action === 'original-slot') { fileSearch='';fileStatus='all';openFileImport(p,route().query.get('folder') ?? 'all',trigger.dataset.catalog,fileHooks(p)); }
+    else if (action === 'delete-file') { const f=p.files.find(f=>f.id===trigger.dataset.id&&!f.deletedAt); if(f)openFileDelete(p,f,fileHooks(p)); }
+    else if (action === 'deleted-files') { undoFile=undefined;openDeletedFiles(p,fileHooks(p)); }
     else if (action === 'continue-source') { if (!sourceOf(p)) throw new Error('请先选择募集说明书。'); go(flowLink('generate', p, 'materials')); }
     else if (action === 'select-all' || action === 'select-none') { p.draft.selected = action === 'select-all' ? GENERATABLE.map(d => d.id) : []; save(); render(); }
     else if (action === 'add-company' || action === 'add-person') addSubject(p, action === 'add-company' ? 'company' : 'person');
@@ -388,8 +386,9 @@ root.addEventListener('click', event => {
     else if (action === 'preview') { const f = p.files.find(f => f.id === trigger.dataset.id); if (f) preview(p, f); }
     else if (action === 'history') {
       const selected = p.files.find(f => f.id === trigger.dataset.id);
-      const files = p.files.filter(f => selected ? fileFamily(f) === fileFamily(selected) : trigger.dataset.catalog ? f.catalogId === trigger.dataset.catalog : f.type === trigger.dataset.type).sort((a, b) => b.version - a.version);
-      const dialog = modal('文件版本记录', `<p class="muted">每次准备新版本均保留旧文件及原始依据。</p>${files.map(f => `<div class="pd-result-row"><div class="pd-grow"><strong>v${f.version} · ${esc(f.name)}</strong><small>${esc(date(f.createdAt))}${f.sourceVersion ? ` · 依据募集书 v${f.sourceVersion}` : ''}</small></div><button class="btn secondary" data-version="${f.id}">查看</button></div>`).join('')}`);
+      const files = p.files.filter(f => !f.deletedAt && (selected ? fileFamily(f) === fileFamily(selected) : trigger.dataset.catalog ? f.catalogId === trigger.dataset.catalog : f.type === trigger.dataset.type)).sort((a, b) => b.version - a.version);
+      const dialog = modal('文件版本记录', `<p class="muted">每次准备新版本均保留旧文件及原始依据。</p>${files.map(f => `<div class="pd-result-row"><div class="pd-grow"><strong>v${f.version} · ${esc(f.name)}</strong><span class="pd-chip">${latestFiles(p).some(x=>x.id===f.id) ? '当前版本' : '历史版本'}</span>${fileTime(f)}<small>${f.sourceVersion ? `依据募集书 v${f.sourceVersion}` : ''}</small></div><div class="pd-actions"><button class="btn secondary" data-version="${f.id}">查看</button><button class="text-button pd-delete-action" data-delete-version="${f.id}">删除此版本</button></div></div>`).join('')}`);
+      dialog.querySelectorAll<HTMLElement>('[data-delete-version]').forEach(b=>b.addEventListener('click',()=>{const f=files.find(f=>f.id===b.dataset.deleteVersion)!;dialog.close();openFileDelete(p,f,fileHooks(p));}));
       dialog.querySelectorAll<HTMLElement>('[data-version]').forEach(b => b.addEventListener('click', () => { const f = files.find(f => f.id === b.dataset.version)!; dialog.close(); preview(p, f); }));
     }
   } catch (error) { showError(error); }

@@ -17,7 +17,11 @@ function Get-DesignProcess {
 }
 $existing = Get-DesignProcess
 if ($Action -eq 'stop') {
-  if ($existing) { Stop-Process -Id $existing.ProcessId; Write-Output 'Local design preview stopped; saved browser data retained.' }
+  if ($existing) {
+    $stopped = Invoke-CimMethod -InputObject $existing -MethodName Terminate
+    if ($stopped.ReturnValue -ne 0) { throw "Preview could not be stopped (code $($stopped.ReturnValue))." }
+    Write-Output 'Local design preview stopped; saved browser data retained.'
+  }
   else { Write-Output 'Local design preview is not running.' }
   exit
 }
@@ -29,6 +33,7 @@ if ($Action -eq 'status') {
   exit
 }
 if ($existing) { Write-Output "Already running: $url"; exit }
+if (Get-NetTCPConnection -LocalPort 5186 -State Listen -ErrorAction SilentlyContinue) { throw 'Port 5186 is already used by another preview; no process changed.' }
 if (!(Test-Path -LiteralPath $vite)) { throw 'Install repository dependencies first (npm ci from the repository root).' }
 New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
@@ -39,10 +44,12 @@ if (!$node) {
 $child = Start-Process -FilePath $node -ArgumentList @(('"' + $vite + '"'),'--mode','project-design','--host','127.0.0.1','--port','5186','--strictPort') -WorkingDirectory (Join-Path $repo 'apps/web') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runtime 'server.log') -RedirectStandardError (Join-Path $runtime 'server-error.log') -PassThru
 $child.Id | Set-Content -LiteralPath $pidFile
 for ($attempt = 0; $attempt -lt 20; $attempt++) {
+  $child.Refresh()
   if ($child.HasExited) { throw (Get-Content -LiteralPath (Join-Path $runtime 'server-error.log') -Raw) }
   try {
     $response = Invoke-WebRequest -Uri 'http://127.0.0.1:5186/' -UseBasicParsing
-    if ($response.StatusCode -eq 200) { Write-Output "Ready: $url (PID $($child.Id))"; exit }
+    $listener = Get-NetTCPConnection -LocalPort 5186 -State Listen -ErrorAction SilentlyContinue
+    if ($response.StatusCode -eq 200 -and $listener.OwningProcess -contains $child.Id) { Write-Output "Ready: $url (PID $($child.Id))"; exit }
   } catch { Start-Sleep -Milliseconds 500 }
 }
 throw 'Preview did not become ready. Check .local-design/server-error.log.'
