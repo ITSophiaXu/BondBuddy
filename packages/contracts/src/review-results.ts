@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
-export type ReviewFileDeliveryPin = { version: 'review-file-v1'; knowledge: { path: string; sha256: string; markdown: string }[] };
+export type ReviewFileDeliveryPin = { version: 'review-file-v1' | 'review-correction-v2'; export?: import('./review-editor.js').ReviewExportPin; knowledge: { path: string; sha256: string; markdown: string }[] };
 export type GeneratedWordDeliveryPolicy = 'generated_pair_v1' | 'generated_review_v1';
 
 const id = Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' });

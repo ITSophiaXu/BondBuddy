@@ -70,7 +70,7 @@ export async function reviewInputGate(pool: Pool, run: RunRow, input: InputRevis
 export async function reviewMaterialsReady(ctx: Pick<StageContext, 'pool' | 'run'>): Promise<StageOutcome> {
   const input = (await ctx.pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!isReviewInput(input?.manifest)) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-  if (input.manifest.review.file_delivery?.version === 'review-file-v1') return { kind: 'done', checkpoint: { review_mode: 'review_v1', delivery: 'review-file-v1' } };
+  if (['review-file-v1','review-correction-v2'].includes(input.manifest.review.file_delivery?.version ?? '')) return { kind: 'done', checkpoint: { review_mode: 'review_v1', delivery: 'review-file-v1' } };
   for (const pin of input.manifest.materials) {
     const job = (await ctx.pool.query("SELECT state,stage FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND subtype='material_parse' AND parser_version=$5", [ctx.run.owner_user_id, ctx.run.project_id, pin.material_id, pin.material_version, documentParserVersion()])).rows[0];
     if (!job || ['queued','running'].includes(job.state)) return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };

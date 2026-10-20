@@ -4,6 +4,7 @@ import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
+import { registerReviewEditor } from './review-editor.js';
 import { listArtifactHistory } from './artifact-history.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contracts';
@@ -307,6 +308,7 @@ export function createServer(settings: Settings = {}) {
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   registerProspectusRoutes(app,db,owner,blob);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
+  registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
     reply.header('cache-control','private, no-store');
     return listArtifactHistory(db(),await owner(request),param(request,'project_id'),
@@ -1183,7 +1185,7 @@ export function createServer(settings: Settings = {}) {
       let excepted=false;
       // The storage receipt and operation commit together. Legacy projects retain auxiliary parsing.
       const accepted=async (m:any)=>{
-        if(uploadProject.kind==='update' && m.role==='historical')await registerUploadedProspectus(client,user,id,m);
+        if(m.role==='historical')await registerUploadedProspectus(client,user,id,m);
         // Unified authoring reads the original in the Codex task. Do not start an
         // independent parsing/OCR pass simply because the original has been stored.
         if (uploadProject.update_details?.authoring_mode !== 'unified_v1')

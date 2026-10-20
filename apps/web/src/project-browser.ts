@@ -125,6 +125,7 @@ export class ProjectBrowser {
       const row=[...list.querySelectorAll<HTMLElement>('[data-project-id]')].find(n=>n.dataset.projectId===item.project_id);
       const link=document.createElement('a');link.className='text-button';link.textContent='更新募集书';link.href='#update?project='+encodeURIComponent(item.project_id);
       row?.querySelector('.project-row-actions')?.prepend(link);
+      const review=document.createElement('a');review.className='text-button';review.textContent='复核募集书';review.href='#review?project='+encodeURIComponent(item.project_id);row?.querySelector('.project-row-actions')?.prepend(review);
     }
     list.querySelectorAll<HTMLButtonElement>('[data-download]').forEach(button=>{
       button.disabled=this.downloading.has(button.dataset.download!);

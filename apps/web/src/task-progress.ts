@@ -3,8 +3,8 @@ import { esc } from './ui.js';
 import './task-progress.css';
 
 /** Stages are host observations. Never infer percentages, completed checks or elapsed work. */
-export function taskProgress(run: Run, kind: 'update'|'review'|'revision'|'material', observed?: {title:string;summary:string;completed?:{label:string}[];phase?:0|1|2|3|4}) {
-  const verb=kind==='review'?'复核':kind==='revision'?'修订':kind==='material'?'生成':'编制';
+export function taskProgress(run: Run, kind: 'update'|'review'|'revision'|'material'|'export', observed?: {title:string;summary:string;completed?:{label:string}[];phase?:0|1|2|3|4}) {
+  const verb=kind==='export'?'导出':kind==='review'?'复核':kind==='revision'?'修订':kind==='material'?'生成':'编制';
   const subject=kind==='material'?'材料':'募集书';
   const terminal=['succeeded','test_completed','failed','rejected','cancelled'].includes(run.state);
   const stage=run.stage??'';

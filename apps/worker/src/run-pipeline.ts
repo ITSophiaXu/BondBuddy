@@ -66,7 +66,7 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
-  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments'; bytes: Buffer; mediaType?:'application/pdf' }[];
+  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments' | 'report'; bytes: Buffer; mediaType?:'application/pdf' }[];
       namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
   | {kind:'qa_deliver';reply:M4AssistantReply}
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
@@ -699,7 +699,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
       }
       if (reviewExecution) {
-        reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: reviewExecution.operation === 'revision' ? 'revision' : 'report' });
+        reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: outcome.cleanBytes || reviewExecution.operation === 'revision' ? 'revision' : 'report' });
         for (const artifact of reviewArtifacts) await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
           VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
         [run.owner_user_id,run.project_id,run.id,artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);

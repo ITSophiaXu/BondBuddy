@@ -1,3 +1,4 @@
+import { ReviewEntry } from './review-entry';
 import { UpdateEntry } from './update-entry';
 import { ProspectusPanel } from './prospectus-panel';
 import { duplicateUploadNotices, isReusedUpload } from './duplicate-upload';
@@ -56,6 +57,7 @@ let draft: Draft | undefined;
 let newDirty = false;
 let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
+let reviewEntry:ReviewEntry|undefined;
 let updateEntry:UpdateEntry|undefined;
 let prospectusPanel:ProspectusPanel|undefined;
 let dashboard: Dashboard | undefined;
@@ -97,7 +99,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
-  updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
+  reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   globalAssistant?.dispose(); globalAssistant = undefined;
   accountIdentity = undefined;
   creditWallet?.dispose(); creditWallet = undefined;
@@ -365,10 +367,10 @@ async function renderRoute() {
   materialWorkspace?.dispose(); materialWorkspace = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
-  updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
+  reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   currentRoute = nextRoute;
   if (requested === '/dashboard' || requested.startsWith('/dashboard?')) { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
-  if (/^review(\?|$)/.test(requested)) { renderNewReview(api, shell, () => token === epoch,new URLSearchParams(requested.split('?')[1]??'')); return; }
+  if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
     const project=query.get('project')??undefined;

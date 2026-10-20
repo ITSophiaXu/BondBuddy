@@ -1,3 +1,4 @@
+import { importProspectusMaterial } from './prospectus-import.js';
 import type { Pool, PoolClient } from 'pg';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { schemas, type ProspectusVersions } from '@bondbuddy/contracts';
@@ -19,7 +20,7 @@ export async function prospectusVersions(db: Pool | PoolClient, owner: string, i
       material_id:v.material_id,material_version:v.material_version,artifact_id:v.artifact_id,artifact_version:v.artifact_version,revision_artifact_id:v.revision_artifact_id,run_id:v.run_id})) };
 }
 
-async function changed(c:PoolClient, owner:string, id:string, versionId:string) {
+export async function changed(c:PoolClient, owner:string, id:string, versionId:string) {
   await c.query(`INSERT INTO bb_prospectus_selection(owner_user_id,project_id,version_id,revision) VALUES($1,$2,$3,1)
     ON CONFLICT(project_id) DO UPDATE SET version_id=$3,revision=bb_prospectus_selection.revision+1`,[owner,id,versionId]);
   await c.query('UPDATE bb_projects SET draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
@@ -39,7 +40,7 @@ export async function registerUploadedProspectus(c:PoolClient,owner:string,id:st
 
 /** Completion archives both outputs, but only promotes if the user has not switched/uploaded since input lock. */
 export async function registerGeneratedProspectus(c:PoolClient,r:any,pair:any) {
-  if(r.task_kind!=='update'||r.channel!=='production'||!pair?.clean_artifact_id||!pair?.revision_artifact_id)return;
+  if(!['update','review'].includes(r.task_kind)||r.channel!=='production'||!pair?.clean_artifact_id||!pair?.revision_artifact_id)return;
   await project(c,r.owner_user_id,r.project_id,true);
   if((await c.query('SELECT 1 FROM bb_prospectus_versions WHERE project_id=$1 AND run_id=$2',[r.project_id,r.id])).rowCount)return;
   const a=(await c.query(`SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3
@@ -50,7 +51,7 @@ export async function registerGeneratedProspectus(c:PoolClient,r:any,pair:any) {
     [uid(),r.owner_user_id,r.project_id,a.sha256.trim(),a.id,a.version,pair.revision_artifact_id,r.id])).rows[0];
   const manifest=(await c.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[r.owner_user_id,r.project_id,r.input_revision])).rows[0]?.manifest;
   const s=(await c.query('SELECT revision FROM bb_prospectus_selection WHERE project_id=$1',[r.project_id])).rows[0];
-  if((s?.revision??0)===(manifest?.prospectus_selection?.revision??0))await changed(c,r.owner_user_id,r.project_id,v.id);
+  if(r.task_kind==='update'&&!manifest?.review&&(s?.revision??0)===(manifest?.prospectus_selection?.revision??0))await changed(c,r.owner_user_id,r.project_id,v.id);
   await c.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'prospectus.generated',$4)`,[uid(),r.owner_user_id,r.project_id,{version_id:v.id,run_id:r.id}]);
 }
 
@@ -62,7 +63,7 @@ export function registerProspectusRoutes(app:FastifyInstance,db:()=>Pool,owner:(
     const user=await owner(r),projectId=id(r),b=r.body as any;
     return transaction(db(),async c=>{
       const p=await project(c,user,projectId,true);
-      if(p.kind!=='update')throw conflict('INPUT_REVISION_CONFLICT','请先进入此项目的更新募集书工作区。');
+      if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
       const requestHash=digest(JSON.stringify({mode,...b}));
       const prior=(await c.query('SELECT request_hash FROM bb_prospectus_selection_requests WHERE owner_user_id=$1 AND project_id=$2 AND request_id=$3',[user,projectId,b.request_id])).rows[0];
       if(prior){if(prior.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','此请求已用于其他版本。');return prospectusVersions(c,user,projectId);}
@@ -84,6 +85,7 @@ export function registerProspectusRoutes(app:FastifyInstance,db:()=>Pool,owner:(
           : await c.query("SELECT 1 FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND version=$3 AND delivery_status='available'",[user,v.artifact_id,v.artifact_version]);
         if(!available.rowCount)throw missing();
       }
+      if(v.origin==='generated'&&p.kind!=='update')await importProspectusMaterial(c,blobs(),user,projectId,v.id);
       if(s?.version_id!==v.id)await changed(c,user,projectId,v.id);
       await c.query('INSERT INTO bb_prospectus_selection_requests(owner_user_id,project_id,request_id,request_hash) VALUES($1,$2,$3,$4)',[user,projectId,b.request_id,requestHash]);
       return prospectusVersions(c,user,projectId);

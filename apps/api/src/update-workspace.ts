@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { schemas, emptyUpdateDetails, M1_UPLOAD_LIMITS } from '@bondbuddy/contracts';
 import { project, transaction, uid, missing, Problem, conflict, readBlobToFile, putBlobFile, type PrivateBlobs } from './data.js';
 import { reserveSpool, spoolDirectory, discardSpool } from './upload-spool.js';
-import { registerUploadedProspectus } from './prospectus-versions.js';
+import { registerUploadedProspectus, changed } from './prospectus-versions.js';
 
 type MaterialEvent=(c:PoolClient,owner:string,id:string,materialId:string,size:number)=>Promise<void>;
 
@@ -84,6 +84,19 @@ export function registerUpdateWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r
         await project(db(),user,sourceId);
         const materials=(await db().query('SELECT DISTINCT ON(id) id,version FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC',[user,sourceId])).rows;
         for(const m of materials)await copyMaterial(db(),blobs(),user,target,sourceId,m.id,m.version,event);
+        await transaction(db(),async c=>{
+          await project(c,user,target,true);
+          if((await c.query('SELECT 1 FROM bb_prospectus_selection WHERE owner_user_id=$1 AND project_id=$2',[user,target])).rowCount)return;
+          const current=(await c.query(`SELECT COALESCE(v.material_id,i.material_id) material_id,COALESCE(v.material_version,i.material_version) material_version
+            FROM bb_prospectus_selection s JOIN bb_prospectus_versions v ON v.project_id=s.project_id AND v.id=s.version_id AND v.owner_user_id=s.owner_user_id
+            LEFT JOIN bb_review_source_imports i ON i.project_id=v.project_id AND i.version_id=v.id AND i.owner_user_id=v.owner_user_id
+            WHERE s.owner_user_id=$1 AND s.project_id=$2`,[user,sourceId])).rows[0];
+          if(!current?.material_id)return;
+          const selected=(await c.query(`SELECT v.id FROM bb_update_material_copies c JOIN bb_prospectus_versions v
+            ON v.project_id=c.project_id AND v.material_id=c.material_id AND v.owner_user_id=c.owner_user_id
+            WHERE c.owner_user_id=$1 AND c.project_id=$2 AND c.source_material_id=$3 AND c.source_material_version=$4`,[user,target,current.material_id,current.material_version])).rows[0];
+          if(selected)await changed(c,user,target,selected.id);
+        });
       }
     }
     return {source_project_id:id,update_project_id:target};

@@ -162,7 +162,7 @@ async function stopOne(state,name){
   delete state.processes[name];state.ready=false;if(name==='worker')state.modelReady=false;save(state);
 }
 
-export async function startServices({databaseOnly=false,afterStart=async()=>{}}={}){
+export async function startServices({databaseOnly=false,dependenciesOnly=false,afterStart=async()=>{}}={}){
   return withLifecycleLock(runtime,async()=>{
     const state=load();checkPorts(state);const launched=[];
     state.harnessCommit=command('git',['rev-parse','HEAD']).trim();
@@ -176,7 +176,10 @@ export async function startServices({databaseOnly=false,afterStart=async()=>{}}=
       if(!existsSync(join(data,'PG_VERSION')))appendFileSync(join(runtime,'initdb.log'),command(join(pgBin,'initdb.exe'),['-D',data,'-U','bondbuddy_integration','-A','trust','--encoding=UTF8','--locale=C']));
       const newPG=launch(state,'postgres',launched);await postgresReady(state);
       if(newPG)await afterStart('postgres',state);
-      if(!databaseOnly){
+      if(dependenciesOnly){
+        if(!state.processes.api&&!state.processes.worker)await setupDatabases();
+        const started=launch(state,'blob',launched);await serviceReady(state,'blob');if(started)await afterStart('blob',state);
+      }else if(!databaseOnly){
         if(!state.processes.api&&!state.processes.worker)await setupDatabases();
         for(const name of order.filter(n=>n!=='postgres')){
           const started=launch(state,name,launched);await serviceReady(state,name);
@@ -185,7 +188,7 @@ export async function startServices({databaseOnly=false,afterStart=async()=>{}}=
         await waitFor(()=>{for(const name of order)requireAlive(state,name);return httpOK(`http://127.0.0.1:${ports.api}/api/v1/ready`);},'API readiness');
         state.ready=true;
       }
-      checkPorts(state);state.modelReady=modelReady();state.phase=state.ready?'running':'database-only';state.startedAt=new Date().toISOString();delete state.stoppedAt;save(state);
+      checkPorts(state);state.modelReady=modelReady();state.phase=state.ready?'running':dependenciesOnly?'dependencies-only':'database-only';state.startedAt=new Date().toISOString();delete state.stoppedAt;save(state);
       return state;
     }catch(error){
       state.ready=false;state.phase='failed';state.error=String(error);state.cleanupErrors=[];save(state);

@@ -65,7 +65,7 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
       const m4=(ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode;
       if(m4==='document')return (options.m4Document??m4DocumentStage()).run(ctx);
       if(m4==='qa')return (options.m4Qa??m4QaStage()).run(ctx);
-      if (!options.reviewStage && (ctx.values.get('input_lock') as { file_delivery?: string })?.file_delivery === 'review-file-v1')
+      if (!options.reviewStage && ['review-file-v1','review-correction-v2'].includes((ctx.values.get('input_lock') as { file_delivery?: string })?.file_delivery ?? ''))
         return reviewFileStage().run(ctx);
       if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {
         const result = await (options.reviewStage ?? reviewModelStage({ loadInput: loadReviewInput })).run(ctx);

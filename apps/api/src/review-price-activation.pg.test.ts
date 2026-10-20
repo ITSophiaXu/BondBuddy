@@ -10,6 +10,7 @@ import { digest, uid, transaction, type PrivateBlobs } from './data.js';
 import { creditBalance, grantCredits, publishPrices } from './billing.js';
 import { auditCredits } from './billing-ops.js';
 import { claim, finish, promoteWordArtifact } from './queue.js';
+import { syntheticReviewPair } from './review-delivery-test-fixture.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { inputManifestHash } from './production-rule-pin.js';
 const config=JSON.parse(readFileSync(new URL('../../../deploy/m1/config/review-prices-20261009.json',import.meta.url),'utf8'));
@@ -49,9 +50,9 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
   assert.deepEqual(await creditBalance(pool,owner),{available:1,frozen:0});
   await fund(13899,'remaining-price');
   const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
-  const artifact=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic review report'}),blobs,'generated_pair_v1');
-  await assert.rejects(()=>finish(pool,lease,'succeeded',{artifactId:artifact.artifactId,artifactVersion:1,blobs}),/Delivered review report/);
-  await pool.query("INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename) VALUES($1,$2,$3,$4,1,'report','synthetic.docx')",[owner,p.project_id,run.run_id,artifact.artifactId]);
+  const unfinished=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic review report'}),blobs,'generated_pair_v1');
+  await assert.rejects(()=>finish(pool,lease,'succeeded',{artifactId:unfinished.artifactId,artifactVersion:1,blobs}),/Delivered review report/);
+  const artifact=await syntheticReviewPair(pool,lease,blobs);
   await finish(pool,lease,'succeeded',{artifactId:artifact.artifactId,artifactVersion:1,blobs});
   assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});assert.equal(ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).state,'settled');
   assert.equal(ok(await send('POST',`${base}/review-executions`,body)).run_id,run.run_id);
@@ -70,7 +71,7 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
   }
   const history=ok(await send('GET','/api/v1/credits/consumption-history'));
   assert.equal(history.items.find((i:any)=>i.run_id===run.run_id).charged_points,13900);
-  assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows[0].n,1);
+  assert.equal((await pool.query("SELECT sum(points)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows[0].n,13900,'progress debits must total the locked quote exactly once');
   assert.equal((await auditCredits(pool)).consistent,true);
   active=uid();assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);
  }finally{await app.close();await pool.end();}
