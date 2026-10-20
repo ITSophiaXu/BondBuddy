@@ -15,7 +15,7 @@ export function dashboardItems(state: DesignState, project?: Project): Dashboard
         const pending = j.consistency.snapshot.files.filter(f => pendingIssues(j,f).length).length;
         const manual = j.consistency.snapshot.files.filter(f => f.status === 'manual').length;
         const checking = j.consistency.phase === 'checking', attention = latest && (pending > 0 || manual > 0);
-        items.push({ id:j.id, project:p.name, kind:j.kind, group:checking ? 'active' : attention ? 'attention' : 'done', title:'文件一致性检查', time:j.createdAt, url:`#consistency?project=${p.id}&job=${j.id}`, detail:checking ? `${j.consistency.snapshot.files.length} 份文件 · 本地演示进度` : `${pending} 份待更新 · ${manual} 份需人工确认`, label:checking ? '正在检查 · 演示' : !latest ? '已归档 · 演示' : attention ? '待确认 · 演示' : '已完成 · 演示', action:checking ? '查看进度' : attention ? '查看文件冲突' : '查看结果' });
+        items.push({ id:j.id, project:p.name, kind:j.kind, group:checking ? 'active' : attention ? 'attention' : 'done', title:'文件一致性检查', time:j.createdAt, url:`#consistency?project=${p.id}&job=${j.id}`, detail:checking ? `${j.consistency.snapshot.files.length} 份文件 · 本地演示进度` : `${pending} 份待更新 · ${manual} 份需人工确认`, label:checking ? '正在检查 · 演示' : !latest ? '已归档 · 演示' : attention ? '待确认 · 演示' : '已完成 · 演示', action:checking ? '查看进度' : attention ? '获取修订版' : '查看结果' });
         continue;
       }
       const missing = j.qa?.questions.filter(q => q.status === 'missing').length ?? 0;

@@ -1,4 +1,3 @@
-import { esc } from '../ui';
 import type { Job, Project } from './model';
 import type { WordParagraph } from './word-export';
 
@@ -15,5 +14,5 @@ export function updateParagraphs(job: Job): WordParagraph[] {
   ];
 }
 export function updateDelivery(p: Project, job: Job) {
-  return `<div class="pd-review-delivery"><div><strong>更新后的募集说明书</strong><small>修订版保留增删与批注，清洁版保留待补提示。</small></div><div class="pd-actions"><button class="btn primary" data-update-download="tracked">下载修订版</button><button class="btn secondary" data-update-download="clean">下载清洁版</button><button class="btn secondary" data-consistency-start data-project="${p.id}" data-from-job="${job.id}">检查文件一致性</button></div></div><details class="pd-update-preview"><summary>查看本轮文档示例</summary><article class="pd-word-sheet"><div class="pd-word-watermark">合成片段 · 未修改上传原文</div>${updateParagraphs(job).map(x => x.heading ? `<h3>${esc(x.text)}</h3>` : `<p>${x.before ? `<del>${esc(x.before)}</del> <ins>${esc(x.text)}</ins>` : esc(x.text)}</p>${x.comment ? `<aside class="pd-word-comment">${esc(x.comment)}</aside>` : ''}`).join('')}</article></details><p class="pd-note">可下载合成 Word 示例；没有解析、更新上传的募集书正文。</p>`;
+  return `<div class="pd-review-delivery"><div><strong>更新后的募集说明书</strong><small>修订版保留增删与批注，清洁版保留待补提示。</small></div><div class="pd-actions"><button class="btn primary" data-update-download="tracked">下载修订版</button><button class="btn secondary" data-update-download="clean">下载清洁版</button><button class="btn secondary" data-consistency-start data-project="${p.id}" data-from-job="${job.id}">检查文件一致性</button></div></div><p class="pd-note">可下载合成 Word 示例；没有解析、更新上传的募集书正文。</p>`;
 }
