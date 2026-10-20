@@ -93,7 +93,7 @@ test('material download returns exact verified Blob bytes through the same-origi
   const blob=await api.materialBytes('project a',material,signal);
   assert(blob instanceof Blob);assert.equal(blob.type,material.media_type);assert.equal(blob.size,sourceBytes.byteLength);
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),sourceBytes);
-  assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/project%20a/materials/material%2Fsource/download');
+  assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/project%20a/materials/material%2Fsource/download?version=2');
   assert.equal(calls[0]!.init.method,'GET');assert.equal(calls[0]!.init.credentials,'same-origin');
   assert.equal(calls[0]!.init.cache,'no-store');assert.equal(calls[0]!.init.signal,signal);
 });
@@ -114,7 +114,7 @@ test('material download rejects truncated and empty responses',async t=>{
 test('material download preserves a server denial for a material outside the requested project',async t=>{
   const {api,calls}=stubDownload(t,()=>new Response(JSON.stringify({code:'NOT_FOUND'}),{status:404,headers:{'Content-Type':'application/json'}}));
   await assert.rejects(()=>api.materialBytes('other project',sourceMaterial()),error=>error instanceof ApiError&&error.status===404);
-  assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/other%20project/materials/material%2Fsource/download');
+  assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/other%20project/materials/material%2Fsource/download?version=2');
 });
 
 test('material download never requests bytes for an upload that has not been persisted',async t=>{

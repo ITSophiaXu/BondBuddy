@@ -2,6 +2,7 @@ import { readAuthoringProgress } from './authoring-progress.js';
 import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
+import { registerProjectCollection } from './project-collection.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
 import { registerReviewEditor } from './review-editor.js';
@@ -307,6 +308,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   registerProspectusRoutes(app,db,owner,blob);
+  registerProjectCollection(app,db,owner);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
@@ -1260,8 +1262,9 @@ export function createServer(settings: Settings = {}) {
       throw error;
     }
   });
-  app.get('/api/v1/projects/:project_id/materials/:material_id',async request=>{
-    const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
+  app.get('/api/v1/projects/:project_id/materials/:material_id',{schema:{querystring:schemas.MaterialVersionQuery}},async request=>{
+    const version=(request.query as {version?:string}).version;
+    const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'),version?Number(version):undefined);
     try { if(!await blob().exists(m.object_key)) throw missing(); }
     catch(error) {
       if(error instanceof Problem) throw error;
@@ -1269,8 +1272,9 @@ export function createServer(settings: Settings = {}) {
     }
     return materialDto(m);
   });
-  app.get('/api/v1/projects/:project_id/materials/:material_id/download',async (request,reply)=>{
-    const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
+  app.get('/api/v1/projects/:project_id/materials/:material_id/download',{schema:{querystring:schemas.MaterialVersionQuery}},async (request,reply)=>{
+    const version=(request.query as {version?:string}).version;
+    const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'),version?Number(version):undefined);
     await transaction(db(),client=>recordOperation(client,{owner:m.owner_user_id,projectId:m.project_id,requestId:request.id,traceId:request.id,kind:'material_download',status:'submitted'}));
     return sendMaterial(reply,db(),blob(),m);
   });

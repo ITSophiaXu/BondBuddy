@@ -245,7 +245,7 @@ test('desktop pages reflow beside the assistant at standard and wide widths',asy
  await setup(page);await page.setViewportSize({width:1440,height:960});await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
  for(const width of [1440,1280,1120,1024,961]){
   await page.setViewportSize({width,height:960});
-  for(const [route,label] of [['dashboard','工作台'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','材料生成'],['/account','我的账号']]){
+  for(const [route,label] of [['dashboard','全部项目'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','文件生成'],['/account','我的账号']]){
    await page.evaluate(route=>{location.hash=route;},route);await expect(page.locator('.shell main')).toBeVisible();
    await expect(page.locator('.breadcrumb>span').last()).toHaveText(label);
    if(route==='/account')await expect(page.locator('.credit-pack')).toHaveCount(4);

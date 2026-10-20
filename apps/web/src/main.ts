@@ -4,7 +4,7 @@ import { ProspectusPanel } from './prospectus-panel';
 import { duplicateUploadNotices, isReusedUpload } from './duplicate-upload';
 import { renderFinancialUploadGuidance } from './financial-upload-guidance';
 import { OPTIONAL_MATERIAL_GUIDANCE, OPTIONAL_MATERIAL_FORMATS } from './optional-materials';
-import { Dashboard } from './dashboard';
+import { ProjectFiles } from './project-files';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
 import { ProjectAssistant } from './project-assistant';
@@ -60,7 +60,7 @@ let projectBrowser: ProjectBrowser | undefined;
 let reviewEntry:ReviewEntry|undefined;
 let updateEntry:UpdateEntry|undefined;
 let prospectusPanel:ProspectusPanel|undefined;
-let dashboard: Dashboard | undefined;
+let projectFiles: ProjectFiles | undefined;
 let billingPage: BillingPage | undefined;
 let creditWallet: CreditWallet | undefined;
 let globalAssistant: ProjectAssistant | undefined;
@@ -106,7 +106,7 @@ function clearPrivateState() {
   materialWorkspace?.dispose(); materialWorkspace = undefined;
   clearSourceSelections();
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
-  dashboard?.dispose(); dashboard = undefined;
+  projectFiles?.dispose(); projectFiles = undefined;
   billingPage?.dispose(); billingPage = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
@@ -214,7 +214,7 @@ function bindLogin() {
       if (token !== epoch) return;
       (form.elements.namedItem('password') as HTMLInputElement).value = '';
       identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
-      history.replaceState(null, '', `${location.pathname}${location.search}#dashboard`);
+      history.replaceState(null, '', `${location.pathname}${location.search}#tasks`);
       await renderRoute();
     } catch (error) {
       if (token !== epoch) return;
@@ -253,7 +253,7 @@ function bindRegister() {
       const result = await api.register({ username: input.username, password: input.password, accepted_terms_version: termsVersion });
       if (submit !== epoch) return;
       identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
-      history.replaceState(null, '', `${location.pathname}${location.search}#dashboard`);
+      history.replaceState(null, '', `${location.pathname}${location.search}#tasks`);
       await renderRoute();
     } catch (error) {
       if (submit !== epoch) return;
@@ -285,11 +285,11 @@ function mountAccountIdentity() {
 
 function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
-  root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
+  root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#tasks"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','材料生成',section === 'generate')}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}</nav>
+    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}</nav>
     <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '材料生成' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   creditWallet ??= new CreditWallet(api);
   creditWallet.mount();
@@ -331,7 +331,8 @@ async function logout() {
 async function renderRoute() {
   if (!identity) return;
   const raw = location.hash.slice(1);
-  const requested = !raw || raw === 'dashboard' || raw.startsWith('dashboard?') ? '/dashboard'+raw.slice(9) : raw === 'update' || raw.startsWith('update?') ? '/update'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
+  const legacyDashboard = /^(?:\/)?dashboard(?:\?|$)/.test(raw);
+  const requested = !raw || legacyDashboard ? '/'+(raw.includes('?')?'?'+raw.split('?')[1]:'') : raw === 'update' || raw.startsWith('update?') ? '/update'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
@@ -359,7 +360,7 @@ async function renderRoute() {
   draft?.dispose(); draft = undefined;
   billingPage?.dispose(); billingPage = undefined;
   projectBrowser?.dispose(); projectBrowser = undefined;
-  dashboard?.dispose(); dashboard = undefined;
+  projectFiles?.dispose(); projectFiles = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
@@ -369,7 +370,7 @@ async function renderRoute() {
   materialProcessing?.dispose(); materialProcessing = undefined;
   reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   currentRoute = nextRoute;
-  if (requested === '/dashboard' || requested.startsWith('/dashboard?')) { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
+  if (!raw || legacyDashboard) history.replaceState(null,'',location.pathname+location.search+'#tasks'+(raw.includes('?')?'?'+raw.split('?')[1]:''));
   if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
@@ -384,12 +385,14 @@ async function renderRoute() {
   }
   if (/^generate(\?|$)/.test(requested)) {
     const query=new URLSearchParams(requested.split('?')[1]??'');
-    materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'));
+    materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'),query.get('run')??undefined);
     await materialWorkspace.render(); return;
   }
   if (/^\/update(\?|$)/.test(requested)) {updateEntry=new UpdateEntry(api,shell,()=>token===epoch);await updateEntry.render(new URLSearchParams(requested.split('?')[1]).get('project')??undefined);return;}
   if (/^\/new(\?|$)/.test(requested)) { renderNew(new URLSearchParams(requested.split('?')[1]??'')); return; }
   if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch); await projectBrowser.render(); return; }
+  const filesMatch=requested.match(/^\/projects\/([^/?]+)\/files(?:\?.*)?$/);
+  if(filesMatch){projectFiles=new ProjectFiles(api,shell,()=>token===epoch,decodeURIComponent(filesMatch[1]));await projectFiles.render();return;}
   const artifactMatch = requested.match(/^\/artifacts\/([^/]+)$/);
   if (artifactMatch) { artifactPage = new ArtifactPage(api, shell, () => token === epoch); await artifactPage.render(decodeURIComponent(artifactMatch[1])); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);

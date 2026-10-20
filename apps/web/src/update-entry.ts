@@ -53,7 +53,7 @@ export class UpdateEntry {
     const error=document.querySelector('#update-entry-error')!;error.textContent='';
     try{
       const result=await this.api.updateWorkspace(id,this.controller.signal);
-      if(this.current())location.hash=`/projects/${encodeURIComponent(result.update_project_id)}`;
+      if(this.current())location.hash=`/projects/${encodeURIComponent(result.update_project_id)}${new URLSearchParams(location.hash.split('?')[1]).get('from')==='projects'?'?from=projects':''}`;
     }catch(e){if(this.current()){error.textContent=friendlyError(e);this.selected=id;}}
     finally{this.opening=false;if(this.current()){button.disabled=!this.selected;button.textContent='进入更新募集书';}}
   }

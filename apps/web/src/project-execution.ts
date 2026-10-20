@@ -1,4 +1,5 @@
 import { ArtifactPage } from './artifact-page';
+import { authoringTasks } from './project-collection-model';
 import { prototypeIcon as icon } from './prototype-design';
 import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -673,26 +674,16 @@ export class ProjectExecution {
       const staleNotice = Boolean(this.initialNotice);
       this.message = this.initialNotice;
       this.initialNotice = '';
-      let cursor: string | undefined;
-      const seen = new Set<string>();
-      do {
-        const page = await this.api.projects(cursor, { q: project.name, archive: 'all', limit: '100' }, this.controller.signal);
-        if (!this.active) return;
-        const found = page.items.find(item => item.project_id === this.id);
-        if (found) {
-          this.latestArtifact = found.latest_artifact?.artifact_id;
-          if (found.latest_run) {
-            const run = await this.api.run(found.latest_run.run_id, this.controller.signal);
-            if (!this.active) return;
-            if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
-            this.acceptRun(run); void this.poll();
-          }
-          break;
-        }
-        cursor = page.page.next_cursor ?? undefined;
-        if (cursor && seen.has(cursor)) throw new ApiError(0, 'DATA_UNAVAILABLE');
-        if (cursor) seen.add(cursor);
-      } while (cursor);
+      const requestedRun=new URLSearchParams(location.hash.split('?')[1]).get('run');
+      const own=await authoringTasks(c=>this.api.projectTasks(this.id,c,this.controller.signal),this.id,()=>!this.active);
+      if(!this.active)return;
+      this.latestArtifact=own.find(t=>t.state==='succeeded'&&t.artifact_id)?.artifact_id??undefined;
+      const selected=requestedRun??own.find(t=>!['succeeded','test_completed','failed','cancelled','rejected'].includes(t.state))?.run_id??own[0]?.run_id;
+      if(selected){
+        const run=await this.api.run(selected,this.controller.signal);if(!this.active)return;
+        if(run.project_id!==this.id)throw new ApiError(0,'DATA_UNAVAILABLE');
+        this.acceptRun(run);void this.poll();
+      }
       this.inputReadUncertain = false;
       // InputRevisionResponse does not expose the message pin. Never execute a
       // recovered snapshot when a nonempty message set could have changed since it was locked.

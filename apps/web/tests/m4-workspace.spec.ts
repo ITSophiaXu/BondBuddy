@@ -1,3 +1,4 @@
+import { taskPage } from './collection-fixtures';
 import { test,expect,type Page,type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
@@ -109,7 +110,7 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
     if(path.endsWith('/bytes'))return route.fulfill({status:200,contentType:mime,body:'Synthetic DOCX bytes'});
     return reply(route,{code:'NOT_FOUND'},404);
   });
-  await page.goto(`/#${mode}?${fresh?'new=synthetic':'topic=topic-a'}`);await expect(page.getByRole('heading',{name:'材料生成',exact:true})).toBeVisible();
+  await page.goto(`/#${mode}?${fresh?'new=synthetic':'topic=topic-a'}`);await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
 }
 
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
@@ -278,7 +279,7 @@ test('first form save and concurrent upload share creation and retain entered re
 
 test('prototype material navigation, cards, source modes and only one optional requirements box',async({page})=>{
   const s=fixture();await mount(page,s);
-  await expect(page.locator('.sidebar').getByRole('link',{name:'材料生成',exact:true})).toHaveCount(1);
+  await expect(page.locator('.sidebar').getByRole('link',{name:'文件生成',exact:true})).toHaveCount(1);
   await expect(page.locator('.sidebar').getByRole('link',{name:'项目问答',exact:true})).toHaveCount(0);
   await expect(page.locator('#m4-agent,#m4-message,[data-m4-action=discuss],#m4-topic,[data-m4-action=new-topic],#m4-source')).toHaveCount(0);
   await expect(page.locator('[data-m4-type]')).toHaveCount(6);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
@@ -288,7 +289,7 @@ test('prototype material navigation, cards, source modes and only one optional r
   await expect(page.locator('[data-m4-upload=source]')).toHaveCount(0);await page.getByRole('radio',{name:'上传最新版募集书',exact:true}).check();
   await expect(page.locator('[data-m4-upload=source]')).toHaveCount(1);expect(s.executions).toHaveLength(0);expect(s.messages).toHaveLength(0);
   await page.route('**/projects/m4-project',route=>reply(route,s.workspace.project));
-  await page.goto('/#/projects/m4-project');await expect(page.getByRole('heading',{name:'材料生成',exact:true})).toBeVisible();
+  await page.goto('/#/projects/m4-project');await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
 });
 
 test('direct requirements save without a message or charge, remain per type and survive reload',async({page})=>{
@@ -527,16 +528,23 @@ test('refresh preserves an expanded preview and its reading position',async({pag
  await page.getByRole('button',{name:'刷新状态'}).click();await expect(preview).toBeVisible();await expect.poll(()=>preview.evaluate(node=>node.scrollTop)).toBe(400);expect(s.executions).toHaveLength(0);
 });
 
-for(const state of ['running','succeeded','failed'] as const)test(`dashboard material link opens exact ${state} run and keeps navigation on refresh`,async({page})=>{
+test('project row reuses its linked generation workspace and keeps the chosen source on reload',async({page})=>{
+ const s=fixture();await mount(page,s);await page.goto('/#generate?project=source-project&from=projects');
+ await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
+ await expect(page.getByText('当前项目：来源项目',{exact:true})).toBeVisible();
+ await expect(page.getByRole('radio',{name:'关联募集书项目',exact:true})).toBeChecked();
+ await page.reload();await expect(page.getByText('当前项目：来源项目',{exact:true})).toBeVisible();expect(s.executions).toHaveLength(0);
+});
+for(const state of ['running','succeeded','failed'] as const)test(`project material link opens exact ${state} run and keeps navigation on refresh`,async({page})=>{
  const s=fixture(),task=s.addDocumentTask('dashboard-run');task.run=s.run('dashboard-run',state);if(state!=='running')s.workspace.active_run=null;
  if(state==='succeeded'){task.artifacts=[{...s.artifact,artifact_id:'dashboard-artifact',run_id:'dashboard-run',filename:'本次材料成果.docx'}];s.workspace.artifacts.push(...task.artifacts);}
  await mount(page,s);
- await page.route('**/api/v1/projects**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/api/v1/projects')return reply(route,{items:[{...s.workspace.project,status:state,latest_run:{run_id:'dashboard-run',state,updated_at:now}}],page:{has_more:false,next_cursor:null}});if(url.pathname==='/api/v1/projects/m4-project')return reply(route,s.workspace.project);return route.fallback();});
- await page.goto('/#dashboard');await page.locator('[data-dashboard-kind=generation]').click();await page.locator('.dashboard-primary-action').click();
- await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await page.route('**/api/v1/projects**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/api/v1/projects/m4-project/tasks')return reply(route,taskPage('m4-project',[task.run],'generation',{topic_id:s.workspace.topic.topic_id}));if(url.pathname==='/api/v1/projects')return reply(route,{items:[{...s.workspace.project,status:state,latest_run:{run_id:'dashboard-run',state,updated_at:now}}],page:{has_more:false,next_cursor:null}});if(url.pathname==='/api/v1/projects/m4-project')return reply(route,s.workspace.project);return route.fallback();});
+ await page.goto('/#dashboard');await page.locator('[data-tasks]').click();await page.locator('.collection-task a').click();
+ await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
  if(state==='succeeded')await expect(page.locator('#m4-content')).toContainText('本次材料成果.docx');else await expect(page.locator('#m4-content')).toContainText(state==='running'?'正在':'本轮未完成');
- await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
- await page.getByRole('link',{name:'返回工作台'}).click();await expect(page.locator('[data-dashboard-kind=generation]')).toHaveAttribute('aria-pressed','true');expect(s.executions).toHaveLength(0);
+ await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await page.getByRole('link',{name:'返回全部项目'}).click();await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();expect(s.executions).toHaveLength(0);
 });
 
 

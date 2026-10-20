@@ -111,14 +111,14 @@ export async function run(pool: Pool | PoolClient, owner: string, id: string, lo
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
-export async function material(pool: Pool | PoolClient, owner: string, projectId: string, id: string) {
+export async function material(pool: Pool | PoolClient, owner: string, projectId: string, id: string, version?:number) {
   const result = await pool.query(`SELECT m.*,(SELECT s.id FROM bb_parse_snapshots s
       WHERE s.owner_user_id=m.owner_user_id AND s.project_id=m.project_id AND s.material_id=m.id AND s.material_version=m.version
         AND s.response_status <> 'failed'
         AND NOT EXISTS(SELECT 1 FROM bb_parse_snapshots newer WHERE newer.owner_user_id=s.owner_user_id AND newer.project_id=s.project_id
           AND newer.material_id=s.material_id AND newer.material_version=s.material_version AND (newer.created_at,newer.id)>(s.created_at,s.id))
       LIMIT 1) AS parse_snapshot_id
-    FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.deleted_at IS NULL ORDER BY m.version DESC LIMIT 1`, [owner,projectId,id]);
+    FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.deleted_at IS NULL AND ($4::int IS NULL OR m.version=$4) ORDER BY m.version DESC LIMIT 1`, [owner,projectId,id,version??null]);
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }

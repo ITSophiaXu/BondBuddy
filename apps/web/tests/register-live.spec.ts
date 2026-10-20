@@ -16,7 +16,7 @@ test('real UI register -> lands logged in -> logout -> login again', async ({ pa
   const registered = page.waitForResponse(response => response.url().endsWith('/api/v1/auth/register'));
   await page.getByRole('button', { name: '注册并进入工作区' }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '退出' }).click();
   await expect(page.getByRole('heading', { name: '登录工作区' })).toBeVisible();
   await login(page, { username: user.username.toLowerCase(), password: user.password });

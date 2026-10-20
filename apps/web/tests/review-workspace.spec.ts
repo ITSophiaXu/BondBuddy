@@ -1,3 +1,4 @@
+import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -35,6 +36,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     if(path.endsWith('/quote'))return reply(route,200,{enabled:false,quote:null,balance:{available:0,frozen:0},shortage:0,reason:null});
     if(path==='/me')return reply(route,200,{user_id:state.owner,session_status:'active'});
     if(path.endsWith('/readable-report'))return reply(route,200,{version:'review-readable-v1',project_id:id,run_id:'run-1',execution_version:1,status:'available',markdown:readableMarkdown,content_sha256:hash(readableMarkdown)});
+    if(path===`/projects/${id}/tasks`)return reply(route,200,taskPage(id,state.history.map(h=>h.run),'review'));
     if(path==='/projects')return reply(route,200,{items:[{...state.workspace.project,status:state.workspace.active_run?.state??'succeeded',latest_artifact:null,latest_run:null}],page:{next_cursor:null,has_more:false}});
     if(state.owner!=='owner-a')return reply(route,404,{code:'NOT_FOUND'});
     if(path===`/projects/${id}`){
@@ -349,7 +351,7 @@ test('revision results expose handling reasons and locations without chat or exe
 
 test('workbench handling reads the exact historical revision and returns to its history',async({page})=>{
   const {state,handling,entry}=revisionFixture();handling.source_report.report_id='report-older';handling.items.forEach(item=>item.report_id='report-older');entry.source_report_id='report-older';
-  await setup(page,state,'#dashboard');await page.getByRole('button',{name:'版本记录',exact:true}).click();const history=page.getByRole('dialog',{name:'合成募集书复核项目 · 版本记录'});const revision=history.locator('.review-history-entry').filter({hasText:'revision-run-2'});await expect(revision).toContainText('来源报告 report-older');await expect(revision.getByRole('link',{name:'打开来源报告'})).toHaveAttribute('href',/report_id=report-older/);
+  await setup(page,state,'#tasks');await page.locator('[data-tasks]').click();await page.getByRole('button',{name:'复核版本记录',exact:true}).click();const history=page.getByRole('dialog',{name:'合成募集书复核项目 · 版本记录'});const revision=history.locator('.review-history-entry').filter({hasText:'revision-run-2'});await expect(revision).toContainText('来源报告 report-older');await expect(revision.getByRole('link',{name:'打开来源报告'})).toHaveAttribute('href',/report_id=report-older/);
   await revision.getByRole('button',{name:'处理清单',exact:true}).click();const detail=page.getByRole('dialog',{name:'修订处理清单'});await expect(detail).toContainText('来源报告：report-older · V1');await expect(detail).toContainText('用户未选择此项');expect(state.artifactReads).toEqual(['/artifacts/revision-2']);await detail.getByRole('button',{name:'返回',exact:true}).click();await expect(history).toBeVisible();await expect(history.locator('.review-history-entry')).toHaveCount(2);
 });
 
@@ -439,10 +441,10 @@ function addTypedProposal(state:ReturnType<typeof fixture>,operation:ReviewPropo
 
 test('workbench alone owns version history and retains stopped/failed snapshots and exact report navigation',async({page})=>{
   const state=fixture();for(const [index,status]of(['failed','cancelled'] as const).entries())state.history.push({...structuredClone(state.history[0]),version:index+2,run:state.makeRun(`run-${index+2}`,status),report_id:null,input:{...structuredClone(state.workspace.draft),requirements:[`保留的${status}版本要求`]},created_at:`2026-10-02T1${index+1}:00:00Z`});
-  await setup(page,state,'#dashboard');const project=page.locator(`.dashboard-task[data-project-id="${id}"]`);await expect(project).toBeVisible();await project.getByRole('button',{name:'版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
+  await setup(page,state,'#tasks');const project=page.locator(`.collection-project[data-project-id="${id}"]`);await expect(project).toBeVisible();await project.locator('[data-tasks]').click();await page.getByRole('button',{name:'复核版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
   await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
   await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(3);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
-  await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('工作台');await expect(page.locator('.sidebar a.active')).toHaveAttribute('href','#dashboard');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('.sidebar a.active')).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 
@@ -890,8 +892,8 @@ test('review task receipt displays the actual reserved, charged and released poi
 
 test('dashboard review progress keeps its collection context through tab changes and reload',async({page})=>{
  const s=fixture();s.workspace.active_run=s.makeRun('active-run','running');await setup(page,s,`#/projects/${id}/review?tab=making&from=dashboard&dashboard_kind=review&dashboard_status=active`);
- await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
- await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.getByRole('link',{name:'返回工作台'})).toHaveAttribute('href','#dashboard?kind=review&status=active');expect(s.executes).toHaveLength(0);
+ await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
+ await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.getByRole('link',{name:'返回全部项目'})).toHaveAttribute('href','#tasks');expect(s.executes).toHaveLength(0);
 });
 
 

@@ -1,4 +1,5 @@
 import { reviewSteps } from './review-steps';
+import { withProjectContext } from './project-navigation';
 import { MARKET_LABELS, OFFERING_LABELS } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, type Dto } from './api';
 import { esc } from './ui';
@@ -30,7 +31,7 @@ export class ReviewEntry {
   private async open(){
     if(this.busy||!this.selected)return;this.busy=true;
     const button=document.querySelector<HTMLButtonElement>('#continue-review')!;button.disabled=true;button.textContent='正在打开…';
-    try{const result=await this.api.request<{project_id:string}>('POST',`/projects/${encodeURIComponent(this.selected)}/review-entry`,{}, {},this.controller.signal);if(this.current())location.hash=`/projects/${encodeURIComponent(result.project_id)}/review?tab=materials`;}
+    try{const result=await this.api.request<{project_id:string}>('POST',`/projects/${encodeURIComponent(this.selected)}/review-entry`,{}, {},this.controller.signal);if(this.current())location.hash=`/projects/${encodeURIComponent(result.project_id)}/review?${withProjectContext(new URLSearchParams({tab:'materials'}))}`;}
     catch(e){if(this.current())document.querySelector('#review-entry-error')!.textContent=friendlyError(e);}
     finally{this.busy=false;if(this.current()){button.disabled=!this.selected;button.textContent='下一步：材料与要求';}}
   }
