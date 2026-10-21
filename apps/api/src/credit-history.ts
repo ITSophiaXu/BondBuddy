@@ -34,7 +34,7 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
     SELECT c.*,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time,
       r.project_id,p.deleted_at,p.kind AS project_kind,
       COALESCE(i.manifest->>'name',i.manifest->>'project_name',i.manifest#>>'{assistant_context,project_name}',p.name,'项目任务') AS project_name,
-      COALESCE(CASE WHEN i.manifest->>'version'='integrity-round-v1' THEN 'integrity_check' END,q.task_type,mq.task_type,CASE WHEN fq.id IS NOT NULL THEN 'project_file_update' ELSE r.task_kind END) AS task_type,
+      COALESCE(CASE WHEN i.manifest->>'version'='project-qa-v1' THEN 'qa' WHEN i.manifest->>'version'='integrity-round-v1' THEN 'integrity_check' END,q.task_type,mq.task_type,CASE WHEN fq.id IS NOT NULL THEN 'project_file_update' ELSE r.task_kind END) AS task_type,
       COALESCE(e.charged,0)::text AS charged,COALESCE(e.released,0)::text AS released,COALESCE(e.corrected,0)::text AS corrected
     FROM selected c JOIN bb_runs r ON r.id=c.run_id AND r.owner_user_id=c.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=c.owner_user_id

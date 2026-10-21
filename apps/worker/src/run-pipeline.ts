@@ -7,6 +7,7 @@
 import type { Pool } from 'pg';
 import { isUnifiedInput,type M4AssistantReply } from '@bondbuddy/contracts';
 import { hasM4Manifest,m4InputGate } from './m4-input.js';
+import { isProjectQaInput,projectQaInputGate } from './project-qa-input.js';
 import { isIntegrityInput,integrityInputGate } from './integrity-input.js';
 import { isProjectFileInput,projectFileInputGate } from './project-file-input.js';
 import { unifiedInputGate } from './unified-input.js';
@@ -310,6 +311,7 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    if(isProjectQaInput(manifest))return (await projectQaInputGate(pool,run,input))??{kind:'done',value:{project_qa_mode:manifest.operation}};
     if(isIntegrityInput(manifest))return (await integrityInputGate(pool,run,input))??{kind:'done',value:{integrity_mode:manifest.operation}};
     if(isProjectFileInput(manifest))return (await projectFileInputGate(pool,run,input))??{kind:'done',value:{project_file_mode:manifest.operation}};
     if (hasM4Manifest(manifest)) return (await m4InputGate(pool,run,input)) ?? {kind:'done',value:{m4_mode:manifest?.kind}};
@@ -404,6 +406,7 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   name: 'materials_ready',
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
+    if ((values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return {kind:'done',checkpoint:{project_qa:true}};
     if ((values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return {kind:'done',checkpoint:{integrity:true}};
     if ((values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return {kind:'done',checkpoint:{original_files:true,project_file:true}};
     if ((values.get('input_lock') as {m4_mode?:string})?.m4_mode) return {kind:'done',checkpoint:{original_files:true,m4:true}};
@@ -596,6 +599,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if(isProjectQaInput(input.manifest))return projectQaInputGate(pool,run,input);
       if(isIntegrityInput(input.manifest))return integrityInputGate(pool,run,input);
       if(isProjectFileInput(input.manifest))return projectFileInputGate(pool,run,input);
       if (hasM4Manifest(input.manifest)) return m4InputGate(pool,run,input);

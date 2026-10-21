@@ -3,7 +3,7 @@ export type ProjectItem=Dto<'ProjectListResponse'>['items'][number];
 export type ProjectTask=Dto<'ProjectTasksResponse'>['items'][number];
 export type ProjectFile=Dto<'ProjectFilesResponse'>['items'][number];
 export const taskKinds={update:'更新募集书',review:'复核募集书',generation:'文件生成',qa:'项目问答'};
-export function taskLabel(t:Pick<ProjectTask,'kind'|'operation'>){return t.operation==='integrity_check'?'诚信核查':t.operation==='integrity_export'?'导出核查底稿':t.operation==='file_check'?'检查文件一致性':t.operation==='file_patch'?'更新关联文件':taskKinds[t.kind];}
+export function taskLabel(t:Pick<ProjectTask,'kind'|'operation'>){return t.operation==='qa_prepare'?'识别问题清单':t.operation==='qa_answer'?'项目问答':t.operation==='integrity_check'?'诚信核查':t.operation==='integrity_export'?'导出核查底稿':t.operation==='file_check'?'检查文件一致性':t.operation==='file_patch'?'更新关联文件':taskKinds[t.kind];}
 export const activeStates=new Set(['preparing','queued','running','validating','delivering','settlement_pending']);
 export function taskView(t:Pick<ProjectTask,'kind'|'state'|'stage'|'operation'>){
   const labels:Record<string,string>={preparing:'准备中',queued:'排队中',running:'执行中',awaiting_input:'待补材料',paused:'已暂停',validating:'整理结果',delivering:'准备下载',settlement_pending:'确认结果中',succeeded:'已完成',test_completed:'内部测试稿',failed:'本次未完成',cancelled:'已停止',rejected:'未启动'};
@@ -12,6 +12,7 @@ export function taskView(t:Pick<ProjectTask,'kind'|'state'|'stage'|'operation'>)
   return {label:labels[t.state],detail:(t.state==='running'&&t.stage&&phases[t.stage])||details[t.state],tone:activeStates.has(t.state)?'active':t.state==='succeeded'?'done':'attention',action:t.state==='succeeded'?'查看结果':activeStates.has(t.state)?'查看进度':['failed','rejected'].includes(t.state)?'查看原因':'查看任务'};
 }
 export function taskHref(t:ProjectTask){
+  if(t.operation==='qa_prepare'||t.operation==='qa_answer')return '#qa?project='+encodeURIComponent(t.project_id)+'&run='+encodeURIComponent(t.run_id);
   if(t.operation==='integrity_check'||t.operation==='integrity_export')return '#integrity?project='+encodeURIComponent(t.project_id)+'&run='+encodeURIComponent(t.run_id);
   if(t.operation==='file_check'||t.operation==='file_patch')return '#consistency?project='+encodeURIComponent(t.project_id)+(t.operation==='file_check'?'&run='+t.run_id:'');
   const q=new URLSearchParams({from:'projects',run:t.run_id});

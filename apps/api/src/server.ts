@@ -1,3 +1,5 @@
+import { registerProjectQa } from './project-qa.js';
+import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
 import { readAuthoringProgress } from './authoring-progress.js';
 import { installCreditHistory } from './credit-history.js';
@@ -183,6 +185,8 @@ export function createServer(settings: Settings = {}) {
   registerReviewRoutes(app, db, owner, paidReview);
   registerM4Routes(app, db, owner, blob, queueEnabled);
   registerProjectAssistant(app, db, owner);
+  registerProjectQa(app, db, owner);
+  registerQaKnowledge(app, db, owner);
   registerReadableReview(app, db, owner, blob);
   installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
@@ -999,7 +1003,7 @@ export function createServer(settings: Settings = {}) {
     await project(db(),user,id);blob();
     if(b.byte_size>MAX_BYTES)throw new Problem(422,'VALIDATION_FAILED','Upload exceeds limit');
     const suffix=b.filename.toLowerCase().split('.').at(-1);
-    const expectedExtensions:Record<string,string[]>={[PDF_MEDIA_TYPE]:['pdf'],[DOCX_MEDIA_TYPE]:['docx'],[XLSX_MEDIA_TYPE]:['xlsx'],[CSV_MEDIA_TYPE]:['csv'],[TEXT_MEDIA_TYPE]:['txt'],[PNG_MEDIA_TYPE]:['png'],[JPEG_MEDIA_TYPE]:['jpg','jpeg']};
+    const expectedExtensions:Record<string,string[]>={[PDF_MEDIA_TYPE]:['pdf'],[DOCX_MEDIA_TYPE]:['docx'],[XLSX_MEDIA_TYPE]:['xlsx'],[CSV_MEDIA_TYPE]:['csv'],[TEXT_MEDIA_TYPE]:['txt'],[PNG_MEDIA_TYPE]:['png'],[JPEG_MEDIA_TYPE]:['jpg','jpeg'],'application/msword':['doc']};
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
     await transaction(db(),async client=>{

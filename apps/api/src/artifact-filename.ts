@@ -20,6 +20,7 @@ export const artifactNameJoins = (alias: 'a' | 'v') => {
 };
 export function artifactDownloadName(row: any, pair: any = row.naming_pair): { filename: string; display_version: number } {
   const manifest = row.naming_manifest ?? {}, m4 = row.naming_m4_manifest ?? {};
+  if(manifest.version==='project-qa-v1')return {filename:resultFilename({project:manifest.source?.filename?.replace(/\.(docx|doc)$/i,''),kind:manifest.operation==='answer'?'已回填回答':'问题清单解析稿',version:Number(row.naming_input_revision??1),createdAt:row.naming_created_at,mediaType:row.media_type}),display_version:Number(row.naming_input_revision??1)};
   if(manifest.version==='integrity-round-v1')return {filename:resultFilename({project:manifest.project_name,kind:row.naming_integrity_kind==='company'?'企业诚信核查底稿':row.naming_integrity_kind==='person'?'人员诚信核查底稿':'诚信核查底稿',version:Number(row.naming_input_revision??1),createdAt:row.naming_created_at,mediaType:row.media_type}),display_version:Number(row.naming_input_revision??1)};
   if(manifest.version==='project-file-operation-v1'){
     const pairKind=pair?.revision_artifact_id===(row.id??row.artifact_id)?'修订版':pair?.clean_artifact_id===(row.id??row.artifact_id)?'清洁版':'基线版';

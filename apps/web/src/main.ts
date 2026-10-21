@@ -1,3 +1,4 @@
+import { ProjectQaWorkspace } from './project-qa-workspace';
 import { IntegrityWorkspace } from './integrity-workspace';
 import { ReviewEntry } from './review-entry';
 import { UpdateEntry } from './update-entry';
@@ -75,6 +76,7 @@ let reviewWorkspace: ReviewWorkspace | undefined;
 let materialWorkspace: MaterialWorkspace | undefined;
 let fileWorkspace: FileWorkspace | undefined;
 let integrityWorkspace: IntegrityWorkspace | undefined;
+let qaWorkspace: ProjectQaWorkspace | undefined;
 let fileConsistency: FileConsistency | undefined;
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
@@ -110,6 +112,7 @@ function clearPrivateState() {
   accountIdentity = undefined;
   creditWallet?.dispose(); creditWallet = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
+  qaWorkspace?.dispose(); qaWorkspace=undefined;
   integrityWorkspace?.dispose(); integrityWorkspace=undefined;
   fileWorkspace?.dispose(); fileWorkspace=undefined; fileConsistency?.dispose(); fileConsistency=undefined;
   clearSourceSelections();
@@ -295,9 +298,9 @@ function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#tasks"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}</nav>
+    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
     <main id="main" tabindex="-1">${content}</main></div></div>`;
   creditWallet ??= new CreditWallet(api);
   creditWallet.mount();
@@ -320,6 +323,7 @@ async function logout() {
   if (creating) return;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
   if (materialWorkspace && !await materialWorkspace.beforeLeave()) return;
+  if (qaWorkspace && !await qaWorkspace.beforeLeave()) return;
   if (integrityWorkspace && !await integrityWorkspace.beforeLeave()) return;
   if (fileWorkspace && !await fileWorkspace.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
@@ -347,6 +351,7 @@ async function renderRoute() {
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
+  if (qaWorkspace && !await qaWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (integrityWorkspace && !await integrityWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (fileWorkspace && !await fileWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (materialWorkspace && !await materialWorkspace.beforeLeave()) {
@@ -378,6 +383,7 @@ async function renderRoute() {
   projectConversation?.dispose(); projectConversation = undefined;
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
+  qaWorkspace?.dispose(); qaWorkspace=undefined;
   integrityWorkspace?.dispose(); integrityWorkspace=undefined;
   fileWorkspace?.dispose(); fileWorkspace=undefined; fileConsistency?.dispose(); fileConsistency=undefined;
   disposeOcrReview();
@@ -398,6 +404,7 @@ async function renderRoute() {
     return;
   }
   if (/^consistency(\?|$)/.test(requested)) {fileConsistency=new FileConsistency(api,shell,()=>token===epoch,new URLSearchParams(requested.split('?')[1]).get('project')??'');await fileConsistency.render();return;}
+  if (/^qa(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');qaWorkspace=new ProjectQaWorkspace(api,shell,()=>token===epoch,()=>globalAssistant,query.get('project')??undefined);await qaWorkspace.render();return;}
   if (/^integrity(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');integrityWorkspace=new IntegrityWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined);await integrityWorkspace.render();return;}
   if (/^generate(\?|$)/.test(requested)) {
     const query=new URLSearchParams(requested.split('?')[1]??'');
@@ -1099,7 +1106,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
-  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || fileWorkspace?.hasUnconfirmed || integrityWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || fileWorkspace?.hasUnconfirmed || integrityWorkspace?.hasUnconfirmed || qaWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }

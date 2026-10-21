@@ -1,3 +1,4 @@
+import { projectQaDeliveryStage } from './project-qa-stage.js';
 import { integrityDeliveryStage } from './integrity-stage.js';
 import { fileAuthoringDeliveryStage } from './file-authoring-stage.js';
 import { m4DocumentDeliveryStage } from './m4-document-stage.js';
@@ -89,6 +90,7 @@ async function writeHistoricalWord(ctx: StageContext, plan: HistoricalGeneration
 /** Native revision generation is a replayable, deterministic stage; only checked bytes may become artifacts. */
 export function historicalWordDeliveryStage(options: { writer?: typeof writeHistoricalWord } = {}): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
+    if((ctx.values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return projectQaDeliveryStage().run(ctx);
     if((ctx.values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return integrityDeliveryStage().run(ctx);
     if((ctx.values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return projectFileDeliveryStage().run(ctx);
     if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document')return m4DocumentDeliveryStage().run(ctx);
