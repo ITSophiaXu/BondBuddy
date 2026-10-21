@@ -93,3 +93,17 @@ node scripts/local-integration/start.mjs
 | ![原项目名称与任务合列](implementation-list.jpg) | ![项目名称与任务状态分列](implementation-columns-20261021.jpg) |
 
 [手机布局验证](implementation-columns-mobile-20261021.jpg)。代码和自测完成，用户尚未验收，尚未部署。
+
+## 2026-10-21：紧凑更新时间与完整操作列
+
+用户根据截图 `codex-clipboard-70b0838c-99df-42c6-b4a6-3bc694cf27ad.png` 要求缩窄更新时间，避免挤压操作列。时间列固定 100px，按本地时间显示 `YYYY-MM-DD` / `HH:mm` 两行，保留 datetime 和完整时间提示；操作列预留 310px，三个按钮同排。其他列按内容分配剩余空间，文件数量/一致性说明避免断行。1200px 以下沿用分区布局，不强塞五列表格。
+
+本次仅前端展示改动，无 API/迁移/模型变化。web build/typecheck、diff check 通过。真实浏览器在 1265 与 1600 宽核验时间列 100px、操作列 310px、三个按钮中心纵坐标一致；390/320 手机宽无页面水平溢出。未重复模型或完整自动化套件；本地页面热更新，未部署。
+
+同尺寸 1265 × 712 对照（调整前 commit `9cbd937a`，本次实现 commit 见 PR）：
+
+| 调整前 | 紧凑时间与操作同排 |
+| --- | --- |
+| ![分列后原宽度](implementation-columns-20261021.jpg) | ![调整后的操作列](implementation-actions-20261021.jpg) |
+
+[1600 × 900 宽屏效果](implementation-actions-wide-20261021.jpg)。
