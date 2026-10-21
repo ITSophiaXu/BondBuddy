@@ -1,3 +1,4 @@
+import { ProjectEntry } from './project-entry';
 import {PROJECT_DOCUMENT_CATALOG,PROJECT_DOCUMENT_FOLDERS,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,M4_DOCUMENT_FIXED_PRICE,
   type M4Workspace,type M4DocumentType,type M4Template,type M4MaterialPin,type ProjectFileSource,type ProjectFileVersion,type ProjectFileBatch} from '@bondbuddy/contracts';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
@@ -24,7 +25,7 @@ export class FileWorkspace {
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
   private state?:Workspace;private project?:Dto<'ProjectResponse'>;private selected=new Set<M4DocumentType>();private busy=false;
   private timer?:ReturnType<typeof setTimeout>;private pendingBatch?:{request_id:string;source_version_id:string;expected_selection_revision:number;documents:{document_type:M4DocumentType;draft_version:number}[]};
-  private projects:Dto<'ProjectListResponse'>['items']=[];private cursor:string|null=null;
+  private entry?:ProjectEntry;
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id?:string){this.m4=new M4Api(api,this.controller.signal);}
   private live(){return this.current()&&!this.controller.signal.aborted;}
   get hasUnconfirmed(){
@@ -40,7 +41,7 @@ export class FileWorkspace {
     }
     return true;
   }
-  dispose(){this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
+  dispose(){this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
   private request<T>(method:'GET'|'POST',suffix:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,{},this.controller.signal);}
   async render(){
     this.shell('<p role="status">正在读取文件生成…</p>','generate');
@@ -53,16 +54,11 @@ export class FileWorkspace {
   private header(step:string){return `<a class="back-link" href="#tasks">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">FILE GENERATION</div><h1>${step==='documents'?'选择要生成的关联文件':'文件生成'}</h1><p>按项目目录选择文件，基于募集说明书与已保存模板生成，完成后统一归入项目。</p></div></div>
     ${this.id?`<nav class="pf-steps" aria-label="文件生成步骤"><a href="#generate">1 选择项目</a><a ${step==='source'?'aria-current="step"':''} href="#generate?project=${this.id}&step=source">2 选择募集说明书</a><a ${['documents','results'].includes(step)?'aria-current="step"':''} href="#generate?project=${this.id}&step=documents">3 生成关联文件</a></nav><div class="pf-source-strip pf-project-strip">${ico('folder')}<div><strong>${esc(this.project!.name)}</strong><small>${esc(this.project!.issuer_name??'发行人待填写')} · ${MARKET_LABELS[this.project!.market as keyof typeof MARKET_LABELS]??''} · ${OFFERING_LABELS[this.project!.offering as keyof typeof OFFERING_LABELS]??''}</small></div><a class="text-button" href="#generate">更换项目</a><a class="text-button" href="#/projects/${this.id}/files">项目文件 →</a></div>`:''}`;}
   private async chooseProject(){
-    this.shell(`${this.header('project')}<section class="panel pf-project-picker"><div class="pf-section-head"><div><h2>选择项目</h2><p>沿用项目资料、募集说明书及已保存模板。</p></div><button class="btn primary" id="pf-new">＋ 新建项目</button></div><form id="pf-search"><input type="search" id="pf-query" aria-label="搜索项目" placeholder="搜索项目或发行人"/><button class="btn secondary">搜索</button></form><p id="pf-status" role="status"></p><div id="pf-projects"></div><button class="text-button" id="pf-more" hidden>加载更多项目</button></section>`,'generate');
-    document.querySelector('#pf-new')!.addEventListener('click',()=>this.newProject());
-    const load=async(reset=false)=>{try{
-      if(reset){this.cursor=null;this.projects=[];}const q=document.querySelector<HTMLInputElement>('#pf-query')!.value;
-      const result=await this.api.projects(this.cursor??undefined,{q,archive:'active',limit:'20'},this.controller.signal);if(!this.live())return;
-      this.projects.push(...result.items);this.cursor=result.page.next_cursor;
-      document.querySelector('#pf-projects')!.innerHTML=this.projects.map(p=>`<a class="pf-project-option" href="#generate?project=${encodeURIComponent(p.project_id)}&step=source">${ico('folder')}<span><strong>${esc(p.name)}</strong><small>${esc(p.issuer_name??'发行人待填写')} · ${p.has_prospectus?'已有募集说明书':'待添加募集说明书'}</small></span>${ico('arrow')}</a>`).join('')||'<p class="empty-state">没有匹配项目，可以新建项目开始。</p>';
-      document.querySelector<HTMLButtonElement>('#pf-more')!.hidden=!this.cursor;
-    }catch(e){if(this.live())this.status(friendlyError(e));}};
-    document.querySelector('#pf-search')!.addEventListener('submit',e=>{e.preventDefault();void load(true);});document.querySelector('#pf-more')!.addEventListener('click',()=>void load());await load(true);
+    this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'generate',title:'文件生成',eyebrow:'FILE GENERATION',
+      description:'先选择项目，基于募集说明书与已保存模板生成关联文件，完成后统一归入项目。',
+      steps:['选择项目','选择募集说明书','生成关联文件'],next:'下一步：选择募集说明书',onNew:()=>this.newProject(),
+      open:async(id)=>{if(this.live())location.hash='generate?project='+encodeURIComponent(id)+'&step=source';}});
+    await this.entry.render();
   }
   private modal(title:string,body:string){this.dialog?.remove();const d=document.createElement('dialog');d.className='pf-modal';d.innerHTML=`<header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="关闭">${ico('close')}</button></header>${body}<p id="pf-modal-status" role="status"></p>`;document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.busy)d.close();});d.addEventListener('cancel',e=>{if(this.busy)e.preventDefault();});d.addEventListener('close',()=>d.remove());this.dialog=d;return d;}
   private newProject(){
@@ -90,7 +86,7 @@ export class FileWorkspace {
     if(!Object.values(w.drafts).some(d=>d.project_file?.source_version_id===this.state!.source!.version_id&&d.project_file.source_selection_revision===this.state!.source!.selection_revision)){location.hash=`generate?project=${this.id}&step=source`;return;}
     const current=this.state.source;
     this.shell(`${this.header('documents')}<div class="pf-source-strip">${ico('file')}<div><strong>${esc(current.filename)}</strong><small>本次基准 · V${current.sequence} · ${esc(this.project!.name)}</small></div><a class="text-button" href="#generate?project=${this.id}&step=source">更换募集书</a></div>
-      <div class="pf-generation-grid"><section class="panel"><div class="pf-section-head"><h2>关联文件 <small>12</small></h2><div><button class="text-button" id="pf-select-all">全选</button> <button class="text-button" id="pf-select-none">清空</button></div></div>${['1','2.2','3','4.1'].map(folder=>`<div class="pf-category"><h3>${folder[0]} ${PROJECT_DOCUMENT_FOLDERS.find(f=>f.id===folder[0])!.name}</h3>${PROJECT_DOCUMENT_CATALOG.filter(d=>d.folder===folder).map(d=>`<label class="pf-document-option"><input type="checkbox" data-pf-type="${d.id}" ${this.selected.has(d.id)?'checked':''}/><span><strong>${d.name}</strong><small>${d.hint}</small></span></label>`).join('')}</div>`).join('')}<p class="muted pf-integrity-note">诚信核查底稿通过独立核查流程准备。</p></section>
+      <div class="pf-generation-grid"><section class="panel"><div class="pf-section-head"><h2>关联文件 <small>12</small></h2><div><button class="text-button" id="pf-select-all">全选</button> <button class="text-button" id="pf-select-none">清空</button></div></div>${['1','2.2','3','4.1'].map(folder=>`<div class="pf-category"><h3>${folder[0]} ${PROJECT_DOCUMENT_FOLDERS.find(f=>f.id===folder[0])!.name}</h3>${PROJECT_DOCUMENT_CATALOG.filter(d=>d.folder===folder).map(d=>`<label class="pf-document-option"><input type="checkbox" data-pf-type="${d.id}" ${this.selected.has(d.id)?'checked':''}/><span><strong>${d.name}</strong><small>${d.hint}</small></span></label>`).join('')}</div>`).join('')}<p class="muted pf-integrity-note">诚信核查底稿通过独立核查流程准备。<a href="#integrity?project=${encodeURIComponent(this.id!)}">前往诚信核查 →</a></p></section>
       <aside class="panel pf-package"><h2>本次文件包</h2><strong class="pf-count" id="pf-count">${this.selected.size}<small> 份文件</small></strong><p>生成后归入项目对应目录，旧版保留。</p><label>文件生成要求与说明<textarea id="pf-requirements" rows="6" maxlength="12000" placeholder="选填，例如统一本期发行方案、保留待补充标记">${esc(Object.values(w.drafts).find(d=>d.supplemental_requirements)?.supplemental_requirements??'')}</textarea></label><label>补充编制依据<input id="pf-support" type="file" multiple accept=".docx,.pdf,.xlsx"/></label><p class="muted">财务报告、核查依据和履职材料等。</p><div id="pf-support-list"></div></aside></div>
       <section class="panel pf-template-preparation"><div class="pf-section-head"><div><div class="eyebrow">历史文件 / 模板</div><h2>为所选文件准备模板</h2><p>首次添加后保存到项目，下次默认复用；更换模板时保留旧版。</p></div><span id="pf-prepared"></span></div><div id="pf-template-list"></div></section>
       <p id="pf-status" role="status"></p><footer class="pf-footer"><a class="btn secondary" href="#generate?project=${this.id}&step=source">上一步</a><div><span id="pf-price"></span><button class="btn primary" id="pf-generate" disabled>开始生成</button></div></footer>`,'generate');

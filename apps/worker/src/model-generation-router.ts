@@ -1,3 +1,4 @@
+import { integrityModelStage } from './integrity-stage.js';
 /** Routes the shared model_generation stage by the immutable run task kind. */
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { noHistoryModelGenerationStage } from './no-history-model-stage.js';
@@ -63,7 +64,8 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
-      if((ctx.values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return projectFileModelStage().run(ctx);
+      if((ctx.values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return integrityModelStage().run(ctx);
+    if((ctx.values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return projectFileModelStage().run(ctx);
       const m4=(ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode;
       if(m4==='document')return (options.m4Document??m4DocumentStage()).run(ctx);
       if(m4==='qa')return (options.m4Qa??m4QaStage()).run(ctx);

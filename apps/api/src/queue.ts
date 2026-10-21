@@ -562,6 +562,10 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
           FOR UPDATE OF v`,[r.id,r.owner_user_id]);
         if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id))
           throw new Problem(422,'DELIVERY_FAILED','Material document and preparation note required for settlement');
+      }else if(j.subtype==='integrity_v1'){
+        const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);
+        if(!ready.rowCount||ready.rows[0].operation==='check'&&!ready.rows[0].result?.records?.some((v:any)=>v.search_performed===true))
+          throw new Problem(422,'DELIVERY_FAILED','Integrity workpaper requires recorded actual search');
       }else if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
         const pair=j.checkpoint?.stages?.word_delivery_pair;
         if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)

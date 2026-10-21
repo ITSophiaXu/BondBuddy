@@ -1,3 +1,4 @@
+import { registerIntegrity } from './integrity.js';
 import { readAuthoringProgress } from './authoring-progress.js';
 import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
@@ -313,6 +314,7 @@ export function createServer(settings: Settings = {}) {
   registerProjectCollection(app,db,owner);
   registerProjectFileWorkspace(app,db,owner,blob);
   registerProjectFileConsistency(app,db,owner);
+  registerIntegrity(app,db,owner);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
