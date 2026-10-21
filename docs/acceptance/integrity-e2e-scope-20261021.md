@@ -12,4 +12,64 @@
 
 迁移：0113_integrity_rounds.sql、0114_integrity_workpapers.sql。依赖 #713 / #715 / #717 / #719 的更新、复核、全部项目及文件工作流。只向 develop 提交开发 PR，不部署、不修改生产数据库。
 
-验证记录待补充；不得把合成搜索结果称为真实官网查询或用户验收。
+## 开发与验证状态
+
+- 开发与合成 E2E 自测完成；本功能的独立本地测试入口已启动。
+- 真实网站搜索：未验证。点击真实核查确认时被自动审批拒绝，理由是实际认证模型/搜索用量尚无明确授权；未换用 API 或命令绕过。
+- 之前模型/文件沙箱 preflight 成功，仅证明该旧镜像的模型文件能力，不能当作官网搜索证据。最新 worker 镜像的 preflight 标记为 `not_run`，保留旧 preflight 收据，不伪造验证。
+- 用户尚未验收；未部署，待统一集成与发布。PR 保持 draft，不自动合并。
+
+### 自动化证据
+
+2026-10-21，Node 22、隔离 PostgreSQL/Azurite、实际 API/worker 阶段和 Python Word 生成，搜索供应商为 synthetic。
+
+`BB_LOCAL_INSTANCE=integrity-20261021 node scripts/local-integration/test-integrity.mjs`：13 + 1 = **14 passed，0 failed，0 skipped**。
+
+覆盖名单版本冲突、重复开始幂等、余额冻结、固定 5,000 结算、同轮免费补证导出、跨用户隔离、官网 URL 验证、企业/人员独立 Word、个人标识遮蔽、授权下载的 SHA-256、旧版本字节保持不变、4.3 归档、任务摘要、积分记录、取消释放、取消后免费导出、没有实际查询记录时失败并释放。
+
+contracts/domain/rule packages/API/worker TypeScript build、web typecheck 和 Vite build 通过；契约样例 171 synthetic + 12 internal、生命周期 4 项及 OCR/issuer-binding 40 项通过。Vite 保留既有的大文件体积警告。
+
+合成 Word 四份（企业/人员 × 初版/补证版）均通过授权下载验证，使用 documents renderer + LibreOffice 在断网容器中渲染，逐页检查中文、换行、页码、签字与缺证说明。没有把合成查询或附件称为真实官网证据。日志与产物仅存于本地 runtime 的 `evidence/synthetic-workpapers/`，不提交业务仓库。
+
+### 浏览器验证与原型对照
+
+实际浏览器已验证：登录、三个共用项目选择入口、新建项目、选择已有项目、名单增删/批量添加、人员类型、保存并恢复名单、广东深圳属地链接、网站范围和联系帮助、5,000 积分确认页。真实搜索确认被阻止后没有创建真实查询任务；结果页与补证链路由实际 API/worker 的合成 E2E 覆盖，尚待真实浏览器查询验收。
+
+截图均为 1265 × 712。原型 commit `35da7b8c9bc649abea4aadd66ab59a624be7e7b4`；实现截图对应 `b6d24a1e` 的共享选择组件和 `7ab282bb` 的名单页。
+
+| 页面 | 原型/基准 | 实现 |
+| --- | --- | --- |
+| 项目选择 | [原型](integrity-ui-20261021/prototype-project-selector.jpg) / [复核基准](integrity-ui-20261021/review-project-selector.jpg) | [文件生成](integrity-ui-20261021/file-project-selector.jpg) / [诚信核查](integrity-ui-20261021/integrity-project-selector.jpg) |
+| 名单与网站范围 | [原型](integrity-ui-20261021/prototype-roster.jpg) | [实现](integrity-ui-20261021/implementation-roster.jpg) |
+
+与原型的差异待用户验收：单个对象在弹窗中填写后加入名单，原型为行内输入；提供显式保存并在路由离开前保存，原型仅在本地自动保存。结果采用真实公开来源、待人工核实、上传证据和免费导出替代演示记录；网站和企业/人员两份文件与原型一致。项目选择统一到现有复核组件是用户明确要求。没有将这些差异自行标记为用户批准。
+
+窄屏视口覆盖请求未在当前内置浏览器实际生效（DOM 仍为 1265 px），已恢复默认；未声称手机布局验证通过。
+
+## 本地访问与复现
+
+这是本功能独立开发环境，不替代指定集成测试 chat 维护的统一本批验收版。
+
+- 网页：`http://localhost:5195/#integrity`，API `3025`，PostgreSQL `15445`，Azurite `10025`。
+- 测试账号：`integration_user`；登录口令通过当前交付消息提供，不写入本文。积分为隔离测试账本。
+- 测试项目：`诚信核查本地验收 · 公开企业样例`，已保存 1 家公开企业和信用中国网站范围；仅保存名单，尚未执行真实查询。
+- 工作区：`BondBuddy-integrity-e2e-20261021`；runtime：父目录 `work/local-integration-runtime-integrity-20261021`。保留其他 5193 / 5194 环境。
+
+在此工作区运行（Node 22）：
+
+```powershell
+$env:BB_LOCAL_INSTANCE='integrity-20261021'
+node scripts/local-integration/start.mjs
+# 停止此实例，保留数据；若有活动任务会拒绝停止。
+node scripts/local-integration/stop.mjs
+# 合成回归，不调用真实模型或查询网站。
+node scripts/local-integration/test-integrity.mjs
+```
+
+界面验收顺序：分别打开文件生成/复核/诚信核查确认选择器一致 → 新建或选择项目 → 核对名单与网站、注册地链接 → 保存后刷新 → 核对费用确认。真实搜索获得授权后，再验证开始/暂停续跑/底稿下载 → 补证并免费导出 → 项目文件 4.3 与旧版下载 → 检查每轮仅扣 5,000。
+
+## 集成与迁移
+
+新增迁移 `0113`、`0114` 仅应用到本地隔离数据库。没有修改已应用的迁移；没有新增 npm 或生产 Python 依赖。LibreOffice QA 镜像仅用于本地检查，不属于生产 worker。
+
+PR 以 develop 为目标，前置 #713 → #715 → #717 → #719 尚需按顺序集成；本功能相对父版本 `09cf95f3`。集成负责人应检查迁移编号和共享账务 finalizer 的最新定义，固定版本复验后再交用户验收。本开发 chat 不修改共享交接文件、不向其他 chat 自动发消息、不发起生产变更。

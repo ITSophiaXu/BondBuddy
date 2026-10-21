@@ -24,6 +24,8 @@ def generate(data, target):
         style.font.color.rgb = RGBColor(0, 0, 0)
         style.font.name = 'Arial'
         style.element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
+        for border in style.element.xpath('./w:pPr/w:pBdr'):
+            border.getparent().remove(border)
     d.add_heading('诚信核查底稿', 0)
     info = data['input']
     d.add_paragraph(info['project_name'])
@@ -54,10 +56,13 @@ def generate(data, target):
                 d.add_paragraph('时间（UTC）：' + r['checked_at'])
                 for url in r['urls']:
                     d.add_paragraph('官网：' + url)
-                d.add_paragraph('实际查询：' + (r['query'] or '未记录；需人工查询'))
+                d.add_paragraph('实际查询：' + ('不适用' if r['status'] == 'not_applicable' else r['query'] or '未记录；需人工查询'))
                 for source in r['sources']:
                     d.add_paragraph(source['title'] + '\n' + source['url'] + '\n引文：' + source['quote'])
-                    d.add_paragraph('获取时间：' + source['retrieved_at'] + '；来源摘要 SHA-256：' + source['sha256'])
+                    d.add_paragraph('获取时间：' + source['retrieved_at'])
+                    fingerprint = d.add_paragraph('来源摘要 SHA-256：\n').add_run(source['sha256'])
+                    fingerprint.font.name = 'Courier New'
+                    fingerprint.font.size = Pt(9)
                 for e in [e for e in data['evidence'] if e['record']['subject_id'] == subject['id'] and e['record']['site_id'] == r['site_id']]:
                     manual = e['record']
                     d.add_paragraph('人工补充证据（用户提交，未独立核验）：' + CONCLUSION[manual['conclusion']])
@@ -85,6 +90,10 @@ def generate(data, target):
     field = OxmlElement('w:fldSimple')
     field.set(qn('w:instr'), 'PAGE')
     footer._p.append(field)
+    for paragraph in d.paragraphs:
+        if paragraph.style.name == 'Title':
+            for border in paragraph._p.xpath('./w:pPr/w:pBdr'):
+                border.getparent().remove(border)
     d.save(target)
 
 if __name__ == '__main__':
