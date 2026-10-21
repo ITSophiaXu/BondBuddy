@@ -68,7 +68,7 @@ def validate_links(source, target, links):
 
 
 def patch(path, request, output):
-    """Apply only explicitly accepted, exact anchored nonoverlapping edits."""
+    """Produce a file revision from all verified, nonoverlapping conflicts."""
     path, output = Path(path), Path(output)
     snapshot = inspect(path)
     if snapshot['sha256'] != request['target_sha256']:
@@ -107,6 +107,17 @@ def patch(path, request, output):
         '文件一致性检查 · ' + e['id'], e['reason'],
         '基准募集书：' + request['source_filename'], '位置：' + e['source_location'],
         '依据：' + e['source_quote']])) for e in edits]
+    for finding in request.get('manual_findings', []):
+        # Unresolved evidence stays a comment and never changes the document text.
+        pid = finding.get('target_span_id')
+        if pid not in maps[0]:
+            pid = next(iter(maps[0]), None)
+        if pid:
+            comments.append(dict(target_id=pid, text='\n'.join([
+                '文件一致性检查 · 需人工确认（原文未修改）',
+                finding.get('reason', ''), '原文：' + finding.get('original', ''),
+                '基准募集书：' + request['source_filename'],
+                '参考依据：' + (finding.get('source_quote') or '缺少可核验依据，请补充材料。')])))
     with ZipFile(baseline_path) as z:
         add_layout_comments(z, revised, {k: (p,) for k, p in maps[0].items()}, comments, replacements)
     write(output / 'revision.docx', {**parts, **replacements, 'word/document.xml': serialized(revised)})

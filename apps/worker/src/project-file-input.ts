@@ -29,6 +29,7 @@ export async function projectFileInputGate(pool:Pool,run:RunRow,input:InputRevis
       const original=check.manifest.files.find((f:any)=>f.file_version_id===m.file_version_id&&f.file_id===m.file_id);
       const findings=check.result.files.find((f:any)=>f.file_version_id===m.file_version_id)?.findings;
       if(!original||inputManifestHash(original.asset)!==inputManifestHash(m.asset)||!findings||new Set(m.findings.map(f=>f.id)).size!==m.findings.length||m.findings.some(f=>f.kind!=='conflict'||!findings.some((v:unknown)=>inputManifestHash(v)===inputManifestHash(f))))return fail;
+      if(m.manual_findings?.some(f=>f.kind!=='manual'||!findings.some((v:unknown)=>inputManifestHash(v)===inputManifestHash(f))))return fail;
     }
   }catch{return fail;}
   return null;

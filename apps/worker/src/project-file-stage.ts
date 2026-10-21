@@ -54,7 +54,7 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
         const prospectus=await copyAsset(ctx,input.source.asset,directory,'prospectus'),evidence=await inspectProjectFile(ctx,prospectus);
         if(input.findings.some(f=>!fileAnchor(evidence,f.source_span_id,f.source_quote)))throw Error('INPUT_REVISION_CONFLICT');
         const source=await copyAsset(ctx,input.asset,directory,'target'),request=join(directory,'request.json');
-        await writeFile(request,JSON.stringify({target_sha256:input.asset.pin.sha256,source_filename:input.source.filename,edits:input.findings}),{mode:0o600});
+        await writeFile(request,JSON.stringify({target_sha256:input.asset.pin.sha256,source_filename:input.source.filename,edits:input.findings,manual_findings:input.manual_findings??[]}),{mode:0o600});
         await projectFilePython(ctx,['patch',source,request,directory]);
         const target=await inspectProjectFile(ctx,join(directory,'clean.docx'));
         const check=(await ctx.pool.query('SELECT result FROM bb_project_file_operations WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,input.check_run_id])).rows[0];
@@ -80,7 +80,8 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
           templateVersion:'project-file-check-'+digest(Buffer.from(prompt)),resultSchemaVersion:'project-file-check-v1',
           validate:(value):value is ProjectFileCheckResult=>Value.Check(ProjectFileCheckResultSchema,value)&&value.files.length===1&&value.files[0].file_version_id===file.file_version_id,
           fileWorkspace:{prepare:async cwd=>{
-            await mkdir(join(cwd,'output'),{mode:0o700});
+            // The contained adapter's file/network boundary probe writes only in scratch/output.
+            for(const name of ['scratch','output'])await mkdir(join(cwd,name),{mode:0o700});
             const sources={'source-spans.json':JSON.stringify(sourceText),'target-spans.json':JSON.stringify(targetText)};
             for(const [name,text] of Object.entries(sources)){await writeFile(join(cwd,name),text,{mode:0o400});originals.set(name,digest(Buffer.from(text)));}
           },collect:async cwd=>{

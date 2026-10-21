@@ -1,14 +1,15 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {projectFileSchemas,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,projectFileSchemas,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {projectFileSource,projectFileVersions,readProjectFileAsset} from './project-file-storage.js';
 import {enqueue} from './queue.js';
+import {requireFileUpdateCredits,reserveFileUpdate} from './project-file-billing.js';
 
 type Patch=Extract<ProjectFileOperation,{operation:'patch'}>;
-type UpdateItem={manifest:Patch;issue_ids:string[];run_id:string|null;error:string|null};
+type UpdateItem={manifest:Patch;issue_ids:string[];run_id:string|null;error:string|null;attempt?:number};
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 async function available(c:PoolClient,owner:string,id:string){
   const p=await project(c,owner,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
@@ -30,6 +31,7 @@ async function createOperation(c:PoolClient,owner:string,id:string,key:string,re
   const run=(await c.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
     VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *`,[uid(),owner,id,revision,hash,key,requestHash])).rows[0];
   await c.query('INSERT INTO bb_project_file_operations(run_id,owner_user_id,project_id,operation,manifest,input_hash) VALUES($1,$2,$3,$4,$5,$6)',[run.id,owner,id,manifest.operation,manifest,hash]);
+  if(manifest.operation==='patch')await reserveFileUpdate(c,owner,run,manifest);
   await enqueue(c,run,'project_file_v1');await event(c,owner,id,'project.file_'+manifest.operation+'_started',{run_id:run.id});
   return run;
 }
@@ -69,7 +71,7 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
       const p=await project(c,b.owner_user_id,b.project_id,true);await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
       const f=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[b.owner_user_id,next.manifest.file_id])).rows[0];
       if(!f||f.latest_version_id!==next.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');
-      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next),inputManifestHash(next.manifest),next.manifest);
+      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest);
       next.run_id=r.id;next.error=null;
       await c.query('INSERT INTO bb_project_file_acceptances(owner_user_id,check_run_id,file_version_id,issue_ids,run_id) VALUES($1,$2,$3,$4,$5)',
         [b.owner_user_id,b.check_run_id,next.manifest.file_version_id,JSON.stringify(next.issue_ids),r.id]);
@@ -102,8 +104,8 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
         files:files.map(f=>({file_id:f.file_id,file_version_id:f.version_id,filename:f.filename,sequence:f.sequence,asset:f.asset,links:f.links}))})).id;
     });return {run_id:runId};
   });
-  app.post(base+'/checks/:run_id/accept',{schema:{body:projectFileSchemas.ProjectFileAcceptRequest}},async r=>{
-    const user=await owner(r),{project_id:id,run_id:checkId}=params(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileAcceptRequest>;
+  app.post(base+'/checks/:run_id/updates',{schema:{body:projectFileSchemas.ProjectFileUpdateRequest}},async r=>{
+    const user=await owner(r),{project_id:id,run_id:checkId}=params(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileUpdateRequest>;
     return transaction(db(),async c=>{
       const p=await project(c,user,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
       const hash=inputManifestHash({project_id:id,check_run_id:checkId,...b});
@@ -116,32 +118,30 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
       if(!check.result||check.result_hash.trim()!==b.expected_check_sha256||inputManifestHash(check.result)!==b.expected_check_sha256)throw conflict('INPUT_REVISION_CONFLICT','检查结果已变化，请刷新。');
       await currentSource(c,user,id,check.manifest.source);
       if((await c.query("SELECT 1 FROM bb_project_file_update_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,id])).rowCount)
-        throw conflict('PROJECT_RUN_ACTIVE','已有接受更新任务待完成，请先处理该任务。');
+        throw conflict('PROJECT_RUN_ACTIVE','已有文件更新任务待完成，请先处理该任务。');
       if(new Set(b.files.map(f=>f.file_version_id)).size!==b.files.length)throw new Problem(422,'VALIDATION_FAILED','文件选择不能重复。');
+      const total=b.files.length*PROJECT_FILE_UPDATE_PRICE.points;
+      if(b.price_version!==PROJECT_FILE_UPDATE_PRICE.version||b.expected_points!==total)throw conflict('QUOTE_CHANGED','费用已变化，请重新确认文件数量及费用。');
       const items:UpdateItem[]=[];
       for(const selection of b.files){
         const original=check.manifest.files.find((f:any)=>f.file_version_id===selection.file_version_id),result=check.result.files.find((f:any)=>f.file_version_id===selection.file_version_id);
         if(!original||!result)throw missing();
         const family=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,original.file_id])).rows[0];
         if(!family)throw missing();
-        // A later partial acceptance is rebuilt cumulatively from the immutable checked original.
-        const prior=(await c.query(`SELECT a.*,v.id AS new_version_id,o.manifest FROM bb_project_file_acceptances a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
-          JOIN bb_project_file_versions v ON v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
-          JOIN bb_project_file_operations o ON o.owner_user_id=a.owner_user_id AND o.run_id=a.run_id
-          WHERE a.owner_user_id=$1 AND a.check_run_id=$2 AND a.file_version_id=$3 AND r.state='succeeded' ORDER BY v.sequence DESC`,[user,checkId,original.file_version_id])).rows;
-        const current=family.latest_version_id,latestPrior=prior.find(a=>a.new_version_id===current);
-        if(current!==original.file_version_id&&!latestPrior)throw conflict('INPUT_REVISION_CONFLICT','关联文件已有新版本，请重新检查后再更新。');
-        const used=new Set<string>(latestPrior?.manifest.findings.map((f:ProjectFileFinding)=>f.id)??[]);
-        if(selection.issue_ids.some(i=>used.has(i)))throw conflict('INPUT_REVISION_CONFLICT','部分修改已经接受，请刷新后选择剩余冲突。');
-        const chosen=selection.issue_ids.map(key=>result.findings.find((f:ProjectFileFinding)=>f.id===key));
-        if(chosen.some((f:ProjectFileFinding|undefined)=>!f||f.kind!=='conflict'||f.replacement===null))throw new Problem(422,'VALIDATION_FAILED','只能接受具有募集书依据的冲突项；待确认项请人工处理。');
-        chosen.forEach((f:ProjectFileFinding)=>used.add(f.id));
-        const findings=result.findings.filter((f:ProjectFileFinding)=>used.has(f.id));
+        const current=family.latest_version_id;
+        if(current!==original.file_version_id)throw conflict('INPUT_REVISION_CONFLICT','关联文件已有新版本，请重新检查后再更新。');
+        if((await c.query(`SELECT 1 FROM bb_project_file_acceptances a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
+          WHERE a.owner_user_id=$1 AND a.check_run_id=$2 AND a.file_version_id=$3 AND r.state='succeeded'`,[user,checkId,original.file_version_id])).rowCount)
+          throw conflict('INPUT_REVISION_CONFLICT','此文件本轮修订版已生成，请下载成果；无需重复更新或扣费。');
+        const findings:ProjectFileFinding[]=result.findings.filter((f:ProjectFileFinding)=>f.kind==='conflict'&&f.replacement!==null);
+        if(!findings.length)throw new Problem(422,'VALIDATION_FAILED','此文件没有可自动更新的冲突；待确认事项请补充材料或人工处理。');
         for(const f of findings){await readProjectFileAsset(c,user,original.asset);if(!f.source_span_id||!f.source_quote)throw conflict('INPUT_REVISION_CONFLICT','缺少可核验依据。');}
         items.push({manifest:{version:'project-file-operation-v1',operation:'patch',source:check.manifest.source,check_run_id:checkId,check_sha256:check.result_hash.trim(),
-          file_id:original.file_id,file_version_id:original.file_version_id,expected_current_version_id:current,filename:original.filename,asset:original.asset,findings},
-          issue_ids:selection.issue_ids,run_id:null,error:null});
+          file_id:original.file_id,file_version_id:original.file_version_id,expected_current_version_id:current,filename:original.filename,asset:original.asset,findings,
+          manual_findings:result.findings.filter((f:ProjectFileFinding)=>f.kind==='manual')},
+          issue_ids:findings.map(f=>f.id),run_id:null,error:null,attempt:1});
       }
+      await requireFileUpdateCredits(c,user,total);
       const batchId=uid();await c.query(`INSERT INTO bb_project_file_update_batches(id,owner_user_id,project_id,check_run_id,request_id,request_hash,items,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,'queued')`,[batchId,user,id,checkId,b.request_id,hash,JSON.stringify(items)]);
       await event(c,user,id,'project.file_updates_accepted',{batch_id:batchId,check_run_id:checkId,files:b.files});return {batch_id:batchId};
@@ -150,6 +150,29 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
   app.get(base+'/updates',async r=>{const user=await owner(r),id=params(r).project_id;await project(db(),user,id);
     const batches=(await db().query('SELECT id,state,items FROM bb_project_file_update_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 30',[user,id])).rows;
     return {batches:batches.map(b=>({batch_id:b.id,state:b.state,items:b.items.map((i:UpdateItem)=>({file_version_id:i.manifest.file_version_id,filename:i.manifest.filename,run_id:i.run_id,error:i.error}))}))};
+  });
+  app.post(base+'/updates/:run_id/retry',async r=>{const user=await owner(r),{project_id:id,run_id:batchId}=params(r);
+    await transaction(db(),async c=>{
+      await project(c,user,id,true);
+      const b=(await c.query('SELECT * FROM bb_project_file_update_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,batchId])).rows[0];
+      if(!b)throw missing();if(b.state!=='paused')throw conflict('INPUT_REVISION_CONFLICT','文件包状态已变化，请刷新。');
+      const items=b.items as UpdateItem[];let remaining=0;
+      for(const item of items){
+        if(item.run_id){
+          const run=(await c.query('SELECT state FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[user,item.run_id])).rows[0];
+          if(!run||!terminal.includes(run.state))throw conflict('PROJECT_RUN_ACTIVE','请先继续或结束当前任务。');
+          if(run.state==='succeeded')continue;
+          item.run_id=null;item.attempt=(item.attempt??1)+1;
+        }
+        await currentSource(c,user,id,item.manifest.source);
+        const latest=(await c.query('SELECT latest_version_id FROM bb_project_files WHERE owner_user_id=$1 AND id=$2',[user,item.manifest.file_id])).rows[0];
+        if(latest?.latest_version_id!==item.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');
+        item.error=null;remaining++;
+      }
+      await requireFileUpdateCredits(c,user,remaining*PROJECT_FILE_UPDATE_PRICE.points);
+      await c.query("UPDATE bb_project_file_update_batches SET state='queued',items=$2,updated_at=now() WHERE id=$1",[batchId,JSON.stringify(items)]);
+      await event(c,user,id,'project.file_updates_retried',{batch_id:batchId});
+    });return {ok:true};
   });
   app.post(base+'/updates/:run_id/cancel',async r=>{const user=await owner(r),{project_id:id,run_id:batchId}=params(r);
     await transaction(db(),async c=>{await project(c,user,id,true);const b=(await c.query('SELECT * FROM bb_project_file_update_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,batchId])).rows[0];if(!b)throw missing();

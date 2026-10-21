@@ -55,6 +55,18 @@ class ProjectFilesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'FILE_EDITS_OVERLAP'):
             patch(self.path, self.request([self.edit(), other]), self.root / 'overlap')
 
+    def test_uncertain_findings_are_comments_without_text_changes(self):
+        request = self.request([self.edit()])
+        request['manual_findings'] = [dict(target_span_id='p2', original='2024年度',
+            reason='缺少2024年审计报告，请补充。', source_quote='')]
+        output = self.root / 'comments'
+        patch(self.path, request, output)
+        self.assertEqual(inspect(output / 'clean.docx')['spans'][2]['text'], '2024年度')
+        with ZipFile(output / 'revision.docx') as z:
+            comments = z.read('word/comments.xml').decode()
+            self.assertIn('需人工确认（原文未修改）', comments)
+            self.assertIn('缺少2024年审计报告', comments)
+
     def test_source_links_must_match_both_pinned_texts(self):
         link = dict(source_span_id='p1', source_quote='本次发行规模为10亿元。', target_span_id='p1', target_quote='10亿元')
         result = validate_links(self.snapshot, self.snapshot, [link, {**link, 'source_quote': '不存在的依据'}])

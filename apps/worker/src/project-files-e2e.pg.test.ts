@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {PROJECT_FILE_UPDATE_PRICE} from '@bondbuddy/contracts';
 import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -26,7 +27,7 @@ import {inspectProjectFile} from './project-file-tools.js';
 
 const database=await isolatedTestDatabase(undefined,'project-files-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-test('project files: template batch, provenance, real checks with synthetic model, partial/bulk acceptance, stale CAS, Word and isolation',
+test('project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation',
  {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
   const pool=new Pool({connectionString:database}),owner=randomUUID(),container='bb-files-'+randomUUID().replaceAll('-',''),dir=await mkdtemp(join(tmpdir(),'bb-files-e2e-'));let actor=owner;
   const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
@@ -55,6 +56,9 @@ test('project files: template batch, provenance, real checks with synthetic mode
     const intent={owner_user_id:owner,project_id:ctx.run.project_id,job_id:ctx.lease.jobId,run_id:ctx.run.id,trace_id:ctx.run.id,
       logical_call_id:options.logicalCallId,call_id:randomUUID(),attempt_no:1,model_id:'synthetic-files-model',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot};
     const cwd=join(dir,intent.call_id);await mkdir(cwd);await options.fileWorkspace!.prepare(cwd);await journal.recordIntent(intent);calls++;
+    // Reproduce the real adapter's required writable scratch boundary, even with a synthetic model.
+    await writeFile(join(cwd,'scratch/permission-result'),'probe');
+    assert.equal(await readFile(join(cwd,'scratch/permission-result'),'utf8'),'probe');
     if(options.logicalCallId.startsWith('file-check-')){
       const source=JSON.parse(await readFile(join(cwd,'source-spans.json'),'utf8')),target=JSON.parse(await readFile(join(cwd,'target-spans.json'),'utf8'));
       const sp=source.spans.find((p:any)=>p.text.includes('发行规模')),tp=target.spans.find((p:any)=>p.text.includes('发行规模'));
@@ -114,31 +118,57 @@ test('project files: template batch, provenance, real checks with synthetic mode
     const req={request_id:randomUUID(),expected_source_version_id:w.source.version_id},check=await ok('POST',base+'/checks',req);
     assert.equal((await ok('POST',base+'/checks',req)).run_id,check.run_id);assert.equal(await execute(true),'succeeded');
     let c=(await ok('GET',base+'/checks')).checks[0];assert.equal(c.result.files.length,2);assert.ok(c.result.files.every((f:any)=>f.status==='conflict'&&f.findings.length===2));
-    const target=c.result.files[0],accept={request_id:randomUUID(),expected_check_sha256:c.sha256,files:[{file_version_id:target.file_version_id,issue_ids:[target.findings[0].id]}]};
-    const accepted=await ok('POST',base+'/checks/'+c.run_id+'/accept',accept);assert.equal((await ok('POST',base+'/checks/'+c.run_id+'/accept',accept)).batch_id,accepted.batch_id);
-    assert.equal(await advanceProjectFileUpdates(pool),true);const beforePatchCalls=calls;assert.equal(await execute(true),'succeeded');await advanceProjectFileUpdates(pool);assert.equal(calls,beforePatchCalls,'accepted Word edits do not call model');
-    let files=(await ok('GET',base)).files;const updated=files.find((f:any)=>f.sequence===2);assert.ok(updated.latest);assert.equal(updated.consistency.count,1);assert.ok(updated.revision_asset);
+    const target=c.result.files[0],accept={request_id:randomUUID(),expected_check_sha256:c.sha256,
+      price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:9000,files:c.files.map((f:any)=>({file_version_id:f.file_version_id}))};
+    assert.equal((await creditBalance(pool,owner)).available,91000,'checks are free');
+    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,expected_points:4500})).statusCode,409,'cannot understate quoted total');
+    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,files:[{file_version_id:target.file_version_id,issue_ids:[target.findings[0].id]}]})).statusCode,422,'per-finding updates are not a public flow');
+    await pool.query('UPDATE bb_credit_lots SET frozen=remaining WHERE owner_user_id=$1',[owner]);
+    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',accept)).statusCode,402,'insufficient funds do not submit a batch');
+    await pool.query('UPDATE bb_credit_lots SET frozen=0 WHERE owner_user_id=$1',[owner]);
+    const accepted=await ok('POST',base+'/checks/'+c.run_id+'/updates',accept);
+    assert.equal((await ok('POST',base+'/checks/'+c.run_id+'/updates',accept)).batch_id,accepted.batch_id);
+    await advanceProjectFileUpdates(pool);
+    assert.equal((await creditBalance(pool,owner)).frozen,4500,'reserve one file before execution');
+    const cancelled=(await ok('GET',base+'/updates')).batches[0].items[0].run_id;
+    await ok('POST','/api/v1/runs/'+cancelled+'/cancel',{reason:'synthetic cancel'});
+    assert.deepEqual(await creditBalance(pool,owner),{available:91000,frozen:0},'cancel releases the full hold');
+    await advanceProjectFileUpdates(pool);
+    await ok('POST',base+'/updates/'+accepted.batch_id+'/retry');
+    assert.equal(await advanceProjectFileUpdates(pool),true);
+    assert.equal(await runPipelineOnce({pool,blobs,leaseSeconds:120,runKinds:['generation'],
+      stages:[inputLockStage,{name:'model_generation',run:async()=>({kind:'fail',code:'FILE_OUTPUT_STORE_FAILED'})}]}),'failed');
+    assert.deepEqual(await creditBalance(pool,owner),{available:91000,frozen:0},'platform failure releases the full hold');
+    await advanceProjectFileUpdates(pool);
+    await ok('POST',base+'/updates/'+accepted.batch_id+'/retry');
+    assert.equal(await advanceProjectFileUpdates(pool),true);
+    const beforePatchCalls=calls;
+    assert.equal(await execute(true),'succeeded');await advanceProjectFileUpdates(pool);
+    assert.equal(await execute(true),'succeeded');await advanceProjectFileUpdates(pool);
+    assert.equal(calls,beforePatchCalls,'file revision does not call model');
+    let files=(await ok('GET',base)).files;
+    assert.equal(files.filter((f:any)=>f.latest&&f.consistency.status==='updated').length,2);
+    const updated=files.find((f:any)=>f.file_id===c.files[0].file_id&&f.latest);
+    assert.equal(updated.sequence,2);assert.ok(updated.revision_asset);assert.equal(updated.consistency.count,0);
     const download=async(v:any)=>{const a=await ok('GET','/api/v1/artifacts/'+v.asset.pin.artifact_id);return (await send('GET',a.download_url)).rawPayload;};
-    const clean=await download(updated);await writeFile(join(dir,'clean.docx'),clean);
-    const text=await inspectProjectFile({signal:new AbortController().signal} as StageContext,join(dir,'clean.docx'));assert.ok(text.spans.some(s=>s.text.includes('120万元')&&s.text.includes('200万元')));
-    const original=files.find((f:any)=>f.version_id===target.file_version_id);assert.equal(digest(await download(original)),original.asset.pin.sha256,'original bytes preserved');
-    c=(await ok('GET',base+'/checks')).checks[0];
-    const second=c.result.files[1];
-    await ok('POST',base+'/checks/'+c.run_id+'/accept',{request_id:randomUUID(),expected_check_sha256:c.sha256,files:[
-      {file_version_id:target.file_version_id,issue_ids:[target.findings[1].id]},{file_version_id:second.file_version_id,issue_ids:second.findings.map((f:any)=>f.id)}]});
-    await advanceProjectFileUpdates(pool);assert.equal(await execute(true),'succeeded');await advanceProjectFileUpdates(pool);assert.equal(await execute(true),'succeeded');await advanceProjectFileUpdates(pool);
-    files=(await ok('GET',base)).files;assert.equal(files.filter((f:any)=>f.latest&&f.consistency.status==='updated').length,2);
-    const final=files.find((f:any)=>f.sequence===3);await writeFile(join(dir,'final.docx'),await download(final));assert.ok((await inspectProjectFile({signal:new AbortController().signal} as StageContext,join(dir,'final.docx'))).spans.some(s=>s.text.includes('120万元')&&s.text.includes('220万元')),'later acceptance keeps earlier edit');
+    await writeFile(join(dir,'clean.docx'),await download(updated));
+    const text=await inspectProjectFile({signal:new AbortController().signal} as StageContext,join(dir,'clean.docx'));
+    assert.ok(text.spans.some(s=>s.text.includes('120万元')&&s.text.includes('220万元')),'all verified conflicts included in one revision');
+    const original=files.find((f:any)=>f.version_id===target.file_version_id);
+    assert.equal(digest(await download(original)),original.asset.pin.sha256,'original bytes preserved');
+    assert.deepEqual(await creditBalance(pool,owner),{available:82000,frozen:0},'4500 once per completed file, no charge for cancelled run');
+    assert.equal((await ok('POST',base+'/checks/'+c.run_id+'/updates',accept)).batch_id,accepted.batch_id,'repeat request reuses batch without charge');
+    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,request_id:randomUUID()})).statusCode,409,'already updated file cannot be charged again');
     const directory=(await ok('GET',path+'/files')).items;assert.ok(directory.some((f:any)=>f.folder==='3'));assert.ok(directory.some((f:any)=>f.folder==='4.1'));assert.equal(directory.filter((f:any)=>f.file_key.startsWith('project-file:')&&f.latest).length,2);
     const importFile=await upload(id,'manual.docx',oldBytes);const live=files.find((f:any)=>f.latest&&f.document_type==='issuer');
     await ok('POST',base+'/imports',{request_id:randomUUID(),document_type:'issuer',material:importFile,expected_latest_version_id:live.version_id});
-    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/accept',{...accept,request_id:randomUUID()})).statusCode,409,'stale targets cannot be overwritten');
+    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,request_id:randomUUID()})).statusCode,409,'stale targets cannot be overwritten');
     // User changes during an accepted update must survive delivery; the generated result is retained as history.
     const raceCheck=await ok('POST',base+'/checks',{request_id:randomUUID(),expected_source_version_id:w.source.version_id});
     assert.equal(await execute(true),'succeeded');
     const rc=(await ok('GET',base+'/checks')).checks.find((x:any)=>x.run_id===raceCheck.run_id);
     const rt=rc.result.files.find((x:any)=>x.findings.some((f:any)=>f.kind==='conflict'));
-    await ok('POST',base+'/checks/'+rc.run_id+'/accept',{request_id:randomUUID(),expected_check_sha256:rc.sha256,files:[{file_version_id:rt.file_version_id,issue_ids:rt.findings.filter((f:any)=>f.kind==='conflict').map((f:any)=>f.id)}]});
+    await ok('POST',base+'/checks/'+rc.run_id+'/updates',{request_id:randomUUID(),expected_check_sha256:rc.sha256,price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:4500,files:[{file_version_id:rt.file_version_id}]});
     await advanceProjectFileUpdates(pool);
     await ok('POST',base+'/imports',{request_id:randomUUID(),document_type:'issuer',material:importFile,expected_latest_version_id:rt.file_version_id});
     const userFile=(await ok('GET',base)).files.find((f:any)=>f.latest&&f.document_type==='issuer');
@@ -149,11 +179,14 @@ test('project files: template batch, provenance, real checks with synthetic mode
     assert.ok(files.some((f:any)=>f.revision_asset&&!f.latest&&f.sequence>userFile.sequence),'concurrent result remains downloadable history');
     assert.equal((await send('POST',base+'/source',{source_version_id:w.source.version_id,expected_selection_revision:changed.selection_revision})).statusCode,409,'old source ID cannot masquerade as current revision');
     assert.equal((await send('POST',base+'/batches',{...batch,request_id:randomUUID(),source_version_id:w.source.version_id,expected_selection_revision:changed.selection_revision})).statusCode,409);
-    assert.equal((await send('POST',base+'/checks/'+rc.run_id+'/accept',{...accept,request_id:randomUUID(),expected_check_sha256:rc.sha256})).statusCode,409,'changed source invalidates acceptance');
+    assert.equal((await send('POST',base+'/checks/'+rc.run_id+'/updates',{...accept,request_id:randomUUID(),expected_check_sha256:rc.sha256})).statusCode,409,'changed source invalidates acceptance');
     versions=await ok('GET',path+'/prospectus-versions');assert.equal(versions.versions.length,2,'patches never become prospectus versions');
     actor=randomUUID();
     assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('GET',base+'/checks')).statusCode,404);assert.equal((await send('POST',base+'/checks',req)).statusCode,404);
-    actor=owner;const balance=await creditBalance(pool,owner);assert.equal(balance.available,91000,'two generation files only, current check/patch policy free');
+    actor=owner;const balance=await creditBalance(pool,owner);assert.equal(balance.available,77500,'two generated files and three delivered revisions, all checks free');
+    const charges=(await ok('GET','/api/v1/credits/consumption-history')).items.filter((x:any)=>x.task_name==='更新关联文件');
+    assert.equal(charges.filter((x:any)=>x.state==='settled'&&x.charged_points===4500).length,3);
+    assert.equal(charges.filter((x:any)=>x.state==='released'&&x.charged_points===0&&x.released_points===4500).length,2);
   }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();await rm(dir,{recursive:true,force:true});}
 });
 

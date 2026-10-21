@@ -8,6 +8,7 @@ const hash=Type.String({pattern:'^[a-f0-9]{64}$'});
 const text=Type.String({maxLength:12000});
 const short=Type.String({maxLength:200});
 const nullable=<T extends Parameters<typeof Type.Union>[0][number]>(s:T)=>Type.Union([s,Type.Null()]);
+export const PROJECT_FILE_UPDATE_PRICE={points:4500,version:'project-file-update-4500-v1'} as const;
 export const ProjectDocumentTypeSchema=Type.Union(PROJECT_DOCUMENT_CATALOG.map(d=>Type.Literal(d.id)));
 export const ProjectFileAssetSchema=Type.Union([
   obj({kind:Type.Literal('material'),pin:M4MaterialPinSchema}),
@@ -38,7 +39,7 @@ export const ProjectFileCheckInputSchema=obj({version:Type.Literal('project-file
     asset:ProjectFileAssetSchema,links:Type.Array(ProjectFileLinkSchema,{maxItems:10000})}),{minItems:1,maxItems:200})});
 export const ProjectFilePatchInputSchema=obj({version:Type.Literal('project-file-operation-v1'),operation:Type.Literal('patch'),source:ProjectFileSourceSchema,
   check_run_id:id,check_sha256:hash,file_id:id,file_version_id:id,expected_current_version_id:id,filename:short,asset:ProjectFileAssetSchema,
-  findings:Type.Array(ProjectFileFindingSchema,{minItems:1,maxItems:2000})});
+  findings:Type.Array(ProjectFileFindingSchema,{minItems:1,maxItems:2000}),manual_findings:Type.Optional(Type.Array(ProjectFileFindingSchema,{maxItems:2000}))});
 export const ProjectFileOperationSchema=Type.Union([ProjectFileCheckInputSchema,ProjectFilePatchInputSchema]);
 export type ProjectFileOperation=Static<typeof ProjectFileOperationSchema>;
 export const projectFileSchemas={
@@ -49,8 +50,9 @@ export const projectFileSchemas={
     documents:Type.Array(obj({document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1})}),{minItems:1,maxItems:12})}),
   ProjectFileCheckRequest:obj({request_id:id,expected_source_version_id:id}),
   ProjectFileBatchActionRequest:obj({action:Type.Union([Type.Literal('retry'),Type.Literal('cancel')])}),
-  ProjectFileAcceptRequest:obj({request_id:id,expected_check_sha256:hash,
-    files:Type.Array(obj({file_version_id:id,issue_ids:Type.Array(id,{minItems:1,maxItems:2000,uniqueItems:true})}),{minItems:1,maxItems:200})}),
+  ProjectFileUpdateRequest:obj({request_id:id,expected_check_sha256:hash,
+    price_version:Type.Literal(PROJECT_FILE_UPDATE_PRICE.version),expected_points:Type.Integer({minimum:4500,maximum:900000}),
+    files:Type.Array(obj({file_version_id:id}),{minItems:1,maxItems:200})}),
 };
 
 export type ProjectFileVersion=Static<typeof ProjectFileVersionSchema>;
@@ -84,9 +86,10 @@ export function projectFileOpenApiPaths(){
    [base+'/imports']:route('post','Append owned historical file or new edition; retain old bytes',projectFileSchemas.ProjectFileImportRequest,files),
    [base+'/checks']:{...route('get','Checks against pinned prospectus versions and accepted changes',null,obj({checks:Type.Array(ProjectFileCheckSchema)})),
      ...route('post','Check latest project files against current prospectus',projectFileSchemas.ProjectFileCheckRequest,obj({run_id:id}))},
-   [base+'/checks/{run_id}/accept']:route('post','Accept selected conflicts; queue cumulative tracked/clean versions, reject stale input',projectFileSchemas.ProjectFileAcceptRequest,obj({batch_id:id}),'run_id'),
+   [base+'/checks/{run_id}/updates']:route('post','Generate tracked/clean versions for selected files, 4500 credits per file on delivery; reject stale inputs',projectFileSchemas.ProjectFileUpdateRequest,obj({batch_id:id}),'run_id'),
    [base+'/updates']:route('get','Pending and completed accepted update packages',null,null),
-   [base+'/updates/{run_id}/cancel']:route('post','Stop later files; started runs and successful outputs stay available',null,obj({ok:Type.Boolean()}),'run_id')
+   [base+'/updates/{run_id}/cancel']:route('post','Stop later files; started runs and successful outputs stay available',null,obj({ok:Type.Boolean()}),'run_id'),
+   [base+'/updates/{run_id}/retry']:route('post','Retry unfinished files after funding or task recovery; successful files are not charged again',null,obj({ok:Type.Boolean()}),'run_id')
  };
 }
 
