@@ -2,7 +2,7 @@ import { MARKET_LABELS, OFFERING_LABELS, M4_DOCUMENT_LABELS, type M4DocumentType
 import { ApiClient, friendlyError, type Dto } from './api';
 import { esc, date } from './ui';
 import { prototypeIcon as ico } from './prototype-design';
-import { loadProjectCollection, taskHref, taskKinds, taskView, type ProjectItem, type ProjectTask } from './project-collection-model';
+import { loadProjectCollection, taskHref, taskKinds,taskLabel, taskView, type ProjectItem, type ProjectTask } from './project-collection-model';
 import './project-browser.css';
 import { ReviewHistory } from './review-history';
 
@@ -83,12 +83,12 @@ export class ProjectBrowser {
   }
   private row(p:ProjectItem){
     const s=p.task_summary,latest=s?.recent_result,opened=this.expanded.has(p.project_id),href='#/projects/'+encodeURIComponent(p.project_id)+'/files';
-    const recent=latest?taskKinds[latest.kind]+' · '+taskView(latest).label:s?.latest?taskKinds[s.latest.kind]+' · '+taskView(s.latest).label:'尚未开始任务';
+    const recent=latest?taskLabel(latest)+' · '+taskView(latest).label:s?.latest?taskLabel(s.latest)+' · '+taskView(s.latest).label:'尚未开始任务';
     return `<tr class="collection-project" data-project-id="${esc(p.project_id)}"><td><a class="collection-title" href="${href}">${esc(p.name)}</a><small class="collection-issuer">${esc(p.issuer_name||'发行人待填写')}</small><span class="collection-market">${p.market?esc(MARKET_LABELS[p.market]):'市场待填写'}${p.offering?' · '+esc(OFFERING_LABELS[p.offering]):''}</span></td>
       <td class="collection-task-cell"><button class="collection-task-toggle" data-tasks="${esc(p.project_id)}" aria-expanded="${opened}" aria-controls="tasks-${esc(p.project_id)}">${s?.active?`<span class="task-active">${s.active} 项进行中</span>`:''}${s?.attention?`<span class="task-attention">${s.attention} 项待处理</span>`:''}<span>${s?.active||s?.attention?'任务详情':'查看任务'} ${ico(opened?'down':'chevron')}</span></button><small class="collection-recent">${latest?'最近结果：':''}${esc(recent)}</small></td>
-      <td><a class="collection-file-count" href="${href}">${ico('folder')}${p.file_count??0} 份项目文件</a><small class="collection-muted">一致性检查暂未开放</small></td>
+      <td><a class="collection-file-count" href="${href}">${ico('folder')}${p.file_count??0} 份项目文件</a><small class="collection-muted">以当前募集书为准</small></td>
       <td class="collection-updated"><time datetime="${esc(p.updated_at)}" title="${esc(date(p.updated_at))}"><span>${esc(updatedDate.format(new Date(p.updated_at)))}</span><span>${esc(updatedTime.format(new Date(p.updated_at)))}</span></time>${p.archived_at?'<small>已归档</small>':''}</td>
-      <td><div class="collection-actions"><a class="btn primary small" href="${href}">项目文件</a><button class="btn secondary small collection-consistency" disabled title="检查文件一致性暂未开放">检查文件一致性<small>暂未开放</small></button><button class="btn secondary small" data-work="${esc(p.project_id)}" aria-haspopup="menu" aria-expanded="false">${p.archived_at?'项目操作':'开始工作'} ${ico('down')}</button></div></td></tr>
+      <td><div class="collection-actions"><a class="btn primary small" href="${href}">项目文件</a><a class="btn secondary small collection-consistency" href="#consistency?project=${encodeURIComponent(p.project_id)}">检查文件一致性</a><button class="btn secondary small" data-work="${esc(p.project_id)}" aria-haspopup="menu" aria-expanded="false">${p.archived_at?'项目操作':'开始工作'} ${ico('down')}</button></div></td></tr>
       <tr id="tasks-${esc(p.project_id)}" class="collection-task-row" ${opened?'':'hidden'}><td colspan="5"><div class="collection-tasks" data-task-panel="${esc(p.project_id)}">${this.taskPanel(p)}</div></td></tr>`;
   }
   private taskPanel(p:ProjectItem){
@@ -98,7 +98,7 @@ export class ProjectBrowser {
       ${data?.page.has_more?`<button class="text-button" data-task-more="${esc(id)}" ${this.taskLoading.has(id)?'disabled':''}>加载更早任务</button>`:''}`;
   }
   private taskRow(t:ProjectTask){
-    const view=taskView(t);const label=t.document_type&&M4_DOCUMENT_LABELS[t.document_type as M4DocumentType]||taskKinds[t.kind];
+    const view=taskView(t);const label=t.document_type&&M4_DOCUMENT_LABELS[t.document_type as M4DocumentType]||taskLabel(t);
     return `<article class="collection-task" data-run-id="${esc(t.run_id)}"><div><strong>${esc(label)}${t.operation==='revision'?' · 修订导出':''}</strong><time>${esc(date(t.created_at))}</time></div><div><span class="collection-state ${view.tone}">${view.label}</span><small>${esc(view.detail)}</small></div><a class="text-button" href="${taskHref(t)}">${view.action} ${ico('chevron')}</a></article>`;
   }
   private async loadTasks(id:string,reset:boolean){

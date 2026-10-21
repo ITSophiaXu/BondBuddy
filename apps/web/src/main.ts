@@ -16,6 +16,8 @@ import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
 import { ProjectConversation } from './project-conversation';
 import { ReviewWorkspace, renderNewReview, reviewProjectFields, bindReviewProjectFields } from './review-workspace';
+import { FileWorkspace } from './file-workspace';
+import { FileConsistency } from './file-consistency';
 import { MaterialWorkspace } from './material-workspace';
 import { carryHandoff, copyHandoffSource, mountBusinessHandoff } from './business-handoff';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
@@ -70,6 +72,8 @@ let staleInputNoticeProjectId: string | undefined;
 let projectConversation: ProjectConversation | undefined;
 let reviewWorkspace: ReviewWorkspace | undefined;
 let materialWorkspace: MaterialWorkspace | undefined;
+let fileWorkspace: FileWorkspace | undefined;
+let fileConsistency: FileConsistency | undefined;
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
@@ -104,6 +108,7 @@ function clearPrivateState() {
   accountIdentity = undefined;
   creditWallet?.dispose(); creditWallet = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
+  fileWorkspace?.dispose(); fileWorkspace=undefined; fileConsistency?.dispose(); fileConsistency=undefined;
   clearSourceSelections();
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   projectFiles?.dispose(); projectFiles = undefined;
@@ -312,6 +317,7 @@ async function logout() {
   if (creating) return;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
   if (materialWorkspace && !await materialWorkspace.beforeLeave()) return;
+  if (fileWorkspace && !await fileWorkspace.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
   if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
@@ -337,6 +343,7 @@ async function renderRoute() {
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
+  if (fileWorkspace && !await fileWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (materialWorkspace && !await materialWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
@@ -366,6 +373,7 @@ async function renderRoute() {
   projectConversation?.dispose(); projectConversation = undefined;
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   materialWorkspace?.dispose(); materialWorkspace = undefined;
+  fileWorkspace?.dispose(); fileWorkspace=undefined; fileConsistency?.dispose(); fileConsistency=undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
@@ -383,8 +391,10 @@ async function renderRoute() {
     if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){document.querySelector<HTMLDialogElement>('#account-settings')?.showModal();details.open=true;details.scrollIntoView({block:'start'});}}
     return;
   }
+  if (/^consistency(\?|$)/.test(requested)) {fileConsistency=new FileConsistency(api,shell,()=>token===epoch,new URLSearchParams(requested.split('?')[1]).get('project')??'');await fileConsistency.render();return;}
   if (/^generate(\?|$)/.test(requested)) {
     const query=new URLSearchParams(requested.split('?')[1]??'');
+    if(!query.get('topic')){fileWorkspace=new FileWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined);await fileWorkspace.render();return;}
     materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'),query.get('run')??undefined);
     await materialWorkspace.render(); return;
   }
@@ -1082,7 +1092,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
-  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || fileWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }

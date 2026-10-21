@@ -3,6 +3,9 @@ export * from './artifact-filename.js';
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
 import { billingSchemas, creditHistorySchemas } from './billing.js';
 import { m4Schemas } from './m4-workspace.js';
+export * from './project-document-catalog.js';
+import { projectFileSchemas,projectFileOpenApiPaths } from './project-file-workspace.js';
+export * from './project-file-workspace.js';
 import { prospectusVersionSchemas } from './prospectus-versions.js';
 export * from './prospectus-versions.js';
 export * from './m4-workspace.js';
@@ -191,6 +194,7 @@ const materialResponseSchema = obj({ material_id: id, material_version: revision
 export const schemas = {
   ...prospectusVersionSchemas,
   ...m4Schemas,
+  ...projectFileSchemas,
   ReviewReadableReport: ReviewReadableReportSchema,
   ...billingSchemas,
   ...creditHistorySchemas,
@@ -588,6 +592,7 @@ export function openApiDocument() {
       'implemented; owner-scoped; new-charges-require-BB_PAID_AUTHORING_ENABLED; recharge-requires-configured-provider';
   }
   Object.assign(paths, reviewEditorOpenApiPaths(ref));
+  Object.assign(paths, projectFileOpenApiPaths());
   Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
   Object.assign(paths, agreementOpenApiPaths(ref)); // #7 registration agreement
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };

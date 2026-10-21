@@ -14,7 +14,7 @@ export class ProspectusPanel {
     upload?:Awaited<ReturnType<ApiClient['createUpload']>>;
     sent?:boolean;material?:Awaited<ReturnType<ApiClient['completeUpload']>>;
   };
-  constructor(private api:ApiClient,private id:string,private host:HTMLElement,private beforeChange:()=>Promise<boolean>,private changed:()=>Promise<void>,private busyChanged:()=>void=()=>{}){}
+  constructor(private api:ApiClient,private id:string,private host:HTMLElement,private beforeChange:()=>Promise<boolean>,private changed:()=>Promise<void>,private busyChanged:()=>void=()=>{},private purpose:'update'|'generation'='update'){}
   dispose(){this.controller.abort();this.downloads.dispose();}
   get inactive(){return new Set(this.state?.inactive_material_ids??[]);}
   async refresh(){
@@ -26,9 +26,9 @@ export class ProspectusPanel {
   private render(){
     if(!this.state)return;
     const current=this.state.versions.find(v=>v.version_id===this.state!.current_version_id);
-    this.host.innerHTML=`<section class="panel prospectus-panel"><header><div><h2>项目募集说明书</h2><p>${current?`当前版本：V${current.sequence} · ${esc(current.filename)}`:'可上传历史募集书开始更新，也可以直接保存募集书新版本。'}</p></div></header>
+    this.host.innerHTML=`<section class="panel prospectus-panel"><header><div><h2>项目募集说明书</h2><p>${current?`当前版本：V${current.sequence} · ${esc(current.filename)}`:this.purpose==='generation'?'上传募集书作为文件编制依据，或选择项目已保存版本。':'可上传历史募集书开始更新，也可以直接保存募集书新版本。'}</p></div></header>
       <details><summary>版本历史（${this.state.versions.length}）</summary>${this.state.versions.map(v=>`<div class="prospectus-version"><div><strong>V${v.sequence} · ${esc(v.filename)}</strong><small>${v.origin==='upload'?'用户上传':'BondBuddy 更新'} · ${esc(date(v.created_at))}</small></div><div class="prospectus-version-actions">${v.version_id===current?.version_id?'<span class="prospectus-current">当前版本</span>':`<button type="button" class="text-button" data-use-version="${esc(v.version_id)}">设为当前版本</button>`}<button type="button" class="text-button" data-download-version="${esc(v.version_id)}">${v.origin==='generated'?'下载清洁版':'下载原文件'}</button>${v.revision_artifact_id?`<button type="button" class="text-button" data-download-revision="${esc(v.version_id)}">下载修订版</button>`:''}</div></div>`).join('')||'<p>尚无版本记录。</p>'}</details>
-      <details><summary>直接上传募集书新版本</summary><p>保存为当前募集书并保留旧版。此操作不会启动 AI 更新或扣费，需要时再点击“开始更新”。</p><div class="prospectus-upload"><input id="prospectus-version-file" aria-label="募集书新版本文件" type="file" accept=".docx,.pdf"/><button type="button" class="btn secondary" id="save-prospectus-version">保存为当前版本</button></div></details>
+      <details><summary>直接上传募集书新版本</summary><p>保存为当前募集书并保留旧版。${this.purpose==='generation'?'保存后继续选择需要生成的文件，此操作不收费。':'此操作不会启动 AI 更新或扣费，需要时再点击“开始更新”。'}</p><div class="prospectus-upload"><input id="prospectus-version-file" aria-label="募集书新版本文件" type="file" accept=".docx,.pdf"/><button type="button" class="btn secondary" id="save-prospectus-version">保存为当前版本</button></div></details>
       <p id="prospectus-status" role="status"></p></section>`;
     this.host.querySelector('#save-prospectus-version')!.addEventListener('click',()=>{void this.upload();});
     this.host.querySelectorAll<HTMLButtonElement>('[data-use-version]').forEach(b=>b.addEventListener('click',()=>{void this.action(async()=>{

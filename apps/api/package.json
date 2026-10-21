@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./project-file-consistency": {"types":"./dist/project-file-consistency.d.ts","default":"./dist/project-file-consistency.js"},
+    "./project-file-storage": {"types":"./dist/project-file-storage.d.ts","default":"./dist/project-file-storage.js"},
+    "./project-file-workspace": {"types":"./dist/project-file-workspace.d.ts","default":"./dist/project-file-workspace.js"},
     "./review-editor": {"types":"./dist/review-editor.d.ts","default":"./dist/review-editor.js"},
     "./m4-knowledge": {"types":"./dist/m4-knowledge.d.ts","default":"./dist/m4-knowledge.js"},
     "./m4-workspace": {

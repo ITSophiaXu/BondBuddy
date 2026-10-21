@@ -75,7 +75,7 @@ function checkPorts(state){
       if(!ref||listener.pid!==ref.pid)throw Error(`Port ${port} (${name}) is occupied by unowned PID ${listener.pid}; preserving it`);
   }
 }
-async function waitFor(check,label,timeout=60000){
+async function waitFor(check,label,timeout=180000){
   const end=Date.now()+timeout;
   while(Date.now()<end){if(await check())return;await delay(300);}
   throw Error(`${label} did not become ready; inspect ${runtime}`);

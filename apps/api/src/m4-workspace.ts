@@ -16,7 +16,8 @@ import { inputManifestHash } from './production-rule-pin.js';
 import { enqueue } from './queue.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 import { quoteM4, reserveM4, readM4CreditCharge } from './m4-billing.js';
-import {loadM4Knowledge} from './m4-knowledge.js';
+import {loadM4Knowledge,loadProjectFileKnowledge} from './m4-knowledge.js';
+import { MARKETS, MARKET_OFFERINGS } from '@bondbuddy/contracts';
 export { settleM4Metering } from './m4-billing.js';
 
 type Db = Pool | PoolClient;
@@ -36,7 +37,7 @@ export const emptyM4Context=():M4MessageContext=>({document_type:null,draft_vers
 export const emptyM4View=():M4ViewState=>({selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:emptyM4Context()});
 const topicDto=(t:any):M4Topic=>({surface:t.surface,topic_id:t.id,project_id:t.project_id,source_project_id:t.source_project_id,name:t.name,created_at:date(t.created_at),updated_at:date(t.updated_at)});
 const templateDto=(t:any):M4Template=>({template_id:t.id,template_version:t.version,sha256:t.sha256.trim(),name:t.name,broker:t.broker,document_type:t.document_type,
-  material:t.material,owner_scope:'private',market:t.market,offering:'private',status:t.retired_at?'retired':'active',created_at:date(t.created_at),retired_at:t.retired_at?date(t.retired_at):null});
+  material:t.material,owner_scope:'private',market:t.market,offering:t.offering??'private',status:t.retired_at?'retired':'active',created_at:date(t.created_at),retired_at:t.retired_at?date(t.retired_at):null});
 const messageDto=(m:any):M4Message=>({message_id:m.id,role:m.role,version:m.version,content:m.content,context:m.context,created_at:date(m.created_at),
   reply_status:m.reply_status==='completed'?'completed':['failed','cancelled','rejected'].includes(m.run_state)?'failed':m.run_state==='running'?'running':m.reply_status,
   reply_to:m.reply_to,run_id:m.run_id,reply:Value.Check(M4AssistantReplySchema,m.reply)?m.reply:null,
@@ -108,6 +109,16 @@ async function readDraft(db:Db,owner:string,topic:string,type:M4DocumentType):Pr
   return row?{...row.input,version:row.version,sha256:row.sha256.trim(),updated_at:date(row.updated_at)}:{...emptyM4Draft(type),version:0,sha256:inputManifestHash(emptyM4Draft(type)),updated_at:null};
 }
 async function validateDraft(db:Db,owner:string,topic:string,input:M4DraftInput){
+  if(input.project_file){
+    const link=input.project_file;
+    const w=(await db.query('SELECT 1 FROM bb_project_file_workspaces WHERE owner_user_id=$1 AND project_id=$2 AND topic_id=$3',[owner,link.project_id,topic])).rowCount;
+    const s=input.source_material;
+    const v=s&&(await db.query(`SELECT v.* FROM bb_prospectus_versions v LEFT JOIN bb_review_source_imports i ON i.owner_user_id=v.owner_user_id AND i.version_id=v.id
+      WHERE v.owner_user_id=$1 AND v.project_id=$2 AND v.id=$3 AND v.sha256=$4
+       AND ((v.material_id=$5 AND v.material_version=$6) OR (i.material_id=$5 AND $6=1))`,[owner,s.source_project_id,link.source_version_id,s.sha256,s.material_id,s.material_version])).rows[0];
+    const related=v&&(v.project_id===link.project_id||(await db.query('SELECT 1 FROM bb_update_workspaces WHERE owner_user_id=$1 AND source_project_id=$2 AND update_project_id=$3',[owner,link.project_id,v.project_id])).rowCount);
+    if(!w||!v||!related)invalid('请选择当前项目中已保存的募集说明书版本。');
+  }
   if(new Set(input.materials.map(m=>`${m.material_id}:${m.material_version}`)).size!==input.materials.length)invalid('同一材料版本不能重复采用。');
   for(const m of input.materials)await readM4MaterialPin(db,owner,m);
   if(input.source_material)await readM4MaterialPin(db,owner,input.source_material);
@@ -149,19 +160,21 @@ async function documentManifest(db:Db,owner:string,t:any,type:M4DocumentType,exp
   const p=await project(db,owner,t.project_id),sourceId=input.source_material?.source_project_id||input.edit_base?.source_project_id||t.source_project_id;
   const source=sourceId?await project(db,owner,sourceId):null;
   const market=input.fields.market;
-  const offering=type==='recommendation'?input.fields.offering:'private';
+  const offering=input.project_file?input.fields.offering:type==='recommendation'?input.fields.offering:'private';
   if(input.fields.brokers || input.fields.scope && input.fields.scope!=='whole')
     throw new Problem(422,'CAPABILITY_NOT_READY','M4 首发支持单承销商、交易所普通私募与全文制作，当前选择需后续能力。');
   if(source && source.kind!=='generation' && source.offering && source.offering!==offering)throw new Problem(422,'CAPABILITY_NOT_READY','来源项目的品种与本次材料不一致，请选择对应品种的项目或上传本次材料。');
   // Uploaded prospectuses can carry the issuer. The file task reads that source;
   // opening a chat to restate it is not a prerequisite for the material form.
   const template=await templateFor(db,owner,input.template);
+  if(input.project_file&&template?.offering!==offering)invalid('模板与当前项目品种不同，请选择对应范围的模板。');
   const inputIssues=m4DocumentInputIssues(input,template);
   if(inputIssues.length)throw Object.assign(new Problem(422,'INPUT_REQUIRED','请补充所列信息后再生成。'),{inputIssues});
   const resolvedInput={...input,fields:{...input.fields,issuer_name:input.fields.issuer_name||source?.issuer_name||p.issuer_name||'',market,offering,broker:input.fields.broker||template?.broker||''}};
+  if(input.project_file){const family=(await db.query('SELECT latest_version_id FROM bb_project_files WHERE owner_user_id=$1 AND project_id=$2 AND document_type=$3',[owner,input.project_file.project_id,type])).rows[0];resolvedInput.project_file={...input.project_file,expected_file_version_id:family?.latest_version_id??null};}
   return {version:'m4-document-input-v1',kind:'document',project_name:source?.name||p.name||t.name,topic_id:t.id,execution_scope_project_id:source?.execution_scope_project_id||source?.id||t.project_id,
     draft_version:dv,input:resolvedInput,template_material:template?.material??null,market:market as M4DocumentManifest['market'],offering:offering as M4DocumentManifest['offering'],
-    knowledge:loadM4Knowledge(market as M4DocumentManifest['market'],type,offering,input.fields.case_template_id),billing_task:M4_DOCUMENT_BILLING_TASKS[type]};
+    knowledge:input.project_file?loadProjectFileKnowledge(market as M4DocumentManifest['market'],type,offering as M4DocumentManifest['offering']):loadM4Knowledge(market as M4DocumentManifest['market'],type,offering,input.fields.case_template_id),billing_task:M4_DOCUMENT_BILLING_TASKS[type]};
 }
 export function m4UnavailableDocument(content:string):boolean{return content.split(/[，。；;\n]/).some(clause=>{
   if(/(?:不要|无需|不用|不需要|不必|禁止|不得).{0,12}(?:生成|制作|起草|编制|撰写|准备|写|出具).{0,30}(?:公募.{0,8}摘要|DFI)/.test(clause))return false;
@@ -414,12 +427,13 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       const old=(await c.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 AND creation_request_id=$2',[user,b.creation_request_id])).rows[0];if(old){if(old.request_hash.trim()!==h)throw conflict('IDEMPOTENCY_CONFLICT','模板创建请求已被使用。');return {template:templateDto(old)};}
       const material=await readM4MaterialPin(c,user,b.material);if(material.media_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document')invalid('券商模板须为 Word 文档。');
       if(b.document_type==='init'&&!b.broker.trim())throw new Problem(422,'INPUT_REQUIRED','立项模板须填写所属券商。');
-      const p=await project(c,user,b.material.source_project_id);const market=b.market||p.market;if(!['sse','szse'].includes(market))throw new Problem(422,'INPUT_REQUIRED','模板须明确交易所范围。');
+      const p=await project(c,user,b.material.source_project_id);const market=b.market||p.market;if(!(MARKETS as readonly string[]).includes(market))throw new Problem(422,'INPUT_REQUIRED','模板须明确市场范围。');
+      const offering=b.offering??'private';if(!(MARKET_OFFERINGS[market as typeof MARKETS[number]] as readonly string[]).includes(offering))invalid('模板的市场与品种不匹配。');
       let id=uid(),version=1;if(b.replaces_template_id){await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:m4-template-version:${b.replaces_template_id}`]);
         const previous=(await c.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 AND id=$2 ORDER BY version DESC LIMIT 1 FOR UPDATE',[user,b.replaces_template_id])).rows[0];
         if(!previous)throw missing();if(previous.document_type!==b.document_type)invalid('A template revision must retain its document type');id=previous.id;version=previous.version+1;}
-      const row=(await c.query(`INSERT INTO bb_m4_templates(id,version,owner_user_id,document_type,name,broker,material,sha256,creation_request_id,request_hash,market)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[id,version,user,b.document_type,b.name,b.broker,b.material,b.material.sha256,b.creation_request_id,h,market])).rows[0];return {template:templateDto(row)};});});
+      const row=(await c.query(`INSERT INTO bb_m4_templates(id,version,owner_user_id,document_type,name,broker,material,sha256,creation_request_id,request_hash,market,offering)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[id,version,user,b.document_type,b.name,b.broker,b.material,b.material.sha256,b.creation_request_id,h,market,offering])).rows[0];return {template:templateDto(row)};});});
   app.post(`${base}/topics/:topic_id/quote`,{schema:{body:M4QuoteRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4QuoteRequest;
     return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);if(b.kind==='document'){const m=await documentManifest(c,user,t,b.document_type,b.expected_draft_version);if(m.kind!=='document')invalid('Invalid document');return quoteM4(c,user,id,m.billing_task,inputManifestHash(m),m);}
       const s=await qaSnapshot(c,user,t,b);return quoteM4(c,user,id,s.billing_task,inputManifestHash(s),s);});});
@@ -474,3 +488,5 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
     if(!bytes || bytes.length!==Number(a.byte_size) || digest(bytes)!==a.sha256.trim())throw new Problem(503,'DELIVERY_FAILED','成果字节或准确版本核验失败。');
     return reply.type(a.media_type).header('Cache-Control','private, no-store').header('Content-Disposition',contentDisposition(artifactDownloadName(a).filename)).send(bytes);});
 }
+
+export { documentManifest as projectFileDocumentManifest, newRun as startPinnedM4Run, workspace as readM4Workspace, saveDraft as saveM4Draft };

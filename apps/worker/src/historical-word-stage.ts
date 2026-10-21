@@ -1,6 +1,7 @@
 import { fileAuthoringDeliveryStage } from './file-authoring-stage.js';
 import { m4DocumentDeliveryStage } from './m4-document-stage.js';
 import { m4QaDeliveryStage } from './m4-qa-stage.js';
+import { projectFileDeliveryStage } from './project-file-stage.js';
 import { createHash } from 'node:crypto';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
 import { reviewFileDeliveryStage } from './review-file-stage.js';
@@ -87,6 +88,7 @@ async function writeHistoricalWord(ctx: StageContext, plan: HistoricalGeneration
 /** Native revision generation is a replayable, deterministic stage; only checked bytes may become artifacts. */
 export function historicalWordDeliveryStage(options: { writer?: typeof writeHistoricalWord } = {}): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
+    if((ctx.values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return projectFileDeliveryStage().run(ctx);
     if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document')return m4DocumentDeliveryStage().run(ctx);
     if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='qa')return m4QaDeliveryStage().run(ctx);
     if ((ctx.values.get('model_generation') as {version?:string})?.version === 'codex-review-file-v1') return reviewFileDeliveryStage().run(ctx);

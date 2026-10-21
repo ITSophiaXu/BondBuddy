@@ -19,6 +19,10 @@ export const artifactNameJoins = (alias: 'a' | 'v') => {
 };
 export function artifactDownloadName(row: any, pair: any = row.naming_pair): { filename: string; display_version: number } {
   const manifest = row.naming_manifest ?? {}, m4 = row.naming_m4_manifest ?? {};
+  if(manifest.version==='project-file-operation-v1'){
+    const pairKind=pair?.revision_artifact_id===(row.id??row.artifact_id)?'修订版':pair?.clean_artifact_id===(row.id??row.artifact_id)?'清洁版':'基线版';
+    return {filename:resultFilename({project:manifest.filename?.replace(/\.(docx|pdf)$/i,''),kind:manifest.operation==='check'?'文件一致性检查报告':pairKind,version:Number(row.naming_input_revision??1),createdAt:row.naming_created_at,mediaType:row.media_type}),display_version:Number(row.naming_input_revision??1)};
+  }
   const project = manifest.name || m4.project_name || manifest.issuer_name || m4.input?.fields?.issuer_name || m4.assistant_context?.project_name || null;
   const id = row.id ?? row.artifact_id;
   const variant = row.naming_review_kind || (pair?.revision_artifact_id === id ? 'revision' : pair?.clean_artifact_id === id ? 'clean' : pair?.baseline_artifact_id === id ? 'baseline' : null);

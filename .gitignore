@@ -14,6 +14,7 @@ docs/testing/*
 !docs/M1-TECH-ARCHITECTURE.md
 !docs/M2-FIXED-CREDITS.md
 !docs/M4-CORE-API.md
+!docs/PROJECT-FILES-ARCHITECTURE.md
 !docs/product-decisions/
 docs/product-decisions/*
 !docs/product-decisions/2026-10-11-authoring-dynamic-balance.md
@@ -31,6 +32,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-15-bondbuddy-brand-name.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/issue-718/
 !docs/acceptance/m4-implementation-2026-10-06.md
 !docs/acceptance/m4-api-boundary-audit-20261006.md
 !docs/acceptance/m4-workspace-20261006/

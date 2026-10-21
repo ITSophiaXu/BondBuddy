@@ -3,6 +3,8 @@ import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
 import { registerProjectCollection } from './project-collection.js';
+import { registerProjectFileWorkspace } from './project-file-workspace.js';
+import { registerProjectFileConsistency } from './project-file-consistency.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
 import { registerReviewEditor } from './review-editor.js';
@@ -309,6 +311,8 @@ export function createServer(settings: Settings = {}) {
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   registerProspectusRoutes(app,db,owner,blob);
   registerProjectCollection(app,db,owner);
+  registerProjectFileWorkspace(app,db,owner,blob);
+  registerProjectFileConsistency(app,db,owner);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {

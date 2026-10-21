@@ -7,6 +7,7 @@
 import type { Pool } from 'pg';
 import { isUnifiedInput,type M4AssistantReply } from '@bondbuddy/contracts';
 import { hasM4Manifest,m4InputGate } from './m4-input.js';
+import { isProjectFileInput,projectFileInputGate } from './project-file-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
@@ -308,6 +309,7 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    if(isProjectFileInput(manifest))return (await projectFileInputGate(pool,run,input))??{kind:'done',value:{project_file_mode:manifest.operation}};
     if (hasM4Manifest(manifest)) return (await m4InputGate(pool,run,input)) ?? {kind:'done',value:{m4_mode:manifest?.kind}};
     if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: {
       authoring_mode: 'unified_v1', review_revision: !!(manifest as {authoring?:{review_revision?:unknown}}).authoring?.review_revision } };
@@ -400,6 +402,7 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   name: 'materials_ready',
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
+    if ((values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return {kind:'done',checkpoint:{original_files:true,project_file:true}};
     if ((values.get('input_lock') as {m4_mode?:string})?.m4_mode) return {kind:'done',checkpoint:{original_files:true,m4:true}};
     if ((values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') return reviewMaterialsReady({ pool, run });
     if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
@@ -590,6 +593,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if(isProjectFileInput(input.manifest))return projectFileInputGate(pool,run,input);
       if (hasM4Manifest(input.manifest)) return m4InputGate(pool,run,input);
       if (isUnifiedInput(input.manifest)) return unifiedInputGate(pool, run, input);
       if (isReviewInput(input.manifest)) return reviewInputGate(pool, run, input);
