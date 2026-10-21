@@ -7,6 +7,7 @@ const files=['apps/worker/dist/integrity-evidence.test.js','apps/worker/dist/int
  'apps/web/dist-test/project-collection-model.test.js'];
 const result=spawnSync(process.execPath,['--test','--test-concurrency=1',...files],{cwd:repo,
  env:{...environment(),BB_TEST_DATABASE_URL:templateURL,BB_TEST_AZURITE_CONNECTION_STRING:blobConnection,
+  BB_INTEGRITY_TEST_OUTPUT_DIRECTORY:runtime+'/evidence/synthetic-workpapers',
   BONDBUDDY_TEST_PYTHON:process.env.BONDBUDDY_TEST_PYTHON??process.env.USERPROFILE+'/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'},
  windowsHide:true,encoding:'utf8',maxBuffer:16*1024*1024});
 writeFileSync(runtime+'/integrity-tests.log',(result.stdout??'')+(result.stderr??''));

@@ -2,6 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
 import {Pool} from 'pg';
 import {BlobServiceClient} from '@azure/storage-blob';
 import {createServer} from '@bondbuddy/api';
@@ -63,6 +66,20 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
   w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,5000);assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
   const artifact=await ok('GET','/api/v1/artifacts/'+checked.artifact_id);assert.match(artifact.filename,/诚信核查底稿/);
+  const documents=async(round:any,label:string)=>{
+   for(const a of round.artifacts){
+    const meta=await ok('GET','/api/v1/artifacts/'+a.artifact_id),download=await send('GET',meta.download_url);
+    assert.equal(download.statusCode,200);assert.equal(digest(download.rawPayload),meta.sha256);
+    const text=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import sys,io,zipfile,xml.etree.ElementTree as E; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print("".join(E.fromstring(z.read("word/document.xml")).itertext()))'],{input:download.rawPayload,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});
+    assert.match(text,/核查与复核签字/);assert.match(text,/公开搜索不替代/);
+    if(a.kind==='company'){assert.match(text,/合成诚信测试企业/);assert.ok(!text.includes('合成测试人员'));}
+    else{assert.match(text,/合成测试人员/);assert.ok(!text.includes('合成诚信测试企业'));assert.ok(!text.includes('123456789012345678'));assert.match(text,/\*\*\*\*5678/);}
+    if(label==='supplemented'&&a.kind==='company'){assert.match(text,/Synthetic manual claim/);assert.match(text,/用户提交，未独立核验/);}
+    if(process.env.BB_INTEGRITY_TEST_OUTPUT_DIRECTORY){await mkdir(process.env.BB_INTEGRITY_TEST_OUTPUT_DIRECTORY,{recursive:true});await writeFile(join(process.env.BB_INTEGRITY_TEST_OUTPUT_DIRECTORY,`synthetic-${label}-${a.kind}.docx`),download.rawPayload);}
+    actor=other;try{assert.equal((await send('GET',meta.download_url)).statusCode,404);}finally{actor=owner;}
+   }
+  };
+  await documents(checked,'original');
   const files=await ok('GET',path+'/files');assert.ok(files.items.some((f:any)=>f.folder==='4.3'&&f.file_id===checked.artifact_id));
   const tasks=await ok('GET',path+'/tasks');assert.equal(tasks.items[0].operation,'integrity_check');
   const history=await ok('GET','/api/v1/credits/consumption-history');assert.equal(history.items[0].task_name,'诚信核查');
@@ -77,8 +94,12 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const exported=await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest);assert.equal((await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest)).run_id,exported.run_id);
   assert.equal(await execute(),'succeeded');assert.equal(calls,2,'re-export does not invoke search or model');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
   w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.equal(w.rounds[0].operation,'export');assert.notEqual(w.rounds[0].artifact_id,checked.artifact_id);
+  await documents(w.rounds[0],'supplemented');
+  assert.equal(digest((await send('GET',artifact.download_url)).rawPayload),artifact.sha256,'original workpaper bytes remain available and unchanged');
   const versions=(await ok('GET',path+'/files')).items.filter((f:any)=>f.folder==='4.3');assert.equal(versions.length,4);assert.ok(versions.every((f:any)=>f.version_count===2));
   const cancelled=await ok('POST',base+'/runs',{...request,request_id:randomUUID()});await ok('POST','/api/v1/runs/'+cancelled.run_id+'/cancel',{reason:'synthetic cancellation'});assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
+  await ok('POST',base+'/runs/'+cancelled.run_id+'/exports',{request_id:randomUUID(),expected_evidence_ids:[]});assert.equal(await execute(),'succeeded');assert.equal(calls,2);assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
+  const fallback=await ok('GET',base);assert.ok(fallback.rounds[0].records.every((r:any)=>!r.search_performed));
   searchEnabled=false;await ok('POST',base+'/runs',{...request,request_id:randomUUID()});assert.equal(await execute(),'failed');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0},'no actual recorded search releases all credits');
   w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
   await assert.rejects(pool.query("UPDATE bb_integrity_runs SET manifest='{}' WHERE run_id=$1",[run.run_id]),/immutable/);

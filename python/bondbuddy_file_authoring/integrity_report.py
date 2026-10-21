@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -16,17 +16,30 @@ def generate(data, target):
     section.header.paragraphs[0].text = 'BondBuddy · 诚信核查底稿'
     normal = d.styles['Normal']
     normal.font.name = 'Arial'
-    normal.font.size = Pt(10)
+    normal.font.size = Pt(11)
     normal.element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
     normal.paragraph_format.space_after = Pt(6)
+    for style_name in ['Title', 'Heading 1', 'Heading 2', 'Heading 3', 'Header']:
+        style = d.styles[style_name]
+        style.font.color.rgb = RGBColor(0, 0, 0)
+        style.font.name = 'Arial'
+        style.element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
     d.add_heading('诚信核查底稿', 0)
     info = data['input']
     d.add_paragraph(info['project_name'])
     d.add_paragraph('核查轮次：' + info['round_id'])
-    d.add_paragraph('本底稿包含真实公开搜索记录及明确标记的人工补充证据。公开搜索不替代网站登录后数据库查询；搜索无命中不代表无风险，同名主体、记录时点和内容均需核实。')
+    d.add_paragraph('本底稿整理本轮已取得的公开搜索记录和明确标记的人工补充证据；未执行或未取得记录的项目逐项列明。公开搜索不替代网站登录后数据库查询；搜索无命中不代表无风险，同名主体、记录时点和内容均需核实。')
     d.add_paragraph('注册地不完整、登录、验证码或访问受限的项目保留待核实状态。人工证据为用户提交，未由系统独立核验。')
     if info['draft']['notes']:
         d.add_paragraph('本轮说明：' + info['draft']['notes'])
+    d.add_heading('核查范围与汇总', 1)
+    records = data['records']
+    d.add_paragraph('核查对象 ' + str(len(info['draft']['subjects'])) + ' 个；网站 ' + str(len(info['draft']['site_ids'])) + ' 个；已记录公开搜索 ' + str(sum(bool(r['search_performed']) for r in records)) + ' 项。')
+    for subject in info['draft']['subjects']:
+        items = [r for r in records if r['subject_id'] == subject['id']]
+        matches = sum(r['status'] == 'public_matches' for r in items)
+        pending = sum(r['status'] in ['query_failed', 'needs_manual'] for r in items)
+        d.add_paragraph(subject['name'] + '：公开线索 ' + str(matches) + ' 项，待查询或补证 ' + str(pending) + ' 项，不适用 ' + str(sum(r['status'] == 'not_applicable' for r in items)) + ' 项。公开线索仍需人工复核。')
     for kind, title in [('company', '企业诚信核查'), ('person', '人员诚信核查')]:
         subjects = [s for s in info['draft']['subjects'] if s['kind'] == kind]
         if not subjects:
@@ -62,6 +75,11 @@ def generate(data, target):
                         d.add_paragraph('PDF / Word 原始证据保存在本项目材料中，请结合原始文件查阅。')
     d.add_heading('归档与版本说明', 1)
     d.add_paragraph('本文件归档至项目文件 → 4 底稿文件 → 4.3 诚信核查。补充证据后重新导出会生成新成果，旧文件保留。同一轮补证及重新导出不重复收费；重新开始核查为新一轮。')
+    d.add_heading('核查与复核签字', 1)
+    d.add_paragraph('项目组成员：________________    日期：________________')
+    d.add_paragraph('复核人：________________        日期：________________')
+    d.add_paragraph('待核实事项处理及复核意见：')
+    d.add_paragraph('________________________________________________________________')
     footer = section.footer.paragraphs[0]
     footer.text = 'BondBuddy | '
     field = OxmlElement('w:fldSimple')
