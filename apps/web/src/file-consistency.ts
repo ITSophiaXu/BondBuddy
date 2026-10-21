@@ -82,20 +82,22 @@ export class FileConsistency {
   private results(c:ProjectFileCheck,open:Set<string>){
     const counts={conflict:0,consistent:0,manual:0,updated:0},state=(v:string,status:string)=>this.pending(c,v).length?'conflict':status==='manual'||c.result!.files.find(f=>f.file_version_id===v)!.findings.some(f=>f.kind==='manual')?'manual':c.updates.some(u=>u.file_version_id===v&&u.state==='succeeded')?'updated':'consistent';
     c.result!.files.forEach(f=>counts[state(f.file_version_id,f.status)]++);
-    const labels={conflict:'不一致',consistent:'一致',manual:'需人工确认',updated:'已更新'};
+    const revised=(v:string)=>c.updates.some(u=>u.file_version_id===v&&u.state==='succeeded');
+    counts.updated=c.result!.files.filter(f=>revised(f.file_version_id)).length;
+    const labels={conflict:'不一致',consistent:'一致',manual:'需人工确认',updated:'已生成修订版'};
     const selected=new URLSearchParams(location.hash.split('?')[1]).get('file');
     return `<div class="fc-summary">${Object.entries(counts).map(([k,v])=>`<div><span>${labels[k as keyof typeof labels]}</span><strong>${v}<small> 份文件</small></strong></div>`).join('')}</div>
       ${c.stale?'<div class="fc-warning" role="status">募集书版本已变化。历史结果和文件仍可下载，请按当前募集书重新检查。</div>':''}
       <section class="panel fc-results"><div class="pf-section-head"><div><h2>文件检查结果</h2><p>检查免费。更新每份文件 4,500 积分，直接生成全部可确认修改的修订版和清洁版；存疑内容仅加批注，旧版保留。成功交付后扣款，失败或取消不扣费。</p></div><select id="fc-filter" aria-label="筛选文件状态"><option value="all">全部文件</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${this.filter===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <label class="fc-select-all"><input type="checkbox" id="fc-all"/> 选择可更新的文件</label>
-      ${c.result!.files.filter(f=>this.filter==='all'||state(f.file_version_id,f.status)===this.filter).map(f=>{
+      ${c.result!.files.filter(f=>this.filter==='all'||(this.filter==='updated'?revised(f.file_version_id):state(f.file_version_id,f.status)===this.filter)).map(f=>{
         const checked=c.files.find(x=>x.file_version_id===f.file_version_id)!,pending=this.pending(c,f.file_version_id),blocked=this.blocked(c,f.file_version_id),status=state(f.file_version_id,f.status);
         const updated=this.files.filter(x=>c.updates.some(u=>u.new_version_id===x.version_id&&u.file_version_id===f.file_version_id)).sort((a,b)=>b.sequence-a.sequence)[0];
-        return `<article class="fc-file"><div class="pf-template-row"><input type="checkbox" data-fc-select="${f.file_version_id}" aria-label="选择更新 ${esc(checked.filename)}" ${this.chosen.has(f.file_version_id)?'checked':''} ${!pending.length||blocked||this.busy?'disabled':''}/><span class="collection-file-icon">${ico('file')}</span><div><strong>${esc(checked.filename)}</strong><small>检查时 V${checked.sequence} · ${esc(f.coverage)}</small></div><span class="pf-chip ${['conflict','manual'].includes(status)?'attention':''}">${labels[status]}${pending.length?' · '+pending.length+' 处':''}</span>${pending.length?`<button class="btn primary" data-fc-file="${f.file_version_id}" ${blocked||this.busy?'disabled':''}>更新文件 · 4,500 积分</button>`:''}</div>
+        return `<article class="fc-file"><div class="pf-template-row"><input type="checkbox" data-fc-select="${f.file_version_id}" aria-label="选择更新 ${esc(checked.filename)}" ${this.chosen.has(f.file_version_id)?'checked':''} ${!pending.length||blocked||this.busy?'disabled':''}/><span class="collection-file-icon">${ico('file')}</span><div><strong>${esc(checked.filename)}</strong><small>检查时 V${checked.sequence} · 基于募集书 V${c.source.sequence} · ${f.findings.filter(i=>i.kind==='manual').length} 项需人工确认</small></div><span class="pf-chip ${['conflict','manual'].includes(status)?'attention':''}">${labels[status]}${pending.length?' · '+pending.length+' 处':''}</span>${pending.length?`<button class="btn primary" data-fc-file="${f.file_version_id}" ${blocked||this.busy?'disabled':''}>更新文件 · 4,500 积分</button>`:''}</div>
           ${blocked&&pending.length?'<p class="muted">当前有更新任务，或募集书 / 文件版本已变化，请处理后重新核对。</p>':''}
           ${updated?`<div class="fc-downloads"><span>已保存 V${updated.sequence}</span><button class="btn secondary" data-fc-download="${updated.version_id}" data-variant="revision">下载修订版</button><button class="btn secondary" data-fc-download="${updated.version_id}" data-variant="clean">下载清洁版</button></div>`:''}
           <details data-fc-detail="${f.file_version_id}" ${open.has(f.file_version_id)||selected===f.file_version_id||selected===checked.file_id?'open':''}><summary>查看冲突、原文依据及需补充事项（${f.findings.length}）</summary>
-          ${f.findings.length?f.findings.map(i=>this.finding(i,f.file_version_id,pending.some(x=>x.id===i.id),blocked)).join(''):'<p>本轮已核对的内容未发现不一致。</p>'}</details></article>`;
+          ${f.findings.length?[...f.findings].sort((a,b)=>Number(a.kind==='manual')-Number(b.kind==='manual')).map(i=>this.finding(i,f.file_version_id,pending.some(x=>x.id===i.id),blocked)).join(''):'<p>本轮已核对的内容未发现不一致。</p>'}</details></article>`;
       }).join('')}</section><footer class="pf-footer"><span id="fc-selection">尚未选择文件</span><button class="btn primary" id="fc-accept" disabled>更新所选文件</button></footer>`;
   }
   private finding(i:ProjectFileFinding,version:string,pending:boolean,blocked:boolean){

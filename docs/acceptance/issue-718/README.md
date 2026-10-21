@@ -22,6 +22,8 @@
 - Python `unittest discover -s python/tests -p test_project_files.py -v`：5 项通过，验证存疑事项仅加批注、准确段落、相同金额不同期间不误改、表格定位、修订/批注/清洁版、哈希及重叠保护。
 - 前端项目集合模型 6 项通过；包括准确任务链接和直接子文件目录。
 
+本批定向测试入口：`apps/worker/dist/project-files-e2e.pg.test.js`、`apps/worker/dist/project-file-evidence.test.js`、`apps/worker/dist/m4-pipeline.pg.test.js`。通过 `node --test --test-concurrency=1` 执行；设置 `BB_TEST_DATABASE_URL` 为本实例模板库、`BB_TEST_AZURITE_CONNECTION_STRING` 为本实例存储、`BONDBUDDY_TEST_PYTHON` 为现有 Python；测试自行克隆数据库，不能指向生产库。构建使用各包的 `tsconfig.json`，前端使用 `node node_modules/vite/bin/vite.js build apps/web`。
+
 ## 本批独立本地环境
 
 入口：`http://localhost:5194/#generate`。账号 `integration_user`，密码 `Local-Test-2026!`；这是隔离库中的开发测试账号，余额为合成测试积分。
@@ -38,6 +40,43 @@ node scripts/local-integration/stop.mjs
 ```
 
 真实模型 worker 使用固定 Linux 镜像、现有本机认证和文件沙箱。`configure-generation.mjs` 的真实 Word/沙箱预检已通过；模型为现有授权配置 `gpt-6-sol / copilot_enterprise`。认证留在仓库外，未写入源码或截图。实际业务生成结果在下方单独记录，不用预检代替业务 E2E。
+
+API/worker 固定代码为 `f2540111`；worker 镜像为 `sha256:be9445b569aab85d9a0d282c8277343506d8cd55560dae6e3816901048bd31b7`。前端最终调整与本记录同批提交，仅涉及复选框布局、结果排序/文案及已修订文件计数，不改变后端。已有大 bundle 提示仍存在。
+
+## 真实模型与浏览器 E2E 证据（2026-10-21）
+
+输入均为合成测试数据；真实登录、上传、模型生成/检查、队列、PostgreSQL、Azurite、积分和 Word 下载均实际执行。此处不是模拟 API，也不代表真实客户材料或十二类文件的专业内容已验收。
+
+项目 `137e198e-024d-4410-8964-75acf65bc42a`（文件关联测试 · 合成数据）。
+
+| 环节 | run | 核验结果 |
+| --- | --- | --- |
+| 初次生成发行人基本情况说明 | `7ea57563-c1ed-4fbb-917f-0ef0554922a2` | 真实模型生成 V1，保存 9 条经原文核实的引用；扣 4,500 合成积分 |
+| 首轮检查 | `76856797-2678-441e-9475-89640d1351d8` | 模型启动前因缺 scratch 目录失败；已修复目录初始化并增加回归，不削弱沙箱；失败记录保留，无扣费 |
+| 当前募集书 V2 检查 | `21f30ac0-e553-4c51-9da4-9340aacee25d` | 真实模型识别 2 处冲突和 8 项缺材料事项；检查无积分预留/扣费 |
+| 整份文件更新 | `e9e53db7-db89-4907-9a4c-156a3b59c818` | 一次点击生成 V2 修订/清洁版；4,500 积分已结算，未要求逐项接受 |
+
+V2 募集书将发行规模 100 万元改为 120 万元、2025 年合并总资产 200 万元改为 220 万元。浏览器下载修订版含 2 个插入、2 个删除、10 条批注（2 条修改理由、8 条缺项提示）；清洁版正文包含 120/220 万元，不含旧金额、修订标记或批注。原有业务及缺材料描述保留。
+
+| 下载文件 | SHA-256 |
+| --- | --- |
+| V1 历史原件 | `62d1aabd51cd34343810fc4a54757e800d981942e0df370db55523d4c776fc18` |
+| V2 修订版 | `fdb1f1497766b2653cbb9bd78cd8c1ed731cc14da347785ea3505996ddec4383` |
+| V2 清洁版 | `22992a4a1e51c2c575b5bd451c567ef376aa345045dea81a03fc45114512c30c` |
+
+从版本记录重新下载 V1，哈希与原生成成果一致。文件当前版本为 V2（`166b9f10-0491-4697-b193-64b61237f748`）；募集书仍保留原来的两个版本，当前仍为用户上传的 V2，未因关联文件更新而改写。余额从 1,000,000 → 995,500（初次生成）→ 995,500（检查）→ 991,000（更新）；冻结积分为 0。
+
+### 页面证据
+
+![项目文件标记不一致并提供更新入口](project-file-conflict.jpg)
+
+![当前募集书与关联文件的冲突并排对照](consistency-conflicts.jpg)
+
+![整份文件已生成修订版和清洁版，缺项继续提示](consistency-updated.jpg)
+
+![新旧版本及下载入口](file-version-history.jpg)
+
+截图为同一真实本地项目，1440 × 1000 对照尺寸；浏览器临时尺寸已恢复。Word 内部修订/批注和哈希已检查，未将此视为 Word/WPS 桌面排版专业验收。
 
 ## 页面与设计对照
 
