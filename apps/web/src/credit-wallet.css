@@ -12,6 +12,17 @@
 .wallet-value>a { background:#eaf1dd; padding:6px 9px; font-size:11px; border-radius:6px; white-space:nowrap; }
 .wallet-note { font-size:10px; color:#66795c; margin-top:7px; line-height:1.5; }
 .mobile-credit-wallet { display:none; }
+@media(min-width:761px) and (max-height:800px) {
+  .prototype-app .sidebar>.brand { padding-bottom:10px; }
+  .prototype-app .sidebar>.workspace { padding:7px; margin-bottom:4px; }
+  .prototype-app .sidebar>nav .nav-item,
+  .prototype-app .sidebar-bottom .nav-item { min-height:40px; padding:8px 12px; margin:2px 0; line-height:1.4; }
+  .prototype-app .sidebar>nav .nav-label { margin:8px 14px 6px; }
+  .prototype-app .sidebar-bottom { padding-top:8px; }
+  .prototype-app .sidebar-bottom .account { padding-top:8px; }
+  .prototype-app .credit-wallet { padding:10px 12px; }
+  .prototype-app .wallet-value strong { font-size:22px; }
+}
 @media(max-width:760px) {
   .prototype-app .sidebar { height:100dvh; }
   .prototype-app .topbar { position:sticky; top:0; z-index:20; flex-direction:row; flex-wrap:nowrap; }
