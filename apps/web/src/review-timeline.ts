@@ -3,7 +3,7 @@ import { runStateLabel, isActiveRun } from './review-state.js';
 import { ApiError, friendlyError } from './api.js';
 import { esc } from './ui.js';
 
-export const reviewOperationLabels = { full_review: '完整三维复核', differential_review: '针对问题重新核验', revision: '按已选问题修订' };
+export const reviewOperationLabels = { full_review: '完整复核', differential_review: '针对问题重新核验', revision: '按已选问题修订' };
 export function isTypedReviewProposal(proposal: ReviewProposal): proposal is ReviewProposalV2 {
   return 'version' in proposal && proposal.version === 'review-proposal-v2';
 }
@@ -155,8 +155,8 @@ export function reviewTaskHtml(task: ReviewTask, _createdAt: string, reportNames
   const origin = task.origin.entrypoint === 'assistant_proposal' ? '对话确认执行' : task.origin.entrypoint==='quick_action'?'页面快捷操作':'入口未记录（旧任务）';
   return `<article class="review-task-card ${active?'active':''}" id="review-task-${esc(run.run_id)}" data-task-run="${esc(run.run_id)}" tabindex="-1">
     <header><span>✦ 任务记录</span><span class="review-tag">${runStateLabel[run.state]}</span></header>
-    <h3>${reviewOperationLabels[task.operation]}</h3><p class="review-task-meta">执行 V${task.version} · 固定输入 V${task.input_version} · ${origin}</p>
-    <p class="review-task-scope">${task.operation==='full_review'?'财务数据 · 合规与格式 · 公开信息':task.finding_ids.map(esc).join('、')||'范围以已确认计划为准'}</p>
+    <h3>${task.export_only?'保存处理结果':reviewOperationLabels[task.operation]}</h3><p class="review-task-meta">执行 V${task.version} · 固定输入 V${task.input_version} · ${origin}</p>
+    <p class="review-task-scope">${task.export_only?'按已保存选择导出 · 不调用 AI':task.operation==='full_review'?'财务数据 · 勾稽关系 · 政策重点提示 · 格式与标点':task.finding_ids.map(esc).join('、')||'范围以已确认计划为准'}</p>
     ${task.source_report_id?`<p class="review-muted">来源报告 <button class="text-btn" data-assistant-action="report" data-report-id="${esc(task.source_report_id)}" title="${esc(task.source_report_id)}">${esc(reportNames[task.source_report_id]??'来源报告')}</button></p>`:''}
     <div class="review-task-current" role="status"><strong class="review-task-stage">${esc(progress.title)}</strong><p>${esc(progress.summary)}</p></div>${reason?`<p class="review-warning">${esc(reason)}</p>`:''}
     <p class="review-task-boundary">${active?'本次材料与要求已锁定，关闭页面不会取消任务。':run.state==='cancelled'?'本轮已停止，原有效报告保留。':run.state==='failed'||run.state==='rejected'?'本轮未完成，原有效报告保留。':task.operation==='revision'?'已修改，待复核；修订不会自动开始重核。':task.report_id?'成果已登记；请结合实际覆盖与依据阅读结论。':'尚无已登记复核成果。'}</p>

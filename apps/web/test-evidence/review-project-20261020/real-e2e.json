@@ -1,0 +1,119 @@
+{
+  "passed": true,
+  "checkedAt": "2026-10-20T07:42:24.034Z",
+  "scope": "review-project-e2e",
+  "data": "synthetic documents; real model and backend",
+  "imageId": "sha256:27691609ec141592e3ada0760f0b834558bfbcf19685593c4ff0488748661245",
+  "workerSource": "9859f714bef2e29c909a0982b5482af3b95ea3a6",
+  "webSource": "f18997eb",
+  "model": "gpt-6-sol",
+  "projectURL": "http://localhost:5191/#/projects/3f66e1c9-c423-4daa-bd60-c9e6c32bfaa4/review?tab=results",
+  "runs": [
+    {
+      "id": "77012d76-7c3a-409f-98d6-5d7d81d174c0",
+      "state": "failed",
+      "billing_mode": "fixed_credits",
+      "created_at": "2026-10-20T06:39:59.437Z",
+      "version": 1,
+      "export_only": null,
+      "model_attempts": 1,
+      "credit_reservations": 1
+    },
+    {
+      "id": "e8c2c395-35f7-4082-b533-41e8ce963023",
+      "state": "succeeded",
+      "billing_mode": "fixed_credits",
+      "created_at": "2026-10-20T07:21:50.219Z",
+      "version": 2,
+      "export_only": null,
+      "model_attempts": 1,
+      "credit_reservations": 1
+    },
+    {
+      "id": "dfdb0c08-f7d1-413b-a006-4d8f33f4b53f",
+      "state": "succeeded",
+      "billing_mode": "platform_trial",
+      "created_at": "2026-10-20T07:34:27.338Z",
+      "version": 3,
+      "export_only": "true",
+      "model_attempts": 0,
+      "credit_reservations": 0
+    },
+    {
+      "id": "e0a00bba-8069-47e1-9c4d-48cedba41b66",
+      "state": "succeeded",
+      "billing_mode": "platform_trial",
+      "created_at": "2026-10-20T07:39:03.613Z",
+      "version": 4,
+      "export_only": "true",
+      "model_attempts": 0,
+      "credit_reservations": 0
+    }
+  ],
+  "currentVersion": {
+    "version_id": "76fab087-7d35-4170-bc5c-ce2bed5c956a",
+    "revision": 2
+  },
+  "files": [
+    {
+      "file": "review-v2-clean.docx",
+      "bytes": 37747,
+      "sha256": "79843bc02120935750e6442758c40908f43ed471cf05fdaaa5a4e45a109d26fc",
+      "insertions": 0,
+      "deletions": 0,
+      "comments": 0
+    },
+    {
+      "file": "review-v2-report.docx",
+      "bytes": 41117,
+      "sha256": "6745312af4fc735419ee1d2cd5e41a435cdf68d8752be9cf4faa2af40dcac73c",
+      "insertions": 0,
+      "deletions": 0,
+      "comments": 0
+    },
+    {
+      "file": "review-v2-revision.docx",
+      "bytes": 40729,
+      "sha256": "a50310249e88c0b22a96b06bf19ebd58f28d27d5dba4dce2576379e1687639ad",
+      "insertions": 6,
+      "deletions": 6,
+      "comments": 8
+    },
+    {
+      "file": "review-v3-clean.docx",
+      "bytes": 37754,
+      "sha256": "d420eecbeb6702774770059cc2bb127780767fa38a56300813ed6a9496f270ee",
+      "insertions": 0,
+      "deletions": 0,
+      "comments": 0
+    },
+    {
+      "file": "review-v3-revision.docx",
+      "bytes": 40754,
+      "sha256": "b07b671feaa3fcbe091f968c00773e1cc32fe6b022af1804dd5490cf01cf613e",
+      "insertions": 6,
+      "deletions": 5,
+      "comments": 8
+    },
+    {
+      "file": "review-v4-clean.docx",
+      "bytes": 37758,
+      "sha256": "9635056bc0bde1f7f0c793900a76521f8acde1c3c46603aa994c96eea6e896f9",
+      "insertions": 0,
+      "deletions": 0,
+      "comments": 0
+    }
+  ],
+  "checks": [
+    "authenticated browser uploads and persisted draft",
+    "real model review and paid settlement",
+    "native tracked changes and explanatory comments",
+    "clean Word with explicit missing materials",
+    "browser refresh and retained manual draft",
+    "manual/retain/adopt create new editions with no model calls or AI credits",
+    "old editor snapshot immutable",
+    "current version selected explicitly",
+    "download hashes match private artifacts"
+  ],
+  "acceptance": "developer verified; user acceptance pending; not deployed"
+}

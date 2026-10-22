@@ -19,8 +19,9 @@ export async function readReviewMarkdown(blobs: Pick<PrivateBlobs, 'getIfExistsB
   const file = result.files?.['report.md'];
   if (!file || !/^[a-f0-9]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.byte_size) || file.byte_size < 1 || file.byte_size > MAX) return null;
   const key = `owners/${row.owner_user_id}/projects/${row.project_id}/runs/${row.run_id}/review-files/${row.call_id}/${file.sha256}/report.md`;
-  if (file.key !== key) return null;
-  const report = await blobs.getIfExistsBounded(key, MAX);
+  const correctionKey=`owners/${row.owner_user_id}/projects/${row.project_id}/runs/${row.run_id}/review-files/correction/${file.sha256}/report.md`;
+  if (file.key !== key && !(result.files?.['editor.json'] && result.files?.['revision.docx'] && file.key===correctionKey)) return null;
+  const report = await blobs.getIfExistsBounded(file.key, MAX);
   if (!report || report.length !== file.byte_size || digest(report) !== file.sha256) return null;
   let markdown;
   try { markdown = new TextDecoder('utf-8', { fatal: true }).decode(report); } catch { return null; }
@@ -31,8 +32,8 @@ export function registerReadableReview(app: FastifyInstance, db: () => Pool,
   owner: (request: FastifyRequest) => Promise<string>, blobs: () => PrivateBlobs) {
   app.get('/api/v1/projects/:project_id/review-executions/:run_id/readable-report', async (request, reply): Promise<ReviewReadableReport> => {
     const user = await owner(request), { project_id, run_id } = request.params as { project_id: string; run_id: string };
-    const p = await project(db(), user, project_id);
-    if (p.kind !== 'review') throw missing();
+    await project(db(), user, project_id);
+
     const run = (await db().query(`SELECT r.input_hash,e.version FROM bb_runs r JOIN bb_review_executions e
       ON e.run_id=r.id AND e.project_id=r.project_id AND e.owner_user_id=r.owner_user_id
       WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state IN ('succeeded','test_completed')

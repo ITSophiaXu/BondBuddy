@@ -1,10 +1,10 @@
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {Pool} from 'pg';
-import {baseURL,databaseURL,runtime,terms} from './config.mjs';
+import {baseURL,databaseURL,runtime,terms,ports} from './config.mjs';
 import {publishPrices,grantCredits,creditBalance} from '../../apps/api/dist/billing.js';
 import {transaction} from '../../apps/api/dist/data.js';
-if(new URL(databaseURL).hostname!=='127.0.0.1'||new URL(databaseURL).port!=='55438')throw Error('Local database guard failed');
+if(new URL(databaseURL).hostname!=='127.0.0.1'||new URL(databaseURL).port!==String(ports.postgres))throw Error('Local database guard failed');
 mkdirSync(runtime,{recursive:true});
 const pool=new Pool({connectionString:databaseURL});
 try{

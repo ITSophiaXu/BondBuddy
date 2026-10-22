@@ -1,3 +1,4 @@
+import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
@@ -68,6 +69,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       }
       return json(route, 200, state.project);
     }
+    if(path===`/projects/${id}/tasks`){state.listPages.push(url.searchParams.get('cursor')??'first');const skip=state.paginate&&!url.searchParams.has('cursor');return json(route,200,{...taskPage(id,skip?[]:[...state.runs.values()].reverse(),state.project.kind),page:{has_more:skip,next_cursor:skip?'page-two':null}});}
     if (path === '/projects') {
       state.listPages.push(url.searchParams.get('cursor') ?? 'first');
       const lastRun = [...state.runs.values()].at(-1);
@@ -1245,11 +1247,11 @@ test('credit visibility: an in-flight old receipt is refreshed after the run com
 test('dashboard update preserves filtered workbench context through execution, edit, reload and return',async({page})=>{
  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
- await page.goto('/#dashboard?kind=update&status=active');await page.locator('.dashboard-primary-action').click();
- await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.goto('/#dashboard');await page.locator('[data-tasks]').click();await page.locator('.collection-task a').click();
+ await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
- await expect(page.locator('.nav-item.active')).toHaveText('工作台');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
- await page.getByRole('link',{name:'返回工作台'}).click();await expect(page.locator('[data-dashboard-kind=update]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('#dashboard-status')).toHaveValue('active');expect(state.executes).toHaveLength(1);
+ await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('link',{name:'返回全部项目'}).click();await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();expect(state.executes).toHaveLength(1);
 });
 
 

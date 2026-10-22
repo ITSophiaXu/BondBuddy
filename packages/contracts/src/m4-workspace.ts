@@ -29,6 +29,7 @@ export type M4TemplateRef = Static<typeof M4TemplateRefSchema>;
 export const M4RequirementSchema = obj({ requirement_id: id, text: nonempty, message_id: id, message_version: version });
 export type M4Requirement = Static<typeof M4RequirementSchema>;
 export const M4DraftInputSchema = obj({ document_type: M4DocumentTypeSchema,
+  project_file: Type.Optional(obj({project_id:id,source_version_id:id,source_selection_revision:Type.Integer({minimum:0}),expected_file_version_id:Type.Optional(Type.Union([id,Type.Null()]))})),
   source_material: nullable(M4MaterialPinSchema), materials: Type.Array(M4MaterialPinSchema, { maxItems: 60 }),
   template: nullable(M4TemplateRefSchema), edit_base: nullable(M4ArtifactPinSchema), scope: Type.Literal('whole'),
   fields: Type.Record(Type.String({ maxLength: 80 }), Type.String({ maxLength: 2000 })),
@@ -57,11 +58,12 @@ export const M4ViewRequestSchema = obj({ expected_version: Type.Integer({ minimu
 export type M4ViewRequest = Static<typeof M4ViewRequestSchema>;
 export const M4TemplateCreateRequestSchema = obj({ creation_request_id: id, name: Type.String({ minLength: 1, maxLength: 200 }),
   broker: Type.String({ maxLength: 200 }), document_type: M4DocumentTypeSchema, material: M4MaterialPinSchema,
-  market: Type.Optional(Type.Union([Type.Literal('sse'), Type.Literal('szse')])),
+  market: Type.Optional(Type.Union(MARKETS.map(v=>Type.Literal(v)))),
+  offering: Type.Optional(Type.Union(OFFERINGS.map(v=>Type.Literal(v)))),
   replaces_template_id: Type.Optional(id) });
 export type M4TemplateCreateRequest = Static<typeof M4TemplateCreateRequestSchema>;
 export type M4Template = M4TemplateRef & { name: string; broker: string; document_type: M4DocumentType;
-  material: M4MaterialPin; owner_scope: 'private'; market: 'sse' | 'szse'; offering: 'private'; status: 'active' | 'retired'; created_at: string; retired_at: string | null };
+  material: M4MaterialPin; owner_scope: 'private'; market: typeof MARKETS[number]; offering: typeof OFFERINGS[number]; status: 'active' | 'retired'; created_at: string; retired_at: string | null };
 export const M4MessageRequestSchema = obj({ submission_request_id: id, content: nonempty, context: M4MessageContextSchema,
   quote_id: Type.Optional(id), execute: Type.Optional(Type.Boolean()) });
 export type M4MessageRequest = Static<typeof M4MessageRequestSchema>;
@@ -80,7 +82,7 @@ export type M4QuoteRequest = Static<typeof M4QuoteRequestSchema>;
 export const M4ExecuteRequestSchema = obj({ execution_request_id: id, document_type: M4DocumentTypeSchema,
   expected_draft_version: version, quote_id: id, entrypoint: Type.Union([Type.Literal('workspace'), Type.Literal('assistant')]) });
 export type M4ExecuteRequest = Static<typeof M4ExecuteRequestSchema>;
-export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_G04:'推荐函', m4_application:'申请书', m4_Q01: '通用解释',
+export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_G04:'推荐函', m4_application:'申请书', m4_annual:'年度报告', m4_semiannual:'半年度报告', m4_issuer:'发行人基本情况说明', m4_financial:'主要财务情况说明', m4_credit:'授信情况说明', m4_proceeds:'募集资金使用情况说明', m4_Q01: '通用解释',
   m4_Q02: '授权资料定位', m4_Q03: '确定性计算', m4_Q04: '基础资料比较', m4_Q05: '基础资料解读' } as const;
 export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
 export const M4_DOCUMENT_FIXED_PRICE = { version: 'm4-document-fixed-20261008-v1', points: 4500 } as const;
@@ -102,7 +104,7 @@ export const M4DocumentManifestSchema = obj({ version: Type.Literal('m4-document
   template_material: nullable(M4MaterialPinSchema), market: Type.Union(MARKETS.map(v=>Type.Literal(v))),
   // Optional only for persisted pre-knowledge v1 tasks; the API pins it on every new task.
   knowledge:Type.Optional(M4KnowledgeSnapshotSchema),
-  offering: Type.Union([Type.Literal('private'),Type.Literal('ppn'),Type.Literal('mtn')]), billing_task: Type.Union(Object.values(M4_DOCUMENT_BILLING_TASKS).map(v=>Type.Literal(v))) });
+  offering: Type.Union(OFFERINGS.map(v=>Type.Literal(v))), billing_task: Type.Union(Object.values(M4_DOCUMENT_BILLING_TASKS).map(v=>Type.Literal(v))) });
 export type M4DocumentManifest = Static<typeof M4DocumentManifestSchema>;
 export const M4QaManifestSchema = obj({ version: Type.Literal('m4-qa-input-v1'), kind: Type.Literal('qa'),
   topic_id: id, message_id: id, content: nonempty, context: M4MessageContextSchema,

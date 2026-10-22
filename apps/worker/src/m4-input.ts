@@ -62,11 +62,20 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
   if (!scope || String(scope.input_hash).trim() !== run.input_hash.trim() || !same(scope.manifest,manifest)
     || scope.subtype !== (manifest.kind === 'document' ? M4_DOCUMENT_SUBTYPE : M4_QA_SUBTYPE)) return fail;
   if (manifest.kind === 'document') {
-    if(!m4DocumentScopeSupported(manifest.input.document_type,manifest.market,manifest.offering))return fail;
+    if(!m4DocumentScopeSupported(manifest.input.document_type,manifest.market,manifest.offering,!!manifest.input.project_file))return fail;
     if(manifest.billing_task!==M4_DOCUMENT_BILLING_TASKS[manifest.input.document_type])return fail;
     if(manifest.knowledge && !validM4Knowledge(manifest.knowledge,manifest.market,manifest.input.document_type,manifest.offering))return fail;
     if(['underwriter','legal','application','recommendation'].includes(manifest.input.document_type)&&!manifest.knowledge)return fail;
-    if(['application','recommendation'].includes(manifest.input.document_type)&&!manifest.knowledge?.template)return fail;
+    if(!manifest.input.project_file&&['application','recommendation'].includes(manifest.input.document_type)&&!manifest.knowledge?.template)return fail;
+    if(manifest.input.project_file){
+      const link=manifest.input.project_file,source=manifest.input.source_material;
+      if(!manifest.input.template||!manifest.template_material||!source)return fail;
+      const binding=(await pool.query(`SELECT 1 FROM bb_project_file_workspaces w JOIN bb_prospectus_versions v ON v.owner_user_id=w.owner_user_id
+        WHERE w.owner_user_id=$1 AND w.project_id=$2 AND w.topic_id=$3 AND v.id=$4 AND v.sha256=$5 AND v.project_id=$6
+        AND (v.project_id=w.project_id OR v.project_id IN(SELECT update_project_id FROM bb_update_workspaces WHERE owner_user_id=$1 AND source_project_id=w.project_id))`,
+        [run.owner_user_id,link.project_id,manifest.topic_id,link.source_version_id,source.sha256,source.source_project_id])).rowCount;
+      if(!binding)return fail;
+    }
     if (scope.scope_id !== manifest.execution_scope_project_id
       || manifest.input.scope !== 'whole') return fail;
     if (manifest.input.document_type === 'init' && (!manifest.input.template || !manifest.template_material))
@@ -75,10 +84,10 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
     if (!manifest.input.materials.length && !manifest.input.source_material && !manifest.input.edit_base) return fail;
     if (manifest.input.template) {
       const ref=manifest.input.template;
-      const template=(await pool.query(`SELECT broker,document_type,market,sha256,material,retired_at FROM bb_m4_templates
+      const template=(await pool.query(`SELECT broker,document_type,market,offering,sha256,material,retired_at FROM bb_m4_templates
         WHERE owner_user_id=$1 AND id=$2 AND version=$3`,[run.owner_user_id,ref.template_id,ref.template_version])).rows[0];
       if (!template || manifest.input.document_type==='init' && !template.broker?.trim() || template.document_type!==manifest.input.document_type
-        || template.market!==manifest.market || String(template.sha256).trim()!==ref.sha256
+        || template.market!==manifest.market || (manifest.input.project_file&&template.offering!==manifest.offering) || String(template.sha256).trim()!==ref.sha256
         || !same(template.material,manifest.template_material)
         || manifest.input.fields.broker && manifest.input.fields.broker.trim()!==String(template.broker??'').trim()) return fail;
     } else if (manifest.template_material) return fail;

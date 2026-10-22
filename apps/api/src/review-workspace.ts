@@ -31,7 +31,7 @@ const same = (a: unknown, b: unknown) => inputManifestHash(a) === inputManifestH
 
 async function requireReview(db: Db, user: string, id: string, lock = false) {
   const p = await project(db, user, id, lock);
-  if (p.kind !== 'review') invalid('This operation requires a review project');
+  if (p.archived_at && lock) invalid('请先恢复已归档项目。');
   return p;
 }
 async function pins(db: Db, user: string, id: string, selected: ReviewMaterialPin[]) {
@@ -143,7 +143,7 @@ async function timeline(db: Db, user: string, id: string, messages: ReviewMessag
     WHERE ev.owner_user_id=$1 AND r.project_id=$2 GROUP BY ev.run_id`, [user, id, finalStates])).rows;
   const runTimes = new Map(times.map(time => [time.run_id, time]));
   const tasks: ReviewTimelineEntry[] = await Promise.all(rows.map(async row => ({ kind: 'task' as const,
-    entry_id: `task:${row.id}`, created_at: date(row.created_at), task: { run: runDto(row), operation: row.operation,
+    entry_id: `task:${row.id}`, created_at: date(row.created_at), task: { run: runDto(row), operation: row.operation, export_only: row.snapshot.export_only === true,
       version: row.version, input_version: row.snapshot.input_version, input_revision: row.input_revision,
       input_sha256: inputManifestHash(row.snapshot.input), source_report_id: row.source_report_id,
       report_id: row.report_id ?? null, finding_ids: row.snapshot.finding_ids, origin: reviewExecutionOriginDto(row.snapshot.origin),

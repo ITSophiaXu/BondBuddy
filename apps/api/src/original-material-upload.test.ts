@@ -63,7 +63,7 @@ test('raw material public upload preserves bytes, ownership, idempotency and old
       assert.equal(r.statusCode,201,r.body);return r.json();
     };
     const complete=(session:any,bytes:Buffer)=>send('POST',`/api/v1/projects/${project}/materials/uploads/${session.upload_id}/complete`,{byte_size:bytes.length,sha256:digest(bytes)});
-    const files:Array<[Buffer,string,string]>=M1_UPLOAD_MIME_TYPES.map((media,i)=>[Buffer.from(`opaque original ${i}: \x00 /Sig /JavaScript`),media,`original.${['docx','pdf','xlsx','csv','txt','png','jpg'][i]}`]);
+    const files:Array<[Buffer,string,string]>=M1_UPLOAD_MIME_TYPES.map((media,i)=>[Buffer.from(`opaque original ${i}: \x00 /Sig /JavaScript`),media,`original.${['docx','pdf','xlsx','csv','txt','png','jpg','doc'][i]}`]);
     const manifest=JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
     for(const entry of manifest.cases.find((c:any)=>c.case_id==='qx-202606').files.filter((f:any)=>['qx-202606-02','qx-202606-03'].includes(f.file_id)))
       files.push([await readFile(join(root,entry.path)),'application/pdf',`${entry.file_id}.pdf`]);

@@ -13,6 +13,8 @@ import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLi
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type LoadGenerationIssuerBinding, type ParsedFactProducer, type RunStage, type TargetPeriodCandidateProducer } from './run-pipeline.js';
+import {advanceProjectFileBatch} from '@bondbuddy/api/project-file-workspace';
+import {advanceProjectFileUpdates} from '@bondbuddy/api/project-file-consistency';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import { loadPinnedApprovedGenerationIssuerBinding } from './generation-issuer-binding-loader.js';
@@ -148,6 +150,10 @@ export class WorkerRuntime {
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
         try {
+          if(kind==='run'&&this.o.runKinds.includes('generation')){
+            for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates])try{await advance(this.o.pool);}
+            catch(error){this.emit({slot,kind:'file_batch',outcome:'scheduler_error',message:error instanceof Error?error.message:'Unknown error'});}
+          }
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
               runKinds: this.o.runKinds, reviewedContextLoader: this.o.reviewedContextLoader,
