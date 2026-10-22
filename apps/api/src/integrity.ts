@@ -8,7 +8,7 @@ import {enqueue} from './queue.js';
 import {creditBalance,lockCreditAccount} from './billing.js';
 import {readProjectFileAsset} from './project-file-storage.js';
 
-const empty=():IntegrityDraft=>({subjects:[],site_ids:INTEGRITY_SITES.map(s=>s.id),notes:''});
+const empty=():IntegrityDraft=>({subjects:[],site_ids:[],notes:''});
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 export function validateIntegrityDraft(d:IntegrityDraft,start=false){
  if(start&&(!d.subjects.length||!d.site_ids.length))throw new Problem(422,'INPUT_REQUIRED','请添加核查对象并选择网站。');

@@ -1,4 +1,4 @@
-import {INTEGRITY_SITES,resolveIntegritySite,integritySourceAllowed,type IntegritySubject,type IntegrityRecord,type IntegrityProposal} from '@bondbuddy/contracts';
+import {INTEGRITY_SITES,resolveIntegritySite,integritySourceAllowed,integrityQueryAllowed,type IntegritySubject,type IntegrityRecord,type IntegrityProposal} from '@bondbuddy/contracts';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {verifiedSearchSources} from './review-public-stage.js';
 
@@ -15,11 +15,11 @@ export function integrityRecords(subject:IntegritySubject,siteIds:string[],propo
   const site=resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===id)!,subject),urls=site.links.map(l=>l.url);
   const applicable=!(subject.kind==='person'&&site.companyOnly),entry=proposal?.sites.find(s=>s.site_id===id);
   const actual=queries.filter(q=>q.includes(subject.name)&&[...q.matchAll(/\bsite:([^\s"']+)/gi)].some(match=>{
-   try{const scoped=new URL('https://'+match[1]);return urls.some(u=>{const official=new URL(u);return scoped.hostname===official.hostname&&(!site.id.startsWith('local-csrc')||scoped.pathname.startsWith(official.pathname.replace(/index\.shtml$/,'')));});}catch{return false;}
+   return integrityQueryAllowed(site,q,match[1]);
   }));
   const sources=(entry?.sources??[]).flatMap(s=>{
    const v=verified.get(s.url);
-   if(!v||!integritySourceAllowed(site,s.url)||!s.quote.trim()||!v.text.includes(s.quote)||!s.quote.includes(subject.name))return [];
+   if(!actual.length||!v||!integritySourceAllowed(site,s.url)||!s.quote.trim()||!v.text.includes(s.quote)||!s.quote.includes(subject.name))return [];
    return [{url:s.url,title:v.title.slice(0,200),quote:s.quote,retrieved_at:v.time,tool_call_id:v.id,sha256:inputManifestHash({url:s.url,text:v.text})}];
   });
   return {subject_id:subject.id,site_id:id,site_name:site.name,urls,query:actual.join('\n').slice(0,4000),checked_at:time,

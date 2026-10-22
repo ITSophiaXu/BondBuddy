@@ -13,7 +13,7 @@ import {savePromptSnapshot} from '@bondbuddy/api/log-ops';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
 import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {INTEGRITY_PRICE,type IntegrityInput} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,INTEGRITY_SELECTABLE_SITES,type IntegrityInput} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {CodexDurableJournal} from './durable-probe-journal.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,type codexModelStage} from './run-pipeline.js';
@@ -51,6 +51,14 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
  try{
   for(const id of [owner,other])await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[id,'integrity_'+id.slice(0,8)]);
   await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:randomUUID(),points:20000,expiresAt:null,actor:'synthetic',reason:'integrity test'}));
+  const scopeProject=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic expanded scope',issuer_name:'Synthetic issuer',market:'sse',offering:'private'});
+  const scopeBase='/api/v1/projects/'+scopeProject.project_id+'/integrity';
+  assert.deepEqual((await ok('GET',scopeBase)).draft.site_ids,[],'new projects start with no silently selected sites');
+  const allSites=INTEGRITY_SELECTABLE_SITES.map(s=>s.id);
+  await ok('POST',scopeBase+'/draft',{expected_revision:0,draft:{subjects:[],site_ids:allSites,notes:''}});
+  assert.deepEqual((await ok('GET',scopeBase)).draft.site_ids,allSites,'all 54 sites survive API validation and reload');
+  assert.equal((await send('POST',scopeBase+'/draft',{expected_revision:1,draft:{subjects:[],site_ids:['unknown-site'],notes:''}})).statusCode,422);
+  assert.deepEqual(await creditBalance(pool,owner),{available:20000,frozen:0},'selecting sites is free');
   const project=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic integrity project',issuer_name:'Synthetic issuer',market:'sse',offering:'private'}),id=project.project_id,path='/api/v1/projects/'+id,base=path+'/integrity';
   const draft={subjects:[{id:'subject',kind:'company',name:'合成诚信测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'},{id:'person',kind:'person',name:'合成测试人员',identifier:'123456789012345678',role:'董事',province:'',city:''}],site_ids:['gsxt','execution'],notes:'Synthetic only'};
   let w=await ok('GET',base);assert.equal(w.price.points,5000);assert.equal(w.revision,0);
