@@ -1,9 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {INTEGRITY_SITES,integrityPortal,resolveIntegritySite,integritySourceAllowed,type IntegritySubject} from '@bondbuddy/contracts';
+import {INTEGRITY_SITES,INTEGRITY_SELECTABLE_SITES,IntegrityDraftSchema,IntegrityProposalSchema,integrityPortal,resolveIntegritySite,integritySourceAllowed,type IntegritySubject} from '@bondbuddy/contracts';
+import {Value} from '@sinclair/typebox/value';
 import {integrityRecords,integrityQueries} from './integrity-evidence.js';
 const subject:IntegritySubject={id:'s',kind:'company',name:'合成测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'};
 const when='2026-10-21T00:00:00.000Z';
+test('expanded scope supports the screenshot inventory and keeps old saved IDs readable',()=>{
+ assert.deepEqual(Object.fromEntries(['基础征信','金融监管','其他领域','属地监管'].map(group=>[group,INTEGRITY_SELECTABLE_SITES.filter(s=>s.group===group).length])),{'基础征信':8,'金融监管':18,'其他领域':26,'属地监管':2});
+ assert.equal(new Set(INTEGRITY_SITES.map(s=>s.id)).size,INTEGRITY_SITES.length);
+ for(const id of ['gsxt','execution','judgments','food-drug'])assert.equal(INTEGRITY_SITES.find(s=>s.id===id)?.legacy,true);
+ assert.ok(Value.Check(IntegrityDraftSchema,{subjects:[subject],site_ids:INTEGRITY_SITES.map(s=>s.id),notes:''}));
+ assert.ok(Value.Check(IntegrityProposalSchema,{sites:INTEGRITY_SELECTABLE_SITES.map(s=>({site_id:s.id,note:'synthetic',sources:[]}))}));
+});
+test('separate topics on one domain require their own actual search scope',()=>{
+ const ids=['execution-dishonest','execution-debtor','execution-restriction'];
+ const events=(query:string)=>[{observed_at:when,item:{id:'t',type:'web_search',action:{type:'search',query}}}];
+ assert.deepEqual(integrityRecords(subject,ids,null,events(subject.name+' site:zxgk.court.gov.cn'),when).map(r=>r.search_performed),[false,false,false]);
+ assert.deepEqual(integrityRecords(subject,ids,null,events(subject.name+' 失信被执行人 site:zxgk.court.gov.cn/shixin/'),when).map(r=>r.search_performed),[true,false,false]);
+ assert.deepEqual(integrityRecords(subject,['szse-bond-discipline','szse-supervision'],null,events(subject.name+' 债券 纪律处分 site:www.szse.cn'),when).map(r=>r.search_performed),[true,false]);
+});
 test('regional links distinguish special cities and reject incomplete or mismatched registration',()=>{
  assert.match(integrityPortal('广东省','深圳市')!.csrc,/shenzhen/);
  assert.equal(integrityPortal('广东',''),undefined);assert.equal(integrityPortal('福建','深圳'),undefined);

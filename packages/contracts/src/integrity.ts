@@ -1,5 +1,6 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {M4MaterialPinSchema} from './m4-workspace.js';
+import {INTEGRITY_SITE_LIMIT} from './integrity-sites.js';
 export * from './integrity-sites.js';
 export const INTEGRITY_PRICE={points:5000,version:'integrity-round-5000-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
@@ -7,7 +8,7 @@ const id=Type.String({minLength:1,maxLength:128}),short=Type.String({maxLength:2
 const hash=Type.String({pattern:'^[a-f0-9]{64}$'}),time=Type.String({pattern:'^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$'});
 export const IntegritySubjectSchema=obj({id,kind:Type.Union([Type.Literal('company'),Type.Literal('person')]),name:Type.String({minLength:1,maxLength:200}),identifier:short,role:short,province:short,city:short});
 export type IntegritySubject=Static<typeof IntegritySubjectSchema>;
-export const IntegrityDraftSchema=obj({subjects:Type.Array(IntegritySubjectSchema,{maxItems:100}),site_ids:Type.Array(id,{uniqueItems:true,maxItems:20}),notes:text});
+export const IntegrityDraftSchema=obj({subjects:Type.Array(IntegritySubjectSchema,{maxItems:100}),site_ids:Type.Array(id,{uniqueItems:true,maxItems:INTEGRITY_SITE_LIMIT}),notes:text});
 export type IntegrityDraft=Static<typeof IntegrityDraftSchema>;
 export const IntegritySourceSchema=obj({url:Type.String({maxLength:4096}),title:short,quote:text,retrieved_at:time,tool_call_id:id,sha256:hash});
 export const IntegrityRecordSchema=obj({subject_id:id,site_id:id,site_name:short,urls:Type.Array(Type.String({maxLength:4096})),query:Type.String({maxLength:4000}),
@@ -15,14 +16,14 @@ export const IntegrityRecordSchema=obj({subject_id:id,site_id:id,site_name:short
 export type IntegrityRecord=Static<typeof IntegrityRecordSchema>;
 export const IntegrityInputSchema=obj({version:Type.Literal('integrity-round-v1'),operation:Type.Union([Type.Literal('check'),Type.Literal('export')]),
   round_id:id,project_name:short,draft:IntegrityDraftSchema,price_version:Type.Literal(INTEGRITY_PRICE.version),points:Type.Integer({minimum:0}),
-  records:Type.Array(IntegrityRecordSchema,{maxItems:2000}),evidence_ids:Type.Array(id,{maxItems:2000})});
+  records:Type.Array(IntegrityRecordSchema,{maxItems:100*INTEGRITY_SITE_LIMIT}),evidence_ids:Type.Array(id,{maxItems:2000})});
 export type IntegrityInput=Static<typeof IntegrityInputSchema>;
 export const IntegrityManualSchema=obj({request_id:id,subject_id:id,site_id:id,queried_at:time,url:Type.String({maxLength:4096}),note:text,
   conclusion:Type.Union([Type.Literal('records_found'),Type.Literal('no_records'),Type.Literal('unresolved')]),material:M4MaterialPinSchema,registration:Type.Optional(obj({province:short,city:short}))});
 export type IntegrityManual=Static<typeof IntegrityManualSchema>;
 export const IntegrityEvidenceSchema=obj({...IntegrityManualSchema.properties,id,created_at:time});
 export type IntegrityEvidence=Static<typeof IntegrityEvidenceSchema>;
-export const IntegrityProposalSchema=obj({sites:Type.Array(obj({site_id:id,note:text,sources:Type.Array(obj({url:Type.String({maxLength:4096}),quote:text}),{maxItems:30})}),{maxItems:20})});
+export const IntegrityProposalSchema=obj({sites:Type.Array(obj({site_id:id,note:text,sources:Type.Array(obj({url:Type.String({maxLength:4096}),quote:text}),{maxItems:30})}),{maxItems:INTEGRITY_SITE_LIMIT})});
 export type IntegrityProposal=Static<typeof IntegrityProposalSchema>;
 export const IntegrityRoundSchema=obj({run_id:id,round_id:id,operation:Type.Union([Type.Literal('check'),Type.Literal('export')]),sequence:Type.Integer({minimum:1}),state:short,stage:Type.Union([short,Type.Null()]),created_at:time,manifest:IntegrityInputSchema,records:Type.Array(IntegrityRecordSchema),evidence:Type.Array(IntegrityEvidenceSchema),artifact_id:Type.Union([id,Type.Null()]),artifacts:Type.Array(obj({kind:Type.Union([Type.Literal('company'),Type.Literal('person')]),artifact_id:id,artifact_version:Type.Integer({minimum:1})})),charged_points:Type.Integer({minimum:0}),reserved_points:Type.Integer({minimum:0})});
 export type IntegrityRound=Static<typeof IntegrityRoundSchema>;
