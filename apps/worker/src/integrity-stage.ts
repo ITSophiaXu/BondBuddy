@@ -78,7 +78,7 @@ export function integrityModelStage(options:{model?:typeof codexModelStage;confi
    let proposal:IntegrityProposal|null=null,events:IntegritySearchEvent[]=[];
    if(sites.length){
     const logicalCallId='integrity-'+inputManifestHash(subject.id).slice(0,24);
-    const outcome=await (options.model??codexModelStage)({name:logicalCallId,logicalCallId,templateVersion:'integrity-public-v1',resultSchemaVersion:'integrity-proposal-v1',schema:IntegrityProposalSchema,
+    const outcome=await (options.model??codexModelStage)({name:logicalCallId.replaceAll('-','_'),logicalCallId,templateVersion:'integrity-public-v1',resultSchemaVersion:'integrity-proposal-v1',schema:IntegrityProposalSchema,
      validate:(v):v is IntegrityProposal=>Value.Check(IntegrityProposalSchema,v)&&v.sites.length===sites.length&&new Set(v.sites.map(s=>s.site_id)).size===sites.length&&v.sites.every(s=>sites.some(t=>t.id===s.site_id)),
      config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'live',timeout_ms:600000}),
      buildPrompt:async()=>composeContainedPrompt({webSearch:true,instructions,materials:[{ref:'public-integrity-scope',text:JSON.stringify({name:subject.name,kind:subject.kind,sites:sites.map(s=>({site_id:s.id,name:s.name,topic:s.topic,query_terms:s.queryTerms??[],urls:s.links.map(l=>l.url)}))})}]})}).run(ctx);

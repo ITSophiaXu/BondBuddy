@@ -40,40 +40,78 @@ export class IntegrityWorkspace {
  }
  private paintDraft(){
   const d=this.state!.draft;
-  this.shell(`${this.header(2)}<section class="panel integrity-panel"><div class="pf-section-head"><div><h2>核查对象名单 <small>${d.subjects.length}</small></h2><p>添加企业、法定代表人、董事、监事及高级管理人员。人员同名记录需要核对身份。</p></div><div class="integrity-actions"><button class="btn secondary" id="integrity-issuer">带入发行人</button><button class="btn secondary" id="integrity-add">添加企业</button><button class="btn secondary" id="integrity-person">添加人员</button></div></div><div class="integrity-roster">${d.subjects.length?d.subjects.map((s,i)=>`<div class="integrity-subject"><div><strong>${esc(s.name)}</strong><small>${s.kind==='company'?'企业':'人员'} · ${esc(s.role||'角色待补充')} · ${esc(s.kind==='person'&&s.identifier?'****'+s.identifier.slice(-4):s.identifier||'标识待补充')}</small></div><div><button class="text-button" data-edit="${i}">编辑</button><button class="text-button" data-remove="${i}">移除</button></div></div>`).join(''):'<div class="collection-empty"><h3>添加本轮需要核查的对象</h3><p>可先添加发行人，再补充相关企业与人员。</p></div>'}</div><details class="integrity-batch"><summary>批量添加名单</summary><p>每行一个对象，使用制表符分隔：类型（企业或人员）、名称、关系或职务、身份标识（选填）。最多 100 个对象。</p><label>批量名单<textarea id="integrity-batch" rows="4" placeholder="企业&#9;企业全称&#9;子公司&#10;人员&#9;姓名&#9;董事"></textarea></label><button class="btn secondary" id="integrity-import">添加到名单</button><p id="integrity-batch-status" role="status"></p></details></section>
+  this.shell(`${this.header(2)}<section class="panel integrity-panel integrity-roster-panel"><div class="pf-section-head"><div><h2>核查对象名单 <small id="integrity-subject-count">${d.subjects.length}</small></h2><p>直接在行内编辑企业与人员，保存后可在本项目继续使用。</p></div><div class="integrity-actions"><button class="btn secondary" id="integrity-issuer">带入发行人</button><button class="btn secondary" id="integrity-add">＋ 添加企业</button><button class="btn secondary" id="integrity-person">＋ 添加人员</button></div></div><div class="integrity-roster" id="integrity-roster">${this.subjectRows()}</div><p class="integrity-roster-help">人员识别信息用于内部核对，不会传入公开搜索，底稿仅显示尾号。</p><details class="integrity-batch"><summary>批量添加名单</summary><p>每行一个对象，使用制表符分隔：类型（企业或人员）、名称、关系或职务、身份标识（选填）。最多 100 个对象。</p><label>批量名单<textarea id="integrity-batch" rows="4" placeholder="企业&#9;企业全称&#9;子公司&#10;人员&#9;姓名&#9;董事"></textarea></label><button class="btn secondary" id="integrity-import">添加到名单</button><p id="integrity-batch-status" role="status"></p></details></section>
   <section class="panel integrity-panel integrity-sites-panel">${integritySitePicker(d.site_ids)}
-   <div class="integrity-registration"><h3>企业注册地 · 自动匹配属地网站</h3><p>按营业执照注册地匹配；深圳、大连、宁波、厦门、青岛单独匹配。</p>${d.subjects.filter(s=>s.kind==='company').map(s=>`<div class="integrity-region"><strong>${esc(s.name)}</strong><label>省 / 自治区 / 直辖市<select data-region="${esc(s.id)}" data-field="province">${provinces(s.province)}</select></label><label>城市<input data-region="${esc(s.id)}" data-field="city" value="${esc(s.city)}" placeholder="如：深圳市" maxlength="60"></label><div id="integrity-region-${esc(s.id)}">${this.regional(s)}</div></div>`).join('')||'<p>添加企业后在这里填写注册地。</p>'}</div>
+   <div class="integrity-registration"><h3>企业注册地 · 自动匹配属地网站</h3><p>按营业执照注册地匹配；深圳、大连、宁波、厦门、青岛单独匹配。</p><div id="integrity-regions">${this.regionRows()}</div></div>
    <p class="integrity-contact">网站还在持续补充，找不到所需网站？<button class="text-button" id="integrity-contact">联系我们加网站 →</button></p></section>
   <section class="panel integrity-panel"><label>本轮核查说明<textarea id="integrity-notes" rows="3" maxlength="12000" placeholder="选填：补充核查范围与需要关注的事项">${esc(d.notes)}</textarea></label></section><section class="panel integrity-panel"><h2>生成核查底稿文件</h2><p>包含核查汇总、各网站查询记录、取证索引、待办说明与签字页。</p><ul><li>3-1-1 发行人诚信信息汇总清单及查询记录</li><li>1-5-3-4 董事及高级管理人员诚信信息汇总清单及查询记录</li></ul><p>按名单分别生成企业、人员底稿，归档至 4 底稿文件 / 4.3 诚信核查。</p></section><p id="integrity-status" role="status"></p>
   <footer class="pf-footer"><button class="btn secondary" id="integrity-save">保存名单与范围</button><div><span>每轮 <strong>5,000</strong> 积分 · 同轮补证、重新导出免费</span><button class="btn primary" id="integrity-start" ${d.subjects.length&&d.site_ids.length?'':'disabled'}>开始诚信核查</button></div></footer>
   ${this.state!.rounds.length?`<section class="panel integrity-panel"><h2>核查历史与底稿</h2>${this.state!.rounds.map(r=>`<a class="integrity-history" href="#integrity?project=${encodeURIComponent(this.id!)}&run=${encodeURIComponent(r.run_id)}"><span><strong>${r.operation==='check'?'诚信核查':'补证底稿导出'} · 第 ${r.sequence} 次任务</strong><small>${esc(date(r.created_at))} · ${r.manifest.draft.subjects.length} 个对象 · ${r.manifest.draft.site_ids.length} 个网站</small></span><span>${esc((runStateLabel[r.state as keyof typeof runStateLabel]??r.state))} →</span></a>`).join('')}</section>`:''}`,'integrity');
-  document.querySelector('#integrity-add')!.addEventListener('click',()=>this.subjectModal());
-  document.querySelector('#integrity-person')!.addEventListener('click',()=>this.subjectModal(undefined,'person'));
-  document.querySelector('#integrity-issuer')!.addEventListener('click',()=>{const name=this.project!.issuer_name?.trim();if(!name){this.status('项目尚未填写发行人，请添加企业。');return;}if(d.subjects.some(s=>s.kind==='company'&&s.name===name)){this.status('发行人已在名单中。');return;}if(d.subjects.length>=100){this.status('每轮最多 100 个对象。');return;}d.subjects.push({id:crypto.randomUUID(),kind:'company',name,role:'发行人',identifier:'',province:'',city:''});this.changed();this.paintDraft();});
+  document.querySelector('#integrity-add')!.addEventListener('click',()=>this.addSubject('company'));
+  document.querySelector('#integrity-person')!.addEventListener('click',()=>this.addSubject('person'));
+  document.querySelector('#integrity-issuer')!.addEventListener('click',()=>{const name=this.project!.issuer_name?.trim()??'',existing=d.subjects.find(s=>s.kind==='company'&&(name?s.name.trim()===name:s.role==='发行人'));if(existing){this.subjectField(existing.id,'name')?.focus();this.status('发行人已在名单中，可直接在该行编辑。');return;}this.addSubject('company',name,'发行人');});
   document.querySelector('#integrity-import')!.addEventListener('click',()=>this.importSubjects());
-  document.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach(b=>b.addEventListener('click',()=>this.subjectModal(Number(b.dataset.edit))));
-  document.querySelectorAll<HTMLButtonElement>('[data-remove]').forEach(b=>b.addEventListener('click',()=>{d.subjects.splice(Number(b.dataset.remove),1);this.changed();this.paintDraft();}));
+  document.querySelector('#integrity-roster')!.addEventListener('input',e=>{
+   const n=e.target;if(!(n instanceof HTMLInputElement||n instanceof HTMLSelectElement)||!n.dataset.subject)return;
+   const s=d.subjects.find(s=>s.id===n.dataset.subject);if(!s)return;const field=n.dataset.field;
+   if(field==='kind'){if(n.value!=='company'&&n.value!=='person')return;s.kind=n.value;this.changed();this.paintSubjects(s.id,'kind');return;}
+   if(field!=='name'&&field!=='role'&&field!=='identifier')return;s[field]=n.value;this.changed();this.subjectError(s.id);
+   if(field==='name'){const label=document.getElementById('integrity-region-name-'+s.id);if(label)label.textContent=s.name.trim()||'未填写企业名称';}
+  });
+  document.querySelector('#integrity-roster')!.addEventListener('click',e=>{
+   const b=(e.target as Element).closest<HTMLButtonElement>('[data-remove]');if(!b||this.busy)return;const index=d.subjects.findIndex(s=>s.id===b.dataset.remove);if(index<0)return;
+   d.subjects.splice(index,1);this.changed();this.paintSubjects(d.subjects[Math.min(index,d.subjects.length-1)]?.id);if(!d.subjects.length)document.querySelector<HTMLButtonElement>('#integrity-add')!.focus();
+  });
   bindIntegritySitePicker(()=>d.site_ids,ids=>{d.site_ids=ids;this.changed();this.updateCount();});
-  document.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-region]').forEach(n=>n.addEventListener('input',()=>{const s=d.subjects.find(s=>s.id===n.dataset.region)!;s[n.dataset.field as 'province'|'city']=n.value;this.changed();document.getElementById('integrity-region-'+s.id)!.innerHTML=this.regional(s);}));
+  document.querySelector('#integrity-regions')!.addEventListener('input',e=>{const n=e.target;if(!(n instanceof HTMLInputElement||n instanceof HTMLSelectElement)||!n.dataset.region)return;const s=d.subjects.find(s=>s.id===n.dataset.region);if(!s||(n.dataset.field!=='province'&&n.dataset.field!=='city'))return;s[n.dataset.field]=n.value;this.changed();document.getElementById('integrity-region-'+s.id)!.innerHTML=this.regional(s);});
   document.querySelector('#integrity-notes')!.addEventListener('input',e=>{d.notes=(e.target as HTMLTextAreaElement).value;this.changed();});
-  document.querySelector('#integrity-save')!.addEventListener('click',()=>void this.act(async()=>{await this.save();this.status('名单与网站范围已保存。');}));
+  document.querySelector('#integrity-save')!.addEventListener('click',()=>{if(this.validateSubjects())void this.act(async()=>{await this.save();this.status('名单与网站范围已保存。');});});
   document.querySelector('#integrity-start')!.addEventListener('click',()=>this.confirmStart());
   document.querySelector('#integrity-contact')!.addEventListener('click',()=>void this.act(async()=>{const a=await this.api.agreement();if(this.live())this.modal('联系我们加网站',`<p>请提供网站名称、官网网址和需要查询的事项。</p><p>${esc(a.support_contact||'请通过账号帮助渠道联系 BondBuddy 服务团队。')}</p>`);}));
  }
  private regional(s:IntegritySubject){return ['local-csrc','local-tax'].map(id=>{const site=resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===id)!,s);return site.links.length?`<div>${links({...site,links:site.links.map(l=>({...l,label:site.name}))})}</div>`:'<small>待补注册地 / 网站</small>';}).join('');}
  private changed(){this.dirty=true;this.runRequest=undefined;}
  private updateCount(){document.querySelector('#integrity-site-count')!.textContent=`（已选 ${this.state!.draft.site_ids.length} 个）`;document.querySelector<HTMLButtonElement>('#integrity-start')!.disabled=!this.state!.draft.subjects.length||!this.state!.draft.site_ids.length;}
- private async save(){const snapshot=JSON.stringify(this.state!.draft);const saved=await this.request<Workspace>('POST','/draft',{expected_revision:this.state!.revision,draft:this.state!.draft});if(this.live()){this.state!.revision=saved.revision;this.state!.rounds=saved.rounds;this.dirty=JSON.stringify(this.state!.draft)!==snapshot;}}
+ private async save(){if(!this.validateSubjects())throw Error('请先修正名单中标出的内容，或移除不需要的行。');const draft={...this.state!.draft,subjects:this.state!.draft.subjects.map(s=>({...s,name:s.name.trim(),role:s.role.trim(),identifier:s.identifier.trim()}))};const snapshot=JSON.stringify(this.state!.draft);const saved=await this.request<Workspace>('POST','/draft',{expected_revision:this.state!.revision,draft});if(this.live()){this.state!.revision=saved.revision;this.state!.rounds=saved.rounds;this.dirty=JSON.stringify(this.state!.draft)!==snapshot;}}
  private modal(title:string,body:string){this.dialog?.remove();const d=document.createElement('dialog');d.className='pf-modal integrity-modal';d.innerHTML=`<header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="关闭">×</button></header>${body}<p role="status"></p>`;document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.busy)d.close();});d.addEventListener('cancel',e=>{if(this.busy)e.preventDefault();});d.addEventListener('close',()=>d.remove());this.dialog=d;return d;}
  private newProject(){
   const d=this.modal('新建项目',`<form><label>项目名称<input name="name" required maxlength="200"></label><label>发行人全称<input name="issuer_name" required maxlength="200"></label><label>市场<select name="market">${Object.entries(MARKET_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><label>品种<select name="offering"></select></label><button class="btn primary">创建项目并准备核查</button></form>`);
   const market=d.querySelector<HTMLSelectElement>('[name=market]')!,offering=d.querySelector<HTMLSelectElement>('[name=offering]')!,key=crypto.randomUUID();const sync=()=>{offering.innerHTML=MARKET_OFFERINGS[market.value as keyof typeof MARKET_OFFERINGS].map(v=>`<option value="${v}">${OFFERING_LABELS[v]}</option>`).join('');};sync();market.addEventListener('change',sync);
   d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target as HTMLFormElement);void this.act(async()=>{const p=await this.api.request<Dto<'ProjectResponse'>>('POST','/projects',{creation_request_id:key,kind:'generation',name:f.get('name'),issuer_name:f.get('issuer_name'),market:market.value,offering:offering.value},{},this.controller.signal);if(this.live()){d.close();location.hash='integrity?project='+encodeURIComponent(p.project_id);}});});
  }
- private subjectModal(index?:number,kind:IntegritySubject['kind']='company'){
-  if(this.busy)return;if(index===undefined&&this.state!.draft.subjects.length>=100){this.status('每轮最多 100 个对象。');return;}const s=index===undefined?{id:crypto.randomUUID(),kind,name:'',role:'',identifier:'',province:'',city:''}:this.state!.draft.subjects[index];
-  const d=this.modal(index===undefined?'添加核查对象':'编辑核查对象',`<form><label>对象类型<select name="kind"><option value="company" ${s.kind==='company'?'selected':''}>企业</option><option value="person" ${s.kind==='person'?'selected':''}>人员</option></select></label><label>企业全称 / 姓名<input name="name" required maxlength="200" value="${esc(s.name)}"></label><label>角色<input name="role" maxlength="200" value="${esc(s.role)}" placeholder="如发行人、子公司、法定代表人"></label><label>统一社会信用代码 / 身份标识（选填）<input name="identifier" maxlength="200" value="${esc(s.identifier)}"></label><p class="muted">身份标识用于内部核对，人员标识不会传入公开搜索，底稿仅显示尾号。</p><button class="btn primary">保存对象</button></form>`);
-  d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target as HTMLFormElement),value={...s,kind:String(f.get('kind')) as IntegritySubject['kind'],name:String(f.get('name')).trim(),role:String(f.get('role')).trim(),identifier:String(f.get('identifier')).trim()};if(!value.name)return;if(index===undefined)this.state!.draft.subjects.push(value);else this.state!.draft.subjects[index]=value;this.changed();d.close();this.paintDraft();});
+ private subjectRows(){
+  return this.state!.draft.subjects.map((s,i)=>`<div class="integrity-subject" data-subject-row="${esc(s.id)}"><span class="integrity-row-number">${String(i+1).padStart(2,'0')}</span>
+   <label>对象类型<select data-subject="${esc(s.id)}" data-field="kind" aria-label="对象 ${i+1} 类型"><option value="company" ${s.kind==='company'?'selected':''}>企业</option><option value="person" ${s.kind==='person'?'selected':''}>人员</option></select></label>
+   <label>名称 / 姓名<input data-subject="${esc(s.id)}" data-field="name" aria-label="对象 ${i+1} 名称" aria-describedby="integrity-subject-error-${esc(s.id)}" value="${esc(s.name)}" required maxlength="200" placeholder="填写完整名称"></label>
+   <label>关系 / 职务<input data-subject="${esc(s.id)}" data-field="role" aria-label="对象 ${i+1} 关系" value="${esc(s.role)}" maxlength="200" placeholder="如发行人、董事"></label>
+   <label>${s.kind==='company'?'统一社会信用代码':'识别信息'} <span class="muted">选填</span><input data-subject="${esc(s.id)}" data-field="identifier" aria-label="对象 ${i+1} 识别信息" aria-describedby="integrity-subject-error-${esc(s.id)}" value="${esc(s.identifier)}" maxlength="${s.kind==='company'?18:200}" placeholder="${s.kind==='company'?'18 位信用代码':'任职公司等消歧信息'}"></label>
+   <button type="button" class="icon-btn" data-remove="${esc(s.id)}" aria-label="移除对象 ${i+1}" title="移除此行">×</button><p class="integrity-subject-error" id="integrity-subject-error-${esc(s.id)}" role="alert" hidden></p></div>`).join('')||'<div class="collection-empty"><h3>添加本轮需要核查的对象</h3><p>可先带入发行人，再补充相关企业与人员。</p></div>';
+ }
+ private regionRows(){return this.state!.draft.subjects.filter(s=>s.kind==='company').map(s=>`<div class="integrity-region"><strong id="integrity-region-name-${esc(s.id)}">${esc(s.name.trim()||'未填写企业名称')}</strong><label>省 / 自治区 / 直辖市<select data-region="${esc(s.id)}" data-field="province">${provinces(s.province)}</select></label><label>城市<input data-region="${esc(s.id)}" data-field="city" value="${esc(s.city)}" placeholder="如：深圳市" maxlength="60"></label><div id="integrity-region-${esc(s.id)}">${this.regional(s)}</div></div>`).join('')||'<p>添加企业后在这里填写注册地。</p>';}
+ private subjectField(id:string,field:string){return document.querySelector<HTMLInputElement|HTMLSelectElement>(`[data-subject="${CSS.escape(id)}"][data-field="${field}"]`);}
+ private paintSubjects(focusId?:string,field='name'){
+  // Replace only the roster and registration rows: pending batch text, notes and scope stay intact.
+  document.querySelector('#integrity-roster')!.innerHTML=this.subjectRows();document.querySelector('#integrity-regions')!.innerHTML=this.regionRows();document.querySelector('#integrity-subject-count')!.textContent=String(this.state!.draft.subjects.length);this.updateCount();
+  if(focusId)this.subjectField(focusId,field)?.focus();
+ }
+ private addSubject(kind:IntegritySubject['kind'],name='',role=''){
+  if(this.busy)return;if(this.state!.draft.subjects.length>=100){this.status('每轮最多 100 个对象。');return;}
+  const s={id:crypto.randomUUID(),kind,name,role,identifier:'',province:'',city:''};this.state!.draft.subjects.push(s);this.changed();this.paintSubjects(s.id);
+ }
+ private subjectError(id:string,message='',field='name'){
+  const error=document.getElementById('integrity-subject-error-'+id);if(error){error.textContent=message;error.hidden=!message;}
+  for(const name of ['name','identifier']){const input=this.subjectField(id,name);if(message&&name===field)input?.setAttribute('aria-invalid','true');else input?.removeAttribute('aria-invalid');}
+ }
+ private validateSubjects(){
+  const seen=new Map<string,number>();let first:HTMLInputElement|HTMLSelectElement|undefined;
+  for(const [i,s] of this.state!.draft.subjects.entries()){
+   const key=JSON.stringify([s.kind,s.name.trim(),s.identifier.trim()]);let error='',field='name';
+   if(!s.name.trim())error='请填写名称 / 姓名，或移除此行。';
+   else if(s.kind==='company'&&s.identifier.trim()&&!/^[0-9A-Z]{18}$/.test(s.identifier.trim())){error='统一社会信用代码应为 18 位大写字母或数字，也可暂不填写。';field='identifier';}
+   else if(seen.has(key))error=`与第 ${seen.get(key)!+1} 行重复，请核对名称和识别信息，或移除重复行。`;
+   seen.set(key,i);this.subjectError(s.id,error,field);if(error&&!first)first=this.subjectField(s.id,field)??undefined;
+  }
+  if(first){first.focus();this.status('请先修正名单中标出的内容，或移除不需要的行。');return false;}return true;
  }
  private importSubjects(){
   const input=document.querySelector<HTMLTextAreaElement>('#integrity-batch')!,status=document.querySelector('#integrity-batch-status')!,existing=this.state!.draft.subjects;
@@ -86,10 +124,10 @@ export class IntegrityWorkspace {
    if([...existing,...added].some(s=>s.kind===kind&&s.name===name&&s.identifier===identifier)){status.textContent=`第 ${index+1} 行与已有对象重复，请核对名称和身份标识。`;return;}
    added.push({id:crypto.randomUUID(),kind,name,role,identifier,province:'',city:''});
   }
-  existing.push(...added);this.changed();this.paintDraft();this.status(`已添加 ${added.length} 个对象，请核对名单后保存。`);
+  existing.push(...added);this.changed();input.value='';status.textContent=`已添加 ${added.length} 个对象，请核对名单后保存。`;this.paintSubjects(added[0]?.id);this.status(status.textContent);
  }
  private confirmStart(){
-  if(this.busy)return;const d=this.modal('开始本轮诚信核查',`<p>${this.state!.draft.subjects.length} 个对象 · ${this.state!.draft.site_ids.length} 个网站</p><p>本轮费用 <strong>5,000 积分</strong>，开始时冻结，底稿交付后扣除。未完成交付将释放积分。</p><p>公开搜索无法替代登录或验证码查询；待核实项目会列在底稿里。同轮补充证据、重新导出免费。重新开始核查另计一轮。</p><button class="btn primary" id="integrity-confirm">确认并开始 · 5,000 积分</button>`);
+  if(this.busy||!this.validateSubjects())return;const d=this.modal('开始本轮诚信核查',`<p>${this.state!.draft.subjects.length} 个对象 · ${this.state!.draft.site_ids.length} 个网站</p><p>本轮费用 <strong>5,000 积分</strong>，开始时冻结，底稿交付后扣除。未完成交付将释放积分。</p><p>公开搜索无法替代登录或验证码查询；待核实项目会列在底稿里。同轮补充证据、重新导出免费。重新开始核查另计一轮。</p><button class="btn primary" id="integrity-confirm">确认并开始 · 5,000 积分</button>`);
   d.querySelector('#integrity-confirm')!.addEventListener('click',()=>void this.act(async()=>{if(!this.runRequest){await this.save();this.runRequest={request_id:crypto.randomUUID(),expected_revision:this.state!.revision,price_version:INTEGRITY_PRICE.version,expected_points:5000};}
    const run=await this.request<{run_id:string}>('POST','/runs',this.runRequest);if(this.live()){this.runRequest=undefined;d.close();location.hash=`integrity?project=${encodeURIComponent(this.id!)}&run=${encodeURIComponent(run.run_id)}`;}}));
  }
