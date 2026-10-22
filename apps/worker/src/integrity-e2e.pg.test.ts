@@ -16,7 +16,7 @@ import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {INTEGRITY_PRICE,INTEGRITY_SELECTABLE_SITES,type IntegrityInput} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {CodexDurableJournal} from './durable-probe-journal.js';
-import {inputLockStage,materialsReadyStage,runPipelineOnce,type codexModelStage} from './run-pipeline.js';
+import {inputLockStage,materialsReadyStage,runPipelineOnce,codexModelStage} from './run-pipeline.js';
 import {integrityModelStage,integrityDeliveryStage} from './integrity-stage.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
 
@@ -30,6 +30,11 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
  const model:typeof codexModelStage=o=>({name:o.name,replay:true,run:async ctx=>{
   const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
+  // Exercise the real prompt snapshot/checkpoint path before substituting the provider.
+  // A hyphenated stage name used to fail here, before any search or model attempt.
+  const boundary=new Error('synthetic provider boundary reached');
+  await assert.rejects(codexModelStage({...o,config:()=>{throw boundary;}}).run(ctx),error=>error===boundary);
+  assert.ok(ctx.checkpoint[`${o.name}_prompt`]?.snapshot_id,'real prompt checkpoint persisted');
   const journal=new CodexDurableJournal({pool,blobs,lease:ctx.lease,validateResult:o.validate}),old=await journal.latestAttempt(o.logicalCallId);
   if(old){const saved=await journal.readCompleted(o.logicalCallId,old.attempt_no);assert.ok(saved);return {kind:'done',value:saved.value};}
   const prompt=await o.buildPrompt(ctx);assert.ok(!prompt.includes('123456789012345678'),'private identity not sent to public search');
