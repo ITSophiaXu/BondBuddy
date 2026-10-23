@@ -19,16 +19,21 @@ import {CodexDurableJournal} from './durable-probe-journal.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,codexModelStage} from './run-pipeline.js';
 import {integrityModelStage,integrityDeliveryStage} from './integrity-stage.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
+import {chromium} from 'playwright';
+import {collectInContext} from './integrity-browser.js';
+import {integrityWebsiteFixture} from './integrity-browser-fixture.js';
 
 const database=await isolatedTestDatabase(undefined,'integrity-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('integrity E2E: saved scope, paid round, evidence, free exports, archive, replay, cancellation and isolation',
- {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
+ {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON||!process.env.BB_TEST_INTEGRITY_BROWSER,timeout:300000},async()=>{
  const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-integrity-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,searchEnabled=true;
  const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
  const app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
+ let firstPause=true;
  const model:typeof codexModelStage=o=>({name:o.name,replay:true,run:async ctx=>{
+  if(firstPause){firstPause=false;return {kind:'pause',stage:'user_paused',reason:'synthetic pause after durable browser capture'};}
   const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
   // Exercise the real prompt snapshot/checkpoint path before substituting the provider.
   // A hyphenated stage name used to fail here, before any search or model attempt.
@@ -42,6 +47,17 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:ctx.run.project_id,runId:ctx.run.id,kind:'model_request',version,body:prompt,inputRevision:ctx.run.input_revision,inputHash:ctx.run.input_hash,templateVersion:o.templateVersion});
   const intent={owner_user_id:owner,project_id:ctx.run.project_id,job_id:ctx.lease.jobId,run_id:ctx.run.id,trace_id:ctx.run.id,logical_call_id:o.logicalCallId,call_id:randomUUID(),attempt_no:1,model_id:'synthetic-integrity',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot};
   await journal.recordIntent(intent);calls++;
+  if(o.resultSchemaVersion==='integrity-browser-interpretation-v1'){
+   const captures=(await pool.query('SELECT c.* FROM bb_integrity_browser_captures c WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id',[owner,ctx.run.id])).rows;
+   const current=captures.find(c=>'integrity_browser_'+inputManifestHash({subject:c.subject_id,site:c.site_id}).slice(0,24)===o.logicalCallId)!;
+   const text=(await blobs.get(current.text_key)).toString('utf8');
+   const value={summary:'Synthetic model interpretation',findings:[{capture_id:current.id,quote:text.includes('被要求补充材料')?text.slice(text.indexOf('查询结果')):text,explanation:'合成测试解读：需核对主体与补充材料。'}]};
+   assert.ok(o.validate(value));
+   assert.equal(o.validate({summary:'forged',findings:[{capture_id:current.id,quote:'未出现的伪造引用',explanation:'forged'}]}),false,'model cannot cite invented evidence');
+   const ref=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),o.resultSchemaVersion);
+   await journal.recordObservation({...intent,...ref,provider_request_id:null,finish_reason:'stop',outcome:'completed',usage:{status:'measured',input_tokens:100,cached_input_tokens:0,output_tokens:20,reasoning_tokens:0,total_tokens:120},error_code:null});
+   return {kind:'done',value};
+  }
   const input=(await pool.query('SELECT manifest FROM bb_integrity_runs WHERE run_id=$1',[ctx.run.id])).rows[0].manifest as IntegrityInput,subject=input.draft.subjects.find(s=>'integrity-'+inputManifestHash(s.id).slice(0,24)===o.logicalCallId)!;
   const query=subject.name+' site:'+ (subject.kind==='company'?'www.gsxt.gov.cn':'zxgk.court.gov.cn'),url='https://'+(subject.kind==='company'?'www.gsxt.gov.cn':'zxgk.court.gov.cn')+'/synthetic',quote=subject.name+' synthetic public record';
   await journal.recordWebSearchEvents(intent,searchEnabled?[{observed_at:new Date().toISOString(),item:{type:'web_search',id:'synthetic-tool',action:{type:'search',query},results:[{url,title:'Synthetic',text:quote}]}}]:[]);
@@ -51,7 +67,14 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   await journal.recordObservation({...intent,...ref,provider_request_id:null,finish_reason:'stop',outcome:'completed',usage:{status:'measured',input_tokens:100,cached_input_tokens:0,output_tokens:20,reasoning_tokens:0,total_tokens:120},error_code:null});
   return {kind:'done',value};
  }});
- const stage=integrityModelStage({model,config:()=>loadCodexAdapterConfig({})});
+ const browser=await chromium.launch({headless:true});let browserCalls=0;
+ const stage=integrityModelStage({model,config:()=>loadCodexAdapterConfig({}),collector:async(site,subject,signal)=>{
+  assert.ok(!('identifier' in subject),'private identifier excluded from browser');browserCalls++;
+  if(!searchEnabled)return {query:'',search_performed:false,outcome:'failed',scope:'Synthetic unavailable',limitation:'Synthetic only',reason:'未取得查询记录',captures:[]};
+  const context=await browser.newContext({viewport:{width:1440,height:1000}});
+  await integrityWebsiteFixture(context,subject.kind==='company'&&site.id==='execution'?'failure':'hits');
+  try{return await collectInContext(context,site,subject,signal,{waitMs:5000,maxPages:1});}finally{await context.close();}
+ }});
  const execute=()=>runPipelineOnce({pool,blobs,leaseSeconds:120,runKinds:['generation'],stages:[inputLockStage,materialsReadyStage,stage,integrityDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
  try{
   for(const id of [owner,other])await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[id,'integrity_'+id.slice(0,8)]);
@@ -75,9 +98,23 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:5000});
   assert.equal((await send('POST',base+'/runs',{...request,request_id:randomUUID()})).statusCode,409);
   actor=other;assert.equal((await send('GET',base)).statusCode,404);actor=owner;
+  assert.equal(await execute(),'paused');assert.equal(browserCalls,1);assert.equal(calls,0);
+  assert.equal((await pool.query('SELECT count(*) n FROM bb_integrity_browser_batches WHERE run_id=$1',[run.run_id])).rows[0].n,'1');
+  await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic resume'});
   assert.equal(await execute(),'succeeded');assert.equal(calls,2);
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
   w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,5000);assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
+  assert.equal(browserCalls,3,'one collection per applicable subject/site');
+  const capture=checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').browser.captures[0];
+  const captureUrl=base+'/runs/'+run.run_id+'/captures/'+capture.id;
+  const screenshot=await send('GET',captureUrl);assert.equal(screenshot.statusCode,200);assert.equal(digest(screenshot.rawPayload),capture.screenshot_sha256);
+  actor=other;assert.equal((await send('GET',captureUrl)).statusCode,404);actor=owner;
+  const captureKey=(await pool.query('SELECT screenshot_key FROM bb_integrity_browser_captures WHERE id=$1',[capture.id])).rows[0].screenshot_key;
+  await blobs.put(captureKey,Buffer.from('corrupted synthetic screenshot'),'image/png');
+  assert.equal((await send('GET',captureUrl)).statusCode,409,'tampered bytes are not downloaded');
+  await blobs.put(captureKey,screenshot.rawPayload,'image/png');
+  assert.equal((await send('GET',scopeBase+'/runs/'+run.run_id+'/captures/'+capture.id)).statusCode,404,'same owner cannot cross project boundary');
+  await assert.rejects(pool.query("UPDATE bb_integrity_browser_batches SET payload='{}' WHERE run_id=$1",[run.run_id]),/immutable/);
   const artifact=await ok('GET','/api/v1/artifacts/'+checked.artifact_id);assert.match(artifact.filename,/诚信核查底稿/);
   const documents=async(round:any,label:string)=>{
    for(const a of round.artifacts){
@@ -105,7 +142,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const exportRequest={request_id:randomUUID(),expected_evidence_ids:w.rounds[0].evidence.map((e:any)=>e.id)};
   assert.equal((await send('POST',base+'/runs/'+run.run_id+'/exports',{...exportRequest,expected_evidence_ids:[]})).statusCode,409);
   const exported=await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest);assert.equal((await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest)).run_id,exported.run_id);
-  assert.equal(await execute(),'succeeded');assert.equal(calls,2,'re-export does not invoke search or model');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
+  assert.equal(await execute(),'succeeded');assert.equal(calls,2,'re-export does not invoke search or model');assert.equal(browserCalls,3,'re-export reuses screenshots');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
   w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.equal(w.rounds[0].operation,'export');assert.notEqual(w.rounds[0].artifact_id,checked.artifact_id);
   await documents(w.rounds[0],'supplemented');
   assert.equal(digest((await send('GET',artifact.download_url)).rawPayload),artifact.sha256,'original workpaper bytes remain available and unchanged');
@@ -117,5 +154,5 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
   await assert.rejects(pool.query("UPDATE bb_integrity_runs SET manifest='{}' WHERE run_id=$1",[run.run_id]),/immutable/);
   const result=(await pool.query('SELECT result,result_hash FROM bb_integrity_runs WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(inputManifestHash(result.result),result.result_hash.trim());
- }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
+ }finally{await browser.close();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
 });

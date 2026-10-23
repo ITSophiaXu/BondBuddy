@@ -15,6 +15,7 @@ import {loadIntegrityInput} from './integrity-input.js';
 import {integrityRecords,type IntegritySearchEvent} from './integrity-evidence.js';
 import {projectFilesRoot} from './project-file-tools.js';
 import {M4_FILE_MAX} from './m4-file-workspace.js';
+import {officialIntegrityRecord,type IntegrityBrowserOptions} from './integrity-browser-stage.js';
 
 type StoredFile={key:string;sha256:string;byte_size:number};
 type Report={version:'integrity-output-v1';input_hash:string;files:Partial<Record<'company'|'person',StoredFile>>};
@@ -41,6 +42,14 @@ async function workpaper(ctx:StageContext,input:IntegrityInput,records:Integrity
  try{
   const evidence=(await ctx.pool.query('SELECT id,record,created_at FROM bb_integrity_evidence WHERE owner_user_id=$1 AND project_id=$2 AND round_id=$3 AND id=ANY($4::text[]) ORDER BY created_at,id',[ctx.run.owner_user_id,ctx.run.project_id,input.round_id,input.evidence_ids])).rows;
   const attachments=[];
+  const automatic=[];
+  for(const record of records)for(const capture of record.browser?.captures??[]){
+   const row=(await ctx.pool.query('SELECT c.metadata,c.screenshot_key FROM bb_integrity_browser_captures c JOIN bb_integrity_runs i ON i.run_id=c.run_id AND i.owner_user_id=c.owner_user_id WHERE c.id=$1 AND c.owner_user_id=$2 AND c.run_id=$3 AND i.project_id=$4 AND c.subject_id=$5 AND c.site_id=$6',[capture.id,ctx.run.owner_user_id,input.round_id,ctx.run.project_id,record.subject_id,record.site_id])).rows[0];
+   if(!row||inputManifestHash(row.metadata)!==inputManifestHash(capture))throw Error('INPUT_REVISION_CONFLICT');
+   const bytes=await ctx.blobs.getIfExistsBounded(row.screenshot_key,15000000);if(!bytes||digest(bytes)!==capture.screenshot_sha256||bytes.length!==capture.byte_size)throw Error('INPUT_REVISION_CONFLICT');
+   const path=join(dir,'auto-'+capture.id+'.png');await writeFile(path,bytes,{mode:0o600});
+   automatic.push({subject_id:record.subject_id,site_id:record.site_id,metadata:capture,path});
+  }
   for(const [index,e] of evidence.entries()){
    const asset=await readProjectFileAsset(ctx.pool,ctx.run.owner_user_id,{kind:'material',pin:e.record.material});
    const bytes=await ctx.blobs.getIfExistsBounded(asset.object_key,M4_FILE_MAX);
@@ -54,7 +63,7 @@ async function workpaper(ctx:StageContext,input:IntegrityInput,records:Integrity
   const files:Report['files']={};
   for(const kind of ['company','person'] as const){
    const subjects=safe.draft.subjects.filter(s=>s.kind===kind);if(!subjects.length)continue;
-   const payload={input:{...safe,draft:{...safe.draft,subjects}},records:records.filter(r=>subjects.some(s=>s.id===r.subject_id)),evidence:attachments.filter(e=>subjects.some(s=>s.id===e.record.subject_id))};
+   const payload={input:{...safe,draft:{...safe.draft,subjects}},records:records.filter(r=>subjects.some(s=>s.id===r.subject_id)),evidence:attachments.filter(e=>subjects.some(s=>s.id===e.record.subject_id)),automatic:automatic.filter(e=>subjects.some(s=>s.id===e.subject_id))};
    await writeFile(join(dir,'input.json'),JSON.stringify(payload),{mode:0o600});
    await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',[join(projectFilesRoot,'python/bondbuddy_file_authoring/integrity_report.py'),join(dir,'input.json'),join(dir,kind+'.docx')],{cwd:projectFilesRoot,signal:ctx.signal,timeout:120000,maxBuffer:1024*1024});
    const bytes=await readFile(join(dir,kind+'.docx'));if(!bytes.length||bytes.length>M4_FILE_MAX)throw Error('FILE_OUTPUT_STORE_FAILED');
@@ -64,7 +73,7 @@ async function workpaper(ctx:StageContext,input:IntegrityInput,records:Integrity
   return {version:'integrity-output-v1',input_hash:ctx.run.input_hash.trim(),files};
  }finally{await rm(dir,{recursive:true,force:true});}
 }
-export function integrityModelStage(options:{model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig}={}):RunStage{
+export function integrityModelStage(options:IntegrityBrowserOptions={}):RunStage{
  return {name:'model_generation',replay:true,run:async ctx=>{
   const input=await loadIntegrityInput(ctx),saved=ctx.checkpoint.model_generation?.integrity_result as Report|undefined;
   if(saved)return {kind:'done',value:saved};
@@ -73,6 +82,18 @@ export function integrityModelStage(options:{model?:typeof codexModelStage;confi
   else for(const subject of input.draft.subjects){
    if(ctx.signal?.aborted)return {kind:'stopped'};
    const old=await storedRecords(ctx,subject.id);
+   if(input.collector==='official-browser-v1'){
+    if(old.some(r=>!input.draft.site_ids.includes(r.site_id)))throw Error('INPUT_REVISION_CONFLICT');
+    for(const siteId of input.draft.site_ids){
+     if(ctx.signal?.aborted)return {kind:'stopped'};
+     const stored=old.find(r=>r.site_id===siteId);if(stored){records.push(stored);continue;}
+     const site=resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===siteId)!,subject),next=await officialIntegrityRecord(ctx,site,subject,options);
+     if('kind' in next)return next;
+     await transaction(ctx.pool,async c=>{await lockObservationWrite(c,ctx);await c.query('INSERT INTO bb_integrity_observations(owner_user_id,run_id,subject_id,site_id,record,sha256) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,subject.id,siteId,next,inputManifestHash(next)]);});
+     records.push((await storedRecords(ctx,subject.id)).find(r=>r.site_id===siteId)!);
+    }
+    continue;
+   }
    if(old.length){if(old.length!==input.draft.site_ids.length||old.some(r=>!input.draft.site_ids.includes(r.site_id)))throw Error('INPUT_REVISION_CONFLICT');records.push(...old);continue;}
    const sites=input.draft.site_ids.map(id=>resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===id)!,subject)).filter(s=>!(s.companyOnly&&subject.kind==='person')&&s.links.length);
    let proposal:IntegrityProposal|null=null,events:IntegritySearchEvent[]=[];

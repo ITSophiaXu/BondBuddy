@@ -11,12 +11,18 @@ export type IntegritySubject=Static<typeof IntegritySubjectSchema>;
 export const IntegrityDraftSchema=obj({subjects:Type.Array(IntegritySubjectSchema,{maxItems:100}),site_ids:Type.Array(id,{uniqueItems:true,maxItems:INTEGRITY_SITE_LIMIT}),notes:text});
 export type IntegrityDraft=Static<typeof IntegrityDraftSchema>;
 export const IntegritySourceSchema=obj({url:Type.String({maxLength:4096}),title:short,quote:text,retrieved_at:time,tool_call_id:id,sha256:hash});
+export const IntegrityCaptureSchema=obj({id,kind:Type.Union((['result','detail','blocker'] as const).map(x=>Type.Literal(x))),url:Type.String({maxLength:4096}),title:short,captured_at:time,page:Type.Integer({minimum:1,maximum:20}),screenshot_sha256:hash,text_sha256:hash,byte_size:Type.Integer({minimum:1,maximum:15000000})});
+export type IntegrityCapture=Static<typeof IntegrityCaptureSchema>;
+export const IntegrityBrowserSchema=obj({version:Type.Literal('official-browser-v1'),outcome:Type.Union((['results','no_results','blocked','failed','unverified'] as const).map(x=>Type.Literal(x))),scope:text,limitation:text,captures:Type.Array(IntegrityCaptureSchema,{maxItems:20})});
+export type IntegrityBrowser=Static<typeof IntegrityBrowserSchema>;
+export const IntegrityBrowserInterpretationSchema=obj({summary:text,findings:Type.Array(obj({capture_id:id,quote:text,explanation:text}),{maxItems:20})});
+export type IntegrityBrowserInterpretation=Static<typeof IntegrityBrowserInterpretationSchema>;
 export const IntegrityRecordSchema=obj({subject_id:id,site_id:id,site_name:short,urls:Type.Array(Type.String({maxLength:4096})),query:Type.String({maxLength:4000}),
-  status:Type.Union((['public_matches','needs_manual','not_applicable','query_failed'] as const).map(x=>Type.Literal(x))),reason:text,checked_at:time,sources:Type.Array(IntegritySourceSchema,{maxItems:30}),search_performed:Type.Boolean()});
+  status:Type.Union((['public_matches','no_public_results','needs_manual','not_applicable','query_failed'] as const).map(x=>Type.Literal(x))),reason:text,checked_at:time,sources:Type.Array(IntegritySourceSchema,{maxItems:30}),search_performed:Type.Boolean(),browser:Type.Optional(IntegrityBrowserSchema)});
 export type IntegrityRecord=Static<typeof IntegrityRecordSchema>;
 export const IntegrityInputSchema=obj({version:Type.Literal('integrity-round-v1'),operation:Type.Union([Type.Literal('check'),Type.Literal('export')]),
   round_id:id,project_name:short,draft:IntegrityDraftSchema,price_version:Type.Literal(INTEGRITY_PRICE.version),points:Type.Integer({minimum:0}),
-  records:Type.Array(IntegrityRecordSchema,{maxItems:100*INTEGRITY_SITE_LIMIT}),evidence_ids:Type.Array(id,{maxItems:2000})});
+  records:Type.Array(IntegrityRecordSchema,{maxItems:100*INTEGRITY_SITE_LIMIT}),evidence_ids:Type.Array(id,{maxItems:2000}),collector:Type.Optional(Type.Literal('official-browser-v1'))});
 export type IntegrityInput=Static<typeof IntegrityInputSchema>;
 export const IntegrityManualSchema=obj({request_id:id,subject_id:id,site_id:id,queried_at:time,url:Type.String({maxLength:4096}),note:text,
   conclusion:Type.Union([Type.Literal('records_found'),Type.Literal('no_records'),Type.Literal('unresolved')]),material:M4MaterialPinSchema,registration:Type.Optional(obj({province:short,city:short}))});
@@ -36,6 +42,7 @@ export const integritySchemas={
  IntegrityRunRequest:obj({request_id:id,expected_revision:Type.Integer({minimum:0}),price_version:Type.Literal(INTEGRITY_PRICE.version),expected_points:Type.Literal(5000)}),
  IntegrityExportRequest:obj({request_id:id,expected_evidence_ids:Type.Array(id,{uniqueItems:true,maxItems:2000})}),
  IntegrityManualRequest:IntegrityManualSchema,
+ IntegrityCaptureParams:obj({project_id:id,run_id:id,capture_id:id}),
 };
 export function integrityOpenApiPaths(){
  const content=(name:string)=>({content:{'application/json':{schema:{$ref:'#/components/schemas/'+name}}}});
@@ -45,5 +52,6 @@ export function integrityOpenApiPaths(){
  '/projects/{project_id}/integrity/draft':{post:post('IntegrityDraftRequest')},
  '/projects/{project_id}/integrity/runs':{post:post('IntegrityRunRequest','IntegrityRunResponse')},
  '/projects/{project_id}/integrity/runs/{run_id}/evidence':{post:post('IntegrityManualRequest','IntegrityWorkspaceResponse',true)},
- '/projects/{project_id}/integrity/runs/{run_id}/exports':{post:post('IntegrityExportRequest','IntegrityRunResponse',true)}};
+ '/projects/{project_id}/integrity/runs/{run_id}/exports':{post:post('IntegrityExportRequest','IntegrityRunResponse',true)},
+ '/projects/{project_id}/integrity/runs/{run_id}/captures/{capture_id}':{get:{parameters:[...parameters,...['run_id','capture_id'].map(name=>({name,in:'path',required:true,schema:{type:'string'}}))],responses:{200:{description:'Owned hash-verified official screenshot',content:{'image/png':{schema:{type:'string',format:'binary'}}}}}}}};
 }

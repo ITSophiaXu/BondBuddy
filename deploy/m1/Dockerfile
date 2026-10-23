@@ -97,7 +97,15 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD ["node","-e","fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
 CMD ["node","apps/api/dist/server.js"]
 
+FROM node-runtime AS integrity-egress
+USER node
+EXPOSE 3129
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=require('net').connect(3129,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+CMD ["node","apps/worker/dist/integrity-egress.js"]
+
 FROM node-runtime AS worker
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
+RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
 ARG BB_RELEASE_SHA=unknown
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
