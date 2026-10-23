@@ -20,6 +20,8 @@ RUN node -e "const f=require('fs'),c=require('crypto');if(c.createHash('sha512')
     && rm -rf /tmp/codex /tmp/codex.tgz
 ADD worker-snapshot.tar /app/
 ADD runtime-assets.tar /app/
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
+RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
 RUN mkdir -p node_modules/@bondbuddy /opt/bondbuddy \
     && for p in contracts domain rule-pack-registry rule-applicability-context; do ln -s /app/packages/$p node_modules/@bondbuddy/$p; done \
     && for p in api worker web; do ln -s /app/apps/$p node_modules/@bondbuddy/$p; done \

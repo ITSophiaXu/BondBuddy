@@ -2,7 +2,7 @@ import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
 import {INTEGRITY_PRICE,INTEGRITY_SITES,integritySchemas,resolveIntegritySite,integritySourceAllowed,type IntegrityDraft,type IntegrityInput,type IntegrityWorkspace,type IntegrityRound,type IntegrityManual} from '@bondbuddy/contracts';
-import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
+import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle,digest,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {enqueue} from './queue.js';
 import {creditBalance,lockCreditAccount} from './billing.js';
@@ -78,9 +78,19 @@ export async function readIntegrity(db:Pool,owner:string,id:string,requested?:st
   artifact_id:r.state==='succeeded'?r.artifact_id:null,artifacts:artifacts.filter(a=>a.run_id===r.run_id).map(a=>({kind:a.kind,artifact_id:a.artifact_id,artifact_version:a.artifact_version})),charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0,reserved_points:r.reservation_state==='held'?Number(r.points):0
  }))};
 }
-export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
+export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
  const base='/api/v1/projects/:project_id/integrity',params=(r:FastifyRequest)=>r.params as {project_id:string;run_id:string};
  app.get(base,{schema:{querystring:integritySchemas.IntegrityQuery,response:{200:integritySchemas.IntegrityWorkspaceResponse}}},async r=>readIntegrity(db(),await owner(r),params(r).project_id,(r.query as {run_id?:string}).run_id));
+ app.get(base+'/runs/:run_id/captures/:capture_id',{schema:{params:integritySchemas.IntegrityCaptureParams}},async(r,reply)=>{
+  const user=await owner(r),{project_id,run_id,capture_id}=r.params as Static<typeof integritySchemas.IntegrityCaptureParams>;
+  await ownedRound(db(),user,project_id,run_id);
+  const row=(await db().query('SELECT c.*,b.payload,b.sha256 FROM bb_integrity_browser_captures c JOIN bb_integrity_browser_batches b ON b.owner_user_id=c.owner_user_id AND b.run_id=c.run_id AND b.subject_id=c.subject_id AND b.site_id=c.site_id WHERE c.id=$1 AND c.owner_user_id=$2 AND c.run_id=$3',[capture_id,user,run_id])).rows[0];
+  if(!row)throw new Problem(404,'NOT_FOUND','截图不存在。');
+  if(inputManifestHash(row.payload)!==row.sha256.trim()||!row.payload.captures.some((c:any)=>c.metadata.id===capture_id&&inputManifestHash(c.metadata)===inputManifestHash(row.metadata)&&c.screenshot_key===row.screenshot_key))throw new Problem(409,'INPUT_REVISION_CONFLICT','截图记录校验失败。');
+  const bytes=await blobs().getIfExistsBounded(row.screenshot_key,15000000);
+  if(!bytes||bytes.length!==row.metadata.byte_size||digest(bytes)!==row.metadata.screenshot_sha256)throw new Problem(409,'INPUT_REVISION_CONFLICT','截图内容校验失败。');
+  return reply.header('Cache-Control','private, no-store').header('X-Content-Type-Options','nosniff').type('image/png').send(bytes);
+ });
  app.post(base+'/draft',{schema:{body:integritySchemas.IntegrityDraftRequest,response:{200:integritySchemas.IntegrityWorkspaceResponse}}},async r=>{
   const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof integritySchemas.IntegrityDraftRequest>;validateIntegrityDraft(b.draft);
   await transaction(db(),async c=>{const p=await project(c,user,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
@@ -95,7 +105,7 @@ export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
   const runId=await transaction(db(),async c=>{const p=await project(c,user,id,true),hash=inputManifestHash({id,...b}),key='integrity:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
    const draft=(await c.query('SELECT * FROM bb_integrity_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0];
    if(!draft||draft.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','请保存名单与网站范围后开始。');validateIntegrityDraft(draft.draft,true);
-   return createRun(c,user,p,key,hash,{version:'integrity-round-v1',operation:'check',round_id:uid(),project_name:p.name,draft:draft.draft,price_version:INTEGRITY_PRICE.version,points:5000,records:[],evidence_ids:[]});
+   return createRun(c,user,p,key,hash,{version:'integrity-round-v1',operation:'check',round_id:uid(),project_name:p.name,draft:draft.draft,price_version:INTEGRITY_PRICE.version,points:5000,records:[],evidence_ids:[],collector:'official-browser-v1'});
   });return {run_id:runId};
  });
  app.post(base+'/runs/:run_id/evidence',{schema:{body:integritySchemas.IntegrityManualRequest,response:{200:integritySchemas.IntegrityWorkspaceResponse}}},async r=>{

@@ -318,7 +318,7 @@ export function createServer(settings: Settings = {}) {
   registerProjectCollection(app,db,owner);
   registerProjectFileWorkspace(app,db,owner,blob);
   registerProjectFileConsistency(app,db,owner);
-  registerIntegrity(app,db,owner);
+  registerIntegrity(app,db,owner,blob);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {

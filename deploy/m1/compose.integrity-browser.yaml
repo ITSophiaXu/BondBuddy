@@ -1,0 +1,21 @@
+# Release integration overlay. Do not apply from development chats.
+# Build Dockerfile target integrity-egress as bondbuddy-m1-integrity-egress:<same fixed SHA>.
+services:
+  integrity-egress:
+    image: bondbuddy-m1-integrity-egress:${BB_IMAGE_TAG:?fixed release version required}
+    restart: unless-stopped
+    networks: [backend, edge]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy: {resources: {limits: {cpus: '0.25', memory: 128M}}}
+  worker:
+    # Compose >= 2.24.4: replace, do not append a second seccomp profile.
+    security_opt: !override [no-new-privileges:true, "seccomp=./security/integrity-browser-seccomp.json", "apparmor=bondbuddy-codex-v1"]
+    environment:
+      BB_INTEGRITY_EGRESS_PROXY_URL: http://integrity-egress:3129
+    depends_on:
+      integrity-egress: {condition: service_healthy}
+    # Chromium + a live model process need more than the old authoring-only 768M limit.
+    deploy: {resources: {limits: {cpus: '1.0', memory: 1536M}}}

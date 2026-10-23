@@ -265,6 +265,14 @@ export class ApiClient {
   material(id: string, materialId: string, signal?: AbortSignal,version?:number) {
     return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}${version?'?version='+version:''}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }
+  async integrityCaptureBytes(projectId:string,roundId:string,capture:import('@bondbuddy/contracts').IntegrityCapture,signal?:AbortSignal):Promise<Blob>{
+    const response=await this.response('GET',`/projects/${encodeURIComponent(projectId)}/integrity/runs/${encodeURIComponent(roundId)}/captures/${encodeURIComponent(capture.id)}`,undefined,{},signal);
+    if(response.status!==200||response.headers.get('content-type')?.split(';')[0]!=='image/png')throw new ApiError(0,'DATA_UNAVAILABLE');
+    const bytes=await response.arrayBuffer();signal?.throwIfAborted();
+    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    if(bytes.byteLength!==capture.byte_size||hash!==capture.screenshot_sha256)throw new ApiError(0,'DATA_UNAVAILABLE');
+    return new Blob([bytes],{type:'image/png'});
+  }
   async materialBytes(projectId: string, material: Dto<'MaterialResponse'>, signal?: AbortSignal): Promise<Blob> {
     const activeSignal = signal ?? this.controller.signal;
     // The owner-scoped route authorizes this project/material pair; the caller

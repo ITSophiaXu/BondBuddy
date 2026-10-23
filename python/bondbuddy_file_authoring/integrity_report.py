@@ -1,13 +1,26 @@
 """Create an integrity workpaper from host-verified observations; never infer clearance."""
 import json
+import io
 import sys
 from pathlib import Path
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from PIL import Image
 
-STATUS = {'public_matches': '发现公开记录，主体及事项待核实', 'needs_manual': '待人工查询 / 补证', 'not_applicable': '不适用', 'query_failed': '未取得查询记录'}
+def add_browser_picture(document, path):
+    # Preserve readable text in tall full-page captures by splitting, never shrinking a long page to a thumbnail.
+    with Image.open(path) as image:
+        height = max(1, int(image.width * 0.9))
+        for top in range(0, image.height, height):
+            part = image.crop((0, top, image.width, min(image.height, top + height)))
+            stream = io.BytesIO()
+            part.save(stream, format='PNG')
+            stream.seek(0)
+            document.add_picture(stream, width=Inches(5.8))
+
+STATUS = {'public_matches': '发现相关记录，主体及事项待核实', 'no_public_results': '本次查询未检索到相关结果', 'needs_manual': '待人工补证', 'not_applicable': '不适用', 'query_failed': '查询失败，待人工补证'}
 CONCLUSION = {'records_found': '发现记录', 'no_records': '该次查询未发现记录', 'unresolved': '仍待核实'}
 
 def generate(data, target):
@@ -31,7 +44,7 @@ def generate(data, target):
     d.add_paragraph(info['project_name'])
     d.add_paragraph('核查轮次：' + info['round_id'])
     d.add_paragraph('本底稿整理本轮已取得的公开搜索记录和明确标记的人工补充证据；未执行或未取得记录的项目逐项列明。公开搜索不替代网站登录后数据库查询；搜索无命中不代表无风险，同名主体、记录时点和内容均需核实。')
-    d.add_paragraph('注册地不完整、登录、验证码或访问受限的项目保留待核实状态。人工证据为用户提交，未由系统独立核验。')
+    d.add_paragraph('官网自动查询保留截图与对应可见文字。注册地不完整、登录、验证码或访问受限的项目标记待人工补证，其他网站继续。人工证据为用户提交，未由系统独立核验。')
     if info['draft']['notes']:
         d.add_paragraph('本轮说明：' + info['draft']['notes'])
     d.add_heading('核查范围与汇总', 1)
@@ -42,6 +55,18 @@ def generate(data, target):
         matches = sum(r['status'] == 'public_matches' for r in items)
         pending = sum(r['status'] in ['query_failed', 'needs_manual'] for r in items)
         d.add_paragraph(subject['name'] + '：公开线索 ' + str(matches) + ' 项，待查询或补证 ' + str(pending) + ' 项，不适用 ' + str(sum(r['status'] == 'not_applicable' for r in items)) + ' 项。公开线索仍需人工复核。')
+        table = d.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        for cell, label in zip(table.rows[0].cells, ['核查网站', '本次核查结果', '截图数量']):
+            cell.text = label
+        repeat = OxmlElement('w:tblHeader')
+        table.rows[0]._tr.get_or_add_trPr().append(repeat)
+        for item in items:
+            cells = table.add_row().cells
+            cells[0].text = item['site_name']
+            cells[1].text = STATUS[item['status']]
+            cells[2].text = str(len(item.get('browser', {}).get('captures', [])))
+        d.add_paragraph('')
     for kind, title in [('company', '企业诚信核查'), ('person', '人员诚信核查')]:
         subjects = [s for s in info['draft']['subjects'] if s['kind'] == kind]
         if not subjects:
@@ -57,6 +82,19 @@ def generate(data, target):
                 for url in r['urls']:
                     d.add_paragraph('官网：' + url)
                 d.add_paragraph('实际查询：' + ('不适用' if r['status'] == 'not_applicable' else r['query'] or '未记录；需人工查询'))
+                if r.get('browser'):
+                    d.add_paragraph('查询范围：' + r['browser']['scope'])
+                    d.add_paragraph('覆盖限制与待补材料：' + r['browser']['limitation'])
+                    for auto in [a for a in data.get('automatic', []) if a['subject_id'] == subject['id'] and a['site_id'] == r['site_id']]:
+                        meta = auto['metadata']
+                        caption = '官网自动截图 ' + str(meta['page']) + (' 查询受限页面' if meta['kind'] == 'blocker' else ' 记录正文' if meta['kind'] == 'detail' else ' 查询结果')
+                        p = d.add_paragraph(caption)
+                        p.paragraph_format.keep_with_next = True
+                        add_browser_picture(d, auto['path'])
+                        d.add_paragraph('截图时间（UTC）：' + meta['captured_at'] + '\n网址：' + meta['url'])
+                        p = d.add_paragraph('截图 SHA-256：' + meta['screenshot_sha256'] + '\n可见文字 SHA-256：' + meta['text_sha256'])
+                        for run in p.runs:
+                            run.font.size = Pt(8)
                 for source in r['sources']:
                     d.add_paragraph(source['title'] + '\n' + source['url'] + '\n引文：' + source['quote'])
                     d.add_paragraph('获取时间：' + source['retrieved_at'])
@@ -81,9 +119,8 @@ def generate(data, target):
     d.add_heading('归档与版本说明', 1)
     d.add_paragraph('本文件归档至项目文件 → 4 底稿文件 → 4.3 诚信核查。补充证据后重新导出会生成新成果，旧文件保留。同一轮补证及重新导出不重复收费；重新开始核查为新一轮。')
     d.add_heading('核查与复核签字', 1)
-    d.add_paragraph('项目组成员：________________    日期：________________')
-    d.add_paragraph('复核人：________________        日期：________________')
-    d.add_paragraph('待核实事项处理及复核意见：')
+    for text in ['项目组成员：________________    日期：________________', '复核人：________________        日期：________________', '待核实事项处理及复核意见：']:
+        d.add_paragraph(text).paragraph_format.keep_with_next = True
     d.add_paragraph('________________________________________________________________')
     footer = section.footer.paragraphs[0]
     footer.text = 'BondBuddy | '
