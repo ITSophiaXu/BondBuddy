@@ -1,0 +1,14 @@
+# Beijing host only. No public proxy listener and no model/business credentials.
+# Build deploy/m1/Dockerfile target integrity-egress from the accepted release SHA.
+services:
+  integrity-egress:
+    image: bondbuddy-m1-integrity-egress:${BB_IMAGE_TAG:?fixed release SHA required}
+    restart: unless-stopped
+    environment:
+      BB_INTEGRITY_EGRESS_BIND_HOST: 0.0.0.0
+    ports: ["127.0.0.1:3129:3129"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy: {resources: {limits: {cpus: '0.25', memory: 128M}}}

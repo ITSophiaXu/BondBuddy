@@ -1,12 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
-import {collectInContext,integrityBrowserEnvironment} from './integrity-browser.js';
+import {collectInContext,integrityBrowserEnvironment,integritySearchQuery} from './integrity-browser.js';
+import {integrityEgressListen} from './integrity-egress-config.js';
+import {INTEGRITY_SITES} from '@bondbuddy/contracts';
 import {readFile} from 'node:fs/promises';
 import {integrityWebsiteFixture} from './integrity-browser-fixture.js';
 import {integrityBrowserUrlAllowed,publicIntegrityAddress,integrityProxy} from './integrity-browser-network.js';
 import {createServer,request} from 'node:http';
 const site={id:'tax',name:'合成测试官网',topic:'监管公告',group:'test',links:[{label:'官网',url:'https://www.chinatax.gov.cn/'}]};
+test('Beijing host egress defaults to loopback and rejects accidental public host configuration',()=>{
+ assert.deepEqual(integrityEgressListen({}),{host:'127.0.0.1',port:3129});
+ assert.deepEqual(integrityEgressListen({BB_INTEGRITY_EGRESS_BIND_HOST:'0.0.0.0'}),{host:'0.0.0.0',port:3129});
+ assert.throws(()=>integrityEgressListen({BB_INTEGRITY_EGRESS_BIND_HOST:'49.233.75.207'}));
+});
+test('court exact-name forms do not append topic keywords; general searches retain them',()=>{
+ const subject={name:'中国石油化工股份有限公司',province:'北京'};
+ for(const id of ['execution-dishonest','execution-debtor','execution-restriction'])assert.equal(integritySearchQuery(INTEGRITY_SITES.find(s=>s.id===id)!,subject),subject.name);
+ assert.equal(integritySearchQuery(INTEGRITY_SITES.find(s=>s.id==='tax-dishonest')!,subject),subject.name+' 重大税收违法');
+ assert.ok(integritySearchQuery(INTEGRITY_SITES.find(s=>s.id==='local-csrc')!,subject).endsWith(' 北京'));
+});
 test('browser process receives no business credentials and Linux policy only adds renderer PID namespace',async()=>{
  const environment=integrityBrowserEnvironment('/tmp/synthetic-browser-cache');
  assert.deepEqual(Object.keys(environment).filter(k=>!['XDG_CACHE_HOME','PATH','SystemRoot','SYSTEMROOT','WINDIR','TEMP','TMP','TMPDIR','LANG','LC_ALL'].includes(k)),[]);
@@ -27,6 +40,12 @@ test('private-network worker uses dedicated upstream but cannot widen the select
  const proxy=await integrityProxy(site,{upstreamUrl:`http://127.0.0.1:${(server.address() as {port:number}).port}`});
  const get=(url:string)=>new Promise<number>((resolve,reject)=>{const req=request(proxy.server,{path:url},res=>{res.resume();res.on('end',()=>resolve(res.statusCode!));});req.on('error',reject);req.end();});
  try{assert.equal(await get('http://www.chinatax.gov.cn/'),200);assert.equal(await get('http://169.254.169.254/'),403);assert.equal(await get('http://www.csrc.gov.cn/'),403);assert.equal(upstreamCalls,1);}finally{await proxy.close();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+test('unavailable Beijing tunnel fails closed without a direct website fallback',async()=>{
+ const unused=createServer();await new Promise<void>(r=>unused.listen(0,'127.0.0.1',r));
+ const port=(unused.address() as {port:number}).port;await new Promise<void>(r=>unused.close(()=>r()));
+ const proxy=await integrityProxy(site,{upstreamUrl:`http://127.0.0.1:${port}`});
+ try{const status=await new Promise<number>((resolve,reject)=>{const req=request(proxy.server,{path:'http://www.chinatax.gov.cn/'},res=>{res.resume();res.on('end',()=>resolve(res.statusCode!));});req.on('error',reject);req.end();});assert.equal(status,502);}finally{await proxy.close();}
 });
 test('real Chromium on synthetic official-site fixtures: query, screenshot, zero, challenge, stale, failure and continuation',{timeout:120000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async t=>{
  const browser=await chromium.launch({headless:true});
