@@ -112,6 +112,7 @@ ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH \
 # Bookworm OCR engine and language data are pinned independently; osd is used on every page.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-venv ca-certificates util-linux libreoffice-writer fonts-noto-cjk \
+      xvfb xauth x11-utils openbox tint2 wmctrl scrot \
       tesseract-ocr=5.3.0-2 \
       tesseract-ocr-eng=1:4.1.0-2 \
       tesseract-ocr-chi-sim=1:4.1.0-2 \
