@@ -121,7 +121,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
     const meta=await ok('GET','/api/v1/artifacts/'+a.artifact_id),download=await send('GET',meta.download_url);
     assert.equal(download.statusCode,200);assert.equal(digest(download.rawPayload),meta.sha256);
     const text=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import sys,io,zipfile,xml.etree.ElementTree as E; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print("".join(E.fromstring(z.read("word/document.xml")).itertext()))'],{input:download.rawPayload,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});
-    assert.match(text,/核查与复核签字/);assert.match(text,/公开搜索不替代/);
+    assert.match(text,/的签字页/);assert.match(text,/公开搜索不替代/);
     if(a.kind==='company'){assert.match(text,/合成诚信测试企业/);assert.ok(!text.includes('合成测试人员'));}
     else{assert.match(text,/合成测试人员/);assert.ok(!text.includes('合成诚信测试企业'));assert.ok(!text.includes('123456789012345678'));assert.match(text,/\*\*\*\*5678/);}
     if(label==='supplemented'&&a.kind==='company'){assert.match(text,/Synthetic manual claim/);assert.match(text,/用户提交，未独立核验/);}
