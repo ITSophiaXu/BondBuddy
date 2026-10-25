@@ -82,3 +82,22 @@ test('observed tax next-page label advances before a second result screenshot',{
   assert.match(result.captures[1].text,/第2页/);
  }finally{await browser.close();}
 });
+
+test('default collection waits for official search responses beyond the former 18s limit',{timeout:60000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async()=>{
+ const browser=await chromium.launch({headless:true});
+ try{
+  const context=await browser.newContext();
+  await context.route('**/*',async route=>{
+   if(new URL(route.request().url()).pathname==='/search'){
+    await new Promise(resolve=>setTimeout(resolve,19500));
+    return route.fulfill({body:'synthetic delayed official response'});
+   }
+   return route.fulfill({contentType:'text/html; charset=utf-8',body:`<input type="search"><button>搜索</button><main>请输入查询词</main><script>
+    document.querySelector('button').onclick=async()=>{await fetch('/search?q='+encodeURIComponent(document.querySelector('input').value));document.querySelector('main').textContent='相关结果0个';};
+   </script>`});
+  });
+  const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'河北',city:'沧州'},new AbortController().signal);
+  assert.equal(result.outcome,'no_results');assert.equal(result.search_performed,true);
+  assert.equal(result.captures[0].kind,'result');assert.match(result.captures[0].text,/相关结果0个/);
+ }finally{await browser.close();}
+});

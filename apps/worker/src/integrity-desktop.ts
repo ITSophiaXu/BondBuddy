@@ -39,7 +39,7 @@ export async function startIntegrityDesktop(directory:string, base:NodeJS.Proces
   await exec('xauth',['-f',authority,'add',display,'MIT-MAGIC-COOKIE-1',randomBytes(16).toString('hex')],{env,timeout:5000});
   const server=start('Xvfb',[display,'-screen','0',`${screen.width}x${screen.height}x24`,'-nolisten','tcp','-auth',authority]);
   let ready=false;
-  for(let i=0;i<30;i++){
+  for(let i=0;i<100;i++){
    if(server.exitCode!==null)throw Error('INTEGRITY_DISPLAY_START_FAILED');
    try{await exec('xdpyinfo',[],{env,timeout:1000,maxBuffer:200000});ready=true;break;}catch{await new Promise(r=>setTimeout(r,100));}
   }
@@ -52,10 +52,19 @@ export async function startIntegrityDesktop(directory:string, base:NodeJS.Proces
    bus.once('exit',()=>{clearTimeout(timer);reject(Error('INTEGRITY_DESKTOP_BUS_EXITED'));});
   });
   start('openbox',['--sm-disable']);
+  // Register the window manager before the panel creates its dock window.
+  // Starting both together can leave the panel outside the managed window list.
+  let windowManagerReady=false;
+  for(let i=0;i<100;i++){
+   const {stdout}=await exec('wmctrl',['-m'],{env,timeout:2000}).catch(()=>({stdout:''}));
+   if(/^Name: Openbox$/m.test(stdout)){windowManagerReady=true;break;}
+   await new Promise(r=>setTimeout(r,100));
+  }
+  if(!windowManagerReady)throw Error('INTEGRITY_WINDOW_MANAGER_UNAVAILABLE');
   start('xfdesktop',['--disable-wm-check']);
   const panel=start('xfce4-panel',['--disable-wm-check']);
   let panelReady=false;
-  for(let i=0;i<30;i++){
+  for(let i=0;i<100;i++){
    if(panel.exitCode!==null)break;
    const {stdout}=await exec('wmctrl',['-l','-x'],{env,timeout:2000}).catch(()=>({stdout:''}));
    if(/xfce4-panel/i.test(stdout)){panelReady=true;break;}
