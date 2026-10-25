@@ -60,7 +60,9 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');answers.push(saved.answer);continue;}
      const terms=new Set(qaSearchTerms(question.question));
      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
-     const outcome=await (options.model??codexModelStage)({name:'qa-'+question.id,logicalCallId:'qa-'+question.id,templateVersion:'project-qa-v1',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
+     // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
+     // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
+     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-v1',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id,
       config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
       buildPrompt:async()=>composeContainedPrompt({instructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,question,requirements:input.requirements,materials:qaPromptEvidence(question,evidence),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'按问题关键词检索的材料段落；不能据此断言全部材料均无相关信息。'})}]})}).run(ctx);

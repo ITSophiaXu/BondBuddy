@@ -9,12 +9,11 @@ import {Pool} from 'pg';
 import {BlobServiceClient} from '@azure/storage-blob';
 import {createServer} from '@bondbuddy/api';
 import {azureBlobs,digest,transaction} from '@bondbuddy/api/data';
-import {savePromptSnapshot} from '@bondbuddy/api/log-ops';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
 import {PROJECT_QA_PRICE,type QaInput,type QaWorkspace} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {CodexDurableJournal} from './durable-probe-journal.js';
-import {inputLockStage,materialsReadyStage,runPipelineOnce,type codexModelStage} from './run-pipeline.js';
+import {inputLockStage,materialsReadyStage,runPipelineOnce,codexModelStage} from './run-pipeline.js';
 import {projectQaModelStage,projectQaDeliveryStage,groundedQaAnswer} from './project-qa-stage.js';
 import {projectFilesRoot} from './project-file-tools.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
@@ -29,8 +28,20 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   if(pauseOnce&&calls===1){pauseOnce=false;return {kind:'pause',stage:'capability_not_ready',reason:'synthetic_checkpoint_pause'};}
   const journal=new CodexDurableJournal({pool,blobs,lease:ctx.lease,validateResult:o.validate}),old=await journal.latestAttempt(o.logicalCallId);
   if(old){const saved=await journal.readCompleted(o.logicalCallId,old.attempt_no);assert.ok(saved);return {kind:'done',value:saved.value};}
-  const prompt=await o.buildPrompt(ctx);assert.ok(prompt.includes('合成'));const version=Number((await pool.query("SELECT coalesce(max(version),0)+1 n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'",[owner,ctx.run.project_id])).rows[0].n);
-  const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:ctx.run.project_id,runId:ctx.run.id,kind:'model_request',version,body:prompt,inputRevision:ctx.run.input_revision,inputHash:ctx.run.input_hash,templateVersion:o.templateVersion});
+  // Exercise the real prompt snapshot/checkpoint path, stopping only at the provider gate.
+  // Re-enter it to prove that a replay reuses the persisted prompt before the synthetic reply.
+  let builds=0;
+  const real=codexModelStage({...o,buildPrompt:async context=>{builds++;const prompt=await o.buildPrompt(context);assert.ok(prompt.includes('合成'));return prompt;}});
+  for(let replay=0;replay<2;replay++){
+   let gates=0;
+   assert.deepEqual(await real.run({...ctx,validateBeforeModelCall:async()=>++gates===2?{kind:'fail',code:'SYNTHETIC_CHECKPOINT_ONLY'}:null}),{kind:'fail',code:'SYNTHETIC_CHECKPOINT_ONLY'});
+   assert.equal(gates,2,'the actual checkpoint must succeed before reaching the provider gate');
+  }
+  assert.equal(builds,1,'replay reuses the prompt snapshot');
+  const snapshot=ctx.checkpoint[o.name+'_prompt'].snapshot_id as string;
+  assert.ok(snapshot);
+  const persisted=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[ctx.lease.jobId])).rows[0].checkpoint;
+  assert.equal(persisted.stages[o.name+'_prompt'].snapshot_id,snapshot);
   const intent={owner_user_id:owner,project_id:ctx.run.project_id,job_id:ctx.lease.jobId,run_id:ctx.run.id,trace_id:ctx.run.id,logical_call_id:o.logicalCallId,call_id:randomUUID(),attempt_no:1,model_id:'synthetic-qa',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot};await journal.recordIntent(intent);calls++;
   const input=(await pool.query('SELECT manifest FROM bb_project_qa_runs WHERE run_id=$1',[ctx.run.id])).rows[0].manifest as QaInput,q=input.questions.find(q=>'qa-'+q.id===o.logicalCallId)!;
   const first=q===input.questions[0],value={question_id:q.id,answer:first?'本期募集资金 5 亿元全部用于偿还有息债务。':'请补充往来占款回收证据。',status:first?'draft':'missing',missing_materials:first?[]:['往来占款明细、回款计划与最近一期回款凭证。'],citations:first?[{asset_index:0,span_id:'p1',quote:'本期发行规模为人民币 5 亿元，募集资金全部用于偿还有息债务。'}]:[],case_ids:input.cases.map(c=>c.id),approach:'合成回答：说明事项、核对金额并列明证据要求。'};
