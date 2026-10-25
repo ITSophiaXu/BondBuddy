@@ -46,6 +46,8 @@ const panelConfiguration = `<?xml version="1.0" encoding="UTF-8"?>
    <property name="mode" type="uint" value="2"/>
    <property name="timezone" type="string" value="Asia/Shanghai"/>
    <property name="digital-layout" type="uint" value="0"/>
+   <property name="digital-date-font" type="string" value="Sans 10"/>
+   <property name="digital-time-font" type="string" value="Sans 12"/>
    <property name="digital-date-format" type="string" value="%Y-%m-%d"/>
    <property name="digital-time-format" type="string" value="%H:%M:%S"/>
   </property>
