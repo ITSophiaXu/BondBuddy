@@ -1,6 +1,7 @@
 import {PROJECT_FILE_UPDATE_PRICE,type ProjectFileCheck,type ProjectFileVersion,type ProjectFileSource,type ProjectFileFinding} from '@bondbuddy/contracts';
 import {ApiClient,ApiError,friendlyError} from './api';
 import {ArtifactDownloads} from './artifact-download';
+import {ProspectusPanel} from './prospectus-panel';
 import {esc,date} from './ui';
 import {runStateLabel} from './review-state';
 import {prototypeIcon as ico} from './prototype-design';
@@ -11,9 +12,10 @@ export class FileConsistency {
   private abort=new AbortController();private timer?:ReturnType<typeof setTimeout>;private busy=false;private downloads=new ArtifactDownloads();
   private checks:ProjectFileCheck[]=[];private files:ProjectFileVersion[]=[];private updates:Updates['batches']=[];private source:ProjectFileSource|null=null;
   private chosen=new Set<string>();private filter='all';private name='';private requestId?:string;private acceptRequest?:unknown;private message='';
+  private prospectus?:ProspectusPanel;private prospectusHost?:HTMLElement;
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id:string){}
   private live(){return this.current()&&!this.abort.signal.aborted;}
-  dispose(){this.abort.abort();clearTimeout(this.timer);this.downloads.dispose();}
+  dispose(){this.abort.abort();clearTimeout(this.timer);this.downloads.dispose();this.prospectus?.dispose();}
   private request<T>(method:'GET'|'POST',path:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id)}/project-files${path}`,body,{},this.abort.signal);}
   async render(){
     if(!this.id){this.shell('<h1>检查文件一致性</h1><p>请从全部项目选择需要检查的项目。</p><a class="btn primary" href="#tasks">选择项目</a>','projects');return;}
@@ -53,11 +55,13 @@ export class FileConsistency {
     const start=`<button class="btn ${c?'secondary':'primary'}" data-fc-start ${this.busy||checking||!this.source||!latest.length?'disabled':''}>${c?'重新检查（免费）':'开始检查（免费）'}</button>`;
     this.shell(`<a class="back-link" href="#tasks">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">FILE CONSISTENCY</div><h1>${checking?'正在检查文件一致性':'文件一致性检查'}</h1><p>${esc(this.name)} · 以当前募集书为准，核对关联文件，一键生成修订版与清洁版。</p></div><a class="btn secondary" href="#/projects/${encodeURIComponent(this.id)}/files">返回项目文件</a></div>${source}
       <p id="fc-status" role="status">${esc(this.message)}</p>
+      ${!this.source?'<div id="fc-prospectus"></div>':''}
       ${this.checks.length?`<div class="pf-section-head"><label>检查记录 <select id="fc-history">${this.checks.map((x,i)=>`<option value="${x.run_id}" ${x.run_id===c?.run_id?'selected':''}>第 ${this.checks.length-i} 轮 · ${esc(date(x.created_at))} · ${esc(runStateLabel[x.state as keyof typeof runStateLabel]??x.state)}</option>`).join('')}</select></label>${start}</div>`:''}
-      ${!c?`<section class="panel fc-empty"><h2>${!this.source?'请先添加募集说明书':!latest.length?'还没有可检查的关联文件':'准备检查项目文件'}</h2><p>扫描项目每份关联文件的当前版本；历史版本保留。</p><p>本次范围：${latest.length} 份文件</p>${start} <a class="btn secondary" href="#generate?project=${this.id}">生成关联文件</a></section>`:
+      ${!c?`<section class="panel fc-empty"><h2>${!this.source?'请先添加募集说明书':!latest.length?'还没有可检查的关联文件':'准备检查项目文件'}</h2><p>${!this.source?'在上方上传募集说明书并保存为当前版本，作为本次检查依据。':!latest.length?'请先上传已有的关联文件，或生成需要检查的文件。':'扫描项目每份关联文件的当前版本；历史版本保留。'}</p><p>本次范围：${latest.length} 份文件</p><div class="fc-empty-actions">${start} <a class="btn secondary" href="#/projects/${encodeURIComponent(this.id)}/files">上传关联文件</a> <a class="btn secondary" href="#generate?project=${encodeURIComponent(this.id)}">生成关联文件</a></div></section>`:
         checking?`<section class="panel fc-progress"><span class="fc-spinner" aria-hidden="true"></span><h2>${c.stage==='queued'?'等待检查':c.stage?.includes('word')?'正在整理检查报告':'正在核对文件内容'}</h2><p>本轮已固定 ${c.files.length} 份关联文件，核对数据、期间、单位、发行安排和披露内容。</p><ol><li>固定募集书与文件版本</li><li>比对内容与原文依据</li><li>整理冲突位置和修改建议</li></ol><p>关闭页面后任务继续处理，完成后可返回查看。</p><button class="btn secondary" data-fc-control="pause" data-run="${c.run_id}">暂停检查</button></section>`:
         c.result?this.results(c,open):`<section class="panel fc-empty"><h2>${esc(runStateLabel[c.state as keyof typeof runStateLabel]??c.state)}</h2><p>本次检查尚未完成，已保存的输入与历史文件保留。</p>${['paused','awaiting_input'].includes(c.state)?`<button class="btn primary" data-fc-control="resume" data-run="${c.run_id}">继续检查</button> <button class="btn secondary" data-fc-control="cancel" data-run="${c.run_id}">结束检查</button>`:start}</section>`}
       ${this.updates.filter(b=>['queued','running','paused'].includes(b.state)).map(b=>`<section class="panel fc-update"><h2>${b.state==='paused'?'文件更新需要处理':'正在生成新版本'}</h2>${b.items.map(i=>`<p>${esc(i.filename)} · ${esc(i.error??(i.run_id?'已提交后台处理':'等待前一份文件完成'))}${i.run_id?` <button class="text-button" data-fc-control="resume" data-run="${i.run_id}">继续任务</button> <button class="text-button" data-fc-control="cancel" data-run="${i.run_id}">结束任务</button>`:''}</p>`).join('')}${b.state==='paused'?`<button class="btn primary" data-fc-retry="${b.batch_id}">重试未完成文件 · 4,500 积分/份</button>`:''}<button class="btn secondary" data-fc-stop="${b.batch_id}">停止后续文件更新</button><p class="muted">已运行的任务保留，可单独结束；已生成版本保留。</p></section>`).join('')}`,'projects');
+    this.mountProspectus();
     document.querySelectorAll('[data-fc-start]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
       this.requestId??=crypto.randomUUID();const r=await this.request<{run_id:string}>('POST','/checks',{request_id:this.requestId,expected_source_version_id:this.source!.version_id});this.requestId=undefined;this.message='';
       history.replaceState(null,'',location.pathname+location.search+`#consistency?project=${this.id}&run=${r.run_id}`);await this.reload();
@@ -78,6 +82,21 @@ export class FileConsistency {
     document.querySelectorAll<HTMLButtonElement>('[data-fc-retry]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{await this.request('POST','/updates/'+b.dataset.fcRetry+'/retry');this.message='已重试未完成文件；已成功文件不会重复扣费。';await this.reload();})));
     document.querySelectorAll<HTMLButtonElement>('[data-fc-stop]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{await this.request('POST','/updates/'+b.dataset.fcStop+'/cancel');this.message='后续文件更新已停止，已运行任务和成果保留。';await this.reload();})));
     this.syncSelection();
+  }
+  private mountProspectus(){
+    const host=document.querySelector<HTMLElement>('#fc-prospectus');
+    if(!host){this.prospectus?.dispose();this.prospectus=undefined;this.prospectusHost=undefined;return;}
+    // Keep a selected file and in-flight upload intact when check polling repaints the page.
+    if(this.prospectusHost){host.replaceWith(this.prospectusHost);return;}
+    this.prospectusHost=host;
+    this.prospectus=new ProspectusPanel(this.api,this.id,host,async()=>true,async()=>{
+      this.message='募集说明书已保存为当前版本。';await this.reload();
+    },()=>{},'consistency');
+    const panel=this.prospectus;
+    void panel.refresh().catch(e=>{if(this.live()&&this.prospectus===panel){
+      host.innerHTML=`<section class="panel fc-empty"><p role="alert">募集说明书读取失败：${esc(friendlyError(e))}</p><button class="btn secondary" data-fc-source-retry>重试读取募集说明书</button></section>`;
+      host.querySelector('[data-fc-source-retry]')!.addEventListener('click',()=>{panel.dispose();this.prospectus=undefined;this.prospectusHost=undefined;this.mountProspectus();});
+    }});
   }
   private results(c:ProjectFileCheck,open:Set<string>){
     const counts={conflict:0,consistent:0,manual:0,updated:0},state=(v:string,status:string)=>this.pending(c,v).length?'conflict':status==='manual'||c.result!.files.find(f=>f.file_version_id===v)!.findings.some(f=>f.kind==='manual')?'manual':c.updates.some(u=>u.file_version_id===v&&u.state==='succeeded')?'updated':'consistent';

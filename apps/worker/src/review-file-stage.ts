@@ -16,6 +16,10 @@ const helpers = join(root, 'python/bondbuddy_file_authoring');
 const runFile = promisify(execFile);
 const MAX = 100 * 1024 * 1024, TEXT_MAX = 4 * 1024 * 1024;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+// A completed provider turn can contain only a progress event. It is never a report.
+function hasReviewReportText(bytes: Buffer | undefined): bytes is Buffer {
+  return !!bytes?.toString('utf8').replace(/^.*BB_REVIEW_PROGRESS:[^\r\n]*$/gm, '').replace(/[\s\uFEFF#*`~>-]/g, '');
+}
 type FileRef = { key: string; sha256: string; byte_size: number };
 export type ReviewFileResult = { version: 'codex-review-file-v1'; input_hash: string; files: Record<string, FileRef>; error?: 'WORD_DELIVERY_UNAVAILABLE' };
 type Material = { pin: ReviewManifest['materials'][number]; object_key: string; media_type: string; filename: string };
@@ -25,7 +29,7 @@ const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/
 export function validReviewFileResult(value: unknown, ctx: StageContext): value is ReviewFileResult {
   const result = value as ReviewFileResult | null;
   return !!result && result.version === 'codex-review-file-v1' && result.input_hash === ctx.run.input_hash.trim()
-    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json','revision.docx','clean.docx','baseline.docx','editor.json'].includes(name)
+    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'model-report.docx', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json','revision.docx','clean.docx','baseline.docx','editor.json'].includes(name)
       && file.key.startsWith(prefix(ctx)) && !file.key.includes('..') && file.key.endsWith(`/${file.sha256}/${name}`)
       && /^[a-f0-9]{64}$/.test(file.sha256) && Number.isSafeInteger(file.byte_size) && file.byte_size > 0 && file.byte_size <= MAX)
     && (result.error === 'WORD_DELIVERY_UNAVAILABLE' || !!result.files['report.docx']);
@@ -121,16 +125,34 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       if (response.text.trim()) await retain('final-response.md', Buffer.from(response.text));
       let reportText: Buffer | undefined, word: Buffer | undefined;
       try { reportText = await checkedFile(output, 'report.md', TEXT_MAX); } catch { /* Optional text companion. */ }
-      if(correction){
-        const text=reportText??(response.text.trim()?Buffer.from(response.text):undefined);
-        if(!text)throw Error('WORD_DELIVERY_UNAVAILABLE');
-        return correctionFiles(ctx,input,text);
-      }
       if (reportText) await retain('report.md', reportText);
+      if(correction){
+        // A final "files saved" message is not the report. Prefer the actual Word
+        // report when its Markdown companion is absent; never export that message
+        // into a zero-finding copy of the source.
+        try { word=await checkedFile(output,'report.docx'); } catch { /* Markdown is sufficient. */ }
+        if(word)await retain('model-report.docx',word);
+        if(!hasReviewReportText(reportText)&&word){
+          const exportDir=await mkdtemp(join(cwd,'..','review-report-text-'));
+          try{
+            await writeFile(join(exportDir,'report.docx'),word,{mode:0o600});
+            await runFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+              ['-m','bondbuddy_file_authoring.review_report_text',join(exportDir,'report.docx'),join(exportDir,'report.md')],
+              {cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')},timeout:120000,signal:ctx.signal,maxBuffer:1024*1024});
+            reportText=await checkedFile(exportDir,'report.md',TEXT_MAX);
+          }catch(error){
+            if(ctx.signal.aborted)throw error;
+            return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
+          }finally{await rm(exportDir,{recursive:true,force:true});}
+        }
+        if(!hasReviewReportText(reportText))return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
+        const result=await correctionFiles(ctx,input,reportText);
+        return {...result,files:{...files,...result.files}};
+      }
       try { word = await checkedFile(output, 'report.docx'); } catch { /* Plain CLI responses can still be exported. */ }
       if (!word) {
         const text = reportText ?? (response.text.trim() ? Buffer.from(response.text) : undefined);
-        if (text && text.length <= TEXT_MAX) {
+        if (hasReviewReportText(text) && text.length <= TEXT_MAX) {
           const exportDir = await mkdtemp(join(cwd, '..', 'report-export-'));
           await writeFile(join(exportDir, 'returned-report.txt'), text, { mode: 0o600 });
           // A deterministic local export, never a second model call or a JSON/schema re-ask.
@@ -178,8 +200,10 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
     const config = options.config ?? loadCodexAdapterConfig();
     return (options.model ?? codexModelStage)({ name: 'review_file_v1', logicalCallId: 'review-file-v1',
       config: { ...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'review-files'), max_output_bytes: 32 * 1024 * 1024 },
-      buildPrompt: async () => `切换实际复核工作时，请发送独立的用户可见进度消息，严格使用 BB_REVIEW_PROGRESS:类别:状态。类别限 read_materials、read_knowledge、check_financial、check_compliance、search_public、compare_sources、prepare_report；状态限 started、completed、failed。只报告实际开始或结束的动作，不预先宣称完成，不附带思考过程、正文、路径或其他文本。请完整阅读 review.md 和 input.json，自主复核并把完整报告写入 output/report.md 与 output/report.docx。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原文批注。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: correction?'review-correction-v2':'review-file-progress-v2',
+      buildPrompt: async () => `请完整阅读 review.md 和 input.json，在本轮中自主完成复核，把完整报告写入 output/report.md 与 output/report.docx，并检查文件已保存。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原生修订和批注。即使没有发现问题，也须在报告中说明实际覆盖范围、核验结论和未覆盖内容。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。
+
+进度消息仅用于中途通知，不是最终成果：切换实际复核工作时，在 commentary 中独立发送 BB_REVIEW_PROGRESS:类别:状态，随后继续工作，不要在进度消息后结束本轮。类别限 read_materials、read_knowledge、check_financial、check_compliance、search_public、compare_sources、prepare_report；状态限 started、completed、failed。进度消息只报告实际动作，不附带思考过程、正文或路径。完整报告写入文件后才发送 final，简述成果及限制。`,
+      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: correction?'review-correction-report-v3':'review-file-progress-v3',
       fileWorkspace: { prepare, collect } }).run(ctx);
   } };
 }
@@ -188,6 +212,7 @@ export function reviewFileDeliveryStage(): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
     const result = ctx.values.get('model_generation');
     if (!validReviewFileResult(result, ctx)) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+    if (result.error) return { kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE' };
     if(result.files['revision.docx']){
       const files:Record<string,Buffer>={};
       for(const name of ['revision.docx','clean.docx','report.docx']){

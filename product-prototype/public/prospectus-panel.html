@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="../../apps/web/src/style.css">
   <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="project-workspace.css">
   <link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css"><link rel="stylesheet" href="prospectus-panel.css">
+  <link rel="stylesheet" href="../../apps/web/src/file-workspace.css">
 </head>
 <body>
 <main style="max-width:1160px;margin:0 auto;padding:32px 20px">
@@ -23,6 +24,15 @@
 </main>
 <script>
   const $=id=>document.getElementById(id);
+  if(new URLSearchParams(location.search).get('purpose')==='consistency'){
+    document.title='BondBuddy · 一致性检查上传入口';
+    const panel=document.querySelector('.prospectus-panel'),preview=document.createElement('div');preview.id='consistency-preview';panel.before(preview);
+    preview.innerHTML='<a class="back-link" href="#">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">FILE CONSISTENCY</div><h1>文件一致性检查</h1><p>合成复核项目 · 以当前募集书为准，核对关联文件，一键生成修订版与清洁版。</p></div><a class="btn secondary" href="#">返回项目文件</a></div><p id="fc-status" role="status"></p>';
+    preview.append(panel);
+    $('empty').querySelector('p').textContent='上传并保存为当前版本，作为关联文件的一致性检查依据。';
+    document.querySelector('.prospectus-upload-hint').textContent='支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动检查或扣费。';
+    preview.insertAdjacentHTML('beforeend','<section class="panel fc-empty"><h2>请先添加募集说明书</h2><p>在上方上传募集说明书并保存为当前版本，作为本次检查依据。</p><p>本次范围：0 份文件</p><div class="fc-empty-actions"><button class="btn primary" disabled>开始检查（免费）</button><a class="btn secondary" href="#">上传关联文件</a><a class="btn secondary" href="#">生成关联文件</a></div></section>');
+  }
   if(new URLSearchParams(location.search).get('state')==='current'){$('empty').hidden=true;$('current').hidden=false;$('history').hidden=false;$('upload-label').textContent='上传新版本';}
   $('choose').onclick=()=>$('file').click();
   $('file').onchange=()=>{if($('file').files[0]){$('filename').textContent=$('file').files[0].name;$('selected').hidden=false;}};
