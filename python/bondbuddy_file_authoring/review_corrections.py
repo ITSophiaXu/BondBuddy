@@ -7,32 +7,8 @@ import sys
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 from .word_patch import Patcher, xml, serialized, paragraph_text, q, add_layout_comments
-from .annotate_review import findings_from_markdown, plain
+from .correction_findings import findings
 from bondbuddy_word_delivery.writer import normalize_old_revisions
-
-
-def findings(text):
-    canonical, parsed = findings_from_markdown(text)
-    blocks = re.split(r'^###\s+', canonical, flags=re.M)[1:]
-    result = []
-    for item, block in zip(parsed, blocks):
-        fields = {}
-        for line in block.splitlines()[1:]:
-            match = re.match(r'^\s*(?:[-*]\s+)?(?:\*\*)?([^*：:]{2,12})(?:\*\*)?[：:](?:\*\*)?\s*(.*)$', line)
-            if match:
-                fields[match[1].strip()] = plain(match[2]).strip().strip('`')
-        replacement = fields.get('替换文本', '')
-        missing = fields.get('缺少材料', fields.get('待确认事项', ''))
-        if missing in ('无', '无。', '无缺项', '无待确认事项'):
-            missing = ''
-        evidence = fields.get('核对依据', '')
-        uncertain = fields.get('处理方式') != '直接修改' or bool(missing) or not evidence
-        targets = item['targets']
-        result.append(dict(id=item['finding_id'], category=fields.get('复核类别', '待确认'), title=plain(item['title']),
-                           original=targets[0]['quote'] if len(targets) == 1 else '', replacement=replacement,
-                           reason=fields.get('问题说明', item['comment_text']), evidence=evidence, missing=missing,
-                           uncertain=uncertain, paragraph_id=None, decision='suggested', manual_text='', applied=False, limitation=''))
-    return result
 
 
 def package(source, output):
@@ -113,6 +89,9 @@ def build(source, request, output):
         for issue in entries:
             if issue['decision'] == 'original' or (issue['decision'] == 'suggested' and (issue['uncertain'] or not issue['replacement'])):
                 continue
+            replacement = issue['manual_text'] if issue['decision'] == 'manual' else issue['replacement']
+            if replacement == issue['original']:
+                continue
             start = paragraph['text'].index(issue['original'])
             end = start + len(issue['original'])
             changes.append((start, end, issue))
@@ -123,7 +102,7 @@ def build(source, request, output):
         updated = paragraph['text']
         for a,b,issue in sorted(selected, key=lambda x:x[0], reverse=True):
             updated = updated[:a] + (issue['manual_text'] if issue['decision']=='manual' else issue['replacement']) + updated[b:]
-        if selected:
+        if selected and updated != paragraph['text']:
             # Work on copies: failure must not leave a partial patch in either output.
             candidates = [copy.deepcopy(m[paragraph['id']]) for m in maps]
             try:
@@ -153,6 +132,29 @@ def build(source, request, output):
         with ZipFile(basepath) as z:
             add_layout_comments(z,revised,{key:(node,) for key,node in maps[0].items()},tasks,replacements)
     replacements['word/document.xml']=serialized(revised)
+    # The submitted file may have hidden markup. Make native changes visible on open.
+    if 'word/settings.xml' in parts:
+        from lxml import etree as ET
+        settings = xml(parts['word/settings.xml'])
+        # CT_Settings orders revisionView/trackRevisions before protection/layout settings.
+        preceding = {q(name) for name in ('writeProtection view zoom removePersonalInformation removeDateAndTime '
+            'doNotDisplayPageBoundaries displayBackgroundShape printPostScriptOverText printFractionalCharacterWidth '
+            'printFormsData embedTrueTypeFonts embedSystemFonts saveSubsetFonts saveFormsData mirrorMargins '
+            'alignBordersAndEdges bordersDoNotSurroundHeader bordersDoNotSurroundFooter gutterAtTop hideSpellingErrors '
+            'hideGrammaticalErrors activeWritingStyle proofState formsDesign attachedTemplate linkStyles '
+            'stylePaneFormatFilter stylePaneSortMethod documentType mailMerge').split()}
+        view = settings.find(q('revisionView'))
+        if view is None:
+            view = ET.Element(q('revisionView'))
+            settings.insert(next((i for i, node in enumerate(settings) if node.tag not in preceding), len(settings)), view)
+        for key in ('markup', 'comments', 'insDel', 'formatting'):
+            view.set(q(key), '1')
+        tracking = settings.find(q('trackRevisions'))
+        if tracking is None:
+            tracking = ET.Element(q('trackRevisions'))
+            settings.insert(settings.index(view) + 1, tracking)
+        tracking.set(q('val'), '1')
+        replacements['word/settings.xml'] = serialized(settings)
     write(output/'revision.docx', {**parts,**replacements})
     # Clean output has no review marks/comments. Keep explicit unresolved-material notices visible.
     for node in list(clean.iter()):
