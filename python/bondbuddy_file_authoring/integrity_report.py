@@ -81,6 +81,7 @@ def generate(data, target):
         p.paragraph_format.line_spacing = 1
         p.paragraph_format.space_after = Pt(6)
         p.add_run().add_picture(str(path), width=Emu(size))
+        return p
 
     para(title, '{{title}}')
     pending = sum(r['status'] in ['needs_manual', 'query_failed'] for r in records)
@@ -136,8 +137,8 @@ def generate(data, target):
             for a in automatic:
                 meta = a['metadata']
                 para(('搜索结果页面' if meta['kind'] == 'result' else '搜索结果对应正文') + (f' 第{meta["page"]}页' if meta.get('page') and meta['kind'] == 'result' else ''), small=True, keep=True)
-                picture(a['path'])
-                p = para('查询网址：', small=True)
+                picture(a['path']).paragraph_format.keep_with_next = True
+                p = para('查询网址：', small=True, keep=True)
                 # Full query URL remains clickable without pages of percent-encoded text.
                 u = urlsplit(meta['url'])
                 label = urlunsplit((u.scheme, u.netloc, u.path, '', ''))
@@ -147,7 +148,7 @@ def generate(data, target):
                 run.find(qn('w:t')).text = label if len(label) <= 140 else u.netloc + ' 查询页面'
                 link.append(run)
                 p._p.append(link)
-                para('采集记录时间（北京时间）：' + beijing(meta['captured_at']) + '。此为采集日志时间，非网站出具或可信时间戳认证。', small=True)
+                para('采集日志时间（北京时间）：' + beijing(meta['captured_at']), small=True)
             if not automatic:
                 para('本次未取得可确认的搜索结果截图，待人工补证。' if r['status'] != 'not_applicable' else r['reason'])
                 para('访问时间（北京时间）：' + beijing(r['checked_at']), small=True)

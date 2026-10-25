@@ -22,7 +22,7 @@ class IntegrityReportTest(unittest.TestCase):
             self.assertIn('承做部门（团队）负责人',text)
             self.assertNotIn('不存在重大违法',text);self.assertNotIn('SHA-256',text)
             self.assertIn('搜索结果页面 第1页',text)
-            self.assertIn('此为采集日志时间',text)
+            self.assertIn('采集日志时间（北京时间）',text)
             with ZipFile(target) as z:
                 media=[z.read(n) for n in z.namelist() if n.startswith('word/media/')]
                 self.assertEqual(media,[screenshot.read_bytes()])
