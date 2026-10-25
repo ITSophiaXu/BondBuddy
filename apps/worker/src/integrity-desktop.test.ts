@@ -32,7 +32,8 @@ test('native light taskbar stays below the browser and shows an advancing Beijin
   const readClock=async()=>{
    await promisify(execFile)(process.env.BONDBUDDY_TEST_PYTHON??'python3',['-c',
     'from PIL import Image; import sys; im=Image.open(sys.argv[1]).convert("RGB"); pixels=list(im.crop((600,960,1100,998)).getdata()); assert sum(min(p)>180 for p in pixels)/len(pixels)>0.9, "bottom taskbar must be light"; im.crop((im.width-220,im.height-48,im.width,im.height)).resize((880,192)).save(sys.argv[2])',path,ocrPath],{timeout:5000});
-   return (await promisify(execFile)('tesseract',[ocrPath,'stdout','-l','eng','--psm','6'],{timeout:15000})).stdout;
+   // The date and time use different native font sizes, so read them as sparse lines.
+   return (await promisify(execFile)('tesseract',[ocrPath,'stdout','-l','eng','--psm','11','-c','tessedit_char_whitelist=0123456789:-'],{timeout:15000})).stdout;
   };
   const assertLiveClock=(text:string,start:number,end:number)=>{
    const possible=[];

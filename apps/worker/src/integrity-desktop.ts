@@ -46,6 +46,8 @@ const panelConfiguration = `<?xml version="1.0" encoding="UTF-8"?>
    <property name="mode" type="uint" value="2"/>
    <property name="timezone" type="string" value="Asia/Shanghai"/>
    <property name="digital-layout" type="uint" value="0"/>
+   <property name="digital-date-font" type="string" value="Sans 10"/>
+   <property name="digital-time-font" type="string" value="Sans 12"/>
    <property name="digital-date-format" type="string" value="%Y-%m-%d"/>
    <property name="digital-time-format" type="string" value="%H:%M:%S"/>
   </property>
@@ -79,6 +81,11 @@ export async function startIntegrityDesktop(directory:string, base:NodeJS.Proces
   const config=join(env.XDG_CONFIG_HOME!,'xfce4','xfconf','xfce-perchannel-xml');
   await mkdir(config,{recursive:true,mode:0o700});
   await writeFile(join(config,'xfce4-panel.xml'),panelConfiguration,{mode:0o600});
+  const gtkConfig=join(env.XDG_CONFIG_HOME!,'gtk-3.0');
+  await mkdir(gtkConfig,{recursive:true,mode:0o700});
+  // XFCE 4.18 can under-allocate the clock on startup. Reserve native widget
+  // space for the full date and time; the screenshot remains an unedited scrot image.
+  await writeFile(join(gtkConfig,'gtk.css'),'#clock-button { min-width: 112px; }\n',{mode:0o600});
   await exec('xauth',['-f',authority,'add',display,'MIT-MAGIC-COOKIE-1',randomBytes(16).toString('hex')],{env,timeout:5000});
   const server=start('Xvfb',[display,'-screen','0',`${screen.width}x${screen.height}x24`,'-nolisten','tcp','-auth',authority]);
   let ready=false;
