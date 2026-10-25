@@ -46,8 +46,6 @@ const panelConfiguration = `<?xml version="1.0" encoding="UTF-8"?>
    <property name="mode" type="uint" value="2"/>
    <property name="timezone" type="string" value="Asia/Shanghai"/>
    <property name="digital-layout" type="uint" value="0"/>
-   <property name="digital-date-font" type="string" value="Sans 10"/>
-   <property name="digital-time-font" type="string" value="Sans 12"/>
    <property name="digital-date-format" type="string" value="%Y-%m-%d"/>
    <property name="digital-time-format" type="string" value="%H:%M:%S"/>
   </property>
@@ -144,6 +142,15 @@ export async function startIntegrityDesktop(directory:string, base:NodeJS.Proces
    }
    // Allow the native window manager to apply its bounds without altering website content.
    await page.waitForTimeout(200);
+   if(sequence===0){
+    // XFCE 4.18 may measure the clock before its labels are mapped. Applying
+    // native fonts after the first browser frame makes it reserve the full text width.
+    for(const [property,font] of [['digital-date-font','Sans 10'],['digital-time-font','Sans 12']]){
+     await exec('xfconf-query',['-c','xfce4-panel','-p',`/plugins/plugin-6/${property}`,'--create','-t','string','-s',font!],{env,timeout:3000});
+    }
+    // The native clock updates its requisition on the next one-second tick.
+    await page.waitForTimeout(1200);
+   }
    await assertBottomPanel();
    const path=join(directory,`screen-${++sequence}.png`);
    await exec('scrot',['--overwrite',path],{env,timeout:10000});
