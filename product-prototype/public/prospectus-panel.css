@@ -1,0 +1,51 @@
+.panel.prospectus-panel { margin-bottom: 24px; padding: 24px 28px 0; border-radius: 14px; }
+.prospectus-panel .prospectus-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.prospectus-panel h2 { margin: 0; font-size: 18px; line-height: 1.5; }
+.prospectus-panel h3 { margin: 0; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.prospectus-panel p { margin: 0; font-size: 13px; line-height: 1.7; color: #69766b; }
+.prospectus-panel svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.prospectus-panel button { cursor: pointer; }
+.prospectus-panel button:disabled { cursor: default; opacity: .5; }
+.prospectus-panel button:focus-visible, .prospectus-history summary:focus-visible { outline: 3px solid #88a467; outline-offset: 3px; }
+.prospectus-panel .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: none; min-height: 44px; white-space: nowrap; }
+.prospectus-panel .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; white-space: nowrap; }
+.prospectus-empty, .prospectus-current-file { display: flex; align-items: center; gap: 16px; padding: 20px; border: 1px solid #e4e9de; background: #f7f9f3; border-radius: 10px; }
+.prospectus-empty > div, .prospectus-file-info { min-width: 0; flex: 1; }
+.prospectus-empty p { margin-top: 5px; }
+.prospectus-file-icon { display: grid; place-items: center; width: 44px; height: 50px; flex: none; border: 1px solid #dce5d3; border-radius: 8px; background: #fff; color: #577552; }
+.prospectus-file-icon svg { width: 24px; height: 24px; }
+.prospectus-file-info strong, .prospectus-file-info small { display: block; overflow-wrap: anywhere; line-height: 1.7; }
+.prospectus-file-info strong { font-size: 14px; }
+.prospectus-file-info small { color: #69766b; font-size: 12px; margin-top: 4px; }
+.prospectus-current { display: inline-block; color: #325e40; background: #e7efdd; border-radius: 5px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+.prospectus-current-file h3 { margin: 6px 0 3px; }
+.prospectus-panel .prospectus-upload-hint { margin: 12px 0 20px; font-size: 12px; }
+.prospectus-version-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px 12px; flex-wrap: wrap; }
+.prospectus-panel .prospectus-upload { display: block; margin-top: 16px; padding: 18px 20px; border: 1px solid #adc49b; border-radius: 10px; background: #fbfcf8; }
+.prospectus-selected-file { display: flex; align-items: center; gap: 14px; }
+.prospectus-upload-label { display: block; font-size: 12px; color: #5d704f; margin-bottom: 3px; }
+.prospectus-upload-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 16px; }
+.prospectus-history { border-top: 1px solid #e4e9de; }
+.prospectus-history summary { display: flex; align-items: center; gap: 9px; min-height: 56px; padding: 8px 0; color: #50654f; cursor: pointer; font-size: 13px; list-style: none; }
+.prospectus-history summary::-webkit-details-marker { display: none; }
+.prospectus-history summary:hover { color: #193f34; }
+.prospectus-history summary > svg:last-child { margin-left: auto; transition: transform .15s; }
+.prospectus-history[open] summary > svg:last-child { transform: rotate(180deg); }
+.prospectus-history-count { min-width: 22px; padding: 1px 6px; border-radius: 5px; text-align: center; background: #eef2e8; color: #667760; font-size: 12px; }
+.prospectus-panel .prospectus-version { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid #edf0e8; }
+.prospectus-history-list { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; }
+.prospectus-panel #prospectus-status:empty { display: none; }
+.prospectus-panel #prospectus-status:not(:empty) { margin: 0 0 20px; padding: 11px 14px; border-radius: 7px; background: #f0f4e9; overflow-wrap: anywhere; }
+.prospectus-panel #prospectus-status[data-tone="error"] { background: #fff1ec; color: #923b2d; }
+@media (max-width: 760px) {
+  .panel.prospectus-panel { padding: 20px 18px 0; }
+  .prospectus-panel .prospectus-panel-heading { flex-wrap: wrap; gap: 12px; }
+  .prospectus-panel h2 { font-size: 17px; }
+  .prospectus-empty, .prospectus-current-file { padding: 16px; align-items: flex-start; gap: 12px; }
+  .prospectus-file-icon { width: 36px; height: 42px; }
+  .prospectus-current-file { flex-wrap: wrap; }
+  .prospectus-current-file .prospectus-file-info { flex-basis: calc(100% - 48px); }
+  .prospectus-version-actions { justify-content: flex-start; }
+  .prospectus-panel .prospectus-version { flex-direction: column; align-items: stretch; gap: 8px; }
+  .prospectus-panel .prospectus-upload { padding: 16px; }
+}
