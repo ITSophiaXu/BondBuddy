@@ -20,6 +20,11 @@ const errors=/\b502\s+bad gateway\b|\b503\s+service unavailable\b|\b504\s+gatewa
 const zero=/未(?:检索|查询|搜索)到.{0,30}(结果|信息|记录|内容)|未能搜到您想要的内容|没有找到.{0,30}(结果|信息|记录|内容)|共\s*(?:找到|检索到|查询到|搜索到)?\s*0\s*(?:条|个|项)|(?:找到|相关结果|结果数)[：:\s]*0\s*(?:条|个|项)|no results found/i;
 const count=/(?:共|找到|检索到|查询到|搜索到|相关结果)[\s\S]{0,12}?[1-9][\d,]*\s*(?:条|个|项)/;
 const clean=(s:string)=>s.replace(/\s+/g,' ').trim();
+/** Court forms take an exact name; topical keywords belong only in general site searches. */
+export function integritySearchQuery(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'province'>){
+ const exactName=['execution-dishonest','execution-debtor','execution-restriction'].includes(site.id);
+ return [subject.name,...(!exactName?site.queryTerms?.slice(0,1)??[]:[]),...(site.id==='local-csrc'?[subject.province]:[])].filter(Boolean).join(' ');
+}
 async function visibleText(page:Page){return (await page.locator('body').innerText({timeout:4000})).slice(0,120000);}
 async function firstVisible(locator:Locator){for(let i=0;i<Math.min(await locator.count(),30);i++){const item=locator.nth(i);if(await item.isVisible()&&await item.isEnabled())return item;}return undefined;}
 async function blocker(page:Page,text:string){
@@ -60,8 +65,8 @@ export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signa
 /** Injectable context only for controlled browser fixtures. Production always uses the protected proxy. */
 export async function collectInContext(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:{waitMs:number;maxPages:number;screenCapture?:(page:Page)=>Promise<Buffer>}={waitMs:18000,maxPages:3}) :Promise<BrowserCollection>{
  const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number)=>capture(page,kind,n,limits.screenCapture);
- const query=[subject.name,...(site.queryTerms?.slice(0,1)??[]),...(site.id==='local-csrc'?[subject.province]:[])].join(' ');
- const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'完整桌面截图保留后台系统时钟（北京时间），只覆盖截图可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，待人工补证。',captures:[]};
+ const query=integritySearchQuery(site,subject);
+ const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图直接采集隔离服务器桌面的完整屏幕，含浏览器和 XFCE 原生系统面板（北京时间），未叠加时间或绘制时钟栏；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，待人工补证。',captures:[]};
  let page=await context.newPage();page.setDefaultTimeout(5000);page.setDefaultNavigationTimeout(20000);
  try{
   signal.throwIfAborted();
@@ -100,7 +105,7 @@ export async function collectInContext(context:BrowserContext,site:IntegritySite
   if(result.outcome==='no_results')return result;
   // Preserve subsequent pages when the site exposes a normal next-page control.
   for(let n=2;n<=limits.maxPages;n++){
-   const next=await firstVisible(page.getByRole('link',{name:/^(下一页|下页|Next)$/i}).or(page.getByRole('button',{name:/^(下一页|下页|Next)$/i})));
+   const next=await firstVisible(page.getByRole('link',{name:/^(下一页|下页|Next)\s*(?:>>|»|›)?$/i}).or(page.getByRole('button',{name:/^(下一页|下页|Next)\s*(?:>>|»|›)?$/i})));
    if(!next)break;const old=clean(await visibleText(page));await next.click({noWaitAfter:true});
    let updated=false,last='',steady=0;for(let i=0;i<20;i++){
     signal.throwIfAborted();await page.waitForTimeout(600);text=await visibleText(page);

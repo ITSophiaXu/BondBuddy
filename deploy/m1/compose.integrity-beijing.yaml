@@ -1,0 +1,49 @@
+# Release-only alternative to compose.integrity-browser.yaml, not an additional overlay.
+# The Beijing host key must be verified through Tencent's console, never learned blindly.
+services:
+  integrity-beijing-tunnel:
+    image: bondbuddy-integrity-tunnel:${BB_IMAGE_TAG:?fixed release SHA required}
+    restart: unless-stopped
+    networks: [backend, edge]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ${BB_INTEGRITY_SSH_DIR:?directory containing dedicated key and verified known_hosts}:/run/ssh:ro
+    command:
+      - -NT
+      - -L
+      - 0.0.0.0:3129:127.0.0.1:3129
+      - -i
+      - /run/ssh/id_ed25519
+      - -o
+      - BatchMode=yes
+      - -o
+      - IdentitiesOnly=yes
+      - -o
+      - StrictHostKeyChecking=yes
+      - -o
+      - UserKnownHostsFile=/run/ssh/known_hosts
+      - -o
+      - ExitOnForwardFailure=yes
+      - -o
+      - ServerAliveInterval=15
+      - -o
+      - ServerAliveCountMax=3
+      - -o
+      - LogLevel=ERROR
+      - bb-egress@${BB_INTEGRITY_BEIJING_HOST:?verified Beijing instance IPv4}
+    healthcheck:
+      test: [CMD, nc, -z, 127.0.0.1, '3129']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    deploy: {resources: {limits: {cpus: '0.1', memory: 64M}}}
+  worker:
+    security_opt: !override [no-new-privileges:true, "seccomp=./security/integrity-browser-seccomp.json", "apparmor=bondbuddy-codex-v1"]
+    environment:
+      BB_INTEGRITY_EGRESS_PROXY_URL: http://integrity-beijing-tunnel:3129
+    depends_on:
+      integrity-beijing-tunnel: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: '1.0', memory: 1536M}}}
