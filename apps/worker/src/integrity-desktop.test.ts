@@ -20,15 +20,18 @@ test('stock XFCE screen includes the browser and operating-system clock and clos
   const context=await browser.newContext({viewport:null});
   await integrityWebsiteFixture(context,'zero');
   const page=await context.newPage();await page.goto('https://www.chinatax.gov.cn/');
+  const clockTime=()=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
+  const before=clockTime();
   const bytes=await desktop.capture(page),path=join(dir,'proof.png');
+  const after=clockTime();
   assert.equal(bytes.readUInt32BE(16),1440);assert.equal(bytes.readUInt32BE(20),1000);
   await writeFile(path,bytes);
-  // The stock panel uses small fonts. Enlarge a QA-only copy for OCR; evidence stays unchanged.
+  // Read the stock two-line clock as one block. Sparse full-panel OCR misses its second line.
+  // Crop/enlarge only a QA copy; the captured evidence remains unchanged.
   const ocrPath=join(dir,'ocr-only.png');
-  await promisify(execFile)(process.env.BONDBUDDY_TEST_PYTHON??'python3',['-c','from PIL import Image; import sys; im=Image.open(sys.argv[1]); im.crop((0,0,im.width,60)).resize((im.width*3,180)).save(sys.argv[2])',path,ocrPath],{timeout:5000});
-  const {stdout}=await promisify(execFile)('tesseract',[ocrPath,'stdout','-l','eng','--psm','11'],{timeout:15000});
-  const time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
-  assert.ok(stdout.includes(time),stdout);
+  await promisify(execFile)(process.env.BONDBUDDY_TEST_PYTHON??'python3',['-c','from PIL import Image; import sys; im=Image.open(sys.argv[1]); im.crop((im.width-140,0,im.width-35,27)).resize((420,108)).save(sys.argv[2])',path,ocrPath],{timeout:5000});
+  const {stdout}=await promisify(execFile)('tesseract',[ocrPath,'stdout','-l','eng','--psm','6'],{timeout:15000});
+  assert.ok([before,after].some(time=>stdout.includes(time)),stdout);
   const windows=await promisify(execFile)('wmctrl',['-l','-x'],{env:desktop.env,timeout:5000});
   assert.match(windows.stdout,/xfce4-panel/i);assert.match(windows.stdout,/chromium/i);
   const {stdout:pageText}=await promisify(execFile)('tesseract',[path,'stdout','-l','eng'],{timeout:15000});

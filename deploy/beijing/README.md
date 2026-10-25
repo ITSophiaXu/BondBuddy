@@ -15,6 +15,20 @@
 
 ## 统一上线顺序
 
+### 已有 Node 22 主机的轻量部署
+
+未安装 Docker 的节点可使用同一固定提交的纯代理包，不需要安装完整业务镜像。
+在仓库根目录安装锁定依赖、构建 contracts 后，运行
+`node deploy/beijing/build-egress.mjs /private/output/proxy.mjs`。
+记录 Git SHA、包 SHA-256 和 Node 版本，将包放在
+`/opt/bondbuddy-egress/releases/<sha>/proxy.mjs`，由 root 拥有且不可被服务写入；
+`current` 链接指向该固定目录。安装本目录的 `bondbuddy-integrity-egress.service`，
+先检查 systemd 配置，再启动该独立服务。它使用动态低权限用户、只读文件系统、
+128 MB 内存上限，仅监听 `127.0.0.1:3129`。隧道账号、主机指纹、来源限制和
+上线验证要求与容器方案相同。升级保留旧包，通过切回 `current` 回滚。
+
+### 服务切换
+
 1. 记录现有版本、Compose 展开配置、活动任务、数据库备份和回滚计划，取得同一生产部署锁。
 2. 北京执行本目录 `compose.egress.yaml`，仅绑定 `127.0.0.1:3129`；在主机确认监听和容器健康。代理无业务凭据，仅允许注册表内官网域名及 DNS 解析后的公网 IPv4，拒绝私网和云元数据。
 3. 设置 `BB_IMAGE_TAG`、`BB_INTEGRITY_SSH_DIR`、`BB_INTEGRITY_BEIJING_HOST`。先 `docker compose ... -f compose.integrity-beijing.yaml config` 审阅，再部署隧道和同批 worker；其他基础 overlay 按现有发布流程保留。
