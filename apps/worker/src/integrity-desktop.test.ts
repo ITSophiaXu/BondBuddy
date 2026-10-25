@@ -10,7 +10,7 @@ import {startIntegrityDesktop} from './integrity-desktop.js';
 import {integrityBrowserEnvironment} from './integrity-browser.js';
 import {integrityWebsiteFixture} from './integrity-browser-fixture.js';
 
-test('private native desktop captures browser and live Beijing clock, then closes its X socket',
+test('stock XFCE screen includes the browser and operating-system clock and closes its private X socket',
  {skip:!process.env.BB_TEST_INTEGRITY_DESKTOP,timeout:60000},async()=>{
  const dir=await mkdtemp(join(tmpdir(),'bb-desktop-test-'));
  const desktop=await startIntegrityDesktop(dir,integrityBrowserEnvironment(dir));
@@ -23,10 +23,14 @@ test('private native desktop captures browser and live Beijing clock, then close
   const bytes=await desktop.capture(page),path=join(dir,'proof.png');
   assert.equal(bytes.readUInt32BE(16),1440);assert.equal(bytes.readUInt32BE(20),1000);
   await writeFile(path,bytes);
-  const {stdout}=await promisify(execFile)('tesseract',[path,'stdout','-l','eng'],{timeout:15000});
-  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replaceAll('-','/');
-  assert.ok(stdout.includes(date),stdout);assert.match(stdout,/\d{2}:\d{2}:\d{2}/);
-  await page.waitForTimeout(1200);assert.notDeepEqual(await desktop.capture(page),bytes);
+  // The stock panel uses small fonts. Enlarge a QA-only copy for OCR; evidence stays unchanged.
+  const ocrPath=join(dir,'ocr-only.png');
+  await promisify(execFile)('/opt/venv/bin/python',['-c','from PIL import Image; import sys; im=Image.open(sys.argv[1]); im.crop((0,0,im.width,60)).resize((im.width*3,180)).save(sys.argv[2])',path,ocrPath],{timeout:5000});
+  const {stdout}=await promisify(execFile)('tesseract',[ocrPath,'stdout','-l','eng','--psm','11'],{timeout:15000});
+  const time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
+  assert.ok(stdout.includes(time),stdout);
+  const windows=await promisify(execFile)('wmctrl',['-l','-x'],{env:desktop.env,timeout:5000});
+  assert.match(windows.stdout,/xfce4-panel/i);assert.match(windows.stdout,/chromium/i);
   assert.equal(desktop.env.TZ,'Asia/Shanghai');
   assert.ok(!desktop.env.AZURE_STORAGE_CONNECTION_STRING&&!desktop.env.BB_COPILOT_OAUTH_FILE);
  }finally{

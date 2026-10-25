@@ -73,7 +73,7 @@ def generate(data, target):
     def picture(path):
         with Image.open(path) as im:
             width, height = im.size
-        # Keep the complete original evidence bytes and aspect ratio, including taskbar clock.
+        # Embed the original screen bytes without cropping, decoration or a drawn timestamp.
         size = min(PICTURE_WIDTH, int(6800000 * width / height))
         p = para('', '{{picture}}')
         p.paragraph_format.left_indent = Pt(0)
@@ -127,10 +127,15 @@ def generate(data, target):
         for index, r in enumerate([r for r in records if r['subject_id'] == subject['id']], 1):
             p = para(f'{index}、{r["site_name"]}', keep=True)
             p.paragraph_format.first_line_indent = Pt(0)
-            para(('查询词：' if r['search_performed'] else '拟查询词：') + (r['query'] or '未完成查询'), small=True, keep=True)
-            automatic = [a for a in data.get('automatic', []) if a['subject_id'] == subject['id'] and a['site_id'] == r['site_id']]
+            confirmed = r.get('browser', {}).get('outcome') in ['results', 'no_results']
+            label = '查询词：' if confirmed else '尝试查询词：' if r['search_performed'] else '拟查询词：'
+            para(label + (r['query'] or '未完成查询'), small=True, keep=True)
+            # A click, query form, challenge or blank page is not result evidence.
+            # Blockers remain in private diagnostic storage, but never illustrate a completed query.
+            automatic = [a for a in data.get('automatic', []) if confirmed and a['subject_id'] == subject['id'] and a['site_id'] == r['site_id'] and a.get('metadata', {}).get('kind') in ['result', 'detail']]
             for a in automatic:
                 meta = a['metadata']
+                para(('搜索结果页面' if meta['kind'] == 'result' else '搜索结果对应正文') + (f' 第{meta["page"]}页' if meta.get('page') and meta['kind'] == 'result' else ''), small=True, keep=True)
                 picture(a['path'])
                 p = para('查询网址：', small=True)
                 # Full query URL remains clickable without pages of percent-encoded text.
@@ -142,9 +147,9 @@ def generate(data, target):
                 run.find(qn('w:t')).text = label if len(label) <= 140 else u.netloc + ' 查询页面'
                 link.append(run)
                 p._p.append(link)
-                para('截图时间（北京时间）：' + beijing(meta['captured_at']), small=True)
+                para('采集记录时间（北京时间）：' + beijing(meta['captured_at']) + '。此为采集日志时间，非网站出具或可信时间戳认证。', small=True)
             if not automatic:
-                para('本次未取得可用的官网截图，待人工补证。' if r['status'] != 'not_applicable' else r['reason'])
+                para('本次未取得可确认的搜索结果截图，待人工补证。' if r['status'] != 'not_applicable' else r['reason'])
                 para('访问时间（北京时间）：' + beijing(r['checked_at']), small=True)
             para('核查情况：' + r['reason'])
             for source in r.get('sources', []):

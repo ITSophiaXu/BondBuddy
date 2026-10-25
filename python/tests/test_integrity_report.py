@@ -12,15 +12,17 @@ class IntegrityReportTest(unittest.TestCase):
             td=Path(td); screenshot=td/'screen.png'
             Image.new('RGB',(1440,1000),'white').save(screenshot)
             subject={'id':'s','name':'合成测试企业','kind':'company','role':'发行人','identifier':'','province':'河北','city':'沧州'}
-            record={'subject_id':'s','site_id':'tax','site_name':'合成测试官网','status':'needs_manual','query':'合成测试企业','checked_at':'2026-10-24T08:00:00Z','reason':'页面要求验证码，待人工补证。','urls':['https://www.chinatax.gov.cn/'],'sources':[],'search_performed':False,'browser':{'scope':'合成查询范围','limitation':'合成测试，仅验证格式'}}
-            data={'input':{'project_name':'合成项目','round_id':'r','draft':{'subjects':[subject],'site_ids':['tax'],'notes':''}},'records':[record],'evidence':[],'automatic':[{'subject_id':'s','site_id':'tax','path':str(screenshot),'metadata':{'url':'https://www.chinatax.gov.cn/','captured_at':'2026-10-24T08:00:00Z'}}]}
+            record={'subject_id':'s','site_id':'tax','site_name':'合成测试官网','status':'public_matches','query':'合成测试企业','checked_at':'2026-10-24T08:00:00Z','reason':'合成查询返回相关结果，待核实。','urls':['https://www.chinatax.gov.cn/'],'sources':[],'search_performed':True,'browser':{'outcome':'results','scope':'合成查询范围','limitation':'合成测试，仅验证格式'}}
+            data={'input':{'project_name':'合成项目','round_id':'r','draft':{'subjects':[subject],'site_ids':['tax'],'notes':''}},'records':[record],'evidence':[],'automatic':[{'subject_id':'s','site_id':'tax','path':str(screenshot),'metadata':{'kind':'result','page':1,'url':'https://www.chinatax.gov.cn/','captured_at':'2026-10-24T08:00:00Z'}}]}
             target=td/'out.docx';generate(data,target);d=Document(target)
             self.assertEqual(len(d.tables),1);self.assertEqual(len(d.tables[0].columns),2)
-            self.assertEqual(d.tables[0].cell(1,1).text,'待人工补证')
+            self.assertEqual(d.tables[0].cell(1,1).text,'检索到相关记录，待核实')
             text='\n'.join(p.text for p in d.paragraphs)
             self.assertIn('16:00:00',text);self.assertIn('的签字页',text)
             self.assertIn('承做部门（团队）负责人',text)
             self.assertNotIn('不存在重大违法',text);self.assertNotIn('SHA-256',text)
+            self.assertIn('搜索结果页面 第1页',text)
+            self.assertIn('此为采集日志时间',text)
             with ZipFile(target) as z:
                 media=[z.read(n) for n in z.namelist() if n.startswith('word/media/')]
                 self.assertEqual(media,[screenshot.read_bytes()])
@@ -32,6 +34,19 @@ class IntegrityReportTest(unittest.TestCase):
                             from lxml import etree as E
                             a=E.fromstring(z.read(n));b=E.fromstring(baseline.read(n))
                             self.assertEqual(E.tostring(a,method='c14n'),E.tostring(b,method='c14n'))
+
+    def test_blockers_and_unverified_pages_are_never_result_figures(self):
+        with tempfile.TemporaryDirectory() as td:
+            subject={'id':'s','name':'合成测试企业','kind':'company'}
+            for outcome,kind in [('blocked','blocker'),('failed','blocker'),('unverified','result'),('results','blocker'),('results',None)]:
+                with self.subTest(outcome=outcome,kind=kind):
+                    record={'subject_id':'s','site_id':'tax','site_name':'测试官网','status':'needs_manual','query':'合成测试企业','checked_at':'2026-10-24T08:00:00Z','reason':'未取得已确认的结果截图。','sources':[],'search_performed':True,'browser':{'outcome':outcome,'scope':'测试','limitation':'测试'}}
+                    data={'input':{'project_name':'测试','draft':{'subjects':[subject],'site_ids':['tax']}},'records':[record],'automatic':[{'subject_id':'s','site_id':'tax','path':str(Path(td)/'must-not-open.png'),'metadata':{'kind':kind}}]}
+                    target=Path(td)/'out.docx';generate(data,target)
+                    text='\n'.join(p.text for p in Document(target).paragraphs)
+                    self.assertIn('未取得可确认的搜索结果截图',text)
+                    if outcome != 'results': self.assertIn('尝试查询词：',text)
+                    with ZipFile(target) as z: self.assertFalse(any(n.startswith('word/media/') for n in z.namelist()))
     def test_template_contains_no_retained_customer_content(self):
         with ZipFile(TEMPLATE) as z:
             self.assertFalse(any(n.startswith('word/media/') for n in z.namelist()))

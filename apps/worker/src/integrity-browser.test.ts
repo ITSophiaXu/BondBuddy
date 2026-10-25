@@ -62,3 +62,23 @@ test('real Chromium on synthetic official-site fixtures: query, screenshot, zero
   }
  }finally{await browser.close();}
 });
+
+test('observed tax next-page label advances before a second result screenshot',{timeout:30000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async()=>{
+ const browser=await chromium.launch({headless:true});
+ try{
+  const context=await browser.newContext();
+  await context.route('**/*',route=>{
+   if(new URL(route.request().url()).pathname==='/search')return route.fulfill({body:'synthetic query response'});
+   return route.fulfill({contentType:'text/html; charset=utf-8',body:`<input type="search"><button id="submit">搜索</button><main>请输入查询词</main><script>
+    const input=document.querySelector('input');
+    const show=n=>document.querySelector('main').innerHTML='相关结果30个 '+input.value+' 第'+n+'页 <button id="next">下一页&gt;&gt;</button>';
+    document.querySelector('#submit').onclick=async()=>{await fetch('/search?q='+encodeURIComponent(input.value));show(1);};
+    document.addEventListener('click',e=>{if(e.target.id==='next')show(2);});
+   </script>`});
+  });
+  const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'北京',city:'北京'},new AbortController().signal,{waitMs:5000,maxPages:2});
+  assert.equal(result.outcome,'results');
+  assert.deepEqual(result.captures.map(c=>[c.kind,c.page]),[['result',1],['result',2]]);
+  assert.match(result.captures[1].text,/第2页/);
+ }finally{await browser.close();}
+});
