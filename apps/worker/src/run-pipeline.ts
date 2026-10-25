@@ -7,6 +7,9 @@
 import type { Pool } from 'pg';
 import { isUnifiedInput,type M4AssistantReply } from '@bondbuddy/contracts';
 import { hasM4Manifest,m4InputGate } from './m4-input.js';
+import { isProjectQaInput,projectQaInputGate } from './project-qa-input.js';
+import { isIntegrityInput,integrityInputGate } from './integrity-input.js';
+import { isProjectFileInput,projectFileInputGate } from './project-file-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
@@ -66,7 +69,7 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
-  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments'; bytes: Buffer; mediaType?:'application/pdf' }[];
+  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments' | 'report'; bytes: Buffer; mediaType?:'application/pdf' }[];
       namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
   | {kind:'qa_deliver';reply:M4AssistantReply}
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
@@ -308,6 +311,9 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    if(isProjectQaInput(manifest))return (await projectQaInputGate(pool,run,input))??{kind:'done',value:{project_qa_mode:manifest.operation}};
+    if(isIntegrityInput(manifest))return (await integrityInputGate(pool,run,input))??{kind:'done',value:{integrity_mode:manifest.operation}};
+    if(isProjectFileInput(manifest))return (await projectFileInputGate(pool,run,input))??{kind:'done',value:{project_file_mode:manifest.operation}};
     if (hasM4Manifest(manifest)) return (await m4InputGate(pool,run,input)) ?? {kind:'done',value:{m4_mode:manifest?.kind}};
     if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: {
       authoring_mode: 'unified_v1', review_revision: !!(manifest as {authoring?:{review_revision?:unknown}}).authoring?.review_revision } };
@@ -400,6 +406,9 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   name: 'materials_ready',
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
+    if ((values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return {kind:'done',checkpoint:{project_qa:true}};
+    if ((values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return {kind:'done',checkpoint:{integrity:true}};
+    if ((values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return {kind:'done',checkpoint:{original_files:true,project_file:true}};
     if ((values.get('input_lock') as {m4_mode?:string})?.m4_mode) return {kind:'done',checkpoint:{original_files:true,m4:true}};
     if ((values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') return reviewMaterialsReady({ pool, run });
     if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
@@ -590,6 +599,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if(isProjectQaInput(input.manifest))return projectQaInputGate(pool,run,input);
+      if(isIntegrityInput(input.manifest))return integrityInputGate(pool,run,input);
+      if(isProjectFileInput(input.manifest))return projectFileInputGate(pool,run,input);
       if (hasM4Manifest(input.manifest)) return m4InputGate(pool,run,input);
       if (isUnifiedInput(input.manifest)) return unifiedInputGate(pool, run, input);
       if (isReviewInput(input.manifest)) return reviewInputGate(pool, run, input);
@@ -699,7 +711,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
       }
       if (reviewExecution) {
-        reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: reviewExecution.operation === 'revision' ? 'revision' : 'report' });
+        reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: outcome.cleanBytes || reviewExecution.operation === 'revision' ? 'revision' : 'report' });
         for (const artifact of reviewArtifacts) await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
           VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
         [run.owner_user_id,run.project_id,run.id,artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);

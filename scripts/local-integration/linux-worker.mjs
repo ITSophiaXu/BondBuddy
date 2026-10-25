@@ -1,11 +1,11 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
-import {repo,runtime,databaseURL,blobConnection} from './config.mjs';
+import {repo,runtime,databaseURL,blobConnection,instance} from './config.mjs';
 export const docker='C:/Program Files/Docker/Docker/resources/bin/docker.exe';
-export const containerName='bb-local-integration-worker-20261012';
+export const containerName=`bb-local-integration-worker-${instance}`;
 export const generationConfig=join(runtime,'linux-worker.json');
-const label='com.bondbuddy.local-integration',volume='bb-local-integration-parse-20261012';
+const label='com.bondbuddy.local-integration',volume=`bb-local-integration-parse-${instance}`;
 export function dockerCommand(args,options={}){
   const r=spawnSync(docker,args,{encoding:'utf8',windowsHide:true,timeout:45000,...options});
   if(r.status!==0)throw Error(r.stderr||r.error?.message||'Local Docker command failed');
@@ -14,8 +14,8 @@ export function dockerCommand(args,options={}){
 export function configured(){return existsSync(generationConfig);}
 export function ensureLocalVolume(){
   const r=spawnSync(docker,['volume','inspect',volume],{encoding:'utf8',windowsHide:true});
-  if(r.status===0){if(JSON.parse(r.stdout)[0].Labels?.[label]!=='20261012')throw Error('Unowned local parse volume; preserving it');}
-  else dockerCommand(['volume','create','--label',`${label}=20261012`,volume]);
+  if(r.status===0){if(JSON.parse(r.stdout)[0].Labels?.[label]!==instance)throw Error('Unowned local parse volume; preserving it');}
+  else dockerCommand(['volume','create','--label',`${label}=${instance}`,volume]);
 }
 export function modelReady(){
   if(!configured())return false;
@@ -26,7 +26,7 @@ export function containerStatus(){
   const r=spawnSync(docker,['inspect','--format','{{json .}}',containerName],{encoding:'utf8',windowsHide:true,timeout:10000});
   if(r.status!==0)return null;
   const c=JSON.parse(r.stdout);
-  if(c.Config.Labels?.[label]!=='20261012'||c.Config.Labels?.['com.bondbuddy.workspace']!==repo)throw Error('Unowned local worker container; preserving it');
+  if(c.Config.Labels?.[label]!==instance||c.Config.Labels?.['com.bondbuddy.workspace']!==repo)throw Error('Unowned local worker container; preserving it');
   return {id:c.Id,running:c.State.Running,image:c.Image,launchId:c.Config.Labels['com.bondbuddy.launch-id']};
 }
 export function workerArgs(config){
@@ -41,7 +41,7 @@ export function workerArgs(config){
     return [{...rest,names:names.filter(n=>n!=='mount')},{...rest,names:['mount'],args:[...(rule.args??[]),{index:3,value:14,op:'SCMP_CMP_NE'}]}];
   });
   const seccomp=join(runtime,'local-worker-seccomp.json');writeFileSync(seccomp,JSON.stringify(profile));
-  const env={DATABASE_URL:databaseURL.replace('127.0.0.1','host.docker.internal'),
+  const env={BB_LOCAL_INSTANCE:instance,DATABASE_URL:databaseURL.replace('127.0.0.1','host.docker.internal'),
     AZURE_STORAGE_CONNECTION_STRING:blobConnection.replace('127.0.0.1','host.docker.internal'),
     BB_RUN_RUNTIME_ENABLED:'1',BB_PAID_AUTHORING_ENABLED:'1',BB_PAID_REVIEW_ENABLED:'1',
     BB_DEPLOYMENT_TIER:'local',BB_TRIAL_GUARD:'off',BB_WORKER_GROUP:'local-integration-linux',
@@ -62,7 +62,7 @@ export function workerArgs(config){
 }
 export function refreshLocalCredential(){
   // Store outside OneDrive and every repository; stdout from gh never enters logs.
-  const dir=join(process.env.LOCALAPPDATA,'BondBuddy/local-integration-20261012');mkdirSync(dir,{recursive:true});
+  const dir=join(process.env.LOCALAPPDATA,`BondBuddy/local-integration-${instance}`);mkdirSync(dir,{recursive:true});
   const credentialFile=join(dir,'model-token');
   const r=spawnSync('gh',['auth','token','--hostname','github.com'],{encoding:'utf8',windowsHide:true});
   if(r.status!==0||!r.stdout.trim()||/\s/.test(r.stdout.trim()))throw Error('Existing GitHub model credential unavailable');
@@ -81,7 +81,7 @@ export async function startLinuxWorker(launchId){
   if(existing?.running)throw Error('A local worker container is already running; preserve it and inspect its launch receipt');
   if(existing)dockerCommand(['rm',existing.id]);
   ensureLocalVolume();
-  const id=dockerCommand(['create','--name',containerName,'--label',`${label}=20261012`,
+  const id=dockerCommand(['create','--name',containerName,'--label',`${label}=${instance}`,
     '--label',`com.bondbuddy.workspace=${repo}`,'--label',`com.bondbuddy.launch-id=${launchId}`,
     ...workerArgs(config),config.imageId]);
   const child=spawn(docker,['start','--attach',id],{windowsHide:true,stdio:['ignore','pipe','pipe']});

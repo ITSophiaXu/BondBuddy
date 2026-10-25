@@ -7,9 +7,12 @@ import { loadM4RuntimeSkill } from './m4-runtime-skills.js';
 import { checkedM4File, prepareM4Files, verifyM4Originals, verifyM4Calculation,m4ArtifactPreview, M4_FILE_MAX } from './m4-file-workspace.js';
 import { m4ActionObserver, recordM4Progress } from './m4-action-progress.js';
 import { m4ModelGate,m4PinnedMethod } from './m4-method.js';
+import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks} from './project-file-tools.js';
+import type {ProjectFileText} from '@bondbuddy/contracts';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export type M4DocumentResult = {version: 'codex-m4-document-v1'; input_hash: string; skill_sha256: string; method_hash: string;
+  project_file_links?:Awaited<ReturnType<typeof saveGenerationLinks>>;
   files: Record<string, {key: string; sha256: string; byte_size: number}>; error?: 'WORD_DELIVERY_UNAVAILABLE'};
 const names = ['document.docx', 'preparation-note.docx'] as const;
 const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-documents/`;
@@ -28,17 +31,20 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    const skill = loadM4RuntimeSkill(({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation'} as const)[input.manifest.input.document_type]);
+    const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file'} as const)[input.manifest.input.document_type]);
     const config = options.config ?? loadCodexAdapterConfig();
     const modelGate=await m4ModelGate(ctx,config); if(modelGate)return modelGate;
     const pinned=await m4PinnedMethod(ctx,'document',skill,config);if(pinned.gate)return pinned.gate;
     const methodHash=pinned.hash;
     let originals = new Map<string, string>();
+    let linkedSource:ProjectFileText|null=null;
     const observer = m4ActionObserver(ctx, 'document');
-    const prepare = async (cwd: string) => { await recordM4Progress(ctx, 'm4_reading_materials'); originals = await prepareM4Files(ctx, input, skill, cwd); };
+    const prepare = async (cwd: string) => { await recordM4Progress(ctx, 'm4_reading_materials'); originals = await prepareM4Files(ctx, input, skill, cwd);
+      linkedSource=await prepareProjectFileSource(ctx,input,cwd);if(linkedSource)originals.set('source-spans.json',digest(await checkedM4File(cwd,'source-spans.json',32*1024*1024))); };
     const collect = async (cwd: string, intent: {call_id: string}): Promise<M4DocumentResult> => {
       await verifyM4Originals(cwd, originals);
       await verifyM4Calculation(ctx,cwd);
+      const project_file_links=linkedSource?await saveGenerationLinks(ctx,linkedSource,cwd):undefined;
       const files: M4DocumentResult['files'] = {};
       for (const name of names) {
         let bytes: Buffer;
@@ -49,7 +55,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         if (!stored || digest(stored) !== sha256) throw Error('M4_OUTPUT_STORE_FAILED');
         files[name] = {key, sha256, byte_size: bytes.length};
       }
-      return {version: 'codex-m4-document-v1', input_hash: ctx.run.input_hash.trim(), skill_sha256: skill.sha256, method_hash: methodHash, files,
+      return {version: 'codex-m4-document-v1', input_hash: ctx.run.input_hash.trim(), skill_sha256: skill.sha256, method_hash: methodHash, files,project_file_links,
         ...(!names.every(name => files[name]) ? {error: 'WORD_DELIVERY_UNAVAILABLE' as const} : {})};
     };
     try {
@@ -75,6 +81,10 @@ export function m4DocumentDeliveryStage(): RunStage {
     };
     await recordM4Progress(ctx, 'm4_registering_artifacts');
     const document=await read('document.docx'),note=await read('preparation-note.docx');
+    if(result.project_file_links){
+      if(result.project_file_links.target_sha256!==digest(document))throw Error('INPUT_REVISION_CONFLICT');
+      await publishProjectFileLinks(ctx.pool,ctx.run.owner_user_id,ctx.run.id,result.project_file_links);
+    }
     const [documentPreview,notePreview]=await Promise.all([m4ArtifactPreview(ctx,document),m4ArtifactPreview(ctx,note)]);
     return {kind: 'deliver', bytes:document, namedArtifacts: [{kind: 'preparation_note', filename: 'preparation-note.docx', bytes:note,
       ...(notePreview?{previewContent:notePreview}:{})}],

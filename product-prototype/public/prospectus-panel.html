@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BondBuddy · 募集说明书版本卡片</title>
+  <link rel="stylesheet" href="../../apps/web/src/style.css">
+  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="project-workspace.css">
+  <link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css"><link rel="stylesheet" href="prospectus-panel.css">
+</head>
+<body>
+<main style="max-width:1160px;margin:0 auto;padding:32px 20px">
+  <section class="panel prospectus-panel" aria-label="项目募集说明书">
+    <header class="prospectus-panel-heading"><h2>项目募集说明书</h2><button type="button" class="btn secondary" id="choose"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3 M7 8l5-5 5 5 M4 15v5h16v-5"/></svg><span id="upload-label">上传募集说明书</span></button></header>
+    <input type="file" id="file" accept=".docx,.pdf" hidden>
+    <div class="prospectus-empty" id="empty"><span class="prospectus-file-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9 M14 2v7h7 M7 13h10 M7 17h7"/></svg></span><div><h3>尚未保存募集说明书</h3><p>可上传已有稿件；没有稿件，也可在下方提供材料后开始更新。</p></div></div>
+    <div class="prospectus-current-file" id="current" hidden><span class="prospectus-file-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9 M14 2v7h7 M7 13h10 M7 17h7"/></svg></span><div class="prospectus-file-info"><span class="prospectus-current">当前版本 · V2</span><h3>合成发行人2026年度第一期公司债券募集说明书_提交审阅稿_含财务与风险披露_修订后清洁版.docx</h3><p>BondBuddy 更新 · 2026年10月25日 10:00</p></div><div class="prospectus-version-actions"><button class="text-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13 M7 11l5 5 5-5 M4 17v4h16v-4"/></svg>下载清洁版</button><button class="text-button">下载修订版</button></div></div>
+    <div class="prospectus-upload" id="selected" hidden><div class="prospectus-selected-file"><div class="prospectus-file-info"><span class="prospectus-upload-label">待保存</span><strong id="filename"></strong><small>保存后设为当前版本，已有版本保留</small></div></div><div class="prospectus-upload-actions"><button class="btn primary" id="save">保存为当前版本</button><button class="text-button" id="cancel">取消</button></div></div>
+    <p class="prospectus-upload-hint">支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动更新或扣费。</p>
+    <details class="prospectus-history" id="history" hidden><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"/></svg><span>版本历史</span><span class="prospectus-history-count">2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><div class="prospectus-history-list"><div class="prospectus-version"><div class="prospectus-file-info"><strong>V1 · 合成历史募集书.docx</strong><small>用户上传 · 2026年10月25日 10:00</small></div><div class="prospectus-version-actions"><button class="text-button">设为当前版本</button><button class="text-button">下载原文件</button></div></div></div></details>
+    <p id="prospectus-status" role="status"></p>
+  </section>
+  <p style="font-size:12px;color:#69766b">交互原型 · 合成示例，不上传文件或创建任务。<a href="?state=empty">空状态</a> / <a href="?state=current">已有版本</a></p>
+</main>
+<script>
+  const $=id=>document.getElementById(id);
+  if(new URLSearchParams(location.search).get('state')==='current'){$('empty').hidden=true;$('current').hidden=false;$('history').hidden=false;$('upload-label').textContent='上传新版本';}
+  $('choose').onclick=()=>$('file').click();
+  $('file').onchange=()=>{if($('file').files[0]){$('filename').textContent=$('file').files[0].name;$('selected').hidden=false;}};
+  $('cancel').onclick=()=>{$('selected').hidden=true;$('file').value='';$('choose').focus();};
+  $('save').onclick=()=>{$('prospectus-status').textContent='此处为交互演示；实际上传与保存请使用测试版。';};
+</script>
+</body>
+</html>

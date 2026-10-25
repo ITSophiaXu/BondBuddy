@@ -79,6 +79,8 @@ export function friendlyError(error: unknown): string {
 }
 
 export class ApiClient {
+  projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
+  projectFiles(id:string,signal?:AbortSignal){return this.request<Dto<'ProjectFilesResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/files',undefined,{},signal);}
   consumptionHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'CreditConsumptionHistoryResponse'>>('GET','/credits/consumption-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   rechargeHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'RechargeHistoryResponse'>>('GET','/credits/recharge-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   creditBalance(signal?: AbortSignal) { return this.request<Dto<'CreditBalanceResponse'>>('GET','/credits/balance',undefined,{},signal); }
@@ -256,15 +258,27 @@ export class ApiClient {
     }
   }
   project(id: string, signal?: AbortSignal) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`, undefined, {}, signal); }
-  material(id: string, materialId: string, signal?: AbortSignal) {
-    return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
+  updateWorkspace(id:string,signal?:AbortSignal){return this.request<Dto<'UpdateWorkspaceResponse'>>('POST',`/projects/${encodeURIComponent(id)}/update-workspace`,{}, {},signal);}
+  prospectusVersions(id:string,signal?:AbortSignal){return this.request<Dto<'ProspectusVersionsResponse'>>('GET',`/projects/${encodeURIComponent(id)}/prospectus-versions`,undefined,{},signal);}
+  saveProspectus(id:string,input:Dto<'ProspectusVersionSaveRequest'>,signal?:AbortSignal){return this.request<Dto<'ProspectusVersionsResponse'>>('POST',`/projects/${encodeURIComponent(id)}/prospectus-versions`,input,{},signal);}
+  selectProspectus(id:string,input:Dto<'ProspectusVersionSelectRequest'>,signal?:AbortSignal){return this.request<Dto<'ProspectusVersionsResponse'>>('POST',`/projects/${encodeURIComponent(id)}/prospectus-versions/current`,input,{},signal);}
+  material(id: string, materialId: string, signal?: AbortSignal,version?:number) {
+    return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}${version?'?version='+version:''}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
+  }
+  async integrityCaptureBytes(projectId:string,roundId:string,capture:import('@bondbuddy/contracts').IntegrityCapture,signal?:AbortSignal):Promise<Blob>{
+    const response=await this.response('GET',`/projects/${encodeURIComponent(projectId)}/integrity/runs/${encodeURIComponent(roundId)}/captures/${encodeURIComponent(capture.id)}`,undefined,{},signal);
+    if(response.status!==200||response.headers.get('content-type')?.split(';')[0]!=='image/png')throw new ApiError(0,'DATA_UNAVAILABLE');
+    const bytes=await response.arrayBuffer();signal?.throwIfAborted();
+    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    if(bytes.byteLength!==capture.byte_size||hash!==capture.screenshot_sha256)throw new ApiError(0,'DATA_UNAVAILABLE');
+    return new Blob([bytes],{type:'image/png'});
   }
   async materialBytes(projectId: string, material: Dto<'MaterialResponse'>, signal?: AbortSignal): Promise<Blob> {
     const activeSignal = signal ?? this.controller.signal;
     // The owner-scoped route authorizes this project/material pair; the caller
     // has compared freshly fetched metadata with the report's immutable pin.
     if (material.state !== 'persisted') throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const response = await this.response('GET', `/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/download`, undefined, {}, activeSignal);
+    const response = await this.response('GET', `/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/download?version=${material.material_version}`, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== material.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
     const bytes = await response.arrayBuffer();
     activeSignal.throwIfAborted();

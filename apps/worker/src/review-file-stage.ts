@@ -9,6 +9,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
+import { correctionFiles, correctionExport } from './review-correction-stage.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
 const helpers = join(root, 'python/bondbuddy_file_authoring');
@@ -24,7 +25,7 @@ const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/
 export function validReviewFileResult(value: unknown, ctx: StageContext): value is ReviewFileResult {
   const result = value as ReviewFileResult | null;
   return !!result && result.version === 'codex-review-file-v1' && result.input_hash === ctx.run.input_hash.trim()
-    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json'].includes(name)
+    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json','revision.docx','clean.docx','baseline.docx','editor.json'].includes(name)
       && file.key.startsWith(prefix(ctx)) && !file.key.includes('..') && file.key.endsWith(`/${file.sha256}/${name}`)
       && /^[a-f0-9]{64}$/.test(file.sha256) && Number.isSafeInteger(file.byte_size) && file.byte_size > 0 && file.byte_size <= MAX)
     && (result.error === 'WORD_DELIVERY_UNAVAILABLE' || !!result.files['report.docx']);
@@ -35,9 +36,9 @@ export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFile
     [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row)) throw Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as ReviewManifest;
-  if (manifest.review.file_delivery?.version !== 'review-file-v1' || manifest.review.operation === 'revision'
-    || !Array.isArray(manifest.review.file_delivery.knowledge)
-    || manifest.review.file_delivery.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) throw Error('INPUT_REVISION_CONFLICT');
+  if (!['review-file-v1','review-correction-v2'].includes(manifest.review.file_delivery?.version ?? '') || manifest.review.operation === 'revision'
+    || !Array.isArray(manifest.review.file_delivery?.knowledge)
+    || manifest.review.file_delivery!.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) throw Error('INPUT_REVISION_CONFLICT');
   const materials: Material[] = [];
   for (const pin of manifest.materials) {
     const material = (await ctx.pool.query('SELECT object_key,media_type,filename,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',
@@ -66,6 +67,8 @@ async function checkedFile(directory: string, name: string, max = MAX): Promise<
 export function reviewFileStage(options: { model?: typeof codexModelStage; load?: typeof loadReviewFileInput; config?: ReturnType<typeof loadCodexAdapterConfig> } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadReviewFileInput)(ctx), { manifest } = input;
+    const correction=manifest.review.file_delivery?.version==='review-correction-v2';
+    if(correction&&manifest.review.file_delivery?.export)return correctionExport(ctx,input);
     const originals = new Map<string, string>();
     const prepare = async (cwd: string) => {
       for (const dir of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, dir), { mode: 0o700 });
@@ -101,6 +104,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       await writeFile(join(cwd, 'input.json'), JSON.stringify(data, null, 2), { mode: 0o400 });
       originals.set('input.json', digest(await readFile(join(cwd, 'input.json'))));
       for (const name of ['review.md', 'read_material.py', 'report_from_text.py']) await copyFile(join(helpers, name), join(cwd, name));
+      if(correction)await copyFile(join(helpers,'review-correction.md'),join(cwd,'review.md'));
     };
     const collect = async (cwd: string, intent: { call_id: string }, response: { text: string } = { text: '' }): Promise<ReviewFileResult> => {
       for (const [path, sha] of originals) if (digest(await checkedFile(cwd, path)) !== sha) throw Error('INPUT_REVISION_CONFLICT');
@@ -117,6 +121,11 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       if (response.text.trim()) await retain('final-response.md', Buffer.from(response.text));
       let reportText: Buffer | undefined, word: Buffer | undefined;
       try { reportText = await checkedFile(output, 'report.md', TEXT_MAX); } catch { /* Optional text companion. */ }
+      if(correction){
+        const text=reportText??(response.text.trim()?Buffer.from(response.text):undefined);
+        if(!text)throw Error('WORD_DELIVERY_UNAVAILABLE');
+        return correctionFiles(ctx,input,text);
+      }
       if (reportText) await retain('report.md', reportText);
       try { word = await checkedFile(output, 'report.docx'); } catch { /* Plain CLI responses can still be exported. */ }
       if (!word) {
@@ -170,7 +179,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
     return (options.model ?? codexModelStage)({ name: 'review_file_v1', logicalCallId: 'review-file-v1',
       config: { ...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'review-files'), max_output_bytes: 32 * 1024 * 1024 },
       buildPrompt: async () => `切换实际复核工作时，请发送独立的用户可见进度消息，严格使用 BB_REVIEW_PROGRESS:类别:状态。类别限 read_materials、read_knowledge、check_financial、check_compliance、search_public、compare_sources、prepare_report；状态限 started、completed、failed。只报告实际开始或结束的动作，不预先宣称完成，不附带思考过程、正文、路径或其他文本。请完整阅读 review.md 和 input.json，自主复核并把完整报告写入 output/report.md 与 output/report.docx。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原文批注。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: 'review-file-progress-v2',
+      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: correction?'review-correction-v2':'review-file-progress-v2',
       fileWorkspace: { prepare, collect } }).run(ctx);
   } };
 }
@@ -179,6 +188,17 @@ export function reviewFileDeliveryStage(): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
     const result = ctx.values.get('model_generation');
     if (!validReviewFileResult(result, ctx)) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+    if(result.files['revision.docx']){
+      const files:Record<string,Buffer>={};
+      for(const name of ['revision.docx','clean.docx','report.docx']){
+        const ref=result.files[name];if(!ref)return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
+        const bytes=await ctx.blobs.getIfExistsBounded(ref.key,MAX);
+        if(!bytes||bytes.length!==ref.byte_size||digest(bytes)!==ref.sha256)return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
+        files[name]=bytes;
+      }
+      const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
+      return {kind:'deliver',bytes:files['revision.docx'],cleanBytes:files['clean.docx'],attachments:[{kind:'report',bytes:files['report.docx']}],deliveryPolicy:'generated_pair_v1',wordSummary:{writer_version:'review-correction-v2',delivery_policy:'generated_pair_v1',content_review:'not_performed'}};
+    }
     const file = result.files['report.docx'];
     if (!file || result.error) return { kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE' };
     const gate = await ctx.validateBeforeModelCall?.(); if (gate) return gate;

@@ -41,7 +41,8 @@ async function setup(page: Page, options: { beforeProjectRead?: () => Promise<vo
         content_sha256:createHash('sha256').update(input.body).digest('hex'),body:input.body,material_versions:[],created_at:'2026-09-28T00:00:00Z',
         role:'user',source_status:'user_asserted',intent_status:'not_classified',route:'save_only'};
       messages.push(message);body={...message,conversation_id:'synthetic-design-project',is_current:true,project_message_set_ref:messageRef()};status=201;
-    } else if(path.endsWith('/events')) body={items:[],next_cursor:null};
+    } else if(path.endsWith('/tasks'))body={project_id:'synthetic-design-project',items:[],page:{has_more:false,next_cursor:null}};
+    else if(path.endsWith('/events')) body={items:[],next_cursor:null};
     else {status=404;body={code:'NOT_FOUND'};}
     await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   });
@@ -52,8 +53,8 @@ async function setup(page: Page, options: { beforeProjectRead?: () => Promise<vo
 test('prototype dashboard leads through creation to materials with persistent material-footer requirements',async({page})=>{
   const errors: string[]=[]; page.on('pageerror',e=>errors.push(e.message));
   const state=await setup(page);
-  await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
-  await expect(page.locator('.dashboard-start a')).toHaveCount(3);
+  await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('link')).toHaveCount(4);
   await page.setViewportSize({width:1440,height:960});
   await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),'bb361-dashboard-desktop.png'),fullPage:true});
@@ -103,7 +104,7 @@ test('creating an update keeps its navigation active while the project loads',as
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release=resolve; });
   await setup(page,{beforeProjectRead:()=>pending});
-  await page.locator('.dashboard-start').getByRole('link',{name:'更新募集书',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'更新募集书',exact:true}).click();
 
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
@@ -177,7 +178,7 @@ for (const width of [1440, 390]) {
   });
 }
 
-for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','工作台']]) {
+for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','全部项目']]) {
   test(`project loading and error preserve the entry navigation: ${active}`,async({page})=>{
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release=resolve; });
@@ -194,14 +195,14 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
 test('material workspace respects unavailable server resources without creating demo work',async({page})=>{
   const state=await setup(page);
   await page.goto('/#generate');
-  await expect(page.getByRole('heading',{name:'材料生成',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('无法访问这个项目');
   await expect(page.getByRole('button',{name:'重新读取',exact:true})).toBeVisible();
   await page.goto('/#review'); await expect(page.locator('#review-create-form')).toBeVisible();
   expect(state.writes).toEqual([]);
   expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
   await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
-  await page.goto('/'); await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
+  await page.goto('/'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
 });
 
 for (const width of [1440, 390]) {

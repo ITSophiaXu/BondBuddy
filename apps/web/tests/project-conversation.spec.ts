@@ -1,3 +1,4 @@
+import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, reportingWindow, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
@@ -79,6 +80,8 @@ async function setup(page: Page, fixtureState = fixture()) {
     if (path === '/m4/topics') return reply(route, 200, { topics: [] });
     if (path === '/me') return state.owner ? reply(route, 200, { user_id: state.owner, session_status: 'active' }) : reply(route, 401, { code: 'UNAUTHENTICATED' });
     if (!state.owner) return reply(route, 401, { code: 'UNAUTHENTICATED' });
+    if(path===`/projects/${id}/tasks`)return reply(route,200,taskPage(id,state.run?[state.run]:[]));
+    if(path===`/projects/${id}/prospectus-versions`)return reply(route,200,{project_id:id,selection_revision:0,current_version_id:null,versions:[],inactive_material_ids:[]});
     if (path === '/projects' && method === 'POST') {
       if (state.createFailOnce) { state.createFailOnce=false; return reply(route,503,{code:'DATA_UNAVAILABLE'}); }
       const input = request.postDataJSON() as Dto<'ProjectCreateRequest'>;
@@ -280,7 +283,7 @@ test('save-only sends, exact edit history, lost-response idempotency and refresh
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('first'); await page.getByLabel('密码').fill('synthetic-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${id}`);
   await expect(page.locator('.cowork-message')).toContainText('用户修正：截至6月');
   await expect(page.locator('.cowork-assistant')).toHaveCount(0);
@@ -402,7 +405,7 @@ test('stale edit and cursor reread without overriding; owner switch clears priva
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('second'); await page.getByLabel('密码').fill('synthetic-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByText('项目暂时无法打开')).toBeVisible();
   await expect(page.getByText('用户原话 A')).toHaveCount(0);
@@ -430,6 +433,7 @@ test('create and material conversation use the prototype desktop and mobile work
   };
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto('/#update');
+  await page.getByRole('link',{name:'＋ 新建项目并更新',exact:true}).click();
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
@@ -462,6 +466,7 @@ test('create and material conversation use the prototype desktop and mobile work
 test('latest period derives source-independent windows; supplementary notes are saved on materials and editable after reload', async ({page}) => {
   const {state}=await setup(page);
   await page.goto('/#update');
+  await page.getByRole('link',{name:'＋ 新建项目并更新',exact:true}).click();
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');

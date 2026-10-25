@@ -1,3 +1,4 @@
+import { taskPage } from './collection-fixtures';
 import { readFile, mkdir } from 'node:fs/promises';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Dto } from '../src/api';
@@ -49,6 +50,8 @@ async function installApi(page: Page, data: State) {
     if (path === '/projects') return json(route, 200, { items: [{ ...project, status: 'failed', latest_run: { run_id: 'newer-failed-run', state: 'failed', updated_at: now },
       latest_artifact: { artifact_id: ids.revision, run_id: runId, version: 1, created_at: now } }],
       page: { next_cursor: data.moreProjects && !url.searchParams.has('cursor') ? 'synthetic-next' : null, has_more: !!data.moreProjects && !url.searchParams.has('cursor') } });
+    if(path===`/projects/${projectId}/tasks`)return json(route,200,taskPage(projectId,[run]));
+    if(path===`/projects/${projectId}/files`)return json(route,200,{project_id:projectId,items:[{file_id:ids.revision,file_key:'revision',project_id:projectId,source:'artifact',filename:filenames.revision,version:1,display_version:2,sha256:createHash('sha256').update(bytes).digest('hex'),created_at:now,folder:'2',run_id:runId,current:false,latest:true,version_count:1}]});
     if (path === `/projects/${projectId}`) return json(route, 200, project);
     if (path === `/runs/${runId}`) return json(route, 200, { ...run, state: data.runState });
     const match = path.match(/^\/artifacts\/([^/]+)(\/download)?$/);
@@ -116,8 +119,8 @@ test('completed project shows checked summary and downloads in the continuous wo
 test('latest failed run preserves access to successful Word summary and both user deliverables', async ({ page }) => {
   const data = state(); await installApi(page, data);
   await page.goto('/#tasks');
-  await expect(page.locator('.project-state')).toHaveText('失败');
-  await page.getByRole('link', { name: '查看成果与下载' }).click();
+  await page.locator('[data-tasks]').click();
+  await page.locator('.collection-task').getByRole('link',{name:'查看结果'}).click();
   await expect(page.getByRole('heading', { name: '工作稿已生成，含待人工确认事项' })).toBeVisible();
   await expect(page.locator('.artifact-review')).toContainText(summary.pending_review[0].message);
   await expect(page.locator('.artifact-review img')).toHaveCount(0);
@@ -288,16 +291,16 @@ for (const scenario of ['same-length corruption', 'truncated body', 'partial res
 }
 
 for (const scenario of ['corrupt bytes', 'partial response', 'unavailable bytes'] as const) {
-  test(`project-list download refuses ${scenario} and retries with a fresh grant`, async ({ page }) => {
+  test(`project-files download refuses ${scenario} and retries with a fresh grant`, async ({ page }) => {
     const data = state(); await installApi(page, data);
     let downloads = 0; page.on('download', () => downloads++);
-    await page.goto('/#tasks');
+    await page.goto('/#/projects/'+projectId+'/files');
     if (scenario === 'corrupt bytes') data.downloadBody = Buffer.from('corrupt synthetic document');
     if (scenario === 'partial response') data.downloadStatus = 206;
     if (scenario === 'unavailable bytes') data.downloadStatus = 503;
-    const button = page.getByRole('button', { name: '下载最近成果' });
+    const button = page.getByRole('button', { name: '下载', exact:true });
     await button.click();
-    await expect(page.locator('#project-action-status')).toContainText('校验未通过');
+    await expect(page.locator('#file-action-status')).toContainText('校验未通过');
     expect(downloads).toBe(0);
     await expect(button).toBeEnabled();
     data.downloadBody = undefined; data.downloadStatus = 200;
@@ -308,24 +311,24 @@ for (const scenario of ['corrupt bytes', 'partial response', 'unavailable bytes'
     expect(download.suggestedFilename()).toBe(filenames.revision);
     expect(data.grants).toEqual(['fresh-1', 'fresh-2']);
     expect(data.calls.every(call => call.method === 'GET')).toBe(true);
-    await expect(page).toHaveURL(/#tasks$/);
+    await expect(page).toHaveURL(/\/files$/);
   });
 }
 
 for (const scenario of ['changed run', 'unfinished run'] as const) {
-  test(`project-list download rejects ${scenario} before reading file bytes`, async ({ page }) => {
+  test(`project-files download rejects ${scenario} before reading file bytes`, async ({ page }) => {
     const data = state(); await installApi(page, data);
     if (scenario === 'changed run') data.changedRun = true;
     if (scenario === 'unfinished run') data.runState = 'delivering';
-    await page.goto('/#tasks');
-    await page.getByRole('button', { name: '下载最近成果' }).click();
-    await expect(page.locator('#project-action-status')).toContainText('校验未通过');
+    await page.goto('/#/projects/'+projectId+'/files');
+    await page.getByRole('button', { name: '下载', exact:true }).click();
+    await expect(page.locator('#file-action-status')).toContainText('校验未通过');
     expect(data.grants).toEqual([]);
   });
 }
 
-for (const action of ['navigate', 'refresh', 'switch account'] as const) {
-  test(`project-list download is cancelled on ${action}`, async ({ page }) => {
+for (const action of ['navigate', 'switch account'] as const) {
+  test(`project-files download is cancelled on ${action}`, async ({ page }) => {
     const data = state(); await installApi(page, data);
     await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
@@ -344,15 +347,12 @@ for (const action of ['navigate', 'refresh', 'switch account'] as const) {
       await route.fulfill({ status: 200, contentType: mediaType, body: bytes }).catch(() => {});
     });
     let downloads = 0; page.on('download', () => downloads++);
-    await page.goto('/#tasks');
-    await page.getByRole('button', { name: '下载最近成果' }).click(); await requested;
-    await expect(page.getByRole('button', { name: '下载最近成果' })).toBeDisabled();
+    await page.goto('/#/projects/'+projectId+'/files');
+    await page.getByRole('button', { name: '下载', exact:true }).click(); await requested;
+    await expect(page.getByRole('button', { name: '下载', exact:true })).toBeDisabled();
     if (action === 'navigate') {
-      await page.getByRole('link', { name: '查看成果与下载' }).click();
-      await expect(page.locator('#artifact-summary')).toBeVisible();
-    } else if (action === 'refresh') {
-      await page.getByRole('button', { name: '刷新列表' }).click();
-      await expect(page.getByRole('button', { name: '下载最近成果' })).toBeEnabled();
+      await page.getByRole('link', { name: '← 返回全部项目' }).click();
+      await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
     } else {
       await page.evaluate(() => { const channel = new BroadcastChannel('bondbuddy-session'); channel.postMessage('changed'); channel.close(); });
       await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
@@ -364,7 +364,7 @@ for (const action of ['navigate', 'refresh', 'switch account'] as const) {
   });
 }
 
-test('project-list pagination keeps a pending download disabled and releases it once complete', async ({ page }) => {
+test('project-files refresh keeps a pending download disabled and releases it once complete', async ({ page }) => {
   const data = state(); data.moreProjects = true; await installApi(page, data);
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
@@ -375,11 +375,10 @@ test('project-list pagination keeps a pending download disabled and releases it 
     byteRequests++; started(); await pending;
     await route.fulfill({ status: 200, contentType: mediaType, body: bytes });
   });
-  await page.goto('/#tasks');
-  const button = page.getByRole('button', { name: '下载最近成果' });
+  await page.goto('/#/projects/'+projectId+'/files');
+  const button = page.getByRole('button', { name: '下载', exact:true });
   await button.click(); await requested;
-  await page.getByRole('button', { name: '加载更多项目' }).click();
-  await expect(page.getByRole('button', { name: '加载更多项目' })).toBeHidden();
+  await page.getByRole('button', { name: '刷新文件' }).click();
   await expect(button).toBeDisabled();
   const downloaded = page.waitForEvent('download');
   release();
@@ -404,7 +403,7 @@ test('download filenames stay canonical after reload without displaying technica
   }
   await page.reload();await expect(page.locator('.artifact-filename')).toHaveCount(0);
   const first=page.waitForEvent('download');await page.getByRole('button',{name:'下载修订版',exact:true}).click();expect((await first).suggestedFilename()).toBe(filenames.revision);
-  await page.goto('/#tasks');const second=page.waitForEvent('download');await page.getByRole('button',{name:'下载最近成果'}).click();expect((await second).suggestedFilename()).toBe(filenames.revision);
+  await page.goto('/#/projects/'+projectId+'/files');const second=page.waitForEvent('download');await page.getByRole('button',{name:'下载',exact:true}).click();expect((await second).suggestedFilename()).toBe(filenames.revision);
   expect(data.calls.every(call=>call.method==='GET')).toBe(true);
 });
 

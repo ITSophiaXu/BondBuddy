@@ -1,5 +1,6 @@
 import type { M4DraftInput, M4Template } from './m4-workspace.js';
 import { M4_DOCUMENT_MARKETS, M4_CASE_TEMPLATES, m4DocumentScopeSupported } from './m4-document-types.js';
+import { MARKETS } from './public-enums.js';
 
 /** Public, actionable input feedback shared by the form and execution gate. */
 export const M4_INPUT_ISSUES = {
@@ -9,6 +10,8 @@ export const M4_INPUT_ISSUES = {
   M4_OFFERING_UNSUPPORTED: {field:'offering',message:'当前材料模板适用于交易所普通私募公司债，请选择对应品种。'},
   M4_BROKER_REQUIRED: { field: 'broker', message: '尚未填写立项券商全称，请填写后选择或上传该券商的立项模板。' },
   M4_TEMPLATE_REQUIRED: { field: 'template', message: '尚未提供立项模板，请选择已保存的模板，或上传立项模板／已完成的立项报告。' },
+  M4_FILE_TEMPLATE_REQUIRED: {field:'template',message:'首次生成需要提供对应历史文件或模板；保存后可在后续生成时复用。'},
+  M4_FILE_SOURCE_REQUIRED: {field:'source_material',message:'请选择本次文件生成所依据的募集说明书版本。'},
   M4_TEMPLATE_SCOPE: { field: 'template', message: '已选模板与当前交易所或材料类型不一致，请重新选择对应模板。' },
   M4_CASE_TEMPLATE_SCOPE: {field:'case_template_id',message:'已选案例版式不适用于当前材料、市场或品种，请重新选择对应版式。'},
   M4_TEMPLATE_BROKER: { field: 'template', message: '已选模板与填写的立项券商不一致，请重新选择该券商的模板，或更正券商全称。' },
@@ -26,14 +29,15 @@ export function m4InputIssue(code: unknown, field: unknown): M4InputIssue | unde
 export function m4DocumentInputIssues(input: M4DraftInput, template?: Pick<M4Template, 'market' | 'document_type' | 'broker'> | null): M4InputIssue[] {
   const issues: M4InputIssue[] = [];
   const add = (code: M4InputIssueCode) => issues.push({ code, ...M4_INPUT_ISSUES[code] });
-  if (!(M4_DOCUMENT_MARKETS[input.document_type] as readonly string[]).includes(input.fields.market))
+  if (!((input.project_file?MARKETS:M4_DOCUMENT_MARKETS[input.document_type]) as readonly string[]).includes(input.fields.market))
     add(input.document_type==='recommendation'?'M4_RECOMMENDATION_MARKET':'M4_MARKET_REQUIRED');
   const offering=input.fields.offering||(input.document_type==='recommendation'?'':'private');
   if(input.fields.case_template_id&&!M4_CASE_TEMPLATES.some(t=>t.id===input.fields.case_template_id&&t.document_type===input.document_type&&t.market===input.fields.market&&t.offering===offering))add('M4_CASE_TEMPLATE_SCOPE');
-  if (!m4DocumentScopeSupported(input.document_type,input.fields.market,offering)
+  if (!m4DocumentScopeSupported(input.document_type,input.fields.market,offering,!!input.project_file)
       && (input.document_type==='recommendation'?!['ppn','mtn'].includes(offering):offering!=='private'))
     add(input.document_type==='recommendation'?'M4_OFFERING_REQUIRED':'M4_OFFERING_UNSUPPORTED');
-  if (input.document_type === 'init' && !input.template) {
+  if(input.project_file){if(!input.template)add('M4_FILE_TEMPLATE_REQUIRED');if(!input.source_material)add('M4_FILE_SOURCE_REQUIRED');}
+  if (!input.project_file && input.document_type === 'init' && !input.template) {
     if (!input.fields.broker?.trim()) add('M4_BROKER_REQUIRED');
     add('M4_TEMPLATE_REQUIRED');
   }

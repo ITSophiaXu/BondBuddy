@@ -16,5 +16,5 @@ export async function lockReviewFileDelivery(project: { market: Market | null; o
     const markdown = await readFile(resolve(root, path), 'utf8');
     knowledge.push({ path, markdown, sha256: digest(markdown) });
   }
-  return { version: 'review-file-v1', knowledge };
+  return { version: 'review-correction-v2', knowledge };
 }

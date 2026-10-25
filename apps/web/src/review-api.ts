@@ -9,7 +9,7 @@ export class ReviewApi {
   private path(name: string) { return `/projects/${encodeURIComponent(this.projectId)}/${name}`; }
   async workspace(reportId?: string): Promise<ReviewWorkspace> {
     const result = await this.api.request<ReviewWorkspace>('GET', this.path('review-workspace') + (reportId ? `?report_id=${encodeURIComponent(reportId)}` : ''), undefined, {}, this.signal);
-    if (result.project?.project_id !== this.projectId || result.project.kind !== 'review' ||
+    if (result.project?.project_id !== this.projectId ||
       !Array.isArray(result.materials) || !Array.isArray(result.messages) || !Array.isArray(result.message_drafts) || !Array.isArray(result.reports) || !Array.isArray(result.artifacts) ||
       !Number.isInteger(result.draft?.version) || result.draft.version < 0 ||
       result.selected_report && (!isReviewReport(result.selected_report) || result.selected_report.project_id !== this.projectId || reportId && result.selected_report.report_id !== reportId) ||

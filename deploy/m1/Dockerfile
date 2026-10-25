@@ -17,7 +17,7 @@ RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY apps apps
 # The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
-COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/
+COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
 COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
 COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
@@ -97,13 +97,22 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD ["node","-e","fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
 CMD ["node","apps/api/dist/server.js"]
 
+FROM node-runtime AS integrity-egress
+USER node
+EXPOSE 3129
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=require('net').connect(3129,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+CMD ["node","apps/worker/dist/integrity-egress.js"]
+
 FROM node-runtime AS worker
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
+RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
 ARG BB_RELEASE_SHA=unknown
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 # Bookworm OCR engine and language data are pinned independently; osd is used on every page.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv ca-certificates util-linux \
+      python3 python3-venv ca-certificates util-linux libreoffice-writer fonts-noto-cjk \
+      xvfb xauth x11-utils openbox dbus-x11 xfdesktop4 xfce4-panel wmctrl scrot \
       tesseract-ocr=5.3.0-2 \
       tesseract-ocr-eng=1:4.1.0-2 \
       tesseract-ocr-chi-sim=1:4.1.0-2 \

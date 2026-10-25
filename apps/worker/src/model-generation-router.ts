@@ -1,3 +1,5 @@
+import { projectQaModelStage } from './project-qa-stage.js';
+import { integrityModelStage } from './integrity-stage.js';
 /** Routes the shared model_generation stage by the immutable run task kind. */
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { noHistoryModelGenerationStage } from './no-history-model-stage.js';
@@ -14,6 +16,7 @@ import { fileAuthoringStage } from './file-authoring-stage.js';
 import { reviewRevisionCliStage } from './review-revision-cli-stage.js';
 import { m4DocumentStage } from './m4-document-stage.js';
 import { m4QaStage } from './m4-qa-stage.js';
+import { projectFileModelStage } from './project-file-stage.js';
 
 export interface ModelGenerationRouterOptions {
   /** Trusted adapters are supplied only after their server-side sources are implemented. */
@@ -62,10 +65,13 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
+      if((ctx.values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return projectQaModelStage().run(ctx);
+      if((ctx.values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return integrityModelStage().run(ctx);
+    if((ctx.values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return projectFileModelStage().run(ctx);
       const m4=(ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode;
       if(m4==='document')return (options.m4Document??m4DocumentStage()).run(ctx);
       if(m4==='qa')return (options.m4Qa??m4QaStage()).run(ctx);
-      if (!options.reviewStage && (ctx.values.get('input_lock') as { file_delivery?: string })?.file_delivery === 'review-file-v1')
+      if (!options.reviewStage && ['review-file-v1','review-correction-v2'].includes((ctx.values.get('input_lock') as { file_delivery?: string })?.file_delivery ?? ''))
         return reviewFileStage().run(ctx);
       if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {
         const result = await (options.reviewStage ?? reviewModelStage({ loadInput: loadReviewInput })).run(ctx);

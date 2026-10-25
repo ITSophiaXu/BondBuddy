@@ -84,7 +84,7 @@ test('real local API saves the selected material and cutoff, then recovers the s
     await page.getByLabel('用户名').fill(username);
     await page.getByLabel('密码').fill(password);
     await page.getByRole('button', { name: '登录', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
 
     await page.getByRole('link', { name: '更新募集书', exact: true }).click();
     const projectName = `合成执行恢复 ${username}`;
@@ -168,7 +168,7 @@ test('real local API saves the selected material and cutoff, then recovers the s
     await reopened.getByLabel('用户名').fill(username);
     await reopened.getByLabel('密码').fill(password);
     await reopened.getByRole('button', { name: '登录', exact: true }).click();
-    await expect(reopened.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+    await expect(reopened.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
     await reopened.getByRole('link', { name: '全部项目', exact: true }).first().click();
     await expect(reopened.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
     const recoveredRunResponse = reopened.waitForResponse(response => response.url().endsWith(`/runs/${run.run_id}`) &&

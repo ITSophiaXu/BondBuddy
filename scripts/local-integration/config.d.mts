@@ -1,4 +1,6 @@
 export const repo: string;
+export const instance: string;
+export const workerImage: string;
 export const root: string;
 export const runtime: string;
 export const binaries: string;

@@ -5,6 +5,15 @@ import { ApiError, type ApiClient, type Dto } from './api.js';
 import { createFromFields, Draft } from './draft.js';
 
 const project: Dto<'ProjectResponse'> = { project_id: 'synthetic', draft_revision: 1, input_revision: null, input_hash: null, name: '合成测试', kind: 'update', issuer_name: null, market: 'nafmii', offering: 'dfi', update_details: emptyUpdateDetails(), updated_at: '2026-09-24T00:00:00Z' };
+test('task completion refreshes a saved revision without adopting concurrent field edits',()=>{
+  const draft=new Draft(project,{} as ApiClient,()=>{});
+  assert.equal(draft.adoptUnchanged({...project,draft_revision:2}),true);
+  assert.equal(draft.project.draft_revision,2);
+  assert.equal(draft.adoptUnchanged({...project,draft_revision:3,name:'Remote edit'}),false);
+  draft.edit({name:'Local edit'});
+  assert.equal(draft.adoptUnchanged({...project,draft_revision:3}),false);
+  assert.equal(draft.fields.name,'Local edit');draft.dispose();
+});
 test('local draft kind is derived from the historical answer for creation and validation', () => {
   const fields = { name: '无历史稿项目', issuer_name: '', market: 'sse' as const, offering: 'private' as const,
     update_details: { ...emptyUpdateDetails(), has_historical: false } };

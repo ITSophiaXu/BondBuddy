@@ -16,7 +16,7 @@ progress('read-done','read_materials','completed');
 progress('report-start','prepare_report','started');
 if (marker) appendFileSync(marker, JSON.stringify({ input_hash: input.input_hash, material_count: input.materials.length }) + '\n');
 // Exercise host conversion from complete Markdown, without an agent-generated DOCX or JSON.
-writeFileSync(cwd + '/output/report.md', '# 合成复核报告\n\n## 财务核对\n### 合成金额100与120不一致\n**原文位置：** 第一段\n**原文披露：** Synthetic worker upload fixture\n**核对依据：** 合成报表120\n**修改建议：** 核实金额\n\n## 公开信息核验\n缺失事项：公开检索未执行。\n');
+writeFileSync(cwd + '/output/report.md', '# 合成复核报告\n\n## 财务核对\n### 合成金额100与120不一致\n**复核类别：** 财务数据一致性\n**原文位置：** 第一段\n**原文披露：** Synthetic worker upload fixture\n**核对依据：** 合成报表120\n**问题说明：** 合成修改用于验证原生修订交付\n**处理方式：** 直接修改\n**替换文本：** Synthetic reviewed fixture\n**缺少材料：** 无\n\n## 公开信息核验\n缺失事项：公开检索未执行。\n');
 progress('report-done','prepare_report','completed');
 console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: '复核结果已保存为 report.md。非JSON返回。' } }));
 console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 100, output_tokens: 50 } }));

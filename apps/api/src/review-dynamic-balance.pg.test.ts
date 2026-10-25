@@ -9,6 +9,7 @@ import {auditCredits} from './billing-ops.js';
 import {claim,renew,checkpointStage,pauseAtCheckpoint,resumePausedRun,recordReviewAction,finish,promoteWordArtifact} from './queue.js';
 import {digest,uid,transaction,type PrivateBlobs} from './data.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
+import {syntheticReviewPair} from './review-delivery-test-fixture.js';
 
 const connection=await isolatedTestDatabase(undefined,'review-dynamic-balance');
 test('review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund',{skip:!connection,timeout:120000},async()=>{
@@ -48,8 +49,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
     ok(await act(run.run_id,'pause'));const frozen=(await charge(run.run_id)).progress.charged_points;
     await renew(pool,resumed);assert.equal((await charge(run.run_id)).progress.charged_points,frozen);assert.equal(await pauseAtCheckpoint(pool,resumed),true);
     ok(await act(run.run_id,'resume'));const saving=await claim(pool);assert.ok(saving);
-    const report=await promoteWordArtifact(pool,saving,makeSyntheticDocxFixture({text:'Synthetic dynamic review report'}),blobs,'generated_pair_v1');
-    await pool.query("INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename) VALUES($1,$2,$3,$4,1,'report','synthetic.docx')",[owner,prepared.project.project_id,run.run_id,report.artifactId]);
+    const report=await syntheticReviewPair(pool,saving,blobs);
     await checkpointStage(pool,saving,'review_saved_report',{artifact:report.artifactId});
     assert.equal((await finish(pool,saving,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs})).state,'paused');
     await fund(20000);assert.equal(await resumePausedRun(pool,owner,run.run_id,'credits_recharged'),true);
@@ -80,8 +80,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
       await checkpointStage(pool,oldLease,'materials_ready',{});await age(old.run_id);await renew(pool,oldLease);
       assert.deepEqual(await creditBalance(pool,owner),before);assert.equal((await charge(old.run_id)).progress.policy,'on_delivery');
       if(outcome==='succeeded'){
-        const artifact=await promoteWordArtifact(pool,oldLease,makeSyntheticDocxFixture({text:'Synthetic legacy review report'}),blobs,'generated_pair_v1');
-        await pool.query("INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename) VALUES($1,$2,$3,$4,1,'report','synthetic.docx')",[owner,legacy.project.project_id,old.run_id,artifact.artifactId]);
+        const artifact=await syntheticReviewPair(pool,oldLease,blobs);
         await finish(pool,oldLease,outcome,{artifactId:artifact.artifactId,artifactVersion:1,blobs});
       }else if(outcome==='cancelled')ok(await act(old.run_id,'cancel'));
       else await finish(pool,oldLease,outcome,{errorCode:'DATA_UNAVAILABLE'});

@@ -1,0 +1,85 @@
+{
+  "checkedAt": "2026-10-20T08:52:23.113Z",
+  "data": "synthetic input; real PostgreSQL, Azurite, worker and model",
+  "projects": [
+    {
+      "id": "7c6243f4-e27a-4e27-99f7-43f3afab8bb7",
+      "name": "澄川城市建设集团有限公司（合成验收）-深交所-普通私募公司债-募集书更新",
+      "kind": "update"
+    },
+    {
+      "id": "ca433918-14bd-4d70-8b0c-575e2e4962b3",
+      "name": "云河交通 2026 年中期票据（合成验收）",
+      "kind": "update"
+    },
+    {
+      "id": "05345645-c5f3-4f2f-9ff1-510ec6630c07",
+      "name": "新远实业 2026 年公司债（合成验收）",
+      "kind": "review"
+    }
+  ],
+  "runs": [
+    {
+      "id": "35de03d9-999c-4bbc-8f6d-379b4f72ffa5",
+      "project_id": "7c6243f4-e27a-4e27-99f7-43f3afab8bb7",
+      "task_kind": "review",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "artifact_id": "word-b595bedbed429d7d032510dba099454b578adf7335f7dd2a3d71ef5509a46251"
+    }
+  ],
+  "calls": [
+    {
+      "id": "call-3cdb8a8b-9db3-44fc-b800-0aee86bd10c3",
+      "run_id": "35de03d9-999c-4bbc-8f6d-379b4f72ffa5",
+      "status": "completed",
+      "usage_status": "measured"
+    }
+  ],
+  "files": [
+    {
+      "id": "word-294c21f8b1c79ec88a7bf5d9e72ee2b34851355d6b56d55bf18f02d6c90b8bb3",
+      "version": 1,
+      "run_id": "35de03d9-999c-4bbc-8f6d-379b4f72ffa5",
+      "sha256": "5d22800cc68492e7d45fdceb17feb773bc89dbd01b1f52e5fee75a7bc108984e",
+      "delivery_status": "available"
+    },
+    {
+      "id": "word-b595bedbed429d7d032510dba099454b578adf7335f7dd2a3d71ef5509a46251",
+      "version": 1,
+      "run_id": "35de03d9-999c-4bbc-8f6d-379b4f72ffa5",
+      "sha256": "9acc93ec995559774569e3da38a47f7508a34c4590f08ccc8d9c080bcc43b63f",
+      "delivery_status": "available"
+    },
+    {
+      "id": "word-c5b0826a637f27b0931a17d1b386759db4e50b22fdcbbacdf74ac7df0c2c1001",
+      "version": 1,
+      "run_id": "35de03d9-999c-4bbc-8f6d-379b4f72ffa5",
+      "sha256": "d8bfd08fa886ea68414bcc951e1c5068dd47d34ee2095940a495c093cebf9f9a",
+      "delivery_status": "available"
+    }
+  ],
+  "browserDownloads": [
+    {
+      "filename": "澄川城市建设集团有限公司（合成验收）-深交所-普通私募公司债-募集书_募集书修订版_V1_20261020.docx",
+      "sha256": "9acc93ec995559774569e3da38a47f7508a34c4590f08ccc8d9c080bcc43b63f",
+      "matchesBackend": true
+    },
+    {
+      "filename": "澄川城市建设集团有限公司（合成验收）-深交所-普通私募公司债-募集书_募集书清洁版_V1_20261020.docx",
+      "sha256": "5d22800cc68492e7d45fdceb17feb773bc89dbd01b1f52e5fee75a7bc108984e",
+      "matchesBackend": true
+    }
+  ],
+  "browserChecks": [
+    "default all-projects navigation and legacy dashboard redirect",
+    "real running-to-succeeded review summary",
+    "expand exact task result with 8 findings",
+    "project file categories and version dialog",
+    "download revision and clean Word with matching SHA-256",
+    "search, completed filter, archive and restore",
+    "same-project update and file-generation source picker",
+    "responsive 320 and 390 widths without horizontal overflow"
+  ],
+  "scope": "Development self-test on synthetic documents with real local services and model. No production deployment; user acceptance pending; full Playwright suite not run."
+}

@@ -64,6 +64,7 @@ export class ArtifactPage {
         ${artifact.delivery_status === 'test_only' ? '<p>内部测试工作稿·未经专业审核·不得对外使用</p>' : ''}
         <div class="artifact-files">${files.map((file, index) => `<article class="artifact-file ${index === 0 ? 'artifact-file-primary' : ''}"><h3>${file.label}${file.variant === 'clean' ? '<span class="artifact-recommended">推荐阅读</span>' : ''}</h3><p>${file.description}</p><button class="button ${index === 0 ? 'primary' : 'secondary'}" data-artifact-file="${index}">下载${file.label}</button><p class="artifact-download-status" data-download-status="${index}" role="status"></p></article>`).join('')}</div>
         ${delivery ? '<p class="artifact-download-note">两版均可能保留待人工确认的标记或批注，请在使用前核对。</p>' : ''}
+        <a class="button secondary" href="#consistency?project=${encodeURIComponent(project.source_project_id??project.project_id)}">检查文件一致性</a>
       </section>
       <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${artifact.delivery_status === 'test_only' ? '内部测试工作稿·未经专业审核·不得对外使用' : pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
         <p>${generatedPair ? '修订版和清洁版已生成，可以下载。' : '文件已通过服务端交付检查；生成完成不表示业务事实已全部确认或达到正式申报条件。'}</p>

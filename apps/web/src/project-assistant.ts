@@ -36,6 +36,21 @@ export class ProjectAssistant {
   private narrow=window.matchMedia('(max-width:960px)');
   private resize=()=>this.syncLayout();
   private open=false;
+  private embeddedProject?:string;
+  private embedPending=false;
+  async embedProject(container:HTMLElement,projectId:string){
+    this.embeddedProject=projectId;container.append(this.host);this.host.classList.add('ba-embedded');this.open=true;
+    if(this.workspace?.topic.source_project_id!==projectId){
+      if(this.busy){this.embedPending=true;this.paint();return;}
+      await this.work(async()=>{this.topics=(await this.m4.topics()).topics.filter(t=>t.surface==='assistant');
+        if(this.embeddedProject!==projectId)return;
+        const topic=this.topics.find(t=>t.source_project_id===projectId);
+        if(topic)await this.select(topic.topic_id);else await this.newConversation(projectId);
+      });
+    }
+    this.paint();
+  }
+  detachProject(){if(!this.embeddedProject)return;this.embeddedProject=undefined;this.embedPending=false;document.body.append(this.host);this.host.classList.remove('ba-embedded');this.open=false;this.paint();}
   private active=false;
   private wide=false;
   private history=false;
@@ -71,8 +86,8 @@ export class ProjectAssistant {
     this.host.addEventListener('click',e=>void this.click(e));
     this.host.addEventListener('input',e=>this.input(e));
     this.host.addEventListener('change',e=>void this.change(e));
-    this.host.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.open){e.preventDefault();void this.setOpen(false);}
-      if(e.key==='Tab'&&this.narrow.matches){const items=[...this.host.querySelectorAll<HTMLElement>('button:not(:disabled),textarea:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')].filter(el=>el.getClientRects().length);
+    this.host.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.open&&!this.embeddedProject){e.preventDefault();void this.setOpen(false);}
+      if(e.key==='Tab'&&this.narrow.matches&&!this.embeddedProject){const items=[...this.host.querySelectorAll<HTMLElement>('button:not(:disabled),textarea:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')].filter(el=>el.getClientRects().length);
         const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}
       if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(e.target as HTMLElement).matches('[data-composer]')){e.preventDefault();void this.work(()=>this.send());}});
     window.addEventListener('bondbuddy:assistant',this.event);this.paint();
@@ -109,8 +124,9 @@ export class ProjectAssistant {
     dock.querySelector('[data-active-dot]')?.classList.toggle('is-active',this.active);
   }
   private syncLayout(){
-    const app=document.querySelector<HTMLElement>('.prototype-app');if(app)app.inert=this.open&&this.narrow.matches;
-    this.host.querySelector('.ba-panel')?.setAttribute('aria-modal',String(this.narrow.matches));
+    const app=document.querySelector<HTMLElement>('.prototype-app');if(app)app.inert=this.open&&this.narrow.matches&&!this.embeddedProject;
+    this.host.querySelector('.ba-panel')?.setAttribute('aria-modal',String(this.narrow.matches&&!this.embeddedProject));
+    if(this.embeddedProject)this.host.querySelector('.ba-panel')?.setAttribute('role','region');
   }
   private get live(){return !this.controller.signal.aborted;}
   private get view(){return this.workspace!.view;}
@@ -118,7 +134,7 @@ export class ProjectAssistant {
   private async work(fn:()=>Promise<unknown>){
     if(this.busy||!this.live)return;this.busy=true;this.error='';this.paint();
     try{await fn();}catch(e){if(this.live){this.error=assistantError(e);if(e instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED'].includes(e.code)){this.qaQuote=undefined;this.invalidateTask();}}}
-    finally{this.busy=false;if(this.live){this.paint();void this.drainUploads();}}
+    finally{this.busy=false;if(this.live){this.paint();if(this.embedPending&&this.embeddedProject&&this.host.parentElement){this.embedPending=false;void this.embedProject(this.host.parentElement,this.embeddedProject);}else void this.drainUploads();}}
   }
   private invalidateTask(){if(!this.workspace)return;this.view.assistant!.draft_token=crypto.randomUUID();this.qaQuote=undefined;this.changed();this.paintTimeline();}
   private currentUploads(){return this.uploads.filter(u=>u.topic===this.workspace?.topic.topic_id);}
@@ -301,7 +317,8 @@ export class ProjectAssistant {
     this.invalidateTask();this.paintStatus();void this.drainUploads();
   }
   private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=artifactFilename(a);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-  private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;
+  private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;if(this.embeddedProject&&['toggle','wide','project','current-project'].includes(a??''))return;
+    if(a==='embed-retry'&&this.embeddedProject&&this.host.parentElement){await this.embedProject(this.host.parentElement,this.embeddedProject);return;}
     if(a==='toggle'){await this.setOpen(!this.open);return;}
     if(a==='wide'){this.wide=!this.wide;this.paint();return;}
     if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
@@ -309,8 +326,8 @@ export class ProjectAssistant {
     if(a==='hide-form'){this.formOpen=false;this.paint();return;}
     await this.work(async()=>{
       if(a==='recover-view'&&this.workspace){const text=this.text;this.viewDirty=false;this.viewConflict=false;await this.select(this.workspace.topic.topic_id);this.text=text;this.changed();await this.flush();this.status='已载入最新会话，本页未发送文字已保留。';}
-      if(a==='new')await this.newConversation();
-      if(a==='select')await this.select(el.dataset.id!);
+      if(a==='new')await this.newConversation(this.embeddedProject);
+      if(a==='select'&&(!this.embeddedProject||this.topics.some(t=>t.topic_id===el.dataset.id&&t.source_project_id===this.embeddedProject)))await this.select(el.dataset.id!);
       if(a==='send')await this.send();
       if(a==='current-project'){const id=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];if(id)await this.newConversation(decodeURIComponent(id));}
       if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;this.projectPicker=true;}
@@ -401,6 +418,7 @@ export class ProjectAssistant {
       .filter(input=>input.dataset.uploadContext===uploadContext).map(input=>[pickerKey(input),input]));
     this.host.hidden=!this.open;this.paintDock();
     this.host.classList.toggle('ba-wide',this.wide);this.host.classList.toggle('ba-open',this.open);
+    if(this.embeddedProject&&this.workspace?.topic.source_project_id!==this.embeddedProject){this.host.innerHTML=`<section class="ba-panel" role="region" aria-label="BondBuddy 项目对话"><p role="status" style="padding:24px">${this.error?esc(this.error):'正在打开本项目的 BondBuddy 对话…'}</p>${!this.busy?'<button data-a="embed-retry">重新打开对话</button>':''}</section>`;this.syncLayout();return;}
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
     const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
     this.host.innerHTML=this.open?`
@@ -409,7 +427,7 @@ export class ProjectAssistant {
       ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
       ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
-      ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
+      ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.filter(t=>!this.embeddedProject||t.source_project_id===this.embeddedProject).map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
       <footer class="ba-composer"><div data-uploads class="ba-uploads"></div><p data-status role="status"></p>${this.viewConflict?'<button data-a="recover-view">恢复最新会话并保留未发送文字</button>':''}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给 BondBuddy">${esc(this.text)}</textarea><div class="ba-send-row"><label class="ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
     // Keep the selected native input alive while upload completion redraws the panel.
     // Only reuse it within the same conversation/project, never across contexts.
