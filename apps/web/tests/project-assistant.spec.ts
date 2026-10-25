@@ -9,7 +9,7 @@ const now='2026-10-08T10:00:00Z',hash='a'.repeat(64);
 function fixture(){return {topic:{topic_id:'topic',project_id:'scope',source_project_id:null,name:'BondBuddy',surface:'assistant',created_at:now,updated_at:now},
  project:{project_id:'scope',kind:'qa',name:'BondBuddy',draft_revision:1},materials:[],material_details:[],drafts:{},templates:[],messages:[] as any[],tasks:[],artifacts:[],pending_requirements:[],active_run:null,
  view:{version:0,selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},assistant:{project_id:null,action:null}}};}
-async function setup(page:Page,{paid=false,fixed=false}={}){
+async function setup(page:Page,{paid=false,fixed=false,replyStatus='completed'}={}){
  const w:any=fixture(),messages:any[]=[],executions:any[]=[],cards:any[]=[],uploads:any[]=[];let quoteReads=0,releaseUpload:(()=>void)|undefined;
  const delivered=Buffer.from('Synthetic downloadable report'),deliveredHash=createHash('sha256').update(delivered).digest('hex');
  w.drafts.private_summary={document_type:'private_summary',version:0,sha256:hash,updated_at:null,source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[]};
@@ -34,13 +34,75 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   else if(path==='/m4/topics/topic/materials'){const pin=req.postDataJSON().material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
   else if(path==='/artifacts/result')body={filename:'合成项目_复核报告_V2_20261009.txt',artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
   else if(path==='/artifacts/result/download'){await route.fulfill({contentType:'text/plain',body:delivered});return;}
-  else if(path.endsWith('/messages')){const b=req.postDataJSON();messages.push(b);w.messages.push({message_id:'message',role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context},
-    {message_id:'answer',role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message:w.messages[0],run:{run_id:'qa'}};}
+  else if(path.endsWith('/messages')){const b=req.postDataJSON();messages.push(b);const message={message_id:'message-'+messages.length,role:'user',content:b.content,created_at:now,reply_status:replyStatus,context:b.context};w.messages.push(message);
+    w.tasks.push({run:{run_id:'qa-'+messages.length},manifest:{kind:'qa',topic_id:'topic',message_id:message.message_id,materials:structuredClone(w.materials)},events:[],artifacts:[]});
+    if(replyStatus==='completed')w.messages.push({message_id:'answer-'+messages.length,role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message,run:{run_id:'qa'}};}
   else if(path==='/runs/execute'){executions.push(req.postDataJSON());body={};}
   else {status=404;body={code:'NOT_FOUND'};}
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
+const layoutPrompt='读取上传文件中的合同信息，整理为 Excel：债务年度、企业名称、借款期限、借款类型、利率（%）、债权人全称、借款金额、期末债务余额、一年内到期的非流动负债、债务开始日期、债务结束日期、债务期限（月）、索引。';
+const layoutFiles=Array.from({length:19},(_,i)=>({name:`合成合同-${String(i+1).padStart(2,'0')}-借款与担保明细-20261015.txt`,mimeType:'text/plain',buffer:Buffer.from(`Synthetic contract ${i+1}`)}));
+for(const viewport of [{width:1440,height:960},{width:760,height:1648},{width:390,height:844}])test(`message layout: ${viewport.width} sends 19 files into the turn and keeps progress separate`,async({page})=>{
+ await page.setViewportSize(viewport);const s=await setup(page,{replyStatus:'running'});
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+ await expect(page.locator('[data-composer]')).toBeEnabled();
+ await page.locator('.ba-composer [data-file]').setInputFiles(layoutFiles);
+ await expect(page.locator('[data-uploads]>div')).toHaveCount(19);await expect(page.locator('[data-uploads]')).not.toContainText(/等待上传|正在|上传 \d/);
+ await page.locator('[data-composer]').fill(layoutPrompt);await page.locator('[data-a=send]').click();
+ const bubble=page.locator('.ba-message-user'),status=page.locator('.ba-reply-status'),files=bubble.locator('.ba-message-files');
+ await expect(bubble.locator('.ba-text')).toHaveText(layoutPrompt);await expect(files.locator('summary')).toContainText('本轮使用 19 份材料');
+ await expect(page.locator('[data-uploads]')).toBeEmpty();await expect(page.locator('[data-composer]')).toHaveValue('');
+ await expect(status).toContainText('正在阅读并整理回复');await expect(bubble.locator('.ba-thinking')).toHaveCount(0);
+ const bounds=await page.evaluate(()=>{const bubble=document.querySelector('.ba-message-user')!,author=bubble.querySelector('small')!,text=bubble.querySelector('.ba-text')!,status=document.querySelector('.ba-reply-status')!,panel=document.querySelector('.ba-panel')!;
+  return {display:getComputedStyle(bubble).display,authorBottom:author.getBoundingClientRect().bottom,textTop:text.getBoundingClientRect().top,textWidth:text.getBoundingClientRect().width,bubbleBottom:bubble.getBoundingClientRect().bottom,statusTop:status.getBoundingClientRect().top,statusHeight:status.querySelector('p')!.getBoundingClientRect().height,panelWidth:panel.clientWidth,scrollWidth:panel.scrollWidth};});
+ expect(bounds.display).toBe('block');expect(bounds.textTop).toBeGreaterThan(bounds.authorBottom);expect(bounds.textWidth).toBeGreaterThan(240);
+ expect(bounds.statusTop).toBeGreaterThanOrEqual(bounds.bubbleBottom);expect(bounds.statusHeight).toBeLessThan(35);expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.panelWidth);
+ if(process.env.ASSISTANT_MESSAGE_EVIDENCE){const dir=process.env.ASSISTANT_MESSAGE_EVIDENCE;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${viewport.width}.png`)});
+  const prototype=await page.context().newPage();await prototype.setViewportSize(viewport);await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));
+  await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await prototype.locator('.ba-composer input[type=file]').setInputFiles(layoutFiles);
+  await prototype.getByRole('textbox',{name:'发送给 BondBuddy'}).fill(layoutPrompt);await prototype.locator('[data-a=send]').click();await prototype.locator('[data-a=send]').click();
+  await expect(prototype.locator('.ba-message-files')).toContainText('19 份材料');await prototype.mouse.move(0,0);await prototype.screenshot({path:resolve(dir,`prototype-${viewport.width}.png`)});await prototype.close();
+ }
+ await files.locator('summary').click();await expect(files.locator('li')).toHaveCount(19);
+ s.w.material_details.push({...s.w.material_details[0],material_id:'later',filename:'后续新增材料.txt'});
+ await page.clock.install();await page.clock.fastForward(4000);await expect(files).toHaveAttribute('open','');await expect(files.locator('li')).toHaveCount(19);await expect(files).not.toContainText('后续新增');
+ await page.reload();await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(files.locator('summary')).toContainText('19 份材料');await expect(page.locator('[data-uploads]')).toBeEmpty();
+ await page.clock.install();s.w.messages[0].reply_status='completed';s.w.messages.push({message_id:'answer',role:'assistant',content:'合成回复已完成。',created_at:now,reply_status:'completed',context:s.w.view.unsent_context});
+ await page.clock.fastForward(4000);await expect(status).toHaveCount(0);await expect(page.locator('.ba-message-assistant')).toContainText('合成回复已完成');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);
+});
+
+test('message layout: failed submission retains files and text; accepted retry clears only the submitted uploads',async({page})=>{
+ const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+ await expect(page.locator('[data-composer]')).toBeEnabled();
+ await page.locator('.ba-composer [data-file]').setInputFiles(layoutFiles[0]);await expect(page.locator('[data-uploads]')).toContainText('已保存');
+ await page.locator('[data-composer]').fill('请解释合同中的担保条款');await page.locator('[data-a=send]').click();await expect(page.locator('[data-qa-price]')).toContainText('60');await expect(page.locator('[data-uploads]>div')).toHaveCount(1);
+ await page.route('**/m4/topics/topic/messages',route=>route.fulfill({status:503,json:{code:'UNAVAILABLE'}}),{times:1});
+ await page.locator('[data-a=send]').click();await expect(page.locator('[data-status]')).not.toBeEmpty();await expect(page.locator('[data-composer]')).toHaveValue('请解释合同中的担保条款');await expect(page.locator('[data-uploads]>div')).toHaveCount(1);expect(s.messages).toHaveLength(0);
+ let release!:()=>void;const held=new Promise<void>(resolve=>release=resolve);await page.route('**/m4/topics/topic/messages',async route=>{await held;await route.fallback();},{times:1});
+ await page.locator('[data-a=send]').click();await page.locator('.ba-composer [data-file]').setInputFiles(layoutFiles[1]);release();
+ await expect(page.locator('.ba-message-user')).toContainText('请解释合同');await expect(page.locator('[data-uploads]>div')).toHaveCount(1);await expect(page.locator('[data-uploads]')).toContainText(layoutFiles[1].name);await expect(page.locator('[data-uploads]')).not.toContainText(layoutFiles[0].name);
+ expect(s.messages).toHaveLength(1);expect(s.w.materials).toHaveLength(2);await expect(page.locator('.ba-message-files')).toContainText('本轮使用 1 份材料');
+});
+
+test('message layout: files added during quote preparation remain in the composer',async({page})=>{
+ const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('[data-composer]')).toBeEnabled();
+ await page.locator('.ba-composer [data-file]').setInputFiles(layoutFiles[0]);await expect(page.locator('[data-uploads]')).toContainText('已保存');
+ let release!:()=>void;const held=new Promise<void>(resolve=>release=resolve);await page.route('**/m4/topics/topic/quote',async route=>{await held;await route.fallback();},{times:1});
+ await page.locator('[data-composer]').fill('请读取合同');const quoteRequest=page.waitForRequest('**/m4/topics/topic/quote');await page.locator('[data-a=send]').click();await quoteRequest;
+ await page.locator('.ba-composer [data-file]').setInputFiles(layoutFiles[1]);release();
+ await expect(page.locator('.ba-message-user')).toContainText('请读取合同');await expect(page.locator('[data-uploads]>div')).toHaveCount(1);await expect(page.locator('[data-uploads]')).toContainText(layoutFiles[1].name);await expect(page.locator('[data-uploads]')).toContainText('已保存');
+ await expect(page.locator('.ba-message-files')).toContainText('本轮使用 1 份材料');expect(s.messages).toHaveLength(1);
+});
+
+test('message layout: queued and failed reply status stay outside the user bubble',async({page})=>{
+ const s=await setup(page,{replyStatus:'queued'});await page.clock.install();await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await page.locator('[data-composer]').fill('请读取这些合同');await page.locator('[data-a=send]').click();
+ await expect(page.locator('.ba-reply-status')).toContainText('已收到，等待处理');await expect(page.locator('.ba-message-user')).not.toContainText('等待处理');
+ s.w.messages[0].reply_status='failed';s.w.messages[0].error='合成回复失败，请重试。';await page.clock.fastForward(4000);
+ await expect(page.locator('.ba-reply-status [role=alert]')).toHaveText('合成回复失败，请重试。');await expect(page.locator('.ba-message-user [role=alert]')).toHaveCount(0);
+});
+
 test('duplicate feedback: assistant attachments identify renamed duplicates without another material',async({page})=>{
  const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
  await expect(page.locator('[data-composer]')).toBeEnabled();
@@ -57,6 +119,8 @@ test('duplicate feedback: assistant attachments identify renamed duplicates with
  await expect(page.locator('[data-composer]')).toBeEnabled();expect(await nativeInput!.evaluate(el=>el.isConnected)).toBe(true);
  await page.getByRole('button',{name:'收起助手',exact:true}).click();await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(notice).toHaveCount(1);
  if(process.env.BB_DUPLICATE_EVIDENCE)await notice.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/assistant.png`});
+ await page.locator('[data-composer]').fill('请读取附件');await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message-user')).toContainText('请读取附件');
+ await expect(page.locator('[data-uploads]')).toBeEmpty();await expect(page.locator('.ba-message-files')).toContainText('本轮使用 1 份材料');expect(s.messages).toHaveLength(1);
 });
 
 test('mobile assistant keeps focus inside and restores navigation and logout after closing',async({page})=>{
@@ -87,7 +151,7 @@ test('global launcher preserves unsent text across navigation, collapse, reload 
  await page.locator('[data-composer]').fill('这种表述是否合适？');await expect.poll(()=>s.w.view.unsent_content).toBe('这种表述是否合适？');
  await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar a[href="#tasks"]').click();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
  await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
- await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message.assistant')).toContainText('可先说明');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);await expect(page.locator('.ba-task')).toHaveCount(0);
+ await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message-assistant')).toContainText('可先说明');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);await expect(page.locator('.ba-task')).toHaveCount(0);
  await page.locator('[data-a=history]').click();await expect(page.locator('.ba-history')).toContainText('BondBuddy');
 });
 test('a slow autosave receipt survives background polling without a false conversation conflict',async({page})=>{
@@ -103,7 +167,7 @@ test('a slow autosave receipt survives background polling without a false conver
  await page.locator('[data-composer]').fill('第一次未发送编辑');await page.clock.fastForward(500);await started;
  // Seeing this server-only reply proves polling replaced the workspace during the held PUT.
  s.w.messages.push({message_id:'poll-marker',role:'assistant',content:'合成后台轮询回执',created_at:now,reply_status:'completed',context:s.w.view.unsent_context});
- await page.clock.fastForward(4000);await expect(page.locator('.ba-message.assistant')).toContainText('合成后台轮询回执');
+ await page.clock.fastForward(4000);await expect(page.locator('.ba-message-assistant')).toContainText('合成后台轮询回执');
  const receipt=page.waitForResponse(response=>response.url().endsWith('/m4/topics/topic/view')&&response.request().method()==='PUT');releaseSave();await receipt;
  await expect.poll(()=>s.w.view.version).toBe(1);
  await page.locator('[data-composer]').fill('第二次未发送编辑');await page.clock.fastForward(500);

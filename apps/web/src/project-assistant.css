@@ -192,11 +192,21 @@ body:has(.bb-assistant.ba-open){overflow:hidden}
 .bb-assistant .ba-shortcuts button{padding:10px;gap:9px}
 }
 
-.ba-message{margin-bottom:22px}
-.ba-message>small{font-size:11px;color:#7a8d80;display:block;margin-bottom:7px}
-.ba-message.user{margin-left:38px;background:#eff5f0;padding:12px 15px;border-radius:14px 14px 3px 14px}
+.ba-message{display:block;min-width:0;margin:0 0 22px}
+.ba-message>small,.ba-reply-status>small{font-size:11px;color:#7a8d80;display:block;margin-bottom:7px}
+.ba-message-user{margin-left:38px;background:#eff5f0;padding:12px 15px;border-radius:14px 14px 3px 14px}
 .ba-text{white-space:pre-wrap;overflow-wrap:anywhere}
-.ba-thinking{font-size:12px;color:#6c8076}
+.ba-reply-status{margin:0 0 22px;min-width:0;overflow-wrap:anywhere}
+.ba-reply-status p{margin:0;font-size:12px;color:#6c8076;line-height:1.7}
+.ba-reply-status [role=alert]{color:#916128}
+.ba-message-files{margin-top:12px;border-top:1px solid #dce7df;padding-top:9px;font-size:11px;color:#62796b}
+.ba-message-files summary{display:flex;align-items:center;gap:5px;cursor:pointer;list-style:none}
+.ba-message-files summary::-webkit-details-marker{display:none}
+.ba-message-files summary::after{content:'展开';margin-left:auto;white-space:nowrap}
+.ba-message-files[open] summary::after{content:'收起'}
+.ba-message-files .ba-icon{width:14px;height:14px}
+.ba-message-files ul{margin:8px 0 0;padding-left:18px;max-height:160px;overflow:auto;overflow-wrap:anywhere}
+.ba-message-files li{padding:3px 0}
 .ba-message .ba-suggestion{font-size:12px;margin-top:12px;border-color:#b5cfbe;background:#f5faf7}
 
 .ba-form,.ba-task{border:1px solid #d9e5dc;border-radius:13px;margin:8px 0 20px;background:#fff;padding:16px}
