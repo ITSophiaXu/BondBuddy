@@ -10,7 +10,7 @@ import {startIntegrityDesktop} from './integrity-desktop.js';
 import {integrityBrowserEnvironment} from './integrity-browser.js';
 import {integrityWebsiteFixture} from './integrity-browser-fixture.js';
 
-test('private native desktop captures browser and live Beijing clock, then closes its X socket',
+test('stock XFCE screen includes the browser and operating-system clock and closes its private X socket',
  {skip:!process.env.BB_TEST_INTEGRITY_DESKTOP,timeout:60000},async()=>{
  const dir=await mkdtemp(join(tmpdir(),'bb-desktop-test-'));
  const desktop=await startIntegrityDesktop(dir,integrityBrowserEnvironment(dir));
@@ -20,20 +20,22 @@ test('private native desktop captures browser and live Beijing clock, then close
   const context=await browser.newContext({viewport:null});
   await integrityWebsiteFixture(context,'zero');
   const page=await context.newPage();await page.goto('https://www.chinatax.gov.cn/');
+  const clockTime=()=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(new Date());
+  const before=clockTime();
   const bytes=await desktop.capture(page),path=join(dir,'proof.png');
+  const after=clockTime();
   assert.equal(bytes.readUInt32BE(16),1440);assert.equal(bytes.readUInt32BE(20),1000);
   await writeFile(path,bytes);
-  const {stdout}=await promisify(execFile)('tesseract',[path,'stdout','-l','eng'],{timeout:15000});
-  const clockPath=join(dir,'clock-check.png');
-  // OCR the clock separately so page layout does not affect its segmentation.
-  // This derivative is test-only; the collector's full-screen bytes stay intact.
-  await promisify(execFile)(process.env.BONDBUDDY_TEST_PYTHON??'python3',['-c',
-   'from PIL import Image,ImageOps; import sys; im=Image.open(sys.argv[1]); ImageOps.expand(im.crop((1200,944,1440,1000)),border=20,fill="black").resize((1120,384)).save(sys.argv[2])',path,clockPath],{timeout:15000});
-  const {stdout:clockText}=await promisify(execFile)('tesseract',[clockPath,'stdout','-l','eng','--psm','6'],{timeout:15000});
-  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replaceAll('-','/');
-  assert.ok(clockText.includes(date),clockText);assert.match(clockText,/\d{2}:\d{2}:\d{2}/);
-  assert.match(stdout,/chinatax\.gov\.cn/,'first native capture includes the rendered browser, not its blank startup window');
-  await page.waitForTimeout(1200);assert.notDeepEqual(await desktop.capture(page),bytes);
+  // Read the stock two-line clock as one block. Sparse full-panel OCR misses its second line.
+  // Crop/enlarge only a QA copy; the captured evidence remains unchanged.
+  const ocrPath=join(dir,'ocr-only.png');
+  await promisify(execFile)(process.env.BONDBUDDY_TEST_PYTHON??'python3',['-c','from PIL import Image; import sys; im=Image.open(sys.argv[1]); im.crop((im.width-140,0,im.width-35,27)).resize((420,108)).save(sys.argv[2])',path,ocrPath],{timeout:5000});
+  const {stdout}=await promisify(execFile)('tesseract',[ocrPath,'stdout','-l','eng','--psm','6'],{timeout:15000});
+  assert.ok([before,after].some(time=>stdout.includes(time)),stdout);
+  const windows=await promisify(execFile)('wmctrl',['-l','-x'],{env:desktop.env,timeout:5000});
+  assert.match(windows.stdout,/xfce4-panel/i);assert.match(windows.stdout,/chromium/i);
+  const {stdout:pageText}=await promisify(execFile)('tesseract',[path,'stdout','-l','eng'],{timeout:15000});
+  assert.match(pageText,/chinatax\.gov\.cn/,'first native capture includes the rendered browser, not its blank startup window');
   assert.equal(desktop.env.TZ,'Asia/Shanghai');
   assert.ok(!desktop.env.AZURE_STORAGE_CONNECTION_STRING&&!desktop.env.BB_COPILOT_OAUTH_FILE);
  }finally{

@@ -3,6 +3,8 @@
 services:
   integrity-egress:
     image: bondbuddy-m1-integrity-egress:${BB_IMAGE_TAG:?fixed release version required}
+    environment:
+      BB_INTEGRITY_EGRESS_BIND_HOST: 0.0.0.0
     restart: unless-stopped
     networks: [backend, edge]
     read_only: true
