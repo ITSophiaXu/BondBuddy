@@ -56,6 +56,17 @@ export async function startIntegrityDesktop(directory:string, base:NodeJS.Proces
    if(server.exitCode!==null||panel.exitCode!==null)throw Error('INTEGRITY_DESKTOP_LOST');
    await page.bringToFront();
    await exec('wmctrl',['-r',':ACTIVE:','-b','add,maximized_vert,maximized_horz'],{env,timeout:3000});
+   // A mapped/maximized X window can still contain Chromium's blank startup frame.
+   // Synchronize its compositor before capturing the native desktop; this buffer
+   // is discarded, and the saved evidence remains the untouched scrot image.
+   const deadline=Date.now()+10000;
+   for(;;){
+    try{await page.screenshot({timeout:Math.max(1,deadline-Date.now()),caret:'initial',animations:'allow'});break;}
+    catch(error){
+     if(!String(error).includes('Unable to capture screenshot')||Date.now()>=deadline)throw error;
+     await page.waitForTimeout(100);
+    }
+   }
    // Allow the native window manager to apply its bounds without altering website content.
    await page.waitForTimeout(200);
    const path=join(directory,`screen-${++sequence}.png`);
