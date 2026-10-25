@@ -2,6 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { createServer } from '@bondbuddy/api';
@@ -70,6 +73,21 @@ test('project review: real dual Word delivery, explicit promotion, manual export
     const update=await ok('POST',path+'/update-workspace',{});
     const updateVersions=await ok('GET','/api/v1/projects/'+update.update_project_id+'/prospectus-versions');
     assert.equal(updateVersions.versions.find((v:any)=>v.version_id===updateVersions.current_version_id).sha256,final.versions[0].sha256,'manual review promotion carries into update workspace');
+    // A provider can finish after its first progress message. The collector must
+    // preserve that evidence and fail delivery, without publishing an unchanged pair.
+    const incompleteRequest={...baseRequest,execution_request_id:randomUUID()};
+    const incompleteQuote=await ok('POST',path+'/review-executions/quote',incompleteRequest);
+    const incomplete=await ok('POST',path+'/review-executions',{...incompleteRequest,quote_id:incompleteQuote.quote.quote_id});
+    assert.equal(await execute(reviewFileStage({model:options=>({name:options.name,run:async()=>{
+      const directory=await mkdtemp(join(tmpdir(),'review-progress-only-'));
+      try{
+        await options.fileWorkspace!.prepare(directory);
+        return {kind:'done',value:await options.fileWorkspace!.collect(directory,{call_id:'synthetic-progress-only'} as never,{text:'BB_REVIEW_PROGRESS:read_materials:started'})};
+      }finally{await rm(directory,{recursive:true,force:true});}
+    }})})),'failed');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_artifacts WHERE run_id=$1',[incomplete.run_id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_editors WHERE run_id=$1',[incomplete.run_id])).rows[0].n,0);
+    const preserved=await ok('GET',path+'/review-workspace');assert.equal(preserved.artifact_run.run_id,exported.run_id,'failed review preserves previous successful artifacts');
     owner=randomUUID();assert.equal((await send('GET',path+'/review-executions/'+first.run_id+'/editor')).statusCode,404);assert.equal((await send('POST',path+'/review-exports',{...exportRequest,request_id:randomUUID()})).statusCode,404);assert.equal((await send('POST',path+'/review-source',{version_id:generated.version_id})).statusCode,404);
   }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();}
 });
