@@ -17,7 +17,10 @@ from PIL import Image
 
 TEMPLATE = Path(__file__).parent / 'templates' / 'integrity-workpaper.docx'
 PICTURE_WIDTH = 5274310
-STATUS = {'public_matches': '检索到相关记录，待核实', 'no_public_results': '本次检索未见相关记录', 'needs_manual': '待人工补证', 'not_applicable': '不适用', 'query_failed': '查询未完成，待人工补证'}
+# The worker supplies presentation from the shared contracts module, including for old records.
+# Direct legacy callers have no display classification; do not expose raw diagnostic text or invent a cause.
+def presentation(record):
+    return record.get('presentation', {'label': '历史查询记录（状态详情未提供）', 'description': '历史记录未提供可展示的查询详情。'})
 CONCLUSION = {'records_found': '发现记录', 'no_records': '该次查询未发现记录', 'unresolved': '仍待核实'}
 
 def beijing(value):
@@ -89,9 +92,9 @@ def generate(data, target):
     no_results = sum(r['status'] == 'no_public_results' for r in records)
     intro = f'本次查询涉及{len(info["draft"]["site_ids"])}项网站及栏目。'
     counts = []
-    if no_results: counts.append(f'{no_results}项本次检索未见相关记录')
-    if matches: counts.append(f'{matches}项检索到相关记录，主体及事项待核实')
-    if pending: counts.append(f'{pending}项待人工补证')
+    if no_results: counts.append(f'{no_results}项搜索无返回结果')
+    if matches: counts.append(f'{matches}项搜索返回结果，具体事项与主体匹配情况见下文')
+    if pending: counts.append(f'{pending}项查询未完成，具体原因见下文')
     if counts: intro += '其中，' + '；'.join(counts) + '。'
     intro += '具体核查情况如下：'
     para(intro, '{{intro}}')
@@ -110,7 +113,7 @@ def generate(data, target):
         for item in items:
             row = deepcopy(row_pattern)
             element.append(row)
-            for cell, text in zip(table.rows[-1].cells, [item['site_name'], STATUS[item['status']]]):
+            for cell, text in zip(table.rows[-1].cells, [item['site_name'], presentation(item)['label']]):
                 set_text(cell.paragraphs[0], text)
         for row in table.rows:
             for h in row._tr.xpath('./w:trPr/w:trHeight'):
@@ -150,15 +153,16 @@ def generate(data, target):
                 p._p.append(link)
                 para('采集日志时间（北京时间）：' + beijing(meta['captured_at']), small=True)
             if not automatic:
-                para('本次未取得可确认的搜索结果截图，待人工补证。' if r['status'] != 'not_applicable' else r['reason'])
+                para('本次未取得可确认的搜索结果截图，详见查询状态与原因。' if r['status'] != 'not_applicable' else r['reason'])
                 para('访问时间（北京时间）：' + beijing(r['checked_at']), small=True)
-            para('核查情况：' + r['reason'])
+            para('查询状态：' + presentation(r)['label'])
+            para('核查情况：' + presentation(r)['description'])
             for source in r.get('sources', []):
                 para('查询记录载明：“' + source['quote'] + '”。')
                 para('来源：' + source['title'] + ' ' + source['url'], small=True)
             if r.get('browser'):
                 para('查询范围：' + r['browser']['scope'], small=True)
-                limitation = r['browser']['limitation']
+                limitation = presentation(r).get('limitation', '本次记录未提供可展示的覆盖说明。')
                 if limitation not in seen_limitations:
                     para('覆盖限制（相同限制后文不再重复）：' + limitation, small=True)
                     seen_limitations.add(limitation)

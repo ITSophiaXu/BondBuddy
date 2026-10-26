@@ -135,7 +135,7 @@ export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
     round.result={version:'integrity-records-v1',records:input.draft.subjects.flatMap(s=>input.draft.site_ids.map(siteId=>{
      const observed=observations.find(o=>o.record.subject_id===s.id&&o.record.site_id===siteId);if(observed)return observed.record;
      const site=resolveIntegritySite(INTEGRITY_SITES.find(x=>x.id===siteId)!,s);
-     return {subject_id:s.id,site_id:siteId,site_name:site.name,urls:site.links.map(l=>l.url),query:'',status:s.kind==='person'&&site.companyOnly?'not_applicable':'query_failed',reason:'本轮结束前未取得本项查询记录，需人工补充证据。',checked_at:new Date().toISOString(),sources:[],search_performed:false};
+     return {subject_id:s.id,site_id:siteId,site_name:site.name,urls:site.links.map(l=>l.url),query:'',status:s.kind==='person'&&site.companyOnly?'not_applicable':'query_failed',reason:'本轮结束前未取得本项查询记录，无需上传补充证据。',checked_at:new Date().toISOString(),sources:[],search_performed:false};
     }))};
     await c.query('UPDATE bb_integrity_runs SET result=$3,result_hash=$4 WHERE owner_user_id=$1 AND run_id=$2 AND result IS NULL',[user,run_id,round.result,inputManifestHash(round.result)]);
    }

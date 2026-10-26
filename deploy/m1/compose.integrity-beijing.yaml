@@ -41,6 +41,8 @@ services:
       retries: 3
     deploy: {resources: {limits: {cpus: '0.1', memory: 64M}}}
   worker:
+    # Reap Chromium/desktop grandchildren after each short-lived site collection.
+    init: true
     security_opt: !override [no-new-privileges:true, "seccomp=./security/integrity-browser-seccomp.json", "apparmor=bondbuddy-codex-v1"]
     environment:
       BB_INTEGRITY_EGRESS_PROXY_URL: http://integrity-beijing-tunnel:3129
