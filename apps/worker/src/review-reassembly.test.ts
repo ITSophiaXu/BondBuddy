@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
+import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
 import { createServer } from '@bondbuddy/api';
-import { digest, uid, type PrivateBlobs } from '@bondbuddy/api/data';
+import { digest, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
-import { checkpointStage, claim, finish, recordPotentialCall, requeueFailedReviewAssembly } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, enqueue, finish, recordPotentialCall, requeueFailedReviewAssembly } from '@bondbuddy/api/queue';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { persistProviderResultObject, recordProviderCallObservation, type ProviderCallIntent } from '@bondbuddy/api/provider-results';
 import { isolatedTestDatabase } from './test-database.js';
 import { runReconcileCommand } from './reconcile-run.js';
@@ -30,7 +32,7 @@ function memoryBlobs(){
   return {blobs,objects};
 }
 
-async function fixture(pool:Pool,failedStage='model_generation'){
+async function fixture(pool:Pool,failedStage='model_generation',initialRunHash?:string){
   const owner=uid(),origin='http://bondbuddy.test',{blobs,objects}=memoryBlobs();
   const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableRunRuntime:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
@@ -44,14 +46,35 @@ async function fixture(pool:Pool,failedStage='model_generation'){
       VALUES($1,1,$2,$3,$4,'historical','synthetic.pdf','application/pdf',16,$5,$6,'persisted')`,[material,owner,project,upload,sha,`synthetic/${material}`]);
     const pin={material_id:material,material_version:1,sha256:sha};
     good(await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:0,input:{source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null,evidence_links:[]}}));
-    const start=await send('POST',`/api/v1/projects/${project}/review-executions`,{execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]});good(start);
-    const runId=start.json().run_id,lease=await claim(pool,120);assert.ok(lease);assert.equal(lease.runId,runId);
+    let runId:string;
+    if(initialRunHash){
+      // A corrupt origin that predates the guard remains recoverable only if
+      // its input evidence agrees. Seed that legacy row at INSERT; never turn
+      // off the guard or mutate a run after model evidence has been recorded.
+      const input=(await pool.query('SELECT input FROM bb_review_drafts WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].input;
+      const manifest={project_kind:'review',materials:[{...pin,role:'historical'}],review:{version:'review_v1',operation:'full_review',version_number:1,input}};
+      runId=uid();
+      await transaction(pool,async client=>{
+        await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+          VALUES($1,1,$2,1,$3,$4,$5,'[]')`,[project,owner,inputManifestHash(manifest),manifest,JSON.stringify(manifest.materials)]);
+        const run=(await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
+          VALUES($1,$2,$3,1,$4,$5,'review',$6,'queued') RETURNING *`,[runId,owner,project,initialRunHash,uid(),digest('synthetic legacy review request')])).rows[0];
+        await client.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot)
+          VALUES($1,$2,$3,1,'full_review',NULL,$4)`,[runId,owner,project,{input,input_version:1,finding_ids:[],plan:null,context_messages:[]}]);
+        await enqueue(client,run,RUN_PIPELINE_SUBTYPE);
+      });
+    }else{
+      const start=await send('POST',`/api/v1/projects/${project}/review-executions`,{execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]});good(start);
+      runId=start.json().run_id;
+    }
+    const lease=await claim(pool,120);assert.ok(lease);assert.equal(lease.runId,runId);
     const r=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[runId])).rows[0];
+    const lockedInputHash=(await pool.query('SELECT input_hash FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,r.input_revision])).rows[0].input_hash.trim();
     const prompt='Synthetic review prompt with immutable context',callKey=digest(prompt).slice(0,24),logical=`review-cli-v3-${callKey}`,promptStage=`review_cli_v3_${callKey}_prompt`;
-    const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:project,runId,kind:'model_request',version:1,body:prompt,inputRevision:r.input_revision,inputHash:r.input_hash.trim(),templateVersion:'synthetic-review-v1'});
+    const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:project,runId,kind:'model_request',version:1,body:prompt,inputRevision:r.input_revision,inputHash:lockedInputHash,templateVersion:'synthetic-review-v1'});
     await checkpointStage(pool,lease,promptStage,{snapshot_id:snapshot});
     await checkpointStage(pool,lease,'review_sources',{snapshots:[{material_id:material,material_version:1,snapshot_id:null,response_sha256:null,gap:'synthetic fixture'}]});
-    const input:ReviewAnalysisInput={input_hash:r.input_hash.trim(),evidence:{owner_user_id:owner,project_id:project,report_id:uid(),source_material:pin,records:[],rules:[]},
+    const input:ReviewAnalysisInput={input_hash:lockedInputHash,evidence:{owner_user_id:owner,project_id:project,report_id:uid(),source_material:pin,records:[],rules:[]},
       rule_context:null,rule_packs:[],formatting_requirements:[],requirements:[],scope:{mode:'full_review',finding_ids:[]},report_version:1,created_at:new Date(r.created_at).toISOString(),limitations:[]};
     const markdown='Synthetic method knowledge; no real review acceptance.';
     const data:ReviewToolData={input,knowledge:{id:'synthetic-knowledge',version:'synthetic-v1',sourceSHA:digest('synthetic knowledge source'),contentSHA:digest(markdown),markdown},allowed_target_ids:[]};
@@ -142,12 +165,12 @@ test('private review reassembly preserves original evidence, rolls back, is idem
 test('review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation',{skip:!connection},async t=>{
   const pool=new Pool({connectionString:connection});
   type Fixture=Awaited<ReturnType<typeof fixture>>;
-  const cases:{name:string;change:(f:Fixture)=>Promise<unknown>}[]=[
+  const cases:{name:string;initialRunHash?:string;change:(f:Fixture)=>Promise<unknown>}[]=[
     {name:'result Blob tamper',change:async f=>f.objects.set(f.result.result_ref,Buffer.from('tampered'))},
     {name:'missing result Blob',change:async f=>f.objects.delete(f.result.result_ref)},
     {name:'prompt Blob tamper',change:async f=>f.objects.set(f.promptRef,Buffer.from('changed prompt'))},
     {name:'missing prompt Blob',change:async f=>f.objects.delete(f.promptRef)},
-    {name:'wrong run input hash',change:f=>pool.query('UPDATE bb_runs SET input_hash=$2 WHERE id=$1',[f.runId,'f'.repeat(64)])},
+    {name:'wrong run input hash',initialRunHash:'f'.repeat(64),change:async()=>{}},
     {name:'missing prompt checkpoint',change:f=>pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages}','{}') WHERE id=$1",[f.lease.jobId])},
     {name:'duplicate result checkpoint',change:f=>pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{provider_results}',(checkpoint->'provider_results')||(checkpoint->'provider_results')) WHERE id=$1",[f.lease.jobId])},
     {name:'live lease',change:f=>pool.query("UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval '1 minute' WHERE id=$1",[f.lease.jobId,uid()])},
@@ -161,7 +184,7 @@ test('review reassembly rejects mismatched scope, non-replayable evidence and co
   ];
   try{
     for(const scenario of cases)await t.test(scenario.name,async()=>{
-      const f=await fixture(pool);await scenario.change(f);
+      const f=await fixture(pool,'model_generation',scenario.initialRunHash);await scenario.change(f);
       const before=await evidence(pool,f),job=(await pool.query('SELECT * FROM bb_jobs WHERE id=$1',[f.lease.jobId])).rows[0];
       const cursor=(await pool.query('SELECT event_cursor FROM bb_runs WHERE id=$1',[f.runId])).rows[0].event_cursor;
       await assert.rejects(f.recover(),/No recoverable|Blob evidence/);

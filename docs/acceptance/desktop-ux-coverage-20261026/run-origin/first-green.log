@@ -1,0 +1,63 @@
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.2993ms)
+✔ dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement (2953.6542ms)
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (4611.7981ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (5358.6765ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4141ms) # SKIP
+✖ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (1707.6878ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (126.1337ms)
+  ✔ owner (146.8798ms)
+  ✔ project (136.1586ms)
+  ✔ input revision (139.2097ms)
+  ✔ input hash (142.1592ms)
+  ✔ execution request id (131.6723ms)
+  ✔ request hash (137.0097ms)
+  ✔ valid successor input pair (134.3385ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (2689.4246ms)
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (420.2054ms)
+✔ review reassembly requires Blob evidence and an explicit exact identity (2.2254ms)
+✔ private review reassembly preserves original evidence, rolls back, is idempotent and reuses CLI result without a new call (1780.9583ms)
+▶ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation
+  ✔ result Blob tamper (1228.5659ms)
+  ✔ missing result Blob (747.6678ms)
+  ✔ prompt Blob tamper (703.0856ms)
+  ✔ missing prompt Blob (678.763ms)
+  ✔ wrong run input hash (669.8616ms)
+  ✔ missing prompt checkpoint (766.5491ms)
+  ✔ duplicate result checkpoint (696.1354ms)
+  ✔ live lease (679.6939ms)
+  ✔ wrong task kind (663.7403ms)
+  ✔ deleted project (734.9178ms)
+  ✔ existing report (674.6277ms)
+  ✔ conflicting usage (669.9332ms)
+  ✔ later unresolved attempt (693.1605ms)
+  ✔ active run in same project (698.3085ms)
+  ✔ foreign attempt and wrong expected hash (1374.0458ms)
+  ✔ failure in another stage (720.8808ms)
+✔ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation (12404.7444ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 33
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 84484.6452
+
+✖ failing tests:
+
+test at apps\api\dist\review-dynamic-balance.pg.test.js:13:1
+✖ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (1707.6878ms)
+  AssertionError [ERR_ASSERTION]: {"code":"CAPABILITY_NOT_READY","message":"Capability is not connected","retryable":false,"field_errors":[],"correlation_id":"cde44eac-68fa-4f3d-93a0-831b344a1c94"}
+      at ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-dynamic-balance.pg.test.js:20:32)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-dynamic-balance.pg.test.js:55:9)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

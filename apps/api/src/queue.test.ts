@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import { isolatedTestDatabase } from './test-database.js';
 import { createServer } from './server.js';
 import { checkpoint, claim, finish, jobSnapshot, pauseRun, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
-import { azureBlobs, type PrivateBlobs } from './data.js';
+import { azureBlobs, transaction, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { Ajv } from 'ajv';
 import { schemas } from '@bondbuddy/contracts';
@@ -55,12 +55,24 @@ test('unchanged issuer source gate rejects repeated resumes without queue churn;
     owner=`foreign-${randomUUID()}`;
     assert.equal((await send('POST',`/api/v1/runs/${id}/resume`,{reason:'synthetic'})).statusCode,404);
     owner=(await pool.query('SELECT owner_user_id FROM bb_runs WHERE id=$1',[id])).rows[0].owner_user_id;
-    const mismatched=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
-    assert.equal(mismatched.statusCode,202,mismatched.body);
-    const mismatchedId=mismatched.json().run_id;
-    const mismatchedLease=await claim(pool,30);assert.ok(mismatchedLease);assert.equal(mismatchedLease.runId,mismatchedId);
-    await pauseRun(pool,mismatchedLease,'capability_not_ready','issuer_identity_source_missing_unreviewed_or_conflicting');
-    await pool.query('UPDATE bb_runs SET input_hash=$2 WHERE id=$1',[mismatchedId,'f'.repeat(64)]);
+    // Seed a legacy inconsistent origin at INSERT. Established run origins are
+    // immutable; the resume guard must still refuse pre-existing corrupt rows.
+    const mismatchedId=randomUUID(),mismatchedJob=randomUUID();
+    await transaction(pool,async client=>{
+      await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage,event_cursor)
+        SELECT $2,owner_user_id,project_id,input_revision,$3,$4,task_kind,request_hash,state,stage,event_cursor FROM bb_runs WHERE id=$1`,
+        [id,mismatchedId,'f'.repeat(64),randomUUID()]);
+      await client.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,attempts)
+        SELECT $2,owner_user_id,$3,job_type,subtype,state,stage,attempts FROM bb_jobs WHERE id=$1`,[lease.jobId,mismatchedJob,mismatchedId]);
+      const history=(await client.query('SELECT * FROM bb_run_events WHERE run_id=$1 ORDER BY seq',[id])).rows;
+      for(const saved of history){
+        const eventId=randomUUID();
+        await client.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload)
+          VALUES($1,$2,$3,$4,$3,$5,$6,$7,$8)`,[eventId,owner,mismatchedId,saved.seq,saved.type,saved.state,saved.stage,saved.payload]);
+        await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+          VALUES($1,$2,'run',$3,$4,$5)`,[randomUUID(),owner,mismatchedId,saved.type,{...saved.payload,run_id:mismatchedId,event_id:eventId,seq:saved.seq,state:saved.state,stage:saved.stage}]);
+      }
+    });
     const mismatchCursor=(await pool.query('SELECT event_cursor FROM bb_runs WHERE id=$1',[mismatchedId])).rows[0].event_cursor;
     const invalid=await send('POST',`/api/v1/runs/${mismatchedId}/resume`,{reason:'synthetic'});
     assert.equal(invalid.statusCode,409,invalid.body);
@@ -68,7 +80,7 @@ test('unchanged issuer source gate rejects repeated resumes without queue churn;
     assert.equal((await pool.query('SELECT event_cursor FROM bb_runs WHERE id=$1',[mismatchedId])).rows[0].event_cursor,mismatchCursor);
     assert.deepEqual((await pool.query('SELECT state,stage,attempts FROM bb_jobs WHERE run_id=$1',[mismatchedId])).rows[0],
       {state:'paused',stage:'capability_not_ready',attempts:1});
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[mismatchedLease.jobId])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[mismatchedJob])).rows[0].n,0);
     const clearable=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
     assert.equal(clearable.statusCode,202,clearable.body);
     const clearableId=clearable.json().run_id;

@@ -37,6 +37,8 @@
 
 以下是实现前可审阅的设计，不是已经增加的公共 API。
 
+已落实一个独立前提：新增迁移 `0117_run_origin_input_immutable.sql` 保护已有任务的原 run/owner/project、原 input revision/hash 和原执行请求身份，正常状态、积分与成果更新仍可执行。隔离 PostgreSQL 回归为 34 pass / 0 fail / 1 skip；[验证范围与原始记录](../acceptance/desktop-ux-coverage-20261026/run-origin/README.md)单独列明。该保护没有增加活动执行版本、新材料采用、追加费率或续做能力，以下新协议仍为 proposed，G03 不关闭。
+
 - 保留 `bb_runs` 的原始执行请求和原始输入关联；每份 `bb_input_revisions` 继续不可变。追加“run 的执行版本”关系，记录业务 run、序号、前一版本、本次完整输入 revision/hash、补料采用请求及旧工作引用。活动版本以 CAS 推进；不得原地修改旧输入或执行请求哈希。
 - 补料草稿从该任务的已采用输入构建，不从项目最新草稿猜测。原始募集书、目标企业/期间、文种、规则、模板及授权保持明确。可新增或明确替换证据材料；修改任务目标、文种或范围须先按现有业务规则确认，不能借补料隐式改变任务类别。
 - 拟新增 owner-scoped 的续做准备/读取和明确采用操作，唯一 schema 放在 `packages/contracts/`。采用请求携带幂等请求 ID、预期活动执行版本、预期暂停边界、完整新输入引用及费用确认引用。旧 `resume {reason}` 继续表示原输入恢复。

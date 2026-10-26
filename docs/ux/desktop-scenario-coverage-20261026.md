@@ -188,6 +188,8 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 
 ## 独立跟踪，不冒充本轮结果
 
+后续已补充[原任务输入数据库保护](../acceptance/desktop-ux-coverage-20261026/run-origin/README.md)，作为 G03 版本化续做的前提。隔离 PG 回归 34 pass / 0 fail / 1 skip，未新增用户旅程或活动执行版本，不改变 G03 的未完成结论。
+
 | 后续事项 | 本轮记录方式 |
 | --- | --- |
 | 真实服务、worker/模型、PG/Blob 与真实账务 | 未执行或引用独立报告；合成 HTTP/SQL pool 不代表通过 |
