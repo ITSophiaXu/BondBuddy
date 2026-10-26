@@ -104,6 +104,28 @@ test('real Chromium on synthetic official-site fixtures: query, screenshot, zero
  }finally{await browser.close();}
 });
 
+test('observed MOT list without totals requires fresh visible structured results and survives capture recheck',{timeout:90000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async t=>{
+ const browser=await chromium.launch({headless:true});
+ try{
+  for(const mode of ['hits','stale','shell','wrong-host','hidden','missing-href','capture-cleared'])await t.test(mode,async()=>{
+   const context=await browser.newContext();
+   const current={...INTEGRITY_SITES.find(s=>s.id==='transport')!,links:[{label:'synthetic MOT fixture',url:mode==='wrong-host'?'https://www.chinatax.gov.cn/mot/s':'https://zs.mot.gov.cn/mot/s'}]};
+   const item=`<div class="search-result-header" ${mode==='hidden'?'style="display:none"':''}><div class="search-result-left"><div class="result-header-title"><a ${mode==='missing-href'?'':'href="https://www.mot.gov.cn/synthetic-article.html"'}>合成公告：道路维护招标</a></div></div></div>`;
+   await context.route('**/*',route=>{
+    if(new URL(route.request().url()).pathname==='/search')return route.fulfill({body:'synthetic query response'});
+    return route.fulfill({contentType:'text/html; charset=utf-8',body:`<input type="search"><button>搜索</button><main>${mode==='stale'?item:'请输入查询词'}</main><script>
+     document.querySelector('button').onclick=async()=>{await fetch('/search?q='+encodeURIComponent(document.querySelector('input').value));document.querySelector('main').innerHTML=${JSON.stringify(mode==='shell'?'结果排序：按相关度 搜索位置：全文':item)};};
+    </script>`});
+   });
+   const result=await collectInContext(context,current,{name:'合成测试企业',kind:'company',province:'北京',city:''},new AbortController().signal,{waitMs:4200,maxPages:1,attempts:1,...(mode==='capture-cleared'?{screenCapture:async(page:import('playwright').Page)=>{const png=await page.screenshot();await page.locator('main').evaluate(e=>e.textContent='结果排序：按相关度');return png;}}:{})});
+   assert.equal(result.search_performed,true);
+   assert.equal(result.outcome,mode==='hits'?'results':mode==='capture-cleared'?'failed':'unverified');
+   assert.equal(result.captures.some(c=>c.kind==='result'),mode==='hits');
+   await context.close();
+  });
+ }finally{await browser.close();}
+});
+
 test('observed tax next-page label advances before a second result screenshot',{timeout:30000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async()=>{
  const browser=await chromium.launch({headless:true});
  try{
