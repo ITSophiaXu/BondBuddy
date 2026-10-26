@@ -25,7 +25,7 @@ async function setup(page:Page){
       const id='synthetic-order-'+(orders.size+1),order={order_id:id,project_id:body.project_id??null,provider:'alipay',state:'pending',points:20000,amount_fen:20000,checkout_url:null,created_at:now,expires_at:'2030-01-01T00:00:00Z',credited_at:null};
       orders.set(id,order);return json(route,201,order);
     }
-    if(path.startsWith('/credits/recharge-orders/'))return json(route,200,orders.get(path.split('/').at(-1)!)??{});
+    if(path.startsWith('/credits/recharge-orders/'))return json(route,200,orders.get(path.split('/')[3])??{});
     if(path.startsWith('/credits/'))return json(route,200,{items:[],page:{next_cursor:null,has_more:false}});
     if(path===`/projects/${original}`||path===`/projects/${execution}`)return json(route,200,{project_id:path.split('/').at(-1),name:path.endsWith(original)?'原债券项目':'执行工作区',kind:path.endsWith(execution)?'review':'generation',issuer_name:'合成发行人',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:now});
     return json(route,404,{code:'NOT_FOUND'});
@@ -59,6 +59,23 @@ test('associated-file recharge retains the check and never claims automatic batc
   await expect(page.getByRole('link',{name:'返回刚才的工作'}).first()).toHaveAttribute('href',work);
   expect(state.calls.some(c=>c.path.endsWith('/credit-quote'))).toBe(false);
   expect(state.calls.filter(c=>c.method==='POST').every(c=>c.path==='/credits/recharge-orders')).toBe(true);
+});
+
+test('authoring recharge distinguishes a manual pause from automatic credit recovery',async({page})=>{
+  const state=await setup(page),work=`#/projects/${original}?step=materials&resume=credits`;
+  await page.goto('/'+account(work,original));
+  const notice=page.locator('#account-credits .notice');
+  await expect(notice).toContainText('未由你主动暂停');
+  await expect(notice).toContainText('主动暂停的任务仍需手动继续');
+  await expect(notice).toContainText('未开始的新任务仍需返回项目点击开始');
+  await page.locator('[data-pack="cny200"]').click();
+  await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();
+  const order=[...state.orders.values()][0];order.state='paid';order.credited_at=now;
+  await page.getByRole('button',{name:'刷新支付状态'}).click();
+  await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
+  await expect(notice).toContainText('主动暂停的任务仍需手动继续');
+  await expect(page.getByRole('link',{name:'返回刚才的工作'}).first()).toHaveAttribute('href',work);
+  expect(state.calls.filter(c=>c.method==='POST').map(c=>c.path)).toEqual(['/credits/recharge-orders',`/credits/recharge-orders/${order.order_id}/refresh`]);
 });
 
 test('a topic-only wallet retains navigation without assigning the original project to its order',async({page})=>{

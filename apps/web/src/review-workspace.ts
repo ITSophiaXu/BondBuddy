@@ -11,6 +11,7 @@ import { carryHandoff, copyHandoffSource, mountBusinessHandoff, type BusinessHan
 import { ReadableReview } from './review-readable';
 import { taskProgress } from './task-progress';
 import { reviewLiveStatus, reviewProgressPage } from './review-progress';
+import { authoringNeedsRecharge, authoringRechargeContinuation } from './authoring-progress';
 import { DYNAMIC_REVIEW_BILLING_TASKS } from '@bondbuddy/contracts';
 import { projectListContext, withProjectContext, projectBackLink, projectSection, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
@@ -889,12 +890,16 @@ export class ReviewWorkspace {
       const changed=charge.progress?.policy==='authoring_balance_v2'&&(charge.progress.charged_points!==this.charge?.progress?.charged_points||charge.progress.available_points!==this.charge?.progress?.available_points);
       this.charge=charge;this.chargeKey=key;this.chargeError=false;
       if(changed)window.dispatchEvent(new Event('bondbuddy:credits-changed'));
-      if(charge.progress?.credit_exhausted&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务并充值。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
-      if(!charge.progress?.credit_exhausted)this.creditPromptRun=undefined;
+      const continuation=this.dialog?.querySelector<HTMLElement>('[data-review-recharge-continuation]');
+      if(continuation?.dataset.reviewRechargeContinuation===run.run_id)continuation.textContent=authoringRechargeContinuation(charge.progress);
+      const needsRecharge=authoringNeedsRecharge(charge.progress);
+      if(needsRecharge&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务并充值。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
+      if(!needsRecharge){this.creditPromptRun=undefined;if(continuation?.dataset.reviewRechargeContinuation===run.run_id)this.dialog?.close();}
     }).catch(()=>{if(this.live())this.chargeError=true;}).finally(()=>{this.chargeLoading=false;this.chargeFetchedAt=Date.now();if(this.live())this.renderMaking();});
   }
   private rechargeDialog(){
-    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。充值到账后继续同一任务。</p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">充值积分</a>',[]);
+    const run=this.taskRun(),progress=run&&this.chargeKey.startsWith(run.run_id+':')?this.charge?.progress:undefined;
+    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。<span data-review-recharge-continuation="'+esc(run?.run_id??'')+'">'+esc(authoringRechargeContinuation(progress))+'</span></p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">充值积分</a>',[]);
     this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
   }
   private async controlRun(action:'pause'|'resume'){

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {AuthoringActivity,AuthoringProgress,Run,RunEvent} from '@bondbuddy/contracts';
-import {authoringEventLabel,authoringStatus,authoringVisibleEvents,retainAuthoringEvents} from './authoring-progress.js';
+import {authoringCreditReceipt,authoringEventLabel,authoringStatus,authoringVisibleEvents,retainAuthoringEvents} from './authoring-progress.js';
 
 const at='2026-10-14T05:41:00Z';
 const run={run_id:'run',state:'running',stage:'file_authoring',event_cursor:1000} as Run;
@@ -72,4 +72,21 @@ test('failure, connection, pause, queue and terminal states take precedence over
   assert.equal(authoringStatus({...run,state:'paused',stage:'user_paused'},events,progress)!.title,'任务已暂停');
   assert.match(authoringStatus({...run,state:'queued'},events,{...progress,queued_at:at,queue_ahead:2})!.summary,/排队期间不消耗积分/);
   for(const state of ['succeeded','failed','cancelled'] as const)assert.equal(authoringStatus({...run,state},events,progress),undefined);
+});
+
+test('manual pause takes precedence over automatic recharge continuation while work saves or is paused',()=>{
+  for(const state of ['running','paused'] as const){
+    const current=authoringStatus({...run,state,stage:'credits_exhausted'},[],{...progress,credit_exhausted:true,pause_requested:true,clock_running:false})!;
+    assert.match(current.summary,/充值后仍保持暂停/);
+    assert.match(current.summary,/手动继续/);
+    assert.doesNotMatch(current.summary,/自动继续/);
+    assert.match(authoringStatus({...run,state,stage:'credits_exhausted'},[],{...progress,credit_exhausted:true,pause_requested:false})!.summary,/自动继续本次任务/);
+  }
+  const receipt=authoringCreditReceipt({...run,billing_mode:'fixed_credits'},
+    {...progress,policy:'authoring_balance_v2',accrued_points:1,charged_points:1,released_points:0,available_points:0,credit_exhausted:true,pause_requested:true});
+  assert.match(receipt,/主动暂停需手动继续/);
+  const funded=authoringStatus({...run,state:'paused',stage:'credits_exhausted'},[],{...progress,credit_exhausted:true,pause_requested:true,available_points:20000})!;
+  assert.equal(funded.title,'任务已暂停');
+  assert.match(funded.summary,/手动继续/);
+  assert.equal(authoringStatus({...run,state:'running'},[],{...progress,credit_exhausted:true,pause_requested:true,available_points:20000})!.title,'正在保存进度后暂停');
 });

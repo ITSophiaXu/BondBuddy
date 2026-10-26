@@ -623,3 +623,27 @@ test('dynamic material zero balance keeps the draft and does not execute',async(
   const s=fixture(true);s.balance.available=0;await mount(page,s);await choose(page,'private_summary');await start(page);
   await expect(page.locator('#m4-submit-status')).toContainText('积分不足');expect(s.executions).toHaveLength(0);
 });
+
+test('desktop funded material keeps a manual pause and offers explicit continuation after exhaustion',async({page})=>{
+  await page.setViewportSize({width:1440,height:960});const s=fixture(true);s.balance.available=1000;
+  await mount(page,s);await choose(page,'private_summary');await start(page);
+  const task=s.workspace.tasks[0],p=task.credit_charge!.progress!;
+  p.pause_requested=true;p.credit_exhausted=true;p.clock_running=false;p.available_points=s.balance.available=0;
+  task.run.state='paused';task.run.stage='credits_exhausted';
+  await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('充值后仍保持暂停');
+  await expect(page.locator('.task-progress')).not.toContainText('自动继续');
+  await expect(page.getByRole('button',{name:'继续生成',exact:true})).toHaveCount(0);
+  p.available_points=s.balance.available=20000;
+  task.run.state='running';await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('正在保存进度后暂停');await expect(page.getByRole('button',{name:'继续生成',exact:true})).toHaveCount(0);
+  task.run.state='paused';
+  await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('任务已暂停');
+  await expect(page.getByRole('link',{name:'充值积分',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'继续生成',exact:true})).toBeVisible();
+  expect(s.controls).toEqual([]);expect(s.executions).toHaveLength(1);expect(p.credit_exhausted).toBe(true);
+  const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('.m4-delivery').screenshot({path:resolve(evidence,'material-manual-after-topup.png')});}
+  await page.getByRole('button',{name:'继续生成',exact:true}).click();await expect.poll(()=>s.controls).toEqual(['resume']);
+  expect(s.executions).toHaveLength(1);
+});

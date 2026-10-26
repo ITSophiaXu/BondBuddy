@@ -1606,3 +1606,32 @@ for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion 
  if(evidence)await page.screenshot({path:join(evidence,'dynamic-resumed-'+width+'.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test('desktop manual pause remains explicit when credits exhaust and an open recharge dialog refreshes',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=1;state.runState='running';state.runStage='model_generation';
+ state.liveProgress={policy:'authoring_balance_v2',accrued_points:0,charged_points:0,released_points:0,active_ms:0,pause_requested:false,credit_exhausted:false,available_points:1,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:true};
+ await page.setViewportSize({width:1440,height:960});await setup(page,state);await page.locator('#execute-input').click();
+ await expect.poll(()=>state.runs.size).toBe(1);const run=[...state.runs.values()][0],inputBefore=structuredClone(state.inputs[0]);
+ state.liveProgress={...state.liveProgress,accrued_points:1,charged_points:1,available_points:0,credit_exhausted:true,clock_running:false};state.available=0;
+ run.state='paused';run.stage='credits_exhausted';state.eventSeq++;
+ const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog).toContainText('自动继续本次任务');
+ // Another page may request a manual pause after this page opened its recharge dialog.
+ state.liveProgress.pause_requested=true;state.eventSeq++;
+ await expect(dialog).toContainText('充值后仍保持暂停');await expect(dialog).not.toContainText('自动继续');
+ await expect(page.locator('#execution-progress')).toContainText('手动继续');
+ await page.getByRole('button',{name:'稍后充值',exact:true}).click();await page.reload();
+ await expect(dialog).toBeVisible();await expect(dialog).toContainText('充值后仍保持暂停');
+ await page.getByRole('button',{name:'稍后充值',exact:true}).click();
+ state.available=20000;state.liveProgress={...state.liveProgress,available_points:20000};state.eventSeq++;
+ run.state='running';
+ await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 20,000 积分');
+ await expect(page.locator('.task-progress-heading')).toContainText('正在保存进度后暂停');await expect(page.locator('#resume-run')).toHaveCount(0);
+ run.state='paused';state.eventSeq++;
+ await expect(page.locator('.task-progress-heading')).toContainText('任务已暂停');
+ await expect(dialog).not.toBeVisible();await expect(page.locator('#execution-progress').getByRole('link',{name:'充值积分',exact:true})).toHaveCount(0);
+ await expect(page.locator('#resume-run')).toBeVisible();expect(state.runActions).toEqual([]);
+ expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect(state.inputs).toEqual([inputBefore]);
+ const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#execution-progress').screenshot({path:join(evidence,'authoring-manual-after-topup.png')});}
+ await page.locator('#resume-run').click();await expect.poll(()=>state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
+ expect(state.executes).toHaveLength(1);expect(state.inputs).toEqual([inputBefore]);
+});

@@ -4,6 +4,8 @@
 
 [总验收与检查记录](../acceptance/desktop-ux-coverage-20261026/README.md)；[逐套采用的浏览器原始汇总](../acceptance/desktop-ux-coverage-20261026/browser-results.json)。本文的 `pass` 限于真实前端、受控 HTTP 与受控交付字节的桌面 UX；真实模型/worker、PG/Blob、支付账务、Word/WPS 客户端及专业验收仍按文末边界独立跟踪。
 
+后续独立修复了人工暂停与积分耗尽同时存在时的提示和继续入口，沿用已批准的“人工暂停优先”规则：定向桌面 **11/11**、进度单元 **7/7**、web 构建通过，见[人工暂停验收](../acceptance/desktop-ux-coverage-20261026/manual-pause/README.md)。这次未重跑历史 662 项，也未改变后台协议或补料费用规则。另有[独立 HTML 操作提案](prototypes/pause-supplement-resume.html)的 **3/3** 合成演示 QA，不能计作 G03 产品验收。
+
 ## 来源与范围
 
 - 既有十五类业务目录来自本机历史档案 `ux-implementation-20261025/ux-evidence/all-scenarios-coverage-matrix.md:208–224`。原档案 R1–R44 的分段合成证据用于定位已有能力，不能把其中“尚未远程集成”继续套在已经合并的当前版本上。
@@ -25,8 +27,8 @@
 必须通过的跨场景门如下，其他旅程的通过数不能抵消未通过门：
 
 - G01 首次进入与账号恢复：注册/登录进入工作区、会话失效及退出清理。采用 `register.spec.ts`、`account.spec.ts` 的桌面功能分支。
-- G02 积分与充值反馈：订单状态、到账余额、消费/预留/释放记录、读取失败恢复及返回原工作；到账不自动执行。采用 `account.spec.ts`、`billing-navigation.spec.ts` 和各业务积分不足分支。真实支付及账本结算另验。
-- G03 已确认的 UX-A03 同任务补料续做：暂停生效后保存新材料，继续同一 `run_id`，以可追溯的新输入版本采用材料，保留旧输入与已完成记录，不重复已完成工作或产生并发越界，且重做与费用可理解。当前为 `functional_gap` / `design_gap`；新输入续做的运行测试为 `not_run`。详见[暂停补料续做审计与设计草案](pause-supplement-resume-20261026.md)（proposed，未批准）。
+- G02 积分与充值反馈：订单状态、到账余额、消费/预留/释放记录、读取失败恢复及返回原工作。到账不创建未开始的新任务；已受理且仅因积分耗尽暂停的动态积分任务可按既有规则自动续跑原任务，人工暂停始终需手动继续。采用 `account.spec.ts`、`billing-navigation.spec.ts`、各业务积分不足分支及[本次定向验收](../acceptance/desktop-ux-coverage-20261026/manual-pause/README.md)。真实支付及账本结算另验。
+- G03 已确认的 UX-A03 同任务补料续做：暂停生效后保存新材料，继续同一 `run_id`，以可追溯的新输入版本采用材料，保留旧输入与已完成记录，不重复已完成工作或产生并发越界，且重做与费用可理解。用户已选 B“必要重做另行报价并确认”，追加价格公式仍待确定；版本化协议仍为 proposed。当前为 `functional_gap` / `design_gap`；新输入续做的运行测试为 `not_run`。详见[审计与设计草案](pause-supplement-resume-20261026.md)。
 
 D06 的功能范围包含公共 `M4_DOCUMENT_TYPES` 当前十二种文书的选择、市场/品种保持和必要模板/字段边界。完整产出链使用代表文种；十二文种的已有 `pr745-market-acceptance.spec.ts` 与表单/报告期单元检查补齐入口和枚举边界，不扩大为所有文种、市场与外部模型的笛卡尔积。
 
@@ -57,8 +59,8 @@ D06 的功能范围包含公共 `M4_DOCUMENT_TYPES` 当前十二种文书的选�
 | 跨场景必过门 | 最终采用 | 状态 |
 | --- | --- | --- |
 | G01 首次进入与账号恢复 | 首轮注册 4/4；C 整套账号 10/10。注销完整两页流程保留所有断言，只将整体预算改为 60 秒，在 C 耗时约 29.8 秒通过，包括注销后旧凭证拒绝登录与存储清空。 | pass |
-| G02 积分与充值反馈 | C 账号记录/订单/余额/退出清理；首轮 billing-navigation 4/4；B execution 与 C M4 的不足/原请求/充值不自动执行。 | pass |
-| G03 UX-A03 暂停后补料，继续同一任务 | 现有 pause/检查点/固定输入 resume 的证据继续有效；当前公共协议未提供将新材料对应的新输入版本采用到同一 run 的续做能力，重做/费用政策仍待设计。来源与建议见[审计与设计草案](pause-supplement-resume-20261026.md)，不将草案视为获准协议。 | functional_gap / design_gap；新输入续做测试 not_run |
+| G02 积分与充值反馈 | 历史 C 账号记录/订单/余额/退出清理、首轮 billing-navigation 4/4，以及 B execution/C M4 的不足与原请求证据保留；本次定向验收补充“未开始任务不自动创建、仅积分耗尽的原任务自动恢复、人工暂停优先”的提示与继续入口。 | 历史基线 pass；本次定向通过，见人工暂停验收 |
+| G03 UX-A03 暂停后补料，继续同一任务 | 现有 pause/检查点/固定输入 resume 的证据继续有效；当前公共协议未提供将新材料对应的新输入版本采用到同一 run 的续做能力。B“必要重做另行报价并确认”已选，追加价格公式与版本化协议仍待确定；见[审计与设计草案](pause-supplement-resume-20261026.md)。 | functional_gap / design_gap；新输入续做测试 not_run |
 
 ### D01/D02 新增连续主链执行记录
 
@@ -71,9 +73,9 @@ D06 的功能范围包含公共 `M4_DOCUMENT_TYPES` 当前十二种文书的选�
 
 归档：[首轮双稿](../acceptance/desktop-ux-coverage-20261026/authoring/desktop-authoring-first-pair.png)、[第二轮双稿](../acceptance/desktop-ux-coverage-20261026/authoring/desktop-authoring-next-pair.png)、[原历史双稿](../acceptance/desktop-ux-coverage-20261026/authoring/desktop-authoring-original-history-pair.png)、[主链日志](../acceptance/desktop-ux-coverage-20261026/authoring/playwright.log)。同一条新主链也在首轮广泛报告再次通过，未重复累计。
 
-## 报告采用及最终源码来源
+## 历史基线报告与源码来源（4cd1c39）
 
-最终按**每个测试文件采用最后一次完整运行**，不是将多次执行相加。[browser-results.json](../acceptance/desktop-ux-coverage-20261026/browser-results.json)逐套记录采用阶段和测试标题，包含原始失败历史及报告 SHA-256。最终 `--list` 为 **39 文件、668 条**，与采用结果 **662 passed / 0 failed / 6 skipped / 0 flaky** 一致。新增助手 21 条、复核下载 2 条已经包含在 662 内；它们不再另加。这些历史运行支持十五条基线和 G01/G02，不包含 G03 新输入同任务续做的运行验收。
+历史基线按**每个测试文件采用最后一次完整运行**，不是将多次执行相加。[browser-results.json](../acceptance/desktop-ux-coverage-20261026/browser-results.json)逐套记录采用阶段和测试标题，包含原始失败历史及报告 SHA-256。当时 `--list` 为 **39 文件、668 条**，与采用结果 **662 passed / 0 failed / 6 skipped / 0 flaky** 一致。新增助手 21 条、复核下载 2 条已经包含在 662 内；它们不再另加。这些历史运行支持十五条基线和 G01/G02，不包含本次人工暂停修复或 G03 新输入同任务续做的运行验收。本次修复单独记录 11 条桌面与 7 条单元结果，不与 662 相加。
 
 | 阶段 | 原始结果 | 采用方式 |
 | --- | --- | --- |
@@ -86,12 +88,12 @@ D06 的功能范围包含公共 `M4_DOCUMENT_TYPES` 当前十二种文书的选�
 
 首轮助手文件运行前后均为 `6cc224ce…15d53`；此后修复同项目已保存原稿信息保留，最终为 `52d4b853…31f7f5`。A/B 使用后者，既有助手整套在 B 通过。C 另包含真实 D07 渲染缺陷修复，最终文件为：
 
-| 产品文件 | 最终 SHA-256 |
+| 产品文件 | 历史 C 采用的 SHA-256 |
 | --- | --- |
 | `apps/web/src/project-assistant.ts` | `52d4b853c592737e4ec4b051a1e2b9010c96a1dd34d2abfebd0a5316b231f7f5` |
 | `apps/web/src/material-workspace.ts` | `3e0e14d31966d7353f9c879e6ff0e0c5c7327078b147bff9b259e5c16681f598` |
 
-其他产品模块相对本轮基准未修改。材料文件的差异仅是市场映射读取加 own-property 判断，不改变正常市场/文种或文件继续修改协议；C 复跑受影响的材料套件，首轮的正常 Word 往返/当前草稿证据仍可采用。最终实际测试/产品哈希采用 [final-file-snapshots.json](../acceptance/desktop-ux-coverage-20261026/checks/final-file-snapshots.json)，不采用早期名称含 `final` 但仍是旧 20 条/旧助手哈希的临时清单。
+截至历史 `4cd1c39`，其他产品模块相对本轮基准未修改；当时材料文件的差异仅为市场映射读取加 own-property 判断。C 复跑受影响的材料套件，首轮的正常 Word 往返/当前草稿证据按当时范围采用。[final-file-snapshots.json](../acceptance/desktop-ux-coverage-20261026/checks/final-file-snapshots.json)保留该历史源码/测试绑定，未改写为本次源码。本次人工暂停修复涉及六个前端模块，最新范围与哈希另见[manual-pause/sources.json](../acceptance/desktop-ux-coverage-20261026/manual-pause/sources.json)及其验收记录；旧 662 项未整体复验。
 
 首轮命令在仓库根目录执行，A/B/C 工作目录为 `apps/web`；设置 `BB_E2E_BASE_URL=http://127.0.0.1:5187` 和 `BB_E2E_BROWSER_CHANNEL=msedge`，两 worker、零 retry。报告内 `config.argv` 保存实际参数；C 的完整选择命令为：
 
@@ -123,7 +125,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 | D14 | `word-roundtrip.spec.ts:49` | 真实项目文件行固定 run→明确继续→保留 source/material/template/requirements→新增修改要求→原生单次执行→新 Word 实际下载→返回文件 family→版本历史下载 V1/V2，字节分别不变/对应新稿；错误 run/同名/不可用登记不猜稿。 |
 | D15 | `word-roundtrip.spec.ts:102/124/136/153` | 下载原 OOXML→真实行目标上传合成离线修改稿→准确 family/CAS 保存→历史再下载修改字节→明确免费检查全部当前文件；同时核对新版本冲突、未知 import、已确认保存后列表失败及切 owner 恢复。实际 Word/WPS 人工编辑质量仍另验。 |
 | G01 | `register.spec.ts:44/71`、`account.spec.ts:186/254` | 注册约定版本并进入已登录页；无效/失败保留输入；会话撤销返回登录；账号注销要求预检/本地与服务端确认，完成后两个页签均无私有数据。 |
-| G02 | `account.spec.ts:349/358/366/375`、`billing-navigation.spec.ts:37/52` | 结算/预留/释放分别呈现、分页及失败保留；订单真实状态与刷新到账/余额不执行任务；充值返回原 review/检查且不声称自动续做；退出清除迟到记录。真实支付/结算未由这些合成断言证明。 |
+| G02 | 历史 `account.spec.ts:349/358/366/375`、`billing-navigation.spec.ts:37/52`；[本次人工暂停定向验收](../acceptance/desktop-ux-coverage-20261026/manual-pause/README.md) | 结算/预留/释放分别呈现、分页及失败保留，充值返回原 review/检查，退出清除迟到记录。到账不创建未开始的新任务；已受理动态积分任务仅因耗尽暂停时可自动续跑，人工暂停需手动继续。本次验证弹窗刷新、充值页说明及余额恢复后继续入口；真实支付/结算未由合成断言证明。 |
 | G03 | [UX-A03 要求](../testing/bondbuddy-test-plan-v6/user-scenarios.md#ux-a03-运行中漏材料想暂停补齐后继续原任务)及[当前源码/协议审计](pause-supplement-resume-20261026.md) | 已有固定输入暂停/恢复不能证明新材料进入原任务；缺少同一 run 采用版本化新输入的协议和必要重做/费用设计。运行测试 `not_run`，未声称真实运行失败。 |
 
 ### 运行前提诊断，保留首轮失败
@@ -150,7 +152,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 | UX-A02 选错文件/期间 | D01、D02、D06、D08 | 保留输入，明确改选，不使用旧报价/旧范围执行 |
 | UX-A03 运行中暂停补料续做 | D01、D02、D06；必过门 G03 | 已确认要求为暂停→保存并采用新材料→继续同一 run，以新输入版本可追溯且无重复工作、费用可理解。当前固定输入 pause/resume 不能覆盖该要求：functional_gap / design_gap；新输入续做测试 not_run |
 | UX-A04 运行中保存下轮补料 | D02、D03、D06、D10 | 本轮冻结输入不变，新材料/要求只供明确开始的后继轮 |
-| UX-A05 积分不足并返回 | D02、D04、D06、D10 | 保留范围，充值不自动执行，返回后明确开始 |
+| UX-A05 积分不足并返回 | D02、D04、D06、D10 | 保留范围，未开始任务仍需明确开始；已受理动态积分任务按原规则恢复同一任务，人工暂停需手动继续 |
 | UX-A06 主动停止 | D02、D06 | 停止后续与正在运行的文件分开，保留合法最终成果 |
 | UX-A07 失败后补正 | D02、D03、D06、D10 | 保留真实失败原因和旧成果，明确准备/开始新输入 |
 | UX-C01 上传中断 | D01、D05、D08、D15 | 原会话/文件身份可辨，必要时重选原字节 |
@@ -166,7 +168,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 
 `UX-A03` 的 v6.1 调查基准为旧 `55941dc`；其第 237–260 行已确认的是完整同任务补料续做目标。2026-10-11 动态余额/实时进度改动已实现主动 pause、检查点和固定输入 resume，当前 `apps/api/src/server.ts`、`packages/contracts/src/index.ts`、`apps/api/src/queue.ts` 仍保留这些能力。因此旧 **FG001（缺主动暂停）已被该实现取代**，不再当作现存缺口。
 
-**FG002（新材料进入同一 run 的版本化续做）仍为 `functional_gap`，其重做范围与费用政策为 `design_gap`。** 当前源码/协议审计显示 resume 仍按原 `input_revision` / `input_hash` 恢复，没有把新材料作为版本化新输入采用到同一 run 的公共协议。尚未执行新输入续做产品实测，测试状态为 `not_run`，不能据源码审计伪称已复现运行 `fail`。取消后新建、保存为下轮草稿或当前固定输入恢复均不能替代这项已确认要求。具体来源与待决定事项见[暂停补料续做审计与设计草案](pause-supplement-resume-20261026.md)；草案为 proposed，未批准，尚未形成可实施的正式协议或费用政策。
+**FG002（新材料进入同一 run 的版本化续做）仍为 `functional_gap`，其重做范围与追加价格公式仍有 `design_gap`。** 当前源码/协议审计显示 resume 仍按原 `input_revision` / `input_hash` 恢复，没有把新材料作为版本化新输入采用到同一 run 的公共协议。尚未执行新输入续做产品实测，测试状态为 `not_run`，不能据源码审计伪称已复现运行 `fail`。取消后新建、保存为下轮草稿或当前固定输入恢复均不能替代这项已确认要求。用户已选 B“必要重做另行报价并确认”，没有批准 A 原价封顶，也尚未确定追加价格公式。版本化协议仍为 proposed；具体来源与待决定事项见[暂停补料续做审计与设计草案](pause-supplement-resume-20261026.md)。
 
 ## 已交付内容，避免重复实施
 
@@ -182,6 +184,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 3. **D13 成功卡续改。** 原成果缺失时误用旧底稿、跨项目上下文不准、同项目已保存来源信息被旧服务器字段覆盖均已处理；[21 条验收、源码快照与截图](../acceptance/desktop-ux-coverage-20261026/assistant-continuation.md)。C 再次 **21/21**，既有帮助/讨论/会话与历史交接共同采用。D14 的项目文件入口独立验收，没有重复增加同一缺陷的分母。
 4. **D07 草稿可恢复。** 市场字段命中继承属性时不再导致页面崩溃，原失败用例及整套冲突对照通过。D06 单份表单、文件包与十二文种入口均完成采用；停止后续和部分交付沿既有协议验证。
 5. **继续完成 G03。** 十五行基线、G01/G02 和已有回归证据均保留；G03 新输入同任务续做、重做边界和可理解费用尚未完成，用户整体目标保持 active，不宣称达到整体 90% 或主要全部覆盖，不发布。先形成可审阅设计，再落实并验证新材料确实进入同一 run、旧工作保留、无重复调用及费用解释。历史候选“查看已保存材料”披露区的跨重画展开保持尚未作为独立实际阻断复现，不宣称已修复。
+6. **人工暂停优先的既有规则修复。** 修正双暂停标志并存时错误承诺到账自动续跑、已开充值弹窗未更新，以及已到账 M4 缺继续入口的问题。定向 11/11、单元 7/7、web 构建通过；[操作提案](prototypes/pause-supplement-resume.html)独立演示 QA 3/3。二者均未实现 G03 新输入协议；补料重做采用 B 另行报价确认，追加价格公式仍待确定。
 
 ## 独立跟踪，不冒充本轮结果
 

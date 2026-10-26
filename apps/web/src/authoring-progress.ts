@@ -1,6 +1,12 @@
 import {AUTHORING_ACTIVITY_LABELS,type Run,type RunEvent,type AuthoringProgress} from '@bondbuddy/contracts';
 import {esc} from './ui.js';
 const ended=(r:Run)=>['succeeded','test_completed','failed','rejected','cancelled'].includes(r.state);
+export function authoringRechargeContinuation(p?:Pick<AuthoringProgress,'pause_requested'>):string {
+  return p?.pause_requested?'任务已由你暂停，充值后仍保持暂停；准备好后请手动继续。':'充值到账后自动继续本次任务。';
+}
+export function authoringNeedsRecharge(p?:AuthoringProgress):boolean {
+  return !!p?.credit_exhausted&&(p.available_points??0)<1;
+}
 export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?s+'秒':Math.floor(s/60)+'分'+String(s%60).padStart(2,'0')+'秒';}
 export function authoringEventLabel(event:RunEvent):string|null{
   const a=event.payload.authoring_activity;
@@ -29,7 +35,7 @@ export function authoringVisibleEvents(run:Run,events:RunEvent[]):RunEvent[]{
 }
 export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   if(ended(run))return undefined;
-  if(p?.credit_exhausted)return {title:run.state==='paused'?'积分已用完，任务已暂停':'积分已用完，正在保存进度后暂停',summary:'积分已停止扣减，已完成的工作会保留。充值到账后自动继续本次任务。',phase:2 as const};
+  if(p?.credit_exhausted)return {title:p.pause_requested?(run.state==='paused'?'任务已暂停':'正在保存进度后暂停'):!authoringNeedsRecharge(p)?'已有可用积分，正在恢复本次任务':run.state==='paused'?'积分已用完，任务已暂停':'积分已用完，正在保存进度后暂停',summary:'积分已停止扣减，已完成的工作会保留。'+authoringRechargeContinuation(p),phase:2 as const};
   if(p?.pause_requested&&run.state==='running')return {title:'正在保存进度后暂停',summary:'积分已冻结。当前模型处理结果保存后暂停，继续时会复用已保存的结果。',phase:2 as const};
   if(run.state==='paused'&&run.stage==='user_paused')return {title:'任务已暂停',summary:'进度已保存，积分停止累计。可继续本次任务，或结束并结算已消耗积分。'};
   if(run.state==='queued'){
@@ -65,5 +71,5 @@ export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{poi
   const dynamic=p.policy==='authoring_balance_v2';
   const note=terminal?(p.released_points?'未消耗的 '+p.released_points.toLocaleString('zh-CN')+' 积分已释放。':'结算已完成。'):
     p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，充值后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
-  return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+n.toLocaleString('zh-CN')+' <small>积分</small></strong></div><div class="authoring-credit-meta">'+(dynamic?'<span>可用余额 '+(p.available_points??0).toLocaleString('zh-CN')+' 积分</span>':'')+'<span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(dynamic?'有积分即可开始，按服务端有效处理时间和已完成工作扣减；排队和暂停不扣。余额归零保存后暂停，到账后续跑。主动结束保留已扣部分，平台失败退回已扣积分，全程不超过原任务价格。':p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
+  return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+n.toLocaleString('zh-CN')+' <small>积分</small></strong></div><div class="authoring-credit-meta">'+(dynamic?'<span>可用余额 '+(p.available_points??0).toLocaleString('zh-CN')+' 积分</span>':'')+'<span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(dynamic?'有积分即可开始，按服务端有效处理时间和已完成工作扣减；排队和暂停不扣。余额归零保存后暂停，到账后续跑；主动暂停需手动继续。主动结束保留已扣部分，平台失败退回已扣积分，全程不超过原任务价格。':p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
 }

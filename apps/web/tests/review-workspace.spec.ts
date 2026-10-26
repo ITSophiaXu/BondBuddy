@@ -2,6 +2,7 @@ import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Value } from '@sinclair/typebox/value';
 import { schemas, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
@@ -972,6 +973,47 @@ test('review live progress refreshes actual debit and activities, survives reloa
   await expect(page.getByRole('dialog',{name:'积分已用完'})).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'返回',exact:true}).click();
   await expect(page.locator('#review-making-panel')).toContainText('积分已用完，复核已暂停');
   expect(state.executes).toHaveLength(0);
+});
+
+test('desktop review recharge updates an open dialog when manual pause arrives and keeps the same task paused after topup',async({page})=>{
+  await page.setViewportSize({width:1440,height:960});
+  const state=fixture(),run=state.workspace.active_run={...state.makeRun('manual-pause-credit','paused'),stage:'credits_exhausted',billing_mode:'fixed_credits' as const,reservation_id:'synthetic-reservation'};
+  state.runs.set('manual-pause-credit',run);
+  state.workspace.timeline=[{kind:'task',entry_id:'task:'+run.run_id,created_at:now,task:{run,operation:'full_review',version:2,input_version:1,input_revision:run.input_revision,input_sha256:run.input_hash,source_report_id:null,report_id:null,finding_ids:[],origin:{version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null},artifacts:[],events:[]}}];
+  let manualPause=false,available=0,chargeReads=0;
+  const controls:string[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&/\/runs\/[^/]+\/(pause|resume|cancel)$/.test(new URL(request.url()).pathname))controls.push(new URL(request.url()).pathname);});
+  await setup(page,state,`#/projects/${id}/review?tab=making`);
+  await page.route('**/credit-charge',route=>{
+    chargeReads++;
+    return reply(route,200,{quote:{points:1000},state:'held',progress:{policy:'authoring_balance_v2',accrued_points:120,charged_points:120,released_points:0,active_ms:60000,credit_exhausted:true,available_points:available,pause_requested:manualPause,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:false}});
+  });
+  await page.reload();
+  const dialog=page.getByRole('dialog',{name:'积分已用完'}),panel=page.locator('#review-making-panel');
+  await expect(dialog).toContainText('充值到账后自动继续本次任务。');
+  const opened=await dialog.elementHandle(),inputHash=run.input_hash;
+  // A manual pause from another page arrives while this recharge dialog remains open.
+  manualPause=true;
+  await expect(dialog).toContainText('任务已由你暂停，充值后仍保持暂停；准备好后请手动继续。');
+  await expect(dialog).not.toContainText('自动继续');
+  await expect(panel).toContainText('任务已由你暂停，充值后仍保持暂停；准备好后请手动继续。');
+  expect(await opened!.evaluate(element=>element===document.querySelector('dialog[open]'))).toBe(true);
+  const readsBeforeTopup=chargeReads;available=1000;
+  run.state='running';
+  await expect.poll(()=>chargeReads).toBeGreaterThan(readsBeforeTopup);
+  await expect(panel.locator('.authoring-credit-meter')).toContainText('可用余额 1,000 积分');
+  await expect(panel).toContainText('正在保存进度后暂停');
+  await expect(panel.getByRole('button',{name:'继续复核',exact:true})).toHaveCount(0);
+  run.state='paused';
+  await expect(panel).toContainText('复核已暂停');
+  await expect(dialog).not.toBeVisible();
+  await expect(panel).not.toContainText('积分已用完');
+  await expect(panel).not.toContainText('自动继续');
+  await expect(panel.getByRole('button',{name:'充值积分',exact:true})).toHaveCount(0);
+  await expect(panel.getByRole('button',{name:'继续复核',exact:true})).toBeVisible();
+  expect(state.workspace.active_run).toMatchObject({run_id:'manual-pause-credit',state:'paused',stage:'credits_exhausted',input_hash:inputHash});
+  expect(state.executes).toHaveLength(0);expect(controls).toEqual([]);
+  const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await panel.screenshot({path:join(evidence,'review-manual-after-topup.png')});}
 });
 
 test('review live design comparison uses independent synthetic markup',async({page})=>{
