@@ -1,5 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import type {Pool} from 'pg';
+import {removeM4ArtifactExecutionScaffold} from './m4-artifact-migration-test-fixture.js';
 
 // Private clone replay tests must restore the real predecessor consumers along
 // with the schema; a function still reading the removed registry is not 0128.
@@ -12,6 +13,7 @@ function originalFunction(sql: string, name: string) {
   return sql.slice(start, end + 'END; $$;'.length).replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION');
 }
 export async function removeReviewArtifactExecutionScaffold(db: Pick<Pool, 'query'>) {
+  await removeM4ArtifactExecutionScaffold(db);
   await db.query(`DROP FUNCTION IF EXISTS bb_check_review_execution_artifact(),bb_guard_review_execution_artifact(),bb_guard_legacy_review_artifact(),
     bb_bridge_review_execution_artifact(),bb_mirror_review_execution_artifact() CASCADE;
     DROP TABLE IF EXISTS bb_review_execution_artifacts CASCADE;`);

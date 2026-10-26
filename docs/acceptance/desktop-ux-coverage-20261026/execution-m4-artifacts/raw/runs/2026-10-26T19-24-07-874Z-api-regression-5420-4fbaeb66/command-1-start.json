@@ -1,0 +1,17 @@
+{
+  "started": "2026-10-26T19:24:08.076Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/m4-workspace.pg.test.js",
+    "apps/api/dist/m4-dynamic-balance.pg.test.js",
+    "apps/api/dist/m4-fixed-billing.pg.test.js",
+    "apps/api/dist/m4-business-stages.pg.test.js",
+    "apps/api/dist/m4-case-template-scope.pg.test.js",
+    "apps/api/dist/run-execution-delivery.pg.test.js",
+    "apps/api/dist/artifact-execution.pg.test.js",
+    "apps/api/dist/review-artifact-execution.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

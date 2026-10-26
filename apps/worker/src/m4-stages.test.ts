@@ -324,12 +324,12 @@ test('M4 template registry and edit-base kind are explicit; retiring the exact o
     manifest.input.document_type='init';manifest.billing_task='m4_G01';manifest.input.template={template_id:'template',template_version:2,sha256:f.pin.sha256};
     manifest.template_material=f.pin;manifest.input.fields.broker='Synthetic Broker';
     let template={broker:'Synthetic Broker',document_type:'init',market:'sse',sha256:f.pin.sha256,material:f.pin,retired_at:new Date()};
-    let baseKind='document';
+    let baseKind='document',hasCanonicalBase=true;
     const refresh=()=>{f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;return {manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;};
     f.ctx.pool={query:async(sql:string,args?:unknown[])=>gateExecutionRows(f.ctx,manifest,sql,args)
       ??(sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
       sql.includes('FROM bb_m4_templates')?{rows:[template]}:sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:f.pin.sha256}]}:
-      sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_delivered_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]})} as unknown as StageContext['pool'];
+      sql.includes('FROM bb_m4_execution_artifact_versions')?{rows:hasCanonicalBase?[{kind:baseKind,document_type:'init'}]:[]}:sql.includes('FROM bb_delivered_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]})} as unknown as StageContext['pool'];
     assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null);
     template={...template,broker:''};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail','init still requires a broker');
     manifest.input.document_type='private_summary';manifest.billing_task='m4_G05';template={...template,document_type:'private_summary'};delete manifest.input.fields.broker;
@@ -339,6 +339,8 @@ test('M4 template registry and edit-base kind are explicit; retiring the exact o
     template={...template,sha256:'b'.repeat(64)};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail');template={...template,sha256:f.pin.sha256};
     manifest.input.edit_base={source_project_id:'project',artifact_id:'base',artifact_version:1,sha256:f.pin.sha256};
     assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null);baseKind='report';assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail');
+    baseKind='document';hasCanonicalBase=false;
+    assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail','a delivered pin without its canonical Word registration cannot become an edit base');
   }finally{await f.clean();}
 });
 

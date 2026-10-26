@@ -231,3 +231,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 ### 后续复核文件登记增量（0129）
 
 [复核登记专项](../acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)将真实 M3 文件登记、实际来源消费者、结算 readiness 与交付 capture 绑定准确执行版本；保留交付前换选候选及新旧 V1 writer，最终回执/成功态后冻结。真实 PG 两方向并发、严格回填和回归证据独立记录，失败没有删除或合并成通过。没有新增浏览器或同任务新输入用户旅程，不上调覆盖比例；M4 登记、受控后继执行、真正增量处理、B 追加公式/账务和完整桌面链仍待完成，G03/完整 goal 保持 active。
+
+### 后续 M4 文件登记增量（0130）
+
+[M4 登记专项](../acceptance/desktop-ux-coverage-20261026/execution-m4-artifacts/README.md)将正文与编制说明的登记、列表/下载/底稿、交付成员及原结算 readiness 绑定准确 V1 执行，严格 QA 兼容分支和通用文件授权保持各自边界。真实 PG 验证全部元数据重放、微秒/NULL 回填、双文件、撤销编制说明、充值后复用已保存成果，以及锁等待后租约过期无副作用；独立专项与回归采用数见其 summary，不与旧数相加。没有新增浏览器、后继采用或同任务新输入旅程，不上调覆盖率。B1/B2 追加公式、版本化账务与完整 G03 仍未完成，整体 goal 保持 active。

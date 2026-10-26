@@ -1,0 +1,19 @@
+{
+  "id": "2026-10-26T19-28-00-600Z-pg-diagnostic-44176-215bed0b",
+  "mode": "pg-diagnostic",
+  "started": "2026-10-26T19:28:00.607Z",
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+  "port": 15540,
+  "user": "bb_report_test",
+  "database": "bb_execution_report_template_20261027",
+  "script_sha256": "53c607919e59a5fb50d5d9f60b6a25f95ae0c20980d3c0d3b02d34c78f44a2a4",
+  "script_version": "versions/53c607919e59a5fb50d5d9f60b6a25f95ae0c20980d3c0d3b02d34c78f44a2a4.mjs",
+  "environment": {
+    "BB_TEST_DATABASE_URL": "postgresql://bb_report_test@127.0.0.1:15540/bb_execution_report_template_20261027",
+    "BONDBUDDY_TEST_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "BONDBUDDY_WORD_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "PGOPTIONS": null,
+    "BB_RUN_RUNTIME_ENABLED": null
+  }
+}

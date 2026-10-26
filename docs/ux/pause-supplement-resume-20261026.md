@@ -204,3 +204,9 @@ SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制�
 本地 `0129` 已将 M3 文件成果位置追加到 `(run_id,execution_version,kind)` canonical 登记，绑定完整执行/输入及准确 artifact；实际 writer、公开成果/来源读取、结算 readiness 和交付冻结成员/命名均消费该登记。保留交付前重试换选文件，交付回执或成功态后只允许完全相同的重放；旧历史 gap/未就绪候选仅保留来源。新旧 writer 原子镜像，两方向登记/交付竞争用真实 PG 验证，详见[登记专项](../acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)。
 
 这只移除 M3 文件登记按 run 唯一的存储前提；V1 gate、current-input integrity、M4 登记与实际后继采用尚未开放，不能称已完成同任务补料续做。费用已确定 B，B1/B2 公式仍待决定，未自行计价或新增扣款。G03 / UX-A03 与完整 goal 仍 active。
+
+### 2026-10-27：M4 文件登记的准确执行来源
+
+后续本地 `0130` 为 M4 正文和编制说明增加完整执行/输入及 artifact 来源登记，保留旧字段、NULL 稿次和微秒时间，新旧 V1 INSERT 精确镜像。实际列表、下载、底稿、交付冻结和结算 readiness 使用准确登记，Word 缺登记不能回退旧表；问答仅保留严格 QA snapshot/subtype/全文证据分支，通用已交付文件引用继续沿原授权。Worker 先锁 topic/project，再锁 run/job 并重验租约；详情与原始失败/重跑见 [M4 登记专项](../acceptance/desktop-ux-coverage-20261026/execution-m4-artifacts/README.md)。
+
+本切片只处理来源与读取基础。V1/current-input gate、后继采用/执行、阶段和调用版本、真正增量处理、B 追加报价/账务及完整桌面同任务新输入旅程仍待完成。B1/B2 公式尚待用户确定，未推定计价，也不据此关闭 G03 / UX-A03 或整体 goal。

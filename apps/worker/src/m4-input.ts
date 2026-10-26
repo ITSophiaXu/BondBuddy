@@ -39,7 +39,7 @@ async function authorizedArtifact(pool: Pool, owner: string, pin: M4ArtifactPin)
   const row = (await pool.query(`SELECT a.object_key,a.media_type,a.sha256,m.body_content FROM bb_delivered_artifact_versions a
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id AND p.deleted_at IS NULL
-    LEFT JOIN bb_m4_artifacts m ON m.owner_user_id=a.owner_user_id AND m.artifact_id=a.id AND m.artifact_version=a.version
+    LEFT JOIN bb_m4_artifact_execution_versions m ON m.owner_user_id=a.owner_user_id AND m.artifact_id=a.id AND m.artifact_version=a.version AND m.kind='qa_text'
     WHERE a.owner_user_id=$1 AND r.project_id=$2 AND a.id=$3 AND a.version=$4
       AND a.quality_status='passed' AND a.delivery_status='available'`,
   [owner, pin.source_project_id, pin.artifact_id, pin.artifact_version])).rows[0];
@@ -112,7 +112,7 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
     } else if (manifest.template_material) return fail;
     if (manifest.template_material && manifest.input.template?.sha256 !== manifest.template_material.sha256) return fail;
     if(manifest.input.edit_base){const pin=manifest.input.edit_base;
-      const base=(await pool.query(`SELECT kind,document_type FROM bb_m4_artifacts WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3`,
+      const base=(await pool.query(`SELECT kind,document_type FROM bb_m4_execution_artifact_versions WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3`,
         [run.owner_user_id,pin.artifact_id,pin.artifact_version])).rows[0];
       if(!base || base.kind!=='document' || base.document_type!==manifest.input.document_type)return fail;
     }

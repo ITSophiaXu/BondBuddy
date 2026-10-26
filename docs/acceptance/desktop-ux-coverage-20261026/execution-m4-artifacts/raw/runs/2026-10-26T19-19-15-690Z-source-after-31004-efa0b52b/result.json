@@ -1,0 +1,25 @@
+{
+  "id": "2026-10-26T19-19-15-690Z-source-after-31004-efa0b52b",
+  "mode": "source-after",
+  "status": 0,
+  "finished": "2026-10-26T19:19:18.162Z",
+  "snapshot": {
+    "files": 2304,
+    "sha256": "f586dfe7733f1f6084da821a1bb8a6199076a67088e495ade281f095b7fbf7c8",
+    "roots": [
+      "apps/api/src",
+      "apps/api/dist",
+      "apps/worker/src",
+      "apps/worker/dist",
+      "apps/web/src",
+      "apps/web/tests",
+      "packages/contracts/src",
+      "packages/contracts/dist",
+      "packages/contracts/examples",
+      "apps/web/dist-test",
+      "db/migrations",
+      "python"
+    ],
+    "before": "2026-10-26T19-17-43-962Z-source-before-46196-60d1df71"
+  }
+}

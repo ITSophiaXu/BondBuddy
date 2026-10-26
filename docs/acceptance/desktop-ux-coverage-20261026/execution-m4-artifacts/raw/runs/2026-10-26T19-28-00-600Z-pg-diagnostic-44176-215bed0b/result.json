@@ -1,0 +1,21 @@
+{
+  "id": "2026-10-26T19-28-00-600Z-pg-diagnostic-44176-215bed0b",
+  "mode": "pg-diagnostic",
+  "status": 0,
+  "finished": "2026-10-26T19:28:00.848Z",
+  "activity": [
+    {
+      "pid": 39324,
+      "datname": "postgres",
+      "state": "active",
+      "wait_event_type": "IPC",
+      "wait_event": "CheckpointDone",
+      "age": {
+        "seconds": 8,
+        "milliseconds": 857.35
+      },
+      "blockers": [],
+      "query": "DROP DATABASE IF EXISTS \"bb_execution_report_template_20261027_t24924_863865bb\" WITH (FORCE)"
+    }
+  ]
+}

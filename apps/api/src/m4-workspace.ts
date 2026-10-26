@@ -18,6 +18,8 @@ import { runEventPayloadDto } from './run-event-dto.js';
 import { quoteM4, reserveM4, readM4CreditCharge } from './m4-billing.js';
 import {loadM4Knowledge,loadProjectFileKnowledge} from './m4-knowledge.js';
 import { MARKETS, MARKET_OFFERINGS } from '@bondbuddy/contracts';
+import {assertRunExecution,type RunExecutionIdentity} from './run-execution.js';
+import {readRunExecutionInput} from './run-execution-input.js';
 export { settleM4Metering } from './m4-billing.js';
 
 type Db = Pool | PoolClient;
@@ -123,7 +125,7 @@ async function validateDraft(db:Db,owner:string,topic:string,input:M4DraftInput)
   for(const m of input.materials)await readM4MaterialPin(db,owner,m);
   if(input.source_material)await readM4MaterialPin(db,owner,input.source_material);
   if(input.edit_base){await readM4ArtifactPin(db,owner,input.edit_base);
-    const base=(await db.query('SELECT * FROM bb_m4_artifacts WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[owner,input.edit_base.artifact_id,input.edit_base.artifact_version])).rows[0];
+    const base=(await db.query('SELECT * FROM bb_m4_execution_artifact_versions WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[owner,input.edit_base.artifact_id,input.edit_base.artifact_version])).rows[0];
     if(!base || base.kind!=='document' || base.document_type!==input.document_type)invalid('全文改稿必须明确选择同文种的已交付正文，复核报告与编制说明不能作为正文底稿。');}
   if(input.template){const t=(await db.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 AND id=$2 AND version=$3',[owner,input.template.template_id,input.template.template_version])).rows[0];
     if(!t || t.sha256.trim()!==input.template.sha256 || t.document_type!==input.document_type || t.retired_at)stale();await readM4MaterialPin(db,owner,t.material);}
@@ -275,7 +277,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
   await c.query("UPDATE bb_projects SET execution_scope_project_id=$3,kind=CASE WHEN kind='qa' THEN 'generation' ELSE kind END WHERE owner_user_id=$1 AND id=$2",[owner,t.project_id,manifest.execution_scope_project_id]);
   return newRun(c,owner,t,b.execution_request_id,requestHash,manifest,b.quote_id,inputManifestHash(manifest),queueEnabled);
 }
-async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
+async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifact_execution_versions a
   JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
   JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')} WHERE a.owner_user_id=$1 AND a.topic_id=$2
   AND v.quality_status='passed' AND v.delivery_status='available' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2')) ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
@@ -283,23 +285,39 @@ const artifactDto=(a:any):M4Artifact=>({source_project_id:a.project_id,artifact_
   topic_id:a.topic_id,run_id:a.run_id,document_type:a.document_type,kind:a.kind,filename:artifactDownloadName(a).filename,mime_type:a.media_type,byte_size:Number(a.byte_size),
   created_at:date(a.created_at),base_artifact:a.base_artifact,input_hash:a.input_hash.trim(),revision_number:a.revision_number??null});
 export type M4ArtifactRegistration={kind:'document'|'preparation_note';artifact_id:string;artifact_version:number;filename:string;byte_size:number;preview_content?:string};
+/** Take topic -> project locks before the worker's run -> job locks; recheck its lease afterwards. */
+export async function lockM4ArtifactTopic(db:Db,owner:string,runId:string,expected:RunExecutionIdentity){
+  const execution=(await readRunExecutionInput(db,owner,runId,expected)).m4Execution;
+  if(!execution || !isM4Manifest(execution.manifest) || execution.manifest.kind!=='document')throw missing();
+  await requireTopic(db,owner,execution.topic_id,true);
+}
 /** Worker transaction must hold its current lease. Owned delivered metadata is checked, never inferred from a client. */
-export async function registerM4Artifacts(db:Db,owner:string,runId:string,entries:M4ArtifactRegistration[]){
-  const e=(await db.query('SELECT * FROM bb_m4_executions WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rows[0];
+export async function registerM4Artifacts(db:Db,owner:string,runId:string,entries:M4ArtifactRegistration[],expected?:RunExecutionIdentity){
+  const run=(await db.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[owner,runId])).rows[0];
+  if(!run)throw missing();
+  const identity=await assertRunExecution(db,run,expected);
+  const e=(await readRunExecutionInput(db,owner,runId,identity)).m4Execution;
   if(!e || !isM4Manifest(e.manifest) || e.manifest.kind!=='document')throw missing();const manifest=e.manifest;
   await requireTopic(db,owner,e.topic_id,true);
-  const previous=(await db.query('SELECT revision_number FROM bb_m4_artifacts WHERE owner_user_id=$1 AND run_id=$2 AND revision_number IS NOT NULL LIMIT 1',[owner,runId])).rows[0];
-  const revisionNumber=previous?.revision_number??Number((await db.query('SELECT COALESCE(max(revision_number),0)+1 AS next FROM bb_m4_artifacts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3',[owner,e.topic_id,manifest.input.document_type])).rows[0].next);
+  const previous=(await db.query('SELECT revision_number FROM bb_m4_execution_artifacts WHERE owner_user_id=$1 AND run_id=$2 AND execution_version=$3 AND revision_number IS NOT NULL LIMIT 1',[owner,runId,identity.executionVersion])).rows[0];
+  const revisionNumber=previous?.revision_number??Number((await db.query('SELECT COALESCE(max(revision_number),0)+1 AS next FROM bb_m4_execution_artifacts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3',[owner,e.topic_id,manifest.input.document_type])).rows[0].next);
   for(const a of entries){const row=(await db.query(`SELECT v.*,e.byte_size AS delivered_bytes FROM bb_execution_artifact_versions v JOIN bb_word_delivery_evidence e
     ON e.id=v.word_delivery_evidence_id AND e.owner_user_id=v.owner_user_id AND e.run_id=v.run_id
     WHERE v.owner_user_id=$1 AND v.run_id=$2 AND v.id=$3 AND v.version=$4
     AND v.delivery_status='available' AND v.quality_status='passed' AND e.delivery_code='readback_verified' AND e.readback_sha256=v.sha256`,[owner,runId,a.artifact_id,a.artifact_version])).rows[0];
     if(!row || row.media_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document' || !Number.isSafeInteger(a.byte_size) || a.byte_size<1 || Number(row.delivered_bytes)!==a.byte_size)throw new Problem(422,'DELIVERY_FAILED','M4 Word unavailable');
     const filename=`${M4_DOCUMENT_LABELS[manifest.input.document_type as M4DocumentType]} 第${revisionNumber}稿${a.kind==='preparation_note'?' 编制说明':''}.docx`;
-    const prior=(await db.query('SELECT * FROM bb_m4_artifacts WHERE run_id=$1 AND kind=$2',[runId,a.kind])).rows[0];
-    if(prior){if(prior.artifact_id!==a.artifact_id || prior.artifact_version!==a.artifact_version || prior.filename!==filename || Number(prior.byte_size)!==a.byte_size)throw conflict('IDEMPOTENCY_CONFLICT','M4 artifact changed');continue;}
-    await db.query(`INSERT INTO bb_m4_artifacts(owner_user_id,topic_id,run_id,artifact_id,artifact_version,kind,filename,byte_size,document_type,base_artifact,input_hash,preview_content,revision_number)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[owner,e.topic_id,runId,a.artifact_id,a.artifact_version,a.kind,filename,a.byte_size,manifest.input.document_type,manifest.input.edit_base,e.input_hash,a.preview_content??null,revisionNumber]);
+    // Compare nullable metadata in SQL; no JS timestamp round-trip or partial replay may change a registration.
+    const prior=(await db.query(`SELECT ROW(owner_user_id,project_id,topic_id,input_revision,input_hash,artifact_id,artifact_version,
+        filename,byte_size,document_type,base_artifact,body_content,preview_content,revision_number)
+      IS NOT DISTINCT FROM ROW($4::text,$5::text,$6::text,$7::integer,$8::char(64),$9::text,$10::integer,
+        $11::text,$12::bigint,$13::text,$14::jsonb,NULL::text,$15::text,$16::integer) AS same_metadata
+      FROM bb_m4_execution_artifacts WHERE run_id=$1 AND execution_version=$2 AND kind=$3`,
+      [runId,identity.executionVersion,a.kind,owner,e.project_id,e.topic_id,identity.inputRevision,identity.inputHash,
+        a.artifact_id,a.artifact_version,filename,a.byte_size,manifest.input.document_type,manifest.input.edit_base,a.preview_content??null,revisionNumber])).rows[0];
+    if(prior){if(!prior.same_metadata)throw conflict('IDEMPOTENCY_CONFLICT','M4 artifact changed');continue;}
+    await db.query(`INSERT INTO bb_m4_execution_artifacts(owner_user_id,topic_id,run_id,artifact_id,artifact_version,kind,filename,byte_size,document_type,base_artifact,input_hash,preview_content,revision_number,project_id,execution_version,input_revision)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[owner,e.topic_id,runId,a.artifact_id,a.artifact_version,a.kind,filename,a.byte_size,manifest.input.document_type,manifest.input.edit_base,identity.inputHash,a.preview_content??null,revisionNumber,e.project_id,identity.executionVersion,identity.inputRevision]);
   }
   await db.query('SELECT bb_capture_m4_durable_delivery($1,$2)',[owner,runId]);
   await topicEvent(db,owner,e.topic_id,'m4.artifacts_ready',{run_id:runId,kinds:entries.map(a=>a.kind)});
@@ -480,7 +498,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       await topicEvent(c,user,id,'m4.message_sent',{message_id:messageId,run_id:r.id});return {message:messageDto(row),run:runDto(r)};});});
   const readArtifact=async(request:FastifyRequest)=>{const user=await owner(request),artifactId=param(request,'artifact_id'),version=Number(param(request,'artifact_version'));
     if(!Number.isSafeInteger(version)||version<1)invalid('Invalid artifact version');
-    const a=(await db().query(`SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
+    const a=(await db().query(`SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifact_execution_versions a
       JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
       JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id ${artifactNameJoins('v')}
       WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2'))`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};

@@ -15,7 +15,7 @@ import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-i
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
 import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, type PrivateBlobs } from '@bondbuddy/api/data';
-import { registerM4Artifacts,settleM4Metering,type M4ArtifactRegistration } from '@bondbuddy/api/m4-workspace';
+import { registerM4Artifacts,lockM4ArtifactTopic,settleM4Metering,type M4ArtifactRegistration } from '@bondbuddy/api/m4-workspace';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
@@ -705,8 +705,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
           ...(typeof outcome.wordSummary?.preview_content==='string'?{preview_content:outcome.wordSummary.preview_content}:{})});
         if(m4Artifacts.length!==2 || !m4Artifacts.some(a=>a.kind==='preparation_note')) {await finish(pool,lease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE',failedStage:stage.name});return 'failed';}
         const settled=await transaction(pool,async client=>{
+          await lockM4ArtifactTopic(client,run.owner_user_id,run.id,lease);
           if(!await lockStageRunExecution(client,ctx))throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
-          await registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts);
+          await registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts,lease);
           return settleM4Metering(client,run.owner_user_id,run.id);
         });
         if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}

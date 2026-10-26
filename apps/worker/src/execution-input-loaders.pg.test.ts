@@ -10,6 +10,7 @@ import { claim } from '@bondbuddy/api/queue';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadM4Knowledge } from '@bondbuddy/api/m4-knowledge';
+import { lockM4ArtifactTopic } from '@bondbuddy/api/m4-workspace';
 import { grantCredits } from '../../api/dist/billing.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -18,6 +19,7 @@ import { loadUnifiedInput, type UnifiedManifest } from './unified-input.js';
 import { loadReviewInput, type ReviewManifest } from './review-input.js';
 import { loadReviewFileInput } from './review-file-stage.js';
 import { loadM4WorkerInput } from './m4-input.js';
+import { lockStageRunExecution } from './run-execution-lease.js';
 
 const connection = await isolatedTestDatabase(undefined, 'execution-input-loaders');
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -221,5 +223,62 @@ test('real claimed M1, legacy/file M3 and M4 loaders read exact immutable execut
           assert.deepEqual(blobEvidence(), storedBytes);
         });
       });
+      await t.test('M4 waits for its topic before locking the run and rechecks a lease that expires while waiting',
+        { timeout: 15000 }, async () => {
+          const f = await fixture('m4'), topicId = (f.manifest as M4DocumentManifest).topic_id;
+          const [blocker, worker, probe] = await Promise.all([pool.connect(), pool.connect(), pool.connect()]);
+          let pending: Promise<PromiseSettledResult<unknown>> | undefined;
+          const sideEffects = async (db: Pick<Pool, 'query'>) => (await db.query(`SELECT
+            (SELECT count(*)::integer FROM bb_m4_execution_artifacts WHERE owner_user_id=$1 AND run_id=$2) AS canonical,
+            (SELECT count(*)::integer FROM bb_m4_artifacts WHERE owner_user_id=$1 AND run_id=$2) AS legacy,
+            (SELECT count(*)::integer FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2) AS artifacts,
+            (SELECT count(*)::integer FROM bb_outbox WHERE owner_user_id=$1
+              AND (aggregate_id IN ($2,$3) OR payload->>'run_id'=$2)) AS outbox`,
+          [owner, f.ctx.run.id, topicId])).rows[0];
+          try {
+            const before = await sideEffects(pool);
+            assert.deepEqual({ canonical: before.canonical, legacy: before.legacy, artifacts: before.artifacts },
+              { canonical: 0, legacy: 0, artifacts: 0 });
+            await blocker.query('BEGIN');
+            const blockerPid = Number((await blocker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+            await blocker.query('SELECT id FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2 FOR UPDATE', [owner, topicId]);
+            await worker.query('BEGIN');
+            await worker.query("SET LOCAL statement_timeout='7000ms'");
+            const workerPid = Number((await worker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+            pending = (async () => {
+              await lockM4ArtifactTopic(worker, owner, f.ctx.run.id, f.ctx.lease);
+              return lockStageRunExecution(worker, f.ctx);
+            })().then(value => ({ status: 'fulfilled', value } as const), reason => ({ status: 'rejected', reason } as const));
+            let waiting = false;
+            const deadline = Date.now() + 5000;
+            while (!waiting && Date.now() < deadline) {
+              waiting = (await pool.query('SELECT $1::integer=ANY(pg_blocking_pids($2::integer)) AS waiting',
+                [blockerPid, workerPid])).rows[0].waiting;
+              if (!waiting && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+            }
+            assert.equal(waiting, true, 'the worker must be blocked by the transaction holding this topic');
+            await probe.query('BEGIN');
+            const availableRun = await probe.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE NOWAIT',
+              [owner, f.ctx.run.id]);
+            assert.equal(availableRun.rows[0]?.id, f.ctx.run.id, 'waiting for the topic must not already lock the run');
+            await probe.query('ROLLBACK');
+            const expired = await blocker.query("UPDATE bb_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE owner_user_id=$1 AND id=$2 AND lease_token=$3",
+              [owner, f.ctx.lease.jobId, f.ctx.lease.token]);
+            assert.equal(expired.rowCount, 1);
+            await blocker.query('COMMIT');
+            const result = await pending;
+            if (result.status === 'rejected') throw result.reason;
+            assert.equal(result.value, null, 'the worker must reject the expired lease after acquiring the topic/project locks');
+            assert.deepEqual(await sideEffects(worker), before, 'lease rejection must create no artifact registration, candidate or outbox event');
+          } finally {
+            // Release both possible blockers before settling the worker. Its
+            // ROLLBACK must follow the in-flight lock sequence, not interrupt it.
+            const cleanup = await Promise.allSettled([blocker.query('ROLLBACK'), probe.query('ROLLBACK')]);
+            if (pending) await Promise.allSettled([pending]);
+            cleanup.push(...await Promise.allSettled([worker.query('ROLLBACK')]));
+            blocker.release(); worker.release(); probe.release();
+            for (const result of cleanup) if (result.status === 'rejected') throw result.reason;
+          }
+        });
     } finally { await pool.end(); }
   });

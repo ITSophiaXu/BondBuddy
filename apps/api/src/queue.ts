@@ -562,15 +562,16 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
       if(j.subtype==='m4_document_v1'){
-        const ready=await client.query(`SELECT a.kind,v.id FROM bb_m4_artifacts a
+        const ready=await client.query(`SELECT a.kind,v.id,v.version FROM bb_m4_execution_artifact_versions a
           JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
           JOIN bb_word_delivery_evidence e ON e.id=v.word_delivery_evidence_id AND e.owner_user_id=v.owner_user_id AND e.run_id=v.run_id
           WHERE a.run_id=$1 AND a.owner_user_id=$2 AND a.kind IN ('document','preparation_note')
+            AND a.execution_version=$3 AND a.input_revision=$4 AND a.input_hash=$5 AND a.project_id=$6
             AND v.delivery_status='available' AND e.artifact_id=v.id AND e.artifact_version=v.version
             AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=v.sha256 AND e.candidate_sha256=v.sha256
           AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=v.owner_user_id AND bound.run_id=v.run_id AND bound.id=v.id AND bound.version=v.version)
-        FOR UPDATE OF v`,[r.id,r.owner_user_id]);
-        if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id))
+        FOR UPDATE OF v`,[r.id,r.owner_user_id,lease.executionVersion,lease.inputRevision,lease.inputHash,r.project_id]);
+        if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id&&a.version===artifact.version))
           throw new Problem(422,'DELIVERY_FAILED','Material document and preparation note required for settlement');
       }else if(j.subtype==='project_qa_v1'){
         const ready=(await client.query('SELECT operation,result,manifest FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[r.owner_user_id,r.project_id,r.id])).rows[0];
@@ -751,7 +752,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
-    await assertRunExecution(client,r);
+    const execution=await assertRunExecution(client,r);
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
@@ -769,7 +770,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
       }
     }
     if(r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
-      (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifacts WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rowCount)){
+      (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifact_execution_versions WHERE owner_user_id=$1 AND run_id=$2 AND project_id=$3 AND input_revision=$4 AND input_hash=$5 AND execution_version=$6',[owner,runId,r.project_id,execution.inputRevision,execution.inputHash,execution.executionVersion])).rowCount)){
       const {settleM4Metering}=await import('./m4-billing.js');
       const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;
     }
