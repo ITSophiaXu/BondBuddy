@@ -1,3 +1,4 @@
+import {removeReviewArtifactExecutionScaffold} from './review-artifact-migration-test-fixture.js';
 // Synthetic inputs; real PostgreSQL transactions, migration and exact readers.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -66,6 +67,7 @@ const rejectedWrite = (error: unknown) => ['23502', '23503', '23514', 'P0002'].i
 // Only the disposable clone is altered, so replay tests can exercise the actual
 // migration against pre-0124 legacy records without changing migration history.
 async function removeScaffold(db: Pool | PoolClient) {
+  await removeReviewArtifactExecutionScaffold(db);
   await db.query(`DROP TABLE IF EXISTS bb_review_execution_reports CASCADE;
     DROP FUNCTION IF EXISTS bb_bridge_review_execution_report(),bb_check_review_execution_report(),bb_review_report_storage_shape(jsonb) CASCADE;
     DROP TABLE IF EXISTS bb_review_execution_editors CASCADE;

@@ -923,3 +923,13 @@ SQL 验证基础 envelope、固定身份/来源和 hash 格式，旧摘要精确
 [本地报告专项验收](acceptance/desktop-ux-coverage-20261026/execution-reports/README.md)保留真实 PG 的读写、迁移、租约和原子性证据及原始失败；没有新增模型、Word 内容或浏览器旅程验收。报告 registry 的拆分没有开放后继输入；M3/M4 文件成果登记、检查点/逻辑调用、实际复用与增量处理、B 追加报价/账务及完整同 run 新 Word 仍待完成。G03 和整体 goal 保持 active，B1/B2 未定；未推送、创建 PR 或部署。
 
 该报告切片独立采用 API 13/94 pass、Worker 12/81 pass（后者另 1 Windows skip）；不同集合及轮次不相加。构建/类型检查通过，三轮各 2,290 文件冻结一致并包含 Python 源码；155 个归档文件保留 28 次完整调用、原始失败与专用 PG PID 22604 的停止记录。迁移 receipt 未独立记录当时 SQL 字节 hash，日志与最终 SQL 的证据边界分别列明。旧 sealed archives 与既有用户旅程统计不变。
+
+## 2026-10-27：复核文件成果登记绑定准确执行（0129，G03 前置切片）
+
+`bb_review_execution_artifacts` 用 `(run_id,execution_version,kind)` 保存成果位置，完整六字段关联执行与复核快照、八字段关联准确 artifact 来源。旧登记没有创建时间，本次不伪造。来源严格回填，旧表的 INSERT/UPDATE 与 canonical 自动精确镜像；身份、kind、filename 固定，最终交付前仅允许替换 artifact 引用。交付回执或成功终态后拒绝更换/新增/删除，完全相同的 UPDATE 和 INSERT ON CONFLICT 重放仍可用。历史 delivery gap 和未被捕获的候选只保留来源，不新增交付成员或权限。
+
+生产登记沿用 run→job 锁与准确 live lease；两个登记表的 guard 使用 owned run KEY SHARE NOWAIT，终态 capture 持 run FOR UPDATE 串行。直接 SQL 已持子行时不得反向等待父行；冲突以 55P03 拒绝。迁移对既有表全部 NOWAIT，避免旧 writer 等父行时与迁移反转。实际 Worker 写入 lease 的准确版本/revision/hash；API 工作区、可读报告与继续修改来源、Worker review-result 来源以及恢复存在检查读取 canonical。`bb_review_delivery_ready` 和 0126 交付 builder 的复核成员/命名同时迁移，M4 durable/final 规则与费用外层保持。
+
+[本地登记专项](acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)记录真实 PG、合成 DOCX、两方向并发、严格回填、旧/新 writer 与既有回归；失败与完整重跑分别保留。重放旧迁移的 test-only helper 同时恢复当时的 0110/0126 函数，仅在对应交付表仍存在时恢复其 builder。
+
+本切片仍只接受 V1；共享 current-input gate 未放宽。M4 文件登记、后继采用/处理、检查点/调用身份、真正复用与增量、B 追加报价和跨版本账务、材料与正文留存、桌面完整补料续做仍待完成。未增加用户旅程通过数，G03/整体 goal 继续 active，未推送、PR 或部署。

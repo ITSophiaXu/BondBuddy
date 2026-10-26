@@ -1,0 +1,15 @@
+{
+  "started": "2026-10-26T18:43:28.790Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/worker/dist/review-word-registration.pg.integration.test.js",
+    "apps/worker/dist/review-input-execution.test.js",
+    "apps/worker/dist/review-file-stage.test.js",
+    "apps/worker/dist/run-execution-consumers.pg.test.js",
+    "apps/worker/dist/review-assistant.test.js",
+    "apps/worker/dist/review-reassembly.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

@@ -1,0 +1,144 @@
+✔ artifact inserts bind all statuses, media and artifact versions to the original V1 input rather than the newest draft (1469.7309ms)
+✔ real Word rejection/pending/readback transitions, review PDF and M4 text writers retain their first exact binding (2460.4193ms)
+✖ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (30915.504ms)
+✔ a missing initial execution aborts artifact insertion; a missing binding is invisible to provenance readers (952.4157ms)
+✔ actual migration backfills every legacy artifact without changing files and fails on missing or mismatched execution evidence (5492.8091ms)
+✖ migration drains run/job promoters before artifact locks and does not invert a topic/input creator (6976.3052ms)
+✔ reply citations require the actual immutable report, never finding text (2.7986ms)
+✔ legacy origin is explicitly unknown and nested internal fields never reach a task card (0.9094ms)
+✔ M3 proposals explicitly adopt, lock executable requirements and project one durable task timeline (7063.9084ms)
+✔ an adopted typed revision can become a new quick-action scope without losing requirements or rewriting its prior execution (2400.7448ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (0.968ms)
+✔ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (3806.6628ms)
+✔ readable report keeps valid legacy files readable and accepts exact live registry metadata (1788.4324ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✔ prompt_snapshot (2017.0428ms)
+  ✔ provider_result (3281.9187ms)
+✔ readable report rechecks parent tombstones after waiting, before any private Blob read (5300.5809ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✔ purged_file (4107.2474ms)
+  ✔ closed_account (2786.313ms)
+  ✔ deleted_project (2844.6157ms)
+✔ readable report rechecks file state and account/project visibility after the file lock wait (9739.6972ms)
+✔ real working-file purge waits for readable report validation and denies the next raw read (3007.0006ms)
+✔ M3 ownership, independent drafts, idempotency, immutable input, mutex and failed version history (3900.5979ms)
+✔ all legacy business inserts bridge complete exact snapshots; actual reader preserves fields and original timestamps (1298.6889ms)
+✔ a bad bridge aborts the legacy insert instead of dropping or fabricating a snapshot (13024.3951ms)
+✔ versioned snapshots are immutable and cannot borrow another owner, input, timestamp or executable V2 (14404.9123ms)
+✔ missing canonical snapshots fail closed even when valid legacy records still exist (2116.2852ms)
+✔ a legacy insert without its exact initial execution fails rather than silently skipping the bridge (1765.804ms)
+✔ actual migration backfills exact legacy V1 content and rejects mismatched or missing historical identity (6720.8022ms)
+✔ storage pin checks accept integral JSONB numbers regardless of scale and reject nonpositive or fractional values (536.8754ms)
+✔ migration drains topic row lockers before locking inputs, so an in-flight M4 creator can finish (5870.353ms)
+✔ real finish publishes only its exact selected files and freezes pair, input and completion metadata (1669.2234ms)
+✔ real no-baseline delivery appears in HTTP history with exact files and live access checks (2244.1261ms)
+✔ manual pause and an exhausted dynamic reservation save candidate work without publishing a final delivery (1071.6812ms)
+✔ an outbox failure after the terminal UPDATE rolls back its receipt, members, run and job together (1124.3639ms)
+✔ receipts and members are immutable; missing or altered members hide the whole delivery (3771.4999ms)
+✔ pair members without versions must resolve uniquely; a second verified version cannot be guessed away (1231.4915ms)
+✔ M4 QA durable publication preserves a nonterminal readable result, while real finish adds a distinct final receipt without duplicate public rows (1317.5239ms)
+✔ an invalid final QA phase falls back only to its independently valid durable receipt (961.0047ms)
+✔ M4 document durable publication waits for the registered document and note and never publishes a dynamic unpaid pair (1326.0733ms)
+✔ concurrent exact replay serializes on the run and cannot add another receipt or member set (1971.4683ms)
+✔ UTC publication stays readable and exactly replayable from an Asia/Shanghai session (3528.1859ms)
+✔ a missing nonprimary provenance binding hides the complete phase even while its immutable member list is unchanged (1579.1725ms)
+✔ actual migration uses the exact terminal event time and records unreconstructable history without a public fallback (5545.5829ms)
+✔ migration drains run writers before job/file/execution locks and does not invert a topic/input creator (6475.7383ms)
+✔ HTTP capture exposes only counts while internal pins bind the exact provider output and read original private bytes (2090.1158ms)
+▶ captured private file authority rejects changed scopes, sources and every modified pin field
+  ✔ wrong owner (122.9916ms)
+  ✔ wrong project (79.7248ms)
+  ✔ wrong run (87.4537ms)
+  ✔ wrong revision (80.0563ms)
+  ✔ wrong source result (95.3855ms)
+  ✔ wrong source schema (82.7241ms)
+  ✔ wrong unrelated checkpoint (87.5689ms)
+  ✔ modified pin version (56.0958ms)
+  ✔ modified pin owner (52.4788ms)
+  ✔ modified pin projectId (51.5202ms)
+  ✔ modified pin runId (51.2069ms)
+  ✔ modified pin revision (53.5657ms)
+  ✔ modified pin executionVersion (57.7843ms)
+  ✔ modified pin inputRevision (49.6714ms)
+  ✔ modified pin inputHash (47.8605ms)
+  ✔ modified pin checkpointHash (51.0575ms)
+  ✔ modified pin sourceHash (53.9851ms)
+  ✔ modified pin name (48.4487ms)
+  ✔ modified pin hash (54.253ms)
+  ✔ modified pin size (46.138ms)
+  ✔ modified pin media (47.6935ms)
+  ✔ modified pin key (48.4709ms)
+  ✔ modified pin attempt path (44.5929ms)
+  ✔ modified pin source binding (47.753ms)
+✔ captured private file authority rejects changed scopes, sources and every modified pin field (3258.2317ms)
+▶ missing or damaged nested files do not block saving materials and cannot cause retries or mutations
+  ✔ missing nested Blob (91.4041ms)
+  ✔ same-size hash corruption (48.9379ms)
+  ✔ oversized nested Blob (54.4122ms)
+  ✔ short nested Blob (52.1875ms)
+  ✔ provider_result tombstone denies retained nested bytes (54.7446ms)
+  ✔ prompt_snapshot tombstone denies retained nested bytes (203.7228ms)
+✔ missing or damaged nested files do not block saving materials and cannot cause retries or mutations (2075.0592ms)
+▶ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version
+  ✔ wrong attempt directory (1112.7449ms)
+  ✔ wrong nested version (196.4512ms)
+✔ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version (1760.1073ms)
+✔ a real paused local correction captures six exact checkpoint files with zero provider results and no charges (1676.3203ms)
+▶ checkpoint correction bytes require the exact review execution, export-only source and frozen source material
+  ✔ missing_execution (973.5353ms)
+  ✔ execution_version (790.8628ms)
+  ✔ execution_operation (745.3775ms)
+  ✔ snapshot_input (804.5056ms)
+  ✔ snapshot_origin (867.0046ms)
+  ✔ missing_export_only (324.7947ms)
+  ✔ false_export_only (154.7132ms)
+  ✔ snapshot_source_run (163.2694ms)
+  ✔ missing_export (159.2628ms)
+  ✔ invalid_export_hash (162.9813ms)
+  ✔ self_source_run (154.6531ms)
+  ✔ source_not_in_manifest (157.2259ms)
+✔ checkpoint correction bytes require the exact review execution, export-only source and frozen source material (6096.2399ms)
+ℹ tests 94
+ℹ suites 0
+ℹ pass 92
+ℹ fail 1
+ℹ cancelled 1
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 288889.9832
+
+✖ failing tests:
+
+test at apps\api\dist\artifact-execution.pg.test.js:162:1
+✖ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (30915.504ms)
+  'test timed out after 30000ms'
+
+test at apps\api\dist\artifact-execution.pg.test.js:260:1
+✖ migration drains run/job promoters before artifact locks and does not invert a topic/input creator (6976.3052ms)
+  error: relation "bb_run_execution_deliveries" does not exist
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async removeReviewArtifactExecutionScaffold (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-artifact-migration-test-fixture.js:18:5)
+      at async removeScaffold (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/artifact-execution.pg.test.js:89:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/artifact-execution.pg.test.js:301:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 204,
+    severity: 'ERROR',
+    code: '42P01',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'compilation of PL/pgSQL function "bb_run_execution_delivery_plan" near line 3',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'pl_comp.c',
+    line: '1808',
+    routine: 'plpgsql_parse_wordrowtype'
+  }
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-review-artifacts-20261027\\runs\\2026-10-26T18-43-27-861Z-api-regression-25448-76a7775a\\run.log\n\n1 !== 0\n"}

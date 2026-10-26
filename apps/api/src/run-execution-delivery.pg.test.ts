@@ -1,3 +1,4 @@
+import {removeReviewArtifactExecutionScaffold} from './review-artifact-migration-test-fixture.js';
 // Synthetic inputs/bytes; real PostgreSQL receipts, leases, promoters and finish.
 // Deliberate schema corruption is confined to rolled-back private clone transactions.
 import assert from 'node:assert/strict';
@@ -389,6 +390,7 @@ test('a missing nonprimary provenance binding hides the complete phase even whil
   });
 
 async function removeDeliverySchema(db: Db) {
+  await removeReviewArtifactExecutionScaffold(db);
   // CASCADE drops helpers whose arguments use either table's composite type,
   // including bb_execution_delivery_member_json and bb_execution_delivery_phase_valid.
   // Do not reference those now-removed row types in a later DROP FUNCTION.

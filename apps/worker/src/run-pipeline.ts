@@ -715,9 +715,12 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: outcome.cleanBytes || reviewExecution.operation === 'revision' ? 'revision' : 'report' });
         await transaction(pool,async client=>{
           if(!await lockStageRunExecution(client,ctx))throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
-          for (const artifact of reviewArtifacts) await client.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
-            VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
-          [run.owner_user_id,run.project_id,run.id,artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);
+          for (const artifact of reviewArtifacts) await client.query(`INSERT INTO bb_review_execution_artifacts
+            (owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,artifact_id,artifact_version,kind,filename)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(run_id,execution_version,kind)
+            DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
+          [run.owner_user_id,run.project_id,run.id,lease.executionVersion,lease.inputRevision,lease.inputHash,
+            artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);
         });
       }
       if (cleanArtifactId) {

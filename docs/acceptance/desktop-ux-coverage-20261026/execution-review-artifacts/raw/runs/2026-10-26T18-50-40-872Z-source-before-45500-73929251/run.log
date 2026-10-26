@@ -1,0 +1,1 @@
+{"files":2297,"sha256":"dad2d0140c6108098fa0060c8d03c8aad409523eb496439c663460acd6b751f0","roots":["apps/api/src","apps/api/dist","apps/worker/src","apps/worker/dist","apps/web/src","apps/web/tests","packages/contracts/src","packages/contracts/dist","packages/contracts/examples","apps/web/dist-test","db/migrations","python"]}

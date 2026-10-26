@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T18:41:31.494Z",
+  "finished": "2026-10-26T18:41:33.005Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "db/migrate.mjs"
+  ],
+  "status": 0,
+  "signal": null,
+  "pid": 8596
+}

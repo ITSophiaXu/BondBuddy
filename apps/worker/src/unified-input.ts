@@ -66,13 +66,12 @@ export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: Revi
 /** Reload the exact successful report and its immutable source input on every recovery. */
 export async function reviewResultArtifact(pool:Pool,run:RunRow,pin:ReviewResultPin){
   if(!Value.Check(ReviewResultPinSchema,pin))return null;
-  const row=(await pool.query(`SELECT a.object_key,a.sha256,i.input_hash,i.manifest,e.snapshot FROM bb_delivered_artifact_versions a
-    JOIN bb_review_artifacts ra ON ra.artifact_id=a.id AND ra.artifact_version=a.version AND ra.owner_user_id=a.owner_user_id AND ra.run_id=a.run_id AND ra.kind='report'
+  const row=(await pool.query(`SELECT a.object_key,a.sha256,ra.input_hash,ra.manifest,ra.execution_snapshot AS snapshot FROM bb_delivered_artifact_versions a
+    JOIN bb_review_execution_artifact_versions ra ON ra.artifact_id=a.id AND ra.artifact_version=a.version AND ra.owner_user_id=a.owner_user_id AND ra.run_id=a.run_id AND ra.kind='report'
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id AND r.project_id=ra.project_id
-    JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
-    JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
-    WHERE a.id=$1 AND a.version=$2 AND r.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND r.input_revision=$6
-      AND r.state='succeeded' AND r.channel='production' AND e.operation IN ('full_review','differential_review')
+    WHERE a.id=$1 AND a.version=$2 AND r.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND ra.input_revision=$6
+      AND ra.execution_version=1 AND ra.input_hash=r.input_hash AND ra.input_revision=r.input_revision
+      AND r.state='succeeded' AND r.channel='production' AND ra.operation IN ('full_review','differential_review')
       AND a.quality_status='passed' AND a.delivery_status='available'`,[pin.artifact_id,pin.artifact_version,run.owner_user_id,run.project_id,pin.run_id,pin.input_revision])).rows[0];
   return row&&row.sha256.trim()===pin.sha256&&row.input_hash.trim()===pin.input_hash&&inputManifestHash(row.manifest)===pin.input_hash
     && inputManifestHash(row.snapshot.input?.source_material_ref??null)===inputManifestHash(pin.source_material)?row:null;

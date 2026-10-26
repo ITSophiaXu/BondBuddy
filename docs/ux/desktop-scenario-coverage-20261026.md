@@ -227,3 +227,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 ### 后续双稿历史修复
 
 [双稿历史验收](../acceptance/desktop-ux-coverage-20261026/history-pairs/README.md)修复合法双成员成果被历史漏列：基线仅按冻结交付记录实际存在时返回，旧三成员与 single/null 兼容，混合分页保留；已声明的基线不能因损坏而省略。真实 PostgreSQL/HTTP、成员私有字节及实时权限按专项证据验证，没有新增前端流程、浏览器验收、采用或追加计价。此定向修复不增加用户旅程分母或上调整体比例，G03 和完整 goal 仍未完成。
+
+### 后续复核文件登记增量（0129）
+
+[复核登记专项](../acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)将真实 M3 文件登记、实际来源消费者、结算 readiness 与交付 capture 绑定准确执行版本；保留交付前换选候选及新旧 V1 writer，最终回执/成功态后冻结。真实 PG 两方向并发、严格回填和回归证据独立记录，失败没有删除或合并成通过。没有新增浏览器或同任务新输入用户旅程，不上调覆盖比例；M4 登记、受控后继执行、真正增量处理、B 追加公式/账务和完整桌面链仍待完成，G03/完整 goal 保持 active。

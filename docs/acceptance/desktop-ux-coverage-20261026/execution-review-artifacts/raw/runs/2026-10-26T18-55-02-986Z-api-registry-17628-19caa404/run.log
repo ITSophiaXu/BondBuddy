@@ -1,0 +1,18 @@
+✔ canonical review artifact registration rejects every wrong execution tuple and a same-owner artifact from another run (879.4609ms)
+✔ rolling old and new writers mirror exact rows in both directions and replace only the artifact before final delivery (1452.3825ms)
+✔ canonical artifact view has no legacy existence dependency and does not fall back to an old registration (1022.59ms)
+✔ real finish freezes the selected canonical report and pair; exact old/new no-ops replay and every later change is rejected (1618.8235ms)
+✔ slot replacement and real final capture serialize in both lock orders without freezing stale registry members (2861.5671ms)
+✔ readiness and delivery planning fail closed when only the legacy report registration survives canonical damage (1404.6583ms)
+✔ 0129 fresh replay installs exact six/eight-field foreign keys, a versioned slot key and no invented registration timestamp (1361.2543ms)
+✔ 0129 backfills every exact V1 legacy field and supports an old writer followed by a new writer after rollout (1414.3589ms)
+✔ 0129 rejects incompatible legacy origins atomically rather than skipping a row or rebinding its artifact (1479.1709ms)
+✔ 0129 NOWAIT rolls back behind an in-flight legacy registry lock and applies after that writer releases it (5715.2391ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51601.758

@@ -1,3 +1,4 @@
+import {removeReviewArtifactExecutionScaffold} from './review-artifact-migration-test-fixture.js';
 // Synthetic registrations and editor bodies; real PostgreSQL 16, migration,
 // constraints and transactions. Destructive DDL stays in disposable clones.
 import assert from 'node:assert/strict';
@@ -18,6 +19,7 @@ type Db = Pool | PoolClient;
 const rejectedWrite = (error: unknown) => ['23502', '23503', '23514', 'P0002'].includes((error as { code: string }).code);
 
 async function removeScaffold(db: Db) {
+  await removeReviewArtifactExecutionScaffold(db);
   await db.query(`DROP TABLE IF EXISTS bb_review_execution_reports CASCADE;
     DROP FUNCTION IF EXISTS bb_bridge_review_execution_report(),bb_check_review_execution_report(),bb_review_report_storage_shape(jsonb) CASCADE;
     DROP TABLE IF EXISTS bb_review_execution_editors CASCADE;

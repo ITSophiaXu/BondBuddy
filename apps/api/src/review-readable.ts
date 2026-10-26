@@ -14,7 +14,8 @@ async function readableSource(db: PoolClient, row: ReviewMarkdownSource): Promis
     JOIN bb_runs r ON r.owner_user_id=p.owner_user_id AND r.project_id=p.project_id AND r.id=p.run_id
     JOIN bb_projects pr ON pr.owner_user_id=r.owner_user_id AND pr.id=r.project_id AND pr.deleted_at IS NULL
     JOIN bb_users u ON u.id=r.owner_user_id AND u.closed_at IS NULL AND u.status<>'closed'
-    JOIN bb_review_executions e ON e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id AND e.run_id=r.id
+    JOIN bb_review_execution_snapshots e ON e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id AND e.run_id=r.id
+      AND e.execution_version=1 AND e.input_revision=r.input_revision AND e.input_hash=r.input_hash
     WHERE p.id=$1 AND p.owner_user_id=$2 AND p.project_id=$3 AND p.run_id=$4 AND p.call_id=$5
       AND p.prompt_snapshot_ref=$6 AND r.input_hash=$7 AND p.result_ref=$8 AND p.result_sha256=$9 AND p.byte_size=$10
       AND p.logical_call_id='review-file-v1' AND p.result_schema_version='codex-review-file-v1'
@@ -22,9 +23,10 @@ async function readableSource(db: PoolClient, row: ReviewMarkdownSource): Promis
       AND NOT EXISTS (SELECT 1 FROM bb_log_content_tombstones t
         WHERE (t.content_kind='prompt_snapshot' AND t.content_id=p.prompt_snapshot_ref)
           OR (t.content_kind='provider_result' AND t.content_id=p.id))
-      AND EXISTS (SELECT 1 FROM bb_review_artifacts a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id
+      AND EXISTS (SELECT 1 FROM bb_review_execution_artifact_versions a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id
         AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
         WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id
+          AND a.execution_version=1 AND a.input_hash=r.input_hash AND a.input_revision=r.input_revision
           AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')`,
   [row.id,row.owner_user_id,row.project_id,row.run_id,row.call_id,row.prompt_snapshot_ref,row.input_hash,
     row.result_ref,row.result_sha256.trim(),row.byte_size]);
@@ -78,13 +80,15 @@ export function registerReadableReview(app: FastifyInstance, db: () => Pool,
     const user = await owner(request), { project_id, run_id } = request.params as { project_id: string; run_id: string };
     await project(db(), user, project_id);
 
-    const run = (await db().query(`SELECT r.input_hash,e.version FROM bb_runs r JOIN bb_review_executions e
+    const run = (await db().query(`SELECT e.input_hash,e.version FROM bb_runs r JOIN bb_review_execution_snapshots e
       ON e.run_id=r.id AND e.project_id=r.project_id AND e.owner_user_id=r.owner_user_id
+      AND e.execution_version=1 AND e.input_revision=r.input_revision AND e.input_hash=r.input_hash
       WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state IN ('succeeded','test_completed')
       AND e.operation IN ('full_review','differential_review') AND EXISTS (
-        SELECT 1 FROM bb_review_artifacts a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id
+        SELECT 1 FROM bb_review_execution_artifact_versions a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id
           AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
         WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id
+          AND a.execution_version=1 AND a.input_hash=r.input_hash AND a.input_revision=r.input_revision
           AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')`, [user, project_id, run_id])).rows[0];
     if (!run) throw missing();
     reply.header('Cache-Control', 'private, no-store');

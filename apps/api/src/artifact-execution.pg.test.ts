@@ -1,3 +1,4 @@
+import {removeReviewArtifactExecutionScaffold} from './review-artifact-migration-test-fixture.js';
 // Synthetic bytes and inputs; real PostgreSQL bridges, migration and promoters.
 // Schema removal/corruption below is confined to disposable private clones.
 import assert from 'node:assert/strict';
@@ -90,6 +91,7 @@ function memoryBlobs(): PrivateBlobs {
     exists: async key => values.has(key), delete: async key => { values.delete(key); } };
 }
 async function removeScaffold(db: Db) {
+  await removeReviewArtifactExecutionScaffold(db);
   // Recreate 0125 on its real predecessor schema, only inside private clones.
   // Later delivery/editor FKs and triggers must leave together, not as a half-schema.
   await db.query(`DROP TABLE IF EXISTS bb_review_execution_reports CASCADE;

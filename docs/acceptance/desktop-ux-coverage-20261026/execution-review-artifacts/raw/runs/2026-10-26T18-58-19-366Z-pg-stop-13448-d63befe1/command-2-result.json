@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T18:58:20.849Z",
+  "finished": "2026-10-26T18:58:20.903Z",
+  "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+  "args": [
+    "-D",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+    "status"
+  ],
+  "status": 3,
+  "signal": null,
+  "pid": 48908
+}

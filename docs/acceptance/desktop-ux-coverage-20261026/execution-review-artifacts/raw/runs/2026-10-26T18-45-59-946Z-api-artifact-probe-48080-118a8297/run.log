@@ -1,0 +1,16 @@
+✖ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (31863.7511ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 0
+ℹ cancelled 1
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43265.2183
+
+✖ failing tests:
+
+test at apps\api\dist\artifact-execution.pg.test.js:162:1
+✖ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (31863.7511ms)
+  'test timed out after 30000ms'
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-review-artifacts-20261027\\runs\\2026-10-26T18-45-59-946Z-api-artifact-probe-48080-118a8297\\run.log\n\n1 !== 0\n"}

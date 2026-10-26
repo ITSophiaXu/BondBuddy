@@ -1,0 +1,16 @@
+✔ 0127 fresh replay installs six-field editor FKs and a versioned key while preserving the legacy key and V1 gate (650.6724ms)
+✔ 0127 actual replay backfills exact legacy bodies, hashes and PostgreSQL microsecond creation time (990.5207ms)
+✔ 0127 legacy-first bridge matches JavaScript canonical Unicode/control hashes and rejects all immutable editor writes (1025.2622ms)
+✔ 0127 canonical-first V1 mirror accepts exact SQL timestamp copying and rejects changed body, hash or microsecond time atomically (1343.5711ms)
+✔ 0127 invalid legacy inserts roll back both tables instead of skipping missing or foreign exact source evidence (1088.2014ms)
+✔ 0127 actual legacy backfill fails the whole transaction for wrong project, missing snapshot/source, bad hash, source hash or format (1408.2507ms)
+✔ 0127 NOWAIT conflicts release parent locks on rollback and retry succeeds after a real legacy writer commits (5891.0761ms)
+✔ 0127 a late legacy-table lock fails NOWAIT after parent locks without trapping the writer behind those parents (6642.5202ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34682.2586

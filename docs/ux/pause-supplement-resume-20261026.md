@@ -63,9 +63,9 @@
 | prompt snapshot 已锁住原任务并验证准确 V1 输入，保留原身份约束 | 后继输入须有准确执行关联与授权；不能直接去掉检查。Run DTO、执行回执和历史明确区分初始输入与当前采用输入，保留原执行请求的幂等身份 |
 | `durable-probe-journal.ts:81` 按逻辑调用查最后 attempt；file authoring 使用常量 `file-authoring-v1` | 每个执行版本使用稳定的工作单元身份及依赖指纹；崩溃恢复重用同一调用，补料的新处理使用新身份。不能靠盲目增加 attempt 重放旧工作 |
 | stage 检查点仍只按 stage 名索引；共享输入 reader 与三个实际 loader 目前只接受 V1 | 后继执行统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
-| 旧 `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 保留 run 唯一约束；0124 已追加完整身份的业务快照，0128 已追加准确执行版本的 canonical 结构化报告，实际正文读写消费该记录 | 仍须开放受控的后继业务快照创建并版本化 M3/M4 成果登记；模型、交付及历史继续核验准确版本，旧记录保持不可变。当前只有 V1 不能支持后继执行 |
+| 旧 `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 保留 run 唯一约束；0124 已追加完整身份的业务快照，0128 已追加准确执行版本的 canonical 结构化报告，0129 已追加 M3 文件成果登记并迁移实际消费者 | 仍须开放受控的后继业务快照创建并版本化 M4 成果登记；模型、交付及历史继续核验准确版本，旧记录保持不可变。当前只有 V1 不能支持后继执行 |
 | 本地 `0127` 已将复核 editor 正文追加到 `(run_id, execution_version)` canonical 表，V1 保留旧表镜像；API、writer、导出 pin 和本机恢复记录带准确执行身份，[专项验收已封存](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md) | editor 拆分不等于报告、M4 或成果登记已全部版本化；全局 V1 gate 和 current-input integrity 共享 view 未改，仍不能采用后继输入 |
-| `0125` 已追加不可变 artifact→准确 V1 执行/输入关系，实际 API/Worker 成果消费者读取严格来源 view；多个成果登记仍按 `(run_id, kind)` 唯一 | 后继采用时仍须版本化成果 ID、报告及业务登记，并保留历史关联与当前结果投影；不能只放开 V2 约束。项目募集书、文件族、previous_output、复核来源和助手续改继续读取准确版本 |
+| `0125` 已追加不可变 artifact→准确 V1 执行/输入关系，实际 API/Worker 成果消费者读取严格来源 view；0129 的 M3 文件登记使用 `(run_id,execution_version,kind)`，M4 仍按 run/kind 唯一 | 后继采用时仍须版本化 M4 登记并开放受控新成果来源，保留历史关联与当前结果投影；不能只放开 V2 约束。项目募集书、文件族、previous_output、复核来源和助手续改继续读取准确版本 |
 | `0126` 已冻结准确 V1 实际交付成员、命名、配对和时间，下载/历史/命名/previous_output 使用交付记录；旧非动态 M4 的耐久读取独立记录 | 仍须把后继执行的业务报告/成果登记版本化，并以采用回执与增量处理实际消费前序工作；不能把候选可用状态或另一阶段的 durable 权限当作新版成功交付 |
 | `0097_m4_cross_project_material_retention.sql` 的材料 pin 判定沿原 run 输入/M4 快照读取 | 保留所有已采用执行版本、旧模型结果及历史成果所引用的材料字节，不能只 pin 原输入或当前输入。清理/归档/账号删除继续遵守既有生命周期政策 |
 | run 的 `test_grant_id` 绑定原不可变输入；规则/模板、source metadata 和跨项目材料也有准确授权范围 | 每个新执行版本重新核验所用输入的授权，必要时记录版本级 grant；不改写或借用原 grant 授权不同输入，不绕过原有测试/生产隔离 |
@@ -198,3 +198,9 @@ SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制�
 建议顺序：确定费用与版本化契约 → 追加迁移/API/队列与账务 → 三类执行器及准确成果关联 → 原任务页材料/继续动作 → 隔离集成与桌面连续验收 → 全目标复核。任何中间阶段均不能标记 UX-A03 或完整 goal 已完成。
 
 本轮未推送、未创建 PR、未部署。此前外部发布授权尚未收到；本提案和覆盖纠正不构成外部发布授权。
+
+### 2026-10-27：复核文件登记的准确执行来源
+
+本地 `0129` 已将 M3 文件成果位置追加到 `(run_id,execution_version,kind)` canonical 登记，绑定完整执行/输入及准确 artifact；实际 writer、公开成果/来源读取、结算 readiness 和交付冻结成员/命名均消费该登记。保留交付前重试换选文件，交付回执或成功态后只允许完全相同的重放；旧历史 gap/未就绪候选仅保留来源。新旧 writer 原子镜像，两方向登记/交付竞争用真实 PG 验证，详见[登记专项](../acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)。
+
+这只移除 M3 文件登记按 run 唯一的存储前提；V1 gate、current-input integrity、M4 登记与实际后继采用尚未开放，不能称已完成同任务补料续做。费用已确定 B，B1/B2 公式仍待决定，未自行计价或新增扣款。G03 / UX-A03 与完整 goal 仍 active。

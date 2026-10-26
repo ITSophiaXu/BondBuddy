@@ -1,0 +1,11 @@
+{
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--import",
+    "file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/execution-review-artifacts-20261027/profile-hook.mjs",
+    "--test",
+    "--test-name-pattern=bindings reject foreign ownership",
+    "apps/api/dist/artifact-execution.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}
