@@ -1,0 +1,101 @@
+{
+  "status": "fixed_verified_with_stated_scope",
+  "webCommit": "21a7d8463e500f47147beaa3f9e8817a0db8e327",
+  "backendCommit": "8c81e8f1032ba5e23657eb32a43d9dfd0c9612fe",
+  "url": "http://localhost:5196/",
+  "tests": {
+    "unitPassed": 145,
+    "browserUniquePassed": 71,
+    "initialBrowser": {
+      "passed": 70,
+      "failed": 1
+    },
+    "reviewRerunPassed": 19,
+    "initialFailure": "旧用例仍查找下载修订版；原 fixture 无正文修订，已更新为准确的下载批注版（无正文修订），保留字节和版本断言。",
+    "typescript": "passed",
+    "vite": "passed"
+  },
+  "defects": {
+    "D01": {
+      "status": "passed",
+      "evidence": "真实原上传恢复，准确材料 ID/version/hash 保持；免费识别、单题真实模型回答和 Word 下载成功，无重新上传。"
+    },
+    "D02": {
+      "status": "passed",
+      "evidence": "真实 V2 手动修改后免费导出 V3；查看导出结果直接选择 V3，URL/run 与下载正文一致。"
+    },
+    "D03": {
+      "status": "passed",
+      "evidence": "主要财务情况说明首次真实模板上传，保存后立即 1/1 已准备，确认按钮可用，模板库立即可见；重试/替换另有浏览器夹具覆盖。"
+    },
+    "D04": {
+      "status": "passed_fixture",
+      "evidence": "浏览器夹具注入 PROJECT_RUN_ACTIVE；保留原请求，可去全部项目再回来，用相同 request ID/source 恢复，无重传。未在真实后端另造忙碌任务。"
+    },
+    "D05": {
+      "status": "passed",
+      "evidence": "真实关联文件清洁版/修订版均下载为 V2；字节 hash 与原准确 artifact 一致。"
+    },
+    "D06": {
+      "status": "passed",
+      "evidence": "真实发行人说明续改页保持 nafmii/mtn；12 文种的项目文件范围另有浏览器夹具覆盖。"
+    }
+  },
+  "realRuns": {
+    "prepare": "9d7c51eb-99b2-45b8-a84a-e05f7f6bd7ca",
+    "answer": "2524e3ec-2e3e-4d25-8bf5-a4e2b84390e5",
+    "freeExport": "e42067d0-e144-4edf-92b8-734ead091ff9"
+  },
+  "modelCreditEvidence": {
+    "checkedAt": "2026-10-26T05:37:39.833Z",
+    "calls": [
+      {
+        "run_id": "2524e3ec-2e3e-4d25-8bf5-a4e2b84390e5",
+        "id": "call-7d7b1229-6816-4e97-aee2-18ed56abe8dd",
+        "status": "completed",
+        "usage_status": "measured",
+        "model_id": "gpt-6-sol",
+        "model_provider": "copilot_enterprise",
+        "duration_ms": 6984
+      }
+    ],
+    "credits": [
+      {
+        "run_id": "2524e3ec-2e3e-4d25-8bf5-a4e2b84390e5",
+        "kind": "reserve",
+        "points": "60"
+      },
+      {
+        "run_id": "2524e3ec-2e3e-4d25-8bf5-a4e2b84390e5",
+        "kind": "settle",
+        "points": "60"
+      }
+    ],
+    "active": []
+  },
+  "downloads": [
+    {
+      "filename": "关联文件_清洁版_V2_20261026.docx",
+      "sha256": "2b3cb813c8a788dc92ae9162e4519aa152698a71f203d7e8b6ec89d1ef324d58",
+      "bytes": 1449
+    },
+    {
+      "filename": "关联文件_修订版_V2_20261026.docx",
+      "sha256": "b8a2d635c5932a3190a4025f1aff722722db0479a214423f1a544e8db6ba7822",
+      "bytes": 2212
+    },
+    {
+      "filename": "问答验收问题_已回填回答_V5_20261026.docx",
+      "sha256": "5e4bd48d1139826555bfea4f79b2e66a595239c36856b95202772dd881f481d7",
+      "bytes": 1768
+    },
+    {
+      "filename": "PR745 复核测试（合成数据）_募集书清洁版_V3_20261026.docx",
+      "sha256": "510394c965fd109bc53b35aa868920c94c5e098d0b5b1ca3a51e1cc727ed68c1",
+      "bytes": 1971
+    }
+  ],
+  "userAcceptance": "pending",
+  "productionDeployment": "not_performed",
+  "newMigrations": []
+}
