@@ -33,6 +33,24 @@ test('browser egress only permits selected official domains and public pinned IP
  for(const ip of ['127.0.0.1','10.0.0.1','172.16.0.1','192.168.0.1','169.254.169.254','100.64.0.1','0.0.0.0','224.0.0.1','::1','::ffff:127.0.0.1'])assert.equal(publicIntegrityAddress(ip),false,ip);
  assert.equal(publicIntegrityAddress('8.8.8.8'),true);
 });
+test('MOT search provider is scoped to that site, host, tenant assets and query path',()=>{
+ const mot=INTEGRITY_SITES.find(s=>s.id==='transport')!;
+ for(const path of ['/web/pc/enterprise/js/jquery.min.js','/custom/bm19000004_zck/js/query.js'])assert.equal(integrityBrowserUrlAllowed(mot,'https://p.so-gov.cn'+path),true);
+ for(const url of ['https://p.so-gov.cn/api/search','https://p.so-gov.cn/custom/other/js/query.js','https://p.so-gov.cn/web/index.html','https://p.so-gov.cn.evil.test/web/x.js','http://p.so-gov.cn/web/x.js'])assert.equal(integrityBrowserUrlAllowed(mot,url),false);
+ assert.equal(integrityBrowserUrlAllowed(site,'https://p.so-gov.cn/web/x.js'),false);
+ for(const url of ['https://p.so-gov.cn/custom/BM19000004/css/search.css','https://p.so-gov.cn/common/js/ieTips.js','https://p.so-gov.cn/pc/js/marked.min.js','https://file.so-gov.cn/cps/pro/bm19000004/css/govSearchPc.css','https://api.so-gov.cn/query/s']){
+  assert.equal(integrityBrowserUrlAllowed(mot,url),true,url);assert.equal(integrityBrowserUrlAllowed(site,url),false,url);
+  assert.equal(integrityBrowserUrlAllowed({...site,id:'official-directory'},url),true,url);
+ }
+ for(const url of ['https://api.so-gov.cn/feedback','https://api.so-gov.cn/query/other','https://chatapi.so-gov.cn/ask/v4/token','https://file.so-gov.cn/cps/pro/other/css/govSearchPc.css','http://api.so-gov.cn/query/s','https://api.so-gov.cn.evil.test/query/s'])assert.equal(integrityBrowserUrlAllowed(mot,url),false,url);
+});
+test('MOA resources share provider assets but cannot access another tenant',()=>{
+ const moa=INTEGRITY_SITES.find(s=>s.id==='agriculture')!,mot=INTEGRITY_SITES.find(s=>s.id==='transport')!;
+ for(const url of ['https://p.so-gov.cn/custom/bm21000007zw/css/search.css','https://file.so-gov.cn/cps/pro/bm21000007/css/govSearchPc.css','https://file.so-gov.cn/cps/pro/bgt_moa/css/image/cover.png']){
+  assert.equal(integrityBrowserUrlAllowed(moa,url),true);assert.equal(integrityBrowserUrlAllowed({...site,id:'official-directory'},url),true);assert.equal(integrityBrowserUrlAllowed(mot,url),false);
+ }
+ assert.equal(integrityBrowserUrlAllowed(moa,'https://p.so-gov.cn/custom/BM19000004/css/search.css'),false);
+});
 test('private-network worker uses dedicated upstream but cannot widen the selected website',async()=>{
  let upstreamCalls=0;
  const server=createServer((req,res)=>{upstreamCalls++;res.end('official fixture');});
@@ -47,10 +65,18 @@ test('unavailable Beijing tunnel fails closed without a direct website fallback'
  const proxy=await integrityProxy(site,{upstreamUrl:`http://127.0.0.1:${port}`});
  try{const status=await new Promise<number>((resolve,reject)=>{const req=request(proxy.server,{path:'http://www.chinatax.gov.cn/'},res=>{res.resume();res.on('end',()=>resolve(res.statusCode!));});req.on('error',reject);req.end();});assert.equal(status,502);}finally{await proxy.close();}
 });
+test('search-provider HTTPS uses the configured upstream and preserves its denial',async()=>{
+ const requested:string[]=[],upstream=createServer();
+ upstream.on('connect',(req,socket)=>{requested.push(req.url!);socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');});
+ await new Promise<void>(r=>upstream.listen(0,'127.0.0.1',r));
+ const proxy=await integrityProxy(INTEGRITY_SITES.find(s=>s.id==='transport')!,{upstreamUrl:`http://127.0.0.1:${(upstream.address() as {port:number}).port}`});
+ try{const status=await new Promise<number>((resolve,reject)=>{const req=request(proxy.server,{method:'CONNECT',path:'api.so-gov.cn:443'});req.on('connect',(response,socket)=>{socket.destroy();resolve(response.statusCode!);});req.on('error',reject);req.end();});assert.equal(status,403);assert.deepEqual(requested,['api.so-gov.cn:443']);}
+ finally{await proxy.close();await new Promise<void>(r=>upstream.close(()=>r()));}
+});
 test('real Chromium on synthetic official-site fixtures: query, screenshot, zero, challenge, stale, failure and continuation',{timeout:120000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async t=>{
  const browser=await chromium.launch({headless:true});
  try{
-  for(const [mode,expected] of [['hits','results'],['zero','no_results'],['zero-ndrc','no_results'],['late','no_results'],['captcha','blocked'],['waf','blocked'],['login','blocked'],['failure','failed'],['stale','unverified']] as const){
+  for(const [mode,expected] of [['hits','results'],['zero','no_results'],['zero-ndrc','no_results'],['late','no_results'],['captcha','blocked'],['waf','failed'],['login','blocked'],['failure','failed'],['stale','unverified']] as const){
    await t.test(mode,async()=>{
     const context=await browser.newContext({viewport:{width:1440,height:1000}});await integrityWebsiteFixture(context,mode);
     const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'河北',city:'沧州'},new AbortController().signal,{waitMs:5000,maxPages:1});

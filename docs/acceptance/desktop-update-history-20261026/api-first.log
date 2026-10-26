@@ -1,0 +1,46 @@
+✔ old exact check is readable outside the unchanged recent 30 and retains original pins and all updates (2059.0783ms)
+✔ old check marks a changed source adoption as stale without replacing its fixed source (25.4972ms)
+✔ old running check does not expose a stored result as completed (26.6004ms)
+✔ exact check returns the same safe 404 for missing (24.6297ms)
+✔ exact check returns the same safe 404 for other owner (17.3798ms)
+✔ exact check returns the same safe 404 for other project (14.6264ms)
+✔ exact check returns the same safe 404 for mismatched project (17.0127ms)
+✔ exact check returns the same safe 404 for patch operation (17.3868ms)
+✔ exact check returns the same safe 404 for foreign project (14.5307ms)
+✔ deleted project is rejected before reading any source or operation (18.6735ms)
+✔ unauthenticated exact read never queries the database (14.7897ms)
+✔ accepted old update reads its exact original check outside the unchanged recent thirty and retains V2 separately from a later V3 retry (2063.2525ms)
+✔ an original running update remains distinct from its successful retry and has no invented delivery (30.5612ms)
+✔ an original paused update remains distinct from its successful retry and has no invented delivery (22.9539ms)
+✔ an original failed update remains distinct from its successful retry and has no invented delivery (17.3091ms)
+✔ an original cancelled update remains distinct from its successful retry and has no invented delivery (17.2496ms)
+✔ accepted-update history rejects no-acceptance with the same safe 404 (18.6529ms)
+✔ accepted-update history rejects other-owner with the same safe 404 (18.097ms)
+✔ accepted-update history rejects other-project with the same safe 404 (18.3903ms)
+✔ accepted-update history rejects run-project with the same safe 404 (16.7185ms)
+✔ accepted-update history rejects not-patch with the same safe 404 (17.1842ms)
+✔ accepted-update history rejects duplicate-acceptance with the same safe 404 (14.2484ms)
+✔ accepted-update history rejects manifest-check with the same safe 404 (19.021ms)
+✔ accepted-update history rejects manifest-file with the same safe 404 (17.189ms)
+✔ accepted-update history rejects manifest-family with the same safe 404 (14.2896ms)
+✔ accepted-update history rejects manifest-sha with the same safe 404 (16.4915ms)
+✔ accepted-update history rejects manifest-source with the same safe 404 (12.5883ms)
+✔ accepted-update history rejects malformed-manifest with the same safe 404 (11.2751ms)
+✔ accepted-update history rejects missing-check with the same safe 404 (12.8396ms)
+✔ accepted-update history rejects duplicate-update with the same safe 404 (13.9914ms)
+✔ accepted-update history rejects wrong-projected-file with the same safe 404 (13.0121ms)
+✔ accepted-update history rejects duplicate-file with the same safe 404 (15.5165ms)
+✔ accepted-update history refuses missing patch (11.3534ms)
+✔ accepted-update history refuses check used as patch (12.1284ms)
+✔ accepted-update history refuses different owned project (16.2677ms)
+✔ accepted-update history refuses foreign project (15.4401ms)
+✔ deleted project and unauthenticated session are rejected before reading update or check records (28.8057ms)
+✔ accepted-update history OpenAPI reuses the public check DTO and owned GET path parameters (0.7816ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18365.2899

@@ -1,0 +1,13 @@
+{
+  "synthetic": true,
+  "baseline_commit": "ce3f2a8d",
+  "viewport": {
+    "width": 1440,
+    "height": 960
+  },
+  "url": "http://127.0.0.1:5188/#consistency?project=consistency-task-root&update_run=consistency-task-old-patch",
+  "requested_update": "consistency-task-old-patch",
+  "recent_checks": 30,
+  "individual_reads": 0,
+  "writes": 0
+}

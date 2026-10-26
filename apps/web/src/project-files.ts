@@ -10,6 +10,7 @@ import { ProspectusPanel } from './prospectus-panel';
 import {UploadRecovery,type UploadRecoveryRecord} from './upload-recovery';
 import {withProjectContext} from './project-navigation';
 import {refreshProjectTasks,type ProjectTaskRefreshBoundary} from './project-task-refresh';
+import {linkedConsistencyCheck} from './consistency-history';
 import {fileStatusOptions,isFileStatusGroup,matchesProjectFileVersion,projectFileStatusRows,resolveProjectFileVersion,type FileStatusGroup,type ProjectFileStatusRow} from './project-file-status';
 import './project-browser.css';
 import './project-workbench.css';
@@ -189,9 +190,14 @@ export class ProjectFiles {
     if(this.fileContext){
       this.fileContextRead='loading';this.paintFileContext();
       // Context is optional: checking its provenance must never delay file access.
-      void this.api.request<{checks:ProjectFileCheck[]}>('GET','/projects/'+encodeURIComponent(this.id)+'/project-files/checks',undefined,{},AbortSignal.any([this.controller.signal,AbortSignal.timeout(15000)])).then(value=>{
+      const signal=AbortSignal.any([this.controller.signal,AbortSignal.timeout(15000)]),run=this.fileContext.check;
+      void this.api.request<{checks:ProjectFileCheck[]}>('GET','/projects/'+encodeURIComponent(this.id)+'/project-files/checks',undefined,{},signal).then(async value=>{
         if(!this.live()||revision!==this.loadRevision)return;
-        this.fileContextChecks=Array.isArray(value?.checks)?value.checks:[];this.fileContextRead=Array.isArray(value?.checks)?'ready':'failed';this.fileContextChecksRevision=revision;this.paintFileContext();this.maybeLocateFileContext();
+        const check=await linkedConsistencyCheck(this.api,this.id,run,Array.isArray(value?.checks)?value.checks:[],signal);
+        return {checks:[check]};
+      }).then(value=>{
+        if(!this.live()||revision!==this.loadRevision)return;
+        this.fileContextChecks=value?.checks??[];this.fileContextRead=value?'ready':'failed';this.fileContextChecksRevision=revision;this.paintFileContext();this.maybeLocateFileContext();
       },()=>{if(this.live()&&revision===this.loadRevision){this.fileContextRead='failed';this.fileContextChecksRevision=revision;this.paintFileContext();}});
     }
     // Task summaries are optional: a slow or failed task read cannot hold file access.

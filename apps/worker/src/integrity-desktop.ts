@@ -1,6 +1,6 @@
 import {spawn, execFile, type ChildProcess} from 'node:child_process';
 import {promisify} from 'node:util';
-import {writeFile, readFile, mkdir} from 'node:fs/promises';
+import {writeFile, readFile, mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomBytes, randomInt} from 'node:crypto';
 import type {Page} from 'playwright';
@@ -59,12 +59,43 @@ export type IntegrityDesktop = {
  close:()=>Promise<void>;
 };
 
+/** Flush Chromium's actual compositor without waiting for remote web fonts.
+ * Official pages can keep document.fonts.ready pending after results are visible.
+ * This buffer is discarded; the evidence is still the untouched native scrot image.
+ */
+export async function syncIntegrityCompositor(page:Page){
+ // Allow Chromium's font fallback period to finish, but never await a stalled font forever.
+ await page.evaluate(()=>Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,3500))]));
+ const session=await page.context().newCDPSession(page);
+ let timer:ReturnType<typeof setTimeout>|undefined;
+ try{await Promise.race([
+  (async()=>{for(let attempt=0;;attempt++)try{
+   return await session.send('Page.captureScreenshot',{format:'png',fromSurface:true,captureBeyondViewport:false});
+  }catch(error){
+   // A newly mapped/maximized native window can briefly have no capture surface.
+   if(attempt>=2||!(error instanceof Error)||!error.message.includes('Unable to capture screenshot'))throw error;
+   await page.waitForTimeout(250);
+  }})(),
+  new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('INTEGRITY_COMPOSITOR_TIMEOUT')),10000);}),
+ ]);}finally{clearTimeout(timer);await session.detach().catch(()=>{});}
+}
+
 /** Each collection owns an authenticated local X display with Openbox and a native XFCE taskbar.
  * The light taskbar stays at the bottom; its clock reads the live system time in Asia/Shanghai.
  * scrot captures the root screen directly; no timestamp, frame or overlay is composited.
  * This is an isolated server desktop, not the user's existing interactive session.
  */
-export async function startIntegrityDesktop(directory:string, base:NodeJS.ProcessEnv):Promise<IntegrityDesktop>{
+export async function startIntegrityDesktop(directory:string,base:NodeJS.ProcessEnv):Promise<IntegrityDesktop>{
+ for(let attempt=0;;attempt++){
+  const owned=await mkdtemp(join(directory,'desktop-'));
+  try{return await startDesktopAttempt(owned,base);}catch(error){
+   await rm(owned,{recursive:true,force:true});
+   // Only retry startup failures, before a browser or any official query exists.
+   if(attempt||!(error instanceof Error)||!['INTEGRITY_DISPLAY_START_FAILED','INTEGRITY_DISPLAY_UNAVAILABLE','INTEGRITY_WINDOW_MANAGER_UNAVAILABLE','INTEGRITY_NATIVE_PANEL_UNAVAILABLE'].includes(error.message))throw error;
+  }
+ }
+}
+async function startDesktopAttempt(directory:string, base:NodeJS.ProcessEnv):Promise<IntegrityDesktop>{
  if(process.platform!=='linux')throw Error('INTEGRITY_DESKTOP_REQUIRES_LINUX');
  const display=':'+randomInt(1000,60000), authority=join(directory,'Xauthority');
  const env:NodeJS.ProcessEnv={...base,HOME:directory,DISPLAY:display,XAUTHORITY:authority,TZ:'Asia/Shanghai',GTK_THEME:'Adwaita',XDG_CONFIG_HOME:join(directory,'.config'),XDG_RUNTIME_DIR:join(directory,'runtime')};
@@ -139,14 +170,7 @@ export async function startIntegrityDesktop(directory:string, base:NodeJS.Proces
    // A mapped/maximized X window can still contain Chromium's blank startup frame.
    // Synchronize its compositor before capturing the native desktop; this buffer
    // is discarded, and the saved evidence remains the untouched scrot image.
-   const deadline=Date.now()+10000;
-   for(;;){
-    try{await page.screenshot({timeout:Math.max(1,deadline-Date.now()),caret:'initial',animations:'allow'});break;}
-    catch(error){
-     if(!String(error).includes('Unable to capture screenshot')||Date.now()>=deadline)throw error;
-     await page.waitForTimeout(100);
-    }
-   }
+   await syncIntegrityCompositor(page);
    // Allow the native window manager to apply its bounds without altering website content.
    await page.waitForTimeout(200);
    await assertBottomPanel();

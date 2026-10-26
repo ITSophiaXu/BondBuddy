@@ -151,6 +151,7 @@ export async function install(page:Page,s=fixture()){
     if(method==='GET'&&path===base)return json(route,{files:s.files},listSchema,'Project file registry');
     if(method==='GET'&&path===base+'/checks'){s.checkReads++;return json(route,{checks:s.checks},checksSchema,'Project checks');}
     if(method==='GET'&&path===base+'/updates')return json(route,{batches:s.batches},batchesSchema,'Update batches');
+    if(method==='GET'&&path===base+'/updates/'+ids.oldRun+'/check'&&!s.checks.some(check=>check.updates.some(update=>update.run_id===ids.oldRun)))return error(route,404,'NOT_FOUND');
     if(method==='GET'&&path===base+'/workspace')return s.workspaceUnavailable?error(route,404,'NOT_FOUND'):json(route,{project_id:ids.root,source:s.source,workspace:s.workspace,files:s.files,batches:[]},sourceSchema,'Existing workspace');
     if(method==='GET'&&path===`/projects/${ids.root}/prospectus-versions`)return dto(route,'ProspectusVersionsResponse',{project_id:ids.root,current_version_id:s.source.version_id,selection_revision:s.source.selection_revision,inactive_material_ids:[],versions:[{version_id:s.source.version_id,sequence:s.source.sequence,origin:'upload',filename:s.source.filename,sha256:s.source.asset.pin.sha256,created_at:oldTime,material_id:s.source.asset.kind==='material'?s.source.asset.pin.material_id:null,material_version:s.source.asset.kind==='material'?s.source.asset.pin.material_version:null,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]});
     const artifact=path.match(/^\/artifacts\/([^/]+)(\/download)?$/);

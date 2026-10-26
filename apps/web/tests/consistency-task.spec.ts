@@ -45,6 +45,7 @@ test('consistency task: a failed original acceptance never borrows its successfu
 
 for(const projection of ['missing-update','duplicate-update','wrong-input-file'] as const)test(`consistency task: ${projection} cannot select the latest check or another input`,async({page})=>{
   const s=fixture({projection}),before=serverSnapshot(s);await openTask(page,s);
+  if(projection==='missing-update')expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/updates/'+ids.oldRun+'/check')).toHaveLength(1);
   await expect(panel(page).getByRole('heading')).toHaveText('指定的文件更新任务暂时无法读取');await expect(panel(page)).not.toHaveAttribute('data-fc-update-file-version',/.+/);
   await expect(panel(page).locator('[data-fc-download]')).toHaveCount(0);await expect(page.locator('.fc-results')).toHaveCount(0);
   expect(s.metadataReads).toEqual([]);expect(s.byteReads).toEqual([]);await noBusiness(s,before);
@@ -77,9 +78,11 @@ test('consistency task: arrival reveals the exact input once, later user filters
 test('consistency task: explicit re-read restores a missing acceptance without executing or preparing a workspace',async({page})=>{
   const s=fixture(),old=s.checks.find(c=>c.run_id===ids.oldCheck)!,saved=structuredClone(old.updates);old.updates=[];s.projectionFaults.push('temporarily missing acceptance');
   await openTask(page,s);await expect(panel(page).getByRole('heading')).toHaveText('指定的文件更新任务暂时无法读取');
+  expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/updates/'+ids.oldRun+'/check')).toHaveLength(1);
   old.updates=saved;const before=serverSnapshot(s),reads=s.checkReads;s.workspaceUnavailable=true;
   await panel(page).locator('[data-fc-refresh]').click();await expect.poll(()=>s.checkReads).toBeGreaterThan(reads);await ready(page,s);
   await expect(panel(page)).toContainText('本次交付 V2');expect(s.calls.some(c=>c.method==='POST'&&c.path===base+'/workspace')).toBe(false);
+  expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/updates/'+ids.oldRun+'/check')).toHaveLength(1);
   expect(s.metadataReads).toEqual([]);await noBusiness(s,before);
 });
 

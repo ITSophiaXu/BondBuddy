@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "milestone": "Desktop exact historical check reading and file round trip",
+  "status": "passed",
+  "branch": "codex/desktop-ux-history-20261026",
+  "baseline_commit": "8c81e8f1032ba5e23657eb32a43d9dfd0c9612fe",
+  "develop_checked": "030b0c5657bba34c921587d372e586c212de3d6a",
+  "previous_pr": "https://github.com/ITSophiaXu/BondBuddy/pull/745",
+  "synthetic": true,
+  "browser": {
+    "passed": 100,
+    "failed": 0,
+    "skipped_optional_old_collector": 1,
+    "new_history_journeys": 14,
+    "viewport": "1440x960",
+    "browser": "Microsoft Edge",
+    "mobile_excluded": true,
+    "command": "npx playwright test tests/consistency-history.spec.ts tests/consistency-originals.spec.ts tests/consistency-reading.spec.ts tests/consistency-confirmation.spec.ts tests/file-consistency-workbench.spec.ts tests/consistency-task.spec.ts --grep-invert \"at 390\"",
+    "log": "browser-verified.log"
+  },
+  "api": {
+    "passed": 11,
+    "failed": 0,
+    "command": "node --test apps/api/dist/project-file-check-history.test.js",
+    "scope": "Fastify injection and strict synthetic SQL pool; no actual PostgreSQL"
+  },
+  "unit": {
+    "passed": 11,
+    "failed": 0,
+    "command": "node --test apps/web/dist-test/consistency-confirmation.test.js apps/web/dist-test/project-file-status.test.js"
+  },
+  "contracts": {
+    "command": "npm run check:contracts",
+    "exit_code": 0,
+    "example_checks_passed": 11
+  },
+  "build": {
+    "full_workspace_exit_code": 0,
+    "final_web_typecheck_and_build_exit_code": 0,
+    "scope": "Full workspace build passed before final web guards/copy refinements; final web tsc and Vite build repeated after those refinements. Other package sources unchanged.",
+    "existing_bundle_size_warning": true
+  },
+  "baseline_collector": {
+    "passed": 1,
+    "baseline_commit": "8c81e8f1032ba5e23657eb32a43d9dfd0c9612fe",
+    "separate_service": true
+  },
+  "preliminary_runs": {
+    "first_history": "11 passed, 1 failed: error prompt locator needed updating",
+    "preliminary_related": "89 passed, 9 failed, 1 optional collector skipped; sources were still being refined",
+    "baseline_diagnostic": "1 passed, 1 failed; the empty-source no-button assertion also failed on the unchanged published application",
+    "corrections": [
+      "New single-check GET explicitly returns 404 in missing-record fixtures; original request/hash/receipt assertions retained and strengthened.",
+      "Workspace preparation remains tested on the no-run view; explicit-run missing-workspace GET-only path added.",
+      "Empty source asserts no enabled start and explicitly checks its disabled button.",
+      "Readable last snapshot shows an explicit read failure and continues active polling; 403/404 and invalid DTO clear it."
+    ],
+    "final_run_fully_repeated": true
+  },
+  "source_hashes_unchanged_during_verified_run": true,
+  "source_hashes": [
+    {
+      "path": "apps/api/src/project-file-consistency.ts",
+      "sha256": "470a19ccaf118eb68c7d69ce9388fd3b775f1f48e69df22581757759dd8d092d"
+    },
+    {
+      "path": "apps/api/src/project-file-check-history.test.ts",
+      "sha256": "3451ceff2de17b0daaae41703ca966ea896f890cc0407fd05eafaeca1faa4989"
+    },
+    {
+      "path": "packages/contracts/src/project-file-workspace.ts",
+      "sha256": "43db3e819c6d97b8255ee7dfda52ce3ad8eb57d6dfecb7a8c8aa773d501c75c9"
+    },
+    {
+      "path": "apps/web/src/consistency-history.ts",
+      "sha256": "0f06432b0fb7ec72a1421e5d139f7bd2c330cb74be25f639160064c74df11605"
+    },
+    {
+      "path": "apps/web/src/file-consistency.ts",
+      "sha256": "f19e4941ac732503433f81d3643a2bf57de50392f0f1931765d71428a4420136"
+    },
+    {
+      "path": "apps/web/src/project-files.ts",
+      "sha256": "d0e8be1dd060f4365ceac3fc8145d7d72a47be09e0ec99c397f4b77e60b0a718"
+    },
+    {
+      "path": "apps/web/tests/consistency-history.spec.ts",
+      "sha256": "15e161b8b90e947c9bd7231cba4b5704e150dfad4c451c652a519fec5f2a569c"
+    },
+    {
+      "path": "apps/web/tests/consistency-history-baseline.spec.ts",
+      "sha256": "400b2764bbcbf22ec7edb2ee7a4a6d531e2747bf747bbc528f947e1e6a76c020"
+    },
+    {
+      "path": "apps/web/tests/consistency-confirmation-fixtures.ts",
+      "sha256": "a1b3c26861d0c7e15ea9ecfb439cdbdead77598b29d8acddd231294edbc5a173"
+    },
+    {
+      "path": "apps/web/tests/consistency-confirmation.spec.ts",
+      "sha256": "b00509bdcdd9f135579babaa0982a0dc5503dd19253425bd4824e83c42a7bf8b"
+    },
+    {
+      "path": "apps/web/tests/file-consistency-workbench.spec.ts",
+      "sha256": "52dffdf81ef4791a67bdb80cdd46754cdb3014186dc94c10483b1bba0717a50b"
+    }
+  ],
+  "visual_review": {
+    "images": 4,
+    "dimensions": "1440x960",
+    "result": "Reviewed baseline missing record, exact historical source, file V1/current V2 return, and missing-record retry. Existing desktop layout remains usable."
+  },
+  "raw_evidence_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-history-evidence-20261026",
+  "exclusions": [
+    "Mobile optimization",
+    "Full-history pagination",
+    "Long-term monitoring",
+    "update_run-only historical reverse lookup",
+    "Real worker/model/ledger/PostgreSQL/Blob/Word or professional acceptance"
+  ],
+  "publication": {
+    "new_changes_pushed": false,
+    "deployed": false,
+    "previous_pr_state_at_check": "OPEN"
+  }
+}
