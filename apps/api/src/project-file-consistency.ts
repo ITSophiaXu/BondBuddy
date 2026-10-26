@@ -1,7 +1,8 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {PROJECT_FILE_UPDATE_PRICE,projectFileSchemas,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
+import {Value} from '@sinclair/typebox/value';
+import {PROJECT_FILE_UPDATE_PRICE,projectFileSchemas,ProjectFilePatchInputSchema,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {projectFileSource,projectFileVersions,readProjectFileAsset} from './project-file-storage.js';
@@ -57,6 +58,20 @@ export async function readProjectFileCheck(db:Pool,owner:string,id:string,runId:
   if(checks.length!==1)throw missing();
   return checks[0];
 }
+export async function readProjectFileUpdateCheck(db:Pool,owner:string,id:string,runId:string):Promise<ProjectFileCheck>{
+  await project(db,owner,id);
+  const accepted=(await db.query(`SELECT a.check_run_id,a.file_version_id,o.manifest FROM bb_project_file_acceptances a
+    JOIN bb_project_file_operations o ON o.owner_user_id=a.owner_user_id AND o.run_id=a.run_id
+    JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.project_id=o.project_id AND r.id=o.run_id
+    WHERE a.owner_user_id=$1 AND o.project_id=$2 AND a.run_id=$3 AND o.operation='patch'`,[owner,id,runId])).rows;
+  if(accepted.length!==1)throw missing();
+  const row=accepted[0],manifest:unknown=row.manifest;
+  if(!Value.Check(ProjectFilePatchInputSchema,manifest)||manifest.check_run_id!==row.check_run_id||manifest.file_version_id!==row.file_version_id)throw missing();
+  const check=await readProjectFileCheck(db,owner,id,row.check_run_id),updates=check.updates.filter(update=>update.run_id===runId),files=check.files.filter(file=>file.file_version_id===row.file_version_id);
+  if(updates.length!==1||updates[0].file_version_id!==row.file_version_id||files.length!==1||files[0].file_id!==manifest.file_id||check.sha256!==manifest.check_sha256||
+    inputManifestHash(check.source)!==inputManifestHash(manifest.source))throw missing();
+  return check;
+}
 async function currentSource(c:PoolClient,owner:string,id:string,expected:{version_id:string;selection_revision?:number}){
   const s=await projectFileSource(c,owner,id);
   if(!s||s.version_id!==expected.version_id||(expected.selection_revision!==undefined&&s.selection_revision!==expected.selection_revision))
@@ -99,6 +114,7 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
   const base='/api/v1/projects/:project_id/project-files',params=(r:FastifyRequest)=>r.params as {project_id:string;run_id:string};
   app.get(base+'/checks',async r=>({checks:await readProjectFileChecks(db(),await owner(r),params(r).project_id)}));
   app.get(base+'/checks/:run_id',async r=>({check:await readProjectFileCheck(db(),await owner(r),params(r).project_id,params(r).run_id)}));
+  app.get(base+'/updates/:run_id/check',async r=>({check:await readProjectFileUpdateCheck(db(),await owner(r),params(r).project_id,params(r).run_id)}));
   app.post(base+'/checks',{schema:{body:projectFileSchemas.ProjectFileCheckRequest}},async r=>{
     const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof projectFileSchemas.ProjectFileCheckRequest>;
     const runId=await transaction(db(),async c=>{

@@ -9,7 +9,7 @@ import {esc,date} from './ui';
 import {runStateLabel} from './review-state';
 import {prototypeIcon as ico} from './prototype-design';
 import {createConfirmationSnapshot,restoreConfirmationSnapshot,type ConfirmationBinding,type ConfirmationSnapshot} from './consistency-confirmation';
-import {linkedConsistencyCheck} from './consistency-history';
+import {linkedConsistencyCheck,linkedConsistencyUpdateCheck} from './consistency-history';
 import './file-workspace.css';
 import './consistency-selection.css';
 import './consistency-originals.css';
@@ -34,6 +34,7 @@ export class FileConsistency {
   private abort=new AbortController();private timer?:ReturnType<typeof setTimeout>;private busy=false;private downloads=new ArtifactDownloads();
   private checks:ProjectFileCheck[]=[];private files:ProjectFileVersion[]=[];private updates:Updates['batches']=[];private source:ProjectFileSource|null=null;
   private linkedHistory?:string;private historyReadError='';
+  private linkedUpdateHistory?:string;
   private chosen=new Set<string>();private selectionCheck?:string;private filter='all';private name='';private message='';private needsCredits=false;
   private prospectus?:ProspectusPanel;private prospectusHost?:HTMLElement;
   private checkRequest?:Dto<'ProjectFileCheckRequest'>;
@@ -99,12 +100,13 @@ export class FileConsistency {
   private async reload(readOnly=false){
     const revision=++this.reloadRevision;clearTimeout(this.timer);
     try{
-      const query=new URLSearchParams(location.hash.split('?')[1]),runs=query.getAll('run');
+      const query=new URLSearchParams(location.hash.split('?')[1]),runs=query.getAll('run'),updateRuns=query.getAll('update_run');
       const linkedRun=runs.length===1&&runs[0].trim()&&runs[0].length<=128?runs[0]:undefined;
+      const linkedUpdate=updateRuns.length===1&&updateRuns[0].trim()&&updateRuns[0].length<=128?updateRuns[0]:undefined;
       const [checks,files,state,updates]=await Promise.all([this.request<{checks:ProjectFileCheck[]}>('GET','/checks'),this.request<{files:ProjectFileVersion[]}>('GET',''),
-        this.workspace(!readOnly&&!query.has('run')),this.request<Updates>('GET','/updates')]);
+        this.workspace(!readOnly&&!query.has('run')&&!query.has('update_run')),this.request<Updates>('GET','/updates')]);
       if(!this.live()||revision!==this.reloadRevision)return;
-      let linkedHistory:string|undefined,historyReadError='';
+      let linkedHistory:string|undefined,linkedUpdateHistory:string|undefined,historyReadError='';
       if(linkedRun&&!checks.checks.some(c=>c.run_id===linkedRun)){
         try{
           const check=await linkedConsistencyCheck(this.api,this.id,linkedRun,checks.checks,AbortSignal.any([this.abort.signal,AbortSignal.timeout(15000)]));
@@ -118,9 +120,26 @@ export class FileConsistency {
           if(transient&&this.linkedHistory===linkedRun&&previous.length===1){checks.checks=[...checks.checks,previous[0]];linkedHistory=linkedRun;}
         }
       }
+      else if(!query.has('run')&&linkedUpdate&&!checks.checks.some(c=>c.updates.some(update=>update.run_id===linkedUpdate))){
+        try{
+          const check=await linkedConsistencyUpdateCheck(this.api,this.id,linkedUpdate,checks.checks,AbortSignal.any([this.abort.signal,AbortSignal.timeout(15000)]));
+          // An existing check without this acceptance is an inconsistent
+          // projection, not permission to replace its contents silently.
+          if(checks.checks.some(c=>c.run_id===check.run_id))throw new UserFacingError('原检查中的更新记录尚未一致，请重新读取。');
+          checks.checks=[...checks.checks,check];linkedHistory=check.run_id;linkedUpdateHistory=linkedUpdate;
+        }catch(error){
+          historyReadError=error instanceof ApiError&&[403,404].includes(error.status)?'原更新任务不存在或当前账号无权读取，请核对原链接。':friendlyError(error,'read');
+          const previous=this.checks.filter(c=>c.updates.some(update=>update.run_id===linkedUpdate));
+          const transient=!(error instanceof UserFacingError)&&(!(error instanceof ApiError)||error.status>=500||[408,429].includes(error.status));
+          if(transient&&this.linkedUpdateHistory===linkedUpdate&&previous.length===1&&!checks.checks.some(c=>c.run_id===previous[0].run_id)){
+            checks.checks=[...checks.checks,previous[0]];linkedHistory=previous[0].run_id;linkedUpdateHistory=linkedUpdate;
+          }
+        }
+      }
       if(!this.live()||revision!==this.reloadRevision)return;
       this.checks=checks.checks;this.files=files.files;this.source=state.source;this.updates=updates.batches;
       this.linkedHistory=linkedHistory;this.historyReadError=historyReadError;
+      this.linkedUpdateHistory=linkedUpdateHistory;
       // Explicit actions repaint in finally, after busy is cleared. A first
       // disabled repaint would remove the focused node before it can be read.
       if(!this.busy)this.paint();
@@ -360,7 +379,7 @@ export class FileConsistency {
   }
   private updateTaskHtml(target:UpdateTarget|null){
     const refresh=`<button class="btn secondary" data-fc-refresh ${this.busy?'disabled':''}>重新读取记录</button>`;
-    if(!target)return `<section class="panel fc-update" id="fc-update-task"><h2 id="fc-update-task-heading" tabindex="-1">指定的文件更新任务暂时无法读取</h2><p>当前记录无法唯一对应原任务、原检查与原文件版本。检查列表仅提供最近 30 轮记录，没有自动切换到其他任务或最近一轮。</p>${refresh} <button class="btn secondary" data-fc-latest>查看最近检查记录</button></section>`;
+    if(!target)return `<section class="panel fc-update" id="fc-update-task"><h2 id="fc-update-task-heading" tabindex="-1">指定的文件更新任务暂时无法读取</h2><p>${esc(this.historyReadError||'当前记录无法唯一对应原任务、原检查与原文件版本。')} 没有自动切换到其他任务或最近一轮。</p>${refresh} <button class="btn secondary" data-fc-latest>查看最近检查记录</button></section>`;
     const {run,update,file}=target,output=this.updateOutput(target),resumable=['paused','awaiting_input'].includes(update.state),running=active.has(update.state),disabled=this.busy||!!this.checkRequest||!!this.pendingUpdate?.attempted;
     const state=update.state==='failed'?'本次未完成':update.state==='rejected'?'本次未启动':runStateLabel[update.state as keyof typeof runStateLabel]??'任务状态待同步';
     const description=update.state==='failed'?'本次更新未完成；当前记录未提供失败原因。已保存的原文件与此前成果保留。':update.state==='rejected'?'本次更新未启动；当前记录未提供未启动原因。已保存的原文件与此前成果保留。':update.state==='succeeded'?output?'本次交付 V'+output.sequence+'；以下双稿仅来自这次更新任务。':'任务已完成，原任务的交付文件尚待同步；暂不提供其他更新或重试的成果。':resumable?'本次更新尚未完成，已保存的输入和进度保留，可继续原任务。':'此处仅显示这次更新任务的状态；下方文件行汇总整轮检查中的更新与重试。';

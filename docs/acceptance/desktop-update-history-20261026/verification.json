@@ -1,0 +1,257 @@
+{
+  "milestone": "Desktop: reopen an accepted file update beyond the recent thirty and download its exact original V2 pair",
+  "date": "2026-10-26",
+  "status": "Verified; local incremental commit only; no push or deployment",
+  "synthetic": true,
+  "repository_base": "4d163e67ca840b4fd5675c06f4b586f676ded3f2",
+  "already_merged": [
+    "PR #745",
+    "PR #746"
+  ],
+  "carried_previous_milestone": {
+    "original_commit": "7160c519",
+    "local_cherry_pick": "ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9",
+    "scope": "Exact check run lookup; prior work excluded from this increment"
+  },
+  "branch": "codex/desktop-ux-task-history-20261026",
+  "incremental_parent": "ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9",
+  "environment": {
+    "os": "Windows",
+    "node": "24.22.1",
+    "npm": "11.19.1",
+    "playwright": "1.63.0",
+    "browser": "Microsoft Edge 156.0.4314.42",
+    "browser_channel": "msedge",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "application_url": "http://127.0.0.1:5187",
+    "baseline_url": "http://127.0.0.1:5188"
+  },
+  "results": {
+    "build": {
+      "command": "npm run build",
+      "exit_code": 0,
+      "result": "All seven workspaces built, including web tsc --noEmit and Vite",
+      "log": "build-first.log",
+      "warning": "Vite minified JavaScript 1597.02 kB exceeds the existing 500 kB chunk warning threshold; no bundle refactor added"
+    },
+    "api": {
+      "command": "node --test apps/api/dist/project-file-update-history.test.js apps/api/dist/project-file-check-history.test.js",
+      "exit_code": 0,
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "new_cases": 27,
+      "previous_cases": 11,
+      "log": "api-first.log",
+      "boundary": "Registered Fastify routes with strict synthetic SQL pool and SELECT-only assertions; not live PostgreSQL"
+    },
+    "contracts": {
+      "command": "npm run check:contracts",
+      "exit_code": 0,
+      "synthetic_examples": 171,
+      "internal_examples": 12,
+      "data_lifecycle_examples": 4,
+      "ocr_tests_passed": 29,
+      "generation_issuer_binding_tests_passed": 11,
+      "failed": 0,
+      "log": "contracts.log"
+    },
+    "baseline": {
+      "command": "npx playwright test tests/consistency-update-history-baseline.spec.ts --reporter=list",
+      "cwd": "apps/web",
+      "environment": {
+        "BB_E2E_BASE_URL": "http://127.0.0.1:5188",
+        "BB_E2E_BROWSER_CHANNEL": "msedge",
+        "BB_UPDATE_HISTORY_BASELINE": "1",
+        "BB_UPDATE_HISTORY_EVIDENCE_DIR": "an absolute writable evidence directory"
+      },
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "commit": "ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9",
+      "log": "baseline.log",
+      "result": "Unmodified previous application cannot resolve the update-only old link; no component injection"
+    },
+    "browser": {
+      "command": "npx playwright test tests/consistency-update-history.spec.ts tests/consistency-task.spec.ts tests/consistency-history.spec.ts tests/consistency-reading.spec.ts tests/consistency-confirmation.spec.ts tests/file-consistency-workbench.spec.ts --grep-invert \"at 390\" --reporter=list",
+      "cwd": "apps/web",
+      "environment": {
+        "BB_E2E_BASE_URL": "http://127.0.0.1:5187",
+        "BB_E2E_BROWSER_CHANNEL": "msedge",
+        "BB_UPDATE_HISTORY_EVIDENCE_DIR": "an absolute writable evidence directory"
+      },
+      "exit_code": 0,
+      "passed": 107,
+      "failed": 0,
+      "skipped": 1,
+      "new_cases_passed": 18,
+      "optional_skip": "Existing consistency-confirmation current screenshot collector (opt-in)",
+      "log": "browser-verified.log",
+      "boundary": "Real desktop frontend with allow-listed synthetic HTTP and synthetic download bytes; no mobile acceptance"
+    },
+    "first_browser_attempt": {
+      "passed": 106,
+      "failed": 1,
+      "skipped": 1,
+      "log": "browser-first.log",
+      "cause": "Old fixture did not allow the new exact reverse GET after dynamically removing an acceptance",
+      "fix": "Fixture returns 404 when actual recent checks lack that acceptance; added exactly-one-GET assertions before and after explicit recovery while retaining prior assertions",
+      "product_changed_after_attempt": false,
+      "rerun": "Complete 108-case selection, not just the failed test"
+    },
+    "static_review": {
+      "result": "No blockers",
+      "scope": "Owner/project/run binding; original file/source/hash; retry isolation; transient and revoked access; fixtures and retained assertions",
+      "tests_rerun_by_reviewer": false
+    }
+  },
+  "covered": [
+    "Both existing projects/files task entry points",
+    "Original V1 and V2 tracked/clean pair, without current V3 or later retry substitution",
+    "Owned SELECT-only lookup beyond the recent thirty",
+    "GET-only opening/refresh/download; workspace 404 never prepares one",
+    "Original request identity, fixed source, versions, hash and exact synthetic download bytes",
+    "403/404 clear old actions; invalid or ambiguous routes/responses fail explicitly",
+    "Transient active-task read failure retains an accurate snapshot and resumes polling"
+  ],
+  "source_integrity": {
+    "hash_algorithm": "SHA-256 of tested working-tree bytes",
+    "snapshot_captured_utc": "2026-10-26T06:15:57.6006285Z",
+    "final_run_log_created_utc": "2026-10-26T06:15:39.5127275Z",
+    "all_10_hashes_unchanged_after_run": true,
+    "all_source_modification_times_precede_run": true,
+    "build_api_contract_product_sources_unchanged_since_first_success": true,
+    "files": [
+      {
+        "path": "apps/api/src/project-file-consistency.ts",
+        "sha256": "603e47528b87c73ae92061508392682765dbbe1852956fa11f3e383a8f31d907",
+        "last_write_utc": "2026-10-26T06:07:55.2336886Z"
+      },
+      {
+        "path": "apps/api/src/project-file-update-history.test.ts",
+        "sha256": "6a1a269a154493489a0bdb219ebd434ea910c826e7c82508cb53ec4377254525",
+        "last_write_utc": "2026-10-26T06:09:04.9193759Z"
+      },
+      {
+        "path": "packages/contracts/src/project-file-workspace.ts",
+        "sha256": "176e1ce1ee68bc68cc0abf60abe1110bb284ea78d72061b0c6399ed7b97d5ef9",
+        "last_write_utc": "2026-10-26T06:07:56.8100100Z"
+      },
+      {
+        "path": "apps/web/src/consistency-history.ts",
+        "sha256": "6fe46eec859bad96873631531ca63760f9e2c68f03e2b5b5ec16d5aec76b337a",
+        "last_write_utc": "2026-10-26T06:07:49.5660374Z"
+      },
+      {
+        "path": "apps/web/src/file-consistency.ts",
+        "sha256": "c3d27f69192d0cb4ca27ad8969ce25358c151d786e12775863126ee074c5198c",
+        "last_write_utc": "2026-10-26T06:07:51.1871141Z"
+      },
+      {
+        "path": "apps/web/tests/consistency-task-fixtures.ts",
+        "sha256": "a58f896520c64b1a1f94268c9f1ad73a2ce96939087d03a1598e5fbe4db1dfbe",
+        "last_write_utc": "2026-10-26T06:13:52.3929442Z"
+      },
+      {
+        "path": "apps/web/tests/consistency-task.spec.ts",
+        "sha256": "252e570fcfe3009fe802775137f967832dc9853dd6657737b62c3e401d14736d",
+        "last_write_utc": "2026-10-26T06:13:54.5310466Z"
+      },
+      {
+        "path": "apps/web/tests/consistency-update-history-fixtures.ts",
+        "sha256": "414351c2769e2a6b5d00ac83214a28c405d5db1b1c15c5af55e6cd72381f7563",
+        "last_write_utc": "2026-10-26T06:09:21.3785983Z"
+      },
+      {
+        "path": "apps/web/tests/consistency-update-history.spec.ts",
+        "sha256": "dc22a7cabd2fae4ae1cf563e72631647ea6279a030a20805dbf03ee1a27adf88",
+        "last_write_utc": "2026-10-26T06:09:50.8342684Z"
+      },
+      {
+        "path": "apps/web/tests/consistency-update-history-baseline.spec.ts",
+        "sha256": "e978f84f0821ffdfafecc44f471e3a9e3f719414cba2bf62aa9f7865a210ba49",
+        "last_write_utc": "2026-10-26T06:10:29.2225059Z"
+      }
+    ],
+    "snapshot_timing": "Captured during the first seconds of final suite execution after correcting an initial relative-path hash command; final comparison used UTC file timestamps and unchanged SHA-256 hashes."
+  },
+  "artifacts": [
+    {
+      "path": "build-first.log",
+      "sha256": "2e05815f9dc770ba2ad42a083be4aadc29783388d1ec36eca8234e433c478552",
+      "original_log_or_image_sha256": "354a01e59a8c50e077afaeb2d48de66ad0a45759593601c935b456537413be2d"
+    },
+    {
+      "path": "api-first.log",
+      "sha256": "c09b6e5270cdf82bbf2d023b614c2721db66d5a682edc6fc17d7634cd1e5c2be",
+      "original_log_or_image_sha256": "097acdee3873bc680479145ebf0c8220f2f532ae70e24554a6aa341425c9ab3f"
+    },
+    {
+      "path": "contracts.log",
+      "sha256": "087249e69c1769daa7534b31df3954dc4debe56f4dc27c784469d65faf82c570",
+      "original_log_or_image_sha256": "9a7fdac0c47b19a31ea305e32f2432440966d14de83a39fdf301001b1f1c75f7"
+    },
+    {
+      "path": "baseline.log",
+      "sha256": "68f287825f8f8312005a99df17f8b3688ffa543293ab37cd2a50745045e03a54",
+      "original_log_or_image_sha256": "4d0f33c40edb97b0fbe70b38750dcbf7aef57ba2c7ea667e1732396b3c8df4f2"
+    },
+    {
+      "path": "browser-first.log",
+      "sha256": "d99e53b34e652f5b3604d9f23b31ebcdc81d5a2803dd4b34b1c73ba4b8b94d43",
+      "original_log_or_image_sha256": "3cf06c59f5171924dc141174e3febac396cb68410f0ec0110d71b55ea27222d5"
+    },
+    {
+      "path": "browser-verified.log",
+      "sha256": "1879487bf298977a0666765cc9027991827b5e80706c5f9a1bf810f94d935462",
+      "original_log_or_image_sha256": "5c38aec3fd973945d89418012ccd94f3b4f4e668825e431b2f358a96d6c3b221"
+    },
+    {
+      "path": "update-history-baseline-missing-1440.json",
+      "sha256": "0a1ce4c301ca2d8312bf05ed6e411ae89da1909b011786535546a89fb79df4e5",
+      "original_log_or_image_sha256": "0a1ce4c301ca2d8312bf05ed6e411ae89da1909b011786535546a89fb79df4e5"
+    },
+    {
+      "path": "update-history-baseline-missing-1440.png",
+      "sha256": "7ca1dd5ef03ea24cc35341e3ab65a281972a3bac28e9116fdf9cee4baf7690a9",
+      "original_log_or_image_sha256": "7ca1dd5ef03ea24cc35341e3ab65a281972a3bac28e9116fdf9cee4baf7690a9"
+    },
+    {
+      "path": "update-history-original-v2-1440.png",
+      "sha256": "86a3bdc05ef297a57f33de4639d156fc972b88bc43ff11da7347a0b61c2233fc",
+      "original_log_or_image_sha256": "86a3bdc05ef297a57f33de4639d156fc972b88bc43ff11da7347a0b61c2233fc"
+    },
+    {
+      "path": "update-history-missing-1440.png",
+      "sha256": "b308c4b015829626ebbaab09b9d3d6166499a6fb0603a376d5208a6564c9f203",
+      "original_log_or_image_sha256": "b308c4b015829626ebbaab09b9d3d6166499a6fb0603a376d5208a6564c9f203"
+    }
+  ],
+  "excluded": [
+    "Mobile optimization",
+    "Full-history pagination",
+    "Further UX rounds or monitoring",
+    "Task execution or fee semantics changes",
+    "Live PostgreSQL/Blob/model/worker/accounting validation",
+    "Word content/editability or production/user acceptance"
+  ],
+  "temporary_service_cleanup": {
+    "stopped": [
+      {
+        "port": 5187,
+        "verified_vite_pid": 47160
+      },
+      {
+        "port": 5188,
+        "verified_vite_pid": 34708
+      }
+    ],
+    "method": "Rechecked listening PID and exact Vite port argument immediately before taskkill /T /F",
+    "verified": "Both HTTP connections refused after shutdown"
+  },
+  "stop_condition": "Fixed acceptance gates pass, evidence saved, local incremental commit saved and temporary Vite services stopped; no further UX scope",
+  "artifact_archiving": "Archived log copies normalize CRLF to LF and strip trailing horizontal whitespace for git checks. Original log bytes remain in the sibling ux-task-history-evidence-20261026 directory; original and archived SHA-256 are both recorded. Images are copied unchanged."
+}

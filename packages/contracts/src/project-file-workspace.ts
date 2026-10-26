@@ -89,6 +89,7 @@ export function projectFileOpenApiPaths(){
    [base+'/checks/{run_id}']:route('get','Read one owned project check by its exact run, including checks outside the recent list',null,obj({check:ProjectFileCheckSchema}),'run_id'),
    [base+'/checks/{run_id}/updates']:route('post','Generate tracked/clean versions for selected files, 4500 credits per file on delivery; reject stale inputs',projectFileSchemas.ProjectFileUpdateRequest,obj({batch_id:id}),'run_id'),
    [base+'/updates']:route('get','Pending and completed accepted update packages',null,null),
+   [base+'/updates/{run_id}/check']:route('get','Read the exact owned original check of an accepted file update run, including checks outside the recent list',null,obj({check:ProjectFileCheckSchema}),'run_id'),
    [base+'/updates/{run_id}/cancel']:route('post','Stop later files; started runs and successful outputs stay available',null,obj({ok:Type.Boolean()}),'run_id'),
    [base+'/updates/{run_id}/retry']:route('post','Retry unfinished files after funding or task recovery; successful files are not charged again',null,obj({ok:Type.Boolean()}),'run_id')
  };

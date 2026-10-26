@@ -1,0 +1,148 @@
+
+Running 108 tests using 1 worker
+
+(node:16552) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   1 tests\consistency-confirmation.spec.ts:98:1 › consistency confirmation: native file entry reviews differences and confirms only two of three actionable original files (6.6s)
+  ok   2 tests\consistency-confirmation.spec.ts:136:1 › consistency confirmation: a direct file update shows one exact original with its own 4,500 point scope (1.6s)
+  ok   3 tests\consistency-confirmation.spec.ts:142:1 › consistency confirmation: incomplete manual projection says item details were not supplied instead of claiming zero remaining work (1.5s)
+  ok   4 tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes (4.6s)
+  ok   5 tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes even when the original check leaves the recent list (3.7s)
+  ok   6 tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: legacy pending snapshot degrades honestly while retrying the unchanged original envelope (3.0s)
+  ok   7 tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: foreign-binding pending snapshot degrades honestly while retrying the unchanged original envelope (3.3s)
+  ok   8 tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: partial-files pending snapshot degrades honestly while retrying the unchanged original envelope (3.1s)
+  ok   9 tests\consistency-confirmation.spec.ts:188:1 › consistency confirmation: twelve selected catalogue files keep a keyboard-scrollable review body and reachable fixed fee controls (2.3s)
+  -   10 tests\consistency-confirmation.spec.ts:222:1 › consistency confirmation current collector: same-name selection and twelve-file desktop review
+  ok  11 tests\consistency-history.spec.ts:60:1 › consistency history: an exact check beyond the recent thirty opens its pinned source and original file, then returns through the current family (1.7s)
+  ok  12 tests\consistency-history.spec.ts:75:1 › consistency history: explicit refresh re-reads the old check and preserves its exact original while performing only GET requests (1.4s)
+  ok  13 tests\consistency-history.spec.ts:81:1 › consistency history: a failed poll keeps the last readable old running check and the next poll automatically recovers that same run (1.5s)
+  ok  14 tests\consistency-history.spec.ts:100:1 › consistency history: a failed initial old-check read can be retried explicitly without creating a task or charge (1.2s)
+  ok  15 tests\consistency-history.spec.ts:108:1 › consistency history: a requested check already in the recent list needs no individual read (1.2s)
+  ok  16 tests\consistency-history.spec.ts:113:35 › consistency history: HTTP 404 for the pinned check never shows the latest result instead (1.2s)
+  ok  17 tests\consistency-history.spec.ts:113:35 › consistency history: HTTP 403 for the pinned check never shows the latest result instead (1.3s)
+  ok  18 tests\consistency-history.spec.ts:113:35 › consistency history: HTTP 503 for the pinned check never shows the latest result instead (1.4s)
+  ok  19 tests\consistency-history.spec.ts:121:31 › consistency history: HTTP 403 after an earlier successful read removes the old result instead of retaining its actions (1.4s)
+  ok  20 tests\consistency-history.spec.ts:121:31 › consistency history: HTTP 404 after an earlier successful read removes the old result instead of retaining its actions (2.0s)
+  ok  21 tests\consistency-history.spec.ts:130:73 › consistency history: ambiguous or empty run= never requests another check (1.3s)
+  ok  22 tests\consistency-history.spec.ts:130:73 › consistency history: ambiguous or empty run=consistency-originals-checked-v1&run=synthetic-other-check never requests another check (1.3s)
+  ok  23 tests\consistency-history.spec.ts:136:1 › consistency history: a successful response for a different run is rejected without displaying any substituted result (1.1s)
+  ok  24 tests\consistency-history.spec.ts:142:1 › consistency history: latest view does not request an older record and has no invented absolute round numbers (1.2s)
+  ok  25 tests\consistency-reading.spec.ts:34:1 › consistency reading: real 4s poll keeps offscreen native summary focus and the visible nonexecuting finding without zero-delta scrolling (1.5s)
+  ok  26 tests\consistency-reading.spec.ts:40:1 › consistency reading: source change keeps exact historical finding and safe focus while blocking execution of the selected original (1.4s)
+  ok  27 tests\consistency-reading.spec.ts:45:1 › consistency reading: an individually running issuer update keeps an enabled financial checkbox selection and native focus through polling (1.4s)
+  ok  28 tests\consistency-reading.spec.ts:53:59 › consistency reading: selected checkbox disabled by source falls back to the exact original nonexecuting file (1.5s)
+  ok  29 tests\consistency-reading.spec.ts:53:59 › consistency reading: selected checkbox disabled by current-version falls back to the exact original nonexecuting file (1.4s)
+  ok  30 tests\consistency-reading.spec.ts:59:1 › consistency reading: select-all focus and checked state do not borrow the old eligible collection after its source changes (1.4s)
+  ok  31 tests\consistency-reading.spec.ts:63:1 › consistency reading: deep-linked native details can be hand-closed and stay closed across repeated 4s polls (1.5s)
+  ok  32 tests\consistency-reading.spec.ts:67:1 › consistency reading: a visible native summary keeps keyboard focus after polling and can be toggled again (1.4s)
+  ok  33 tests\consistency-reading.spec.ts:70:1 › consistency reading: BODY reading preserves its visible finding through source growth without creating a new focus (1.4s)
+  ok  34 tests\consistency-reading.spec.ts:75:1 › consistency reading: delayed poll uses the newer filter, native details, focus and actual wheel position (1.6s)
+  ok  35 tests\consistency-reading.spec.ts:80:1 › consistency reading: delayed poll respects a newer wheel and focused nonexecuting finding in the same filter (1.5s)
+  ok  36 tests\consistency-reading.spec.ts:84:1 › consistency reading: failed scheduled read keeps old content and focus then retries exactly once after 4s (1.8s)
+  ok  37 tests\consistency-reading.spec.ts:89:1 › consistency reading: explicit read-only refresh paints once and preserves its native keyboard focus (1.3s)
+  ok  38 tests\consistency-reading.spec.ts:93:1 › consistency reading: late old quartet cannot overwrite newer source, success status or the next poll schedule (1.7s)
+  ok  39 tests\consistency-reading.spec.ts:100:1 › consistency reading: selecting a different check does not borrow the same file or finding IDs from the previous check (1.4s)
+  ok  40 tests\consistency-reading.spec.ts:104:1 › consistency reading: a missing exact finding falls back to its nonexecuting file or heading, never the shifted neighbor (1.4s)
+  ok  41 tests\consistency-reading.spec.ts:112:1 › consistency reading: an existing unknown envelope and open confirmation keep dialog focus during a real poll and retry only that receipt (1.7s)
+  ok  42 tests\consistency-reading.spec.ts:119:1 › consistency reading: explicit pause submits the exact run once and final act paint does not refocus an execution button (1.4s)
+  ok  43 tests\consistency-reading.spec.ts:124:1 › consistency reading: exact update arrival locates once, polling preserves the newer filter, and explicit locate remains read-only (1.6s)
+  ok  44 tests\consistency-reading.spec.ts:129:1 › consistency reading: real running-check polling shows progress until a completed result exists without executing an update (1.7s)
+  ok  45 tests\consistency-task.spec.ts:21:50 › consistency task: projects historical patch opens its original check and exact V2 pair despite a newer check and V3 (3.4s)
+  ok  46 tests\consistency-task.spec.ts:21:50 › consistency task: files historical patch opens its original check and exact V2 pair despite a newer check and V3 (2.5s)
+  ok  47 tests\consistency-task.spec.ts:34:1 › consistency task: a failed original acceptance never borrows its successful retry or invents a reason (2.0s)
+  ok  48 tests\consistency-task.spec.ts:46:91 › consistency task: missing-update cannot select the latest check or another input (1.1s)
+  ok  49 tests\consistency-task.spec.ts:46:91 › consistency task: duplicate-update cannot select the latest check or another input (1.1s)
+  ok  50 tests\consistency-task.spec.ts:46:91 › consistency task: wrong-input-file cannot select the latest check or another input (1.2s)
+  ok  51 tests\consistency-task.spec.ts:54:111 › consistency task: missing-result retains the original task but refuses unrelated delivery bytes (1.1s)
+  ok  52 tests\consistency-task.spec.ts:54:111 › consistency task: duplicate-result retains the original task but refuses unrelated delivery bytes (1.2s)
+  ok  53 tests\consistency-task.spec.ts:54:111 › consistency task: result-file retains the original task but refuses unrelated delivery bytes (1.2s)
+  ok  54 tests\consistency-task.spec.ts:54:111 › consistency task: result-run retains the original task but refuses unrelated delivery bytes (1.1s)
+  ok  55 tests\consistency-task.spec.ts:60:140 › consistency task: conflicting route &run=consistency-task-new-check fails explicitly without latest fallback (1.0s)
+  ok  56 tests\consistency-task.spec.ts:60:140 › consistency task: conflicting route &update_run=consistency-task-later-patch fails explicitly without latest fallback (1.1s)
+  ok  57 tests\consistency-task.spec.ts:60:140 › consistency task: conflicting route &file=consistency-task-manual-v1 fails explicitly without latest fallback (1.0s)
+  ok  58 tests\consistency-task.spec.ts:60:140 › consistency task: conflicting route &run=consistency-task-old-check&run=consistency-task-new-check fails explicitly without latest fallback (1.1s)
+  ok  59 tests\consistency-task.spec.ts:66:1 › consistency task: arrival reveals the exact input once, later user filters survive read-only refresh and explicit locate is pure (1.3s)
+  x   60 tests\consistency-task.spec.ts:78:1 › consistency task: explicit re-read restores a missing acceptance without executing or preparing a workspace (1.3s)
+(node:41816) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  61 tests\consistency-task.spec.ts:87:1 › consistency task: an existing pending request keeps its original check, body and identity during historical navigation and explicit retry (1.9s)
+  ok  62 tests\consistency-task.spec.ts:102:1 › consistency task: paused navigation stays read-only until an explicit resume targets the exact original run (1.4s)
+  ok  63 tests\consistency-task.spec.ts:109:59 › consistency task: metadata id mismatch refuses bytes and a correct retry downloads the original V2 (1.5s)
+  ok  64 tests\consistency-task.spec.ts:109:59 › consistency task: metadata run mismatch refuses bytes and a correct retry downloads the original V2 (1.5s)
+  ok  65 tests\consistency-task.spec.ts:109:59 › consistency task: metadata version mismatch refuses bytes and a correct retry downloads the original V2 (1.4s)
+  ok  66 tests\consistency-task.spec.ts:109:59 › consistency task: metadata hash mismatch refuses bytes and a correct retry downloads the original V2 (1.4s)
+  ok  67 tests\consistency-update-history.spec.ts:31:50 › update history: projects task entry resolves beyond the recent thirty and downloads its original V2 pair instead of current V3 (2.8s)
+  ok  68 tests\consistency-update-history.spec.ts:31:50 › update history: files task entry resolves beyond the recent thirty and downloads its original V2 pair instead of current V3 (2.8s)
+  ok  69 tests\consistency-update-history.spec.ts:43:1 › update history: the failed original run never borrows its later successful retry after resolving its old check (1.2s)
+  ok  70 tests\consistency-update-history.spec.ts:51:1 › update history: an update-only link with a missing workspace remains readable through reload without preparing it (1.9s)
+  ok  71 tests\consistency-update-history.spec.ts:57:1 › update history: a recent-list acceptance needs no individual lookup (1.1s)
+  ok  72 tests\consistency-update-history.spec.ts:62:35 › update history: HTTP 403 for the original task does not substitute another update and can be read again explicitly (1.1s)
+  ok  73 tests\consistency-update-history.spec.ts:62:35 › update history: HTTP 404 for the original task does not substitute another update and can be read again explicitly (1.3s)
+  ok  74 tests\consistency-update-history.spec.ts:62:35 › update history: HTTP 503 for the original task does not substitute another update and can be read again explicitly (1.2s)
+  ok  75 tests\consistency-update-history.spec.ts:71:31 › update history: HTTP 403 after an earlier read removes the old delivery actions (1.2s)
+  ok  76 tests\consistency-update-history.spec.ts:71:31 › update history: HTTP 404 after an earlier read removes the old delivery actions (1.1s)
+  ok  77 tests\consistency-update-history.spec.ts:83:12 › update history: empty update never borrows another task or delivery (1.0s)
+  ok  78 tests\consistency-update-history.spec.ts:83:12 › update history: duplicate update never borrows another task or delivery (965ms)
+  ok  79 tests\consistency-update-history.spec.ts:83:12 › update history: conflicting check never borrows another task or delivery (1.0s)
+  ok  80 tests\consistency-update-history.spec.ts:83:12 › update history: conflicting file never borrows another task or delivery (1.1s)
+  ok  81 tests\consistency-update-history.spec.ts:89:89 › update history: unrelated-check in an individual response cannot become the requested task (1.1s)
+  ok  82 tests\consistency-update-history.spec.ts:89:89 › update history: duplicate-acceptance in an individual response cannot become the requested task (1.1s)
+  ok  83 tests\consistency-update-history.spec.ts:89:89 › update history: invalid-schema in an individual response cannot become the requested task (1.1s)
+  ok  84 tests\consistency-update-history.spec.ts:97:1 › update history: a running old patch survives a failed poll and automatically recovers the same original task (1.5s)
+  ok  85 tests\file-consistency-workbench.spec.ts:175:1 › two actionable files require a 9,000 point confirmation and manual-only files cannot be selected (1.6s)
+  ok  86 tests\file-consistency-workbench.spec.ts:194:1 › a 402 keeps findings and selected files and requires a fresh explicit confirmation after recharge (2.4s)
+  ok  87 tests\file-consistency-workbench.spec.ts:216:3 › changed source-version disables stale updates and explains which input needs another check (1.1s)
+  ok  88 tests\file-consistency-workbench.spec.ts:216:3 › changed source-revision disables stale updates and explains which input needs another check (1.0s)
+  ok  89 tests\file-consistency-workbench.spec.ts:216:3 › changed file-version disables stale updates and explains which input needs another check (1.1s)
+  ok  90 tests\file-consistency-workbench.spec.ts:228:1 › an unknown update retries the same body and check even after another check and file selection are opened (1.7s)
+  ok  91 tests\file-consistency-workbench.spec.ts:250:1 › an explicit missing run never silently displays the latest check (1.2s)
+  ok  92 tests\file-consistency-workbench.spec.ts:263:1 › an existing workspace is read with GET and page reopening never prepares it again (2.0s)
+  ok  93 tests\file-consistency-workbench.spec.ts:270:1 › a first workspace 404 permits one POST preparation and subsequent reads use GET (1.7s)
+  ok  94 tests\file-consistency-workbench.spec.ts:278:1 › an explicit check with a workspace 404 stays readable and never prepares the workspace (1.7s)
+  ok  95 tests\file-consistency-workbench.spec.ts:287:1 › a workspace read failure does not create a workspace as a fallback (1.0s)
+  ok  96 tests\file-consistency-workbench.spec.ts:293:1 › successful dual Word delivery stays downloadable while manual findings remain visible (1.9s)
+  ok  97 tests\file-consistency-workbench.spec.ts:313:1 › a conflict without replacement remains manual and is never presented as updated or consistent (1.5s)
+  ok  98 tests\file-consistency-workbench.spec.ts:326:1 › filtering keeps all eligible selections in the total and identifies the hidden selected files (1.4s)
+  ok  99 tests\file-consistency-workbench.spec.ts:341:1 › refresh restores an uncertain update without resubmitting and later retries its original envelope (2.7s)
+  ok 100 tests\file-consistency-workbench.spec.ts:358:3 › a 408 update response retains the original confirmation envelope for an explicit retry (1.6s)
+  ok 101 tests\file-consistency-workbench.spec.ts:358:3 › a 429 update response retains the original confirmation envelope for an explicit retry (1.8s)
+  ok 102 tests\file-consistency-workbench.spec.ts:369:1 › refresh restores an uncertain free check and retries its saved body without creating a second run (2.0s)
+  ok 103 tests\file-consistency-workbench.spec.ts:399:3 › consistency freshness finite contracts › old consistent and manual V1 findings remain scoped to V1 after manual V2 saves with the same source (1.3s)
+  ok 104 tests\file-consistency-workbench.spec.ts:415:3 › consistency freshness finite contracts › added and unreadable families are explicit and only a new click checks all currently readable latest files (1.3s)
+  ok 105 tests\file-consistency-workbench.spec.ts:433:3 › consistency freshness finite contracts › same source ID with a new selection revision invalidates the basis while the exact historical deep link stays selected (1.1s)
+  ok 106 tests\file-consistency-workbench.spec.ts:445:3 › consistency freshness finite contracts › this check delivered V2 retains both downloads and original findings but other-file failed or other-check receipts cannot claim delivery (4.3s)
+  ok 107 tests\file-consistency-workbench.spec.ts:465:3 › consistency freshness finite contracts › missing source and missing files each give the relevant existing workbench entry without preparing or submitting work (2.9s)
+  ok 108 tests\file-consistency-workbench.spec.ts:476:31 › consistency freshness component comparison: scope and original manual findings remain keyboard readable at 1440 (1.4s)
+
+
+  1) tests\consistency-task.spec.ts:78:1 › consistency task: explicit re-read restores a missing acceptance without executing or preparing a workspace
+
+    Error: Only the explicit synthetic HTTP allow-list may be used.
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 3
+
+    - Array []
+    + Array [
+    +   "GET /projects/consistency-task-root/project-files/updates/consistency-task-old-patch/check",
+    + ]
+
+       at consistency-task-fixtures.ts:187
+
+      185 | }
+      186 | export async function assertFixture(page:Page,s=installed.get(page)){
+    > 187 |   if(!s)return;expect(s.unexpected,'Only the explicit synthetic HTTP allow-list may be used.').toEqual([]);expect(s.errors,'No browser page errors.').toEqual([]);
+          |                                                                                                ^
+      188 | }
+      189 |
+        at assertFixture (C:\Users\lezhai\Downloads\Bondbuddy\ux-task-history-20261026\apps\web\tests\consistency-task-fixtures.ts:187:96)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-task-history-20261026\apps\web\tests\consistency-task.spec.ts:19:38
+
+    Error Context: ..\..\..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\consistency-task-consisten-9d202-ng-or-preparing-a-workspace\error-context.md
+
+  1 failed
+    tests\consistency-task.spec.ts:78:1 › consistency task: explicit re-read restores a missing acceptance without executing or preparing a workspace
+  1 skipped
+  106 passed (3.2m)
