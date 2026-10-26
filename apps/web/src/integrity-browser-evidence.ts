@@ -4,8 +4,8 @@ import {esc,date} from './ui';
 export function mountIntegrityBrowserEvidence(dialog:HTMLDialogElement,record:IntegrityRecord|undefined,api:ApiClient,project:string,round:string,signal:AbortSignal){
  if(!record?.browser)return;
  const browser=record.browser,section=document.createElement('section');section.className='integrity-browser-evidence';
- section.innerHTML=`<h3>官网自动取证</h3><p>${esc(browser.scope)}</p><p class="muted">${esc(browser.limitation)}</p>${browser.captures.map((c,i)=>`<figure><figcaption>${c.kind==='blocker'?'访问或查询受限页面':c.kind==='detail'?'记录正文':'查询结果'} · ${esc(date(c.captured_at))}</figcaption><a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.title||'官网页面')} ↗</a><button class="text-button" type="button" data-auto-capture="${i}">查看官网截图</button><div data-auto-preview="${i}"></div></figure>`).join('')||'<p>本项未取得截图，请人工补证。</p>'}`;
- dialog.querySelector('h3')?.before(section);
+ section.innerHTML=`<h3>官网自动取证</h3><p>${esc(browser.scope)}</p><p class="muted">${esc(browser.limitation)}</p>${browser.captures.map((c,i)=>`<figure><figcaption>${c.kind==='blocker'?'查询未完成时的页面':c.kind==='detail'?'记录正文':'查询结果'} · ${esc(date(c.captured_at))}</figcaption><a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.title||'官网页面')} ↗</a><button class="text-button" type="button" data-auto-capture="${i}">查看官网截图</button><div data-auto-preview="${i}"></div></figure>`).join('')||'<p>本项未取得可用截图，无需上传补充证据。</p>'}`;
+ dialog.querySelector('[data-auto-evidence]')?.append(section);
  const urls:string[]=[];let closed=false;
  const cleanup=()=>{closed=true;urls.splice(0).forEach(u=>URL.revokeObjectURL(u));};
  dialog.addEventListener('close',cleanup,{once:true});signal.addEventListener('abort',cleanup,{once:true});

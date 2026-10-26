@@ -3,6 +3,9 @@ import {connect,isIP,type Socket} from 'node:net';
 import {lookup} from 'node:dns/promises';
 import type {IntegritySite} from '@bondbuddy/contracts';
 
+// Both local and upstream proxies must outlive the browser's 90-second response wait.
+export const INTEGRITY_NETWORK_IDLE_MS=120000;
+
 // Pin the validated public IPv4 address at the TCP connection, including CONNECT.
 // A request interceptor alone cannot prevent DNS rebinding between validation and Chromium DNS.
 export function publicIntegrityAddress(ip:string){
@@ -20,7 +23,7 @@ export async function integrityProxy(site:IntegritySite,options:{upstreamUrl?:st
  const upstreamProxy=options.upstreamUrl?new URL(options.upstreamUrl):undefined;
  if(upstreamProxy&&(upstreamProxy.protocol!=='http:'||upstreamProxy.username||upstreamProxy.password||upstreamProxy.pathname!=='/'||upstreamProxy.search||upstreamProxy.hash))throw Error('INVALID_INTEGRITY_EGRESS_PROXY');
  const sockets=new Set<Socket>();
- const watch=(socket:Socket)=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});socket.setTimeout(30000,()=>socket.destroy());return socket;};
+ const watch=(socket:Socket)=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});socket.setTimeout(INTEGRITY_NETWORK_IDLE_MS,()=>socket.destroy());return socket;};
  async function target(value:string){
   if(!integrityBrowserUrlAllowed(site,value))throw Error('OFFICIAL_HOST_REQUIRED');
   const url=new URL(value),answers=await lookup(url.hostname,{family:4,all:true});
@@ -31,7 +34,7 @@ export async function integrityProxy(site:IntegritySite,options:{upstreamUrl?:st
   if(!integrityBrowserUrlAllowed(site,req.url??''))throw Error('OFFICIAL_HOST_REQUIRED');
   const {url,address}=upstreamProxy?{url:new URL(req.url!),address:upstreamProxy.hostname}:await target(req.url??'');if(url.protocol!=='http:')throw Error('INVALID_PROXY_REQUEST');
   const headers:import('node:http').OutgoingHttpHeaders={...req.headers,host:url.host};delete headers['proxy-authorization'];delete headers['proxy-connection'];
-  const upstream=httpRequest({host:address,port:upstreamProxy?Number(upstreamProxy.port||80):80,method:req.method,path:upstreamProxy?url.href:url.pathname+url.search,headers,timeout:30000},r=>{res.writeHead(r.statusCode??502,r.headers);r.pipe(res);});
+  const upstream=httpRequest({host:address,port:upstreamProxy?Number(upstreamProxy.port||80):80,method:req.method,path:upstreamProxy?url.href:url.pathname+url.search,headers,timeout:INTEGRITY_NETWORK_IDLE_MS},r=>{res.writeHead(r.statusCode??502,r.headers);r.pipe(res);});
   upstream.on('socket',s=>watch(s));upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});upstream.on('timeout',()=>upstream.destroy());req.pipe(upstream);
  })().catch(()=>{res.writeHead(403);res.end('Official website request unavailable');});});
  server.on('connection',watch);
@@ -39,7 +42,7 @@ export async function integrityProxy(site:IntegritySite,options:{upstreamUrl?:st
   if(!req.url?.endsWith(':443'))throw Error('HTTPS_REQUIRED');
   if(!integrityBrowserUrlAllowed(site,'https://'+req.url.slice(0,-4)+'/'))throw Error('OFFICIAL_HOST_REQUIRED');
   if(upstreamProxy){
-   const request=httpRequest({host:upstreamProxy.hostname,port:Number(upstreamProxy.port||80),method:'CONNECT',path:req.url,headers:{host:req.url},timeout:30000});
+   const request=httpRequest({host:upstreamProxy.hostname,port:Number(upstreamProxy.port||80),method:'CONNECT',path:req.url,headers:{host:req.url},timeout:INTEGRITY_NETWORK_IDLE_MS});
    request.on('connect',(response,socket,buffer)=>{watch(socket);if(response.statusCode!==200){socket.destroy();client.end('HTTP/1.1 403 Forbidden\r\n\r\n');return;}client.write('HTTP/1.1 200 Connection Established\r\n\r\n');if(buffer.length)client.write(buffer);if(head.length)socket.write(head);client.pipe(socket);socket.pipe(client);client.on('close',()=>socket.destroy());});
    request.on('error',()=>client.destroy());request.on('timeout',()=>request.destroy());request.end();return;
   }

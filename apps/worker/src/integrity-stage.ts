@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Value} from '@sinclair/typebox/value';
-import {IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
+import {IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,inferIntegrityRegion,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
 import {promoteWordArtifact} from '@bondbuddy/api/queue';
 import {digest,transaction} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
@@ -79,7 +79,8 @@ export function integrityModelStage(options:IntegrityBrowserOptions={}):RunStage
   if(saved)return {kind:'done',value:saved};
   const records:IntegrityRecord[]=[];
   if(input.operation==='export')records.push(...input.records);
-  else for(const subject of input.draft.subjects){
+  else for(const storedSubject of input.draft.subjects){
+   const subject={...storedSubject,...inferIntegrityRegion(storedSubject)};
    if(ctx.signal?.aborted)return {kind:'stopped'};
    const old=await storedRecords(ctx,subject.id);
    if(input.collector==='official-browser-v1'){

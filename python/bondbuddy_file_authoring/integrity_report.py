@@ -17,7 +17,7 @@ from PIL import Image
 
 TEMPLATE = Path(__file__).parent / 'templates' / 'integrity-workpaper.docx'
 PICTURE_WIDTH = 5274310
-STATUS = {'public_matches': '检索到相关记录，待核实', 'no_public_results': '本次检索未见相关记录', 'needs_manual': '待人工补证', 'not_applicable': '不适用', 'query_failed': '查询未完成，待人工补证'}
+STATUS = {'public_matches': '检索到相关记录，待核实', 'no_public_results': '本次检索未见相关记录', 'needs_manual': '待核实', 'not_applicable': '不适用', 'query_failed': '查询未完成'}
 CONCLUSION = {'records_found': '发现记录', 'no_records': '该次查询未发现记录', 'unresolved': '仍待核实'}
 
 def beijing(value):
@@ -91,7 +91,7 @@ def generate(data, target):
     counts = []
     if no_results: counts.append(f'{no_results}项本次检索未见相关记录')
     if matches: counts.append(f'{matches}项检索到相关记录，主体及事项待核实')
-    if pending: counts.append(f'{pending}项待人工补证')
+    if pending: counts.append(f'{pending}项未完成或待核实')
     if counts: intro += '其中，' + '；'.join(counts) + '。'
     intro += '具体核查情况如下：'
     para(intro, '{{intro}}')
@@ -150,7 +150,7 @@ def generate(data, target):
                 p._p.append(link)
                 para('采集日志时间（北京时间）：' + beijing(meta['captured_at']), small=True)
             if not automatic:
-                para('本次未取得可确认的搜索结果截图，待人工补证。' if r['status'] != 'not_applicable' else r['reason'])
+                para('本次未取得可确认的搜索结果截图，详见查询状态与原因。' if r['status'] != 'not_applicable' else r['reason'])
                 para('访问时间（北京时间）：' + beijing(r['checked_at']), small=True)
             para('核查情况：' + r['reason'])
             for source in r.get('sources', []):

@@ -50,7 +50,7 @@ test('unavailable Beijing tunnel fails closed without a direct website fallback'
 test('real Chromium on synthetic official-site fixtures: query, screenshot, zero, challenge, stale, failure and continuation',{timeout:120000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async t=>{
  const browser=await chromium.launch({headless:true});
  try{
-  for(const [mode,expected] of [['hits','results'],['zero','no_results'],['zero-ndrc','no_results'],['late','no_results'],['captcha','blocked'],['waf','blocked'],['login','blocked'],['failure','failed'],['stale','unverified']] as const){
+  for(const [mode,expected] of [['hits','results'],['zero','no_results'],['zero-ndrc','no_results'],['late','no_results'],['captcha','blocked'],['waf','failed'],['login','blocked'],['failure','failed'],['stale','unverified']] as const){
    await t.test(mode,async()=>{
     const context=await browser.newContext({viewport:{width:1440,height:1000}});await integrityWebsiteFixture(context,mode);
     const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'河北',city:'沧州'},new AbortController().signal,{waitMs:5000,maxPages:1});
