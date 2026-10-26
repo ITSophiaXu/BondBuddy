@@ -43,7 +43,7 @@ export class CreditHistory {
       const key=(v:Consumption|Recharge)=>'reservation_id' in v?v.reservation_id:v.order_id;
       const items=new Map((append?state.items:[]).map(v=>[key(v),v]));for(const item of fetched)items.set(key(item),item);
       if(kind==='consumption')this.consumption.items=[...items.values()] as Consumption[];else this.recharge.items=[...items.values()] as Recharge[];state.cursor=result.page.next_cursor;state.loaded=true;
-    }catch(error){if(this.live())state.error=friendlyError(error);}
+    }catch(error){if(this.live())state.error=friendlyError(error,'read');}
     finally{state.loading=false;if(this.live()){this.draw();if(state.refreshPending){state.refreshPending=false;void this.load(kind);}}}
   }
   private consumptionRow(r:Consumption){

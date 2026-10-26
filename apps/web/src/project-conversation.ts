@@ -11,7 +11,7 @@ const sameRef = (a: ProjectMessageSetRef, b: ProjectMessageSetRef) =>
   a.version === b.version && a.content_sha256 === b.content_sha256 &&
   JSON.stringify(a.message_ids) === JSON.stringify(b.message_ids);
 const invalid = () => new ApiError(0, 'DATA_UNAVAILABLE');
-const readError = (error: unknown) => error instanceof ApiError ? friendlyError(error) : '连接中断，请检查网络后重试。';
+const readError = (error: unknown) => friendlyError(error, 'read');
 
 /** The API is a save-only, owner-scoped user-message ledger, not an assistant conversation. */
 export class ProjectConversation {
@@ -218,7 +218,7 @@ export class ProjectConversation {
         this.saving = false; await this.refresh();
         if (this.ref) this.status = '服务器版本已重新读取；请检查差异，再选择最新补充要求修改。';
       } else {
-        this.status = `保存结果尚未确认：${friendlyError(error)} 原文保留，可按同一请求重试。`;
+        this.status = `保存结果尚未确认：${friendlyError(error, 'save')} 原文保留，可按同一请求重试。`;
       }
     } finally { this.saving = false; this.render(); this.onChange(); }
   }

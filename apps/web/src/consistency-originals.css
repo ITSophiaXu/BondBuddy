@@ -1,0 +1,13 @@
+.fc-originals { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin: 16px 0 8px; }
+.fc-originals small { color: #63736b; font-size: 12px; line-height: 1.8; }
+.fc-original-status { margin: 0; color: #4e6658; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.fc-original-status:empty { display: none; }
+.pw-file-context { margin: 0 0 18px; padding: 16px 18px; border: 1px solid #d8e2dc; border-radius: 9px; background: #f4f7f0; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.pw-file-context p { margin: 0 0 8px; }
+.pw-file-context .text-button { margin-right: 18px; }
+.collection-file[data-file-context-target="true"] { border-color: #6d9478; background: #f6f9f2; }
+.collection-file[data-file-context-target="true"]:focus { outline: 2px solid #3b725b; outline-offset: 3px; }
+.fc-original-source { flex-wrap: wrap; gap: 12px 18px; }
+.pw-file-context h2 { margin: 0 0 10px; font-size: 15px; }
+.pw-file-context dl { margin: 0 0 10px; }
+.pw-file-context-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; }

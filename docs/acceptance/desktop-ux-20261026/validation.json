@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-26",
+  "timezone": "Asia/Shanghai",
+  "base_commit": "030b0c5657bba34c921587d372e586c212de3d6a",
+  "original_delivery_base": "ffd637fac6c1fdf1581112e728f21ec29a94c67c",
+  "original_delivery_files": 271,
+  "build": "full workspaces passed, exit 0",
+  "unit": {
+    "passed": 882,
+    "failed": 0,
+    "skipped": 0
+  },
+  "contracts": "171 synthetic + 12 library examples and lifecycle/OCR/input-binding checks passed",
+  "batch_recovery_api": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browser_groups": [
+    {
+      "phase": "Before final empty-state links/start restoration; the final entry group covers that restoration.",
+      "passed": 45,
+      "failed": 0,
+      "skipped": 1,
+      "name": "core merged confirmation/prospectus/review"
+    },
+    {
+      "phase": "Final product sources, including same-size prototype screenshots.",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "name": "final prospectus panel and consistency entry"
+    },
+    {
+      "phase": "Final product sources; isolated server on port 5184.",
+      "passed": 57,
+      "failed": 0,
+      "skipped": 0,
+      "name": "final consistency search/selection, generation and review editing"
+    }
+  ],
+  "browser_total_passed": 115,
+  "browser_total_skipped": 1,
+  "intermediate_attempts": [
+    "Entry fixture schema/visibility assertions were corrected; original failure artifacts retained outside checkout.",
+    "An extended run was interrupted when a reused development server closed; isolated final run passed all 57."
+  ],
+  "scope": "Synthetic local HTTP/route/Word bytes; no real-service, model, ledger, Word/WPS or production acceptance claim.",
+  "docker": "Static build-asset regression passes; actual image build not executed locally.",
+  "final_source_sha256": [
+    {
+      "path": "apps/web/src/file-consistency.ts",
+      "sha256": "a9d443419479871cf80059ca8035a2dd18e103fb93e1620e80ce94f6838cbd40"
+    },
+    {
+      "path": "apps/web/src/prospectus-panel.ts",
+      "sha256": "2dd4c25ba758097624f7aca629742f7e6422ef15d91f1eaad4b2e3c5a7fb82f7"
+    },
+    {
+      "path": "apps/web/src/review-editor.ts",
+      "sha256": "0ad7d2ef3732420149177ca455fc024d04659722a4b06ea7d157c0e7be9a30db"
+    },
+    {
+      "path": "apps/api/src/project-file-workspace.ts",
+      "sha256": "60237a7fbf7b20ec6cf3d0775076837d9f1656e6f465138643c020cf65955cc2"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "892d9c9784d844c7df306b8f868d5a70efc577e3cf73e6d40f4ba49374ddb73d"
+    },
+    {
+      "path": "deploy/m1/Dockerfile",
+      "sha256": "2d3019d6eec52fce097fe839216e68d96d162662de5c1499a4cd44114c772e02"
+    },
+    {
+      "path": "deploy/m1/Dockerfile.dockerignore",
+      "sha256": "8f2984b21d977f32f64b77f05e476fb74ca45f8d1a7bfa17d37fb7610aaf7439"
+    }
+  ],
+  "archived_log_sha256": [
+    {
+      "local_archive_filename": "integration-build-final.log",
+      "sha256": "83d562ac8c8050a899fc84cf5d84306e9497b7351925b69bcaeed809cec93167"
+    },
+    {
+      "local_archive_filename": "integration-unit.log",
+      "sha256": "f053affaf310fff40081f42652f68da9b82e420ad9d1723c6380892c2c79c90d"
+    },
+    {
+      "local_archive_filename": "integration-contracts.log",
+      "sha256": "bc0571951652240dcb946139e24e02c4cc19608ce5dde44d95ca81c2d4ab8fad"
+    },
+    {
+      "local_archive_filename": "integration-api-recovery.log",
+      "sha256": "bcc37dd19976b9d4d9bdd820536677156cb012a759829c87144ae2bd53e827c3"
+    },
+    {
+      "local_archive_filename": "integration-browser.log",
+      "sha256": "77079753e61ebecb15755a27a9ad89b5a645ba549a57bf340456059b674906ca"
+    },
+    {
+      "local_archive_filename": "panel-consistency-final2.log",
+      "sha256": "78e9729710d67f297ab7203469dd8144c06b43e280525c0390884b941eaafbe2"
+    },
+    {
+      "local_archive_filename": "integration-extended-browser-final.log",
+      "sha256": "aa892dc9fd5b758746b094aad671cc862644e971bedfc706a5af916d5d5e07ce"
+    }
+  ],
+  "independent_review": "No blocking findings in conflict integration, owner isolation, download identity guards, Docker assets and CI command wiring.",
+  "desktop_visual_review": "Six implementation/prototype desktop images at width 1440 inspected; layout readable with no clipping. Intentional version/confirmation changes documented in README."
+}

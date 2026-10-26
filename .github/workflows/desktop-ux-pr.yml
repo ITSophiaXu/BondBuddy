@@ -1,0 +1,51 @@
+name: Desktop UX integration
+
+on:
+  pull_request:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ux-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-ux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BB_TEST_LIVE_AUTHORING: '0'
+      BB_PLATFORM_PROBE_ENABLED: '0'
+      BB_REVIEW_WEB_SEARCH_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Install and build the complete merge tree
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm run check:contracts
+      - name: Unit and request recovery regressions
+        run: |
+          npm run test:unit -w @bondbuddy/web
+          node --test apps/api/dist/project-file-batch-recovery.test.js
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Merged prospectus, consistency and review journeys
+        working-directory: apps/web
+        run: >-
+          npx playwright test
+          tests/prospectus-panel.spec.ts
+          tests/prospectus-selection.spec.ts
+          tests/prospectus-saved-reentry.spec.ts
+          tests/file-consistency.spec.ts
+          tests/consistency-confirmation.spec.ts
+          tests/review-editor.spec.ts
+          tests/review-editor-recovery.spec.ts
+          tests/review-flow-editor.spec.ts
+          --reporter=line

@@ -1,3 +1,4 @@
+import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
@@ -44,8 +45,9 @@ export function errorReference(error: ApiError): string {
   return error.details.correlationId ? ` 错误编号：${error.details.correlationId}。` : '';
 }
 
-export function friendlyError(error: unknown): string {
-  if (!(error instanceof ApiError)) return '连接中断，尚未确认保存。请检查网络后重试。';
+export function friendlyError(error: unknown, operation: ErrorOperation = 'action'): string {
+  if (error instanceof UserFacingError) return error.message;
+  if (!(error instanceof ApiError)) return unknownErrorText(operation);
   const reference = errorReference(error);
   switch (error.code) {
     case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';

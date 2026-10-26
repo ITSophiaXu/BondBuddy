@@ -1,5 +1,17 @@
 .execution-panel { margin-top: 24px; padding: 24px; }
 .execution-panel h2, .execution-panel h3 { margin-top: 0; }
+.previous-execution.is-archived { margin: 20px 0; border: 1px solid var(--border, #dce4dd); border-radius: 10px; background: white; }
+.previous-execution.is-archived > summary { padding: 16px 20px; color: var(--ink, #173f35); font-size: 14px; font-weight: 600; cursor: pointer; }
+.previous-execution.is-archived > summary small { margin-left: 12px; color: var(--muted, #63736b); font-size: 12px; font-weight: 400; }
+.previous-execution.is-archived[open] > summary { border-bottom: 1px solid var(--border, #dce4dd); }
+.previous-execution.is-archived > .execution-panel { margin-top: 0; border: 0; border-radius: 0; }
+.previous-execution.is-archived > .embedded-artifact { padding: 0 20px; }
+@media (min-width: 900px) {
+  [data-next-authoring-summary] .continuation-summary dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 16px; align-items: baseline; }
+  [data-next-authoring-summary] .continuation-summary dt { margin: 0; }
+  [data-next-authoring-summary] .continuation-summary dd { margin: 0; }
+  [data-next-authoring-summary] .continuation-summary dd ul { margin: 0; }
+}
 .execution-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
 .execution-fields label { display: grid; gap: 8px; }
 .execution-confirm { display: flex; align-items: flex-start; gap: 9px; margin: 12px 0; overflow-wrap: anywhere; }

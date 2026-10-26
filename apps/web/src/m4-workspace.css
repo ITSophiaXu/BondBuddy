@@ -16,3 +16,16 @@
 .m4-input-feedback .text-btn{margin-left:8px;text-decoration:underline;color:inherit}
 .m4-input-hint{color:#9a4d27;font-size:14px;line-height:1.6;margin:8px 0 0;overflow-wrap:anywhere}
 .m4-content [aria-invalid="true"]{border-color:#b66b43}
+
+/* Original-file recovery stays within the existing source/supporting-material regions. */
+.m4-page .m4-upload-recovery-list{list-style:none;padding:0;margin:14px 0;display:grid;gap:10px}
+.m4-page .m4-upload-recovery{padding:14px;border:1px solid var(--m4-line);border-radius:8px;background:#f9fbf5;min-width:0;overflow-wrap:anywhere}
+.m4-page .m4-upload-recovery strong{font-size:14px;font-weight:600}
+.m4-page .m4-upload-target{margin:5px 0;color:var(--m4-muted);font-size:12px;line-height:1.7}
+.m4-page .m4-upload-recovery .m4-status{margin:7px 0}
+.m4-page .m4-upload-recovery-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px}
+.m4-page .m4-upload-recovery small{display:block;margin-top:8px;color:var(--m4-muted);font-size:11px;line-height:1.7}
+.m4-page .m4-upload-reselect{display:inline-flex;align-items:center;position:relative;cursor:pointer}
+.m4-page .m4-upload-reselect input{position:absolute;width:1px;height:1px;opacity:0}
+.m4-page .m4-upload-reselect:focus-within{outline:2px solid #477f63;outline-offset:3px}
+@media(max-width:600px){.m4-page .m4-upload-recovery{padding:12px}.m4-page .m4-upload-recovery-actions{align-items:flex-start;gap:10px 14px}.m4-page .m4-upload-recovery button,.m4-page .m4-upload-reselect{min-height:44px}.m4-page .m4-upload-recovery .text-btn{white-space:normal;text-align:left}}

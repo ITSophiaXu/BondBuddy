@@ -2,6 +2,7 @@ import { ApiClient, ApiError, type Dto } from './api';
 import { ArtifactDownloads, artifactError, artifactFilename } from './artifact-download';
 import { date, esc } from './ui';
 import { authoringSummary } from './authoring-summary';
+import {navigationProjectContext,projectWorkHref,withProjectContext} from './project-navigation';
 import './artifact-page.css';
 
 type Artifact = Dto<'ArtifactResponse'>;
@@ -58,13 +59,17 @@ export class ArtifactPage {
     const files = delivery
       ? (['clean', 'revision'] as const).map(variant => ({ id: delivery[`${variant}_artifact_id`], variant, ...variants[variant], ...(delivery.baseline_kind === 'none' ? { description: '本次为首次编制，没有旧文对照；两份均为可编辑首稿。' } : {}) }))
       : [{ id: artifact.artifact_id, variant: undefined, label: 'Word 成果', description: '此历史成果未提供修订、清洁版和基线的分类信息。' }];
-    this.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(project.project_id)}">← 返回项目工作区</a>
+    const context=navigationProjectContext(location.hash),returnId=context?.projectId;
+    const back=returnId?projectWorkHref('files',returnId):'#/projects/'+encodeURIComponent(project.project_id);
+    const consistency=withProjectContext(new URLSearchParams({project:project.source_project_id??project.project_id}));
+    this.shell(`<a class="back-link" href="${esc(back)}">← ${returnId?'返回本项目文件':'返回项目工作区'}</a>
       <div class="page-heading"><div><p class="eyebrow">成果与下载</p><h1>${esc(project.name)}</h1><p class="muted">第 ${artifact.display_version ?? artifact.version} 版 · ${esc(date(run.updated_at))}</p></div><button class="button secondary" id="refresh-artifact">重新读取成果</button>${artifact.delivery_status==='available'&&delivery?'<button class="button secondary" id="assistant-artifact">与 BondBuddy 讨论／继续修改</button>':''}</div>
       <section class="panel artifact-page artifact-download-panel" aria-labelledby="artifact-downloads"><h2 id="artifact-downloads" tabindex="-1">下载募集书</h2>
+        <p class="muted" data-artifact-result-context hidden>本轮成果 · ${artifact.display_version ? `第 ${artifact.display_version} 版` : '显示版本未提供'} · 任务记录时间 <time datetime="${esc(run.updated_at)}">${esc(date(run.updated_at))}</time></p>
         ${artifact.delivery_status === 'test_only' ? '<p>内部测试工作稿·未经专业审核·不得对外使用</p>' : ''}
         <div class="artifact-files">${files.map((file, index) => `<article class="artifact-file ${index === 0 ? 'artifact-file-primary' : ''}"><h3>${file.label}${file.variant === 'clean' ? '<span class="artifact-recommended">推荐阅读</span>' : ''}</h3><p>${file.description}</p><button class="button ${index === 0 ? 'primary' : 'secondary'}" data-artifact-file="${index}">下载${file.label}</button><p class="artifact-download-status" data-download-status="${index}" role="status"></p></article>`).join('')}</div>
         ${delivery ? '<p class="artifact-download-note">两版均可能保留待人工确认的标记或批注，请在使用前核对。</p>' : ''}
-        <a class="button secondary" href="#consistency?project=${encodeURIComponent(project.source_project_id??project.project_id)}">检查文件一致性</a>
+        <a class="button secondary" href="#consistency?${esc(consistency.toString())}">检查文件一致性</a>
       </section>
       <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${artifact.delivery_status === 'test_only' ? '内部测试工作稿·未经专业审核·不得对外使用' : pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
         <p>${generatedPair ? '修订版和清洁版已生成，可以下载。' : '文件已通过服务端交付检查；生成完成不表示业务事实已全部确认或达到正式申报条件。'}</p>
@@ -74,6 +79,7 @@ export class ArtifactPage {
           ${pending ? `<ul>${delivery.pending_review.map(item => `<li><p>${esc(item.message)}</p><span class="muted">原文记录：${esc(item.record_id)}</span></li>`).join('')}</ul>${pending > delivery.pending_review.length ? '<p>部分待确认详情尚未提供，请核对 Word 内的标记与批注。</p>' : ''}` : '<p>本轮交付摘要未列出待确认项，仍需核对原始材料和工作稿。</p>'}</div>`}` : '<p class="muted">此历史成果未提供变更摘要或待确认清单，请核对文档内容。</p>'}
       </section>
       ${delivery?.authoring_summary?.length ? `<section class="panel artifact-page" aria-labelledby="authoring-summary-title"><h2 id="authoring-summary-title">本次更新说明</h2><div class="authoring-summary">${authoringSummary(delivery.authoring_summary)}</div></section>` : ''}`, 'projects');
+    const resultContext=document.querySelector<HTMLElement>('[data-artifact-result-context]');if(resultContext)resultContext.hidden=!resultContext.closest('.embedded-artifact');
     document.querySelector('#assistant-artifact')?.addEventListener('click',()=>window.dispatchEvent(new CustomEvent('bondbuddy:assistant',{detail:{projectId:project.project_id,artifactId:delivery?.clean_artifact_id}})));
     document.querySelector('#refresh-artifact')!.addEventListener('click', () => { void this.render(artifact.artifact_id); });
     document.querySelectorAll<HTMLButtonElement>('[data-artifact-file]').forEach(button => {

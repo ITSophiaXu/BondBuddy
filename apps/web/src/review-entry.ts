@@ -8,7 +8,7 @@ export class ReviewEntry extends ProjectEntry {
       steps:['选择项目','材料与要求','复核结果'],next:'下一步：材料与要求',newHref:'#review?new=1',
       open:async(id,signal)=>{
         const result=await api.request<{project_id:string}>('POST','/projects/'+encodeURIComponent(id)+'/review-entry',{}, {},signal);
-        if(current()&&!signal.aborted)location.hash='/projects/'+encodeURIComponent(result.project_id)+'/review?'+withProjectContext(new URLSearchParams({tab:'materials'}));
+        if(current()&&!signal.aborted){const query=withProjectContext(new URLSearchParams({tab:'materials'}));if(!query.has('return_project'))query.set('return_project',id);location.hash='/projects/'+encodeURIComponent(result.project_id)+'/review?'+query;}
       }});
   }
 }

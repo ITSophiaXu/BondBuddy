@@ -16,9 +16,11 @@ async function fixture(page:Page){
  let corrupt=false,exported=0;
  await page.route('**/api/v1/**',async route=>{
   const path=new URL(route.request().url()).pathname,reply=(v:unknown)=>route.fulfill({json:v});
-  if(path==='/api/v1/me')return reply({user_id:'synthetic-owner',username:'synthetic'});
+  if(path==='/api/v1/me')return reply({user_id:'synthetic-owner',session_status:'active'});
+  if(path==='/api/v1/account')return reply({user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:time,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
   if(path==='/api/v1/credits/balance')return reply({enabled:true,available:10000,frozen:0});
   if(path==='/api/v1/projects/project')return reply({project_id:'project',name:'合成核查项目',issuer_name:'合成企业',kind:'generation',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:time});
+  if(path==='/api/v1/projects/project/files')return reply({project_id:'project',items:[]});
   if(path.endsWith('/captures/capture'))return route.fulfill({contentType:'image/png',body:corrupt?Buffer.from('corrupt'):png});
   if(path.endsWith('/exports')){expect(route.request().postDataJSON().expected_evidence_ids).toEqual([]);exported++;return reply({run_id:'round'});}
   if(path.endsWith('/integrity/draft')){state.draft=route.request().postDataJSON().draft;state.revision++;return reply(state);}
@@ -41,7 +43,7 @@ for(const width of [1440,390,1265])test(`integrity official evidence preserves c
  await page.screenshot({path:resolve(out,`evidence-${width}.png`)});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.locator('dialog').press('Escape');
- await page.getByRole('button',{name:'重新导出底稿 · 免费'}).click();await expect.poll(f.exports).toBe(1);
+ await page.getByRole('button',{name:'重新导出底稿 · 免费'}).click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();expect(f.exports()).toBe(0);await page.locator('#integrity-export-free-confirm').click();await expect.poll(f.exports).toBe(1);
  f.corrupt();await page.getByRole('button',{name:'查看 / 补充证据'}).first().click();await page.getByRole('button',{name:'查看官网截图'}).click();await expect(page.getByText('截图读取失败，请重试。')).toBeVisible();await expect(page.locator('.integrity-browser-evidence img')).toHaveCount(0);
  await page.locator('dialog').press('Escape');await page.goto('/#integrity?project=project');
  await page.getByRole('button',{name:'＋ 添加人员',exact:true}).click();await expect(page.locator('dialog[open]')).toHaveCount(0);await expect(page.locator('#integrity-roster input[data-field="name"]')).toHaveCount(2);

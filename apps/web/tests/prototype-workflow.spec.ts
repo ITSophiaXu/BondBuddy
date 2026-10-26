@@ -41,6 +41,8 @@ async function setup(page: Page, options: { beforeProjectRead?: () => Promise<vo
         content_sha256:createHash('sha256').update(input.body).digest('hex'),body:input.body,material_versions:[],created_at:'2026-09-28T00:00:00Z',
         role:'user',source_status:'user_asserted',intent_status:'not_classified',route:'save_only'};
       messages.push(message);body={...message,conversation_id:'synthetic-design-project',is_current:true,project_message_set_ref:messageRef()};status=201;
+    } else if(path==='/projects/synthetic-design-project/prospectus-versions' && request.method()==='GET') {
+      body={project_id:'synthetic-design-project',current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]} satisfies Dto<'ProspectusVersionsResponse'>;
     } else if(path.endsWith('/tasks'))body={project_id:'synthetic-design-project',items:[],page:{has_more:false,next_cursor:null}};
     else if(path.endsWith('/events')) body={items:[],next_cursor:null};
     else {status=404;body={code:'NOT_FOUND'};}
@@ -49,12 +51,19 @@ async function setup(page: Page, options: { beforeProjectRead?: () => Promise<vo
   await page.goto('/#dashboard');
   return {projects,writes,routes,messages};
 }
+async function expandOptionalGroups(page: Page) {
+  for (const group of await page.locator('details.update-optional-section').all()) {
+    if (await group.getAttribute('open') === null) await group.locator(':scope > summary').click();
+  }
+}
 
 test('prototype dashboard leads through creation to materials with persistent material-footer requirements',async({page})=>{
   const errors: string[]=[]; page.on('pageerror',e=>errors.push(e.message));
   const state=await setup(page);
   await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
-  await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('link')).toHaveCount(4);
+  const navigation=page.getByRole('navigation',{name:'主导航'}).getByRole('link');
+  await expect(navigation).toHaveCount(6);
+  expect(await navigation.evaluateAll(links=>links.map(link=>link.getAttribute('href')))).toEqual(['#tasks','#update','#review','#generate','#integrity','#qa']);
   await page.setViewportSize({width:1440,height:960});
   await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),'bb361-dashboard-desktop.png'),fullPage:true});
@@ -65,6 +74,7 @@ test('prototype dashboard leads through creation to materials with persistent ma
   await page.getByRole('button',{name:'打开菜单'}).click();
   await expect(page.getByRole('link',{name:'全部项目',exact:true}).first()).toBeVisible();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'更新募集书',exact:true}).click();
+  await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
   await expect(page.getByRole('heading',{name:'更新募集说明书'})).toBeVisible();
   await page.setViewportSize({width:1440,height:960});
   await expect(page.locator('.step.current')).toContainText('创建项目');
@@ -92,7 +102,7 @@ test('prototype dashboard leads through creation to materials with persistent ma
   await expect(page.getByLabel('发行人全称')).toHaveValue('合成发行人有限公司');
   await page.reload(); await expect(page.locator('.step.current')).toContainText('创建项目');
   await expect(page.getByLabel('发行人全称')).toHaveValue('合成发行人有限公司');
-  await expect(page.getByRole('heading',{name:'参与机构'})).toBeVisible();
+  await expect(page.locator('details.update-optional-section[data-update-group=agencies] > summary')).toBeVisible();
   await page.getByRole('button',{name:'保存并继续'}).click();
   await expect(page.locator('.project-cowork')).toBeVisible();
   expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
@@ -105,6 +115,7 @@ test('creating an update keeps its navigation active while the project loads',as
   const pending = new Promise<void>(resolve => { release=resolve; });
   await setup(page,{beforeProjectRead:()=>pending});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'更新募集书',exact:true}).click();
+  await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
 
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
@@ -119,8 +130,10 @@ for (const width of [1440, 390]) {
   test(`project guidance stays visible through typing, funding changes and saved draft reload (${width}px)`, async ({page}) => {
     await page.setViewportSize({width, height: 960});
     const state = await setup(page);
-    await page.goto('/#update');
+    await page.goto('/#/new');
     const form = page.locator('#create-form');
+    await expect(form).toBeVisible();
+    await expandOptionalGroups(page);
     await expect(form.locator('.field-note')).toHaveCount(9);
     await expect(form.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
     await expect(page.locator('#underwriting-note')).toContainText('受托管理人、存续期管理人');
@@ -167,6 +180,7 @@ for (const width of [1440, 390]) {
     await page.getByRole('button', {name:'编辑项目信息'}).click();
     await page.reload();
     await expect(page.locator('#underwriting')).toHaveValue(fields.underwriting);
+    await expandOptionalGroups(page);
     await expect(page.locator('#draft-form .field-note')).toHaveCount(12);
     await expect(page.locator('#underwriting-note')).toBeVisible();
     await expect(page.locator('#use_amount_0-note')).toBeVisible();
@@ -179,7 +193,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','全部项目']]) {
-  test(`project loading and error preserve the entry navigation: ${active}`,async({page})=>{
+  test(`project loading and error preserve the entry navigation: ${active} (${suffix || 'direct'})`,async({page})=>{
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release=resolve; });
     await setup(page,{beforeProjectRead:()=>pending,failProjectRead:true});
@@ -194,11 +208,12 @@ for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部
 
 test('material workspace respects unavailable server resources without creating demo work',async({page})=>{
   const state=await setup(page);
-  await page.goto('/#generate');
-  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
+  await page.goto('/#generate?project=synthetic-unavailable-project');
+  await expect(page.getByRole('heading',{name:'文件生成暂时无法打开',exact:true})).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('无法访问这个项目');
-  await expect(page.getByRole('button',{name:'重新读取',exact:true})).toBeVisible();
-  await page.goto('/#review'); await expect(page.locator('#review-create-form')).toBeVisible();
+  await expect(page.getByRole('link',{name:'重新选择项目',exact:true})).toHaveAttribute('href','#generate');
+  expect(state.routes).toContain('/projects/synthetic-unavailable-project');
+  await page.goto('/#review?new=1'); await expect(page.locator('#review-create-form')).toBeVisible();
   expect(state.writes).toEqual([]);
   expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
   await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
@@ -209,7 +224,7 @@ for (const width of [1440, 390]) {
   test(`automatic project name saves and restores without manual naming (${width}px)`, async ({page}) => {
     const state = await setup(page);
     await page.setViewportSize({width, height: width === 1440 ? 960 : 844});
-    await page.goto('/#update');
+    await page.goto('/#/new');
     const form = page.locator('#create-form');
     await expect(form.locator('h2').first()).toHaveText('项目基本信息 必填');
     await expect(form.locator('input[name=name]')).toHaveCount(0);
@@ -255,7 +270,7 @@ for (const width of [1440, 390]) {
 
 test('issuer alone and a long Unicode issuer can create projects within the public name limit',async({page})=>{
   const state=await setup(page);
-  await page.goto('/#update');
+  await page.goto('/#/new');
   const issuer='合成𠮷'.repeat(45);
   await page.getByLabel('发行人全称').fill(issuer);
   const name=await page.locator('#generated-project-name').textContent();

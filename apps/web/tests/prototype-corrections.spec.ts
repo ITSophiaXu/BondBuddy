@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdir, readFile } from 'node:fs/promises';
 import type { Dto } from '../src/api';
+import { taskPage } from './collection-fixtures';
 
 // Synthetic HTTP boundary; no model, database, OCR or document acceptance.
 const now='2026-09-28T03:00:00Z', id='synthetic-quarter-project';
@@ -36,6 +37,10 @@ async function install(page:Page,state=fixture()) {
     } else if(path===`/projects/${id}`) {
       if(method==='PATCH'){expect(Value.Check(schemas.ProjectPatchRequest,body)).toBe(true);state.project={...state.project,...body,draft_revision:state.project.draft_revision+1};}
       result=state.project;
+    } else if(path===`/projects/${id}/tasks` && method==='GET') {
+      result=taskPage(id,state.run?[state.run]:[]);
+    } else if(path===`/projects/${id}/prospectus-versions` && method==='GET') {
+      result={project_id:id,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]} satisfies Dto<'ProspectusVersionsResponse'>;
     } else if(path===`/projects/${id}/events`) {
       if(state.materialReadFails){status=503;result={code:'DATA_UNAVAILABLE'};}
       else result={items:state.materials.map((m,i)=>({event_id:`event-${i}`,schema_version:1,trace_id:'trace',project_id:id,seq:i+1,occurred_at:now,type:'material.upload_progress',payload:{material_id:m.material_id}})),next_cursor:null};
@@ -72,7 +77,7 @@ async function capture(page:Page,name:string) {
 async function addFile(page:Page){await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'synthetic-audit.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic UI fixture')});}
 
 test('quarter selection -> create -> upload -> original footer action -> refresh recovery',async({page})=>{
-  const state=await install(page); await page.goto('/#update');
+  const state=await install(page); await page.goto('/#/new');
   await page.setViewportSize({width:1440,height:960});
   await expect(page.locator('#create-form input[type=date]')).toHaveCount(0);
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
@@ -92,7 +97,7 @@ test('quarter selection -> create -> upload -> original footer action -> refresh
   await expect(page.getByText('准备好，开始更新',{exact:true})).toHaveCount(0);
   await expect(page.locator('#execution-actions input, #execution-actions select')).toHaveCount(0);
   await expect(page.locator('#upload-policy-note')).toHaveText('数据保存与删除说明');
-  await addFile(page);await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeEnabled();
+  await addFile(page);await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
   await page.setViewportSize({width:1440,height:960});await capture(page,'materials-desktop');
   await page.setViewportSize({width:390,height:844});await capture(page,'materials-mobile');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
@@ -110,7 +115,10 @@ test('quarter selection -> create -> upload -> original footer action -> refresh
 test('unrelated edits preserve old dates and periods; quarter and year changes derive pending reporting windows',async({page})=>{
   const state=fixture();state.project.update_details!.reporting_cutoff='2024-04-20';await install(page,state);await page.goto(`/#/projects/${id}?step=details`);
   await expect(page.locator('#legacy-cutoff')).toContainText('2024-04-20');await expect(page.locator('[name=reporting_quarter]:checked')).toHaveCount(0);
+  await page.locator('details.update-optional-section[data-update-group=other] > summary').click();
   await page.getByLabel('其他已知信息').fill('补充说明，不修改旧日期或期间。');
+  // A pre-existing saved badge is not the acknowledgement of this edit.
+  await expect.poll(()=>state.calls.filter(c=>c.method==='PATCH').length).toBe(1);
   await expect(page.locator('#save-state')).toHaveText('已保存');expect(state.project.update_details!.reporting_cutoff).toBe('2024-04-20');
   expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
   const expectedWindows=[
