@@ -82,13 +82,13 @@ export async function collectInContext(context:BrowserContext,site:IntegritySite
 async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits,entry:string):Promise<BrowserCollection>{
  const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number)=>capture(page,kind,n,limits.screenCapture);
  const query=integritySearchQuery(site,subject);
- const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图直接采集隔离服务器桌面的完整屏幕，含浏览器和 XFCE 原生系统面板（北京时间），未叠加时间或绘制时钟栏；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，无需上传补充证据。',captures:[]};
+ const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图保留采集时的完整屏幕内容；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，无需上传补充证据。',captures:[]};
  let page=await context.newPage();page.setDefaultTimeout(Math.min(limits.waitMs,15000));page.setDefaultNavigationTimeout(limits.waitMs);
  let onResponse:((response:Response)=>void)|undefined,onRequestFailed:((request:Request)=>void)|undefined;
  let phase:IntegrityDiagnostic['phase']='open';
  const navigationStatuses=new WeakMap<Page,number>();
  const onNavigation=(response:Response)=>{try{const frame=response.frame();if(response.request().isNavigationRequest()&&frame===frame.page().mainFrame())navigationStatuses.set(frame.page(),response.status());}catch{/* Popup navigation can precede creation of its frame. */}};
- const mark=(d:IntegrityDiagnostic,outcome:BrowserCollection['outcome']='failed',explanation='未取得可确认的查询结果。')=>{result.diagnostic=d;result.outcome=outcome;result.reason=`${integrityDiagnosticLabel(d)}。${explanation}${d.detail?` 页面反馈：${d.detail}`:''} 无需补充信息或上传证据。`;};
+ const mark=(d:IntegrityDiagnostic,outcome:BrowserCollection['outcome']='failed',explanation='未取得可确认的查询结果。')=>{result.diagnostic=d;result.outcome=outcome;result.reason=`${integrityDiagnosticLabel(d)}。${explanation} 无需补充信息或上传证据。`;};
  context.on('response',onNavigation);
  const diagnostic=async()=>{try{result.captures.push(await capturePage(page,'blocker',1));}catch{/* A blank/error document is never fabricated as evidence. */}};
  try{
@@ -165,7 +165,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   result.limitation+=` 本次保留 ${result.captures.filter(c=>c.kind==='result').length} 页查询截图，最多采集 ${limits.maxPages} 页；未展示的结果不在本次核查范围内。`;
   return result;
  }catch(error){signal.throwIfAborted();const network=error instanceof Error?error.message.match(/net::[A-Z_]+/)?.[0]:undefined;
-  if(result.captures.some(c=>c.kind==='result')&&['results','no_results'].includes(result.outcome)){result.limitation+=` 后续页面采集未完成${network?`（${network}）`:''}，已取得的查询结果仍保留。`;return result;}
+  if(result.captures.some(c=>c.kind==='result')&&['results','no_results'].includes(result.outcome)){result.limitation+=' 后续页面采集未完成，已取得的查询结果仍保留。';if(result.diagnostic&&network)result.diagnostic.detail=network;return result;}
   const text=await visibleText(page).catch(()=>''),status=navigationStatuses.get(page)??0;
   if(status>=400||errors.test(text))mark(pageFailure(text,status,phase));
   else mark({code:network?'network_error':error instanceof Error&&error.name==='TimeoutError'?(!text.trim()?'blank_page_timeout':phase==='open'?'page_load_timeout':phase==='results'?'result_load_timeout':'operation_failed'):'operation_failed',phase,...(network?{detail:network}:{})});

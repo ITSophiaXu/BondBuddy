@@ -18,9 +18,9 @@ from PIL import Image
 TEMPLATE = Path(__file__).parent / 'templates' / 'integrity-workpaper.docx'
 PICTURE_WIDTH = 5274310
 # The worker supplies presentation from the shared contracts module, including for old records.
-# Direct legacy callers retain their recorded text; do not invent missing diagnostics here.
+# Direct legacy callers have no display classification; do not expose raw diagnostic text or invent a cause.
 def presentation(record):
-    return record.get('presentation', {'label': '历史查询记录（状态详情未提供）', 'description': record['reason']})
+    return record.get('presentation', {'label': '历史查询记录（状态详情未提供）', 'description': '历史记录未提供可展示的查询详情。'})
 CONCLUSION = {'records_found': '发现记录', 'no_records': '该次查询未发现记录', 'unresolved': '仍待核实'}
 
 def beijing(value):
@@ -162,7 +162,7 @@ def generate(data, target):
                 para('来源：' + source['title'] + ' ' + source['url'], small=True)
             if r.get('browser'):
                 para('查询范围：' + r['browser']['scope'], small=True)
-                limitation = r['browser']['limitation']
+                limitation = presentation(r).get('limitation', '本次记录未提供可展示的覆盖说明。')
                 if limitation not in seen_limitations:
                     para('覆盖限制（相同限制后文不再重复）：' + limitation, small=True)
                     seen_limitations.add(limitation)

@@ -62,31 +62,36 @@ test('company region is inferred from a clear province prefix and existing value
 });
 
 test('historical access restrictions are not relabeled as captcha and require no upload',async({page})=>{
- const f=await fixture(page);f.state.rounds[0].records[1].reason='官网访问已被拦截。';
+ const f=await fixture(page);f.state.rounds[0].records[1].reason='官网返回 HTTP 403 Forbidden，页面显示 GeoBL，访问已被拦截。';
  await page.goto('/#integrity?project=project&run=round');
  await expect(page.getByText('需要验证码',{exact:true})).toHaveCount(0);
  await expect(page.getByText('网站拒绝访问',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'查看查询记录'}).nth(1).click();
  await expect(page.locator('dialog input[type=file]')).toHaveCount(0);
  await expect(page.getByText('本项未取得可用截图，无需上传补充证据。')).toBeVisible();
+ await expect(page.locator('dialog')).not.toContainText(/HTTP|403|Forbidden|GeoBL/);
 });
 
 test('precise result states and adverse facts are visible without an evidence upload flow',async({page})=>{
  await page.setViewportSize({width:1440,height:1000});const f=await fixture(page),round=f.state.rounds[0],base=round.records[0];
- const diagnostics:[string,IntegrityDiagnostic['code'],string][]=[['credit-china','blank_page_timeout','页面空白（加载超时）'],['execution-debtor','access_denied','网站拒绝访问（HTTP 403 Forbidden）'],['execution-dishonest','result_load_timeout','查询结果加载超时'],['gsxt','login_required','需要登录']];
+ const diagnostics:[string,IntegrityDiagnostic['code'],string][]=[['credit-china','blank_page_timeout','页面空白（加载超时）'],['execution-debtor','access_denied','网站拒绝访问'],['execution-dishonest','result_load_timeout','查询结果加载超时'],['gsxt','login_required','需要登录']];
  const finding:IntegrityFinding={capture_id:'capture',quote:'合成企业 因未按规定披露信息，于2026年10月1日被测试机关罚款10万元，决定书合成〔2026〕1号。',title:'行政处罚：未按规定披露信息',explanation:'记录显示罚款10万元，决定书合成〔2026〕1号；原文未载明整改情况。',nature:'adverse',subject_match:'company_name'};
- round.records.push(...diagnostics.map(([site_id,code])=>({...base,site_id,status:'query_failed' as const,reason:code==='access_denied'?'官网返回 HTTP 403 Forbidden，页面显示 GeoBL。':'已尝试等待和重试，未取得查询结果。',browser:{...base.browser!,outcome:'failed' as const,captures:[],diagnostic:{code,phase:'results' as const,attempts:2,elapsed_ms:180000,...(code==='access_denied'?{http_status:403}:{})}}})),
+ round.records.push(...diagnostics.map(([site_id,code])=>({...base,site_id,status:'query_failed' as const,reason:code==='access_denied'?'官网返回 HTTP 403 Forbidden，页面显示 GeoBL。':'已尝试等待和重试，未取得查询结果。',browser:{...base.browser!,outcome:'failed' as const,captures:[],diagnostic:{code,phase:'results' as const,attempts:2,elapsed_ms:180000,...(code==='access_denied'?{http_status:403,detail:'HTTP 403 Forbidden GeoBL'}:{})}}})),
  {...base,site_id:'sse',status:'public_matches',reason:'官网返回具体记录，企业全称匹配。',browser:{...base.browser!,outcome:'results'},findings:[finding],sources:[{url:'https://www.chinatax.gov.cn/',title:'合成行政处罚决定',quote:finding.quote,retrieved_at:time,tool_call_id:'capture',sha256:hash(finding.quote)}]},
  {...base,site_id:'szse',status:'public_matches',browser:{...base.browser!,outcome:'results'},findings:[{...finding,subject_match:'unconfirmed'}]},
  {...base,site_id:'nafmii-discipline',status:'public_matches',browser:{...base.browser!,outcome:'results'},findings:[{...finding,nature:'information',title:'一般公告：申报进展',explanation:'官网公告披露申报进展。'}]});
+ const denied=round.records.find(r=>r.site_id==='execution-debtor')!;denied.browser!.captures=[{...base.browser!.captures[0],kind:'blocker',title:'HTTP 403 Forbidden GeoBL'}];round.records.find(r=>r.site_id==='sse')!.browser!.limitation='后续页面采集未完成（net::ERR_CONNECTION_RESET），已取得的查询结果仍保留。';
  round.manifest.draft.site_ids=round.records.map(r=>r.site_id);
  await page.goto('/#integrity?project=project&run=round');
  for(const label of ['搜索无返回结果',...diagnostics.map(d=>d[2]),'发现不利记录（企业全称匹配）','发现不利线索（主体未确认）','搜索返回一般信息'])await expect(page.getByText(label,{exact:true})).toBeVisible();
  await expect(page.locator('.integrity-status-danger')).toHaveCount(1);
- await expect(page.locator('#integrity-records')).not.toContainText('待人工补证');
+ await expect(page.locator('#integrity-records')).not.toContainText(/待人工补证|HTTP|403|Forbidden|GeoBL|net::|ERR_/);
  const out=resolve('../../docs/acceptance/integrity-readiness-20261026');await page.screenshot({path:resolve(out,'precise-statuses-1440.png'),fullPage:true});
+ await page.locator('tr').filter({has:page.getByText('网站拒绝访问',{exact:true})}).getByRole('button',{name:'查看查询记录'}).click();
+ await expect(page.locator('dialog')).toContainText('网站拒绝了本次访问');await expect(page.locator('dialog')).not.toContainText(/HTTP|403|Forbidden|GeoBL|net::|ERR_/);
+ await page.screenshot({path:resolve(out,'access-denied-1440.png')});await page.locator('dialog').press('Escape');
  await page.locator('tr').filter({has:page.getByText('发现不利记录（企业全称匹配）',{exact:true})}).getByRole('button',{name:'查看查询记录'}).click();
- await expect(page.locator('dialog')).toContainText('罚款10万元');await expect(page.locator('dialog')).toContainText('合成〔2026〕1号');
+ await expect(page.locator('dialog')).toContainText('罚款10万元');await expect(page.locator('dialog')).toContainText('合成〔2026〕1号');await expect(page.locator('dialog')).not.toContainText(/HTTP|403|Forbidden|GeoBL|net::|ERR_/);
  await expect(page.getByRole('link',{name:'合成行政处罚决定 ↗'})).toBeVisible();
  await expect(page.locator('dialog input[type=file]')).toHaveCount(0);
  await page.screenshot({path:resolve(out,'adverse-record-1440.png')});

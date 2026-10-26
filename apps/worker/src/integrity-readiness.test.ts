@@ -94,7 +94,7 @@ test('page readiness, query conditions, retries and honest results in real Chrom
   });
   for(const status of [403,400,503])await t.test(`HTTP ${status} is preserved even for an empty response`,async()=>{
    const context=await browser.newContext();await context.route('**/*',route=>route.fulfill({status,contentType:'text/html',body:html(status===403?'403 Forbidden GeoBL':'')}));
-   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.diagnostic?.http_status,status);assert.equal(r.diagnostic?.code,status===403?'access_denied':'http_error');assert.match(r.reason,new RegExp('HTTP '+status));if(status===403)assert.match(r.diagnostic?.detail??'',/GeoBL/);}finally{await context.close();}
+   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.diagnostic?.http_status,status);assert.equal(r.diagnostic?.code,status===403?'access_denied':'http_error');assert.match(r.reason,status===403?/网站拒绝访问/:/网站响应错误/);assert.doesNotMatch(r.reason,/HTTP|Forbidden|GeoBL/);if(status===403)assert.match(r.diagnostic?.detail??'',/GeoBL/);}finally{await context.close();}
   });
   await t.test('network failure is reported without claiming an empty search',async()=>{
    const context=await browser.newContext();await context.route('**/*',route=>route.abort('namenotresolved'));
