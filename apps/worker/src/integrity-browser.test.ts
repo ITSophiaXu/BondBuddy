@@ -51,6 +51,21 @@ test('MOA resources share provider assets but cannot access another tenant',()=>
  }
  assert.equal(integrityBrowserUrlAllowed(moa,'https://p.so-gov.cn/custom/BM19000004/css/search.css'),false);
 });
+test('observed MOT/MOA search initialization dependencies stay restricted to exact paths and tenants',()=>{
+ const mot=INTEGRITY_SITES.find(s=>s.id==='transport')!,moa=INTEGRITY_SITES.find(s=>s.id==='agriculture')!;
+ for(const current of [mot,moa])for(const url of ['https://p.so-gov.cn/web/i18n/zh/lang.json','https://api.so-gov.cn/query/site']){
+  assert.equal(integrityBrowserUrlAllowed(current,url),true,url);assert.equal(integrityBrowserUrlAllowed(site,url),false,url);
+ }
+ const motImage='https://file.so-gov.cn/cps/pro/bm19000004new/css/2c9331a3121145c3af0b29915ca26ff0/2c9331a3121145c3af0b29915ca26ff0.png';
+ const moaImage='https://file.so-gov.cn/cps/pro/zwbm21000007/css/51e0660b41134dfb86bab00e0be42184/51e0660b41134dfb86bab00e0be42184.png';
+ assert.equal(integrityBrowserUrlAllowed(mot,motImage),true);assert.equal(integrityBrowserUrlAllowed(moa,motImage),false);
+ assert.equal(integrityBrowserUrlAllowed(moa,moaImage),true);assert.equal(integrityBrowserUrlAllowed(mot,moaImage),false);
+ const md5='https://cdn.bootcss.com/blueimp-md5/2.10.0/js/md5.js';
+ assert.equal(integrityBrowserUrlAllowed(moa,md5),true);assert.equal(integrityBrowserUrlAllowed({...site,id:'official-directory'},md5),true);
+ assert.equal(integrityBrowserUrlAllowed(mot,md5),false);assert.equal(integrityBrowserUrlAllowed(site,md5),false);
+ for(const url of ['https://p.so-gov.cn/web/private.json','https://api.so-gov.cn/query/site/other','http://api.so-gov.cn/query/site','https://api.so-gov.cn.evil.test/query/site','https://cdn.bootcss.com/other.js','http://cdn.bootcss.com/blueimp-md5/2.10.0/js/md5.js','https://chatapi.so-gov.cn/ask/v4/token'])assert.equal(integrityBrowserUrlAllowed(moa,url),false,url);
+});
+
 test('private-network worker uses dedicated upstream but cannot widen the selected website',async()=>{
  let upstreamCalls=0;
  const server=createServer((req,res)=>{upstreamCalls++;res.end('official fixture');});
