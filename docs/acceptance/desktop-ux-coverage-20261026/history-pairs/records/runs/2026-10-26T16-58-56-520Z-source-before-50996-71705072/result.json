@@ -1,0 +1,21 @@
+{
+  "id": "2026-10-26T16-58-56-520Z-source-before-50996-71705072",
+  "mode": "source-before",
+  "status": 0,
+  "finished": "2026-10-26T16:58:58.827Z",
+  "snapshot": {
+    "files": 1900,
+    "sha256": "33f8bcd9575c5265b49c4305ae3bae139c2cbb72ca490a10ca3a662b2cd5bc97",
+    "roots": [
+      "apps/api/src",
+      "apps/api/dist",
+      "apps/worker/src",
+      "apps/worker/dist",
+      "apps/web/src",
+      "packages/contracts/src",
+      "packages/contracts/dist",
+      "packages/contracts/examples",
+      "db/migrations"
+    ]
+  }
+}

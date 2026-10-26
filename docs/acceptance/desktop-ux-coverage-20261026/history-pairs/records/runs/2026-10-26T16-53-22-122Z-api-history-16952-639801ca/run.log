@@ -1,0 +1,68 @@
+✖ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (2449.4926ms)
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (142.5218ms)
+✔ missing or non-file output cannot be labelled as available Word (0.2845ms)
+✔ real finish publishes only its exact selected files and freezes pair, input and completion metadata (1633.713ms)
+✖ real no-baseline delivery appears in HTTP history with exact files and live access checks (2051.1154ms)
+✔ manual pause and an exhausted dynamic reservation save candidate work without publishing a final delivery (1207.0941ms)
+✔ an outbox failure after the terminal UPDATE rolls back its receipt, members, run and job together (1033.4486ms)
+✔ receipts and members are immutable; missing or altered members hide the whole delivery (4915.0206ms)
+✔ pair members without versions must resolve uniquely; a second verified version cannot be guessed away (1154.509ms)
+✔ M4 QA durable publication preserves a nonterminal readable result, while real finish adds a distinct final receipt without duplicate public rows (1262.8015ms)
+✔ an invalid final QA phase falls back only to its independently valid durable receipt (1318.3468ms)
+✔ M4 document durable publication waits for the registered document and note and never publishes a dynamic unpaid pair (1262.25ms)
+✔ concurrent exact replay serializes on the run and cannot add another receipt or member set (2033.8146ms)
+✔ UTC publication stays readable and exactly replayable from an Asia/Shanghai session (3549.6149ms)
+✔ a missing nonprimary provenance binding hides the complete phase even while its immutable member list is unchanged (1277.8681ms)
+✔ actual migration uses the exact terminal event time and records unreconstructable history without a public fallback (6608.9823ms)
+✔ migration drains run writers before job/file/execution locks and does not invert a topic/input creator (6331.3731ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 15
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 66322.4031
+
+✖ failing tests:
+
+test at apps\api\dist\artifact-history.test.js:13:1
+✖ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (2449.4926ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/artifact-history.test.js:145:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-execution-delivery.pg.test.js:133:1
+✖ real no-baseline delivery appears in HTTP history with exact files and live access checks (2051.1154ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + []
+  - [
+  -   '548426ad-dc2c-4b46-943f-e3c03375eda6'
+  - ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-execution-delivery.pg.test.js:146:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ '548426ad-dc2c-4b46-943f-e3c03375eda6' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-20261027\\runs\\2026-10-26T16-53-22-122Z-api-history-16952-639801ca\\run.log\n\n1 !== 0\n"}

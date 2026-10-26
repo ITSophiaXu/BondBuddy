@@ -1,0 +1,12 @@
+initdb: error: could not create restricted token: error code 87
+initdb: error: could not re-execute with restricted token: error code 3
+The files belonging to this database system will be owned by user "CodexSandboxOffline".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "C".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/history-pairs-postgres/data ... initdb: error: could not create directory "C:/Users/lezhai": File exists
+{"name":"AssertionError","message":"C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\initdb.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-20261027\\runs\\2026-10-26T16-49-07-301Z-initdb-13484-a760a52e\\run.log\n\n1 !== 0\n"}

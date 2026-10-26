@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T16:49:07.308Z",
+  "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\initdb.exe",
+  "args": [
+    "-D",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+    "--username=bb_history_test",
+    "--auth=trust",
+    "--encoding=UTF8",
+    "--locale=C"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

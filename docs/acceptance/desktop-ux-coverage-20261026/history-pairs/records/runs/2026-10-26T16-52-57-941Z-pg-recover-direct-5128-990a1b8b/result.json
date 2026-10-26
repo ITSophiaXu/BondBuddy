@@ -1,0 +1,15 @@
+{
+  "id": "2026-10-26T16-52-57-941Z-pg-recover-direct-5128-990a1b8b",
+  "mode": "pg-recover-direct",
+  "status": 0,
+  "finished": "2026-10-26T16:52:58.307Z",
+  "server": {
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/history-pairs-postgres/data",
+    "port": 15529,
+    "server_version": "16.14",
+    "server_user": "bb_history_test",
+    "server_started_at": "2026-10-26T16:50:35.191Z",
+    "pid": 46196
+  },
+  "recovered_from": "2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4"
+}

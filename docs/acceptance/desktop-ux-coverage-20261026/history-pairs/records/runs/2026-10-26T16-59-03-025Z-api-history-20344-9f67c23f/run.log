@@ -1,0 +1,25 @@
+✔ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (5293.0511ms)
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (145.8931ms)
+✔ missing or non-file output cannot be labelled as available Word (0.2949ms)
+✔ real finish publishes only its exact selected files and freezes pair, input and completion metadata (1755.7351ms)
+✔ real no-baseline delivery appears in HTTP history with exact files and live access checks (2255.4314ms)
+✔ manual pause and an exhausted dynamic reservation save candidate work without publishing a final delivery (1259.3168ms)
+✔ an outbox failure after the terminal UPDATE rolls back its receipt, members, run and job together (984.1362ms)
+✔ receipts and members are immutable; missing or altered members hide the whole delivery (3953.1055ms)
+✔ pair members without versions must resolve uniquely; a second verified version cannot be guessed away (1265.0996ms)
+✔ M4 QA durable publication preserves a nonterminal readable result, while real finish adds a distinct final receipt without duplicate public rows (1306.9016ms)
+✔ an invalid final QA phase falls back only to its independently valid durable receipt (993.8141ms)
+✔ M4 document durable publication waits for the registered document and note and never publishes a dynamic unpaid pair (1382.7351ms)
+✔ concurrent exact replay serializes on the run and cannot add another receipt or member set (2517.8023ms)
+✔ UTC publication stays readable and exactly replayable from an Asia/Shanghai session (3743.9428ms)
+✔ a missing nonprimary provenance binding hides the complete phase even while its immutable member list is unchanged (1305.6967ms)
+✔ actual migration uses the exact terminal event time and records unreconstructable history without a public fallback (5629.1011ms)
+✔ migration drains run writers before job/file/execution locks and does not invert a topic/input creator (6597.3419ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 66592.0067

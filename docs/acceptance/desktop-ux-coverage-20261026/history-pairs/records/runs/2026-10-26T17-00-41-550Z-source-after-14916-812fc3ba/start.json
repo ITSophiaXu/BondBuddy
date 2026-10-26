@@ -1,0 +1,18 @@
+{
+  "id": "2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba",
+  "mode": "source-after",
+  "started": "2026-10-26T17:00:41.553Z",
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+  "port": 15529,
+  "user": "bb_history_test",
+  "database": "bb_history_pairs_template_20261027",
+  "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+  "environment": {
+    "BB_TEST_DATABASE_URL": "postgresql://bb_history_test@127.0.0.1:15529/bb_history_pairs_template_20261027",
+    "BONDBUDDY_TEST_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "BONDBUDDY_WORD_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "PGOPTIONS": null,
+    "BB_RUN_RUNTIME_ENABLED": null
+  }
+}

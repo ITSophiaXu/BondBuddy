@@ -47,7 +47,7 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
     }
     async function makeRun(projectId: string, options: {
       user?: string; time: string; state?: 'succeeded' | 'test_completed' | 'failed' | 'paused';
-      bundle?: boolean; testGrantId?: string; role?: 'update' | 'review';
+      bundle?: boolean; baseline?: boolean; testGrantId?: string; role?: 'update' | 'review';
     }) {
       const user = options.user ?? firstOwner;
       const id = randomUUID(), primary = randomUUID(), clean = randomUUID(), baseline = randomUUID();
@@ -56,7 +56,8 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
         VALUES($1,$2,$3,1,$4,$5,$6,$4,'running',$7,$8)`,
         [id, user, projectId, sha, randomUUID(), options.role ?? 'update', options.testGrantId ? 'non_production_test' : 'production', options.testGrantId ?? null]);
       const checkpoint = options.bundle ? { stages: { word_delivery_pair: {
-        revision_artifact_id: primary, clean_artifact_id: clean, baseline_artifact_id: baseline,
+        revision_artifact_id: primary, clean_artifact_id: clean,
+        ...(options.baseline === false ? {} : { baseline_artifact_id: baseline }),
       } } } : {};
       await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,checkpoint,channel,test_grant_id)
         VALUES($1,$2,$3,$4,'default','running','running',$5,$6,$7)`,
@@ -78,7 +79,7 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
         return key;
       }
       const primaryKey = state === 'succeeded' || state === 'test_completed' ? await artifact(primary) : null;
-      if (options.bundle) { await artifact(clean); await artifact(baseline); }
+      if (options.bundle) { await artifact(clean); if (options.baseline !== false) await artifact(baseline); }
       await pool.query('UPDATE bb_jobs SET state=$2,stage=$2,lease_token=NULL,lease_until=NULL WHERE run_id=$1',[id,state]);
       await pool.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload,occurred_at)
         VALUES($1,$2,$3,1,$3,'run.state_changed',$4,$4,'{}',$5)`,[randomUUID(),user,id,state,options.time]);
@@ -96,6 +97,7 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       assert.equal(empty.statusCode, 200, empty.body);
       assert.deepEqual(empty.json(), { items: [], page: { has_more: false, next_cursor: null } });
       const early = await makeRun(firstProject, { time: '2026-09-26T12:00:00.000001Z' });
+      const firstAuthoring = await makeRun(firstProject, { time: '2026-09-25T12:00:00.000001Z', bundle: true, baseline: false });
       const middle = await makeRun(firstProject, { time: '2026-09-27T12:00:00.000001Z', bundle: true });
       const latest = await makeRun(firstProject, { time: '2026-09-27T12:00:00.000001Z', bundle: true });
       await makeRun(firstProject, { time: '2026-09-28T12:00:00.000001Z', state: 'failed' });
@@ -148,18 +150,45 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       assert.equal(third.statusCode, 200, third.body);
       assert.deepEqual(third.json().items.map((item: { run_id: string }) => item.run_id), [early.id]);
       assert.equal(third.json().items[0].word_delivery, null, 'single Word result does not claim a revision/baseline pair');
-      assert.deepEqual(third.json().page, { has_more: false, next_cursor: null });
+      assert.equal(third.json().page.has_more, true);
+      const fourth = await read(`${url()}?limit=1&cursor=${encodeURIComponent(third.json().page.next_cursor)}`);
+      assert.equal(fourth.statusCode, 200, fourth.body);
+      assert.deepEqual(fourth.json().items.map((item: { run_id: string }) => item.run_id), [firstAuthoring.id]);
+      assert.deepEqual(fourth.json().items[0].word_delivery, {
+        revision: { artifact_id: firstAuthoring.primary, version: 1 }, clean: { artifact_id: firstAuthoring.clean, version: 1 },
+      });
+      assert.deepEqual(fourth.json().page, { has_more: false, next_cursor: null });
       assert.ok(!(await read(url())).json().items.some((item: { run_id: string }) => item.run_id === mixedRun.id),
         'revocation remains live even when the captured delivery pair is immutable');
       assert.equal((await read(url())).json().items[0].run_id, newSuccess.id, 'fresh list sees newer success');
       assert.equal((await read(url())).json().items[0].word_delivery.clean.version, 1,
         'an artifact registered after completion cannot replace the exact delivered clean copy');
 
-      assert.equal((await read(url())).json().items.length, 4, 'only successful update runs are listed');
+      assert.equal((await read(url())).json().items.length, 5, 'successful update history includes the no-baseline first pair');
+      await pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1", [firstAuthoring.clean]);
+      assert.ok(!(await read(url())).json().items.some((item: { run_id: string }) => item.run_id === firstAuthoring.id),
+        'a no-baseline pair still requires its live clean member');
       assert.equal(await countGrants(), 0, 'history reads do not mint download grants');
       const direct = await read(`/api/v1/artifacts/${early.primary}`);
       assert.equal(direct.statusCode, 200, direct.body);
       assert.equal(await countGrants(), 1, 'direct checked artifact read still creates the short-lived grant');
+
+      const baselineKey = `synthetic/history/${newSuccess.baseline}`;
+      contents.delete(baselineKey);
+      const missingBaseline = await read(url());
+      assert.equal(missingBaseline.statusCode, 503, missingBaseline.body);
+      assert.equal(missingBaseline.json().code, 'DATA_UNAVAILABLE', 'a declared baseline cannot be silently omitted');
+      const corruptBaseline = Buffer.from(bytes);
+      corruptBaseline[corruptBaseline.length - 1] ^= 1;
+      contents.set(baselineKey, corruptBaseline);
+      const damagedBaseline = await read(url());
+      assert.equal(damagedBaseline.statusCode, 503, damagedBaseline.body);
+      assert.equal(damagedBaseline.json().code, 'DATA_UNAVAILABLE', 'same-length baseline corruption still requires exact hash');
+      contents.set(baselineKey, bytes);
+      const restoredBaseline = await read(url());
+      assert.equal(restoredBaseline.statusCode, 200, restoredBaseline.body);
+      assert.deepEqual(restoredBaseline.json().items[0].word_delivery.baseline, { artifact_id: newSuccess.baseline, version: 1 });
+      assert.equal(await countGrants(), 1, 'failed or restored baseline history reads create no grants');
 
       await pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1", [middle.clean]);
       assert.ok(!(await read(url())).json().items.some((item: { run_id: string }) => item.run_id === middle.id),
@@ -204,8 +233,13 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
         (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
         VALUES($1,$2,$3,1,$4,$4,$4,$4,'synthetic-operator','synthetic-history-test',now()+interval '1 day')`,
         [grantId, firstOwner, firstProject, sha]);
-      const testRun = await makeRun(firstProject, { time: '2026-09-29T13:00:00.000001Z', state: 'test_completed', bundle: true, testGrantId: grantId });
-      assert.equal((await read(url())).json().items[0].run_id, testRun.id);
+      const testRun = await makeRun(firstProject, { time: '2026-09-29T13:00:00.000001Z', state: 'test_completed', bundle: true, baseline: false, testGrantId: grantId });
+      const testHistory = await read(url());
+      assert.equal(testHistory.statusCode, 200, testHistory.body);
+      assert.equal(testHistory.json().items[0].run_id, testRun.id);
+      assert.deepEqual(testHistory.json().items[0].word_delivery, {
+        revision: { artifact_id: testRun.primary, version: 1 }, clean: { artifact_id: testRun.clean, version: 1 },
+      });
       process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'disabled';
       assert.ok(!(await read(url())).json().items.some((item: { run_id: string }) => item.run_id === testRun.id));
       process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';

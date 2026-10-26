@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 import { date, digest, Problem, project } from './data.js';
 
 type Query = Static<typeof schemas.ArtifactHistoryQuery>;
+type WordDelivery = NonNullable<Static<typeof schemas.ArtifactHistoryResponse>['items'][number]['word_delivery']>;
 type Artifact = ArtifactExecutionRef & {
   id: string; version: number; media_type: string; sha256: string;
   object_key: string; delivery_evidence_byte_size: string;
@@ -112,8 +113,9 @@ export async function listArtifactHistory(
          AND tg.revoked_at IS NULL AND tg.expires_at>now() AND tg.grant_id IS NOT NULL))
       AND (pair.value IS NULL OR
         (jsonb_typeof(pair.value)='object' AND jsonb_typeof(pair.value->'revision_artifact_id')='string'
-         AND pair.value->>'revision_artifact_id'=a.id AND c.id IS NOT NULL
-         AND b.id IS NOT NULL AND a.id<>c.id AND a.id<>b.id AND c.id<>b.id))
+         AND pair.value->>'revision_artifact_id'=a.id AND c.id IS NOT NULL AND a.id<>c.id
+         AND (NOT (pair.value ? 'baseline_artifact_id') OR
+           (b.id IS NOT NULL AND a.id<>b.id AND c.id<>b.id))))
       AND ($5::timestamptz IS NULL OR (d.delivered_at,d.run_id,d.execution_version)<=($5::timestamptz,$6::text,$7::int))
       AND ($8::timestamptz IS NULL OR (d.delivered_at,d.run_id,d.execution_version)<($8::timestamptz,$9::text,$10::int))
     ORDER BY d.delivered_at DESC,d.run_id DESC,d.execution_version DESC LIMIT $11`,
@@ -126,18 +128,19 @@ export async function listArtifactHistory(
     const primary: Artifact = { ...scope, id: row.primary_id, version: row.primary_version, media_type: WORD,
       sha256: row.primary_sha256, object_key: row.primary_object_key, delivery_evidence_byte_size: row.primary_size };
     await verify(primary);
-    let wordDelivery: { revision: { artifact_id: string; version: number };
-      clean: { artifact_id: string; version: number }; baseline: { artifact_id: string; version: number } } | null = null;
+    let wordDelivery: WordDelivery | null = null;
     if (row.has_pair) {
       const clean: Artifact = { ...scope, id: row.clean_id!, version: row.clean_version!, media_type: WORD,
         sha256: row.clean_sha256!, object_key: row.clean_object_key!, delivery_evidence_byte_size: row.clean_size! };
-      const baseline: Artifact = { ...scope, id: row.baseline_id!, version: row.baseline_version!, media_type: WORD,
-        sha256: row.baseline_sha256!, object_key: row.baseline_object_key!, delivery_evidence_byte_size: row.baseline_size! };
       await verify(clean);
-      await verify(baseline);
       wordDelivery = { revision: { artifact_id: primary.id, version: primary.version },
-        clean: { artifact_id: clean.id, version: clean.version },
-        baseline: { artifact_id: baseline.id, version: baseline.version } };
+        clean: { artifact_id: clean.id, version: clean.version } };
+      if (row.baseline_id !== null) {
+        const baseline: Artifact = { ...scope, id: row.baseline_id, version: row.baseline_version!, media_type: WORD,
+          sha256: row.baseline_sha256!, object_key: row.baseline_object_key!, delivery_evidence_byte_size: row.baseline_size! };
+        await verify(baseline);
+        wordDelivery.baseline = { artifact_id: baseline.id, version: baseline.version };
+      }
     }
     items.push({ run_id: row.run_id, input_revision: row.input_revision, completed_at: date(row.completed_at),
       state: row.state, channel: row.channel, primary_artifact: { artifact_id: primary.id, version: primary.version },

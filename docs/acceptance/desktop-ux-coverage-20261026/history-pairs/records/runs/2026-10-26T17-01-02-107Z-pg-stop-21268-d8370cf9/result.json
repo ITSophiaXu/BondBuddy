@@ -1,0 +1,10 @@
+{
+  "id": "2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9",
+  "mode": "pg-stop",
+  "status": 1,
+  "finished": "2026-10-26T17:01:02.614Z",
+  "error": {
+    "name": "AssertionError",
+    "message": "bb_projects template must stay empty\n\n1 !== 0\n"
+  }
+}

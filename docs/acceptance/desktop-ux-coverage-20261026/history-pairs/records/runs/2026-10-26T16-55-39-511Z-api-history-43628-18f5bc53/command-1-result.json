@@ -1,0 +1,15 @@
+{
+  "started": "2026-10-26T16:55:39.878Z",
+  "finished": "2026-10-26T16:57:20.959Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/artifact-history.test.js",
+    "apps/api/dist/run-execution-delivery.pg.test.js",
+    "apps/api/dist/generated-word-delivery.test.js"
+  ],
+  "status": 0,
+  "signal": null,
+  "pid": 4888
+}

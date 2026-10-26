@@ -10,6 +10,7 @@ import { completeM4Qa, registerM4Artifacts } from './m4-workspace.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { checkpointStage, finish, finishM4Qa, promoteWordArtifact, type Lease } from './queue.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { createServer } from './server.js';
 
 const connection = await isolatedTestDatabase(undefined, 'run-execution-delivery');
 const migration = await readFile(new URL('../../../db/migrations/0126_run_execution_deliveries.sql', import.meta.url), 'utf8');
@@ -130,6 +131,44 @@ test('real finish publishes only its exact selected files and freezes pair, inpu
     await pool.query("UPDATE bb_runs SET state='paused',artifact_id=NULL,artifact_version=NULL,updated_at=now() WHERE id=$1", [f.runId]);
     assert.equal((await published(pool, f.runId)).length, 2, 'past delivery membership is independent of the run current state and primary projection');
     assert.deepEqual(await receipts(pool, f.runId), [receipt]);
+  });
+
+test('real no-baseline delivery appears in HTTP history with exact files and live access checks',
+  { skip: !connection, timeout: 30000 }, async t => {
+    const pool = new Pool({ connectionString: connection }); t.after(() => pool.end());
+    const f = await fixture(pool), blobs = memoryBlobs(), selected = await pair(pool, f, blobs);
+    let owner = f.owner;
+    const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test',
+      principal: async () => ({ userId: owner, csrfVerified: true }) });
+    t.after(() => app.close());
+    const history = () => app.inject({ method: 'GET', url: `/api/v1/projects/${f.projectId}/artifacts` });
+    assert.deepEqual((await history()).json().items, [], 'saved candidates alone are not a delivery');
+    await finish(pool, f.lease, 'succeeded', { artifactId: selected.revision.artifactId, artifactVersion: 1, blobs });
+    const delivered = await history();
+    assert.equal(delivered.statusCode, 200, delivered.body);
+    assert.deepEqual(delivered.json().items.map((item: { run_id: string }) => item.run_id), [f.runId]);
+    const expected = { revision: { artifact_id: selected.revision.artifactId, version: 1 },
+      clean: { artifact_id: selected.clean.artifactId, version: 1 } };
+    assert.deepEqual(delivered.json().items[0].word_delivery, expected, 'no invented baseline or null pair');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_artifact_download_grants')).rows[0].n, 0);
+    const [receipt] = await receipts(pool, f.runId);
+    assert.equal(Object.hasOwn(receipt.word_delivery_pair, 'baseline_artifact_id'), false);
+    await pool.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages,word_delivery_pair,baseline_artifact_id}',
+      to_jsonb($2::text)) WHERE id=$1`, [f.jobId, uid()]);
+    assert.deepEqual((await history()).json().items[0].word_delivery, expected,
+      'a later mutable checkpoint cannot invent a delivered baseline');
+    const clean = (await pool.query('SELECT object_key FROM bb_artifact_versions WHERE id=$1 AND version=1', [selected.clean.artifactId])).rows[0];
+    const cleanBytes = await blobs.get(clean.object_key);
+    await blobs.delete(clean.object_key);
+    const missing = await history();
+    assert.equal(missing.statusCode, 503, missing.body); assert.equal(missing.json().code, 'DATA_UNAVAILABLE');
+    await blobs.put(clean.object_key, Buffer.from('Synthetic damaged clean Word'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    assert.equal((await history()).statusCode, 503, 'both delivered files must pass actual byte/hash verification');
+    await blobs.put(clean.object_key, cleanBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    assert.deepEqual((await history()).json().items[0].word_delivery, expected);
+    owner = uid(); assert.equal((await history()).statusCode, 404); owner = f.owner;
+    await pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1", [selected.clean.artifactId]);
+    assert.deepEqual((await history()).json().items, [], 'a revoked clean member excludes the pair');
   });
 
 test('manual pause and an exhausted dynamic reservation save candidate work without publishing a final delivery',

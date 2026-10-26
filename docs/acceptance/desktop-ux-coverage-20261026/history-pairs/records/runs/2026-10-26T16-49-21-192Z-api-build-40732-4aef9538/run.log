@@ -1,0 +1,3 @@
+apps/api/src/run-execution-delivery.pg.test.ts(165,17): error TS2554: Expected 3 arguments, but got 2.
+apps/api/src/run-execution-delivery.pg.test.ts(167,17): error TS2554: Expected 3 arguments, but got 2.
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 2; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-20261027\\runs\\2026-10-26T16-49-21-192Z-api-build-40732-4aef9538\\run.log\n\n2 !== 0\n"}

@@ -218,4 +218,8 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 
 ### 后续实际交付记录增量
 
-[执行交付记录验收](../acceptance/desktop-ux-coverage-20261026/execution-deliveries/README.md)追加准确 V1 交付 receipt 与成员，不再以整个 run 成功或当前配对推断所有候选均已交付。终态与原结算事务共同提交，旧非动态 M4 耐久读取另记阶段；命名、历史分页、助手成果选择、最新成果和 previous_output 使用准确交付。完整成员及来源丢失时对应阶段拒读，实时撤销和测试授权仍有效。各组与各轮结果只在专项 summary 中分别列明，不相加为用户旅程覆盖率。新增检查还确认两成员首稿被旧历史 baseline 必需条件漏列的独立待修边界，不声称历史功能已全覆盖。本轮没有采用新材料、追加报价确认、后继执行或完整桌面新输入续做验收，G03 和完整 goal 继续 active。
+[执行交付记录验收](../acceptance/desktop-ux-coverage-20261026/execution-deliveries/README.md)追加准确 V1 交付 receipt 与成员，不再以整个 run 成功或当前配对推断所有候选均已交付。终态与原结算事务共同提交，旧非动态 M4 耐久读取另记阶段；命名、历史分页、助手成果选择、最新成果和 previous_output 使用准确交付。完整成员及来源丢失时对应阶段拒读，实时撤销和测试授权仍有效。各组与各轮结果只在专项 summary 中分别列明，不相加为用户旅程覆盖率。该轮另确认两成员首稿被旧历史 baseline 必需条件漏列的独立边界，不将后续修复倒记为当时已通过。本轮没有采用新材料、追加报价确认、后继执行或完整桌面新输入续做验收，G03 和完整 goal 继续 active。
+
+### 后续双稿历史修复
+
+[双稿历史验收](../acceptance/desktop-ux-coverage-20261026/history-pairs/README.md)修复合法双成员成果被历史漏列：基线仅按冻结交付记录实际存在时返回，旧三成员与 single/null 兼容，混合分页保留；已声明的基线不能因损坏而省略。真实 PostgreSQL/HTTP、成员私有字节及实时权限按专项证据验证，没有新增前端流程、浏览器验收、采用或追加计价。此定向修复不增加用户旅程分母或上调整体比例，G03 和完整 goal 仍未完成。

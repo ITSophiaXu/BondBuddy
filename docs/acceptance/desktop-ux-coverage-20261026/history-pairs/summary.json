@@ -1,0 +1,1601 @@
+{
+  "schemaVersion": 1,
+  "recorded_at": "2026-10-26T17:04:49.576Z",
+  "synthetic": true,
+  "goal_complete": false,
+  "g03_complete": false,
+  "aggregate": null,
+  "count_policy": "Each invocation and each source-freeze round stands alone. Overlapping runs, red regressions, skips and diagnostic failures are never added or counted as passed.",
+  "selected_results": [
+    {
+      "id": "2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f",
+      "mode": "api-history",
+      "status": 0,
+      "started": "2026-10-26T16:59:03.028Z",
+      "finished": "2026-10-26T17:00:10.138Z",
+      "start": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/start.json",
+      "receipt": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/result.json",
+      "log": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": {
+        "tests": 17,
+        "suites": 0,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 66592.0067
+      },
+      "node_summaries": [
+        {
+          "tests": 17,
+          "suites": 0,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 66592.0067
+        }
+      ],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/command-1-result.json",
+          "started": "2026-10-26T16:59:03.424Z",
+          "finished": "2026-10-26T17:00:10.137Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/artifact-history.test.js",
+            "apps/api/dist/run-execution-delivery.pg.test.js",
+            "apps/api/dist/generated-word-delivery.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 48036
+        }
+      ],
+      "aggregate": null,
+      "source_round": 3
+    },
+    {
+      "id": "2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809",
+      "mode": "api-consumers",
+      "status": 0,
+      "started": "2026-10-26T16:56:12.058Z",
+      "finished": "2026-10-26T16:57:19.384Z",
+      "start": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/start.json",
+      "receipt": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/result.json",
+      "log": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": {
+        "tests": 7,
+        "suites": 0,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0,
+        "duration_ms": 66826.2234
+      },
+      "node_summaries": [
+        {
+          "tests": 7,
+          "suites": 0,
+          "pass": 6,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 1,
+          "todo": 0,
+          "duration_ms": 66826.2234
+        }
+      ],
+      "contracts_examples": [],
+      "skipped_titles": [
+        "﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.4507ms) # SKIP"
+      ],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/command-1-result.json",
+          "started": "2026-10-26T16:56:12.436Z",
+          "finished": "2026-10-26T16:57:19.382Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/project-assistant.pg.test.js",
+            "apps/api/dist/project-collection.pg.test.js",
+            "apps/api/dist/project-list.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 17912
+        }
+      ],
+      "aggregate": null,
+      "source_round": 2
+    }
+  ],
+  "invocations": [
+    {
+      "id": "2026-10-26T16-49-07-301Z-initdb-13484-a760a52e",
+      "mode": "initdb",
+      "status": 1,
+      "started": "2026-10-26T16:49:07.304Z",
+      "finished": "2026-10-26T16:49:07.711Z",
+      "start": "records/runs/2026-10-26T16-49-07-301Z-initdb-13484-a760a52e/start.json",
+      "receipt": "records/runs/2026-10-26T16-49-07-301Z-initdb-13484-a760a52e/result.json",
+      "log": "records/runs/2026-10-26T16-49-07-301Z-initdb-13484-a760a52e/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-49-07-301Z-initdb-13484-a760a52e/command-1-result.json",
+          "started": "2026-10-26T16:49:07.308Z",
+          "finished": "2026-10-26T16:49:07.708Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\initdb.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+            "--username=bb_history_test",
+            "--auth=trust",
+            "--encoding=UTF8",
+            "--locale=C"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 45932
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-49-07-311Z-contracts-build-44732-aab5c616",
+      "mode": "contracts-build",
+      "status": 0,
+      "started": "2026-10-26T16:49:07.313Z",
+      "finished": "2026-10-26T16:49:13.819Z",
+      "start": "records/runs/2026-10-26T16-49-07-311Z-contracts-build-44732-aab5c616/start.json",
+      "receipt": "records/runs/2026-10-26T16-49-07-311Z-contracts-build-44732-aab5c616/result.json",
+      "log": "records/runs/2026-10-26T16-49-07-311Z-contracts-build-44732-aab5c616/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-49-07-311Z-contracts-build-44732-aab5c616/command-1-result.json",
+          "started": "2026-10-26T16:49:07.316Z",
+          "finished": "2026-10-26T16:49:13.817Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "packages/contracts/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 25440
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-49-21-192Z-api-build-40732-4aef9538",
+      "mode": "api-build",
+      "status": 1,
+      "started": "2026-10-26T16:49:21.195Z",
+      "finished": "2026-10-26T16:49:37.191Z",
+      "start": "records/runs/2026-10-26T16-49-21-192Z-api-build-40732-4aef9538/start.json",
+      "receipt": "records/runs/2026-10-26T16-49-21-192Z-api-build-40732-4aef9538/result.json",
+      "log": "records/runs/2026-10-26T16-49-21-192Z-api-build-40732-4aef9538/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-49-21-192Z-api-build-40732-4aef9538/command-1-result.json",
+          "started": "2026-10-26T16:49:21.198Z",
+          "finished": "2026-10-26T16:49:37.189Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 2,
+          "signal": null,
+          "pid": 19836
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-49-58-627Z-initdb-14956-33de1f53",
+      "mode": "initdb",
+      "status": 0,
+      "started": "2026-10-26T16:49:58.629Z",
+      "finished": "2026-10-26T16:50:10.202Z",
+      "start": "records/runs/2026-10-26T16-49-58-627Z-initdb-14956-33de1f53/start.json",
+      "receipt": "records/runs/2026-10-26T16-49-58-627Z-initdb-14956-33de1f53/result.json",
+      "log": "records/runs/2026-10-26T16-49-58-627Z-initdb-14956-33de1f53/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-49-58-627Z-initdb-14956-33de1f53/command-1-result.json",
+          "started": "2026-10-26T16:49:58.632Z",
+          "finished": "2026-10-26T16:50:10.200Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\initdb.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+            "--username=bb_history_test",
+            "--auth=trust",
+            "--encoding=UTF8",
+            "--locale=C"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 13668
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4",
+      "mode": "pg-start-direct",
+      "status": 1,
+      "started": "2026-10-26T16:50:34.222Z",
+      "finished": "2026-10-26T16:51:34.014Z",
+      "start": "records/runs/2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4/start.json",
+      "receipt": "records/runs/2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4/result.json",
+      "log": "records/runs/2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4/command-1-result.json",
+          "started": "2026-10-26T16:50:34.226Z",
+          "finished": "2026-10-26T16:50:34.282Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+            "status"
+          ],
+          "status": 3,
+          "signal": null,
+          "pid": 46288
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-50-56-305Z-api-build-6940-8f67b2d5",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T16:50:56.307Z",
+      "finished": "2026-10-26T16:51:12.918Z",
+      "start": "records/runs/2026-10-26T16-50-56-305Z-api-build-6940-8f67b2d5/start.json",
+      "receipt": "records/runs/2026-10-26T16-50-56-305Z-api-build-6940-8f67b2d5/result.json",
+      "log": "records/runs/2026-10-26T16-50-56-305Z-api-build-6940-8f67b2d5/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-50-56-305Z-api-build-6940-8f67b2d5/command-1-result.json",
+          "started": "2026-10-26T16:50:56.310Z",
+          "finished": "2026-10-26T16:51:12.916Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 50316
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c",
+      "mode": "contracts-check",
+      "status": 0,
+      "started": "2026-10-26T16:51:21.758Z",
+      "finished": "2026-10-26T16:51:27.471Z",
+      "start": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/start.json",
+      "receipt": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/result.json",
+      "log": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": {
+        "tests": 40,
+        "suites": 0,
+        "pass": 40,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 1910.5835
+      },
+      "node_summaries": [
+        {
+          "tests": 40,
+          "suites": 0,
+          "pass": 40,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 1910.5835
+        }
+      ],
+      "contracts_examples": [
+        {
+          "kind": "contracts",
+          "synthetic": 189,
+          "internal_library": 12,
+          "output": "validated 189 synthetic examples + 12 internal library examples and recovery/conflict/usage invariants"
+        },
+        {
+          "kind": "data_lifecycle",
+          "synthetic": 4,
+          "output": "Validated 4 synthetic data-lifecycle examples"
+        }
+      ],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/command-1-result.json",
+          "started": "2026-10-26T16:51:21.762Z",
+          "finished": "2026-10-26T16:51:24.219Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "packages/contracts/dist/check-examples.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 7940
+        },
+        {
+          "record": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/command-2-result.json",
+          "started": "2026-10-26T16:51:24.220Z",
+          "finished": "2026-10-26T16:51:25.440Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "packages/contracts/dist/check-data-lifecycle.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 49992
+        },
+        {
+          "record": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/command-3-result.json",
+          "started": "2026-10-26T16:51:25.441Z",
+          "finished": "2026-10-26T16:51:27.469Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "packages/contracts/dist/ocr-v2.test.js",
+            "packages/contracts/dist/generation-issuer-binding.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 37456
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-52-40-577Z-worker-build-49996-1b576e47",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T16:52:40.580Z",
+      "finished": "2026-10-26T16:52:56.368Z",
+      "start": "records/runs/2026-10-26T16-52-40-577Z-worker-build-49996-1b576e47/start.json",
+      "receipt": "records/runs/2026-10-26T16-52-40-577Z-worker-build-49996-1b576e47/result.json",
+      "log": "records/runs/2026-10-26T16-52-40-577Z-worker-build-49996-1b576e47/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-52-40-577Z-worker-build-49996-1b576e47/command-1-result.json",
+          "started": "2026-10-26T16:52:40.583Z",
+          "finished": "2026-10-26T16:52:56.366Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 41760
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-52-40-605Z-web-typecheck-50628-f4d32d65",
+      "mode": "web-typecheck",
+      "status": 0,
+      "started": "2026-10-26T16:52:40.608Z",
+      "finished": "2026-10-26T16:53:00.605Z",
+      "start": "records/runs/2026-10-26T16-52-40-605Z-web-typecheck-50628-f4d32d65/start.json",
+      "receipt": "records/runs/2026-10-26T16-52-40-605Z-web-typecheck-50628-f4d32d65/result.json",
+      "log": "records/runs/2026-10-26T16-52-40-605Z-web-typecheck-50628-f4d32d65/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-52-40-605Z-web-typecheck-50628-f4d32d65/command-1-result.json",
+          "started": "2026-10-26T16:52:40.611Z",
+          "finished": "2026-10-26T16:53:00.604Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/web/tsconfig.json",
+            "--noEmit"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 44320
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-52-57-941Z-pg-recover-direct-5128-990a1b8b",
+      "mode": "pg-recover-direct",
+      "status": 0,
+      "started": "2026-10-26T16:52:57.943Z",
+      "finished": "2026-10-26T16:52:58.307Z",
+      "start": "records/runs/2026-10-26T16-52-57-941Z-pg-recover-direct-5128-990a1b8b/start.json",
+      "receipt": "records/runs/2026-10-26T16-52-57-941Z-pg-recover-direct-5128-990a1b8b/result.json",
+      "log": "records/runs/2026-10-26T16-52-57-941Z-pg-recover-direct-5128-990a1b8b/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-53-00-545Z-database-create-45816-83eaec08",
+      "mode": "database-create",
+      "status": 0,
+      "started": "2026-10-26T16:53:00.547Z",
+      "finished": "2026-10-26T16:53:01.460Z",
+      "start": "records/runs/2026-10-26T16-53-00-545Z-database-create-45816-83eaec08/start.json",
+      "receipt": "records/runs/2026-10-26T16-53-00-545Z-database-create-45816-83eaec08/result.json",
+      "log": "records/runs/2026-10-26T16-53-00-545Z-database-create-45816-83eaec08/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-53-03-635Z-migrate-50288-c2f0821f",
+      "mode": "migrate",
+      "status": 0,
+      "started": "2026-10-26T16:53:03.637Z",
+      "finished": "2026-10-26T16:53:09.676Z",
+      "start": "records/runs/2026-10-26T16-53-03-635Z-migrate-50288-c2f0821f/start.json",
+      "receipt": "records/runs/2026-10-26T16-53-03-635Z-migrate-50288-c2f0821f/result.json",
+      "log": "records/runs/2026-10-26T16-53-03-635Z-migrate-50288-c2f0821f/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-53-03-635Z-migrate-50288-c2f0821f/command-1-result.json",
+          "started": "2026-10-26T16:53:03.985Z",
+          "finished": "2026-10-26T16:53:09.675Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "db/migrate.mjs"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 31216
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-53-17-565Z-source-before-25976-7e0dc1e8",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T16:53:17.567Z",
+      "finished": "2026-10-26T16:53:19.950Z",
+      "start": "records/runs/2026-10-26T16-53-17-565Z-source-before-25976-7e0dc1e8/start.json",
+      "receipt": "records/runs/2026-10-26T16-53-17-565Z-source-before-25976-7e0dc1e8/result.json",
+      "log": "records/runs/2026-10-26T16-53-17-565Z-source-before-25976-7e0dc1e8/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-53-22-122Z-api-history-16952-639801ca",
+      "mode": "api-history",
+      "status": 1,
+      "started": "2026-10-26T16:53:22.125Z",
+      "finished": "2026-10-26T16:54:28.909Z",
+      "start": "records/runs/2026-10-26T16-53-22-122Z-api-history-16952-639801ca/start.json",
+      "receipt": "records/runs/2026-10-26T16-53-22-122Z-api-history-16952-639801ca/result.json",
+      "log": "records/runs/2026-10-26T16-53-22-122Z-api-history-16952-639801ca/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": {
+        "tests": 17,
+        "suites": 0,
+        "pass": 15,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 66322.4031
+      },
+      "node_summaries": [
+        {
+          "tests": 17,
+          "suites": 0,
+          "pass": 15,
+          "fail": 2,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 66322.4031
+        }
+      ],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-53-22-122Z-api-history-16952-639801ca/command-1-result.json",
+          "started": "2026-10-26T16:53:22.473Z",
+          "finished": "2026-10-26T16:54:28.907Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/artifact-history.test.js",
+            "apps/api/dist/run-execution-delivery.pg.test.js",
+            "apps/api/dist/generated-word-delivery.test.js"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 27508
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-54-33-180Z-source-after-43168-e24f091b",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T16:54:33.182Z",
+      "finished": "2026-10-26T16:54:50.747Z",
+      "start": "records/runs/2026-10-26T16-54-33-180Z-source-after-43168-e24f091b/start.json",
+      "receipt": "records/runs/2026-10-26T16-54-33-180Z-source-after-43168-e24f091b/result.json",
+      "log": "records/runs/2026-10-26T16-54-33-180Z-source-after-43168-e24f091b/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-55-04-263Z-api-build-26244-7dd02c05",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T16:55:04.265Z",
+      "finished": "2026-10-26T16:55:21.053Z",
+      "start": "records/runs/2026-10-26T16-55-04-263Z-api-build-26244-7dd02c05/start.json",
+      "receipt": "records/runs/2026-10-26T16-55-04-263Z-api-build-26244-7dd02c05/result.json",
+      "log": "records/runs/2026-10-26T16-55-04-263Z-api-build-26244-7dd02c05/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-55-04-263Z-api-build-26244-7dd02c05/command-1-result.json",
+          "started": "2026-10-26T16:55:04.269Z",
+          "finished": "2026-10-26T16:55:21.051Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 9764
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-55-35-041Z-source-before-36976-4bb4b135",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T16:55:35.043Z",
+      "finished": "2026-10-26T16:55:37.353Z",
+      "start": "records/runs/2026-10-26T16-55-35-041Z-source-before-36976-4bb4b135/start.json",
+      "receipt": "records/runs/2026-10-26T16-55-35-041Z-source-before-36976-4bb4b135/result.json",
+      "log": "records/runs/2026-10-26T16-55-35-041Z-source-before-36976-4bb4b135/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-55-39-511Z-api-history-43628-18f5bc53",
+      "mode": "api-history",
+      "status": 0,
+      "started": "2026-10-26T16:55:39.513Z",
+      "finished": "2026-10-26T16:57:20.961Z",
+      "start": "records/runs/2026-10-26T16-55-39-511Z-api-history-43628-18f5bc53/start.json",
+      "receipt": "records/runs/2026-10-26T16-55-39-511Z-api-history-43628-18f5bc53/result.json",
+      "log": "records/runs/2026-10-26T16-55-39-511Z-api-history-43628-18f5bc53/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": {
+        "tests": 17,
+        "suites": 0,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 100969.1299
+      },
+      "node_summaries": [
+        {
+          "tests": 17,
+          "suites": 0,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 100969.1299
+        }
+      ],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-55-39-511Z-api-history-43628-18f5bc53/command-1-result.json",
+          "started": "2026-10-26T16:55:39.878Z",
+          "finished": "2026-10-26T16:57:20.959Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/artifact-history.test.js",
+            "apps/api/dist/run-execution-delivery.pg.test.js",
+            "apps/api/dist/generated-word-delivery.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 4888
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809",
+      "mode": "api-consumers",
+      "status": 0,
+      "started": "2026-10-26T16:56:12.058Z",
+      "finished": "2026-10-26T16:57:19.384Z",
+      "start": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/start.json",
+      "receipt": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/result.json",
+      "log": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": {
+        "tests": 7,
+        "suites": 0,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0,
+        "duration_ms": 66826.2234
+      },
+      "node_summaries": [
+        {
+          "tests": 7,
+          "suites": 0,
+          "pass": 6,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 1,
+          "todo": 0,
+          "duration_ms": 66826.2234
+        }
+      ],
+      "contracts_examples": [],
+      "skipped_titles": [
+        "﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.4507ms) # SKIP"
+      ],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809/command-1-result.json",
+          "started": "2026-10-26T16:56:12.436Z",
+          "finished": "2026-10-26T16:57:19.382Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/project-assistant.pg.test.js",
+            "apps/api/dist/project-collection.pg.test.js",
+            "apps/api/dist/project-list.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 17912
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T16:57:44.206Z",
+      "finished": "2026-10-26T16:57:46.291Z",
+      "start": "records/runs/2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a/start.json",
+      "receipt": "records/runs/2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a/result.json",
+      "log": "records/runs/2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-58-05-447Z-api-build-51040-346683f9",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T16:58:05.450Z",
+      "finished": "2026-10-26T16:58:20.858Z",
+      "start": "records/runs/2026-10-26T16-58-05-447Z-api-build-51040-346683f9/start.json",
+      "receipt": "records/runs/2026-10-26T16-58-05-447Z-api-build-51040-346683f9/result.json",
+      "log": "records/runs/2026-10-26T16-58-05-447Z-api-build-51040-346683f9/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-58-05-447Z-api-build-51040-346683f9/command-1-result.json",
+          "started": "2026-10-26T16:58:05.454Z",
+          "finished": "2026-10-26T16:58:20.857Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 24524
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-58-56-520Z-source-before-50996-71705072",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T16:58:56.522Z",
+      "finished": "2026-10-26T16:58:58.827Z",
+      "start": "records/runs/2026-10-26T16-58-56-520Z-source-before-50996-71705072/start.json",
+      "receipt": "records/runs/2026-10-26T16-58-56-520Z-source-before-50996-71705072/result.json",
+      "log": "records/runs/2026-10-26T16-58-56-520Z-source-before-50996-71705072/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f",
+      "mode": "api-history",
+      "status": 0,
+      "started": "2026-10-26T16:59:03.028Z",
+      "finished": "2026-10-26T17:00:10.138Z",
+      "start": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/start.json",
+      "receipt": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/result.json",
+      "log": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": {
+        "tests": 17,
+        "suites": 0,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 66592.0067
+      },
+      "node_summaries": [
+        {
+          "tests": 17,
+          "suites": 0,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 66592.0067
+        }
+      ],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f/command-1-result.json",
+          "started": "2026-10-26T16:59:03.424Z",
+          "finished": "2026-10-26T17:00:10.137Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/artifact-history.test.js",
+            "apps/api/dist/run-execution-delivery.pg.test.js",
+            "apps/api/dist/generated-word-delivery.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 48036
+        }
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T17:00:41.553Z",
+      "finished": "2026-10-26T17:00:43.966Z",
+      "start": "records/runs/2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba/start.json",
+      "receipt": "records/runs/2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba/result.json",
+      "log": "records/runs/2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T17-00-46-214Z-database-audit-5024-eec484a0",
+      "mode": "database-audit",
+      "status": 1,
+      "started": "2026-10-26T17:00:46.217Z",
+      "finished": "2026-10-26T17:00:46.758Z",
+      "start": "records/runs/2026-10-26T17-00-46-214Z-database-audit-5024-eec484a0/start.json",
+      "receipt": "records/runs/2026-10-26T17-00-46-214Z-database-audit-5024-eec484a0/result.json",
+      "log": "records/runs/2026-10-26T17-00-46-214Z-database-audit-5024-eec484a0/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9",
+      "mode": "pg-stop",
+      "status": 1,
+      "started": "2026-10-26T17:01:02.110Z",
+      "finished": "2026-10-26T17:01:02.614Z",
+      "start": "records/runs/2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9/start.json",
+      "receipt": "records/runs/2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9/result.json",
+      "log": "records/runs/2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9/run.log",
+      "script_sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T17-03-49-778Z-database-audit-35356-c721ce22",
+      "mode": "database-audit",
+      "status": 0,
+      "started": "2026-10-26T17:03:49.780Z",
+      "finished": "2026-10-26T17:03:50.349Z",
+      "start": "records/runs/2026-10-26T17-03-49-778Z-database-audit-35356-c721ce22/start.json",
+      "receipt": "records/runs/2026-10-26T17-03-49-778Z-database-audit-35356-c721ce22/result.json",
+      "log": "records/runs/2026-10-26T17-03-49-778Z-database-audit-35356-c721ce22/run.log",
+      "script_sha256": "cfdf337f4bac6adc282232e95d9623a90fb73e2b01c0cbd082874e8fa4d2bec9",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578",
+      "mode": "pg-stop",
+      "status": 0,
+      "started": "2026-10-26T17:04:02.450Z",
+      "finished": "2026-10-26T17:04:04.227Z",
+      "start": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/start.json",
+      "receipt": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/result.json",
+      "log": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/run.log",
+      "script_sha256": "cfdf337f4bac6adc282232e95d9623a90fb73e2b01c0cbd082874e8fa4d2bec9",
+      "counts": null,
+      "node_summaries": [],
+      "contracts_examples": [],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/command-1-result.json",
+          "started": "2026-10-26T17:04:03.872Z",
+          "finished": "2026-10-26T17:04:04.169Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+            "-w",
+            "stop",
+            "-m",
+            "fast"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 50360
+        },
+        {
+          "record": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/command-2-result.json",
+          "started": "2026-10-26T17:04:04.171Z",
+          "finished": "2026-10-26T17:04:04.225Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\history-pairs-postgres\\data",
+            "status"
+          ],
+          "status": 3,
+          "signal": null,
+          "pid": 37144
+        }
+      ],
+      "aggregate": null
+    }
+  ],
+  "contracts_checks": [
+    {
+      "id": "2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c",
+      "mode": "contracts-check",
+      "status": 0,
+      "started": "2026-10-26T16:51:21.758Z",
+      "finished": "2026-10-26T16:51:27.471Z",
+      "start": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/start.json",
+      "receipt": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/result.json",
+      "log": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/run.log",
+      "script_sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd",
+      "counts": {
+        "tests": 40,
+        "suites": 0,
+        "pass": 40,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 1910.5835
+      },
+      "node_summaries": [
+        {
+          "tests": 40,
+          "suites": 0,
+          "pass": 40,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 1910.5835
+        }
+      ],
+      "contracts_examples": [
+        {
+          "kind": "contracts",
+          "synthetic": 189,
+          "internal_library": 12,
+          "output": "validated 189 synthetic examples + 12 internal library examples and recovery/conflict/usage invariants"
+        },
+        {
+          "kind": "data_lifecycle",
+          "synthetic": 4,
+          "output": "Validated 4 synthetic data-lifecycle examples"
+        }
+      ],
+      "skipped_titles": [],
+      "commands": [
+        {
+          "record": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/command-1-result.json",
+          "started": "2026-10-26T16:51:21.762Z",
+          "finished": "2026-10-26T16:51:24.219Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "packages/contracts/dist/check-examples.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 7940
+        },
+        {
+          "record": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/command-2-result.json",
+          "started": "2026-10-26T16:51:24.220Z",
+          "finished": "2026-10-26T16:51:25.440Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "packages/contracts/dist/check-data-lifecycle.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 49992
+        },
+        {
+          "record": "records/runs/2026-10-26T16-51-21-756Z-contracts-check-34244-0e5a567c/command-3-result.json",
+          "started": "2026-10-26T16:51:25.441Z",
+          "finished": "2026-10-26T16:51:27.469Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "packages/contracts/dist/ocr-v2.test.js",
+            "packages/contracts/dist/generation-issuer-binding.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 37456
+        }
+      ],
+      "aggregate": null
+    }
+  ],
+  "failure_history": {
+    "sandbox_initdb": "2026-10-26T16-49-07-301Z-initdb-13484-a760a52e",
+    "startup_connection_timeout": "2026-10-26T16-50-34-220Z-pg-start-direct-33548-b06952a4",
+    "initial_api_build": "2026-10-26T16-49-21-192Z-api-build-40732-4aef9538",
+    "red_regression": {
+      "id": "2026-10-26T16-53-22-122Z-api-history-16952-639801ca",
+      "counts": {
+        "tests": 17,
+        "suites": 0,
+        "pass": 15,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 66322.4031
+      }
+    },
+    "original_seed_guard_failures": [
+      {
+        "id": "2026-10-26T17-00-46-214Z-database-audit-5024-eec484a0",
+        "mode": "database-audit",
+        "status": 1,
+        "audit": "records/runs/2026-10-26T17-00-46-214Z-database-audit-5024-eec484a0/database-audit.json",
+        "reason": "The original guard treated the exact migration-created platform probe project as user-test residue; the guard failed before any stop command."
+      },
+      {
+        "id": "2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9",
+        "mode": "pg-stop",
+        "status": 1,
+        "audit": "records/runs/2026-10-26T17-01-02-107Z-pg-stop-21268-d8370cf9/database-audit.json",
+        "reason": "The original guard treated the exact migration-created platform probe project as user-test residue; the guard failed before any stop command."
+      }
+    ],
+    "aggregate": null
+  },
+  "source_freezes": {
+    "pairs": [
+      {
+        "round": 1,
+        "before": "2026-10-26T16-53-17-565Z-source-before-25976-7e0dc1e8",
+        "after": "2026-10-26T16-54-33-180Z-source-after-43168-e24f091b",
+        "files": 1900,
+        "equal": true,
+        "sha256": "952c6594fbff3b8b51662b64410b9064bf2a32d918e2c0c4cf60e29ce3dea51f",
+        "before_snapshot": "records/runs/2026-10-26T16-53-17-565Z-source-before-25976-7e0dc1e8/snapshot.json",
+        "after_snapshot": "records/runs/2026-10-26T16-54-33-180Z-source-after-43168-e24f091b/snapshot.json",
+        "comparison": "records/runs/2026-10-26T16-54-33-180Z-source-after-43168-e24f091b/comparison.json",
+        "invocations": [
+          "2026-10-26T16-53-22-122Z-api-history-16952-639801ca"
+        ],
+        "aggregate": null
+      },
+      {
+        "round": 2,
+        "before": "2026-10-26T16-55-35-041Z-source-before-36976-4bb4b135",
+        "after": "2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a",
+        "files": 1900,
+        "equal": true,
+        "sha256": "824a8cf83acc54885c17591c8cbe677fc1ce244795220a624914da6139ac264f",
+        "before_snapshot": "records/runs/2026-10-26T16-55-35-041Z-source-before-36976-4bb4b135/snapshot.json",
+        "after_snapshot": "records/runs/2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a/snapshot.json",
+        "comparison": "records/runs/2026-10-26T16-57-44-204Z-source-after-50360-ef4a649a/comparison.json",
+        "invocations": [
+          "2026-10-26T16-55-39-511Z-api-history-43628-18f5bc53",
+          "2026-10-26T16-56-12-056Z-api-consumers-48904-1d52a809"
+        ],
+        "aggregate": null
+      },
+      {
+        "round": 3,
+        "before": "2026-10-26T16-58-56-520Z-source-before-50996-71705072",
+        "after": "2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba",
+        "files": 1900,
+        "equal": true,
+        "sha256": "33f8bcd9575c5265b49c4305ae3bae139c2cbb72ca490a10ca3a662b2cd5bc97",
+        "before_snapshot": "records/runs/2026-10-26T16-58-56-520Z-source-before-50996-71705072/snapshot.json",
+        "after_snapshot": "records/runs/2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba/snapshot.json",
+        "comparison": "records/runs/2026-10-26T17-00-41-550Z-source-after-14916-812fc3ba/comparison.json",
+        "invocations": [
+          "2026-10-26T16-59-03-025Z-api-history-20344-9f67c23f"
+        ],
+        "aggregate": null
+      }
+    ],
+    "transitions": [
+      {
+        "from_round": 1,
+        "to_round": 2,
+        "changes": [
+          {
+            "path": "apps/api/dist/artifact-history.d.ts",
+            "before": {
+              "bytes": 1412,
+              "sha256": "b1403a1ed4e3a91b0c8ade0d7c66d4f85b36615baa765955312a07ca2dc5227f"
+            },
+            "after": {
+              "bytes": 1204,
+              "sha256": "b4809ca9c9fbc8abea00194ec0849f1c9d50ba018339393df1769ac5cc21e6ce"
+            }
+          },
+          {
+            "path": "apps/api/dist/artifact-history.js",
+            "before": {
+              "bytes": 11304,
+              "sha256": "1bdd0b1b512406cdafbb698666beea3c13284e24ea4a821303b1c514884216a2"
+            },
+            "after": {
+              "bytes": 11448,
+              "sha256": "827f5fd8b1563cbcd7683bc69618a71310fde2038cd95059358d421e40582e16"
+            }
+          },
+          {
+            "path": "apps/api/src/artifact-history.ts",
+            "before": {
+              "bytes": 12616,
+              "sha256": "2231d56dcef1c074f0b4eec15f2445551b59569a44f355a2b6387805f92c4d50"
+            },
+            "after": {
+              "bytes": 12707,
+              "sha256": "734f03b71c1776b01a682742f0562c9e68bdb539d0857383337f6b37f4e34cc6"
+            }
+          }
+        ]
+      },
+      {
+        "from_round": 2,
+        "to_round": 3,
+        "changes": [
+          {
+            "path": "apps/api/dist/artifact-history.test.js",
+            "before": {
+              "bytes": 20207,
+              "sha256": "fbff9943089741dd27f89c450b6531392caaf6a43ffd846433439c004863d5f0"
+            },
+            "after": {
+              "bytes": 21402,
+              "sha256": "1cab456cef69d8f019c823cff4e2ed762d757bb7bf8af1f6c02a35e6a7735ebe"
+            }
+          },
+          {
+            "path": "apps/api/src/artifact-history.test.ts",
+            "before": {
+              "bytes": 20227,
+              "sha256": "9e91df62f660e9902a58fffe8d5f564a4cd9d84b2f26495f31b9c343fdbafa21"
+            },
+            "after": {
+              "bytes": 21391,
+              "sha256": "47654bf9ba6bb671faca22691de8b30f3750ddc3cfca5cf5e22993446f111dfb"
+            }
+          }
+        ]
+      }
+    ],
+    "initial_to_final": [
+      {
+        "path": "apps/api/dist/artifact-history.d.ts",
+        "before": {
+          "bytes": 1412,
+          "sha256": "b1403a1ed4e3a91b0c8ade0d7c66d4f85b36615baa765955312a07ca2dc5227f"
+        },
+        "after": {
+          "bytes": 1204,
+          "sha256": "b4809ca9c9fbc8abea00194ec0849f1c9d50ba018339393df1769ac5cc21e6ce"
+        }
+      },
+      {
+        "path": "apps/api/dist/artifact-history.js",
+        "before": {
+          "bytes": 11304,
+          "sha256": "1bdd0b1b512406cdafbb698666beea3c13284e24ea4a821303b1c514884216a2"
+        },
+        "after": {
+          "bytes": 11448,
+          "sha256": "827f5fd8b1563cbcd7683bc69618a71310fde2038cd95059358d421e40582e16"
+        }
+      },
+      {
+        "path": "apps/api/dist/artifact-history.test.js",
+        "before": {
+          "bytes": 20207,
+          "sha256": "fbff9943089741dd27f89c450b6531392caaf6a43ffd846433439c004863d5f0"
+        },
+        "after": {
+          "bytes": 21402,
+          "sha256": "1cab456cef69d8f019c823cff4e2ed762d757bb7bf8af1f6c02a35e6a7735ebe"
+        }
+      },
+      {
+        "path": "apps/api/src/artifact-history.test.ts",
+        "before": {
+          "bytes": 20227,
+          "sha256": "9e91df62f660e9902a58fffe8d5f564a4cd9d84b2f26495f31b9c343fdbafa21"
+        },
+        "after": {
+          "bytes": 21391,
+          "sha256": "47654bf9ba6bb671faca22691de8b30f3750ddc3cfca5cf5e22993446f111dfb"
+        }
+      },
+      {
+        "path": "apps/api/src/artifact-history.ts",
+        "before": {
+          "bytes": 12616,
+          "sha256": "2231d56dcef1c074f0b4eec15f2445551b59569a44f355a2b6387805f92c4d50"
+        },
+        "after": {
+          "bytes": 12707,
+          "sha256": "734f03b71c1776b01a682742f0562c9e68bdb539d0857383337f6b37f4e34cc6"
+        }
+      }
+    ],
+    "current_final_inventory_matches": true,
+    "current_files": 1900,
+    "aggregate": null
+  },
+  "database_audit": {
+    "record": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/database-audit.json",
+    "server": {
+      "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/history-pairs-postgres/data",
+      "port": 15529,
+      "server_version": "16.14",
+      "server_user": "bb_history_test",
+      "server_started_at": "2026-10-26T16:50:35.191Z",
+      "pid": 46196
+    },
+    "database": "bb_history_pairs_template_20261027",
+    "counts": {
+      "bb_users": 1,
+      "bb_projects": 1,
+      "bb_input_revisions": 1,
+      "bb_platform_principals": 1,
+      "bb_runs": 0,
+      "bb_jobs": 0,
+      "bb_run_events": 0,
+      "bb_run_execution_versions": 0,
+      "bb_review_execution_snapshots": 0,
+      "bb_m4_execution_snapshots": 0,
+      "bb_artifact_versions": 0,
+      "bb_artifact_execution_bindings": 0,
+      "bb_word_delivery_evidence": 0,
+      "bb_run_execution_deliveries": 0,
+      "bb_run_execution_delivery_artifacts": 0
+    },
+    "migrations": [
+      "0001_m1_owner_data.sql",
+      "0002_artifact_download_grants.sql",
+      "0003_m1_auth_sessions.sql",
+      "0004_m1_durable_jobs.sql",
+      "0005_m1_observability.sql",
+      "0006_m1_storage_lifecycle.sql",
+      "0007_m1_provider_result_reconciliation.sql",
+      "0008_m1_username_password.sql",
+      "0009_m1_account_lifecycle.sql",
+      "0010_m1_facts_parse_cache.sql",
+      "0010_m1_word_delivery_evidence.sql",
+      "0011_m1_project_material_events.sql",
+      "0012_m1_fact_decisions.sql",
+      "0013_m1_historical_profiles.sql",
+      "0013_m1_update_project_details.sql",
+      "0014_m1_parse_evidence_snapshots.sql",
+      "0015_m1_credit_facility_supplements.sql",
+      "0016_m1_update_difficulty_snapshots.sql",
+      "0017_m1_ocr_review.sql",
+      "0018_m1_rule_pack_release_ledger.sql",
+      "0018_m1_upload_reuse.sql",
+      "0019_m1_model_adapter_attempt_runtime.sql",
+      "0020_m1_material_parse_jobs.sql",
+      "0021_m1_log_operations.sql",
+      "0023_m1_reference_library.sql",
+      "0024_m1_worker_runtime.sql",
+      "0025_m1_trial_guard.sql",
+      "0026_m1_user_deletion_lifecycle.sql",
+      "0027_m1_platform_probe.sql",
+      "0028_m1_ops_scheduler.sql",
+      "0030_m1_library_comparability.sql",
+      "0031_m1_ops_last_success.sql",
+      "0032_m1_library_scheduled_sync.sql",
+      "0033_m1_issuer_business_profiles.sql",
+      "0034_m1_v11_reference_selection_locks.sql",
+      "0035_m1_issuer_identity_source.sql",
+      "0036_m1_production_rule_pack_registry.sql",
+      "0037_m1_rule_pack_sample_expectation_binding.sql",
+      "0038_m1_fact_extraction_runs.sql",
+      "0039_m1_rule_applicability_context.sql",
+      "0040_m1_preflight_logical_jobs.sql",
+      "0041_m1_log_blob_archive.sql",
+      "0042_m1_orphan_prompt_blobs.sql",
+      "0043_m1_project_archive.sql",
+      "0044_m1_account_recovery.sql",
+      "0045_m1_issuer_reviewer_grant_audit.sql",
+      "0046_m1_user_reference_pins.sql",
+      "0047_m1_user_reference_review_evidence.sql",
+      "0048_m1_issuer_reviewer_read_scope.sql",
+      "0049_m1_issuer_reviewer_project_grants.sql",
+      "0050_m1_credit_facility_supplement_versions.sql",
+      "0051_m1_rule_applicability_reviewer_grants.sql",
+      "0052_m1_rule_applicability_field_reviews.sql",
+      "0053_m1_input_revision_target_confirmations.sql",
+      "0054_m1_rule_applicability_overall_reviews.sql",
+      "0055_m1_rule_applicability_feature_evidence_v2.sql",
+      "0056_m1_non_production_test_grants.sql",
+      "0057_m1_target_period_evidence_decisions.sql",
+      "0058_m1_update_difficulty_evidence_identity.sql",
+      "0059_m1_issuer_annual_profile_reviews.sql",
+      "0060_m1_fact_evidence_context_sets.sql",
+      "0061_m1_model_cost_attribution.sql",
+      "0062_m1_user_submission_versions.sql",
+      "0063_m1_reference_revenue_rank_proof.sql",
+      "0064_m1_rule_source_legal_date_evidence.sql",
+      "0065_m1_fact_evidence_reviews.sql",
+      "0066_m1_target_period_candidate_snapshots.sql",
+      "0068_m1_browser_error_reports.sql",
+      "0069_m1_log_archive_retention.sql",
+      "0070_m1_error_diagnosis.sql",
+      "0071_m1_production_review_attestation_ledger.sql",
+      "0072_m1_production_component_snapshots.sql",
+      "0073_m1_production_release_attestation_binding.sql",
+      "0074_m1_storage_inventory.sql",
+      "0075_m1_generation_issuer_bindings.sql",
+      "0076_m1_signed_pdf_assessment.sql",
+      "0077_m1_project_message_revisions.sql",
+      "0080_m1_ocr_v2_checkpoints.sql",
+      "0081_m1_project_kind_conversion.sql",
+      "0082_m1_material_role_copy.sql",
+      "0083_m1_test_execute_rejection_without_grant.sql",
+      "0084_m3_review_workspace.sql",
+      "0085_m3_review_assistant.sql",
+      "0086_m3_project_run_mutex.sql",
+      "0087_m2_fixed_credits.sql",
+      "0088_m3_linked_assistant.sql",
+      "0089_paid_review_credits.sql",
+      "0090_multipage_signed_pdf_assessment.sql",
+      "0091_m4_workspace.sql",
+      "0092_m4_pending_requirements.sql",
+      "0093_m4_qa_text_delivery.sql",
+      "0094_m4_settlement_allocation_variable.sql",
+      "0095_m4_artifact_revision_number.sql",
+      "0096_m4_message_template_identity.sql",
+      "0097_m4_cross_project_material_retention.sql",
+      "0098_m4_material_knowledge.sql",
+      "0099_m4_fixed_document_credits.sql",
+      "0100_global_project_assistant.sql",
+      "0101_m4_fixed_qa_prices.sql",
+      "0102_credit_history_indexes.sql",
+      "0103_authoring_progress.sql",
+      "0103_review_pdf_delivery_evidence.sql",
+      "0104_authoring_dynamic_balance.sql",
+      "0105_m4_dynamic_balance.sql",
+      "0106_m4_case_templates.sql",
+      "0107_update_project_prospectus_versions.sql",
+      "0108_backfill_prospectus_versions.sql",
+      "0109_review_editor.sql",
+      "0110_review_dual_word_settlement.sql",
+      "0111_project_file_workspace.sql",
+      "0112_project_file_update_credits.sql",
+      "0113_integrity_rounds.sql",
+      "0114_integrity_workpapers.sql",
+      "0115_project_qa.sql",
+      "0116_integrity_browser_evidence.sql",
+      "0117_run_origin_input_immutable.sql",
+      "0118_run_supplement_drafts.sql",
+      "0119_initial_run_execution_identity.sql",
+      "0120_model_call_execution_bindings.sql",
+      "0121_run_supplement_saved_work.sql",
+      "0122_run_working_file_lifecycle.sql",
+      "0123_run_working_file_result_claims.sql",
+      "0124_run_execution_business_snapshots.sql",
+      "0125_artifact_execution_bindings.sql",
+      "0126_run_execution_deliveries.sql"
+    ],
+    "clones": [],
+    "other_clients": [],
+    "platform_seed": {
+      "migration": "db/migrations/0027_m1_platform_probe.sql",
+      "migration_sha256": "1cfd11c047e3dbee3328ba9caabd5fca7e55f208cb278c6ce85f8d1126e772d0",
+      "applied_at": "2026-10-26T16:53:06.255Z",
+      "rows": {
+        "bb_users": [
+          {
+            "id": "bb-platform-probe",
+            "status": "disabled",
+            "username": "bb_platform_probe",
+            "closed_at": null,
+            "created_at": "2026-10-27T00:53:06.255747+08:00",
+            "phone_e164": null
+          }
+        ],
+        "bb_projects": [
+          {
+            "id": "bb-platform-probe-project",
+            "kind": "platform_probe",
+            "name": "Platform model probe (synthetic)",
+            "market": null,
+            "offering": null,
+            "created_at": "2026-10-27T00:53:06.255747+08:00",
+            "deleted_at": null,
+            "updated_at": "2026-10-27T00:53:06.255747+08:00",
+            "archived_at": null,
+            "issuer_name": null,
+            "event_cursor": 0,
+            "owner_user_id": "bb-platform-probe",
+            "draft_revision": 1,
+            "update_details": {},
+            "latest_input_revision": 1,
+            "execution_scope_project_id": null
+          }
+        ],
+        "bb_input_revisions": [
+          {
+            "manifest": {
+              "purpose": "platform_probe",
+              "synthetic": true,
+              "user_data": false
+            },
+            "revision": 1,
+            "created_at": "2026-10-27T00:53:06.255747+08:00",
+            "input_hash": "b25e3c7c3362dd95e7d063b8d7ad0a53ab00d3452de0127d06a0422761ab8cab",
+            "project_id": "bb-platform-probe-project",
+            "owner_user_id": "bb-platform-probe",
+            "draft_revision": 1,
+            "template_version": null,
+            "material_versions": [],
+            "reference_release": null,
+            "rule_pack_version": null,
+            "requirement_message_ids": []
+          }
+        ],
+        "bb_platform_principals": [
+          {
+            "purpose": "platform_probe",
+            "user_id": "bb-platform-probe",
+            "created_at": "2026-10-27T00:53:06.255747+08:00",
+            "project_id": "bb-platform-probe-project",
+            "input_revision": 1
+          }
+        ]
+      }
+    }
+  },
+  "template_residue_policy": "Only the exact original 0027 platform-probe user, project, input and principal remain (one row each); every other audited business table is empty. No user-test business residue is allowed.",
+  "postgres_stopped": {
+    "invocation": "2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578",
+    "receipt": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/result.json",
+    "postmaster_pid_absent": true,
+    "stop_command": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/command-1-result.json",
+    "status_command": "records/runs/2026-10-26T17-04-02-448Z-pg-stop-18076-92f49578/command-2-result.json",
+    "status_after_stop": 3
+  },
+  "reproduction": [
+    {
+      "path": "reproduction/verify.mjs",
+      "source": ".local/history-pairs-20261027/verify.mjs",
+      "sha256": "cfdf337f4bac6adc282232e95d9623a90fb73e2b01c0cbd082874e8fa4d2bec9"
+    },
+    {
+      "path": "reproduction/verify-initial.mjs",
+      "source": ".local/history-pairs-20261027/verify-initial.mjs",
+      "sha256": "4992c8fc6ec39fe86454e102b9370c1a68afeff01c84c5659c2bae0fb6dba4cd"
+    },
+    {
+      "path": "reproduction/verify-recovery.mjs",
+      "source": ".local/history-pairs-20261027/verify-recovery.mjs",
+      "sha256": "bcd614cc62e251d70b6e1066b9208c19f4705bb2a32c52d6c3a72b4e993c3398"
+    },
+    {
+      "path": "reproduction/probe.mjs",
+      "source": ".local/history-pairs-20261027/probe.mjs",
+      "sha256": "8bf66c2782202ecc84a7a3b737e059257f6de04b3b7d1ee06d315f4d5ea5152e"
+    },
+    {
+      "path": "reproduction/collect.mjs",
+      "source": ".local/history-pairs-20261027/collect.mjs",
+      "sha256": "1e3ed2f23b63612a5c2c335fd877d5de6c3ed9aa8bd6bfd2a49d488f696621fb"
+    }
+  ],
+  "probes": [
+    {
+      "path": "records/probe-1793033550729.json",
+      "source": ".local/history-pairs-20261027/probe-1793033550729.json"
+    }
+  ],
+  "limits": [
+    "This increment verifies existing delivery history; the overall desktop UX goal and G03 remain unfinished.",
+    "No successor execution/V2 adoption, supplementary-material reuse, surcharge pricing/confirmation/accounting or complete same-task continuation journey is accepted here.",
+    "The user chose separately quoted rework with explicit surcharge confirmation; its pricing basis remains undecided.",
+    "Skipped tests are preserved individually and do not count as passes. No coverage percentage or combined test total is inferred.",
+    "No browser, real provider, Azure, payment or Word/WPS layout acceptance is claimed."
+  ]
+}

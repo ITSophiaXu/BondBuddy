@@ -172,7 +172,7 @@ const historyResult = {
   word_delivery: nullable(obj({
     revision: obj({ artifact_id: id, version: revision }),
     clean: obj({ artifact_id: id, version: revision }),
-    baseline: obj({ artifact_id: id, version: revision })
+    baseline: Type.Optional(obj({ artifact_id: id, version: revision }))
   }))
 };
 const ProjectMessageSchema = obj({
