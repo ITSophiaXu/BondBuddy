@@ -147,10 +147,19 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
       if(old){if(old.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','请求已用于其他文件选择。');return old;}
       if(new Set(b.documents.map(d=>d.document_type)).size!==b.documents.length)throw new Problem(422,'VALIDATION_FAILED','文件类型不能重复。');
       const source=await projectFileSource(c,user,projectId);
-      if(!source||source.version_id!==b.source_version_id||source.selection_revision!==b.expected_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
+      if(!source)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
+      // Only after the locked project's receipt lookup can an irreversible input
+      // change prove that an uncertain request did not create this package.
+      // Future revisions and temporarily unavailable sources are not that proof.
+      if(source.selection_revision>b.expected_selection_revision||source.selection_revision===b.expected_selection_revision&&source.version_id!==b.source_version_id)
+        throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，募集书依据已换版，请重新准备并确认。');
+      if(source.version_id!==b.source_version_id||source.selection_revision!==b.expected_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
       if((await c.query("SELECT 1 FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,projectId])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有文件包尚未完成，请先处理当前任务。');
       const items:BatchItem[]=[];
       for(const d of b.documents){
+        const current=(await c.query('SELECT version FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3',[user,t.id,d.document_type])).rows[0];
+        if(current&&Number(current.version)>d.draft_version)
+          throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，文件草稿已换版，请重新准备并确认。');
         const manifest=await projectFileDocumentManifest(c,user,t,d.document_type,d.draft_version);
         if(manifest.input.project_file?.project_id!==projectId||manifest.input.project_file?.source_version_id!==source.version_id||manifest.input.project_file.source_selection_revision!==source.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','文件草稿的募集书版本与本次选择不同。');
         items.push({manifest,run_id:null,attempt:1,error:null});

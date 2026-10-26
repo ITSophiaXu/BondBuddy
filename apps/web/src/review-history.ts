@@ -55,7 +55,7 @@ export class ReviewHistory {
         content.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>dialog.close()));
       } catch(error) {
         if(controller.signal.aborted)return;
-        content.innerHTML=`<p role="alert">${esc(friendlyError(error))}</p><button class="btn secondary">重新读取版本</button>`;
+        content.innerHTML=`<p role="alert">${esc(friendlyError(error,'read'))}</p><button class="btn secondary">重新读取版本</button>`;
         content.querySelector('button')!.addEventListener('click',()=>void load());
       }
     };

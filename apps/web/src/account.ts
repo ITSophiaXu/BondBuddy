@@ -58,7 +58,7 @@ export async function renderAccount(ctx: AccountContext) {
     account = accountResult; sessions = sessionResult.items;
   } catch (error) {
     if (!live()) return;
-    ctx.shell(`<div class="empty-state"><h1>账号设置暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-account" type="button">重新加载</button></div>`, 'account');
+    ctx.shell(`<div class="empty-state"><h1>账号设置暂时无法打开</h1><p>${esc(friendlyError(error, 'read'))}</p><button class="button secondary" id="retry-account" type="button">重新加载</button></div>`, 'account');
     document.querySelector('#retry-account')!.addEventListener('click', ctx.reload);
     return;
   }
@@ -105,7 +105,7 @@ export async function renderAccount(ctx: AccountContext) {
   };
   const syncSessions = async () => {
     try { const result = await ctx.api.sessions(); if (live()) sessions = result.items; }
-    catch (error) { if (live()) say('#sessions-message', `会话列表未能刷新。${friendlyError(error)}`); }
+    catch (error) { if (live()) say('#sessions-message', `会话列表未能刷新。${friendlyError(error, 'read')}`); }
     finally { if (live()) paintSessions(); }
   };
   const syncAccount = async () => {
@@ -124,7 +124,7 @@ export async function renderAccount(ctx: AccountContext) {
       await ctx.api.revokeSession(sessionId);
       if (live()) say('#sessions-message', '已撤销该会话，它不能再访问账号。', 'ok');
     } catch (error) {
-      if (live()) say('#sessions-message', error instanceof ApiError && error.status === 404 ? '该会话已失效，列表已更新。' : friendlyError(error));
+      if (live()) say('#sessions-message', error instanceof ApiError && error.status === 404 ? '该会话已失效，列表已更新。' : friendlyError(error, 'submit'));
     } finally { if (live()) { sessionBusy = false; await syncSessions(); } }
   });
   revokeOthers.addEventListener('click', async () => {
@@ -133,7 +133,7 @@ export async function renderAccount(ctx: AccountContext) {
     try {
       const result = await ctx.api.revokeOtherSessions();
       if (live()) say('#sessions-message', result.revoked_sessions ? `已退出其他 ${result.revoked_sessions} 个会话。` : '没有其他需要退出的会话。', 'ok');
-    } catch (error) { if (live()) say('#sessions-message', friendlyError(error)); }
+    } catch (error) { if (live()) say('#sessions-message', friendlyError(error, 'submit')); }
     finally { if (live()) { sessionBusy = false; await syncSessions(); } }
   });
 
@@ -158,7 +158,7 @@ export async function renderAccount(ctx: AccountContext) {
       if (error instanceof ApiError && error.code === 'PASSWORD_INVALID') { field('current-password').value = ''; field('current-password').focus(); }
       say('#password-message', !(error instanceof ApiError)
         ? '连接中断，无法确认密码是否已修改。下次登录时如旧密码无效，请使用刚设置的新密码。'
-        : error.code === 'VALIDATION_FAILED' ? '新密码需为 12–128 个字符，且不能包含控制字符。' : friendlyError(error));
+        : error.code === 'VALIDATION_FAILED' ? '新密码需为 12–128 个字符，且不能包含控制字符。' : friendlyError(error, 'save'));
     } finally { if (live()) { button.disabled = false; button.textContent = '修改密码'; } }
   });
 
@@ -180,7 +180,7 @@ export async function renderAccount(ctx: AccountContext) {
       const preview = await ctx.api.closurePreview();
       if (live()) paintClosure(preview, message);
     } catch (error) {
-      if (live()) closureBody.innerHTML = `<p class="form-message" role="alert">无法读取注销影响。${esc(friendlyError(error))}</p><div class="form-actions"><button class="button secondary" id="closure-preview" type="button">重新读取</button></div>`;
+      if (live()) closureBody.innerHTML = `<p class="form-message" role="alert">无法读取注销影响。${esc(friendlyError(error, 'read'))}</p><div class="form-actions"><button class="button secondary" id="closure-preview" type="button">重新读取</button></div>`;
     }
   };
   closureBody.addEventListener('click', event => {
@@ -208,7 +208,7 @@ export async function renderAccount(ctx: AccountContext) {
       say('#closure-message', !(error instanceof ApiError)
         ? '连接中断，无法确认账号是否已注销。请刷新页面查看当前状态，再决定是否重试。'
         : error.code === 'PASSWORD_INVALID' ? '密码不正确，账号未注销。'
-          : error.code === 'VALIDATION_FAILED' ? '输入的用户名与当前账号不一致，账号未注销。' : `${friendlyError(error)}账号未注销。`);
+          : error.code === 'VALIDATION_FAILED' ? '输入的用户名与当前账号不一致，账号未注销。' : friendlyError(error, 'submit'));
     } finally { if (live() && button.isConnected) { button.disabled = false; button.textContent = '永久注销账号'; } }
   });
 }

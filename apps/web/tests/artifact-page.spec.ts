@@ -192,6 +192,18 @@ test('generated pair offers both downloads without baseline or content-check cla
   await page.screenshot({path:join(tmpdir(),'bondbuddy-generated-pair-desktop.png'),fullPage:true});
 });
 
+test('artifact query keeps the original project navigation and uses the actual artifact id',async({page})=>{
+  const data=state();await installApi(page,data);
+  await page.goto('/#/artifacts/word-revision?return_project=original-collection');
+  await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeVisible();
+  await expect(page.locator('.back-link')).toHaveAttribute('href','#/projects/original-collection/files');
+  await expect(page.locator('.project-context a')).toHaveAttribute('href','#/projects/original-collection/files');
+  const next=page.getByRole('link',{name:'检查文件一致性',exact:true});
+  await expect(next).toHaveAttribute('href',new RegExp('project='+projectId+'&return_project=original-collection'));
+  expect(data.calls.some(c=>c.path==='/artifacts/word-revision')).toBe(true);
+  expect(data.calls.every(c=>!c.path.includes('return_project'))).toBe(true);
+});
+
 test('legacy metadata has a generic download and never invents a clean version or verified facts', async ({ page }) => {
   const data = state(); data.missingSummary = true; await installApi(page, data);
   await page.goto('/#/artifacts/word-revision');

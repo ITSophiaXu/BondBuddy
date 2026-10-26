@@ -1,26 +1,49 @@
 import { MARKET_LABELS, OFFERING_LABELS, M4_DOCUMENT_LABELS, type M4DocumentType, PROJECT_FIELD_LIMITS } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, type Dto } from './api';
+import { UserFacingError } from './user-facing-error';
 import { esc, date } from './ui';
 import { prototypeIcon as ico } from './prototype-design';
 import { loadProjectCollection, taskHref, taskKinds,taskLabel, taskView, type ProjectItem, type ProjectTask } from './project-collection-model';
 import './project-browser.css';
 import { ReviewHistory } from './review-history';
+import { refreshProjectTasks, type ProjectTaskRefreshBoundary } from './project-task-refresh';
 
 const updatedDate=new Intl.DateTimeFormat('sv-SE',{year:'numeric',month:'2-digit',day:'2-digit'});
 const updatedTime=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
+const syncTime=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+const readingKey=(kind:string,...ids:string[])=>JSON.stringify([kind,...ids]);
+type Reading={key:string;kind:'focus'|'anchor';top:number;root?:string;focusKey?:string};
+type CollectionView={expanded:string[];limit:number;tails:[string,ProjectTaskRefreshBoundary][];reading?:Reading};
+// Same-tab preferences only; task/project content and authority always come from the API.
+const collectionViews=new Map<string,CollectionView>();
 
 export class ProjectBrowser {
   private items:ProjectItem[]=[];private loaded=false;private busy=false;private disposed=false;
   private controller=new AbortController();private timer?:ReturnType<typeof setTimeout>;private limit=30;
   private expanded=new Set<string>();private tasks=new Map<string,Dto<'ProjectTasksResponse'>>();private taskErrors=new Map<string,string>();private taskLoading=new Set<string>();
   private menu?:HTMLElement;private q='';private group='all';private archiveView='active';private legacyKind='';
+  private menuProject?:string;private menuArchived=false;
+  private taskSynced=new Map<string,string>();private lastSync?:string;private stale=false;private offline=!navigator.onLine;
+  private taskReads=new Map<string,{promise:Promise<void>;refresh:boolean}>();
+  private refreshPending=false;private pendingManual=false;
+  private syncRendered=false;private syncProblem='';private hadSyncProblem=false;
+  private restoring?:CollectionView;private interaction=0;
+  private noteInteraction=()=>{this.interaction++;};
   private refreshOnReturn=()=>{if(this.live()&&document.visibilityState==='visible')void this.load();};
+  private onOnline=()=>{if(this.live()){this.offline=false;this.refreshOnReturn();}};
+  private onOffline=()=>{if(this.live()){this.offline=true;this.renderSync();}};
   private reviewHistory:ReviewHistory;
-  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean){this.reviewHistory=new ReviewHistory(api);}
+  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private owner=''){this.reviewHistory=new ReviewHistory(api);}
   private live(){return !this.disposed&&this.current();}
-  dispose(){this.disposed=true;this.controller.abort();clearTimeout(this.timer);this.menu?.remove();this.reviewHistory.dispose();document.removeEventListener('visibilitychange',this.refreshOnReturn);window.removeEventListener('online',this.refreshOnReturn);}
+  private viewKey(){return JSON.stringify([this.owner,this.q,this.group,this.archiveView,this.legacyKind]);}
+  dispose(){
+    if(this.owner&&this.loaded){collectionViews.set(this.viewKey(),{expanded:[...this.expanded],limit:this.limit,reading:this.captureReading(),tails:[...this.tasks].flatMap(([id,data])=>{const tail=data.items.at(-1);return tail?[[id,{run_id:tail.run_id,created_at:tail.created_at}] as [string,ProjectTaskRefreshBoundary]]:[];})});if(collectionViews.size>50)collectionViews.delete(collectionViews.keys().next().value!);}
+    this.disposed=true;this.controller.abort();clearTimeout(this.timer);this.closeMenu();this.reviewHistory.dispose();document.removeEventListener('visibilitychange',this.refreshOnReturn);window.removeEventListener('online',this.onOnline);window.removeEventListener('offline',this.onOffline);
+    for(const event of ['pointerdown','keydown','wheel','touchstart'])document.removeEventListener(event,this.noteInteraction);
+  }
   async render(){
     const query=new URLSearchParams(location.hash.split('?')[1]);this.q=query.get('q')??'';this.group=query.get('group')??'all';this.archiveView=query.get('archive')??'active';this.legacyKind=query.get('kind')??'';
+    this.restoring=this.owner?collectionViews.get(this.viewKey()):undefined;if(this.restoring){this.expanded=new Set(this.restoring.expanded);this.limit=this.restoring.limit;}
     this.shell(`<div class="page-head"><div><div class="eyebrow">ALL PROJECTS</div><h1>全部项目</h1><p>每个项目的募集书、关联文件与核查底稿，都在同一个文件目录。</p></div><a class="btn primary" href="#/new">${ico('plus')}新建项目</a></div>
       <section class="collection-panel" aria-labelledby="projects-title"><header class="collection-heading"><h2 id="projects-title">项目列表 <span id="project-count" class="collection-count">—</span></h2><div><span>按最近活动排序</span><button class="text-button" id="refresh-projects">刷新状态</button></div></header>
       <div class="collection-search">${ico('search')}<input id="project-search" type="search" maxlength="${PROJECT_FIELD_LIMITS.issuer}" placeholder="搜索项目名称或发行人" aria-label="搜索项目名称或发行人" value="${esc(this.q)}"/></div>
@@ -29,15 +52,17 @@ export class ProjectBrowser {
       <footer class="collection-footer"><span id="list-count"></span><button class="btn secondary small" id="load-more" hidden>加载更多项目</button></footer></section>`,'projects');
     window.scrollTo(0,0);
     document.querySelector<HTMLSelectElement>('#project-archive')!.value=this.archiveView;
-    document.querySelector('#refresh-projects')!.addEventListener('click',()=>void this.load());
+    const sync=document.createElement('p');sync.id='collection-sync';sync.className='collection-sync';sync.setAttribute('role','status');sync.setAttribute('aria-live','polite');document.querySelector('.collection-heading')!.after(sync);this.renderSync();
+    document.querySelector('#refresh-projects')!.addEventListener('click',()=>void this.load(true));
     document.querySelector('#load-more')!.addEventListener('click',()=>{this.limit+=30;this.paint();});
     const search=document.querySelector<HTMLInputElement>('#project-search')!;let composing=false;
     search.addEventListener('compositionstart',()=>{composing=true;});search.addEventListener('compositionend',()=>{composing=false;this.filter();});
     search.addEventListener('input',()=>{if(!composing)this.filter();});
     document.querySelector('#project-archive')!.addEventListener('change',()=>this.filter());
     document.querySelectorAll<HTMLElement>('[data-group]').forEach(b=>b.addEventListener('click',()=>{this.group=b.dataset.group!;this.filter();}));
-    document.addEventListener('visibilitychange',this.refreshOnReturn);window.addEventListener('online',this.refreshOnReturn);
-    await this.load();
+    document.addEventListener('visibilitychange',this.refreshOnReturn);window.addEventListener('online',this.onOnline);window.addEventListener('offline',this.onOffline);
+    for(const event of ['pointerdown','keydown','wheel','touchstart'])document.addEventListener(event,this.noteInteraction,{passive:true});
+    const interaction=this.interaction;await this.load();if(this.live()&&interaction===this.interaction)this.restoreReading(this.restoring?.reading,false);this.restoring=undefined;
   }
   private filter(){
     this.q=document.querySelector<HTMLInputElement>('#project-search')!.value;this.archiveView=document.querySelector<HTMLSelectElement>('#project-archive')!.value;this.limit=30;
@@ -47,30 +72,42 @@ export class ProjectBrowser {
   private matches(p:ProjectItem,group:string){
     const s=p.task_summary;return group==='all'||group==='active'&&!!s?.active||group==='attention'&&!!s?.attention||group==='done'&&!!s?.completed;
   }
-  private async load(){
-    if(!this.live()||this.busy)return;this.busy=true;clearTimeout(this.timer);
-    const button=document.querySelector<HTMLButtonElement>('#refresh-projects')!;button.disabled=true;
+  private schedule(){clearTimeout(this.timer);if(this.live())this.timer=setTimeout(()=>{if(document.visibilityState==='visible')void this.load();else this.schedule();},30000);}
+  private renderSync(){
+    if(!this.live())return;const el=document.querySelector<HTMLElement>('#collection-sync');if(!el)return;
+    const working=this.busy||this.taskLoading.size>0,problem=this.offline?'offline':this.stale?'list-error':this.taskErrors.size?'tasks:'+[...this.taskErrors.keys()].sort().join(','):'';
+    const recovered=!problem&&!working&&this.hadSyncProblem,announce=!this.syncRendered||Boolean(problem&&problem!==this.syncProblem)||recovered;
+    if(problem)this.hadSyncProblem=true;else if(recovered)this.hadSyncProblem=false;this.syncProblem=problem;this.syncRendered=true;
+    el.setAttribute('aria-live',announce?'polite':'off');
+    const last=this.lastSync?`列表上次同步 <time datetime="${esc(this.lastSync)}">${esc(syncTime.format(new Date(this.lastSync)))}</time>`:'尚未完成同步';
+    const message=this.offline?`当前离线，${this.loaded?'保留上次结果，可继续查看已加载内容。':'连接恢复后将重新同步。'}`:working?'正在同步，已展开内容保持可读。':this.stale?'同步未成功，当前显示上次结果。':this.taskErrors.size?'部分任务未能更新，保留已展开记录，请在对应项目重试。':recovered?'已恢复同步，状态每 30 秒自动同步。':'状态每 30 秒自动同步。';
+    el.innerHTML=`<span>${message}</span><span>${last}</span>`;el.dataset.state=this.offline?'offline':this.stale||this.taskErrors.size?'stale':working?'syncing':'current';
+  }
+  private async load(manual=false){
+    if(!this.live())return;if(this.busy){this.refreshPending=true;this.pendingManual ||= manual;return;}if(this.offline&&!manual){if(!this.loaded){const list=document.querySelector<HTMLElement>('#project-list');if(list){list.setAttribute('aria-busy','false');list.innerHTML='<p class="collection-empty">当前离线。连接恢复后将读取项目与任务。</p>';}}this.renderSync();this.schedule();return;}this.busy=true;clearTimeout(this.timer);this.renderSync();
+    const button=document.querySelector<HTMLButtonElement>('#refresh-projects')!;button.setAttribute('aria-disabled','true');document.querySelector('#project-list')!.setAttribute('aria-busy','true');
     try{
       const items=await loadProjectCollection(c=>this.api.projects(c,{archive:'all',limit:'100'},this.controller.signal),()=>!this.live());
-      if(!items||!this.live())return;this.items=items;this.loaded=true;document.querySelector<HTMLElement>('#collection-error')!.hidden=true;
+      if(!items||!this.live())return;this.items=items;this.loaded=true;this.stale=false;this.lastSync=new Date().toISOString();this.offline=!navigator.onLine;document.querySelector<HTMLElement>('#collection-error')!.hidden=true;
+      const ids=new Set(items.map(p=>p.project_id));this.expanded=new Set([...this.expanded].filter(id=>ids.has(id)));for(const map of [this.tasks,this.taskErrors,this.taskSynced])for(const id of map.keys())if(!ids.has(id))map.delete(id);
       this.paint();await Promise.allSettled([...this.expanded].map(id=>this.loadTasks(id,true)));
-    }catch(error){if(this.live()){const node=document.querySelector<HTMLElement>('#collection-error')!;node.hidden=false;node.textContent=(this.loaded?'刷新未成功，当前显示上次同步结果。':'项目与任务未能同步。')+friendlyError(error);}}
-    finally{if(this.live()){this.busy=false;button.disabled=false;document.querySelector('#project-list')!.setAttribute('aria-busy','false');this.timer=setTimeout(()=>{if(document.visibilityState==='visible')void this.load();},30000);}}
+    }catch(error){if(this.live()){this.stale=true;const node=document.querySelector<HTMLElement>('#collection-error')!;node.hidden=false;node.textContent=(this.loaded?'刷新未成功，当前显示上次同步结果。':'项目与任务未能同步。')+friendlyError(error,'read');}}
+    finally{if(this.live()){this.busy=false;button.setAttribute('aria-disabled','false');document.querySelector('#project-list')!.setAttribute('aria-busy','false');this.renderSync();if(this.refreshPending){const queuedManual=this.pendingManual;this.refreshPending=false;this.pendingManual=false;await this.load(queuedManual);}else this.schedule();}}
   }
   private paint(){
     if(!this.live()||!this.loaded)return;
-    const focused=document.activeElement as HTMLElement|null;
-    const focusKey=['tasks','work','taskMore','taskRetry'].find(k=>focused?.dataset[k]);
-    const focusId=focusKey?focused?.dataset[focusKey]:undefined;
+    const reading=this.captureReading();
     const base=this.items.filter(p=>(this.archiveView==='all'||Boolean(p.archived_at)===(this.archiveView==='archived'))&&(!this.legacyKind||p.kind===this.legacyKind));
     for(const k of ['all','attention','active','done']){document.querySelector(`[data-count="${k}"]`)!.textContent=String(base.filter(p=>this.matches(p,k)).length);document.querySelector(`[data-group="${k}"]`)!.setAttribute('aria-pressed',String(this.group===k));}
     const q=this.q.trim().toLocaleLowerCase();const filtered=base.filter(p=>this.matches(p,this.group)&&(!q||(p.name+' '+(p.issuer_name??'')).toLocaleLowerCase().includes(q)));
+    const readingRoot=reading?.root??this.restoring?.reading?.root,index=filtered.findIndex(p=>p.project_id===readingRoot);if(index>=this.limit)this.limit=Math.ceil((index+1)/30)*30;
     const visible=filtered.slice(0,this.limit);
     document.querySelector('#project-count')!.textContent=String(filtered.length);
     document.querySelector('#list-count')!.textContent=`显示 ${visible.length} / ${filtered.length} 个项目 · 状态自动同步`;
     document.querySelector<HTMLButtonElement>('#load-more')!.hidden=visible.length>=filtered.length;
     const list=document.querySelector<HTMLElement>('#project-list')!;
     list.innerHTML=visible.length?`<div class="collection-table-wrap"><table class="collection-table"><thead><tr><th scope="col">项目名称</th><th scope="col">任务状态</th><th scope="col">文件与一致性</th><th scope="col">最近更新</th><th scope="col">操作</th></tr></thead><tbody>${visible.map(p=>this.row(p)).join('')}</tbody></table></div>`:`<div class="collection-empty"><h3>${this.items.length?'没有找到匹配的项目':'还没有项目'}</h3><p>${this.items.length?'试试其他项目名称、发行人或任务状态。':'新建一个项目，开始准备募集书和项目文件。'}</p>${this.items.length?'<button class="btn secondary" id="clear-project-filters">清除筛选</button>':'<a class="btn primary" href="#/new">新建项目</a>'}</div>`;
+    this.tagReadingTargets(list);
     list.querySelector('#clear-project-filters')?.addEventListener('click',()=>{document.querySelector<HTMLInputElement>('#project-search')!.value='';this.group='all';document.querySelector<HTMLSelectElement>('#project-archive')!.value='active';this.filter();});
     list.querySelectorAll<HTMLButtonElement>('[data-tasks]').forEach(b=>b.addEventListener('click',()=>{
       const id=b.dataset.tasks!;if(this.expanded.has(id))this.expanded.delete(id);else this.expanded.add(id);this.paint();if(this.expanded.has(id))void this.loadTasks(id,!this.tasks.has(id));
@@ -78,8 +115,44 @@ export class ProjectBrowser {
     list.querySelectorAll<HTMLButtonElement>('[data-work]').forEach(b=>b.addEventListener('click',()=>this.openMenu(b,this.items.find(p=>p.project_id===b.dataset.work)!)));
     list.querySelectorAll<HTMLButtonElement>('[data-task-more]').forEach(b=>b.addEventListener('click',()=>void this.loadTasks(b.dataset.taskMore!,false)));
     list.querySelectorAll<HTMLButtonElement>('[data-task-retry]').forEach(b=>b.addEventListener('click',()=>void this.loadTasks(b.dataset.taskRetry!,true)));
-    list.querySelectorAll<HTMLButtonElement>('[data-review-history]').forEach(b=>b.addEventListener('click',()=>void this.reviewHistory.open(b.dataset.reviewHistory!,this.items.find(p=>p.project_id===b.dataset.root)?.name??'项目')));
-    if(focusKey&&focusId)[...list.querySelectorAll<HTMLElement>('button')].find(b=>b.dataset[focusKey]===focusId)?.focus({preventScroll:true});
+    list.querySelectorAll<HTMLButtonElement>('[data-review-history]').forEach(b=>b.addEventListener('click',()=>{
+      void this.reviewHistory.open(b.dataset.reviewHistory!,this.items.find(p=>p.project_id===b.dataset.root)?.name??'项目');
+      document.querySelector<HTMLDialogElement>('.review-history-dialog[open]')?.addEventListener('close',()=>{if(this.live())(this.findFocus(b.dataset.collectionFocus!)??document.querySelector<HTMLElement>('#project-search'))?.focus({preventScroll:true});},{once:true});
+    }));
+    this.restoreReading(reading,true);this.positionMenu();
+  }
+  private findFocus(key:string){return [...document.querySelectorAll<HTMLElement>('#project-list [data-collection-focus]')].find(el=>el.dataset.collectionFocus===key);}
+  private tagReadingTargets(list:HTMLElement){
+    const focus=(node:HTMLElement|null,key:string)=>{if(node)node.dataset.collectionFocus=key;};
+    list.querySelectorAll<HTMLElement>('[data-project-id]').forEach(row=>{
+      const root=row.dataset.projectId!;row.dataset.collectionAnchor=readingKey('project',root);
+      for(const [selector,action] of [['.collection-title','title'],['.collection-file-count','files'],['.collection-actions .primary','open'],['.collection-consistency','consistency'],['[data-tasks]','tasks'],['[data-work]','work']])focus(row.querySelector(selector),readingKey(action,root));
+    });
+    list.querySelectorAll<HTMLElement>('[data-task-panel]').forEach(panel=>{
+      const root=panel.dataset.taskPanel!;const header=panel.querySelector<HTMLElement>('header');if(header)header.dataset.collectionAnchor=readingKey('task-heading',root);
+      panel.querySelectorAll<HTMLElement>('[data-run-id]').forEach(row=>{const task=this.tasks.get(root)?.items.find(t=>t.run_id===row.dataset.runId);if(!task)return;const key=readingKey('task',root,task.project_id,task.run_id);row.dataset.collectionAnchor=key;focus(row.querySelector('a'),key);});
+      panel.querySelectorAll<HTMLElement>('[data-review-history]').forEach(button=>focus(button,readingKey('history',root,button.dataset.reviewHistory!)));
+      for(const [selector,action] of [['[data-task-more]','more'],['[data-task-retry]','retry'],['.collection-draft a','prepare']])focus(panel.querySelector(selector),readingKey(action,root));
+    });
+  }
+  private captureReading():Reading|undefined{
+    if(document.querySelector('dialog[open]'))return;
+    const list=document.querySelector<HTMLElement>('#project-list');if(!list)return;
+    const active=document.activeElement as HTMLElement|null;
+    const focused=active&&list.contains(active)?active.closest<HTMLElement>('[data-collection-focus]'):undefined;
+    const visible=(el:HTMLElement)=>{const rect=el.getBoundingClientRect();return rect.height>0&&rect.bottom>0&&rect.top<innerHeight;};
+    const menuTrigger=this.menuProject?this.findFocus(readingKey('work',this.menuProject)):undefined;
+    const target=focused&&visible(focused)?focused:menuTrigger&&visible(menuTrigger)?menuTrigger:[...list.querySelectorAll<HTMLElement>('[data-collection-anchor]')].find(visible);
+    if(!target)return;const kind=target===focused?'focus':'anchor';
+    return {key:kind==='focus'?target.dataset.collectionFocus!:target.dataset.collectionAnchor??target.dataset.collectionFocus!,kind,top:target.getBoundingClientRect().top,root:target.closest<HTMLElement>('[data-project-id]')?.dataset.projectId??target.closest<HTMLElement>('[data-task-panel]')?.dataset.taskPanel,focusKey:focused?.dataset.collectionFocus};
+  }
+  private restoreReading(reading:Reading|undefined,restoreFocus:boolean){
+    if(!reading||!this.live()||document.querySelector('dialog[open]'))return;
+    const target=reading.kind==='focus'?this.findFocus(reading.key):[...document.querySelectorAll<HTMLElement>('#project-list [data-collection-anchor],#project-list [data-collection-focus]')].find(el=>el.dataset.collectionAnchor===reading.key||el.dataset.collectionFocus===reading.key);
+    const fallback=reading.root?this.findFocus(readingKey('tasks',reading.root)):undefined;
+    const anchor=target?.getBoundingClientRect().height?target:fallback;
+    if(anchor)window.scrollBy(0,anchor.getBoundingClientRect().top-reading.top);
+    if(restoreFocus&&(reading.kind==='focus'||reading.focusKey))(this.findFocus(reading.focusKey??reading.key)??fallback??document.querySelector<HTMLElement>('#project-search'))?.focus({preventScroll:true});
   }
   private row(p:ProjectItem){
     const s=p.task_summary,latest=s?.recent_result,opened=this.expanded.has(p.project_id),href='#/projects/'+encodeURIComponent(p.project_id)+'/files';
@@ -92,34 +165,59 @@ export class ProjectBrowser {
       <tr id="tasks-${esc(p.project_id)}" class="collection-task-row" ${opened?'':'hidden'}><td colspan="5"><div class="collection-tasks" data-task-panel="${esc(p.project_id)}">${this.taskPanel(p)}</div></td></tr>`;
   }
   private taskPanel(p:ProjectItem){
-    const id=p.project_id,data=this.tasks.get(id),error=this.taskErrors.get(id);
-    return `<header><h3>项目任务</h3><span>按提交时间排序 · 关闭页面后任务仍会继续</span></header>${error?`<p role="alert">${esc(error)} <button class="text-button" data-task-retry="${esc(id)}">重试</button></p>`:''}${data?data.items.length?data.items.map(t=>this.taskRow(t)).join(''):`<div class="collection-draft"><span>项目已保存，尚未开始任务。</span><a class="text-button" href="#${p.kind==='review'?'review':'update'}?project=${encodeURIComponent(id)}&from=projects">继续准备材料 ${ico('chevron')}</a></div>`:'<p role="status">正在读取任务…</p>'}
+    const id=p.project_id,data=this.tasks.get(id),error=this.taskErrors.get(id),synced=this.taskSynced.get(id),loading=this.taskLoading.has(id);
+    return `<header><h3>项目任务</h3><span>按提交时间排序 · 关闭页面后任务仍会继续</span></header><p class="collection-task-sync collection-muted" data-task-sync="${esc(id)}" role="status" aria-live="off">${loading?'正在读取任务，已加载内容保持可读。':error?'任务同步未成功，保留上次结果。':''}${synced?`任务上次同步 <time datetime="${esc(synced)}">${esc(syncTime.format(new Date(synced)))}</time>`:''}</p>${error?`<p role="alert">${esc(error)} <button class="text-button" data-task-retry="${esc(id)}" aria-disabled="${loading}">重试</button></p>`:''}${data?data.items.length?data.items.map(t=>this.taskRow(t)).join(''):`<div class="collection-draft"><span>项目已保存，尚未开始任务。</span><a class="text-button" href="#${p.kind==='review'?'review':'update'}?project=${encodeURIComponent(id)}&from=projects">继续准备材料 ${ico('chevron')}</a></div>`:'<p role="status">正在读取任务…</p>'}
       ${[...new Set([...(p.kind==='review'?[id]:[]),...(data?.items.filter(t=>t.kind==='review').map(t=>t.project_id)??[])])].map(reviewId=>`<button class="text-button" data-review-history="${esc(reviewId)}" data-root="${esc(id)}">复核版本记录</button>`).join('')}
-      ${data?.page.has_more?`<button class="text-button" data-task-more="${esc(id)}" ${this.taskLoading.has(id)?'disabled':''}>加载更早任务</button>`:''}`;
+      ${data?.page.has_more?`<button class="text-button" data-task-more="${esc(id)}" aria-disabled="${loading}">加载更早任务</button>`:''}`;
   }
   private taskRow(t:ProjectTask){
     const view=taskView(t);const label=t.document_type&&M4_DOCUMENT_LABELS[t.document_type as M4DocumentType]||taskLabel(t);
     return `<article class="collection-task" data-run-id="${esc(t.run_id)}"><div><strong>${esc(label)}${t.operation==='revision'?' · 修订导出':''}</strong><time>${esc(date(t.created_at))}</time></div><div><span class="collection-state ${view.tone}">${view.label}</span><small>${esc(view.detail)}</small></div><a class="text-button" href="${taskHref(t)}">${view.action} ${ico('chevron')}</a></article>`;
   }
   private async loadTasks(id:string,reset:boolean){
-    if(this.taskLoading.has(id)||!this.live())return;const existing=this.tasks.get(id);if(!reset&&existing&&!existing.page.has_more)return;
-    this.taskLoading.add(id);this.taskErrors.delete(id);
-    try{const data=await this.api.projectTasks(id,reset?undefined:existing?.page.next_cursor??undefined,this.controller.signal);if(!this.live())return;
-      this.tasks.set(id,reset||!existing?data:{...data,items:[...new Map([...existing.items,...data.items].map(t=>[t.run_id,t])).values()]});
-    }catch(error){if(this.live())this.taskErrors.set(id,friendlyError(error));}
-    finally{this.taskLoading.delete(id);if(this.live())this.paint();}
+    if(!this.live()||!this.items.some(p=>p.project_id===id))return;
+    const pending=this.taskReads.get(id);if(pending){if(reset)pending.refresh=true;return pending.promise;}
+    const job={promise:Promise.resolve(),refresh:reset};this.taskReads.set(id,job);
+    job.promise=(async()=>{do{const refresh=job.refresh;job.refresh=false;await this.readTasks(id,refresh);}while(job.refresh&&this.live()&&this.items.some(p=>p.project_id===id));})();
+    try{await job.promise;}finally{if(this.taskReads.get(id)===job)this.taskReads.delete(id);}
+  }
+  private async readTasks(id:string,reset:boolean){
+    const existing=this.tasks.get(id);if(!reset&&existing&&!existing.page.has_more)return;
+    const valid=()=>this.live()&&this.items.some(p=>p.project_id===id);
+    this.taskLoading.add(id);this.taskErrors.delete(id);this.paint();this.renderSync();
+    try{
+      const boundary=this.restoring?.tails.find(([root])=>root===id)?.[1];
+      const data=await refreshProjectTasks(id,reset?existing:undefined,cursor=>this.api.projectTasks(id,reset?cursor:existing?.page.next_cursor??cursor,this.controller.signal),()=>!valid(),reset?boundary:undefined);
+      if(!data||!valid())return;
+      if(!reset&&existing){
+        for(const task of data.items){const old=existing.items.find(t=>t.run_id===task.run_id);if(old&&(old.project_id!==task.project_id||Date.parse(old.created_at)!==Date.parse(task.created_at)))throw new UserFacingError('任务信息发生变化，请刷新后重试。');}
+        this.tasks.set(id,{...data,items:[...new Map([...existing.items,...data.items].map(t=>[t.run_id,t])).values()]});
+      }else this.tasks.set(id,data);
+      if(reset||!existing)this.taskSynced.set(id,new Date().toISOString());
+    }catch(error){if(valid())this.taskErrors.set(id,friendlyError(error,'read'));}
+    finally{this.taskLoading.delete(id);if(this.live()){this.paint();this.renderSync();}}
+  }
+  private closeMenu(){
+    const menu=this.menu,root=this.menuProject;this.menu=undefined;this.menuProject=undefined;
+    if(menu){if(menu.matches(':popover-open'))menu.hidePopover();menu.remove();}
+    if(root)this.findFocus(readingKey('work',root))?.setAttribute('aria-expanded','false');
+  }
+  private positionMenu(){
+    if(!this.menu||!this.menuProject)return;const item=this.items.find(p=>p.project_id===this.menuProject),button=this.findFocus(readingKey('work',this.menuProject));
+    if(!button||!item||Boolean(item.archived_at)!==this.menuArchived){const focused=this.menu.contains(document.activeElement);this.closeMenu();document.querySelector('#collection-status')!.textContent='项目状态或筛选范围已变化，请从当前项目重新选择操作。';if(focused)(button??document.querySelector<HTMLElement>('#project-search'))?.focus({preventScroll:true});return;}
+    button.setAttribute('aria-expanded','true');const rect=button.getBoundingClientRect(),menu=this.menu;menu.style.left=Math.max(12,Math.min(rect.right-menu.offsetWidth,innerWidth-menu.offsetWidth-12))+'px';menu.style.top=Math.max(12,rect.bottom+menu.offsetHeight+8>innerHeight?rect.top-menu.offsetHeight-8:rect.bottom+8)+'px';
   }
   private openMenu(button:HTMLButtonElement,p:ProjectItem){
-    this.menu?.remove();const menu=document.createElement('div');this.menu=menu;menu.className='collection-menu';menu.setAttribute('popover','auto');menu.setAttribute('role','menu');menu.setAttribute('aria-label',p.name+' · 项目操作');
+    this.closeMenu();const menu=document.createElement('div');this.menu=menu;this.menuProject=p.project_id;this.menuArchived=Boolean(p.archived_at);menu.className='collection-menu';menu.setAttribute('popover','auto');menu.setAttribute('role','menu');menu.setAttribute('aria-label',p.name+' · 项目操作');
     menu.innerHTML=`${p.archived_at?'':[['update','更新募集书'],['review','复核募集书'],['generate','文件生成'],['integrity','诚信核查'],['qa','项目问答']].map(([route,label])=>`<a role="menuitem" href="#${route}?project=${encodeURIComponent(p.project_id)}&from=projects">${label}${ico('chevron')}</a>`).join('')}<button role="menuitem" data-archive-project>${p.archived_at?'恢复项目':'归档项目'}</button>`;
-    document.body.append(menu);menu.showPopover();button.setAttribute('aria-expanded','true');const rect=button.getBoundingClientRect();menu.style.left=Math.max(12,Math.min(rect.right-menu.offsetWidth,innerWidth-menu.offsetWidth-12))+'px';menu.style.top=Math.max(12,rect.bottom+menu.offsetHeight+8>innerHeight?rect.top-menu.offsetHeight-8:rect.bottom+8)+'px';
-    const items=[...menu.querySelectorAll<HTMLElement>('[role=menuitem]')];items[0]?.focus();menu.addEventListener('keydown',e=>{const i=items.indexOf(document.activeElement as HTMLElement);if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();items[e.key==='Home'?0:e.key==='End'?items.length-1:(i+(e.key==='ArrowDown'?1:items.length-1))%items.length]?.focus();}if(e.key==='Escape')button.focus();});
-    menu.addEventListener('toggle',()=>{if(!menu.matches(':popover-open')){button.setAttribute('aria-expanded','false');menu.remove();}});
-    menu.querySelector('[data-archive-project]')!.addEventListener('click',()=>{menu.hidePopover();void this.archive(p);});
-    menu.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>menu.hidePopover()));
+    document.body.append(menu);menu.showPopover();this.positionMenu();
+    const items=[...menu.querySelectorAll<HTMLElement>('[role=menuitem]')];items[0]?.focus();menu.addEventListener('keydown',e=>{const i=items.indexOf(document.activeElement as HTMLElement);if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();items[e.key==='Home'?0:e.key==='End'?items.length-1:(i+(e.key==='ArrowDown'?1:items.length-1))%items.length]?.focus();}if(e.key==='Escape'){e.preventDefault();this.closeMenu();this.findFocus(readingKey('work',p.project_id))?.focus({preventScroll:true});}});
+    menu.addEventListener('toggle',()=>{if(!menu.matches(':popover-open')&&this.menu===menu)this.closeMenu();});
+    menu.querySelector('[data-archive-project]')!.addEventListener('click',()=>{const latest=this.items.find(item=>item.project_id===p.project_id);this.closeMenu();if(latest)void this.archive(latest);});
+    menu.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>this.closeMenu()));
   }
   private async archive(p:ProjectItem){
-    try{await this.api.archiveProject(p.project_id,!p.archived_at);if(!this.live())return;document.querySelector('#collection-status')!.textContent=p.archived_at?'项目已恢复。':'项目已归档；任务与文件保留，可在已归档项目中恢复。';await this.load();}
-    catch(e){if(this.live())document.querySelector('#collection-status')!.textContent=friendlyError(e);}
+    try{await this.api.archiveProject(p.project_id,!p.archived_at);if(!this.live())return;document.querySelector('#collection-status')!.textContent=p.archived_at?'项目已恢复。':'项目已归档；任务与文件保留，可在已归档项目中恢复。';await this.load(true);}
+    catch(e){if(this.live())document.querySelector('#collection-status')!.textContent=friendlyError(e,'save');}
   }
 }

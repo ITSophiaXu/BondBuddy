@@ -28,9 +28,9 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   else if(path.endsWith('/quote')){quoteReads++;const document=req.postDataJSON().kind==='document';body={quote:{quote_id:'quote',topic_id:'topic',input_hash:hash,points:document?4500:fixed?60:paid?20:0,task_type:document?'m4_G05':paid||fixed?'m4_Q01':'m4_Q00',billing_method:document||fixed?'fixed':paid?'metered_capped':'free',amount_semantics:document||fixed?'fixed_price':'reservation_cap'},balance:{available:100000,frozen:0},shortage:0};}
   else if(path.endsWith('/drafts/private_summary')){const b=req.postDataJSON();w.drafts.private_summary={...b.input,version:w.drafts.private_summary.version+1,sha256:hash,updated_at:now};body={draft:w.drafts.private_summary};}
   else if(path==='/m4/topics/topic/execute'){const b=req.postDataJSON();executions.push(b);const card=cards.find(c=>c.execution_request_id===b.execution_request_id);card.run={run_id:'document-run',project_id:'scope',state:'queued',stage:'queued',input_revision:1};body={run:card.run};}
-  else if(path.endsWith('/materials/uploads')){const b=req.postDataJSON(),id=String(uploads.length);uploads.push(b);body={upload_id:id,upload_url:'/api/v1/synthetic-upload/'+id};}
+  else if(path.endsWith('/materials/uploads')){const b=req.postDataJSON(),id=String(uploads.length);uploads.push(b);body={upload_id:id,state:'uploading',upload_url:'/api/v1/synthetic-upload/'+id,expires_at:'2099-01-01T00:00:00Z',max_bytes:104857600};}
   else if(path.startsWith('/synthetic-upload/')){if(uploads[Number(path.split('/').at(-1))].filename==='first.txt')await new Promise<void>(resolve=>{releaseUpload=resolve;});await route.fulfill({status:204});return;}
-  else if(path.endsWith('/complete')){const id=path.split('/').at(-2)!,u=uploads[Number(id)];body={...u,material_id:'material-'+id,material_version:1,state:'persisted'};}
+  else if(path.endsWith('/complete')){const id=path.split('/').at(-2)!,u=uploads[Number(id)];body={...u,material_id:'material-'+id,material_version:1,upload_id:id,state:'persisted',persisted_at:now,error:null};}
   else if(path==='/m4/topics/topic/materials'){const pin=req.postDataJSON().material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
   else if(path==='/artifacts/result')body={filename:'合成项目_复核报告_V2_20261009.txt',artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
   else if(path==='/artifacts/result/download'){await route.fulfill({contentType:'text/plain',body:delivered});return;}
@@ -85,7 +85,7 @@ test('mobile assistant keeps focus inside and restores navigation and logout aft
 test('global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs',async({page})=>{
  const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
  await page.locator('[data-composer]').fill('这种表述是否合适？');await expect.poll(()=>s.w.view.unsent_content).toBe('这种表述是否合适？');
- await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar a[href="#tasks"]').click();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
+ await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar').getByRole('link',{name:'全部项目',exact:true}).click();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
  await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
  await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message.assistant')).toContainText('可先说明');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);await expect(page.locator('.ba-task')).toHaveCount(0);
  await page.locator('[data-a=history]').click();await expect(page.locator('.ba-history')).toContainText('BondBuddy');
@@ -254,7 +254,7 @@ test('desktop pages reflow beside the assistant at standard and wide widths',asy
     if(await page.locator('.bb-assistant').evaluate(el=>el.classList.contains('ba-wide'))!==wide)await page.locator('[data-a=wide]').click();
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${route} at ${width}, wide=${wide}`).toBe(true);
     await expect.poll(()=>page.locator('.shell main').evaluate(el=>el.scrollWidth<=el.clientWidth+1),`main content ${route} at ${width}, wide=${wide}`).toBe(true);
-    const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);
+    await expect.poll(async()=>{const [main,panel]=await Promise.all([page.locator('.shell').boundingBox(),page.locator('.ba-panel').boundingBox()]);return !!main&&!!panel&&main.x+main.width<=panel.x+1;},`page and assistant remain beside each other on ${route} at ${width}, wide=${wide}`).toBe(true);
     if(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR&&width===1280&&!wide&&['update','review'].includes(route))await page.screenshot({path:resolve(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR,`implementation-${route}-1280.png`)});
     if(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR&&width===1024&&!wide&&route==='/account')await page.screenshot({path:resolve(process.env.BB_RIGHT_PANEL_EVIDENCE_DIR,'implementation-account-1024.png')});
    }

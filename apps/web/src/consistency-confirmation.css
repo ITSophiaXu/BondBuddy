@@ -1,0 +1,26 @@
+.fc-confirm[open] { display: flex; flex-direction: column; width: min(820px, calc(100vw - 48px)); max-height: 88vh; padding: 0; overflow: hidden; }
+.fc-confirm > header { flex: none; padding: 22px 28px; border-bottom: 1px solid #e1e7e2; }
+.fc-confirm-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 28px 22px; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.fc-confirm-body:focus-visible { outline: 2px solid #43765d; outline-offset: -3px; }
+.fc-confirm-body h3 { margin: 22px 0 10px; }
+.fc-confirm-project { color: #66766d; margin: 18px 0 14px; }
+.fc-confirm-source { padding: 16px 18px; border: 1px solid #d6e3d8; border-radius: 9px; background: #f3f7f0; }
+.fc-confirm-source h3 { margin: 0 0 8px; color: #43614c; font-size: 13px; }
+.fc-confirm-source strong { display: block; font-size: 15px; }
+.fc-confirm-source p { margin: 5px 0 0; color: #52695a; }
+.fc-confirm-source p:last-child { font-size: 12px; }
+.fc-confirm-files { list-style: none; padding: 0; margin: 0; }
+.fc-confirm-files > li { padding: 14px 0; border-bottom: 1px solid #e4e9e3; }
+.fc-confirm-files p { margin: 4px 0 0; color: #667469; font-size: 13px; }
+.fc-confirm-files .fc-confirm-counts { color: #365d45; }
+.fc-confirm-scope { margin-top: 18px; font-size: 12px; color: #627065; }
+.fc-confirm-scope summary { cursor: pointer; padding: 8px 0; color: #436a53; }
+.fc-confirm-scope dl { margin: 6px 0; padding: 12px 16px; background: #f7f9f5; border-radius: 8px; }
+.fc-confirm-scope dt { color: #586a5d; margin: 10px 0 4px; }
+.fc-confirm-scope dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.fc-confirm-unavailable { padding: 14px 16px; background: #fff7e9; border-radius: 8px; color: #856023; }
+.fc-confirm > footer { flex: none; padding: 14px 28px 20px; border-top: 1px solid #e1e7e2; background: #fff; }
+.fc-confirm > footer > p { margin: 7px 0; line-height: 1.7; font-size: 12px; color: #657468; }
+.fc-confirm > footer .fc-confirm-total { font-size: 14px; color: #304f3d; }
+.fc-confirm .pf-footer { padding: 12px 0 0; gap: 14px; }
+.fc-confirm #fc-confirm-status { color: #8a652b; }

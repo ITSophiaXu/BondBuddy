@@ -9,9 +9,9 @@ export function artifactError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return '成果或下载授权不可用，请重新读取；也可能已移除或不属于当前账号。';
     if (error.code === 'DATA_UNAVAILABLE') return '成果文件暂时无法读取或校验未通过，请稍后重试。';
-    return friendlyError(error);
+    return friendlyError(error, 'download');
   }
-  return '连接中断，成果尚未读取完成，请重试。';
+  return friendlyError(error, 'download');
 }
 
 // Call only after artifactBytes has verified the file and the caller is still current.

@@ -5,7 +5,7 @@ import { mkdir,readFile,writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { duplicateUploadFixture } from './duplicate-upload-fixture';
 import { Value } from '@sinclair/typebox/value';
-import { M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
+import { M4_DOCUMENT_TYPES,M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
   type M4Workspace,type M4DocumentType,type M4Draft,type M4Artifact,type M4Task,type M4MessageRequest,type M4ExecuteRequest,type M4QuoteRequest,type Run } from '@bondbuddy/contracts';
 
 // Owner-scoped synthetic HTTP fixtures. These verify browser behavior, not model or DOCX quality.
@@ -25,7 +25,7 @@ for(const width of [1440,390])test(`case template application and recommendation
   await page.setViewportSize({width,height:960});
   const s=fixture();s.workspace.drafts.application.materials=[s.workspace.materials[0]];s.workspace.drafts.recommendation.materials=[s.workspace.materials[0]];
   await mount(page,s);await choose(page,'application');
-  await expect(page.locator('[data-m4-type]')).toHaveCount(6);
+  await expect(page.locator('[data-m4-type]')).toHaveCount(M4_DOCUMENT_TYPES.length);
   await expect(page.locator('#m4-case-template')).toBeVisible();
   await page.locator('#m4-market').selectOption('szse');await page.locator('#m4-case-template').selectOption('szse-private-application-alt');
   await page.getByText('查看模板结构',{exact:true}).click();await expect(page.locator('.studio-template-details')).toContainText('一、发行人概况');
@@ -79,10 +79,11 @@ function fixture(dynamic=false){
   const artifact:M4Artifact={source_project_id:'m4-project',artifact_id:'old-artifact',artifact_version:1,sha256:hash('Synthetic DOCX bytes'),topic_id:'topic-a',run_id:'run-old',document_type:'private_summary',kind:'document',filename:'合成摘要.docx',mime_type:mime,byte_size:Buffer.byteLength('Synthetic DOCX bytes'),created_at:now,base_artifact:null,input_hash:hash('old-input'),revision_number:1};
   const run=(id:string,state:Run['state']='running'):Run=>({run_id:id,project_id:'m4-project',execution_request_id:'execution-'+id,input_revision:1,input_hash:hash(id),state,stage:'m4_document_prompt',channel:'production',test_grant_id:null,uncovered_items:[],event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?artifact.artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
   const workspace:M4Workspace={topic:{topic_id:'topic-a',project_id:'m4-project',source_project_id:'source-project',name:'合成材料工作区',created_at:now,updated_at:now},project:{project_id:'m4-project',draft_revision:1,input_revision:null,input_hash:null,name:'合成材料工作区',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',updated_at:now},drafts:{annual:draft('annual'),semiannual:draft('semiannual'),issuer:draft('issuer'),financial:draft('financial'),credit:draft('credit'),proceeds:draft('proceeds'),init:draft('init'),underwriter:draft('underwriter'),legal:draft('legal'),private_summary:draft('private_summary'),application:draft('application'),recommendation:draft('recommendation')},materials:[source],material_details:[{...source,filename:'来源募集书.docx',state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[],pending_requirements:[],artifacts:[artifact],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null};
+  workspace.messages.push({message_id:'m0',role:'assistant',content:'保留已采纳要求',version:1,context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},created_at:now,reply_status:'completed',reply_to:null,run_id:null,reply:{content:'保留已采纳要求',citations:[],requirements:['保留已采纳要求'],fields:{},intent:'draft',document_type:null,target_business:null,retrieval:'not_performed'},error:null});
   const addDocumentTask=(id:string,type:M4DocumentType='private_summary',version=workspace.drafts[type].version)=>{const current=run(id);workspace.active_run=current;const task:M4Task={run:current,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:'topic-a',execution_scope_project_id:'source-project',draft_version:version,input:structuredClone(workspace.drafts[type]),template_material:null,market:'sse',offering:'private',billing_task:M4_DOCUMENT_BILLING_TASKS[type]},created_at:now,events:[],artifacts:[]};workspace.tasks.push(task);return task;};
   return {dynamic,controls:[] as string[],workspace,artifact,run,addDocumentTask,messages:[] as M4MessageRequest[],executions:[] as M4ExecuteRequest[],quotes:[] as M4QuoteRequest[],startDocumentOnMessage:false,dropMessage:false,dropExecution:false,charged:0,balance:{available:10000,frozen:0},balanceReads:0};
 }
-async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'='generate',fresh=false){
+async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'='generate',fresh=false,legacyComponent=false){
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;
     if(path==='/api/v1/me')return reply(route,{user_id:'owner-a'});
@@ -90,7 +91,14 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
     if(path==='/api/v1/m4/topics')return reply(route,req.method()==='POST'?{topic:state.workspace.topic}:{topics:[state.workspace.topic]});
     if(path==='/api/v1/projects/source-project')return reply(route,{...state.workspace.project,project_id:'source-project',name:'来源项目'});
     if(path.endsWith('/workspace'))return reply(route,state.workspace);
-    if(path.includes('/drafts/')){const body=req.postDataJSON();expect(Value.Check(M4DraftRequestSchema,body)).toBe(true);const d=state.workspace.drafts[body.input.document_type as 'init'|'private_summary'];if(body.expected_version!==d.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);const saved={...body.input,version:d.version+1,sha256:hash(JSON.stringify(body.input)),updated_at:now};state.workspace.drafts[saved.document_type as 'init'|'private_summary']=saved;return reply(route,{draft:saved});}
+    if(path.includes('/drafts/')){
+      const body=req.postDataJSON();expect(Value.Check(M4DraftRequestSchema,body)).toBe(true);const d=state.workspace.drafts[body.input.document_type as M4DocumentType];
+      if(body.expected_version!==d.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);
+      const input={...body.input,requirements:[...body.input.requirements,...state.workspace.pending_requirements.filter(pending=>!body.input.requirements.some((existing:{requirement_id:string})=>existing.requirement_id===pending.requirement_id))]};
+      expect(Value.Check(M4DraftRequestSchema,{...body,input})).toBe(true);const {version:_version,sha256:_sha,updated_at:_updated,...previous}=d;
+      const saved=d.version>0&&Value.Equal(previous,input)?d:{...input,version:d.version+1,sha256:hash(JSON.stringify(input)),updated_at:now};
+      state.workspace.drafts[saved.document_type as M4DocumentType]=saved;state.workspace.pending_requirements=[];return reply(route,{draft:saved});
+    }
     if(path.endsWith('/view')){const body=req.postDataJSON();expect(Value.Check(M4ViewRequestSchema,body)).toBe(true);if(body.expected_version!==state.workspace.view.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);state.workspace.view={...body.view,version:body.expected_version+1};return reply(route,{view:state.workspace.view});}
     if(state.dynamic&&/\/runs\/[^/]+\/(pause|resume|cancel)$/.test(path)){
       const action=path.split('/').at(-1)!,task=state.workspace.tasks.find(t=>path.includes(t.run.run_id))!;
@@ -110,7 +118,16 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
     if(path.endsWith('/bytes'))return route.fulfill({status:200,contentType:mime,body:'Synthetic DOCX bytes'});
     return reply(route,{code:'NOT_FOUND'},404);
   });
-  await page.goto(`/#${mode}?${fresh?'new=synthetic':'topic=topic-a'}`);await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
+  if(legacyComponent){
+    // The current no-topic generate route uses FileWorkspace. This explicitly tests the real legacy component, not that entry route.
+    await page.route(new URL('/',process.env.BB_E2E_BASE_URL??'http://127.0.0.1:5173').href,route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"></head><body><div class="prototype-app"><main class="shell"></main></div></body></html>'}));
+  }
+  await page.goto(`/#${mode}?${fresh?'new=synthetic':'topic=topic-a'}`);
+  if(legacyComponent){
+    await page.evaluate(async()=>{const componentPath='/src/material-workspace.ts',apiPath='/src/api.ts',{MaterialWorkspace}=await import(componentPath),{ApiClient}=await import(apiPath);const component=new MaterialWorkspace(new ApiClient(),'owner-a',(html:string)=>{document.querySelector('.shell')!.innerHTML=html;},()=>true,undefined,undefined,true);await component.render();});
+    for(const path of ['src/style.css','../../product-prototype/public/styles.css','../../product-prototype/public/source-prospectus.css','../../product-prototype/public/project-workspace.css','src/prototype-adapter.css'])await page.addStyleTag({content:(await readFile(resolve(process.cwd(),path),'utf8')).replace(/@import\s+[^;]+;/g,'')});
+  }
+  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
 }
 
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
@@ -222,7 +239,9 @@ test('insufficient credits show a recharge action, retain input and never auto-s
   const s=fixture();s.balance.available=1000;await mount(page,s);await choose(page,'private_summary');
   await page.locator('#m4-requirements').fill('积分不足时保留这份输入');await start(page);
   await expect(page.locator('#m4-submit-status [role=alert]')).toContainText('积分不足');
-  await expect(page.locator('#m4-submit-status').getByRole('link',{name:'充值积分'})).toHaveAttribute('href','#/account');
+  const recharge=await page.locator('#m4-submit-status').getByRole('link',{name:'充值积分'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
+  expect(rechargeQuery.get('project')).toBe(s.workspace.topic.project_id);
+  expect(rechargeQuery.get('return_to')).toBe(await page.evaluate(()=>location.hash));
   expect(s.executions).toHaveLength(0);expect(s.balance.frozen).toBe(0);await expect(page.locator('.m4-price')).toHaveCount(0);
   s.balance.available=10000;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
   await expect(page.locator('.wallet-value strong')).toHaveText('10,000');expect(s.executions).toHaveLength(0);
@@ -262,9 +281,9 @@ for(const state of ['failed','cancelled'] as const)test(`a ${state} task release
   await expect(page.locator('.wallet-value strong')).toHaveText('10,000');expect(s.executions).toHaveLength(1);
 });
 
-test('first form save and concurrent upload share creation and retain entered requirements',async({page})=>{
+test('legacy MaterialWorkspace component first save and concurrent upload share creation and retain entered requirements',async({page})=>{
   const s=fixture();for(const d of Object.values(s.workspace.drafts)){d.version=0;d.fields={};d.requirements=[];d.source_material=null;}
-  await mount(page,s,'generate',true);let creates=0,uploads=0,release!:()=>void;
+  await mount(page,s,'generate',true,true);let creates=0,uploads=0,release!:()=>void;
   const gate=new Promise<void>(resolve=>{release=resolve;});
   await page.route('**/m4/topics',async route=>{if(route.request().method()!=='POST')return route.fallback();creates++;await gate;return reply(route,{topic:s.workspace.topic});});
   await page.route('**/materials/uploads',route=>{uploads++;return reply(route,{code:'DATA_UNAVAILABLE'},503);});
@@ -280,9 +299,9 @@ test('first form save and concurrent upload share creation and retain entered re
 test('prototype material navigation, cards, source modes and only one optional requirements box',async({page})=>{
   const s=fixture();await mount(page,s);
   await expect(page.locator('.sidebar').getByRole('link',{name:'文件生成',exact:true})).toHaveCount(1);
-  await expect(page.locator('.sidebar').getByRole('link',{name:'项目问答',exact:true})).toHaveCount(0);
+  await expect(page.locator('.sidebar').getByRole('link',{name:'项目问答',exact:true})).toHaveCount(1);
   await expect(page.locator('#m4-agent,#m4-message,[data-m4-action=discuss],#m4-topic,[data-m4-action=new-topic],#m4-source')).toHaveCount(0);
-  await expect(page.locator('[data-m4-type]')).toHaveCount(6);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
+  await expect(page.locator('[data-m4-type]')).toHaveCount(M4_DOCUMENT_TYPES.length);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
   await choose(page,'legal');await expect(page.getByRole('heading',{name:'这份材料依据哪份募集书'})).toBeVisible();
   await expect(page.locator('#m4-content textarea')).toHaveCount(1);await expect(page.locator('#m4-requirements')).toBeVisible();
   await page.getByRole('radio',{name:'关联募集书项目',exact:true}).check();await expect(page.getByRole('button',{name:'选择募集书项目'})).toBeVisible();
@@ -333,12 +352,12 @@ test('generation pins direct requirements and progress is on the page; edits nev
   await expect(page.getByRole('tab',{name:'生成进度'})).toHaveAttribute('aria-selected','true');await expect(page.locator('.task-progress')).toContainText('正在编制材料');
   await expect(page.locator('#m4-requirements,#m4-message')).toHaveCount(0);
   const fixed=structuredClone(s.workspace.tasks[0].manifest);expect(fixed.kind==='document'&&fixed.input.supplemental_requirements).toBe('保留财务表格');
-  await page.getByRole('button',{name:'查看与补充材料'}).click();await page.locator('#m4-requirements').fill('下一版增加风险分析');
+  await page.getByRole('button',{name:'返回募集说明书摘要材料与要求',exact:true}).click();await expect(page.locator('[data-m4-type]:checked')).toHaveValue('private_summary');await page.locator('#m4-requirements').fill('下一版增加风险分析');
   await expect.poll(()=>s.workspace.drafts.private_summary.supplemental_requirements).toBe('下一版增加风险分析');expect(s.workspace.tasks[0].manifest).toEqual(fixed);expect(s.executions).toHaveLength(1);
 });
 
 test('completion keeps older reader, new real artifact appears once and preview failure still permits download',async({page})=>{
-  const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);await page.getByRole('button',{name:'查看与补充材料'}).click();
+  const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);await page.getByRole('button',{name:'返回募集说明书摘要材料与要求',exact:true}).click();await expect(page.locator('[data-m4-type]:checked')).toHaveValue('private_summary');
   await page.getByRole('button',{name:'合成摘要.docx · 第1稿',exact:true}).click();await page.getByText('查看正文预览',{exact:true}).click();await expect(page.locator('.m4-preview')).toContainText('合成正文');
   const fresh={...s.artifact,artifact_id:'new-artifact',revision_number:2,filename:'合成摘要新稿.docx',run_id:'new-run'};
   s.workspace.artifacts.push(fresh);s.workspace.tasks[0].run=s.run('new-run','succeeded');s.workspace.tasks[0].artifacts=[fresh];s.workspace.active_run=null;
@@ -413,7 +432,7 @@ test('template scope follows broker and exchange, and missing scope is explained
   await page.locator('#m4-market').selectOption('szse');await expect(page.locator('#m4-template')).toContainText('合成深交所模板');await expect(page.locator('#m4-template')).not.toContainText('合成上交所模板');
   let uploadRequests=0;page.on('request',request=>{if(request.url().includes('/materials/uploads'))uploadRequests++;});
   await page.locator('#m4-broker').fill('');await page.getByLabel('上传立项模板或已完成的立项报告',{exact:true}).setInputFiles({name:'合成模板.docx',mimeType:mime,buffer:Buffer.from('Synthetic template')});
-  await expect(page.locator('#m4-status')).toContainText('请先填写主承销商并选择交易所');expect(uploadRequests).toBe(0);expect(s.executions).toHaveLength(0);
+  await expect(page.locator('#m4-status')).toContainText('请先填写立项券商全称并选择交易所，再上传对应的私有模板。');expect(uploadRequests).toBe(0);expect(s.executions).toHaveLength(0);
 });
 
 
@@ -482,7 +501,7 @@ test('live phases, terminal states and persistent task tabs keep the same immuta
   for(const state of ['paused','awaiting_input','failed','cancelled'] as const){task.run.state=state;s.workspace.active_run=['paused','awaiting_input'].includes(state)?task.run:null;await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).not.toContainText('文档已生成');await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);}
   await expect(page.getByRole('button',{name:'停止本次任务'})).toHaveCount(0);
   await expect(page.locator('.m4-tab-close')).toHaveCount(0);await page.getByRole('tab',{name:'任务输入',exact:true}).click();await page.getByRole('button',{name:'查看本轮任务'}).click();await expect(page.locator('.task-progress')).toContainText('本轮已停止');
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();expect(s.executions).toHaveLength(0);
+  await page.getByRole('button',{name:'返回募集说明书摘要材料与要求',exact:true}).click();await expect(page.locator('[data-m4-type]:checked')).toHaveValue('private_summary');expect(s.executions).toHaveLength(0);
 });
 test('completion and reload retain paired downloads; download errors stay beside the exact file',async({page})=>{
   const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);const task=s.workspace.tasks[0],{fresh,note}=completeTask(s,task);
@@ -528,8 +547,8 @@ test('refresh preserves an expanded preview and its reading position',async({pag
  await page.getByRole('button',{name:'刷新状态'}).click();await expect(preview).toBeVisible();await expect.poll(()=>preview.evaluate(node=>node.scrollTop)).toBe(400);expect(s.executions).toHaveLength(0);
 });
 
-test('project row reuses its linked generation workspace and keeps the chosen source on reload',async({page})=>{
- const s=fixture();await mount(page,s);await page.goto('/#generate?project=source-project&from=projects');
+test('explicit legacy topic with source project context keeps the linked source on reload',async({page})=>{
+ const s=fixture();await mount(page,s);await page.goto('/#generate?topic=topic-a&project=source-project&from=projects');
  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
  await expect(page.getByText('当前项目：来源项目',{exact:true})).toBeVisible();
  await expect(page.getByRole('radio',{name:'关联募集书项目',exact:true})).toBeChecked();
@@ -555,9 +574,10 @@ for(const width of [1440,390])test(`delete owned material source and support wit
   s.workspace.drafts.private_summary.source_material=source;s.workspace.drafts.private_summary.materials=[support];
   const old=s.addDocumentTask('completed');old.run.state='succeeded';s.workspace.active_run=null;const history=JSON.stringify(s.workspace.tasks);
   await page.setViewportSize({width,height:width===1440?960:844});await mount(page,s);await choose(page,'private_summary');
-  let failed=false;await page.route('**/materials/*',route=>{if(route.request().method()!=='DELETE'){const m=s.workspace.material_details?.find(m=>m.material_id===new URL(route.request().url()).pathname.split('/').at(-1));return m?reply(route,m):route.fallback();}if(!failed){failed=true;return reply(route,{code:'DATA_UNAVAILABLE'},503);}const id=new URL(route.request().url()).pathname.split('/').at(-1);s.workspace.materials=s.workspace.materials.filter(m=>m.material_id!==id);s.workspace.material_details=s.workspace.material_details!.filter(m=>m.material_id!==id);return route.fulfill({status:204});});
+  let failed=false,deleteAttempts=0;await page.route('**/materials/*',route=>{if(route.request().method()!=='DELETE'){const m=s.workspace.material_details?.find(m=>m.material_id===new URL(route.request().url()).pathname.split('/').at(-1));return m?reply(route,m):route.fallback();}deleteAttempts++;if(!failed){failed=true;return reply(route,{code:'DATA_UNAVAILABLE'},503);}const id=new URL(route.request().url()).pathname.split('/').at(-1);s.workspace.materials=s.workspace.materials.filter(m=>m.material_id!==id);s.workspace.material_details=s.workspace.material_details!.filter(m=>m.material_id!==id);return route.fulfill({status:204});});
   page.on('dialog',dialog=>dialog.accept());const remove=page.getByRole('button',{name:'删除 误传财务报表.docx',exact:true});
-  await remove.click();await expect(page.locator('#m4-status')).toContainText('删除未完成');await expect(remove).toBeEnabled();
+  await remove.click();await expect(page.locator('#m4-status')).toContainText('删除结果暂未确认');await expect(page.locator('#m4-status')).toContainText('请先重新读取材料列表，核对后再继续。');await expect(remove).toBeEnabled();expect(deleteAttempts).toBe(1);
+  await remove.evaluate(node=>(node as HTMLElement).dataset.r40BeforeRefresh='true');await page.getByRole('button',{name:'刷新状态',exact:true}).click();await expect(remove).not.toHaveAttribute('data-r40-before-refresh','true');await expect(remove).toBeEnabled();expect(deleteAttempts).toBe(1);
   await remove.click();await expect(remove).toHaveCount(0);await expect.poll(()=>s.workspace.drafts.private_summary.materials).toEqual([]);
   await expect(page.getByRole('button',{name:'删除 误传募集书.docx',exact:true})).toBeEnabled();
   if(process.env.BB_DELETE_EVIDENCE){const dir='test-evidence/material-delete-20261010';await mkdir(dir,{recursive:true});await page.locator('.m4-source-file').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('.m4-source-file').screenshot({path:`${dir}/material-source-${width}.png`});}

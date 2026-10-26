@@ -3,14 +3,15 @@ import { IntegrityWorkspace } from './integrity-workspace';
 import { ReviewEntry } from './review-entry';
 import { UpdateEntry } from './update-entry';
 import { ProspectusPanel } from './prospectus-panel';
-import { duplicateUploadNotices, isReusedUpload } from './duplicate-upload';
+import { duplicateUploadNotices } from './duplicate-upload';
+import { UploadRecovery, UploadRecoveryNeedsFileError, UploadRecoveryStorageError, UploadRecoveryLockError, UploadRecoveryConflictError, UploadRecoveryReceiptError, validateUploadMaterial, type UploadRecoveryRecord } from './upload-recovery';
 import { renderFinancialUploadGuidance } from './financial-upload-guidance';
 import { OPTIONAL_MATERIAL_GUIDANCE, OPTIONAL_MATERIAL_FORMATS } from './optional-materials';
-import { ProjectFiles } from './project-files';
+import { ProjectFiles, clearProjectFileViews } from './project-files';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
 import { ProjectAssistant } from './project-assistant';
-import { projectListContext, withProjectContext, projectBackLink, projectSection } from './project-navigation';
+import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref, type ProjectWork } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
@@ -25,12 +26,13 @@ import { carryHandoff, copyHandoffSource, mountBusinessHandoff } from './busines
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
+import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
-import { bindUpdateForm, readUpdateForm, updateFormFields } from './update-form';
+import { bindUpdateForm, readUpdateForm, updateFormFields, revealUpdateFormErrors } from './update-form';
 import { renderAccount, renderClosed, type AccountContext } from './account';
 import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
@@ -41,6 +43,7 @@ import './material-processing.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
+import './authoring-onboarding.css';
 import '../../../product-prototype/public/styles.css';
 import '../../../product-prototype/public/project-workspace.css';
 import './prototype-adapter.css';
@@ -48,6 +51,7 @@ import './quarter-controls.css';
 import '../../../product-prototype/public/optional-materials.css';
 import '../../../product-prototype/public/source-prospectus.css';
 import './credit-wallet.css';
+import './project-context.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
@@ -78,16 +82,22 @@ let fileWorkspace: FileWorkspace | undefined;
 let integrityWorkspace: IntegrityWorkspace | undefined;
 let qaWorkspace: ProjectQaWorkspace | undefined;
 let fileConsistency: FileConsistency | undefined;
+const projectNames=new Map<string,string>();
+const projectNameRequests=new Map<string,Promise<void>>();
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
-type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
+type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; restored?:boolean; needsFile?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
 let runningUploads = 0;
+let preparingUploads=0;
 type MaterialRecovery = { state: 'loading' | 'ready' | 'unavailable'; message?: string };
 const localUploads = new Map<string, LocalUpload[]>();
 const recoveredMaterials = new Map<string, Dto<'MaterialResponse'>[]>();
 const recoveryStates = new Map<string, MaterialRecovery>();
 const recoveryControllers = new Map<string, AbortController>();
+const uploadRecoveries=new Map<string,UploadRecovery>();
+const uploadJournalErrors=new Map<string,string>();
+const uploadReselectInputs=new Map<string,HTMLInputElement>();
 let materialProcessing: MaterialProcessing | undefined;
 const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
   docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2],
@@ -107,6 +117,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  projectNames.clear();projectNameRequests.clear();
   reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   globalAssistant?.dispose(); globalAssistant = undefined;
   accountIdentity = undefined;
@@ -118,6 +129,7 @@ function clearPrivateState() {
   clearSourceSelections();
   reviewWorkspace?.dispose(); reviewWorkspace = undefined;
   projectFiles?.dispose(); projectFiles = undefined;
+  clearProjectFileViews();
   billingPage?.dispose(); billingPage = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
@@ -127,7 +139,7 @@ function clearPrivateState() {
   materialProcessing?.dispose(); materialProcessing = undefined;
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
   for (const controller of recoveryControllers.values()) controller.abort();
-  localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
+  localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();uploadRecoveries.clear();uploadJournalErrors.clear();for(const input of uploadReselectInputs.values())input.remove();uploadReselectInputs.clear();
   epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
   identity = undefined; projectBrowser?.dispose(); projectBrowser = undefined;
 }
@@ -229,7 +241,7 @@ function bindLogin() {
       await renderRoute();
     } catch (error) {
       if (token !== epoch) return;
-      feedback.textContent = error instanceof ApiError && error.status === 401 ? '用户名或密码不正确，请重试。' : friendlyError(error);
+      feedback.textContent = error instanceof ApiError && error.status === 401 ? '用户名或密码不正确，请重试。' : friendlyError(error,'action');
     } finally { button.disabled = false; button.textContent = '登录'; }
   });
 }
@@ -295,13 +307,24 @@ function mountAccountIdentity() {
 }
 
 function shell(content: string, section: string) {
+  const context=navigationProjectContext(location.hash);
+  const work=(kind:ProjectWork)=>context?projectWorkHref(kind,context.projectId).slice(1):kind;
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#tasks"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
-    <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav('/account','settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">${context?'继续这个项目':'开始工作'}</div>${nav(work('update'),'update','更新募集书',section === 'new' || section === 'workspace')}${nav(work('review'),'review','复核募集书',section === 'review')}${nav(work('generate'),'spark','文件生成',section === 'generate')}${nav(work('integrity'),'shield','诚信核查',section === 'integrity')}${nav(work('qa'),'chat','项目问答',section === 'qa')}</nav>
+    <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav(rechargeHref().slice(1),'settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
     <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
-    <main id="main" tabindex="-1">${content}</main></div></div>`;
+    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>正在处理</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
+  if(context&&!projectNames.has(context.projectId)&&!projectNameRequests.has(context.projectId)){
+    const owner=identity,expectedProject=context.projectId;
+    const request=api.project(expectedProject).then(project=>{
+      if(owner!==identity||projectNameRequests.get(expectedProject)!==request)return;
+      projectNames.set(expectedProject,project.name);
+      if(navigationProjectContext(location.hash)?.projectId===expectedProject){const name=document.querySelector('[data-project-context-name]');if(name)name.textContent=project.name;}
+    }).catch(()=>{/* Project content reports its own errors; navigation stays available. */}).finally(()=>{if(projectNameRequests.get(expectedProject)===request)projectNameRequests.delete(expectedProject);});
+    projectNameRequests.set(expectedProject,request);
+  }
   creditWallet ??= new CreditWallet(api);
   creditWallet.mount();
   if(identity){ globalAssistant ??= new ProjectAssistant(api,identity); globalAssistant.mount(); }
@@ -312,20 +335,23 @@ function shell(content: string, section: string) {
   menu.addEventListener('click', () => { const open = document.querySelector('#sidebar')!.classList.toggle('mobile-open'); menu.setAttribute('aria-expanded', String(open)); menu.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单'); });
 }
 
-function showError(error: unknown) {
+function showError(error: unknown, operation:'save'|'action'='action') {
   const target = document.querySelector<HTMLElement>('#page-error');
-  if (target) { target.textContent = friendlyError(error); target.hidden = false; }
+  if (target) { target.textContent = friendlyError(error,operation); target.hidden = false; }
 }
 
 async function logout() {
   const button = document.querySelector<HTMLButtonElement>('#logout');
   if (!button) return;
   if (creating) return;
+  if (prospectusPanel && !await prospectusPanel.beforeLeave()) return;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
   if (materialWorkspace && !await materialWorkspace.beforeLeave()) return;
   if (qaWorkspace && !await qaWorkspace.beforeLeave()) return;
   if (integrityWorkspace && !await integrityWorkspace.beforeLeave()) return;
   if (fileWorkspace && !await fileWorkspace.beforeLeave()) return;
+  if (projectFiles && !await projectFiles.beforeLeave()) return;
+  if (fileConsistency && !await fileConsistency.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
   if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
@@ -354,6 +380,8 @@ async function renderRoute() {
   if (qaWorkspace && !await qaWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (integrityWorkspace && !await integrityWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (fileWorkspace && !await fileWorkspace.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
+  if (projectFiles && !await projectFiles.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
+  if (fileConsistency && !await fileConsistency.beforeLeave()) {history.replaceState(null,'',location.pathname+location.search+'#'+currentRoute);return;}
   if (materialWorkspace && !await materialWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
@@ -363,7 +391,7 @@ async function renderRoute() {
       !window.confirm('还有未发送或保存结果未确认的消息。离开后本页输入将无法恢复，是否继续？')) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
-  if(prospectusPanel?.busy){history.replaceState(null,'',`${location.pathname}${location.search}#${currentRoute}`);return;}
+  if(prospectusPanel && !await prospectusPanel.beforeLeave()){history.replaceState(null,'',`${location.pathname}${location.search}#${currentRoute}`);return;}
   newDirty = false;
   const token = ++epoch;
   if (draft && (draft.dirty || draft.state === 'saving')) {
@@ -371,7 +399,7 @@ async function renderRoute() {
     if (token !== epoch) return;
     if (!saved) {
       history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`);
-      showError(draft.error ?? new ApiError(422, 'INPUT_REQUIRED')); return;
+      showError(draft.error ?? new ApiError(422, 'INPUT_REQUIRED'),'save'); return;
     }
   }
   draft?.dispose(); draft = undefined;
@@ -403,28 +431,28 @@ async function renderRoute() {
     if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){document.querySelector<HTMLDialogElement>('#account-settings')?.showModal();details.open=true;details.scrollIntoView({block:'start'});}}
     return;
   }
-  if (/^consistency(\?|$)/.test(requested)) {fileConsistency=new FileConsistency(api,shell,()=>token===epoch,new URLSearchParams(requested.split('?')[1]).get('project')??'');await fileConsistency.render();return;}
-  if (/^qa(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');qaWorkspace=new ProjectQaWorkspace(api,shell,()=>token===epoch,()=>globalAssistant,query.get('project')??undefined);await qaWorkspace.render();return;}
-  if (/^integrity(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');integrityWorkspace=new IntegrityWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined);await integrityWorkspace.render();return;}
+  if (/^consistency(\?|$)/.test(requested)) {fileConsistency=new FileConsistency(api,shell,()=>token===epoch,new URLSearchParams(requested.split('?')[1]).get('project')??'',identity);await fileConsistency.render();return;}
+  if (/^qa(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');qaWorkspace=new ProjectQaWorkspace(api,shell,()=>token===epoch,()=>globalAssistant,query.get('project')??undefined,identity);await qaWorkspace.render();return;}
+  if (/^integrity(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');integrityWorkspace=new IntegrityWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined,identity);await integrityWorkspace.render();return;}
   if (/^generate(\?|$)/.test(requested)) {
     const query=new URLSearchParams(requested.split('?')[1]??'');
-    if(!query.get('topic')){fileWorkspace=new FileWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined);await fileWorkspace.render();return;}
+    if(!query.get('topic')){fileWorkspace=new FileWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined,identity);await fileWorkspace.render();return;}
     materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'),query.get('run')??undefined);
     await materialWorkspace.render(); return;
   }
   if (/^\/update(\?|$)/.test(requested)) {updateEntry=new UpdateEntry(api,shell,()=>token===epoch);await updateEntry.render(new URLSearchParams(requested.split('?')[1]).get('project')??undefined);return;}
   if (/^\/new(\?|$)/.test(requested)) { renderNew(new URLSearchParams(requested.split('?')[1]??'')); return; }
-  if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch); await projectBrowser.render(); return; }
+  if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch,identity); await projectBrowser.render(); return; }
   const filesMatch=requested.match(/^\/projects\/([^/?]+)\/files(?:\?.*)?$/);
-  if(filesMatch){projectFiles=new ProjectFiles(api,shell,()=>token===epoch,decodeURIComponent(filesMatch[1]));await projectFiles.render();return;}
-  const artifactMatch = requested.match(/^\/artifacts\/([^/]+)$/);
+  if(filesMatch){projectFiles=new ProjectFiles(api,shell,()=>token===epoch,decodeURIComponent(filesMatch[1]),identity,route=>{if(token===epoch)currentRoute=route;});await projectFiles.render();return;}
+  const artifactMatch = requested.match(/^\/artifacts\/([^/?]+)(?:\?.*)?$/);
   if (artifactMatch) { artifactPage = new ArtifactPage(api, shell, () => token === epoch); await artifactPage.render(decodeURIComponent(artifactMatch[1])); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
   if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
   const reviewMatch = requested.match(/^\/projects\/([^/?]+)\/review(?:\?(.*))?$/);
   if (reviewMatch) {
     const query = new URLSearchParams(reviewMatch[2]);
-    reviewWorkspace = new ReviewWorkspace(api, identity, decodeURIComponent(reviewMatch[1]), shell, () => token === epoch, query.get('report_id') || undefined, query.get('tab') || undefined,query);
+    reviewWorkspace = new ReviewWorkspace(api, identity, decodeURIComponent(reviewMatch[1]), shell, () => token === epoch, query.get('report_id') || undefined, query.get('tab') || undefined,query,hash=>{if(token===epoch)currentRoute=hash;});
     await reviewWorkspace.render(); return;
   }
   const match = requested.match(/^\/projects\/([^/?]+)(?:\?(.*))?$/);
@@ -437,7 +465,7 @@ async function renderRoute() {
     const projectQuery = new URLSearchParams(match[2]);
     if (project.kind === 'review') {
       if (projectQuery.get('step') === 'details') { renderReviewProjectDetails(project, projectQuery); return; }
-      reviewWorkspace = new ReviewWorkspace(api, identity!, project.project_id, shell, () => token === epoch);
+      reviewWorkspace = new ReviewWorkspace(api, identity!, project.project_id, shell, () => token === epoch,undefined,undefined,new URLSearchParams(),hash=>{if(token===epoch)currentRoute=hash;});
       await reviewWorkspace.render(); return;
     }
     if(project.kind==='generation'){
@@ -449,7 +477,7 @@ async function renderRoute() {
     renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials',projectQuery);
   } catch (error) {
     if (token !== epoch) return;
-    shell(`${projectBackLink()}<div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, projectShellSection);
+    shell(`${projectBackLink()}<div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error,'read'))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, projectShellSection);
     document.querySelector('#retry-project')!.addEventListener('click', () => { void renderRoute(); });
   }
 }
@@ -457,16 +485,16 @@ async function renderRoute() {
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
   const creationRequestId=crypto.randomUUID();
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再添加材料。没有历史募集书，也可以编制首稿。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
-    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section></div></form>`, 'new');
+    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div><p class="field-hint">创建项目只保存信息；添加材料和补充要求后，由你明确开始任务。</p></section></div></form>`, 'new');
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
   bindUpdateForm(form, () => { newDirty = true; }, value.update_details);
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     const value = readUpdateForm(form); value.name = value.name.trim();
-    const errors = value.issuer_name ? validateDraft(value) : ['请填写发行人全称。'];
+    const errors = value.issuer_name ? revealUpdateFormErrors(form,value) : ['请填写发行人全称。'];
     if (errors.length) { const target = document.querySelector<HTMLElement>('#page-error')!; target.textContent = errors.join(' '); target.hidden = false; return; }
     creating = true;
     const controls = [...form.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement>('input,button,select,textarea')].map(control => ({ control, disabled: control.disabled }));
@@ -478,7 +506,7 @@ function renderNew(handoffQuery=new URLSearchParams()) {
       const project = await api.create({...value,creation_request_id:creationRequestId});
       if (token !== epoch) return;
       newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}${handoffQuery.has('handoff_topic')?'?step=materials'+carryHandoff(handoffQuery):''}`;
-    } catch (error) { if (token === epoch) showError(error); }
+    } catch (error) { if (token === epoch) showError(error,'save'); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
   });
 }
@@ -500,6 +528,7 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
 
 function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'materials' = 'materials',handoffQuery=new URLSearchParams()) {
   draft = new Draft(project, api, updateSaveState);
+  restoreUploadRows(project.project_id);
   if (project.update_details?.authoring_mode !== 'unified_v1') {
     materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
     materialProcessing.setVisible(document.visibilityState === 'visible');
@@ -513,6 +542,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
       <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}><div id="business-handoff"></div>
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
+        <aside class="authoring-preparation-guide" data-authoring-preparation-guide hidden aria-label="准备本轮材料与要求"><strong data-authoring-preparation-title>准备本轮材料与要求</strong><p data-authoring-preparation-intro>优先提供审计报告，或财务报表及附注；已保存的材料不用重复上传。历史／参考募集书选填，没有原稿也可编制首稿。</p><div data-next-authoring-summary hidden></div><div class="authoring-preparation-actions"><button type="button" class="btn secondary small" data-authoring-financial>添加财务材料</button><button type="button" class="text-btn" data-authoring-requirements>填写补充要求（选填）</button></div><p class="authoring-execution-note" data-authoring-execution-note>保存项目、材料或要求不会开始任务；准备好后点击页末“开始更新”。</p></aside>
         <div id="workspace-progress"></div><div id="prospectus-panel"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span id="materials-state-label">开始编制前可补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted" id="materials-state-description">请在开始编制前补齐材料；开始后材料锁定，仅可查看。</p><p class="muted material-upload-guidance">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><fieldset id="material-editing" aria-label="项目材料" disabled><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div></fieldset>
@@ -521,11 +551,14 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         <div class="form-footer authoring-actions"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
       </div></div></div>`, projectSection('workspace'));
   const prospectusEpoch=epoch;
-  prospectusPanel=new ProspectusPanel(api,project.project_id,document.querySelector<HTMLElement>('#prospectus-panel')!,async()=>!!draft&&await draft.save(),async()=>{
+  prospectusPanel=new ProspectusPanel(api,project.project_id,document.querySelector<HTMLElement>('#prospectus-panel')!,async()=>{
+    if(projectExecution?.hasUnconfirmedRequest||!draft)return false;
+    const saved=await draft.save();return saved&&!projectExecution?.hasUnconfirmedRequest;
+  },async()=>{
     if(prospectusEpoch!==epoch)return;
     prospectusPanel?.dispose();prospectusPanel=undefined;
     await renderRoute();
-  },()=>syncProjectExecution(project.project_id));
+  },()=>syncProjectExecution(project.project_id),'update',identity);
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
     const details = { ...draft.fields.update_details, supplementary_notes: text || null };
@@ -535,16 +568,34 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   });
   projectConversation.mount(document.querySelector<HTMLElement>('#project-conversation-root')!, value);
   const setStep = async (next: 'details' | 'materials') => {
-    if (next === 'materials' && !await draft?.save()) return;
+    if(next==='materials'){
+      const form=document.querySelector<HTMLFormElement>('#draft-form');
+      if(form){const errors=revealUpdateFormErrors(form,readUpdateForm(form));if(errors.length){const error=document.querySelector<HTMLElement>('#page-error')!;error.hidden=false;error.textContent=errors.join(' ');return;}}
+      if(!await draft?.save())return;
+    }
     if (!document.querySelector('#draft-form')) return;
     document.querySelector<HTMLElement>('#draft-form')!.hidden = next !== 'details';
     document.querySelector<HTMLElement>('#workspace-materials')!.hidden = next !== 'materials';
     document.querySelector('#workspace-steps')!.innerHTML = workspaceSteps(next === 'details' ? 1 : 2);
-    history.replaceState(null, '', `${location.pathname}${location.search}#/projects/${encodeURIComponent(project.project_id)}?${withProjectContext(new URLSearchParams({step:next}))}`);
+    const stepQuery=new URLSearchParams({step:next}),intent=new URLSearchParams(location.hash.split('?')[1]);
+    if(intent.get('run'))stepQuery.set('run',intent.get('run')!);
+    if(intent.get('prepare')==='next'&&intent.get('run'))for(const key of ['prepare','basis','prepare_after']){const value=intent.get(key);if(value)stepQuery.set(key,value);}
+    history.replaceState(null, '', `${location.pathname}${location.search}#/projects/${encodeURIComponent(project.project_id)}?${withProjectContext(stepQuery)}`);
     document.querySelector('#workspace-steps')!.scrollIntoView({ block: 'start' });
   };
   document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
+  document.querySelector('[data-authoring-financial]')!.addEventListener('click',()=>{
+    if(projectExecution&&!projectExecution.materialsEditable)return;
+    const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
+    const input=document.querySelector<HTMLInputElement>('[data-upload-role="audit"]');if(!input||input.disabled)return;
+    input.closest('.material-role')?.scrollIntoView({block:'center'});input.click();
+  });
+  document.querySelector('[data-authoring-requirements]')!.addEventListener('click',()=>{
+    if(projectExecution&&!projectExecution.materialsEditable)return;
+    const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
+    const input=document.querySelector<HTMLTextAreaElement>('#project-message');if(input&&!input.disabled){input.scrollIntoView({block:'center'});input.focus({preventScroll:true});}
+  });
   // No-history projects enter the controlled generation path with the same execution surface.
   if (project.kind === 'update' || project.kind === 'generation') {
     projectExecution = new ProjectExecution(api, draft, projectConversation,
@@ -568,14 +619,18 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         await prospectusPanel?.refresh();
         const fresh=await api.project(project.project_id);
         if(prospectusEpoch===epoch)draft?.adoptUnchanged(fresh);
-      })().catch(()=>{});});
+      })().catch(()=>{});},async()=>{
+        await refreshProjectMaterials(project.project_id,prospectusEpoch);
+        const fresh=await api.project(project.project_id);
+        return prospectusEpoch===epoch&&!!draft&&draft.adoptUnchanged(fresh);
+      });
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch,async handoff=>{const targetDraft=draft;if(!targetDraft||!await targetDraft.save())throw new ApiError(409,'INPUT_REVISION_CONFLICT');const source=await copyHandoffSource(api,handoff,project.project_id,new AbortController().signal);if(handoffEpoch!==epoch||draft!==targetDraft)return;const previous=targetDraft.fields.update_details.supplementary_notes?.trim()??'';const details={...targetDraft.fields.update_details,supplementary_notes:previous.includes(handoff.intent)?previous:[previous,handoff.intent].filter(Boolean).join('\n')};targetDraft.edit({...(source?{has_historical_prospectus:true}:{}),update_details:details});retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!,details);if(!await targetDraft.save())throw new ApiError(409,'INPUT_REVISION_CONFLICT');await refreshProjectMaterials(project.project_id,handoffEpoch);});
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); projectConversation?.setContext(value); updateMaterialWorkspace(project.project_id); }, value.update_details);
-  form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
+  form.addEventListener('submit', event => { event.preventDefault();const errors=revealUpdateFormErrors(form,readUpdateForm(form));if(errors.length){const error=document.querySelector<HTMLElement>('#page-error')!;error.hidden=false;error.textContent=errors.join(' ');return;} void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的输入，是否继续？')) return;
     draft?.dispose(); draft = undefined; void renderRoute();
@@ -587,6 +642,10 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     canEdit: () => deletionEpoch === epoch && (!projectExecution || projectExecution.materialsEditable),
     material: materialId => {
       if (deletionEpoch !== epoch) return;
+      for(const upload of localUploads.get(project.project_id)??[])if(upload.material?.material_id===materialId&&!upload.journalDone){
+        const owner=upload.owner;
+        void (async()=>{const recovery=uploadRecovery(project.project_id,owner);if(recovery.list().some(item=>item.id===upload.key))await recovery.forget(upload.key);})().catch(error=>{if(identity===owner){uploadJournalErrors.set(project.project_id,'文件已删除，本机恢复记录尚未清除。'+uploadRecoveryMessage(error));updateMaterialWorkspace(project.project_id);}});
+      }
       localUploads.set(project.project_id, (localUploads.get(project.project_id) ?? []).filter(upload => upload.material?.material_id !== materialId));
       recoveredMaterials.set(project.project_id, (recoveredMaterials.get(project.project_id) ?? []).filter(material => material.material_id !== materialId));
       if (draft?.project.project_id === project.project_id) {
@@ -621,7 +680,7 @@ function updateSaveState() {
   document.querySelector<HTMLElement>('#conflict-panel')!.hidden = draft.state !== 'conflict';
   const error = document.querySelector<HTMLElement>('#page-error')!;
   error.hidden = !draft.error && (!draft.dirty || draft.valid);
-  error.textContent = draft.error ? friendlyError(draft.error) : draft.dirty ? draft.validationErrors.join(' ') : '';
+  error.textContent = draft.error ? friendlyError(draft.error,'save') : draft.dirty ? draft.validationErrors.join(' ') : '';
   if (draft.state === 'saved') {
     document.querySelector('#project-heading')!.textContent = draft.project.name;
     document.querySelector('#saved-time')!.textContent = `${date(draft.project.updated_at)} 保存`;
@@ -664,17 +723,17 @@ function formatBytes(bytes: number) {
 }
 
 function uploadStatus(upload: LocalUpload) {
-  const percent = upload.file.size ? Math.min(100, Math.floor(upload.sentBytes / upload.file.size * 100)) : 0;
+  const percent = uploadSize(upload) ? Math.min(100, Math.floor(upload.sentBytes / uploadSize(upload) * 100)) : 0;
   switch (upload.phase) {
-    case 'queued': return '等待上传，已选文件将依次处理…';
-    case 'hashing': return '正在准备上传…';
+    case 'queued': return upload.declaration?'上传准备已保留，等待传输…':'等待准备，所选文件暂留在本页…';
+    case 'hashing': return '正在准备上传和恢复记录…';
     case 'checking': return '正在确认保存结果…';
-    case 'uploading': return percent >= 100 ? '已发送 100%，正在保存…' : `正在传输 ${percent}%（${formatBytes(upload.sentBytes)} / ${formatBytes(upload.file.size)}）`;
+    case 'uploading': return percent >= 100 ? '已发送 100%，正在保存…' : `正在传输 ${percent}%（${formatBytes(upload.sentBytes)} / ${formatBytes(uploadSize(upload))}）`;
     case 'saving': return '已发送 100%，正在保存…';
-    case 'persisted': return `服务器已确认保存 · 材料版本 ${upload.material?.material_version ?? '—'}${upload.session && upload.material?.upload_id !== upload.session.upload_id ? ' · 已复用相同内容' : ''}`;
+    case 'persisted': return `服务器已确认保存 · 材料版本 ${upload.material?.material_version ?? '—'}${upload.uploadId && upload.material?.upload_id !== upload.uploadId ? ' · 已复用相同内容' : ''}`;
     case 'failed': return upload.error ?? '文件未保存。可以单独重试。';
-    case 'cancelled': return '本次传输已取消；所选文件仍在此页面，可单独重试。';
-    case 'uncertain': return upload.error ?? '保存结果尚未确认。重试保存时会先查询原记录。';
+    case 'cancelled': return '已停止本页等待；所选文件仍在此页面，重试时会先确认原上传。';
+    case 'uncertain': return upload.error ?? (upload.restored?'上次上传尚未确认。先确认原上传，需要时再重新选择原文件。':'保存结果尚未确认。重试保存时会先确认原上传。');
   }
 }
 
@@ -716,13 +775,16 @@ function materialDeleteControl(id:string) {
 function renderUploadRow(upload: LocalUpload) {
   const active = ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase);
   const showProgress = ['uploading', 'saving'].includes(upload.phase);
-  const progress = Math.min(upload.file.size, upload.sentBytes);
-  const controls = upload.phase === 'failed' || upload.phase === 'cancelled'
+  const progress = Math.min(uploadSize(upload), upload.sentBytes);
+  const confirmation=(upload.restored||!upload.file)&&['failed','cancelled','uncertain'].includes(upload.phase);
+  const controls = confirmation
+    ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">确认原上传</button>${upload.needsFile?`<button type="button" class="text-button" data-upload-action="reselect" data-upload-key="${esc(upload.key)}" aria-label="为${esc(uploadName(upload))}重新选择原文件">重新选择原文件继续</button>`:''}`
+    : upload.phase === 'failed' || upload.phase === 'cancelled'
     ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
     : upload.phase === 'uncertain'
       ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试保存</button>`
       : active
-        ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= upload.file.size ? '停止等待' : '取消此文件'}</button>`
+        ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= uploadSize(upload) ? '停止等待' : '取消此文件'}</button>`
         : '';
   const canRemove = upload.phase === 'persisted' && upload.material
     ? materialDeleteControl(upload.material.material_id)
@@ -730,7 +792,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? `<progress max="${uploadSize(upload)}" value="${progress}" aria-label="${esc(uploadName(upload))} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -746,8 +808,8 @@ function renderMaterialPartitions(projectId: string) {
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
   // Optional-materials.html extends the workspace prototype; role values still come from contracts.
   const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: readonly UploadRole[]; optional?: boolean }[] = [
-    {label:'历史／参考募集书（选填）',roles:M1_MATERIAL_PARTITIONS[0].roles.filter(role => role.code === 'historical' || materials.some(m => m.role === role.code)).map(role => ({...role,label:role.code === 'historical' ? '历史／参考募集书' : '已保存参考稿'})),primary:['historical']},
     {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:['audit']},
+    {label:'历史／参考募集书（选填）',roles:M1_MATERIAL_PARTITIONS[0].roles.filter(role => role.code === 'historical' || materials.some(m => m.role === role.code)).map(role => ({...role,label:role.code === 'historical' ? '历史／参考募集书' : '已保存参考稿'})),primary:['historical']},
     {label:'募投项目与权证材料',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:['fundUse']},
     {label:'债务、授信与担保（选填）',roles:M1_MATERIAL_PARTITIONS[4].roles,primary:['debt','bankFacilities','guarantee','collateralMaterials'],optional:true},
     {label:'公司、经营与信用（选填）',roles:[...M1_MATERIAL_PARTITIONS[5].roles,...M1_MATERIAL_PARTITIONS[3].roles].filter(role=>role.code!=='other'),primary:['governance','corporate','business','rating'],optional:true},
@@ -760,7 +822,7 @@ function renderMaterialPartitions(projectId: string) {
     const role = {...rawRole,label:OPTIONAL_MATERIAL_GUIDANCE[rawRole.code]?.label ?? rawRole.label};
     const canAdd = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     const roleUploads = uploads.filter(upload => upload.role === role.code);
-    const duplicates = (localUploads.get(projectId) ?? []).filter(upload => upload.role === role.code && upload.phase === 'persisted' && upload.material && isReusedUpload(upload.material, upload.session)).map(upload => ({filename: upload.file.name, material: upload.material!}));
+    const duplicates = (localUploads.get(projectId) ?? []).filter(upload => upload.role === role.code && upload.phase === 'persisted' && upload.material && upload.uploadId && upload.material.upload_id!==upload.uploadId).map(upload => ({filename: uploadName(upload), material: upload.material!}));
     const roleMaterials = materials.filter(material => material.role === role.code && !localMaterialIds.has(material.material_id));
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
@@ -774,12 +836,12 @@ function renderMaterialPartitions(projectId: string) {
 
 function syncProjectExecution(projectId: string) {
   if (!isCurrentProjectWorkspace(projectId)) return;
-  const unsettled = Boolean(prospectusPanel?.busy) || (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
+  const unsettled = Boolean(prospectusPanel?.hasUnconfirmed) || (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
   const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${confirmedMaterials(projectId).length} 份已保存材料`;
   const recovery = recoveryStates.get(projectId);
   const pending = (localUploads.get(projectId) ?? []).find(upload => upload.phase !== 'persisted');
-  const message = prospectusPanel?.busy ? '募集书版本正在保存，请完成后再开始更新。' : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
-    : pending ? `${pending.file.name}：${uploadStatus(pending)}`
+  const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
+    : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
     : recovery?.state !== 'ready' ? '正在读取已保存材料…' : '';
   projectExecution?.sync(confirmedMaterials(projectId), recovery?.state === 'ready' && !unsettled, message);
 }
@@ -838,23 +900,65 @@ function updateMaterialWorkspace(projectId: string) {
       : sessionCount
         ? `已保存 ${sessionCount} 份材料。`
         : '尚未添加材料。';
-    const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.session && upload.material?.upload_id !== upload.session.upload_id).length;
+    const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.uploadId && upload.material?.upload_id !== upload.uploadId).length;
     if (reused) status.textContent += ` 本次 ${reused} 份重复上传已复用原材料版本。`;
   }
+  if(uploadJournalErrors.has(projectId))status.textContent+=' '+uploadJournalErrors.get(projectId);
 }
 
 function declaredMediaType(file: File, role: UploadRole): typeof M1_UPLOAD_MIME_TYPES[number] {
   const extension = file.name.toLowerCase().split('.').at(-1) ?? '';
   const mediaType = mimeByExtension[extension];
-  if (!mediaType || !M1_UPLOAD_MIME_TYPES.includes(mediaType)) throw new Error('此分区暂不支持该文件扩展名。');
+  if (!mediaType || !M1_UPLOAD_MIME_TYPES.includes(mediaType)) throw new UserFacingError('此分区暂不支持该文件扩展名。');
   if ((role === 'historical' || role === 'reference') && extension !== 'docx' && extension !== 'pdf') {
-    throw new Error('募集说明书分区仅接受 DOCX 或 PDF。');
+    throw new UserFacingError('募集说明书分区仅接受 DOCX 或 PDF。');
   }
   return mediaType;
 }
 
 function sha256(bytes: ArrayBuffer) {
   return crypto.subtle.digest('SHA-256', bytes).then(digest => [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''));
+}
+
+function uploadName(upload:LocalUpload){return upload.declaration?.filename??upload.file?.name??'待确认材料';}
+function uploadSize(upload:LocalUpload){return upload.declaration?.byte_size??upload.file?.size??0;}
+function uploadRecovery(projectId:string,owner=identity){
+  if(!owner)throw new UserFacingError('请重新登录后确认原上传。');const key=JSON.stringify([owner,projectId]);
+  let recovery=uploadRecoveries.get(key);if(!recovery){recovery=new UploadRecovery(api,owner,projectId,'authoring-material',()=>identity===owner);uploadRecoveries.set(key,recovery);}return recovery;
+}
+function uploadRecoveryMessage(error:unknown){
+  return error instanceof UploadRecoveryNeedsFileError||error instanceof UploadRecoveryStorageError||error instanceof UploadRecoveryLockError||error instanceof UploadRecoveryConflictError||error instanceof UploadRecoveryReceiptError?error.message:uploadErrorMessage(error);
+}
+function restoreUploadRows(projectId:string){
+  if(!identity)return;
+  try{
+    const rows=localUploads.get(projectId)??[],known=new Set(rows.map(row=>row.key));
+    for(const record of uploadRecovery(projectId).list()){
+      if(known.has(record.id))continue;
+      rows.push({key:record.id,owner:identity,projectId,role:record.declaration.role,declaration:record.declaration,hash:record.declaration.sha256,uploadId:record.uploadId,recoveryRecord:record,phase:'uncertain',sentBytes:0,restored:true});
+    }
+    localUploads.set(projectId,rows);uploadJournalErrors.delete(projectId);
+  }catch(error){uploadJournalErrors.set(projectId,uploadRecoveryMessage(error));}
+}
+function reselectUploadFile(upload:LocalUpload){
+  if(uploadReselectInputs.has(upload.key))return;
+  const input=document.createElement('input');input.type='file';input.hidden=true;input.dataset.uploadReselect=upload.key;input.accept=upload.role==='historical'||upload.role==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
+  const clear=()=>{input.remove();if(uploadReselectInputs.get(upload.key)===input)uploadReselectInputs.delete(upload.key);};
+  input.addEventListener('cancel',clear,{once:true});
+  input.addEventListener('change',()=>{
+    const file=input.files?.[0];clear();if(!file||identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
+    upload.file=file;upload.explicitResume=true;upload.phase='queued';upload.error=undefined;updateMaterialWorkspace(upload.projectId);pumpUploads();
+  },{once:true});
+  document.body.append(input);uploadReselectInputs.set(upload.key,input);input.click();
+}
+async function removeUploadRow(upload:LocalUpload){
+  upload.controller?.abort();
+  try{
+    if(!upload.journalDone){const recovery=uploadRecovery(upload.projectId,upload.owner);if(recovery.list().some(item=>item.id===upload.key))await recovery.forget(upload.key);}
+    if(identity!==upload.owner)return;
+    localUploads.set(upload.projectId,(localUploads.get(upload.projectId)??[]).filter(item=>item!==upload));uploadReselectInputs.get(upload.key)?.remove();uploadReselectInputs.delete(upload.key);updateMaterialWorkspace(upload.projectId);
+    if(upload.phase==='uncertain')void refreshProjectMaterials(upload.projectId,epoch);
+  }catch(error){if(identity===upload.owner){upload.phase='failed';upload.error='本机恢复记录尚未移除。'+uploadRecoveryMessage(error);updateMaterialWorkspace(upload.projectId);}}
 }
 
 function addUpload(projectId: string, role: UploadRole, file: File) {
@@ -867,107 +971,110 @@ function addUpload(projectId: string, role: UploadRole, file: File) {
 }
 
 function pumpUploads() {
+  pumpUploadPreparation();
   for (const uploads of localUploads.values()) for (const upload of uploads) {
     if (runningUploads >= 2) return;
-    if (upload.phase !== 'queued' || upload.controller || upload.owner !== identity) continue;
+    if (upload.phase !== 'queued' || !upload.declaration || upload.controller || upload.owner !== identity) continue;
     runningUploads++; upload.phase = 'hashing';
     void performUpload(upload).finally(() => { runningUploads--; pumpUploads(); });
   }
 }
-
-async function performUpload(upload: LocalUpload) {
-  const controller = new AbortController(); upload.controller = controller;
-  let acceptedByByteEndpoint = false;
-  let byteTransferAttempted = false;
-  const isCurrentOwner = () => identity === upload.owner && (localUploads.get(upload.projectId) ?? []).includes(upload);
-  try {
-    const mediaType = declaredMediaType(upload.file, upload.role);
-    if (!upload.file.size) throw new Error('空文件不能上传。');
-    if (upload.file.size > M1_UPLOAD_LIMITS.fileBytes) throw new Error('单份文件不能超过 100 MB，请拆分后上传。');
-    updateMaterialWorkspace(upload.projectId);
-    const hash = upload.hash ?? await sha256(await upload.file.arrayBuffer());
-    upload.hash = hash;
-    if (controller.signal.aborted || !isCurrentOwner()) return;
-    const complete = () => api.completeUpload(upload.projectId, upload.session!.upload_id, { byte_size: upload.file.size, sha256: hash }, controller.signal);
-    let material: Dto<'MaterialResponse'> | undefined;
-    // A lost completion response must be reconciled before sending bytes again.
-    if (upload.session) {
-      upload.phase = 'checking'; updateMaterialWorkspace(upload.projectId);
-      try { material = await complete(); }
-      catch (error) {
-        if (!(error instanceof ApiError) || ![404, 422].includes(error.status)) throw error;
-        if (error.status !== 404 && error.code !== 'MATERIAL_UNREADABLE') throw error;
-        if (error.status === 404 || Date.parse(upload.session.expires_at) <= Date.now()) upload.session = undefined;
+function pumpUploadPreparation(){
+  for(const uploads of localUploads.values())for(const upload of uploads){
+    if(preparingUploads>=2)return;
+    if(upload.phase!=='queued'||upload.declaration||upload.controller||upload.owner!==identity)continue;
+    preparingUploads++;upload.phase='hashing';const controller=new AbortController();upload.controller=controller;
+    void (async()=>{
+      try{
+        const file=upload.file;if(!file)throw new UserFacingError('请重新选择原文件。');const media_type=declaredMediaType(file,upload.role);
+        if(!file.size)throw new UserFacingError('空文件不能上传。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new UserFacingError('单份文件不能超过 100 MB，请拆分后上传。');
+        updateMaterialWorkspace(upload.projectId);const hash=await sha256(await file.arrayBuffer());controller.signal.throwIfAborted();
+        if(identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
+        const declaration={filename:file.name,media_type,byte_size:file.size,sha256:hash,role:upload.role};
+        upload.recoveryRecord=uploadRecovery(upload.projectId,upload.owner).begin(declaration,undefined,upload.key);upload.declaration=declaration;upload.hash=hash;upload.phase='queued';
+      }catch(error){
+        if(identity!==upload.owner||upload.phase==='cancelled'||upload.phase==='queued'&&controller.signal.aborted)return;
+        upload.phase='failed';upload.error=uploadRecoveryMessage(error);
+      }finally{
+        if(upload.controller===controller)upload.controller=undefined;preparingUploads--;if(identity===upload.owner)updateMaterialWorkspace(upload.projectId);pumpUploads();
       }
-    }
-    if (controller.signal.aborted || !isCurrentOwner()) return;
-    if (!material) {
-      const session = upload.session ?? await api.createUpload(upload.projectId, { filename: upload.file.name, media_type: mediaType, byte_size: upload.file.size, sha256: hash, role: upload.role }, controller.signal);
-      if (!isCurrentOwner() || controller.signal.aborted) return;
-      upload.session = session;
-      upload.phase = 'uploading'; upload.sentBytes = 0; updateMaterialWorkspace(upload.projectId);
-      byteTransferAttempted = true;
-      await api.uploadBytes(session.upload_url, upload.file, loaded => {
-        if (!isCurrentOwner() || controller.signal.aborted) return;
-        upload.sentBytes = Math.min(upload.file.size, Math.max(0, loaded));
-        upload.phase = upload.sentBytes >= upload.file.size ? 'saving' : 'uploading';
-        updateMaterialWorkspace(upload.projectId);
-      }, controller.signal);
-      if (controller.signal.aborted || !isCurrentOwner()) return;
-      acceptedByByteEndpoint = true; upload.phase = 'saving'; upload.sentBytes = upload.file.size; updateMaterialWorkspace(upload.projectId);
-      material = await complete();
-    }
-    if (controller.signal.aborted || !isCurrentOwner()) return;
-    upload.material = material; upload.phase = 'persisted'; upload.error = undefined;
-    recoveryStates.set(upload.projectId, { state: 'ready' });
-    updateMaterialWorkspace(upload.projectId);
-    void refreshProjectMaterials(upload.projectId, epoch);
-  } catch (error) {
-    if (!isCurrentOwner()) return;
-    // A quick retry waits in the queue until the aborted attempt releases its slot.
-    if (controller.signal.aborted && upload.phase === 'queued') return;
-    if (upload.phase === 'cancelled' || upload.phase === 'uncertain') return;
-    const aborted = controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError');
-    const explicitServerFailure = error instanceof ApiError && error.status > 0;
-    // A lost PUT response can precede the browser's first progress event.
-    const uncertain = (!explicitServerFailure || error instanceof ApiError && error.status >= 500)
-      && (upload.sentBytes >= upload.file.size || acceptedByByteEndpoint || byteTransferAttempted && !aborted);
-    upload.phase = aborted && !uncertain ? 'cancelled' : uncertain ? 'uncertain' : 'failed';
-    upload.error = aborted && !uncertain ? undefined : uncertain
-      ? '正在自动确认保存结果，无需重复上传…'
-      : uploadErrorMessage(error);
-    updateMaterialWorkspace(upload.projectId);
-    // A completion response can be lost after the server commits the material.
-    // Re-read metadata once; this never resends bytes or starts a run.
-    if (uncertain) {
-      await refreshProjectMaterials(upload.projectId, epoch);
-      // The PUT may have committed without an acknowledgement, leaving only the
-      // idempotent completion outstanding. Never retransmit bytes during recovery.
-      for (let attempt = 0; attempt < 3 && isCurrentOwner() && !controller.signal.aborted && upload.phase === 'uncertain'; attempt++) {
-        if (attempt) await new Promise(resolve => setTimeout(resolve, 2000));
-        if (!isCurrentOwner() || controller.signal.aborted || upload.phase !== 'uncertain' || !upload.session || !upload.hash) break;
-        try {
-          const material = await api.completeUpload(upload.projectId, upload.session.upload_id, { byte_size: upload.file.size, sha256: upload.hash }, controller.signal);
-          if (!isCurrentOwner() || controller.signal.aborted) return;
-          upload.material = material; upload.phase = 'persisted'; upload.error = undefined;
-          recoveryStates.set(upload.projectId, { state: 'ready' });
-          updateMaterialWorkspace(upload.projectId);
-          void refreshProjectMaterials(upload.projectId, epoch);
-        } catch (confirmationError) {
-          if (confirmationError instanceof ApiError && confirmationError.status > 0 && confirmationError.status < 500
-            && !(confirmationError.status === 422 && confirmationError.code === 'MATERIAL_UNREADABLE')) break;
-        }
-      }
-      if (isCurrentOwner() && upload.phase === 'uncertain' && !controller.signal.aborted) {
-        upload.error = '暂时无法确认保存结果。可稍后重试保存，系统会先查询原记录，避免重复上传。';
-        updateMaterialWorkspace(upload.projectId);
-      }
-    }
-  } finally {
-    if (upload.controller === controller) upload.controller = undefined;
+    })();
   }
 }
 
+async function performUpload(upload: LocalUpload) {
+  const controller=new AbortController();upload.controller=controller;
+  const isCurrentOwner=()=>identity===upload.owner&&(localUploads.get(upload.projectId)??[]).includes(upload);
+  const recovery=uploadRecovery(upload.projectId,upload.owner);
+  const previousRecord=upload.explicitResume?upload.recoveryRecord:undefined;upload.explicitResume=false;
+  const syncRecord=()=>{const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}};
+  const accept=(material:Dto<'MaterialResponse'>)=>{
+    if(controller.signal.aborted||!isCurrentOwner())return;
+    syncRecord();upload.material=material;upload.phase='persisted';upload.error=undefined;upload.restored=false;upload.needsFile=false;upload.sentBytes=uploadSize(upload);
+    recoveryStates.set(upload.projectId,{state:'ready'});updateMaterialWorkspace(upload.projectId);void refreshProjectMaterials(upload.projectId,epoch);
+  };
+  const resume=(file?:File)=>recovery.resume(upload.key,{file,previousRecord,signal:controller.signal,status:()=>{
+    if(!isCurrentOwner()||controller.signal.aborted)return;
+    const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}
+    upload.phase=record?.stage==='confirming'?'saving':record?.stage==='bytes_unknown'?'uploading':'checking';updateMaterialWorkspace(upload.projectId);
+  },progress:(loaded)=>{
+    if(!isCurrentOwner()||controller.signal.aborted)return;upload.sentBytes=Math.min(uploadSize(upload),Math.max(0,loaded));upload.phase=upload.sentBytes>=uploadSize(upload)?'saving':'uploading';updateMaterialWorkspace(upload.projectId);
+  }});
+  try{
+    if(!upload.declaration){
+      const file=upload.file;if(!file)throw new UserFacingError('请重新选择原文件。');
+      const media_type=declaredMediaType(file,upload.role);if(!file.size)throw new UserFacingError('空文件不能上传。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new UserFacingError('单份文件不能超过 100 MB，请拆分后上传。');
+      const hash=upload.hash??await sha256(await file.arrayBuffer());controller.signal.throwIfAborted();if(!isCurrentOwner())return;
+      upload.hash=hash;upload.declaration={filename:file.name,media_type,byte_size:file.size,sha256:hash,role:upload.role};
+    }
+    // An existing page keeps its original identity after another tab clears a
+    // completed checkpoint. Only an explicit retry may restore that snapshot;
+    // never recreate the same operation as a new declaration without its U.
+    if(!upload.recoveryRecord)upload.recoveryRecord=recovery.begin(upload.declaration,undefined,upload.key);
+    uploadJournalErrors.delete(upload.projectId);
+    upload.phase='checking';updateMaterialWorkspace(upload.projectId);
+    if(previousRecord&&!previousRecord.uploadId&&!recovery.list().some(item=>item.id===upload.key)){
+      // This page may have seen only the prepared declaration before another
+      // tab uploaded and removed its checkpoint. Read scoped saved materials;
+      // a missing original U is never permission to create a replacement.
+      await refreshProjectMaterials(upload.projectId,epoch);controller.signal.throwIfAborted();if(!isCurrentOwner())return;
+      if(recoveryStates.get(upload.projectId)?.state!=='ready')throw new UploadRecoveryConflictError();
+      const matches=(recoveredMaterials.get(upload.projectId)??[]).filter(material=>{try{validateUploadMaterial(upload.declaration!,material);return true;}catch{return false;}});
+      if(matches.length!==1)throw new UploadRecoveryConflictError();
+      const pin=matches[0],material=validateUploadMaterial(upload.declaration,await api.material(upload.projectId,pin.material_id,controller.signal,pin.material_version));
+      controller.signal.throwIfAborted();if(!isCurrentOwner())return;
+      if(material.material_id!==pin.material_id||material.material_version!==pin.material_version||material.upload_id!==pin.upload_id)throw new UploadRecoveryReceiptError();
+      accept(material);return;
+    }
+    const material=await resume(upload.file);if(controller.signal.aborted||!isCurrentOwner())return;accept(material);
+  }catch(error){
+    if(!isCurrentOwner())return;
+    if(controller.signal.aborted&&upload.phase==='queued')return;
+    if(upload.phase==='cancelled'||upload.phase==='uncertain'&&controller.signal.aborted)return;
+    try{syncRecord();}catch{/* Keep the visible original file and the storage error. */}
+    const aborted=controller.signal.aborted||error instanceof DOMException&&error.name==='AbortError';
+    if(error instanceof UploadRecoveryNeedsFileError){upload.needsFile=true;upload.phase='failed';upload.error=error.message;updateMaterialWorkspace(upload.projectId);return;}
+    const uncertain=!aborted&&Boolean(upload.uploadId)&&(!(error instanceof ApiError)||error.status===0||error.status>=500)
+      &&!(error instanceof UploadRecoveryStorageError||error instanceof UploadRecoveryLockError||error instanceof UploadRecoveryConflictError||error instanceof UploadRecoveryReceiptError);
+    upload.phase=aborted?'cancelled':uncertain?'uncertain':'failed';upload.error=aborted?undefined:uploadRecoveryMessage(error);
+    updateMaterialWorkspace(upload.projectId);
+    if(uncertain){
+      upload.error='正在确认原上传的保存结果，无需重复上传…';updateMaterialWorkspace(upload.projectId);
+      await refreshProjectMaterials(upload.projectId,epoch);
+      for(let attempt=0;attempt<3&&isCurrentOwner()&&!controller.signal.aborted&&upload.phase==='uncertain';attempt++){
+        if(attempt)await new Promise(resolve=>setTimeout(resolve,2000));
+        if(!isCurrentOwner()||controller.signal.aborted||upload.phase!=='uncertain')break;
+        try{const material=await resume();if(controller.signal.aborted||!isCurrentOwner())return;accept(material);}
+        catch(confirmationError){
+          if(!isCurrentOwner()||controller.signal.aborted)return;upload.phase='uncertain';upload.error=uploadRecoveryMessage(confirmationError);
+          if(confirmationError instanceof UploadRecoveryNeedsFileError){upload.needsFile=true;upload.phase='failed';break;}
+          if(confirmationError instanceof ApiError&&confirmationError.status>0&&confirmationError.status<500||confirmationError instanceof UploadRecoveryStorageError||confirmationError instanceof UploadRecoveryLockError||confirmationError instanceof UploadRecoveryConflictError||confirmationError instanceof UploadRecoveryReceiptError)break;
+        }
+      }
+      if(isCurrentOwner()&&!controller.signal.aborted&&!upload.material){if(upload.phase==='uncertain')upload.error='暂时无法确认保存结果。上传记录已保留，可稍后重试保存。'+(error instanceof ApiError?errorReference(error):'');else upload.error??='暂时无法确认保存结果，请稍后确认原上传。';updateMaterialWorkspace(upload.projectId);}
+    }
+  }finally{if(upload.controller===controller)upload.controller=undefined;}
+}
 async function refreshProjectMaterials(projectId: string, token: number) {
   if (!identity) return;
   const owner = identity;
@@ -1004,17 +1111,23 @@ async function refreshProjectMaterials(projectId: string, token: number) {
     const current = fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined);
     recoveredMaterials.set(projectId, current);
     for (const upload of localUploads.get(projectId) ?? []) {
-      if (upload.owner !== owner || upload.projectId !== projectId || upload.phase !== 'uncertain' || !upload.hash) continue;
+      if (upload.owner !== owner || upload.projectId !== projectId || upload.phase !== 'uncertain' || !upload.declaration || upload.restored) continue;
       // Match the content and partition, including server-side duplicate reuse.
       // A matching filename or upload ID alone is not a persistence receipt.
-      const matches = current.filter(material => material.state === 'persisted'
-        && material.sha256 === upload.hash && material.byte_size === upload.file.size
-        && material.role === upload.role && material.media_type === declaredMediaType(upload.file, upload.role));
+      const matches = current.filter(material => {try{validateUploadMaterial(upload.declaration!,material);return true;}catch{return false;}});
       if (matches.length !== 1) continue;
       upload.material = matches[0]; upload.phase = 'persisted'; upload.error = undefined;
-      upload.sentBytes = upload.file.size;
+      upload.sentBytes = uploadSize(upload);
     }
     const currentIds = new Set(current.map(item => item.material_id));
+    for(const upload of localUploads.get(projectId)??[]){
+      if(upload.owner!==owner||upload.phase!=='persisted'||!upload.material||upload.journalDone||!upload.declaration)continue;
+      const material=current.find(item=>item.material_id===upload.material!.material_id&&item.material_version===upload.material!.material_version);if(!material)continue;
+      try{validateUploadMaterial(upload.declaration,material);}catch{continue;}
+      try{const recovery=uploadRecovery(projectId,owner);if(recovery.list().some(item=>item.id===upload.key))await recovery.forget(upload.key);upload.journalDone=true;}
+      catch(error){if(owner===identity)uploadJournalErrors.set(projectId,'材料已保存，本机恢复记录尚未清除。'+uploadRecoveryMessage(error));}
+      if(controller.signal.aborted||token!==epoch||owner!==identity)return;
+    }
     localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted' || !!upload.material && currentIds.has(upload.material.material_id)));
     recoveryStates.set(projectId, { state: 'ready' });
   } catch (error) {
@@ -1023,7 +1136,7 @@ async function refreshProjectMaterials(projectId: string, token: number) {
     localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted'));
     const message = error instanceof ApiError && error.status === 501
       ? '材料事件恢复接口暂不可用；当前项目的服务器材料记录尚未确认。本地选择不会显示为已保存。'
-      : `无法读取服务器材料记录。${friendlyError(error)}`;
+      : `无法读取服务器材料记录。${friendlyError(error,'read')}`;
     recoveryStates.set(projectId, { state: 'unavailable', message });
   } finally {
     if (recoveryControllers.get(projectId) === controller) recoveryControllers.delete(projectId);
@@ -1076,20 +1189,18 @@ function bindMaterialWorkspace(projectId: string) {
     if (!upload) return;
     switch (button.dataset.uploadAction) {
       case 'cancel': {
-        const uncertain = upload.phase === 'saving' || upload.sentBytes >= upload.file.size;
+        const uncertain = upload.phase === 'saving' || upload.sentBytes >= uploadSize(upload);
         upload.phase = uncertain ? 'uncertain' : 'cancelled';
         upload.error = uncertain ? '已停止等待，可稍后重试保存。系统会先查询原记录。' : undefined;
         upload.controller?.abort(); updateMaterialWorkspace(projectId);
         if (uncertain) void refreshProjectMaterials(projectId, epoch);
         break;
       }
-      case 'retry': upload.phase = 'queued'; upload.error = undefined; updateMaterialWorkspace(projectId); pumpUploads(); break;
+      case 'retry': upload.explicitResume=true; upload.phase = 'queued'; upload.error = undefined; updateMaterialWorkspace(projectId); pumpUploads(); break;
+      case 'reselect': reselectUploadFile(upload);break;
       case 'reconcile': void refreshProjectMaterials(projectId, epoch); break;
       case 'remove': {
-        if (['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)) upload.controller?.abort();
-        localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(item => item !== upload));
-        updateMaterialWorkspace(projectId);
-        if (upload.phase === 'uncertain') void refreshProjectMaterials(projectId, epoch);
+        void removeUploadRow(upload);
         break;
       }
     }
@@ -1106,7 +1217,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
-  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || fileWorkspace?.hasUnconfirmed || integrityWorkspace?.hasUnconfirmed || qaWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || prospectusPanel?.hasUnconfirmed || projectFiles?.hasUnconfirmed || fileConsistency?.hasUnconfirmed || projectConversation?.hasUnsent || reviewWorkspace?.hasUnconfirmed || materialWorkspace?.hasUnconfirmed || fileWorkspace?.hasUnconfirmed || integrityWorkspace?.hasUnconfirmed || qaWorkspace?.hasUnconfirmed || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }
@@ -1129,7 +1240,7 @@ async function start() {
     identity = me.user_id; await renderRoute();
   } catch (error) {
     if (token !== epoch) return;
-    if (error instanceof ApiError && error.status === 401) routeSignedOut(); else renderLogin(friendlyError(error));
+    if (error instanceof ApiError && error.status === 401) routeSignedOut(); else renderLogin(friendlyError(error,'read'));
   }
 }
 void start();

@@ -1,0 +1,24 @@
+dialog[data-material-reference-picker] {width:min(860px,calc(100vw - 64px));max-height:85dvh;padding:0;border:1px solid #d9e2d6;border-radius:14px;color:#213c33;background:#fffefa;}
+dialog[data-material-reference-picker][open] {display:flex;flex-direction:column;overflow:hidden;}
+dialog[data-material-reference-picker]::backdrop {background:#243f375c;backdrop-filter:blur(3px);}
+[data-material-reference-picker] header {display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:20px 24px 12px;border-bottom:1px solid #dfe5da;flex-shrink:0;}
+[data-material-reference-picker] h2 {margin:0 0 8px;font-size:20px;}
+[data-material-reference-picker] p {margin:6px 0;line-height:1.65;overflow-wrap:anywhere;}
+[data-material-reference-picker] .m4-reference-projects {padding:12px 24px 0;flex-shrink:0;}
+[data-material-reference-picker] .m4-reference-projects label,[data-material-reference-picker] .m4-reference-file-search label {display:block;font-weight:600;margin:4px 0;}
+[data-material-reference-picker] .m4-reference-search {display:flex;gap:10px;align-items:center;margin-bottom:8px;}
+[data-material-reference-picker] input,[data-material-reference-picker] select {min-width:0;flex:1;width:100%;padding:9px 10px;border:1px solid #cfd9ca;border-radius:7px;color:inherit;background:white;font:inherit;}
+[data-material-reference-picker] .m4-reference-file-search {padding:0 24px 10px;flex-shrink:0;}
+[data-material-reference-picker] .m4-reference-file-search p,[data-material-reference-picker] [data-picker-project-status] {font-size:12px;color:#647267;}
+[data-material-reference-picker] [data-picker-content] {min-height:80px;overflow:auto;overscroll-behavior:contain;padding:0 24px 16px;flex:1;}
+[data-material-reference-picker] [data-picker-content]:focus-visible {outline:2px solid #245647;outline-offset:-3px;}
+[data-material-reference-picker] .m4-file-list {list-style:none;padding:0;margin:0;display:grid;gap:10px;}
+[data-material-reference-picker] .m4-file {border:1px solid #dfe5da;border-radius:8px;padding:14px;overflow-wrap:anywhere;}
+[data-material-reference-picker] .m4-file strong {display:block;line-height:1.6;}
+[data-material-reference-picker] .m4-file details {margin:8px 0;}
+[data-material-reference-picker] .m4-reference-unavailable {color:#875b1e;}
+[data-material-reference-picker] .m4-reference-count {font-size:12px;color:#647267;}
+[data-material-reference-picker] footer {display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;padding:12px 24px 18px;border-top:1px solid #dfe5da;flex-shrink:0;background:#fffefa;}
+[data-material-reference-picker] [data-picker-status] {flex:1;min-width:200px;}
+[data-material-reference-picker] [data-picker-status].error {color:#8f3b27;}
+[data-material-reference-picker] footer small {display:block;width:100%;color:#647267;line-height:1.6;}

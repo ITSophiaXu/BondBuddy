@@ -186,7 +186,7 @@ export class ReviewAssistant {
         if (this.disposed) return false;
         if (error instanceof ApiError && error.status === 409) {
           this.conflicts.add(key); this.status = '另一个页面修改了这条草稿。本页内容与原引用已保留；可将本页说明发送为新消息，不会覆盖原消息。';
-        } else this.status = `${friendlyError(error)} 本页草稿已保留，可重试同步。`;
+        } else this.status = `${friendlyError(error, 'save')} 本页草稿已保留，可重试同步。`;
         this.persistCache(); this.updateStatus(); return false;
       }
     }
@@ -232,7 +232,7 @@ export class ReviewAssistant {
       }
       this.status = '消息已保存；下轮可参考这段讨论，执行范围仍需确认。'; this.persistCache(); await this.refresh();
     } catch (error) {
-      if (!this.disposed) this.status = this.pending ? `${friendlyError(error)} 原请求已保留，再次发送会沿用同一请求。` : '消息已保存，草稿或回复状态尚未同步，请重新读取项目；不要重复发送。';
+      if (!this.disposed) this.status = this.pending ? `${friendlyError(error, 'submit')} 原请求已保留，再次发送会沿用同一请求。` : '消息已保存，草稿或回复状态尚未同步，请重新读取项目；不要重复发送。';
     } finally { this.sending = false; if (!this.disposed) this.render(); }
   }
 

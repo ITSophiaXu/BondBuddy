@@ -1,0 +1,8 @@
+[data-material-prior-result] {margin:16px 0;padding:16px 18px;border:1px solid #dce4d7;border-radius:10px;background:#f8faf5;min-width:0;overflow-wrap:anywhere;}
+[data-material-prior-result] h3 {margin:0 0 8px;font-size:15px;}
+[data-material-prior-result] p {margin:6px 0;line-height:1.7;}
+[data-material-prior-result] .m4-prior-name {font-weight:600;}
+[data-material-prior-result] details {margin:10px 0;}
+[data-material-prior-result] details p {font-size:12px;}
+[data-material-prior-result] button {max-width:100%;white-space:normal;}
+[data-material-prior-result]:focus-visible {outline:2px solid #245647;outline-offset:3px;}

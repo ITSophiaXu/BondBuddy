@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import type { MaterialParseJob, Recognition } from '@bondbuddy/contracts';
+import type { Dto } from '../src/api';
+import { taskPage } from './collection-fixtures';
 
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
 const now = '2026-09-24T12:00:00Z';
@@ -51,6 +53,14 @@ async function installApi(page: Page, state: FixtureState) {
     if (path === `/api/v1/projects/${projectId}` && request.method() === 'GET') {
       return state.owner === 'user-owner_a' ? json(route, 200, project) : json(route, 404, { code: 'NOT_FOUND' });
     }
+    if (path === `/api/v1/projects/${projectId}/tasks` && request.method() === 'GET') {
+      return state.owner === 'user-owner_a' ? json(route, 200, taskPage(projectId, [])) : json(route, 404, { code: 'NOT_FOUND' });
+    }
+    if (path === `/api/v1/projects/${projectId}/prospectus-versions` && request.method() === 'GET') {
+      const versions: Dto<'ProspectusVersionsResponse'> = { project_id: projectId, current_version_id: null,
+        selection_revision: 0, inactive_material_ids: [], versions: [] };
+      return state.owner === 'user-owner_a' ? json(route, 200, versions) : json(route, 404, { code: 'NOT_FOUND' });
+    }
     if (path === `/api/v1/projects/${projectId}/events` && request.method() === 'GET') {
       if (state.owner !== 'user-owner_a') return json(route, 404, { code: 'NOT_FOUND' });
       const after = Number(url.searchParams.get('after') ?? 0);
@@ -77,7 +87,7 @@ async function installApi(page: Page, state: FixtureState) {
       if (state.owner !== 'user-owner_a') return json(route, 404, { code: 'NOT_FOUND' });
       const uploadId = randomUUID();
       state.uploads.set(uploadId, { owner: state.owner, filename: body.filename, role: body.role, media_type: body.media_type, bytes: 0, failedOnce: false });
-      return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
+      return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/bytes`, expires_at: new Date(Date.now()+15*60*1000).toISOString(), max_bytes: 100_000_000 });
     }
     const bytesMatch = path.match(new RegExp(`/api/v1/projects/${projectId}/materials/uploads/([^/]+)/bytes$`));
     if (bytesMatch && request.method() === 'PUT') {
@@ -179,6 +189,7 @@ async function login(page: Page, username: string, expectProject = true) {
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill('Synthetic-password-123');
   await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
@@ -186,6 +197,7 @@ async function login(page: Page, username: string, expectProject = true) {
   if (expectProject) {
     await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '提供项目材料' })).toBeVisible();
+    await expect(page.locator('[data-upload-role="audit"]')).toBeEnabled();
   } else {
     await expect(page.getByText('无法访问这个项目，它可能已移除或不属于当前账号。')).toBeVisible();
   }
@@ -346,7 +358,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
     await page.getByRole('button',{name:'刷新已保存材料'}).click();
     await expect(page.locator('#material-recovery-status')).toContainText('已恢复 1 份材料');
     await expect(row).toBeVisible();
-    await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeDisabled();
   }
   // A renamed, deduplicated receipt may have another upload ID, but its bytes and role must agree.
   Object.assign(material,{media_type:'application/pdf',upload_id:'prior-deduplicated-upload',filename:'renamed.pdf'});
@@ -380,7 +392,7 @@ test('cancel before byte transfer and retry only that selected file', async ({ p
   await expect.poll(() => fixture.releaseCreate !== undefined).toBe(true);
   await row.getByRole('button', { name: '取消此文件' }).click();
   fixture.releaseCreate!();
-  await expect(row).toContainText('本次传输已取消');
+  await expect(row).toContainText('已停止本页等待');
   expect(fixture.putNames).toHaveLength(0);
   await row.getByRole('button', { name: '重试此文件' }).click();
   await expect(row).toContainText('服务器已确认保存');

@@ -24,6 +24,26 @@ test('all runtime states have accurate actions and unknown phases never leak log
   assert.equal(taskView(task('succeeded')).tone,'done');assert.equal(taskView(task('test_completed')).tone,'attention');
   assert.equal(taskView({...task(),stage:'private prompt contents'}).detail,'正在更新募集书');
 });
+
+test('historical file-update task links retain the original run independently of check identity',()=>{
+  const patch={...task('succeeded','generation'),operation:'file_patch' as const,project_id:'project / 债券',run_id:'patch?old&run=1'};
+  const target=taskHref(patch),query=new URLSearchParams(target.split('?')[1]);
+  assert.ok(target.startsWith('#consistency?'));assert.equal(query.get('project'),patch.project_id);
+  assert.equal(query.get('update_run'),patch.run_id);assert.equal(query.has('run'),false);
+  const check={...patch,operation:'file_check' as const,run_id:'check / 旧轮'};
+  const checkQuery=new URLSearchParams(taskHref(check).split('?')[1]);
+  assert.equal(checkQuery.get('run'),check.run_id);assert.equal(checkQuery.has('update_run'),false);
+});
+
+test('file-update failure entry promises its recorded task state rather than an unavailable failure cause',()=>{
+  const failed={...task('failed','generation'),operation:'file_patch' as const};
+  for(const state of ['failed','rejected'] as const){
+    assert.equal(taskView({...failed,state}).action,'查看任务');
+    assert.equal(taskView({...failed,state,operation:'file_check'}).action,'查看原因');
+  }
+  assert.equal(taskView({...failed,state:'running'}).action,'查看进度');
+  assert.equal(taskView({...failed,state:'succeeded'}).action,'查看结果');
+});
 test('collection pagination never turns partial pages into totals; empty and abort are distinct',async()=>{
   const item=(id:string):ProjectItem=>({project_id:id,name:id,draft_revision:1,updated_at:'2026-10-20T00:00:00Z'});
   let n=0;const rows=await loadProjectCollection(async()=>++n===1?{items:[item('a')],page:{has_more:true,next_cursor:'2'}}:{items:[item('a'),item('b')],page:{has_more:false,next_cursor:null}},()=>false);
