@@ -218,3 +218,13 @@ SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制�
 模型逻辑 ID 保持稳定，物理 attempt 编号仍在整个 job 内递增；Codex schema reask 预算单独按本执行调用次数计算。历史 prompted 调用先逐项核对完整绑定再筛选，缺失/损坏来源不能变成“没有旧调用”；合法旧未决调用仍阻断新发送。复核公开来源和旧分批阅读恢复同时核对实际 call/prompt/result。旧 unprompted V1 记录保持可见，不据此伪造可复用结果绑定。
 
 该重构没有活动版本切换、补料采用、重做计划或新 Word。SQL readiness/delivery 仍读取原 stage 路径并依赖现有 V1/准确成果约束，尚未独立校验 stamp；真正采用时必须一起接活动执行身份。自动 terminated-timeout 恢复的安全次数上限仍按整个 job 历史累计，不能声称所有重试限制都已按执行重置。历史工作留在既有不可变 saved-work receipts，未来采用须先冻结旧工作，再按明确依赖与复用计划切换活动阶段及输入，不能复制同名 prompt 或清空后整单重跑。本地验证见[执行恢复边界专项](../acceptance/desktop-ux-coverage-20261026/execution-work-boundaries/README.md)。G03 / UX-A03 与整体 goal 仍 active；B 已选，具体定价公式未定。
+
+### 2026-10-27：M1 准确续做请求准备
+
+新增内部 `loadRunSupplementAuthoringPreparation()`，按指定保存回执重新使用 HTTP 草稿响应的同一冻结输入 reader 和候选 compiler。核对原执行/输入、回执请求 hash、准确暂停 checkpoint、两处 stage 的同一 prompt、唯一已捕获完整 M1 结果，以及全部旧文件和完整候选材料字节。完整 delta 保留新增、明确替换、未变材料及原稿声明前后值；稍后同一暂停位置保存的新回执不替代明确请求的旧回执。未定义新 HTTP、采用、队列或报价协议。
+
+当前 M1 stage 和内部 preparer 共用真实 prompt/workspace builder。内部准备将准确旧文件写入 `previous_work/`，把材料变化、候选输入及来源写入 `continuation.json` 和实际 `input.json`；原始要求沿准确 submission/version/hash 读取私有正文，后续项目消息不进入。该读取保留既有访问审计，不能称完全没有数据库写入。工作区 I/O 前后重新核对暂停边界、plan hash、来源和要求，文件副本全部列入原件 hash 核验。
+
+默认以已保存 clean 工作稿作为本轮编辑基线，拟定的新 tracked 只表示相对该工作稿的变化，原 tracked/baseline 留作回查，不重建最初上传稿以来的完整修订历史。明确 discard 时不选择旧 clean 作为基线。只支持同一准确完整 M1 结果中的双稿；选填 baseline 不成为新门槛。scratch 工作记录没有保留，不能声称恢复任意中途章节；当前无章节依赖图，请求明确保守复核全文，不宣称已完成局部增量复用。
+
+详见[请求准备专项](../acceptance/desktop-ux-coverage-20261026/supplement-authoring-request/README.md)。它证明真实保存回执向实际 M1 请求构建器的传递，没有执行候选输入的模型调用、V2、采用、报价确认或补料后的新 Word；M3/M4 的续做输入也尚未接入。B1/B2 定价规则仍待确定，G03 / UX-A03 和完整 goal 保持 active，不增加用户旅程通过数。

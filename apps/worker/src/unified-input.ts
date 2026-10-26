@@ -2,7 +2,7 @@ import { ReviewResultPinSchema, type ReviewResultPin } from '@bondbuddy/contract
 import { Value } from '@sinclair/typebox/value';
 import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
   type ReviewRevisionPin, type ReviewEvidenceRef, type UnifiedAuthoringInput, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { digest } from '@bondbuddy/api/data';
+import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { ownerProjectMessageBody } from '@bondbuddy/api/log-ops';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
@@ -217,6 +217,17 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     if(!stored||inputManifestHash(stored.manifest.materials)!==inputManifestHash(manifest.materials))throw Error('INPUT_REVISION_CONFLICT');
     materials.push({pin:{material_id:reviewResult.artifact_id,material_version:reviewResult.artifact_version,sha256:reviewResult.sha256,role:'review_report'},filename:'本次复核报告.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:stored.object_key,records:[]});
   }
+  const requirements = await loadUnifiedRequirements({ pool: ctx.pool, blobs: ctx.blobs,
+    owner: ctx.run.owner_user_id, projectId: ctx.run.project_id, manifest, signal: ctx.signal });
+  return { manifest, materials, requirements };
+}
+
+/** Resolve only immutable requirement pins, also for an internal candidate request.
+ * This reader does not grant execution authority or read the latest project messages. */
+export async function loadUnifiedRequirements(input: { pool: Pool; blobs: PrivateBlobs; owner: string;
+  projectId: string; manifest: UnifiedManifest; signal?: AbortSignal }): Promise<string[]> {
+  const { manifest } = input;
+  const reviewResult = manifest.authoring.review_result, revision = manifest.authoring.review_revision;
   const requirements: string[] = reviewResult ? ["根据所附复核报告，结合本轮原募集书与证据材料更新文稿。有充分依据的建议才应用；待确认或缺证事项保留，不将未执行的检查写为通过。保留原稿结构，输出修订版和清洁版。",reviewResult.requirements].filter(Boolean) : [];
   // The review input's requirements and the accepted plan remain separately pinned.
   // Neither later chat messages nor the project's current mutable draft are loaded here.
@@ -228,11 +239,11 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     }
   }
   for (const pin of manifest.authoring.requirements) {
-    const row = (await ctx.pool.query(`SELECT snapshot_id,content_sha256 FROM bb_user_submission_versions
+    const row = (await input.pool.query(`SELECT snapshot_id,content_sha256 FROM bb_user_submission_versions
       WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND message_id=$4 AND message_version=$5 AND submission_kind='project_message'`,
-    [pin.submission_id, ctx.run.owner_user_id, ctx.run.project_id, pin.message_id, pin.message_version])).rows[0];
+    [pin.submission_id, input.owner, input.projectId, pin.message_id, pin.message_version])).rows[0];
     if (!row || String(row.content_sha256).trim() !== pin.content_sha256) throw new Error('INPUT_REVISION_CONFLICT');
-    requirements.push(await ownerProjectMessageBody(ctx.pool, ctx.blobs, ctx.run.owner_user_id, ctx.run.project_id, row.snapshot_id, pin.content_sha256, ctx.signal));
+    requirements.push(await ownerProjectMessageBody(input.pool, input.blobs, input.owner, input.projectId, row.snapshot_id, pin.content_sha256, input.signal));
   }
-  return { manifest, materials, requirements };
+  return requirements;
 }

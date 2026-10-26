@@ -40,7 +40,7 @@ function reviewResultSnapshotMatches(manifest: Record<string, any>, execution: a
 }
 
 /** Read the accepted input, never the project's later editable draft. */
-async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Promise<Base> {
+async function frozenBase(db: Pool | PoolClient, owner: string, r: any, job: any): Promise<Base> {
   // Share the exact input reader used by real worker consumers. The caller has
   // already checked the run identity; unreadable frozen input remains a 503.
   let frozen;
@@ -97,7 +97,7 @@ async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Prom
   return { pins, supported, manifest, reviewSnapshot: reviewExecution?.snapshot ?? null };
 }
 
-async function materialDetails(db: PoolClient, owner: string, pin: BasePin): Promise<RunSupplementMaterial> {
+async function materialDetails(db: Pool | PoolClient, owner: string, pin: BasePin): Promise<RunSupplementMaterial> {
   const material = (await db.query(`SELECT m.*,p.deleted_at AS project_deleted_at
     FROM bb_material_versions m JOIN bb_projects p ON p.owner_user_id=m.owner_user_id AND p.id=m.project_id
     WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.version=$4`,
@@ -150,16 +150,24 @@ async function validateChanges(db: PoolClient, owner: string, projectId: string,
   }
 }
 
-async function response(db: PoolClient, owner: string, r: any, job: any, base: Base, receipt: any, latest: number): Promise<RunSupplementDraftResponse> {
+/** Internal reader shared by the receipt response and native-file continuation
+ * preparation. A candidate remains data and never grants execution authority. */
+export async function readRunSupplementCandidate(db: Pool | PoolClient, owner: string, r: any, job: any, receipt: any, frozen?: Base) {
+  const base = frozen ?? await frozenBase(db, owner, r, job);
   const baseMaterials = await Promise.all(base.pins.map(pin => materialDetails(db, owner, pin)));
   const changes = (receipt?.changes ?? []) as RunSupplementChange[];
   const additions = await Promise.all(changes.map(change => materialDetails(db, owner, { ...change.material, source_project_id: r.project_id })));
   const replacements = new Map(changes.flatMap((change, index) => change.replaces ? [[pinKey(change.replaces), additions[index]] as const] : []));
   const result = baseMaterials.map(pin => replacements.get(pinKey(pin)) ?? pin);
   changes.forEach((change, index) => { if (!change.replaces) result.push(additions[index]); });
-  const blocked = await saveBlock(db, owner, r, job, base);
-  const { preview } = compileRunSupplementInput({ projectId: r.project_id, manifest: base.manifest,
+  const compiled = compileRunSupplementInput({ projectId: r.project_id, manifest: base.manifest,
     reviewSnapshot: base.reviewSnapshot, resultMaterials: result, changes });
+  return {base,baseMaterials,changes,resultMaterials:result,...compiled};
+}
+
+async function response(db: PoolClient, owner: string, r: any, job: any, base: Base, receipt: any, latest: number): Promise<RunSupplementDraftResponse> {
+  const {baseMaterials,changes,resultMaterials:result,preview}=await readRunSupplementCandidate(db,owner,r,job,receipt,base);
+  const blocked = await saveBlock(db, owner, r, job, base);
   return { run_id: r.id, project_id: r.project_id, revision: receipt?.revision ?? 0, latest_revision: latest,
     request_id: receipt?.request_id ?? null, saved_at: receipt ? date(receipt.saved_at) : null,
     base_input_revision: r.input_revision, base_input_hash: r.input_hash.trim(), base_materials: baseMaterials,

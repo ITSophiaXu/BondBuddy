@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./run-supplement-preparation": {"types":"./dist/run-supplement-preparation.d.ts","default":"./dist/run-supplement-preparation.js"},
+    "./run-supplement-files": {"types":"./dist/run-supplement-files.d.ts","default":"./dist/run-supplement-files.js"},
     "./review-report-execution": {"types":"./dist/review-report-execution.d.ts","default":"./dist/review-report-execution.js"},
     "./artifact-execution": {"types":"./dist/artifact-execution.d.ts","default":"./dist/artifact-execution.js"},
     "./run-working-files": {"types":"./dist/run-working-files.d.ts","default":"./dist/run-working-files.js"},

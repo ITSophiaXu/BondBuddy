@@ -235,3 +235,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 ### 后续 M4 文件登记增量（0130）
 
 [M4 登记专项](../acceptance/desktop-ux-coverage-20261026/execution-m4-artifacts/README.md)将正文与编制说明的登记、列表/下载/底稿、交付成员及原结算 readiness 绑定准确 V1 执行，严格 QA 兼容分支和通用文件授权保持各自边界。真实 PG 验证全部元数据重放、微秒/NULL 回填、双文件、撤销编制说明、充值后复用已保存成果，以及锁等待后租约过期无副作用；独立专项与回归采用数见其 summary，不与旧数相加。没有新增浏览器、后继采用或同任务新输入旅程，不上调覆盖率。B1/B2 追加公式、版本化账务与完整 G03 仍未完成，整体 goal 保持 active。
+
+### 后续 M1 续做请求准备
+
+[请求准备专项](../acceptance/desktop-ux-coverage-20261026/supplement-authoring-request/README.md)将准确保存的完整 M1 旧稿、材料变化和固定要求接到当前生产 stage 共用的真实 prompt/workspace writer。真实 PG/HTTP 保存回执经过内部 preparer 后，文件和 delta 实际进入工作区；准备前后状态、来源与字节变化均拒绝，保留既有要求读取审计。普通 V1 prompt/交付语义保留。此切片只证明请求准备，没有候选模型执行、采用、V2、追加报价或新 Word；M3/M4 续做也未实现。G03 / UX-A03 仍未通过，不上调场景覆盖率或主要功能完成比例。
