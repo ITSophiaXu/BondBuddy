@@ -48,7 +48,7 @@ type FixtureOptions={
   changed?:'source-version'|'source-revision'|'file-version';missingRun?:boolean;delivered?:boolean;
   nullReplacement?:boolean;transientOnce?:408|429;dropCheckOnce?:boolean;
   freshness?:'replaced'|'scope-gap'|'combined'|'source-selection';historyCheck?:boolean;
-  emptyState?:'source'|'files';
+  emptyState?:'source'|'files';latest?:boolean;
 };
 const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
 
@@ -110,6 +110,7 @@ async function setup(page:Page,options:FixtureOptions={}){
     if(path===`/projects/${projectId}/prospectus-versions`||path===`/projects/${sourceProject}/prospectus-versions`)return json(route,200,{project_id:options.emptyState==='source'?projectId:sourceProject,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]});
     if(path===base&&method==='GET')return json(route,200,{files});
     if(path===base+'/checks'&&method==='GET')return json(route,200,{checks});
+    if(options.missingRun&&path===base+'/checks/missing-check'&&method==='GET')return json(route,404,{code:'NOT_FOUND',message:'Synthetic requested check is unavailable',retryable:false,correlation_id:'consistency-workbench-missing',field_errors:[]});
     if(path===base+'/checks'&&method==='POST'){
       const input=body as CheckBody;checkPosts.push(structuredClone(input));
       const old=checkReceipts.get(input.request_id);
@@ -158,7 +159,7 @@ async function setup(page:Page,options:FixtureOptions={}){
     }
     return json(route,404,{code:'NOT_FOUND'});
   });
-  await page.goto(`/#consistency?project=${projectId}${options.emptyState?'':'&run='+(options.missingRun?'missing-check':options.historyCheck?olderCheckId:checkId)}`);
+  await page.goto(`/#consistency?project=${projectId}${options.emptyState||options.latest?'':'&run='+(options.missingRun?'missing-check':options.historyCheck?olderCheckId:checkId)}`);
   if(options.workspaceFailure)await expect(page.getByRole('alert')).toBeVisible();
   else if(options.missingRun)await expect(page.getByRole('heading',{name:'指定的检查记录暂时无法读取'})).toBeVisible();
   else if(options.emptyState)await expect(page.locator('.fc-empty')).toBeVisible();
@@ -249,10 +250,14 @@ test('an unknown update retries the same body and check even after another check
 test('an explicit missing run never silently displays the latest check',async({page})=>{
   const f=await setup(page,{missingRun:true});
   await expect(page.locator('.fc-results')).toHaveCount(0);
-  await expect(page.getByText('当前列表仅提供最近 30 轮记录，没有自动切换到其他一轮。')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'指定的检查记录暂时无法读取',exact:true})).toBeVisible();
+  await expect(page.locator('.fc-empty')).toContainText('没有自动切换到其他一轮。');
+  expect(f.calls.filter(call=>call.method==='GET'&&call.path===base+'/checks/missing-check')).toHaveLength(1);
+  expect(f.calls.every(call=>call.method==='GET')).toBe(true);
   await expect(page).toHaveURL(/run=missing-check/);expect(f.updates).toHaveLength(0);
   await page.locator('[data-fc-latest]').click();
   await expect(page.locator('.fc-results')).toBeVisible();await expect(page).not.toHaveURL(/run=missing-check/);
+  expect(f.calls.every(call=>call.method==='GET')).toBe(true);expect(f.updates).toHaveLength(0);expect(f.checkPosts).toHaveLength(0);
 });
 
 test('an existing workspace is read with GET and page reopening never prepares it again',async({page})=>{
@@ -263,11 +268,20 @@ test('an existing workspace is read with GET and page reopening never prepares i
 });
 
 test('a first workspace 404 permits one POST preparation and subsequent reads use GET',async({page})=>{
-  const f=await setup(page,{unpreparedWorkspace:true});
+  const f=await setup(page,{unpreparedWorkspace:true,latest:true});
   expect(f.calls.filter(c=>c.path===base+'/workspace').map(c=>c.method)).toEqual(['GET','POST']);
   await page.reload();await expect(page.locator('.fc-results')).toBeVisible();
   expect(f.calls.filter(c=>c.path===base+'/workspace').map(c=>c.method)).toEqual(['GET','POST','GET']);
   expect(f.calls.filter(c=>c.method==='POST').map(c=>c.path)).toEqual([base+'/workspace']);expect(f.updates).toHaveLength(0);
+});
+
+test('an explicit check with a workspace 404 stays readable and never prepares the workspace',async({page})=>{
+  const f=await setup(page,{unpreparedWorkspace:true});
+  await expect(page).toHaveURL(new RegExp('run='+checkId));await expect(page.locator('.fc-results')).toBeVisible();
+  expect(f.calls.filter(c=>c.path===base+'/workspace').map(c=>c.method)).toEqual(['GET']);
+  await page.reload();await expect(page.locator('.fc-results')).toBeVisible();
+  expect(f.calls.filter(c=>c.path===base+'/workspace').map(c=>c.method)).toEqual(['GET','GET']);
+  expect(f.calls.every(c=>c.method==='GET')).toBe(true);expect(f.updates).toHaveLength(0);expect(f.checkPosts).toHaveLength(0);
 });
 
 test('a workspace read failure does not create a workspace as a fallback',async({page})=>{
@@ -451,7 +465,8 @@ test.describe('consistency freshness finite contracts',()=>{
   test('missing source and missing files each give the relevant existing workbench entry without preparing or submitting work',async({context})=>{
     for(const emptyState of ['source','files'] as const){const page=await context.newPage(),f=await setup(page,{emptyState});
       const name=emptyState==='source'?'添加并采用募集书':'上传已有项目文件',link=page.getByRole('link',{name,exact:true});
-      await expect(link).toHaveAttribute('href',`#/projects/${projectId}/files`);await expect(page.locator('[data-fc-start]')).toHaveCount(0);
+      await expect(link).toHaveAttribute('href',`#/projects/${projectId}/files`);await expect(page.locator('[data-fc-start]:enabled')).toHaveCount(0);
+      if(emptyState==='source')await expect(page.locator('[data-fc-start]')).toBeDisabled();
       await link.focus();await page.keyboard.press('Enter');await expect(page.locator('#file-list')).toBeVisible();
       await expect(page).toHaveURL(new RegExp('/projects/'+projectId+'/files'));expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);await page.close();
     }

@@ -35,10 +35,10 @@ async function createOperation(c:PoolClient,owner:string,id:string,key:string,re
   await enqueue(c,run,'project_file_v1');await event(c,owner,id,'project.file_'+manifest.operation+'_started',{run_id:run.id});
   return run;
 }
-export async function readProjectFileChecks(db:Pool,owner:string,id:string):Promise<ProjectFileCheck[]>{
+async function projectFileChecks(db:Pool,owner:string,id:string,runId?:string):Promise<ProjectFileCheck[]>{
   await project(db,owner,id);const current=await projectFileSource(db,owner,id);
-  const rows=(await db.query(`SELECT o.*,r.state,r.stage FROM bb_project_file_operations o JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id
-    WHERE o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check' ORDER BY o.created_at DESC LIMIT 30`,[owner,id])).rows;
+  const rows=(await db.query(`SELECT o.*,r.state,r.stage FROM bb_project_file_operations o JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.project_id=o.project_id AND r.id=o.run_id
+    WHERE o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check' ${runId===undefined?'ORDER BY o.created_at DESC LIMIT 30':'AND o.run_id=$3'}`,runId===undefined?[owner,id]:[owner,id,runId])).rows;
   const updates=(await db.query(`SELECT a.*,r.state,v.id AS new_version_id FROM bb_project_file_acceptances a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
     LEFT JOIN bb_project_file_versions v ON v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.check_run_id=ANY($2::text[])`,[owner,rows.map(r=>r.run_id)])).rows;
   const batches=(await db.query("SELECT * FROM bb_project_file_update_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[owner,id])).rows;
@@ -48,6 +48,14 @@ export async function readProjectFileChecks(db:Pool,owner:string,id:string):Prom
     files:r.manifest.files.map((f:any)=>({file_id:f.file_id,file_version_id:f.file_version_id,filename:f.filename,sequence:f.sequence})),
     updates:[...updates.filter(a=>a.check_run_id===r.run_id).map(a=>({file_version_id:a.file_version_id,issue_ids:a.issue_ids,run_id:a.run_id,state:a.state,new_version_id:a.new_version_id??null})),
       ...batches.filter(b=>b.check_run_id===r.run_id).flatMap(b=>(b.items as UpdateItem[]).filter(i=>!i.run_id).map(i=>({file_version_id:i.manifest.file_version_id,issue_ids:i.issue_ids,run_id:null,state:b.state==='paused'?'paused':'queued',new_version_id:null})))]}));
+}
+export function readProjectFileChecks(db:Pool,owner:string,id:string):Promise<ProjectFileCheck[]>{
+  return projectFileChecks(db,owner,id);
+}
+export async function readProjectFileCheck(db:Pool,owner:string,id:string,runId:string):Promise<ProjectFileCheck>{
+  const checks=await projectFileChecks(db,owner,id,runId);
+  if(checks.length!==1)throw missing();
+  return checks[0];
 }
 async function currentSource(c:PoolClient,owner:string,id:string,expected:{version_id:string;selection_revision?:number}){
   const s=await projectFileSource(c,owner,id);
@@ -90,6 +98,7 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
 export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
   const base='/api/v1/projects/:project_id/project-files',params=(r:FastifyRequest)=>r.params as {project_id:string;run_id:string};
   app.get(base+'/checks',async r=>({checks:await readProjectFileChecks(db(),await owner(r),params(r).project_id)}));
+  app.get(base+'/checks/:run_id',async r=>({check:await readProjectFileCheck(db(),await owner(r),params(r).project_id,params(r).run_id)}));
   app.post(base+'/checks',{schema:{body:projectFileSchemas.ProjectFileCheckRequest}},async r=>{
     const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof projectFileSchemas.ProjectFileCheckRequest>;
     const runId=await transaction(db(),async c=>{
