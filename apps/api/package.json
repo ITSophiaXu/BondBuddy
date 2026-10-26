@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./run-supplement-processing-plan": {"types":"./dist/run-supplement-processing-plan.d.ts","default":"./dist/run-supplement-processing-plan.js"},
     "./run-supplement-preparation": {"types":"./dist/run-supplement-preparation.d.ts","default":"./dist/run-supplement-preparation.js"},
     "./run-supplement-files": {"types":"./dist/run-supplement-files.d.ts","default":"./dist/run-supplement-files.js"},
     "./review-report-execution": {"types":"./dist/review-report-execution.d.ts","default":"./dist/review-report-execution.js"},

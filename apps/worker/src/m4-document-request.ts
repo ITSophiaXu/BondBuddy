@@ -9,6 +9,7 @@ import { loadM4RuntimeSkill } from './m4-runtime-skills.js';
 import { checkedM4File, prepareM4Files, verifyM4Originals, type M4FilePreparationContext } from './m4-file-workspace.js';
 import type { M4WorkerInput } from './m4-input.js';
 import { prepareProjectFileSource } from './project-file-tools.js';
+import type { CompleteRunSupplementProcessingPreparation } from './run-supplement-processing-request.js';
 
 export function loadM4DocumentSkill(manifest: M4DocumentManifest) {
   return loadM4RuntimeSkill(manifest.input.project_file ? 'm4-project-file' : ({init:'m4-init-report',underwriter:'m4-underwriter',
@@ -21,7 +22,8 @@ export function loadM4DocumentSkill(manifest: M4DocumentManifest) {
  * this actual prompt and workspace writer. No model/collector or fee authority. */
 export function buildM4DocumentRequest(options: {context: M4FilePreparationContext; input: M4WorkerInput;
   skill: ReturnType<typeof loadM4RuntimeSkill>; methodHash: string;
-  continuation?: {preparation: RunSupplementFilePreparation; readFile: (pin: CapturedSupplementFilePin) => Promise<Buffer>}}) {
+  continuation?: {preparation: RunSupplementFilePreparation | CompleteRunSupplementProcessingPreparation;
+    readFile: (pin: CapturedSupplementFilePin) => Promise<Buffer>}}) {
   const {context, input, skill, methodHash, continuation} = options;
   if (input.manifest.kind !== 'document') throw Error('INPUT_REVISION_CONFLICT');
   let originals = new Map<string, string>(), linkedSource: ProjectFileText | null = null;
@@ -47,7 +49,8 @@ export function buildM4DocumentRequest(options: {context: M4FilePreparationConte
       continuationData = {version: p.version, kind: p.kind, owner: p.owner, project_id: p.projectId, run_id: p.runId,
         supplement_revision: p.revision, request_id: p.requestId, request_hash: p.requestHash,
         source_execution: p.sourceExecution, checkpoint_hash: p.checkpointHash, candidate_input_hash: p.candidateInputHash,
-        plan_hash: p.planHash, delta: p.delta, previous_work: {source: p.priorWork.source,
+        plan_hash: p.planHash, ...('basisHash' in p ? {basis_hash: p.basisHash, processing_plan_id: p.processingPlanId} : {}),
+        delta: p.delta, previous_work: {source: p.priorWork.source,
           result_hash: p.priorWork.resultHash, metadata: p.priorWork.metadata, files},
         processing: 'new_processing_with_full_document_review', scratch_recovery: 'not_retained'};
       const bytes = JSON.stringify(continuationData, null, 2);

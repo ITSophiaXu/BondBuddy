@@ -9,6 +9,7 @@ import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { buildReviewFileRequest, type ReviewFileInput } from './review-file-request.js';
 import { reviewFileStage } from './review-file-stage.js';
 import type { StageContext, codexModelStage } from './run-pipeline.js';
+import type { CompleteRunSupplementProcessingPreparation } from './run-supplement-processing-request.js';
 
 function fixture(operation: 'full_review' | 'differential_review' = 'full_review') {
   const source = Buffer.from('Candidate source'), evidence = Buffer.from('Replacement evidence');
@@ -60,6 +61,26 @@ async function workspace(visit: (cwd: string) => Promise<void>) {
   const cwd = await mkdtemp(join(tmpdir(), 'bb-review-request-'));
   try { await visit(cwd); } finally { await rm(cwd, { recursive: true, force: true }); }
 }
+
+test('durable M3 basis keeps plan provenance and exact selected findings while old findings remain references', async () => {
+  const f = fixture('differential_review');
+  const durable: CompleteRunSupplementProcessingPreparation = { ...f.preparation,
+    version: 'run-supplement-processing-basis-v1', priorWorkStatus: 'captured_complete',
+    basisHash: digest('basis'), processingPlanId: 'persisted-review-plan' };
+  const request = buildReviewFileRequest({ input: f.input, inputHash: durable.candidateInputHash, blobs: f.blobs,
+    continuation: { preparation: durable, readFile: async pin => f.priorBytes.get(pin.name)! } });
+  await workspace(async cwd => {
+    await request.prepare(cwd); await request.verifyOriginals(cwd);
+    const data = JSON.parse(await readFile(join(cwd, 'input.json'), 'utf8'));
+    assert.equal(data.continuation.version, durable.version);
+    assert.equal(data.continuation.processing_plan_id, durable.processingPlanId);
+    assert.equal(data.continuation.plan_hash, durable.planHash);
+    assert.equal(data.continuation.basis_hash, durable.basisHash);
+    assert.deepEqual(data.scope.selected_findings, f.input.selected_findings);
+    assert.equal(JSON.stringify(data.scope).includes('OLD-1'), false);
+    assert.equal(data.continuation.previous_work.files.every((file: any) => file.use === 'source_reference'), true);
+  });
+});
 
 test('production V1 uses the extracted writer with its exact original prompt and input shape', async () => {
   const f = fixture(), config = { ...loadCodexAdapterConfig({}), web_search: 'disabled' as const };

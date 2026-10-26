@@ -39,12 +39,26 @@ test('independent prompt registration requires the initial execution before Blob
   }
   async function corruptExecution(f:Awaited<ReturnType<typeof fixture>>,kind:'missing'|'wrong_hash'){
     // Deliberate damage is restricted to this file's private database clone.
-    // Normal writers cannot bypass the immutable trigger.
+    // Keep the exact head FK valid while damaging the actual execution origin;
+    // normal writers cannot bypass either immutable guard.
     await transaction(observer,async client=>{
+      await client.query('ALTER TABLE bb_run_execution_heads DISABLE TRIGGER bb_run_execution_head_immutable');
       await client.query('ALTER TABLE bb_run_execution_versions DISABLE TRIGGER bb_run_execution_immutable');
-      if(kind==='missing')await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=$1',[f.runId]);
-      else await client.query('UPDATE bb_run_execution_versions SET input_hash=$2 WHERE run_id=$1',[f.runId,digest('different synthetic execution')]);
+      if(kind==='missing'){
+        assert.equal((await client.query('DELETE FROM bb_run_execution_heads WHERE run_id=$1',[f.runId])).rowCount,1);
+        assert.equal((await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=$1',[f.runId])).rowCount,1);
+      }else{
+        const wrongHash=digest('different synthetic execution');
+        assert.notEqual(wrongHash,f.inputHash);
+        assert.equal((await client.query('UPDATE bb_run_execution_heads SET input_hash=$2 WHERE run_id=$1',[f.runId,wrongHash])).rowCount,1);
+        assert.equal((await client.query('UPDATE bb_run_execution_versions SET input_hash=$2 WHERE run_id=$1',[f.runId,wrongHash])).rowCount,1);
+      }
+      // Drain deferred FK checks before ALTER TABLE restores the guards. This
+      // also proves the committed fixture has no dangling/mismatched head.
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       await client.query('ALTER TABLE bb_run_execution_versions ENABLE TRIGGER bb_run_execution_immutable');
+      await client.query('ALTER TABLE bb_run_execution_heads ENABLE TRIGGER bb_run_execution_head_immutable');
+      assert.equal((await client.query('SELECT input_hash FROM bb_runs WHERE id=$1',[f.runId])).rows[0].input_hash.trim(),f.inputHash);
     });
   }
   async function waitForWriterLock(label='run'){

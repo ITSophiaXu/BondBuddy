@@ -236,3 +236,18 @@ SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制�
 M4 共用真实文书 writer，准备时按原执行核对来源项目、主文档、模板、正式 edit_base、知识及要求，再检查原结果的 skill/method 与当前固定配置一致。旧正文和编制说明仅作工作参考，不替换正式底稿或成果。工作区 I/O 前后重核 plan、暂停边界和完整来源，旧文件、候选材料及 continuation 元数据副本均参与原件 hash 校验；返回的数据副本不能改变实际请求。
 
 本切片只准备真实执行器使用的请求，没有调用模型、采用新输入、分配 V2、生成新 Word 或追加扣费。没有保存 scratch 或建立可靠章节/问题依赖图；请求要求结合完整候选材料重新核对，不据此声称已实现精确局部复用。验证与限制见[复核和文书请求准备专项](../acceptance/desktop-ux-coverage-20261026/supplement-multifile-request/README.md)。B 已选，B1/B2 仍待确定；G03 / UX-A03 与完整 goal 继续 active，不增加桌面用户旅程通过数。
+
+### 2026-10-27：持久处理计划与原 V1 活动依据
+
+`0131` 追加不可变的内部处理计划，只保存指定回执、准确来源/候选、材料与旧文件引用及固定全文重核规则。实际 M1/M3/M4 preparer 通过显式 plan ID 消费，I/O 前后重核暂停边界和字节；支持完整旧工作及真实零 attempt 的早期暂停。已存 prompt 可以保留，部分或失效旧工作不能伪装为空，M4 已存 method 即使没有 attempt 也继续受约束。计划不是采用、保留 pin、执行或收费授权。
+
+`0132` 单独持久化严格原 V1 活动 head，并使真实执行 resolver/claim/resume/阶段写入要求其完整来源一致。回填不跳过缺失原执行的 run，保留原 PostgreSQL 时间精度；无 head 改写或后继激活操作。旧 run 原输入和原执行仍不可变，没有开放 V2。后续采用仍须一起接通版本化输入、阶段/模型、材料保留、正文清理、交付及 B 账务协议，不能仅修改 head 或删除 V1 检查。
+
+验证和限制见[处理计划专项](../acceptance/desktop-ux-coverage-20261026/supplement-processing-plan/README.md)。没有候选模型调用、新 Word 或新增桌面旅程；B1/B2 仍未确定，G03 / UX-A03 与整体 goal 保持 active。
+
+采用前仍须完成的耦合边界已再次只读核对：
+
+- 当前 plan/basis reader 及 captured-file reader 要求原执行仍 active 且原 checkpoint 仍 paused。采用后不能直接调用这些准备器；须按不可变采用回执区分 current lease 和 historical source，实际三类 stage、model journal、collector、promoter 与 finish 一起消费新身份。
+- 有效采用必须与 storage tombstone 删除资格使用同一锁协议，按所有已接受 execution 及 M4 snapshot 保留材料；candidate/plan 继续不产生 pin。`processTombstone` 最后核对与 Blob 删除之间的窗口尚需处理。V1 正文清理还缺 canonical/legacy editor/report、input/business snapshot 和 delivery naming 等副本，须防止 bridge/reader 复活已清理正文，并补清已有 purge receipt 的项目。
+- 项目→run→job 内须原子重核并登记采用回执、候选 input、successor execution、业务 snapshot、head 和新 stage 身份；旧结果保留为历史，新阶段不继承已完成 model_generation。0125/0129/0130 实际成果消费者、`0130` 最新 delivery-plan 与 M4 finalizer 的 V1 来源条件须一并接通，不能仅删除 V1 检查。
+- B 追加授权、resume/claim/recordPotentialCall、独立追加段 reservation/扣款/结算和失败取消处理须成套启用。当前单 run reservation 与原 authoring 上限不能被覆盖为追加账。定价未定期间可完成独立前提及关闭 gate 的实现，不能声称付费续做已可用。

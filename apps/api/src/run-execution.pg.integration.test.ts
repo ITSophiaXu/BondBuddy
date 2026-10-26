@@ -89,6 +89,7 @@ test('initial execution identity is automatic, immutable, exact and enforced at 
       ['projects','SELECT * FROM bb_projects WHERE owner_user_id=$1 ORDER BY id'],
       ['inputs','SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 ORDER BY project_id,revision'],
       ['executions','SELECT * FROM bb_run_execution_versions WHERE owner_user_id=$1 ORDER BY run_id,execution_version'],
+      ['activeHeads','SELECT * FROM bb_run_execution_heads WHERE owner_user_id=$1 ORDER BY run_id'],
       ['events','SELECT * FROM bb_run_events WHERE owner_user_id=$1 ORDER BY run_id,seq'],
       ['outbox','SELECT * FROM bb_outbox WHERE owner_user_id=$1 ORDER BY id'],
       ['attempts','SELECT * FROM bb_model_call_attempts WHERE owner_user_id=$1 ORDER BY id'],
@@ -235,6 +236,51 @@ test('initial execution identity is automatic, immutable, exact and enforced at 
       await action(pool,queued.owner,queued.runId,'pause');
     });
 
+    await t.test('active head is exact and immutable; missing or conflicting authority cannot resume, claim or write',async()=>{
+      const queued=await fixture('queued'),running=await fixture('running'),paused=await fixture('paused');
+      for(const f of [queued,running,paused]){
+        const head=(await pool.query(`SELECT h.*,h.activated_at=e.created_at AS exact_time
+          FROM bb_run_execution_heads h JOIN bb_run_execution_versions e ON e.run_id=h.run_id AND e.execution_version=h.execution_version
+          WHERE h.run_id=$1`,[f.runId])).rows[0];
+        assert.equal(head.owner_user_id,f.owner);assert.equal(head.project_id,f.projectId);
+        assert.equal(head.execution_version,1);assert.equal(head.input_revision,2);assert.equal(head.input_hash.trim(),f.hash);
+        assert.equal(head.exact_time,true,'automatic head preserves the original PostgreSQL timestamp');
+        await assert.rejects(pool.query('UPDATE bb_run_execution_heads SET input_revision=3 WHERE run_id=$1',[f.runId]),{code:'23514'});
+        await assert.rejects(pool.query('DELETE FROM bb_run_execution_heads WHERE run_id=$1',[f.runId]),{code:'23514'});
+      }
+      const original=await snapshot(pool,running),client=await pool.connect();
+      try{
+        await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='10s'");
+        // Deliberate corruption stays within this rollback transaction. The FK
+        // is deferred, while normal application writes cannot alter the head.
+        await client.query('ALTER TABLE bb_run_execution_heads DISABLE TRIGGER bb_run_execution_head_immutable');
+        await client.query('DELETE FROM bb_run_execution_heads WHERE run_id=ANY($1::text[])',[[queued.runId,paused.runId]]);
+        await client.query("UPDATE bb_run_execution_heads SET input_hash=$2 WHERE run_id=$1",[running.runId,'f'.repeat(64)]);
+        // The outer ROLLBACK restores the guard without flushing the deliberately
+        // invalid, deferred FK event or issuing DDL with pending trigger events.
+        const scoped=savepointPool(client);
+        for(const f of [queued,running,paused]){
+          const before=await snapshot(client,f);
+          await assert.rejects(assertRunExecution(client,await row(client,f),f.lease),mismatch);
+          await assert.rejects(resolveRunExecution(client,f.owner,f.runId,f.lease),mismatch);
+          assert.deepEqual(await snapshot(client,f),before);
+        }
+        const queuedBefore=await snapshot(client,queued),runningBefore=await snapshot(client,running),pausedBefore=await snapshot(client,paused);
+        await assert.rejects(claim(scoped,600,{runKinds:['update']}),mismatch);
+        await assert.rejects(action(scoped,paused.owner,paused.runId,'resume'),mismatch);
+        for(const [name,write] of writes){
+          await assert.rejects(write(scoped,running.lease),mismatch,name);
+          assert.deepEqual(await snapshot(client,running),runningBefore,name);
+        }
+        assert.deepEqual(await snapshot(client,queued),queuedBefore);
+        assert.deepEqual(await snapshot(client,paused),pausedBefore);
+      }finally{await client.query('ROLLBACK');client.release();}
+      assert.deepEqual(await snapshot(pool,running),original);
+      assert.deepEqual(await assertRunExecution(pool,await row(pool,running),running.lease),{executionVersion:1,inputRevision:2,inputHash:running.hash});
+      await action(pool,queued.owner,queued.runId,'pause');
+      await action(pool,running.owner,running.runId,'pause');assert.equal(await pauseAtCheckpoint(pool,running.lease),true);
+    });
+
     await t.test('missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state',async()=>{
       const queued=await fixture('queued'),running=await fixture('running');
       const originalQueued=await snapshot(pool,queued),originalRunning=await snapshot(pool,running),client=await pool.connect();
@@ -244,7 +290,8 @@ test('initial execution identity is automatic, immutable, exact and enforced at 
         // No CHECK, origin trigger or production version policy is disabled.
         await client.query('ALTER TABLE bb_run_execution_versions DISABLE TRIGGER bb_run_execution_immutable');
         await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=ANY($1::text[])',[[queued.runId,running.runId]]);
-        await client.query('ALTER TABLE bb_run_execution_versions ENABLE TRIGGER bb_run_execution_immutable');
+        // The outer ROLLBACK restores this guard and the deliberately removed
+        // origins together; do not issue DDL while their deferred FK events wait.
         const scoped=savepointPool(client),missingQueued=await snapshot(client,queued),missingRunning=await snapshot(client,running);
         assert.equal(missingQueued.executions!.length,0);assert.equal(missingRunning.executions!.length,0);
         await assert.rejects(assertRunExecution(client,await row(client,queued),queued.lease),mismatch);

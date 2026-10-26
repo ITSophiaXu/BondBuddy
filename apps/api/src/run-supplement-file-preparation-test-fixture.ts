@@ -11,7 +11,8 @@ import { saveSnapshotRef } from './observability.js';
 import { checkpointStage, claim, finish, pauseAtCheckpoint, promoteWordArtifact, recordPotentialCall, type Lease } from './queue.js';
 import { persistProviderResultObject, recordProviderCallObservation, type ProviderCallIntent } from './provider-results.js';
 import { writeRunWorkingFile } from './run-working-files.js';
-import { createRunSupplementPreparationTestContext } from './run-supplement-preparation-test-fixture.js';
+import { createRunSupplementPreparationTestContext, type RunSupplementEarlyPause,
+  type RunSupplementFixtureBeforeCall, type RunSupplementFixtureWithSavedWork } from './run-supplement-preparation-test-fixture.js';
 
 const origin='http://bondbuddy.test',docx='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const pin=(value:ReviewMaterialPin):ReviewMaterialPin=>({material_id:value.material_id,material_version:value.material_version,sha256:value.sha256});
@@ -20,12 +21,12 @@ const ok=(response:{statusCode:number;body:string;json():any})=>{
 };
 export type RunSupplementFilePreparationFixtureOptions={
   operation?:'full_review'|'differential_review';partial?:boolean;wrongCheckpointPrompt?:boolean;
-  wordBytes?:Buffer;method?:Record<string,unknown>;
+  wordBytes?:Buffer;method?:Record<string,unknown>;earlyPause?:RunSupplementEarlyPause;
 };
 
 /** Importing this helper never starts a service or creates a database. Worker
  * suites supply their private clone and, for M4, the actual frozen method pin. */
-export async function createRunSupplementFilePreparationFixture(connectionString:string,kind:'review'|'m4',
+async function buildRunSupplementFilePreparationFixture(connectionString:string,kind:'review'|'m4',
   options:RunSupplementFilePreparationFixtureOptions={}){
   const c=await createRunSupplementPreparationTestContext(connectionString),{pool,blobs,owner,app,objects}=c;
   try{
@@ -138,11 +139,14 @@ export async function createRunSupplementFilePreparationFixture(connectionString
       model:{model_id:'synthetic-model',model_provider:'synthetic',base_url:null,model_config_version:'synthetic-model-v1',reasoning_effort:'low'}});
     if(kind==='m4')await checkpointStage(pool,lease,'m4_document_method',method);
     let promptVersion=0;
-    async function completed(callLogical:string,selected:boolean){
+    async function promptSnapshot(callLogical:string){
       const promptId=uid(),promptKey=`users/${owner}/projects/${projectId}/snapshots/${promptId}`,promptBytes=Buffer.from(`Frozen original ${callLogical} prompt`);
       await blobs.put(promptKey,promptBytes,'text/plain');
-      const prompt=await saveSnapshotRef(pool,{owner,projectId,runId,kind:'model_request',version:++promptVersion,objectKey:promptKey,
+      return saveSnapshotRef(pool,{owner,projectId,runId,kind:'model_request',version:++promptVersion,objectKey:promptKey,
         sha256:digest(promptBytes),redactionVersion:'synthetic_v1',inputRevision,inputHash:hash,blobs});
+    }
+    async function completed(callLogical:string,selected:boolean){
+      const prompt=await promptSnapshot(callLogical);
       const intent:ProviderCallIntent={owner_user_id:owner,project_id:projectId,job_id:jobId,run_id:runId,trace_id:runId,logical_call_id:callLogical,
         call_id:uid(),attempt_no:1,model_id:'synthetic-model',model_config_version:'synthetic-model-v1',prompt_snapshot_ref:prompt};
       await recordPotentialCall(pool,lease,callLogical,1,{callId:intent.call_id,modelId:intent.model_id,promptSnapshotId:prompt});
@@ -166,9 +170,17 @@ export async function createRunSupplementFilePreparationFixture(connectionString
       const result=(await pool.query('SELECT * FROM bb_provider_result_refs WHERE attempt_id=$1',[intent.call_id])).rows[0];
       return {intent,prompt,result,files,fileBytes};
     }
-    const unrelated=await completed(`unrelated-${logical}`,false),selected=await completed(logical,true);
-    await checkpointStage(pool,lease,kind==='review'?'review_file_v1_prompt':'m4_document_v1_prompt',{snapshot_id:selected.prompt});
-    await checkpointStage(pool,lease,'model_generation',{logical_call_id:logical,prompt_snapshot_ref:options.wrongCheckpointPrompt?unrelated.prompt:selected.prompt});
+    let unrelated:Awaited<ReturnType<typeof completed>>|null=null,selected:Awaited<ReturnType<typeof completed>>|null=null;
+    let promptSnapshotRef:string|null=null;
+    if(options.earlyPause==='after_prompt'){
+      promptSnapshotRef=await promptSnapshot(logical);
+      await checkpointStage(pool,lease,kind==='review'?'review_file_v1_prompt':'m4_document_v1_prompt',{snapshot_id:promptSnapshotRef});
+    }else if(!options.earlyPause){
+      unrelated=await completed(`unrelated-${logical}`,false);selected=await completed(logical,true);
+      promptSnapshotRef=selected.prompt;
+      await checkpointStage(pool,lease,kind==='review'?'review_file_v1_prompt':'m4_document_v1_prompt',{snapshot_id:selected.prompt});
+      await checkpointStage(pool,lease,'model_generation',{logical_call_id:logical,prompt_snapshot_ref:options.wrongCheckpointPrompt?unrelated.prompt:selected.prompt});
+    }
     ok(await send('POST',`/api/v1/runs/${runId}/pause`,{reason:'Synthetic saved file preparation boundary'}));
     assert.equal(await pauseAtCheckpoint(pool,lease),true);
     const checkpoint=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[jobId])).rows[0].checkpoint;
@@ -191,7 +203,18 @@ export async function createRunSupplementFilePreparationFixture(connectionString
       return state;
     };
     return {kind,pool,app,blobs,owner,projectId,sourceProject,runId,jobId,topic,inputRevision,hash,preparationInput,saved,
-      checkpoint,manifest,method,sourceReport,selected,unrelated,files:selected.files,fileBytes:selected.fileBytes,objects,
+      checkpoint,manifest,method,sourceReport,selected,unrelated,earlyPause:options.earlyPause??null,promptSnapshotRef,
+      files:selected?.files??{} as Record<string,{key:string;sha256:string;byte_size:number}>,fileBytes:selected?.fileBytes??new Map<string,Buffer>(),objects,
       materials,first,original,last,replacement,added,changes,requests,request:requests[0]!,snapshot,cleanup:c.close,save};
   }catch(error){await c.close();throw error;}
+}
+type BuiltFilePreparationFixture=Awaited<ReturnType<typeof buildRunSupplementFilePreparationFixture>>;
+/** earlyPause keeps the real claim, pause and supplement receipts but creates no
+ * model attempt/result or working files: selected/unrelated are null and files
+ * are empty. after_prompt additionally saves the exact prompt snapshot/checkpoint
+ * exposed by promptSnapshotRef; before_prompt leaves that reference null. */
+export function createRunSupplementFilePreparationFixture(connectionString:string,kind:'review'|'m4',options:RunSupplementFilePreparationFixtureOptions & {earlyPause:RunSupplementEarlyPause}):Promise<RunSupplementFixtureBeforeCall<BuiltFilePreparationFixture>>;
+export function createRunSupplementFilePreparationFixture(connectionString:string,kind:'review'|'m4',options?:RunSupplementFilePreparationFixtureOptions & {earlyPause?:never}):Promise<RunSupplementFixtureWithSavedWork<BuiltFilePreparationFixture>>;
+export function createRunSupplementFilePreparationFixture(connectionString:string,kind:'review'|'m4',options:RunSupplementFilePreparationFixtureOptions={}):Promise<RunSupplementFixtureWithSavedWork<BuiltFilePreparationFixture>|RunSupplementFixtureBeforeCall<BuiltFilePreparationFixture>>{
+  return buildRunSupplementFilePreparationFixture(connectionString,kind,options) as Promise<RunSupplementFixtureWithSavedWork<BuiltFilePreparationFixture>|RunSupplementFixtureBeforeCall<BuiltFilePreparationFixture>>;
 }

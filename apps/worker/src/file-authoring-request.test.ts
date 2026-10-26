@@ -11,6 +11,7 @@ import { fileAuthoringStage } from './file-authoring-stage.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { UnifiedInput } from './unified-input.js';
 import type { StageContext, codexModelStage } from './run-pipeline.js';
+import type { CompleteRunSupplementProcessingPreparation } from './run-supplement-processing-request.js';
 
 const hash = (value: string) => digest(value);
 function fixture() {
@@ -125,4 +126,25 @@ test('missing or changed input bytes reject preparation without producing new ou
       continuation: { preparation, readFile: async () => kind === 'old_work' ? Buffer.from('changed') : bytes } });
     await workspace(async cwd => { await assert.rejects(request.prepare(cwd), /INPUT_REVISION_CONFLICT/); });
   }
+});
+
+test('durable processing provenance enters the real M1 continuation without changing its saved clean baseline', async () => {
+  const { input, blobs, bytes, preparation } = fixture();
+  const durable = { ...preparation, version: 'run-supplement-processing-basis-v1', kind: 'authoring',
+    reviewSnapshot: null, priorWorkStatus: 'captured_complete', basisHash: hash('basis'), processingPlanId: 'persisted-plan',
+    priorWork: { ...preparation.priorWork, metadata: {} } } as CompleteRunSupplementProcessingPreparation;
+  const request = buildFileAuthoringRequest({ input, blobs, inputHash: durable.candidateInputHash,
+    continuation: { preparation: durable, readFile: async () => bytes } });
+  await workspace(async cwd => {
+    await request.prepare(cwd); await request.verifyOriginals(cwd);
+    const data = JSON.parse(await readFile(join(cwd, 'input.json'), 'utf8'));
+    assert.equal(data.continuation.version, durable.version);
+    assert.equal(data.continuation.processing_plan_id, durable.processingPlanId);
+    assert.equal(data.continuation.plan_hash, durable.planHash);
+    assert.equal(data.continuation.basis_hash, durable.basisHash);
+    assert.equal(data.baseline_path, 'previous_work/clean.docx');
+    await chmod(join(cwd, 'continuation.json'), 0o600);
+    await writeFile(join(cwd, 'continuation.json'), JSON.stringify({ ...data.continuation, basis_hash: hash('different basis') }));
+    await assert.rejects(request.verifyOriginals(cwd), /INPUT_REVISION_CONFLICT/);
+  });
 });

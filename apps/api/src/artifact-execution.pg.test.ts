@@ -192,9 +192,12 @@ test('a missing initial execution aborts artifact insertion; a missing binding i
     const client = await pool.connect();
     try {
       await client.query('BEGIN'); const f = await fixture(client);
+      // Drain valid head FK events before DDL; the deliberately missing origin
+      // below remains deferred until the outer rollback restores data and guard.
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+      await client.query('SET CONSTRAINTS ALL DEFERRED');
       await client.query('ALTER TABLE bb_run_execution_versions DISABLE TRIGGER bb_run_execution_immutable');
       await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=$1', [f.runId]);
-      await client.query('ALTER TABLE bb_run_execution_versions ENABLE TRIGGER bb_run_execution_immutable');
       await client.query('SAVEPOINT failed_insert');
       await assert.rejects(rawArtifact(client, f), { code: '23514', constraint: 'bb_artifact_execution_exact' });
       await client.query('ROLLBACK TO SAVEPOINT failed_insert');
@@ -224,10 +227,13 @@ test('actual migration backfills every legacy artifact without changing files an
           await rawArtifact(client, f, { version: 7, rejected: true }), await rawArtifact(client, f, { mediaType: 'text/plain' })];
         const before = (await client.query('SELECT * FROM bb_artifact_versions ORDER BY id,version')).rows;
         if (mode !== 'valid') {
+          await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+          await client.query('SET CONSTRAINTS ALL DEFERRED');
           await client.query('ALTER TABLE bb_run_execution_versions DISABLE TRIGGER bb_run_execution_immutable');
           if (mode === 'missing') await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=$1', [f.runId]);
           else await client.query('UPDATE bb_run_execution_versions SET input_hash=$2 WHERE run_id=$1', [f.runId, '0'.repeat(64)]);
-          await client.query('ALTER TABLE bb_run_execution_versions ENABLE TRIGGER bb_run_execution_immutable');
+          // The outer rollback also restores the disabled guard; issuing ALTER
+          // here would flush DDL against intentionally invalid deferred FK work.
         }
         if (mode === 'valid') {
           await client.query(migration);

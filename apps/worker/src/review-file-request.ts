@@ -10,6 +10,7 @@ import type { RunSupplementFilePreparation } from '@bondbuddy/api/run-supplement
 import type { CapturedSupplementFilePin } from '@bondbuddy/api/run-supplement-files';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import type { ReviewManifest } from './review-input.js';
+import type { CompleteRunSupplementProcessingPreparation } from './run-supplement-processing-request.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
 const helpers = join(root, 'python/bondbuddy_file_authoring');
@@ -33,7 +34,8 @@ export async function checkedReviewFile(directory: string, name: string, max = M
   return readFile(path);
 }
 
-type Continuation = { preparation: RunSupplementFilePreparation; readFile: (pin: CapturedSupplementFilePin) => Promise<Buffer> };
+type Continuation = { preparation: RunSupplementFilePreparation | CompleteRunSupplementProcessingPreparation;
+  readFile: (pin: CapturedSupplementFilePin) => Promise<Buffer> };
 
 /** Shared by the production M3 stage and its internal supplement preparer.
  * This writer has no model, lease, collector, adoption or billing authority. */
@@ -93,7 +95,8 @@ export function buildReviewFileRequest(options: {
         project_id: preparation.projectId, run_id: preparation.runId, supplement_revision: preparation.revision,
         request_id: preparation.requestId, request_hash: preparation.requestHash, source_execution: preparation.sourceExecution,
         checkpoint_hash: preparation.checkpointHash, candidate_input_hash: preparation.candidateInputHash,
-        plan_hash: preparation.planHash, delta: preparation.delta,
+        plan_hash: preparation.planHash, ...('basisHash' in preparation
+          ? { basis_hash: preparation.basisHash, processing_plan_id: preparation.processingPlanId } : {}), delta: preparation.delta,
         previous_work: { source: preparation.priorWork.source, result_hash: preparation.priorWork.resultHash, files,
           metadata: preparation.priorWork.metadata, status: 'unverified_reference' },
         processing: 'new_review_with_full_candidate_material_recheck', scratch_recovery: 'not_retained' };

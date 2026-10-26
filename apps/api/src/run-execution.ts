@@ -37,8 +37,13 @@ const unavailable = () => new Problem(409, 'INPUT_REVISION_CONFLICT', 'Run execu
 
 /** Call after run -> job locks in mutation paths; never fall back when identity is absent. */
 export async function assertRunExecution(db: Db, row: ExecutionRun, expected?: RunExecutionIdentity): Promise<RunExecutionIdentity> {
-  const entries = (await db.query(`SELECT execution_version,input_revision,input_hash FROM bb_run_execution_versions
-    WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3`, [row.owner_user_id, row.project_id, row.id])).rows;
+  const entries = (await db.query(`SELECT e.execution_version,e.input_revision,e.input_hash FROM bb_run_execution_versions e
+    WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.run_id=$3
+      AND EXISTS(SELECT 1 FROM bb_run_execution_heads h WHERE h.owner_user_id=e.owner_user_id
+        AND h.project_id=e.project_id AND h.run_id=e.run_id AND h.execution_version=e.execution_version
+        AND h.input_revision=e.input_revision AND h.input_hash=e.input_hash)
+      AND (SELECT count(*) FROM bb_run_execution_versions all_versions WHERE all_versions.owner_user_id=e.owner_user_id
+        AND all_versions.project_id=e.project_id AND all_versions.run_id=e.run_id)=1`, [row.owner_user_id, row.project_id, row.id])).rows;
   const entry = entries[0];
   if (entries.length !== 1 || entry.execution_version !== 1 || entry.input_revision !== row.input_revision
     || entry.input_hash.trim() !== row.input_hash.trim()) throw unavailable();

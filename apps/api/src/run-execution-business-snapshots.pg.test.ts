@@ -160,9 +160,13 @@ test('a legacy insert without its exact initial execution fails rather than sile
       const client = await pool.connect();
       try {
         await client.query('BEGIN'); const f = await fixture(client, kind);
+        // Clear valid newly inserted head events before disabling the guard.
+        await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+        await client.query('SET CONSTRAINTS ALL DEFERRED');
         await client.query('ALTER TABLE bb_run_execution_versions DISABLE TRIGGER bb_run_execution_immutable');
         await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=$1', [f.runId]);
-        await client.query('ALTER TABLE bb_run_execution_versions ENABLE TRIGGER bb_run_execution_immutable');
+        // The outer rollback restores both origin and guard without DDL over
+        // intentionally invalid deferred head FK events.
         await assert.rejects(f.insert(), rejectedWrite);
       } finally { await client.query('ROLLBACK'); client.release(); }
     }
@@ -179,9 +183,11 @@ test('actual migration backfills exact legacy V1 content and rejects mismatched 
         const review = await fixture(client, 'review', mode === 'numeric_representation'), m4 = await fixture(client, 'm4', mode === 'numeric_representation');
         await review.insert(mode === 'mismatched' ? { version: 8 } : {}); await m4.insert();
         if (mode === 'missing') {
+          await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+          await client.query('SET CONSTRAINTS ALL DEFERRED');
           await client.query('ALTER TABLE bb_run_execution_versions DISABLE TRIGGER bb_run_execution_immutable');
           await client.query('DELETE FROM bb_run_execution_versions WHERE run_id=$1', [review.runId]);
-          await client.query('ALTER TABLE bb_run_execution_versions ENABLE TRIGGER bb_run_execution_immutable');
+          // The outer rollback restores the disabled guard with the origin.
         }
         if (mode === 'mismatched' || mode === 'missing') await assert.rejects(client.query(migration), rejectedWrite);
         else {

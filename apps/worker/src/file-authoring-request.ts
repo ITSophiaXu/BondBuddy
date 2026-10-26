@@ -5,6 +5,7 @@ import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import type { RunSupplementAuthoringPreparation } from '@bondbuddy/api/run-supplement-preparation';
 import type { CapturedSupplementFilePin } from '@bondbuddy/api/run-supplement-files';
 import type { UnifiedInput } from './unified-input.js';
+import type { CompleteRunSupplementProcessingPreparation } from './run-supplement-processing-request.js';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 const helpers = join(repo, 'python/bondbuddy_file_authoring');
@@ -27,7 +28,7 @@ export async function checkedAuthoringFile(root: string, name: string, max = AUT
 }
 
 type Continuation = {
-  preparation: RunSupplementAuthoringPreparation;
+  preparation: RunSupplementAuthoringPreparation | CompleteRunSupplementProcessingPreparation;
   readFile: (pin: CapturedSupplementFilePin) => Promise<Buffer>;
 };
 
@@ -91,7 +92,8 @@ export function buildFileAuthoringRequest(options: {
         run_id: preparation.runId, supplement_revision: preparation.revision, request_id: preparation.requestId,
         request_hash: preparation.requestHash, source_execution: preparation.sourceExecution,
         checkpoint_hash: preparation.checkpointHash, candidate_input_hash: preparation.candidateInputHash,
-        plan_hash: preparation.planHash, delta: preparation.delta,
+        plan_hash: preparation.planHash, ...('basisHash' in preparation
+          ? { basis_hash: preparation.basisHash, processing_plan_id: preparation.processingPlanId } : {}), delta: preparation.delta,
         previous_work: { source: preparation.priorWork.source, result_hash: preparation.priorWork.resultHash, files },
         processing: 'new_processing_with_full_document_review', scratch_recovery: 'not_retained',
         revision_history: reuseClean ? 'changes_from_saved_clean_only' : 'candidate_source_baseline' };

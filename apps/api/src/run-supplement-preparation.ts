@@ -32,7 +32,18 @@ export type RunSupplementFilePreparation=Omit<RunSupplementAuthoringPreparation,
   priorWork:{source:{kind:'provider_result';resultId:string;resultSchemaVersion:'codex-review-file-v1'|'codex-m4-document-v1'};
     resultHash:string;files:CapturedSupplementFilePin[];metadata:Record<string,unknown>};
 };
-type PreparationKind='authoring'|'review'|'m4';
+export type RunSupplementProcessingKind='authoring'|'review'|'m4';
+type PreparationKind=RunSupplementProcessingKind;
+export type RunSupplementProcessingBasisInput=RunSupplementAuthoringPreparationInput;
+export type RunSupplementProcessingBasis=Omit<RunSupplementAuthoringPreparation,'version'|'priorWork'|'planHash'|'materials'> & {
+  version:'run-supplement-processing-basis-v1';kind:RunSupplementProcessingKind;reviewSnapshot:unknown|null;
+  materials:RunSupplementAuthoringPreparation['materials']|RunSupplementFilePreparation['materials'];
+  priorWorkStatus:'captured_complete'|'no_prior_work';
+  priorWork:{source:{kind:'provider_result';resultId:string;
+    resultSchemaVersion:'codex-file-word-v1'|'codex-review-file-v1'|'codex-m4-document-v1'};
+    resultHash:string;files:CapturedSupplementFilePin[];metadata:Record<string,unknown>}|null;
+  basisHash:string;
+};
 const kinds={
   authoring:{schema:'codex-file-word-v1',logical:'file-authoring-v1',prompt:'file_authoring_v1_prompt',tasks:['update','generation'],required:['tracked.docx','clean.docx']},
   review:{schema:'codex-review-file-v1',logical:'review-file-v1',prompt:'review_file_v1_prompt',tasks:['review'],required:['report.docx']},
@@ -75,7 +86,16 @@ export function loadRunSupplementFilePreparation(input:RunSupplementAuthoringPre
   return loadPreparation(input,kind) as Promise<RunSupplementFilePreparation>;
 }
 
-async function loadPreparation(input:RunSupplementAuthoringPreparationInput,kind:PreparationKind):Promise<RunSupplementAuthoringPreparation|RunSupplementFilePreparation>{
+/** Byte-verified preparation, including genuine pauses before any model intent.
+ * This data grants no adoption, retention, download or execution permission. */
+export async function loadRunSupplementProcessingBasis(input:RunSupplementProcessingBasisInput,
+  kind:RunSupplementProcessingKind):Promise<RunSupplementProcessingBasis>{
+  if(!Object.hasOwn(kinds,kind))throw unavailable();
+  return loadPreparation(input,kind,true) as Promise<RunSupplementProcessingBasis>;
+}
+
+async function loadPreparation(input:RunSupplementAuthoringPreparationInput,kind:PreparationKind,processing=false):
+  Promise<RunSupplementAuthoringPreparation|RunSupplementFilePreparation|RunSupplementProcessingBasis>{
   const config=kinds[kind];
   if(![input.owner,input.projectId,input.runId].every(value=>typeof value==='string' && value.length>0)
     || !Number.isSafeInteger(input.revision) || input.revision<1
@@ -97,7 +117,31 @@ async function loadPreparation(input:RunSupplementAuthoringPreparationInput,kind
       base_input_revision:receipt.base_input_revision,base_input_hash:receipt.base_input_hash.trim(),changes:receipt.changes})!==receipt.request_hash.trim())throw unavailable();
   const stages=readExecutionStages(receipt.source_checkpoint,sourceExecution);
   const model=stages.model_generation;
-  if(!record(model) || model.logical_call_id!==config.logical || typeof model.prompt_snapshot_ref!=='string'
+  const noPriorWork=processing && model===undefined;
+  if(noPriorWork){
+    // Even a confirmed-not-sent attempt is history, not proof that no work exists.
+    // Never reinterpret partial, missing or unselected saved results as empty.
+    const history=(await input.db.query(`SELECT
+      (SELECT count(*)::int FROM bb_model_call_attempts WHERE job_id=$1) AS attempts,
+      (SELECT count(*)::int FROM bb_provider_result_refs WHERE job_id=$1) AS results,
+      (SELECT count(*)::int FROM bb_run_supplement_saved_results WHERE owner_user_id=$2 AND project_id=$3 AND run_id=$4 AND supplement_revision=$5) AS captured,
+      (SELECT count(*)::int FROM bb_run_working_objects WHERE owner_user_id=$2 AND project_id=$3 AND run_id=$4) AS files`,
+      [job.id,input.owner,input.projectId,input.runId,input.revision])).rows[0];
+    if(history.attempts!==0 || history.results!==0 || history.captured!==0 || history.files!==0
+      || receipt.source_checkpoint.provider_results!==undefined && (!Array.isArray(receipt.source_checkpoint.provider_results)
+        || receipt.source_checkpoint.provider_results.length!==0)
+      || Object.hasOwn(stages,'correction_result') || Object.hasOwn(stages,'project_file_result'))throw unavailable();
+    const prompt=stages[config.prompt];
+    if(prompt!==undefined){
+      if(!record(prompt)||typeof prompt.snapshot_id!=='string'||!prompt.snapshot_id)throw unavailable();
+      const savedPrompt=(await input.db.query(`SELECT 1 FROM bb_snapshot_refs s WHERE s.id=$1
+        AND s.owner_user_id=$2 AND s.project_id=$3 AND s.run_id=$4 AND s.snapshot_kind='model_request'
+        AND s.input_revision=$5 AND s.input_hash=$6 AND NOT EXISTS(SELECT 1 FROM bb_log_content_tombstones t
+          WHERE t.content_kind='prompt_snapshot' AND t.content_id=s.id)`,
+        [prompt.snapshot_id,input.owner,input.projectId,input.runId,sourceExecution.inputRevision,sourceExecution.inputHash])).rows[0];
+      if(!savedPrompt)throw unavailable();
+    }
+  }else if(!record(model) || model.logical_call_id!==config.logical || typeof model.prompt_snapshot_ref!=='string'
     || !model.prompt_snapshot_ref || stages[config.prompt]?.snapshot_id!==model.prompt_snapshot_ref)throw unavailable();
   const candidate=await readRunSupplementCandidate(input.db,input.owner,run,job,receipt);
   const sourceManifest=candidate.base.manifest,manifest=candidate.candidate?.manifest as Record<string,any>|undefined;
@@ -119,12 +163,14 @@ async function loadPreparation(input:RunSupplementAuthoringPreparationInput,kind
     const unique=new Set(pins.map(exact));
     if(unique.size!==candidate.resultMaterials.length||candidate.resultMaterials.some(pin=>!unique.has(exact(pin))))throw unavailable();
   }
+  let priorWork:RunSupplementProcessingBasis['priorWork']=null;
+  if(!noPriorWork){
   const selected=(await input.db.query(`SELECT p.id,p.attempt_id,p.result_sha256 FROM bb_run_supplement_saved_results c
     JOIN bb_provider_result_refs p ON p.id=c.result_id AND p.attempt_id=c.attempt_id AND p.owner_user_id=c.owner_user_id
       AND p.project_id=c.project_id AND p.run_id=c.run_id
     WHERE c.owner_user_id=$1 AND c.project_id=$2 AND c.run_id=$3 AND c.supplement_revision=$4
       AND p.job_id=$5 AND p.logical_call_id=$6 AND p.prompt_snapshot_ref=$7 AND p.result_schema_version=$8`,
-  [input.owner,input.projectId,input.runId,input.revision,job.id,model.logical_call_id,model.prompt_snapshot_ref,config.schema])).rows;
+  [input.owner,input.projectId,input.runId,input.revision,job.id,model!.logical_call_id,model!.prompt_snapshot_ref,config.schema])).rows;
   if(selected.length!==1)throw unavailable();
   const source={kind:'provider_result' as const,resultId:selected[0].id as string,resultSchemaVersion:config.schema};
   let metadata:Record<string,unknown>={};
@@ -146,6 +192,8 @@ async function loadPreparation(input:RunSupplementAuthoringPreparationInput,kind
   const files=await listCapturedSupplementFiles({...input,source});
   if(!config.required.every(name=>files.some(pin=>pin.name===name)))throw unavailable();
   for(const pin of files)await readCapturedSupplementFile({...input,source,pin});
+  priorWork={source,resultHash:selected[0].result_sha256.trim(),files,metadata};
+  }
   const materials:Array<{pin:MaterialPin&{source_project_id?:string};filename:string;mediaType:string;objectKey:string}>=[];
   for(const expected of candidate.resultMaterials){
     const pin=expected;
@@ -181,6 +229,21 @@ async function loadPreparation(input:RunSupplementAuthoringPreparationInput,kind
     candidateInputHash:input.expectedCandidateInputHash,manifest,materials,
     delta:{additions,replacements,unchanged,sourceProspectuses:{previous:structuredClone(sourceManifest.authoring?.source_prospectuses??[]),
       current:structuredClone(manifest.authoring?.source_prospectuses??[])},discardPreviousOutput:changes.some(change=>change.discard_previous_output===true)},
-    priorWork:{source,resultHash:selected[0].result_sha256.trim(),files,...(kind!=='authoring'?{metadata}:{})}};
+    priorWork:priorWork && (kind==='authoring'?{source:priorWork.source,resultHash:priorWork.resultHash,files:priorWork.files}:priorWork)};
+  if(processing){
+    // Check emptiness again after byte I/O, without acquiring scope locks across
+    // independent result/working-file content-read transactions.
+    if(noPriorWork){
+      const history=(await input.db.query(`SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1
+        UNION ALL SELECT 1 FROM bb_provider_result_refs WHERE job_id=$1
+        UNION ALL SELECT 1 FROM bb_run_working_objects WHERE owner_user_id=$2 AND project_id=$3 AND run_id=$4 LIMIT 1`,
+        [job.id,input.owner,input.projectId,input.runId])).rows;
+      if(history.length)throw unavailable();
+    }
+    const basis={...plan,version:'run-supplement-processing-basis-v1' as const,kind,
+      reviewSnapshot:kind==='authoring'?null:candidate.candidate!.reviewSnapshot,
+      priorWorkStatus:priorWork?'captured_complete' as const:'no_prior_work' as const,priorWork};
+    return {...basis,basisHash:inputManifestHash(basis)} as RunSupplementProcessingBasis;
+  }
   return {...plan,planHash:inputManifestHash(plan)} as RunSupplementAuthoringPreparation|RunSupplementFilePreparation;
 }

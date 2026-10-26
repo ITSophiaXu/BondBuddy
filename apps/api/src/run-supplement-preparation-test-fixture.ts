@@ -33,7 +33,13 @@ async function word(text:string):Promise<Buffer>{
   archive.end();return result;
 }
 
-export type RunSupplementPreparationFixtureOptions={partial?:boolean;wrongCheckpointPrompt?:boolean;wordBytes?:Buffer;requirementBody?:string};
+export type RunSupplementEarlyPause='before_prompt'|'after_prompt';
+export type RunSupplementPreparationFixtureOptions={partial?:boolean;wrongCheckpointPrompt?:boolean;wordBytes?:Buffer;requirementBody?:string;
+  earlyPause?:RunSupplementEarlyPause};
+export type RunSupplementFixtureWithSavedWork<T extends {selected:unknown;unrelated:unknown}>=Omit<T,'selected'|'unrelated'|'earlyPause'> & {
+  selected:NonNullable<T['selected']>;unrelated:NonNullable<T['unrelated']>;earlyPause:null};
+export type RunSupplementFixtureBeforeCall<T>=Omit<T,'selected'|'unrelated'|'earlyPause'> & {
+  selected:null;unrelated:null;earlyPause:RunSupplementEarlyPause};
 export async function createRunSupplementPreparationTestContext(connectionString:string){
   const pool=new Pool({connectionString}),owner=`supp-preparation-${uid()}`;
   const objects=new Map<string,Buffer>();let writes=0,deletes=0;
@@ -61,7 +67,7 @@ export async function createRunSupplementPreparationTestContext(connectionString
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'persisted')`,[id,version,owner,projectId,upload,role,`${label}.docx`,docx,bytes.length,sha256,key]);
     return {material_id:id,material_version:version,sha256,role,source_project_id:projectId,objectKey:key,bytes};
   }
-  async function fixture(options:RunSupplementPreparationFixtureOptions={}){
+  async function buildFixture(options:RunSupplementPreparationFixtureOptions={}){
     const projectId=uid(),runId=uid(),jobId=uid();
     await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name) VALUES($1,$2,'Synthetic continuation inputs','update','Frozen issuer')",[projectId,owner]);
     const first=await material(projectId,'unchanged-first'),original=await material(projectId,'replace-middle'),last=await material(projectId,'unchanged-last');
@@ -104,11 +110,14 @@ export async function createRunSupplementPreparationTestContext(connectionString
     const claimed=await claim(pool,300,{runKinds:['update']});assert.ok(claimed);
     const lease:Lease=claimed;assert.equal(lease.runId,runId);
     let promptVersion=0;
-    async function completed(logical:string,selected:boolean){
+    async function promptSnapshot(){
       const promptId=uid(),promptKey=`users/${owner}/projects/${projectId}/snapshots/${promptId}`,promptBytes=Buffer.from(`Original prompt ${promptId}`);
       await blobs.put(promptKey,promptBytes,'text/plain');
-      const prompt=await saveSnapshotRef(pool,{owner,projectId,runId,kind:'model_request',version:++promptVersion,objectKey:promptKey,
+      return saveSnapshotRef(pool,{owner,projectId,runId,kind:'model_request',version:++promptVersion,objectKey:promptKey,
         sha256:digest(promptBytes),redactionVersion:'synthetic_v1',inputRevision:1,inputHash:hash,blobs});
+    }
+    async function completed(logical:string,selected:boolean){
+      const prompt=await promptSnapshot();
       const intent:ProviderCallIntent={owner_user_id:owner,project_id:projectId,job_id:jobId,run_id:runId,trace_id:runId,
         logical_call_id:logical,call_id:uid(),attempt_no:1,model_id:'synthetic-model',model_config_version:'synthetic-model-v1',prompt_snapshot_ref:prompt};
       await recordPotentialCall(pool,lease,logical,1,{callId:intent.call_id,modelId:intent.model_id,promptSnapshotId:prompt});
@@ -129,9 +138,17 @@ export async function createRunSupplementPreparationTestContext(connectionString
       const result=(await pool.query('SELECT * FROM bb_provider_result_refs WHERE attempt_id=$1',[intent.call_id])).rows[0];
       return {intent,prompt,result,files,fileBytes};
     }
-    const unrelated=await completed('unrelated-file-authoring-v1',false),selected=await completed('file-authoring-v1',true);
-    await checkpointStage(pool,lease,'file_authoring_v1_prompt',{snapshot_id:selected.prompt});
-    await checkpointStage(pool,lease,'model_generation',{logical_call_id:'file-authoring-v1',prompt_snapshot_ref:options.wrongCheckpointPrompt?unrelated.prompt:selected.prompt});
+    let unrelated:Awaited<ReturnType<typeof completed>>|null=null,selected:Awaited<ReturnType<typeof completed>>|null=null;
+    let promptSnapshotRef:string|null=null;
+    if(options.earlyPause==='after_prompt'){
+      promptSnapshotRef=await promptSnapshot();
+      await checkpointStage(pool,lease,'file_authoring_v1_prompt',{snapshot_id:promptSnapshotRef});
+    }else if(!options.earlyPause){
+      unrelated=await completed('unrelated-file-authoring-v1',false);selected=await completed('file-authoring-v1',true);
+      promptSnapshotRef=selected.prompt;
+      await checkpointStage(pool,lease,'file_authoring_v1_prompt',{snapshot_id:selected.prompt});
+      await checkpointStage(pool,lease,'model_generation',{logical_call_id:'file-authoring-v1',prompt_snapshot_ref:options.wrongCheckpointPrompt?unrelated.prompt:selected.prompt});
+    }
     ok(await send('POST',`/api/v1/runs/${runId}/pause`,{reason:'Synthetic continuation preparation boundary'}));
     assert.equal(await pauseAtCheckpoint(pool,lease),true);
     const checkpoint=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[jobId])).rows[0].checkpoint;
@@ -144,7 +161,14 @@ export async function createRunSupplementPreparationTestContext(connectionString
       requests.push(request);return ok(await send('PUT',url,request));
     };
     return {projectId,runId,jobId,hash,manifest,materials,first,original,last,replacement,added,changes,checkpoint,selected,unrelated,requests,save,
+      earlyPause:options.earlyPause??null,promptSnapshotRef,
       requirement,saveLaterRequirement};
+  }
+  type BuiltFixture=Awaited<ReturnType<typeof buildFixture>>;
+  function fixture(options:RunSupplementPreparationFixtureOptions & {earlyPause:RunSupplementEarlyPause}):Promise<RunSupplementFixtureBeforeCall<BuiltFixture>>;
+  function fixture(options?:RunSupplementPreparationFixtureOptions & {earlyPause?:never}):Promise<RunSupplementFixtureWithSavedWork<BuiltFixture>>;
+  function fixture(options:RunSupplementPreparationFixtureOptions={}):Promise<RunSupplementFixtureWithSavedWork<BuiltFixture>|RunSupplementFixtureBeforeCall<BuiltFixture>>{
+    return buildFixture(options) as Promise<RunSupplementFixtureWithSavedWork<BuiltFixture>|RunSupplementFixtureBeforeCall<BuiltFixture>>;
   }
   async function evidence(){
     const state:Record<string,unknown>={};
@@ -158,7 +182,7 @@ export async function createRunSupplementPreparationTestContext(connectionString
     state.balance=await creditBalance(pool,owner);
     state.storage={writes,deletes,objects:[...objects].map(([key,bytes])=>[key,digest(bytes)]).sort()};return state;
   }
-  type Fixture=Awaited<ReturnType<typeof fixture>>;
+  type Fixture=Pick<BuiltFixture,'projectId'|'runId'|'checkpoint'>;
   const args=(f:Fixture,saved:any,overrides:Partial<Parameters<typeof loadRunSupplementAuthoringPreparation>[0]>={})=>{
     assert.equal(saved.input_preview.status,'prepared');
     return {db:pool,blobs,owner,projectId:f.projectId,runId:f.runId,revision:saved.revision,
@@ -168,16 +192,27 @@ export async function createRunSupplementPreparationTestContext(connectionString
   return {pool,app,blobs,owner,objects,fixture,evidence,args,unchanged,close:async()=>{await app.close();await pool.end();}};
 }
 
-/** Shared real source boundary for API and worker integration suites. No database
- * is cloned or started by importing this module; the caller supplies its clone. */
-export async function createRunSupplementPreparationFixture(connectionString:string,options:RunSupplementPreparationFixtureOptions={}){
+async function buildRunSupplementPreparationFixture(connectionString:string,options:RunSupplementPreparationFixtureOptions={}){
   const context=await createRunSupplementPreparationTestContext(connectionString);
   try{
-    const fixture=await context.fixture(options),saved=await fixture.save();
+    const {earlyPause,...baseOptions}=options;
+    const fixture=earlyPause?await context.fixture({...baseOptions,earlyPause}):await context.fixture(baseOptions);
+    const saved=await fixture.save();
     return {...fixture,pool:context.pool,app:context.app,blobs:context.blobs,owner:context.owner,
       request:fixture.requests[0]!,saved,preparationInput:context.args(fixture,saved),
-      files:fixture.selected.files,fileBytes:fixture.selected.fileBytes,objects:context.objects,
+      files:fixture.selected?.files??{} as Record<string,{key:string;sha256:string;byte_size:number}>,fileBytes:fixture.selected?.fileBytes??new Map<string,Buffer>(),objects:context.objects,
       snapshot:context.evidence,cleanup:context.close};
   }catch(error){await context.close();throw error;}
+}
+type BuiltPreparationFixture=Awaited<ReturnType<typeof buildRunSupplementPreparationFixture>>;
+/** Shared real source boundary for API and worker integration suites. No database
+ * is cloned or started by importing this module; the caller supplies its clone.
+ * earlyPause saves the real pause/supplement receipts before any model attempt:
+ * selected/unrelated are null, files are empty, and promptSnapshotRef is present
+ * only after a real prompt snapshot (including after_prompt) was persisted. */
+export function createRunSupplementPreparationFixture(connectionString:string,options:RunSupplementPreparationFixtureOptions & {earlyPause:RunSupplementEarlyPause}):Promise<RunSupplementFixtureBeforeCall<BuiltPreparationFixture>>;
+export function createRunSupplementPreparationFixture(connectionString:string,options?:RunSupplementPreparationFixtureOptions & {earlyPause?:never}):Promise<RunSupplementFixtureWithSavedWork<BuiltPreparationFixture>>;
+export function createRunSupplementPreparationFixture(connectionString:string,options:RunSupplementPreparationFixtureOptions={}):Promise<RunSupplementFixtureWithSavedWork<BuiltPreparationFixture>|RunSupplementFixtureBeforeCall<BuiltPreparationFixture>>{
+  return buildRunSupplementPreparationFixture(connectionString,options) as Promise<RunSupplementFixtureWithSavedWork<BuiltPreparationFixture>|RunSupplementFixtureBeforeCall<BuiltPreparationFixture>>;
 }
 

@@ -77,3 +77,5 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 - [阶段与模型恢复边界](execution-work-boundaries/README.md)：实际 stage/prompt 检查准确输入；调用全局编号与本执行 schema 重试次数分开，复核公开来源和分批阅读恢复核对实际 call/prompt。API 39 pass、回归 149 pass/1 skip、Worker 67 pass/2 skip；V1、SQL 活动身份与自动 timeout 全任务安全上限保留。没有采用、追加计费或新版 Word，G03 与整体 goal 仍 active。
 
 - [复核和文书续做请求准备](supplement-multifile-request/README.md)：真实回执、旧文件与候选材料进入 M3/M4 共用的实际请求构建器，分别保留复核范围和文书来源/模板/固定方法。只验证请求准备及相关回归；没有补料采用、报价确认、模型续做或新 Word，不增加 G03 用户旅程通过数，整体 goal 继续 active。
+
+- [补料处理计划与活动执行依据](supplement-processing-plan/README.md)：不可变计划覆盖准确完整旧稿及首次模型调用前的真实暂停，供三类实际请求 preparer 消费；活动 head 严格保持原 V1。没有采用、追加计价、后继执行或新 Word，不增加 G03 用户旅程通过数。

@@ -7,6 +7,7 @@ import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { loadM4Knowledge } from '@bondbuddy/api/m4-knowledge';
 import type { RunSupplementFilePreparation } from '@bondbuddy/api/run-supplement-preparation';
+import type { CompleteRunSupplementProcessingPreparation } from './run-supplement-processing-request.js';
 import type { M4DocumentManifest } from '@bondbuddy/contracts';
 import { buildM4DocumentRequest, loadM4DocumentSkill } from './m4-document-request.js';
 import type { M4WorkerInput } from './m4-input.js';
@@ -41,6 +42,27 @@ async function workspace(visit: (cwd: string) => Promise<void>) {
   const cwd = await mkdtemp(join(tmpdir(), 'bb-m4-request-'));
   try {await visit(cwd);} finally {await rm(cwd, {recursive: true, force: true});}
 }
+
+test('durable M4 basis preserves plan provenance without promoting saved Word to an edit base', async () => {
+  const f = fixture();
+  const durable: CompleteRunSupplementProcessingPreparation = { ...f.preparation,
+    version: 'run-supplement-processing-basis-v1', priorWorkStatus: 'captured_complete',
+    basisHash: digest('basis'), processingPlanId: 'persisted-m4-plan' };
+  const request = buildM4DocumentRequest({ context: { blobs: f.blobs, inputHash: durable.candidateInputHash },
+    input: f.input, skill: f.skill, methodHash: f.methodHash,
+    continuation: { preparation: durable, readFile: async () => f.oldBytes } });
+  await workspace(async cwd => {
+    await request.prepare(cwd); await request.verifyOriginals(cwd);
+    const data = JSON.parse(await readFile(join(cwd, 'input.json'), 'utf8'));
+    assert.equal(data.continuation.version, durable.version);
+    assert.equal(data.continuation.processing_plan_id, durable.processingPlanId);
+    assert.equal(data.continuation.plan_hash, durable.planHash);
+    assert.equal(data.continuation.basis_hash, durable.basisHash);
+    assert.deepEqual(data.task, f.input.manifest);
+    assert.equal(data.task.input.edit_base, null);
+    assert.equal(data.continuation.previous_work.files.every((file: any) => file.use === 'source_reference'), true);
+  });
+});
 
 test('M4 shared writer carries saved document/note and delta while retaining the actual source, knowledge and original task', async () => {
   const f = fixture(), request = f.request();
