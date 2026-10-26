@@ -154,6 +154,31 @@ test('workspace is prepared only after its initial GET returns 404',async({page}
   expect(batches(s.calls)).toHaveLength(0);
 });
 
+for(const mode of ['first','retry','replacement'] as const)test(`uploaded template immediately updates readiness and library: ${mode}`,async({page})=>{
+  const s=await fixture(page),w=s.workspaces.get(apiProject)!.workspace;
+  if(mode!=='replacement'){w.drafts.issuer.template=null;w.templates=w.templates.filter(t=>t.document_type!=='issuer');}
+  const requests:unknown[]=[];let saved:M4Template|undefined;
+  await page.route('**/api/v1/m4/templates',async route=>{
+    const b=route.request().postDataJSON();requests.push(b);
+    saved??={template_id:mode==='replacement'?'template-issuer':'uploaded-issuer',template_version:mode==='replacement'?2:1,sha256:b.material.sha256,name:b.name,broker:b.broker,document_type:b.document_type,material:b.material,owner_scope:'private',market:b.market,offering:b.offering,status:'active',created_at:now,retired_at:null};
+    if(!w.templates.some(t=>t.template_id===saved!.template_id&&t.template_version===saved!.template_version))w.templates.push(saved);
+    return json(route,200,{template:saved});
+  });
+  if(mode==='retry')s.failDraft='issuer';
+  await open(page);await choose(page,['issuer']);await page.locator('[data-pf-template="issuer"]').click();
+  await page.locator('#pf-template-form input[type=file]').setInputFiles({name:'首次模板.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic template bytes')});
+  await page.getByRole('button',{name:'保存并用于本次生成',exact:true}).click();
+  if(mode==='retry'){
+    await expect(page.locator('#pf-modal-status')).not.toHaveText('正在保存…');
+    await page.locator('dialog [data-close]').click();await page.locator('[data-generation-resume]').click();
+  }
+  await expect(page.locator('#pf-generate')).toBeEnabled();await expect(page.locator('#pf-template-list')).toContainText('首次模板.docx');
+  await page.locator('[data-pf-template="issuer"]').click();await expect(page.locator('dialog .pf-template-row')).toContainText(['首次模板.docx']);
+  expect(w.drafts.issuer.template).toEqual({template_id:saved!.template_id,template_version:saved!.template_version,sha256:saved!.sha256});
+  expect(s.calls.filter(c=>c.method==='PUT'&&c.path.startsWith('/synthetic-upload/'))).toHaveLength(1);
+  expect(new Set(requests.map(r=>JSON.stringify(r))).size).toBe(1);expect(batches(s.calls)).toEqual([]);
+});
+
 test('missing templates explain why only the selected package cannot run',async({page})=>{
   const s=await fixture(page);s.workspaces.get(apiProject)!.workspace.drafts.legal.template=null;await open(page);
   await choose(page,['legal']);

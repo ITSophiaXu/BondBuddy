@@ -11,7 +11,7 @@ export const qaUploadHash=(bytes:Buffer)=>createHash('sha256').update(bytes).dig
 export const qaUploadFile=(name='合成原补充材料.pdf')=>({name,mimeType:name.endsWith('.doc')?'application/msword':'application/pdf',buffer:Buffer.from('synthetic original QA upload bytes, not real professional evidence')});
 type Upload={id:string;owner:string;declaration:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>};
 export function qaUploadFixture(){return {qa:fixture(),uploads:new Map<string,Upload>(),calls:[] as {owner:string;method:string;path:string;body?:unknown;search:string}[],unexpected:[] as string[],
- lostPut:true,completeUnavailable:true,dropBeforeReceive:false,deduplicate:false,completeGate:undefined as (()=>Promise<void>)|undefined,activeCompletes:0};}
+ lostPut:true,completeUnavailable:true,dropBeforeReceive:false,deduplicate:false,parseEnrichment:false,completeGate:undefined as (()=>Promise<void>)|undefined,activeCompletes:0};}
 export type QaUploadState=ReturnType<typeof qaUploadFixture>;
 function checked<K extends keyof typeof schemas>(name:K,v:unknown):asserts v is Dto<K>{expect(Value.Check(schemas[name],v),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],v)])}`).toBe(true);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);return route.fulfill({status,json:body});}
@@ -48,7 +48,7 @@ export async function installQaUpload11th(page:Page,state=qaUploadFixture()){
   }
   if(method==='GET'){
    checked('MaterialVersionQuery',Object.fromEntries(url.searchParams));const m=[...state.uploads.values()].find(u=>u.material?.material_id===match[1])?.material;
-   if(m&&url.searchParams.get('version')===String(m.material_version))return reply(route,'MaterialResponse',m);return problem(route,404,'NOT_FOUND');
+   if(m&&url.searchParams.get('version')===String(m.material_version))return reply(route,'MaterialResponse',state.parseEnrichment?{...m,parse_snapshot_id:'parsed-after-upload'}:m);return problem(route,404,'NOT_FOUND');
   }
   state.unexpected.push(`${method} ${path}`);return problem(route,500,'DATA_UNAVAILABLE');
  });return state;

@@ -218,6 +218,15 @@ async function evidence(page: Page, name: string) {
   }
 }
 
+test('completed task result opens its exact V2 even when V1 was selected and V3 also exists',async({page})=>{
+  const state=await setup(page);await expectEditor(page,1);state.addVersion(3);
+  await page.goto(`/#/projects/${projectId}/review?tab=making&run=${runId(2)}&result_run=${runId(1)}&return_project=${projectId}`);
+  await page.locator('#review-making-panel [data-review-action="task-result"]').click();
+  const results=await expectEditor(page,2);await expectRunInUrl(page,runId(2));
+  await download(page,results.getByRole('button',{name:'下载清洁版',exact:true}),'合成成果V2-clean.docx',state.bytes.get('continuity-2-clean')!);
+  await page.reload();await expectEditor(page,2);expect(state.downloads).toEqual(['continuity-2-clean']);
+});
+
 test('specified file edition V1 survives reload, tab changes and a newly completed V3; Word stays V1', async ({ page }) => {
   const state = await setup(page);
   const results = await expectEditor(page, 1); await expectRunInUrl(page, runId(1));
@@ -236,7 +245,8 @@ test('choosing V2 from editor history updates the URL and reloads the same edito
   const state = await setup(page); await expectEditor(page, 1);
   await page.locator('[data-editor-history]').selectOption(runId(2)); await expectEditor(page, 2); await expectRunInUrl(page, runId(2));
   await page.reload(); const results = await expectEditor(page, 2); await expectRunInUrl(page, runId(2));
-  await download(page, results.getByRole('button', { name: '下载修订版', exact: true }),
+  await expect(results).toContainText('0 项正文修订');
+  await download(page, results.getByRole('button', { name: '下载批注版（无正文修订）', exact: true }),
     '合成成果V2-revision.docx', state.bytes.get('continuity-2-revision')!);
   expect(state.artifactReads).toEqual(['continuity-2-revision']); expect(state.downloads).toEqual(['continuity-2-revision']);
 });

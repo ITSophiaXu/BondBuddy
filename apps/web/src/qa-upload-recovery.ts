@@ -58,6 +58,11 @@ export function qaUploadRecordMatches(e:QaUploadEnvelope,index:number,r:UploadRe
   canonical(r.declaration)===canonical(item.declaration)&&canonical(r.context)===canonical(qaUploadContext(e,index));
 }
 export function qaUploadAsset(project:string,m:Dto<'MaterialResponse'>):ProjectFileAsset{return {kind:'material',pin:{source_project_id:project,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256}};}
+/** Parsing can enrich the receipt after upload; only immutable file identity must match. */
+export function qaUploadMaterialMatches(a:Dto<'MaterialResponse'>,b:Dto<'MaterialResponse'>):boolean{
+ return a.material_id===b.material_id&&a.material_version===b.material_version&&a.upload_id===b.upload_id&&
+  a.sha256===b.sha256&&a.byte_size===b.byte_size&&a.media_type===b.media_type&&a.role===b.role;
+}
 export function qaUploadExpected(e:QaUploadEnvelope,include?:number):QaRecoveryValue{
  const base=copy(e.base);for(const [index,item] of e.items.entries())if((item.applied||index===include)&&item.material){
   const asset=qaUploadAsset(e.project,item.material);if(!base.draft.materials.some(a=>qaAssetKey(a)===qaAssetKey(asset)))base.draft.materials.push(asset);

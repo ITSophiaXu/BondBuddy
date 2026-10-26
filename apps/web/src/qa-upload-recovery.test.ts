@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {FormatRegistry} from '@sinclair/typebox';
 import {QaRecoveryCache,type QaRecoveryValue} from './qa-recovery-cache.js';
-import {QaUploadJournal,qaUploadEnvelope,qaUploadExpected,qaUploadSame,qaUploadContext,qaUploadRecordMatches,type QaUploadEnvelope} from './qa-upload-recovery.js';
+import {QaUploadJournal,qaUploadEnvelope,qaUploadExpected,qaUploadSame,qaUploadContext,qaUploadRecordMatches,qaUploadMaterialMatches,type QaUploadEnvelope} from './qa-upload-recovery.js';
 import type {Dto} from './api.js';
 import type {UploadRecoveryRecord,UploadRecoveryStorage} from './upload-recovery.js';
 FormatRegistry.Set('date-time',v=>!Number.isNaN(Date.parse(v)));
@@ -55,4 +55,11 @@ test('QA upload progress cannot skip an ordered original item or claim prepare h
  const e=qaUploadEnvelope('owner','project','supplement',base(),[declaration(),declaration('第二份.doc')]),store=new Store(),journal=new QaUploadJournal('owner','project',store);assert.equal(journal.save(e,null).status,'valid');
  const invalid=structuredClone(e);invalid.items[1].material=material();invalid.items[1].applied=true;assert.equal(journal.save(invalid,e).status,'invalid');
  const source=qaUploadEnvelope('owner','project','source',base(),[declaration()]);source.handedOff=true;assert.equal(journal.save(source,null).status,'invalid');
+});
+
+test('QA saved-file identity tolerates later parsing metadata but rejects replaced bytes or versions',()=>{
+ const original={...material(),parse_snapshot_id:null};
+ assert.equal(qaUploadMaterialMatches(original,{...original,parse_snapshot_id:'parsed-later',state:'parsed'}),true);
+ for(const changed of [{material_id:'other'},{material_version:4},{upload_id:'other'},{sha256:'b'.repeat(64)},{byte_size:89},{media_type:'application/pdf'},{role:'historical'}])
+  assert.equal(qaUploadMaterialMatches(original,{...original,...changed} as Dto<'MaterialResponse'>),false);
 });

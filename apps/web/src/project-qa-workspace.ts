@@ -13,7 +13,7 @@ import {QaRecoveryJournal} from './qa-recovery-journal';
 import {QaRecoveryCache,type QaRecoveryValue,type QaRecoveryPending} from './qa-recovery-cache';
 import {qaAssetKey as key,qaSameDraft,qaPreparationFor,qaFollowupFor} from './qa-continuation';
 import {UploadRecovery,UploadRecoveryNeedsFileError} from './upload-recovery';
-import {QaUploadJournal,qaUploadEnvelope,qaUploadContext,qaUploadRecordMatches,qaUploadAsset,qaUploadExpected,qaUploadSame,qaUploadMedia,type QaUploadEnvelope,type QaUploadKind} from './qa-upload-recovery';
+import {QaUploadJournal,qaUploadEnvelope,qaUploadContext,qaUploadRecordMatches,qaUploadAsset,qaUploadMaterialMatches,qaUploadExpected,qaUploadSame,qaUploadMedia,type QaUploadEnvelope,type QaUploadKind} from './qa-upload-recovery';
 import {QaReferenceMaterials,qaReferenceSummary} from './qa-reference-materials';
 import './file-workspace.css';
 import './project-qa-workspace.css';
@@ -89,7 +89,15 @@ export class ProjectQaWorkspace {
  get hasUnconfirmed(){return this.busy||!!this.uploadSelections.length||!!this.cacheProblem||!!this.state&&(this.dirty||!!this.pending)&&!this.cacheMatches();}
  async beforeLeave(){
   if(this.busy)return false;
-  if(this.uploadSelections.length)return false;
+  if(this.uploadSelections.length){
+   const leave=await new Promise<boolean>(resolve=>{
+    const d=this.modal('离开前核对本机选择','<p>这些本机文件选择尚未保存，离开后需要重新选择。服务器已收到的文件和可恢复的原请求会保留。</p><button class="btn secondary" data-stay>留在本页</button><button class="btn primary" data-leave>移除本机选择并离开</button>');
+    let confirmed=false;d.querySelector('[data-stay]')!.addEventListener('click',()=>d.close());
+    d.querySelector('[data-leave]')!.addEventListener('click',()=>{confirmed=true;d.close();});
+    d.addEventListener('close',()=>resolve(confirmed),{once:true});
+   });
+   if(!leave)return false;this.uploadSelections=[];
+  }
   if(!this.state||!this.id)return true;
   if(this.pending)return this.verifyCache();
   if(this.dirty)return this.persist();
@@ -388,6 +396,12 @@ export class ProjectQaWorkspace {
   }catch(error){
    if(!this.live())throw error;
    if(error instanceof ApiError&&error.status>=400&&error.status<500&&noAcceptance.has(error.code)){
+    if(pending.kind==='prepare'&&error.code==='PROJECT_RUN_ACTIVE'){
+     // The upload already handed its exact source to this durable request. Keep
+     // that handoff retryable when another project task temporarily owns the slot.
+     this.message=this.error(error,'submit')+' 原问题清单已保留，可先查看项目任务，结束后返回恢复原免费识别请求。';
+     this.dialog?.close();this.paint();throw error;
+    }
     const previous=this.snapshot(),{pending:removed,...next}=previous;
     const finish=this.finishRecovery(previous,next);
     if(!finish.ok){this.paint();throw error;}
@@ -583,7 +597,7 @@ export class ProjectQaWorkspace {
   catch(error){if(error instanceof UploadRecoveryNeedsFileError)this.uploadNeedsFile.add(item.id);throw error;}
   if(!this.live())return;
   e=this.originalEnvelope(envelopeId);item=e.items[index];
-  if(item.material&&JSON.stringify(item.material)!==JSON.stringify(material))throw new UserFacingError('原文件的已保存版本发生变化，未替换引用。');
+  if(item.material&&!qaUploadMaterialMatches(item.material,material))throw new UserFacingError('原文件的已保存版本发生变化，未替换引用。');
   if(!item.material){const next=structuredClone(e);next.items[index].material=material;e=this.retainUpload(next,e);item=e.items[index];}
   this.uploadErrors.delete(item.id);this.uploadNeedsFile.delete(item.id);this.uploadFiles.delete(item.id);
   if(e.kind==='source')return;

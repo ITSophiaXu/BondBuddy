@@ -393,6 +393,12 @@ export class FileWorkspace {
       }
       const request={expected_version:draft?.expected_version??version,input};await saveContext({...context,apply:request});await apply(request);
     }
+    if(template){
+      // The workspace was read before template creation. Update the catalog as well
+      // as the saved draft so readiness and the picker agree without a reload.
+      this.state.workspace.templates=this.state.workspace.templates.filter(t=>t.template_id!==template!.template_id||t.template_version!==template!.template_version);
+      this.state.workspace.templates.push(template);
+    }
     await recovery.forget(id);return pin;
   }
   private async prepareGeneration(){await this.act(async()=>{

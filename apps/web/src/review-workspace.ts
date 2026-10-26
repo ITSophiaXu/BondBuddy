@@ -357,6 +357,23 @@ export class ReviewWorkspace {
     }catch(error){if(!this.live()||generation!==this.readGeneration)return;this.reportId=previous;this.message(`原报告已保留。${friendlyError(error,'read')}`,true);}
   }
 
+  private async viewTaskResult(runId:string){
+    if(!runId||runId!==this.taskRun()?.run_id)return;
+    if(this.editor?.hasUnconfirmed){this.message('请先保存当前处理或确认原导出请求，再切换成果。',true);return;}
+    const generation=++this.readGeneration;
+    try{
+      const selection=await this.readSelectedWorkspace('',runId);
+      if(!this.live()||generation!==this.readGeneration)return;
+      if(selection.unavailable||!selection.run||!['succeeded','test_completed'].includes(selection.run.state))throw new ApiError(0,'DATA_UNAVAILABLE');
+      const heldDraft=this.workspace?.draft,holdInput=this.uploadInputBlocked(false);
+      const workspace=this.mergeWorkspace(selection.workspace);
+      this.workspace=holdInput&&heldDraft?{...workspace,draft:heldDraft}:workspace;
+      this.reportId=undefined;this.selectedResultRunId=runId;this.selectedResultRun=selection.run;
+      this.focusedTaskRunId=runId;this.explicitTaskFocus=false;this.resultUnavailable=false;
+      if(!this.inputDirty&&!holdInput)this.draftInput=this.inputFrom(workspace);
+      this.syncSelections();this.tab='results';this.renderBody();this.writeRoute();
+    }catch(error){if(this.live()&&generation===this.readGeneration)this.message(`该任务成果暂未读取，原成果保留。${friendlyError(error,'read')}`,true);}
+  }
   private taskFocus(runId:string){
     if(this.editor?.hasUnconfirmed){this.message('请先完成当前成果的处理或确认导出结果，再切换任务。',true);return;}
     this.focusedTaskRunId=runId;this.explicitTaskFocus=true;
@@ -467,6 +484,7 @@ export class ReviewWorkspace {
         case 'download':if(target.dataset.artifactId)void this.download(target.dataset.artifactId);break;
         case 'handling':this.showHandling();break;
         case 'task-focus':if(target.dataset.runId)this.taskFocus(target.dataset.runId);break;
+        case 'task-result':void this.viewTaskResult(target.dataset.runId??'');break;
         case 'task-status':{this.setTab('results');const target=this.page?.querySelector<HTMLElement>('.review-run')??this.page?.querySelector<HTMLElement>('#review-progress-bar');target?.scrollIntoView({block:'start'});target?.focus({preventScroll:true});break;}
         case 'report':if(target.dataset.reportId)void this.viewReport(target.dataset.reportId,target.dataset.findingId);break;
         case 'reload-results':void this.refresh();break;

@@ -1,4 +1,4 @@
-import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from '@bondbuddy/contracts';
+import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from '@bondbuddy/contracts';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
@@ -594,7 +594,8 @@ export class ProjectFiles {
         const run=await this.api.run(a.run_id,this.controller.signal);
         if(run.project_id!==f.project_id||run.state!=='succeeded')throw new ApiError(0,'DATA_UNAVAILABLE');
         bytes=await this.api.artifactBytes(a,this.controller.signal);
-        filename=artifactFilename(a);
+        const registered=this.registered(f);
+        filename=registered?.revision_asset?resultFilename({project:registered.filename.replace(/\.[^.]+$/,''),kind:revision?'修订版':'清洁版',version:registered.sequence,createdAt:f.created_at,mediaType:a.media_type}):artifactFilename(a);
       }
       else{const m=await this.api.material(f.project_id,f.file_id,this.controller.signal,f.version);if(m.material_version!==f.version||m.sha256!==f.sha256)throw new ApiError(409,'INPUT_REVISION_CONFLICT');bytes=await this.api.materialBytes(f.project_id,m,this.controller.signal);}
       if(!this.live())return;this.downloads.save(bytes,filename);if(status)status.textContent='文件已交给浏览器下载。';
