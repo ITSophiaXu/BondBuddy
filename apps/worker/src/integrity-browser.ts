@@ -27,7 +27,7 @@ export function integritySearchQuery(site:IntegritySite,subject:Pick<IntegritySu
  const exactName=['credit-china','execution-dishonest','execution-debtor','execution-restriction'].includes(site.id);
  return [subject.name,...(!exactName?site.queryTerms?.slice(0,1)??[]:[]),...(site.id==='local-csrc'?[subject.province]:[])].filter(Boolean).join(' ');
 }
-async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,screenCapture?:(page:Page)=>Promise<Buffer>,query?:string):Promise<BrowserCapture>{
+async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,screenCapture?:(page:Page)=>Promise<Buffer>,query?:string,site?:IntegritySite):Promise<BrowserCapture>{
  let text=await visibleText(page);
  if(loadingOnly(text))throw Error('EMPTY_OFFICIAL_PAGE');
  // A portal shell can contain plenty of text while its result area is still blank.
@@ -38,10 +38,21 @@ async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,scree
  if(height>20000)throw Error('BROWSER_PAGE_TOO_LONG');
  const screenshot=screenCapture?await screenCapture(page):await page.screenshot({type:'png',fullPage:true,timeout:10000});
  text=await visibleText(page);
- if(query&&(!await queryReflected(page,query,text)||await resultsLoading(page)||outcome(text,query)==='unverified'))throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
+ if(query&&(!await queryReflected(page,query,text)||await resultsLoading(page)||outcome(text,query,await structuredResultSignature(page,site))==='unverified'))throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
  return {kind,url:page.url(),title:(await page.title()).slice(0,200),captured_at:new Date().toISOString(),page:pageNo,text,screenshot};
 }
-function outcome(text:string,query:string){
+async function structuredResultSignature(page:Page,site?:IntegritySite){
+ // MOT's observed search list has no total-count label. Recognize only its visible
+ // result-title structure on the exact search page, never arbitrary subject text.
+ const url=new URL(page.url());
+ if(site?.id!=='transport'||url.origin!=='https://zs.mot.gov.cn'||url.pathname!=='/mot/s')return '';
+ return page.locator('.search-result-header .result-header-title a[href]:visible').evaluateAll(nodes=>nodes.flatMap(node=>{
+  const link=node as HTMLAnchorElement,title=link.innerText.replace(/\s+/g,' ').trim();
+  try{const target=new URL(link.href);if(title.length>5&&/^https?:$/.test(target.protocol)&&target.hostname.endsWith('.gov.cn')&&!target.username&&!target.password)return [title+' '+target.href];}catch{/* Invalid links cannot identify results. */}
+  return [];
+ }).join('\n'));
+}
+function outcome(text:string,query:string,structured=''){
  if(errors.test(text))return 'failed';
  // A confirmed query can return fuzzy matches without echoing the name in body text.
  // Response, changed results and query reflection are checked by the caller; subject
@@ -50,10 +61,11 @@ function outcome(text:string,query:string){
  if(zero.test(text))return 'no_results';
  if(/共\s*(?:[2-9]|[1-9]\d+)\s*页/.test(text))return 'results';
  if(text.includes(query+'的最新相关信息')&&/来源：[^\n]+时间：\s*\d{4}-\d{2}-\d{2}/.test(text))return 'results';
+ if(structured)return 'results';
  return 'unverified';
 }
-function resultSignature(text:string,query:string){
- return text.split(/\n/).map(clean).filter(line=>zero.test(line)||count.test(line)||/共\s*(?:[2-9]|[1-9]\d+)\s*页/.test(line)||line.includes(query)).join('\n');
+function resultSignature(text:string,query:string,structured=''){
+ return text.split(/\n/).map(clean).filter(line=>zero.test(line)||count.test(line)||/共\s*(?:[2-9]|[1-9]\d+)\s*页/.test(line)||line.includes(query)).join('\n')+'\n'+structured;
 }
 
 /** Uses the product's own short-lived browser, never the developer/user browser profile. */
@@ -93,7 +105,7 @@ export async function collectInContext(context:BrowserContext,site:IntegritySite
  return result;
 }
 async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits,entry:string):Promise<BrowserCollection>{
- const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number)=>capture(page,kind,n,limits.screenCapture,kind==='result'?query:undefined);
+ const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number)=>capture(page,kind,n,limits.screenCapture,kind==='result'?query:undefined,site);
  const query=integritySearchQuery(site,subject);
  const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图保留采集时的完整屏幕内容；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，无需上传补充证据。',captures:[]};
  let page=await context.newPage();page.setDefaultTimeout(Math.min(limits.waitMs,15000));page.setDefaultNavigationTimeout(limits.waitMs);
@@ -140,7 +152,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   if(site.id==='commerce-credit'&&subject.kind==='company')await companyNameCondition(form!.frame);
   if(site.id.startsWith('execution-')){const region=await courtRegion(page,subject);if(region){result.scope+=` 执行法院范围：${region}。`;if(region!=='全国')result.limitation+=` 官网要求选择地区，本次仅查询${region}，不覆盖其他地区执行案件。`;}}
   await form.input.fill(query);
-  const baseline=resultSignature(await visibleText(page),query);
+  const baseline=resultSignature(await visibleText(page),query,await structuredResultSignature(page,site));
   const beforePages=context.pages(),beforeUrl=page.url(),pendingRequests=new Set<Request>(),freshQueryFrames=new Map<Frame,string>();let changedResponse=false,queryStatus=0,queryNetworkError='',submitCount=0,submittedAt=0;
   const carriesQuery=(request:Request)=>{try{let body=request.postData()??'';try{body=JSON.stringify(JSON.parse(body));}catch{}return decodeURIComponent((request.url()+' '+body).replace(/\+/g,' ')).includes(query);}catch{return false;}};
   onRequest=(request:Request)=>{if(['document','xhr','fetch'].includes(request.resourceType()))pendingRequests.add(request);if(carriesQuery(request))result.search_performed=true;};context.on('request',onRequest);
@@ -160,7 +172,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
    if(errors.test(text)){mark(pageFailure(text,queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,phase));break;}
    const gate=await blocker(page,text);if(gate){mark({code:gate,phase},'blocked','官网要求验证后才能继续，其他网站继续。');break;}
    const reflected=await queryReflected(page,query,text);
-   const compact=resultSignature(text,query),candidate=outcome(text,query);
+   const structured=await structuredResultSignature(page,site),compact=resultSignature(text,query,structured),candidate=outcome(text,query,structured);
    stable=compact===previous?stable+1:0;previous=compact;
    // Some portals render enabled controls before attaching their delayed scripts.
    // Retry that inert click once; never resubmit a request already in flight.
@@ -191,7 +203,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
     if(await blocker(page,text)||errors.test(text)){result.limitation+=' 翻页受限，后续页未完成查询。';result.captures.push(await capturePage(page,'blocker',n));break;}
     const current=clean(text);steady=current===last?steady+1:0;last=current;
     const echo=await page.locator('input:visible').evaluateAll((nodes,q)=>nodes.some(n=>(n as HTMLInputElement).value===q),query);
-    if(current!==old&&echo&&outcome(text,query)==='results'&&steady>=2){updated=true;break;}
+    if(current!==old&&echo&&outcome(text,query,await structuredResultSignature(page,site))==='results'&&steady>=2){updated=true;break;}
    }
    if(!updated)break;result.captures.push(await capturePage(page,'result',n));
   }
