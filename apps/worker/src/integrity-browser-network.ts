@@ -5,10 +5,10 @@ import type {IntegritySite} from '@bondbuddy/contracts';
 
 // Both local and upstream proxies must outlive the browser's 90-second response wait.
 export const INTEGRITY_NETWORK_IDLE_MS=120000;
-const searchProviderHost=(site:IntegritySite,host:string)=>['transport','agriculture','official-directory'].includes(site.id)&&['p.so-gov.cn','file.so-gov.cn','api.so-gov.cn'].includes(host);
+const searchProviderHost=(site:IntegritySite,host:string)=>['transport','agriculture','official-directory'].includes(site.id)&&(['p.so-gov.cn','file.so-gov.cn','api.so-gov.cn'].includes(host)||host==='cdn.bootcss.com'&&['agriculture','official-directory'].includes(site.id));
 const providerTenant=(site:IntegritySite,path:string)=>{
- const mot=/^\/custom\/(?:bm19000004_zck|BM19000004)\//.test(path)||path==='/cps/pro/bm19000004/css/govSearchPc.css';
- const moa=/^\/custom\/(?:bm21000007|bm21000007zw)\//.test(path)||/^\/cps\/pro\/(?:bgt_moa|bm21000007)\//.test(path);
+ const mot=/^\/custom\/(?:bm19000004_zck|BM19000004)\//.test(path)||path==='/custom/35000000494/image/pc-no-result.png'||/^\/cps\/pro\/(?:bm19000004|bm19000004new)\//.test(path);
+ const moa=/^\/custom\/(?:bm21000007|bm21000007zw)\//.test(path)||/^\/cps\/pro\/(?:bgt_moa|bm21000007|zwbm21000007)\//.test(path);
  return site.id==='transport'?mot:site.id==='agriculture'?moa:site.id==='official-directory'&&(mot||moa);
 };
 
@@ -25,9 +25,11 @@ export function integrityBrowserUrlAllowed(site:IntegritySite,value:string){
   // MOT/MOA official search pages use these observed provider resources. Restrict
   // them to this site and exact API/tenant paths; no assistant or feedback APIs.
   if(searchProviderHost(site,u.hostname)&&u.protocol==='https:'){
+   if(u.hostname==='cdn.bootcss.com'&&u.pathname==='/blueimp-md5/2.10.0/js/md5.js')return true;
+   if(u.hostname==='p.so-gov.cn'&&u.pathname==='/web/i18n/zh/lang.json')return true;
    if(u.hostname==='p.so-gov.cn'&&(/^\/web\//.test(u.pathname)||providerTenant(site,u.pathname)||['/common/js/ieTips.js','/pc/js/marked.min.js'].includes(u.pathname))&&/\.(?:js|css|woff2?|png|jpe?g|svg)$/.test(u.pathname))return true;
    if(u.hostname==='file.so-gov.cn'&&providerTenant(site,u.pathname)&&/\.(?:css|png|jpe?g|svg)$/.test(u.pathname))return true;
-   if(u.hostname==='api.so-gov.cn'&&u.pathname==='/query/s')return true;
+   if(u.hostname==='api.so-gov.cn'&&['/query/site','/query/s'].includes(u.pathname))return true;
   }
   return site.links.some(l=>{const host=new URL(l.url).hostname.toLowerCase(),root=host.replace(/^www\./,'');return u.hostname===host||u.hostname===root||u.hostname.endsWith('.'+root);});
  }catch{return false;}
