@@ -1,0 +1,279 @@
+{
+  "snapshot": "runs/2026-10-26T19-51-02-020Z-source-before-50260-5fc60110/snapshot.json.gz",
+  "source_count": 21,
+  "sources": [
+    {
+      "path": "apps/api/src/model-call-execution.pg.integration.test.ts",
+      "working": {
+        "bytes": 17043,
+        "sha256": "e045b9503428653b76f6d6e654edfcb302d8a91ff032ffd5cb6bfc1ec1486dbe"
+      },
+      "index": {
+        "bytes": 17043,
+        "sha256": "e045b9503428653b76f6d6e654edfcb302d8a91ff032ffd5cb6bfc1ec1486dbe",
+        "git_object": "c3306e56a7faad1d97cf0f768cbe26a912ba4318"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/model-call-execution.test.ts",
+      "working": {
+        "bytes": 4812,
+        "sha256": "f8beef37363359bb2646c34fb4fa10755d463419e7157c684cbb7e304ac30534"
+      },
+      "index": {
+        "bytes": 4812,
+        "sha256": "f8beef37363359bb2646c34fb4fa10755d463419e7157c684cbb7e304ac30534",
+        "git_object": "ee4dfa10bf381a8eca31a02e719a45727fe806c9"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/provider-attempt-state.test.ts",
+      "working": {
+        "bytes": 7025,
+        "sha256": "1f832230ba826e5d899d3d024db8350948e6b7f46ca2333043eca372631e5a8e"
+      },
+      "index": {
+        "bytes": 7025,
+        "sha256": "1f832230ba826e5d899d3d024db8350948e6b7f46ca2333043eca372631e5a8e",
+        "git_object": "50a1a3acf86af999cb29a5c2025c3b1160d51892"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/provider-results.ts",
+      "working": {
+        "bytes": 50559,
+        "sha256": "8a51d09882f971a66e9e8ad0a05bb104cccab06b7d61ce5b3ebdecfa31af3a23"
+      },
+      "index": {
+        "bytes": 49992,
+        "sha256": "877302a3d2eb1262145d3673751dad00606ee85d15f8da5c2ff36b647795d28c",
+        "git_object": "cfc53a799f49968d436b6054a59fec7822a595eb"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/queue.ts",
+      "working": {
+        "bytes": 96087,
+        "sha256": "6371fd92e9bffb72e4f132c751a2c8d5c6a80208fad6cc45d8b7ba6d4f06ed65"
+      },
+      "index": {
+        "bytes": 95012,
+        "sha256": "c0ca0d042afed3cf413f3b359364a2e6f3c5fee87e580648659e361fed41fb4a",
+        "git_object": "d700caea92255984d8f0379172c0f422ad9bf0d8"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/run-execution-checkpoint.test.ts",
+      "working": {
+        "bytes": 2576,
+        "sha256": "e4a2000d881e1cbe35ffe8a38f4ee3f93079ea0aaf33db10130ed2c93a9fba10"
+      },
+      "index": {
+        "bytes": 2576,
+        "sha256": "e4a2000d881e1cbe35ffe8a38f4ee3f93079ea0aaf33db10130ed2c93a9fba10",
+        "git_object": "1a7c40a217abb9e9243742dd0b5c3bee9988bf10"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/run-execution.pg.integration.test.ts",
+      "working": {
+        "bytes": 21564,
+        "sha256": "f962ec62c9eb4e3a4493d2b397c6b86a8e14423a7785c2e3fc9ed273b4af0e95"
+      },
+      "index": {
+        "bytes": 21564,
+        "sha256": "f962ec62c9eb4e3a4493d2b397c6b86a8e14423a7785c2e3fc9ed273b4af0e95",
+        "git_object": "1e032e79b974452ff8a418ebdbe827f08f089580"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/run-execution.ts",
+      "working": {
+        "bytes": 3890,
+        "sha256": "4314b20569a2533cda4b3b60e8abf94404289c56574661f7b60cf0a11ed9dbda"
+      },
+      "index": {
+        "bytes": 3890,
+        "sha256": "4314b20569a2533cda4b3b60e8abf94404289c56574661f7b60cf0a11ed9dbda",
+        "git_object": "a22947cb78a443fe56b8a7481a90a6806cee0b68"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/run-origin-immutability.pg.test.ts",
+      "working": {
+        "bytes": 6692,
+        "sha256": "096667ea101b1093e58ecce62a708d6836824c13340562f946cb82fc09cc9cc9"
+      },
+      "index": {
+        "bytes": 6692,
+        "sha256": "096667ea101b1093e58ecce62a708d6836824c13340562f946cb82fc09cc9cc9",
+        "git_object": "ce85809cc05748fc801d4b6470cfd0fff46e662b"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/run-supplement-files.ts",
+      "working": {
+        "bytes": 11347,
+        "sha256": "fce5e07ef24fda44293d34fb2679862ecd17dec29e15b4c0b612c96b63388f2f"
+      },
+      "index": {
+        "bytes": 11347,
+        "sha256": "fce5e07ef24fda44293d34fb2679862ecd17dec29e15b4c0b612c96b63388f2f",
+        "git_object": "ac7e13259f0ac970f1c5bf4b6327f1143932c778"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/run-supplement-work.ts",
+      "working": {
+        "bytes": 10024,
+        "sha256": "a9eea37cfb9695c8aab14a2a56a7338a17455fa8d9bcbbfd4cd9a149f96bd606"
+      },
+      "index": {
+        "bytes": 10024,
+        "sha256": "a9eea37cfb9695c8aab14a2a56a7338a17455fa8d9bcbbfd4cd9a149f96bd606",
+        "git_object": "16d695b90abaf6f817b4216a303539b0f220fe54"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/codex-adapter.test.ts",
+      "working": {
+        "bytes": 45100,
+        "sha256": "8e58664176ae7bedc5e64fa51083ef3abeef5e935b39fb841de5eb9653ed67a7"
+      },
+      "index": {
+        "bytes": 44502,
+        "sha256": "b3b20170dd848b4344f04c8938173785e91d91f4dd874d5077c9b4964e6d68f6",
+        "git_object": "2e06dc40ab9817bca80c41fff155a875e63c31d7"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/codex-adapter.ts",
+      "working": {
+        "bytes": 56660,
+        "sha256": "94eb67539f25e83616a26763ab6f720123a7a7aeca6c221e2a782f04bfcd4b10"
+      },
+      "index": {
+        "bytes": 55961,
+        "sha256": "c8dbdd4e52a09d272e6f8da5d5450674aac0f8f76a688e775d87dd6aae31359f",
+        "git_object": "7d4b7068c0bed46f7c049c7f8fc7b123dc35bab7"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/codex-memory-journal.ts",
+      "working": {
+        "bytes": 2229,
+        "sha256": "ded09c1a94b6ffb99e48a67fc6cb618d90502b4205bc5c985b56d55bbbfab6aa"
+      },
+      "index": {
+        "bytes": 2199,
+        "sha256": "f3bae28dd1652077237df39c4fd7827bcd775601c407c7c83aa79f22d2833784",
+        "git_object": "26e35ad24b96b160bb6adee406dbc66779776503"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/durable-probe-journal.ts",
+      "working": {
+        "bytes": 6842,
+        "sha256": "7380fc5a8711e0969036483a1545e9dba10a2149a32e0e8d7fe692a4af7b9e65"
+      },
+      "index": {
+        "bytes": 6744,
+        "sha256": "121c9d66fb49c581a7699fc85918b1a164ba5bb16d63ae2fa7b2319d18a0d36c",
+        "git_object": "18a0bfba7c2c4772ef3da8b2205d368f28f08d39"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/review-public-stage.test.ts",
+      "working": {
+        "bytes": 25254,
+        "sha256": "c9b6017889858657410d81b0205f184665fe64e7738ee11007e8ed424d573954"
+      },
+      "index": {
+        "bytes": 24956,
+        "sha256": "a0b2b469a885728d0dadb8d7be0683859436589cafb1c5a36199c88a6b7ab788",
+        "git_object": "b77da761cd445a0fefc872132a982f4a7a92dc5d"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/review-public-stage.ts",
+      "working": {
+        "bytes": 36527,
+        "sha256": "092ed40fb02b5066a23f8bfcce389e7de80134e55f2abbd399e42f54cd732b51"
+      },
+      "index": {
+        "bytes": 36178,
+        "sha256": "366e3b047f201bba2b057b5af6d5e577c080f10549809784a6ffd7cbcdc916ed",
+        "git_object": "69f1672a141be28e2e4a30d9d19e1791ff4db5bd"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/run-execution-consumers.pg.test.ts",
+      "working": {
+        "bytes": 9114,
+        "sha256": "701d4f98d5c82159d73a7abf83e69f349d7611e5ec9d3f39521bac1828849ea3"
+      },
+      "index": {
+        "bytes": 9114,
+        "sha256": "701d4f98d5c82159d73a7abf83e69f349d7611e5ec9d3f39521bac1828849ea3",
+        "git_object": "d481e072cd00d77e8cc03101a364f9627998ea4c"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/run-pipeline.ts",
+      "working": {
+        "bytes": 60181,
+        "sha256": "a9a54412279ade5fee427f4115fc0c51d46a14b98e81ea9eb1c4408e8a4b171c"
+      },
+      "index": {
+        "bytes": 59409,
+        "sha256": "8db76c2f3a2b72c1f610ce23735c58285d2f918d02b9c1a5a2676a3aeb261c51",
+        "git_object": "ace2ae0672067df9fcf93c3a5e55ddb67dee45b4"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/unified-model-stage.test.ts",
+      "working": {
+        "bytes": 16655,
+        "sha256": "29a7fa8fb242e29929eef5ea566cc6967df6d70c11d8d3962973b238ed49b502"
+      },
+      "index": {
+        "bytes": 16452,
+        "sha256": "b6057eec20564a56753cc81d387e3836d2907219ec1916c4a39ce73b701a4de4",
+        "git_object": "92e33f86ad387e269a3ec5927681bebb0f7fc64c"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/unified-model-stage.ts",
+      "working": {
+        "bytes": 36557,
+        "sha256": "3ce3c14da3e23a0500e8cb8cff6e141a6cd6cbc37037a9aab5c0c8176051a123"
+      },
+      "index": {
+        "bytes": 36202,
+        "sha256": "172ecf1b7b1e6fd4c0c7ac810871ec08d2d598537ace3cd062f4663c305a1a39",
+        "git_object": "3e978a00cfdef5ef19605629bb4ac64119621282"
+      },
+      "git_filtered_working_matches_index": true
+    }
+  ]
+}

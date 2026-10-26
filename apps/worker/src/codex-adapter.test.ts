@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas, type ReviewAction } from '@bondbuddy/contracts';
 import { createReviewActionObserver } from './review-action-progress.js';
-import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput, type CodexAttemptState } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 
@@ -513,6 +513,70 @@ test('restart: an intent without an observation is reconciled, never resent; com
     const resumed = await runContainedModelCall(textCall,approved,{...config,max_schema_reasks:0});
     assert.equal(resumed.status,'completed');assert.equal(approved.intents[0].attempt_no,2);
   } finally { await cleanup(); }
+});
+
+test('global attempt numbers do not consume a new execution schema retry budget', async () => {
+  const {config,cleanup}=await setup();
+  try {
+    const journal=new MemoryCodexJournal();
+    journal.attemptState=async()=>({latest:null,next_attempt_no:7,execution_attempt_count:0});
+    const result=await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:structured'),journal,config);
+    assert.equal(result.status,'completed');
+    assert.deepEqual(journal.intents.map(intent=>intent.attempt_no),[7,8]);
+    assert.deepEqual(journal.observations.map(entry=>entry.retryable),[true,false]);
+    const exhausted=new MemoryCodexJournal();
+    exhausted.attemptState=async()=>({latest:{call_id:'current-8',attempt_no:8,status:'failed',observed:true},
+      next_attempt_no:9,execution_attempt_count:2});
+    const blocked=await runContainedModelCall(call('SCENARIO:structured'),exhausted,config);
+    assert.equal(blocked.status,'failed');assert.equal(blocked.error_code,'MODEL_OUTPUT_SCHEMA_INVALID');
+    assert.equal(exhausted.intents.length,0,'restart does not reset the execution retry budget');
+  } finally {await cleanup();}
+});
+
+test('current execution restart uses its own prior and global next number while unknown history stays blocked',async()=>{
+  const {config,cleanup}=await setup();
+  try {
+    const retry=new MemoryCodexJournal();
+    retry.attemptState=async()=>({latest:{call_id:'current-7',attempt_no:7,status:'failed',observed:true},
+      next_attempt_no:10,execution_attempt_count:1});
+    const result=await runContainedModelCall(call('SCENARIO:structured'),retry,config);
+    assert.equal(result.status,'completed');assert.equal(retry.intents[0]?.attempt_no,10);
+    const pending=new MemoryCodexJournal();
+    pending.attemptState=async()=>({latest:{call_id:'current-pending-7',attempt_no:7,status:'pending_reconcile',observed:false},
+      next_attempt_no:10,execution_attempt_count:1});
+    const held=await runContainedModelCall(call('SCENARIO:structured'),pending,config);
+    assert.equal(held.status,'needs_reconcile');assert.equal(pending.intents.length,0);
+    assert.equal(pending.observations[0]?.observation.call_id,'current-pending-7');
+    assert.equal(pending.observations[0]?.observation.attempt_no,7);
+    const history=new MemoryCodexJournal();
+    history.attemptState=async()=>({latest:null,next_attempt_no:7,execution_attempt_count:0,blocked:true});
+    const stopped=await runContainedModelCall(call('SCENARIO:structured'),history,config);
+    assert.equal(stopped.status,'needs_reconcile');assert.equal(history.intents.length,0);
+    assert.equal(history.observations.length,0,'cannot invent an observation for foreign execution work');
+  } finally {await cleanup();}
+});
+
+test('exact current completed work reuses only its prompt and malformed attempt state never sends',async()=>{
+  const {config,cleanup}=await setup();
+  try {
+    const journal=new MemoryCodexJournal();
+    journal.attemptState=async()=>({latest:{call_id:'current-done-7',attempt_no:7,status:'completed',observed:true,
+      prompt_snapshot_ref:'prompt-synthetic'},next_attempt_no:10,execution_attempt_count:1});
+    journal.readCompleted=async()=>({value:{answer:'CURRENT',n:16},result_sha256:'a'.repeat(64)});
+    assert.equal((await runContainedModelCall(call('SCENARIO:structured'),journal,config)).status,'reused');
+    assert.equal((await runContainedModelCall(call('SCENARIO:structured',{prompt_snapshot_ref:'other-prompt'}),journal,config)).status,'needs_reconcile');
+    assert.equal(journal.intents.length,0);
+    for(const state of [{latest:null,next_attempt_no:7,execution_attempt_count:1},
+      {latest:{call_id:'current',attempt_no:7,status:'failed',observed:true},next_attempt_no:7,execution_attempt_count:1}] satisfies CodexAttemptState[]) {
+      journal.attemptState=async()=>state;
+      await assert.rejects(runContainedModelCall(call('SCENARIO:structured'),journal,config),{code:'MODEL_ADAPTER_CONFIG_INVALID'});
+    }
+    assert.equal(journal.intents.length,0);
+    const legacy=new MemoryCodexJournal();
+    Object.defineProperty(legacy,'attemptState',{value:undefined});
+    assert.equal((await runContainedModelCall(call('SCENARIO:structured'),legacy,config)).status,'completed');
+    assert.equal(legacy.intents[0]?.attempt_no,1,'single-execution journals keep the prior interface');
+  } finally {await cleanup();}
 });
 
 test('multi-turn: start keeps a session home, resume passes the thread id, dispose removes it', async () => {

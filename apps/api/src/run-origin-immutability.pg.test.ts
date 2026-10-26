@@ -68,7 +68,7 @@ test('run origin rejects identity replacement while queue progress and original 
     assert.equal(replay.json().run_id,runId);assert.equal(replay.json().input_revision,input.input_revision);assert.equal(replay.json().input_hash,input.input_hash);
     const resumed=await send('POST',`/api/v1/runs/${runId}/resume`,{reason:'synthetic'});good(resumed);
     const continued=await claim(pool,30);assert.ok(continued);assert.equal(continued.runId,runId);
-    assert.deepEqual(continued.checkpoint,{saved_work:'synthetic-original-input'});
+    assert.deepEqual(continued.checkpoint,{saved_work:'synthetic-original-input',stage_execution:{execution_version:1,input_revision:input.input_revision,input_hash:input.input_hash}});
     await finish(pool,continued,'failed',{errorCode:'VALIDATION_FAILED',failedStage:'synthetic_cleanup'});
     const final=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[runId])).rows[0],initial=before.run[0];
     for(const field of ['id','owner_user_id','project_id','input_revision','input_hash','execution_request_id','request_hash'])

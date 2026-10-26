@@ -17,7 +17,7 @@ import { registerProjectFileOutcome } from './project-file-storage.js';
 import { syncAuthoringProgress } from './authoring-progress.js';
 import { creditBalance,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
-import { assertRunExecution, type RunExecutionIdentity } from './run-execution.js';
+import { assertRunExecution, readExecutionStages, stampExecutionCheckpoint, type RunExecutionIdentity } from './run-execution.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = RunExecutionIdentity & { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -64,12 +64,13 @@ const needsProviderReconciliation = `(
   ))
 )`;
 
-export async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+export async function providerCallNeedsReconciliation(client:Pick<PoolClient,'query'>, jobId:string, attemptIds?:readonly string[]) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
     JOIN bb_jobs j ON j.id=a.job_id
     LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
-    WHERE a.job_id=$1 AND ${needsProviderReconciliation} LIMIT 1`,[jobId]);
+    WHERE a.job_id=$1 AND ${needsProviderReconciliation}
+      AND ($2::text[] IS NULL OR a.id=ANY($2::text[])) LIMIT 1`,[jobId,attemptIds??null]);
   return !!q.rowCount;
 }
 
@@ -89,6 +90,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
     const execution=await assertRunExecution(client,r);
+    readExecutionStages(j.checkpoint,execution);
     if(r.channel==='non_production_test'){
       try { await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash}); }
       catch(error){
@@ -115,6 +117,7 @@ async function lockedLease(client:PoolClient, lease:Lease) {
   const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
   if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   await assertRunExecution(client,r,lease);
+  readExecutionStages(j.checkpoint,lease);
   return {r,j};
 }
 
@@ -194,8 +197,18 @@ export async function recordAuthoringActivity(pool:Pool,lease:Lease,activity:Aut
 
 export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Record<string,unknown>) {
   await transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
-    await client.query('UPDATE bb_jobs SET checkpoint=$2,stage=$3,updated_at=now() WHERE id=$1',[lease.jobId,value,stage]);
+    const {r,j}=await lockedLease(client,lease);
+    // Generic processor progress must not erase completed stages or the global
+    // supplier/reconciliation history. Stage changes use checkpointStage instead.
+    const next={...value};
+    for(const key of ['stages','provider_results','operator_reconciliations','timeout_retry_repairs','review_assembly_recovery','word_pair_delivery_recovery']){
+      if(Object.hasOwn(value,key)&&inputManifestHash(value[key])!==inputManifestHash(j.checkpoint[key]??null))
+        throw new Problem(409,'INPUT_REVISION_CONFLICT','Generic progress cannot replace saved execution work');
+      if(Object.hasOwn(j.checkpoint,key))next[key]=j.checkpoint[key];
+    }
+    const saved=stampExecutionCheckpoint(next,lease);
+    await client.query('UPDATE bb_jobs SET checkpoint=$2,stage=$3,updated_at=now() WHERE id=$1',[lease.jobId,saved,stage]);
+    lease.checkpoint=saved;
     await event(client,r,'running',stage,'checkpoint_saved',undefined,'run.progress');
   });
 }
@@ -263,7 +276,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
-    if(kind==='resume')await assertRunExecution(client,r);
+    if(kind==='resume')readExecutionStages(j.checkpoint,await assertRunExecution(client,r));
     if(kind==='pause'){
       if(!['update','generation','review'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
@@ -708,10 +721,10 @@ async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:s
 export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:Record<string,unknown>) {
   if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
   await transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
+    const {r,j}=await lockedLease(client,lease);
+    const saved=stampExecutionCheckpoint({...j.checkpoint,stages:{...readExecutionStages(j.checkpoint,lease),[stage]:value}},lease);
     const q=await client.query(`UPDATE bb_jobs SET stage=$2,updated_at=now(),
-      checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
-      WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
+      checkpoint=$3::jsonb WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(saved)]);
     lease.checkpoint=q.rows[0].checkpoint;
     await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
   });
@@ -722,12 +735,12 @@ export async function upgradeStageCheckpoint(pool:Pool,lease:Lease,stage:string,
   if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
   await transaction(pool,async client=>{
     const {j}=await lockedLease(client,lease);
-    const stages=j.checkpoint?.stages;
-    if(!stages || typeof stages!=='object' || Array.isArray(stages) || !Object.prototype.hasOwnProperty.call(stages,stage))
+    const stages=readExecutionStages(j.checkpoint,lease);
+    if(!Object.prototype.hasOwnProperty.call(stages,stage))
       throw new Error('STAGE_CHECKPOINT_UPGRADE_REQUIRES_EXISTING_CHECKPOINT');
+    const saved=stampExecutionCheckpoint({...j.checkpoint,stages:{...stages,[stage]:value}},lease);
     const q=await client.query(`UPDATE bb_jobs SET stage=$2,updated_at=now(),
-      checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
-      WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
+      checkpoint=$3::jsonb WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(saved)]);
     lease.checkpoint=q.rows[0].checkpoint;
   });
 }
@@ -753,6 +766,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
     const execution=await assertRunExecution(client,r);
+    readExecutionStages(j.checkpoint,execution);
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
@@ -871,7 +885,7 @@ export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,i
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
     const prior=j.checkpoint?.review_assembly_recovery;
-    await assertRunExecution(client,r);
+    readExecutionStages(j.checkpoint,await assertRunExecution(client,r));
     if(prior){
       if(prior.policy!=='review_assembly_v1'||prior.reuse_only!==true||prior.attempt_id!==input.attemptId||prior.result_sha256!==input.resultSha256||prior.actor!==input.actor)
         throw new Problem(409,'IDEMPOTENCY_CONFLICT','Review recovery already has another identity');
@@ -944,7 +958,7 @@ export async function requeueGeneratedWordDelivery(pool:Pool,input:{runId:string
     if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
-    await assertRunExecution(client,r);
+    readExecutionStages(j.checkpoint,await assertRunExecution(client,r));
     if(j.checkpoint?.word_pair_delivery_recovery)return {run_id:r.id,idempotent:true};
     const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','No recoverable completed Word pair');
     if(r.channel!=='production'||r.state!=='failed'||j.state!=='failed'||j.lease_token||j.lease_until||r.artifact_id)throw refuse();

@@ -9,7 +9,7 @@ import { digest, transaction, type PrivateBlobs } from './data.js';
 import { grantCredits } from './billing.js';
 import { assertModelCallExecution, type ModelCallExecutionScope } from './model-call-execution.js';
 import { recordPotentialCall, type Lease } from './queue.js';
-import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime,
+import { latestProviderAttempt, loadProviderAttemptState, readExecutionProviderAttempts, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime,
   recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation } from './provider-results.js';
 
 const connection=await isolatedTestDatabase(undefined,'model-call-execution');
@@ -129,6 +129,36 @@ test('real provider work is pinned to its exact execution input and cannot fall 
       }
     });
 
+    await t.test('real execution lookup keeps job-wide numbering, exact source lists and unresolved work visible',async()=>{
+      const f=await fixture();
+      assert.deepEqual(await loadProviderAttemptState(pool,f.lease,f.intent.logical_call_id),
+        {latest:null,next_attempt_no:1,execution_attempt_count:0,blocked:false});
+      await complete(f);
+      const completed=await loadProviderAttemptState(pool,f.lease,f.intent.logical_call_id);
+      assert.equal(completed.latest?.call_id,f.intent.call_id);assert.equal(completed.next_attempt_no,2);
+      assert.equal(completed.execution_attempt_count,1);assert.equal(completed.blocked,false);
+      const nextId=randomUUID(),nextPrompt=await f.prompt();
+      await recordPotentialCall(pool,f.lease,f.intent.logical_call_id,2,{callId:nextId,
+        modelId:f.intent.model_id,promptSnapshotId:nextPrompt});
+      const pending=await loadProviderAttemptState(pool,f.lease,f.intent.logical_call_id);
+      assert.equal(pending.latest?.call_id,nextId);assert.equal(pending.latest?.status,'pending_reconcile');
+      assert.equal(pending.next_attempt_no,3);assert.equal(pending.execution_attempt_count,2);
+      assert.equal(pending.blocked,false,'the adapter retains its current pending prior to reconcile, never resend');
+      const list=await readExecutionProviderAttempts(pool,f.lease);
+      assert.deepEqual(list.attempts.map(row=>[row.call_id,row.prompt_snapshot_ref,row.execution_version,row.input_revision,row.input_hash]),
+        [[f.intent.call_id,f.intent.prompt_snapshot_ref,1,1,f.scope.inputHash],[nextId,nextPrompt,1,1,f.scope.inputHash]]);
+      assert.equal(list.needs_reconciliation,true);assert.equal(list.foreign_needs_reconciliation,false);
+      const unrelated=await loadProviderAttemptState(pool,f.lease,'another-logical-call');
+      assert.equal(unrelated.latest,null);assert.equal(unrelated.blocked,true,'another logical ID cannot bypass the pending call');
+      await assert.rejects(readExecutionProviderAttempts(pool,{...f.lease,token:'stale-token'}),{status:409,code:'CAPABILITY_NOT_READY'});
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[f.jobId,{stage_execution:{execution_version:2,input_revision:2,input_hash:f.scope.inputHash}}]);
+      const before=await snapshot(pool,f),reads=f.blobReads();
+      await assert.rejects(loadProviderAttemptState(pool,f.lease,f.intent.logical_call_id),mismatch);
+      await assert.rejects(readCheckpointedProviderResult({pool,blobs:f.blobs,lease:f.lease,
+        logicalCallId:f.intent.logical_call_id,attemptNo:1,validateResult:()=>true}),mismatch);
+      assert.equal(f.blobReads(),reads);assert.deepEqual(await snapshot(pool,f),before);
+    });
+
     await t.test('missing or corrupted binding blocks real latest, reuse, runtime and observation paths without writes or Blob reads',async()=>{
       const f=await fixture(),observation=await complete(f),wrongPrompt=await f.prompt(2),original=await snapshot(pool,f);
       for(const corrupt of ['missing','wrong prompt']){
@@ -142,6 +172,8 @@ test('real provider work is pinned to its exact execution input and cannot fall 
           const scoped=savepointPool(client),before=await snapshot(client,f),reads=f.blobReads();
           await assert.rejects(assertModelCallExecution(client,f.scope),mismatch);
           await assert.rejects(latestProviderAttempt(scoped,f.lease,f.intent.logical_call_id),mismatch);
+          await assert.rejects(loadProviderAttemptState(scoped,f.lease,f.intent.logical_call_id),mismatch);
+          await assert.rejects(readExecutionProviderAttempts(scoped,f.lease),mismatch);
           await assert.rejects(readCheckpointedProviderResult({pool:scoped,blobs:f.blobs,lease:f.lease,
             logicalCallId:f.intent.logical_call_id,attemptNo:1,validateResult:()=>true}),mismatch);
           await assert.rejects(recordModelAttemptRuntime(scoped,f.lease,f.intent,runtime),mismatch);
@@ -151,6 +183,9 @@ test('real provider work is pinned to its exact execution input and cannot fall 
         assert.deepEqual(await snapshot(pool,f),original,'Deliberate corruption is local to the rolled-back test transaction');
       }
       assert.equal((await latestProviderAttempt(pool,f.lease,f.intent.logical_call_id))?.call_id,f.intent.call_id);
+      const state=await loadProviderAttemptState(pool,f.lease,f.intent.logical_call_id);
+      assert.equal(state.latest?.call_id,f.intent.call_id);assert.equal(state.next_attempt_no,2);
+      assert.equal(state.execution_attempt_count,1);assert.equal(state.blocked,false);
     });
 
     await t.test('historical unprompted attempts retain identity but never gain an invented provider input binding',async()=>{
@@ -159,6 +194,12 @@ test('real provider work is pinned to its exact execution input and cannot fall 
         VALUES($1,$2,$3,$4,1,'confirmed_not_sent')`,[f.intent.call_id,f.owner,f.jobId,f.intent.logical_call_id]);
       assert.equal((await pool.query('SELECT 1 FROM bb_model_call_execution_bindings WHERE attempt_id=$1',[f.intent.call_id])).rowCount,0);
       assert.equal((await latestProviderAttempt(pool,f.lease,f.intent.logical_call_id))?.call_id,f.intent.call_id);
+      const state=await loadProviderAttemptState(pool,f.lease,f.intent.logical_call_id);
+      assert.equal(state.latest?.call_id,f.intent.call_id);assert.equal(state.next_attempt_no,2);
+      assert.equal(state.execution_attempt_count,1);assert.equal(state.blocked,false);
+      const rows=await readExecutionProviderAttempts(pool,f.lease);
+      assert.deepEqual(rows.attempts,[]);assert.deepEqual(rows.all_attempts,[]);
+      assert.equal(rows.legacy_attempts[0]?.call_id,f.intent.call_id);
       await assert.rejects(assertModelCallExecution(pool,f.scope),mismatch);
       await assert.rejects(readCheckpointedProviderResult({pool,blobs:f.blobs,lease:f.lease,
         logicalCallId:f.intent.logical_call_id,attemptNo:1,validateResult:()=>true}),mismatch);

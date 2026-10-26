@@ -210,3 +210,11 @@ SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制�
 后续本地 `0130` 为 M4 正文和编制说明增加完整执行/输入及 artifact 来源登记，保留旧字段、NULL 稿次和微秒时间，新旧 V1 INSERT 精确镜像。实际列表、下载、底稿、交付冻结和结算 readiness 使用准确登记，Word 缺登记不能回退旧表；问答仅保留严格 QA snapshot/subtype/全文证据分支，通用已交付文件引用继续沿原授权。Worker 先锁 topic/project，再锁 run/job 并重验租约；详情与原始失败/重跑见 [M4 登记专项](../acceptance/desktop-ux-coverage-20261026/execution-m4-artifacts/README.md)。
 
 本切片只处理来源与读取基础。V1/current-input gate、后继采用/执行、阶段和调用版本、真正增量处理、B 追加报价/账务及完整桌面同任务新输入旅程仍待完成。B1/B2 公式尚待用户确定，未推定计价，也不据此关闭 G03 / UX-A03 或整体 goal。
+
+### 2026-10-27：阶段与模型恢复边界
+
+任务 checkpoint 保留现有 `stages` 结构，首次可信写入增加 `stage_execution`，固定完整 execution/input tuple。旧无 stamp 记录仅按持久 V1 身份兼容；冲突 stamp 不得覆盖修复。真实 claim、阶段写入/升级、完成与恢复、补料捕获/文件读取及 pipeline 均校验来源，保存的 prompt 另查 kind/revision/hash。通用进度保存保留已完成阶段、provider results、operator 决定及恢复审计。材料解析属于独立 job，不改其 checkpoint。
+
+模型逻辑 ID 保持稳定，物理 attempt 编号仍在整个 job 内递增；Codex schema reask 预算单独按本执行调用次数计算。历史 prompted 调用先逐项核对完整绑定再筛选，缺失/损坏来源不能变成“没有旧调用”；合法旧未决调用仍阻断新发送。复核公开来源和旧分批阅读恢复同时核对实际 call/prompt/result。旧 unprompted V1 记录保持可见，不据此伪造可复用结果绑定。
+
+该重构没有活动版本切换、补料采用、重做计划或新 Word。SQL readiness/delivery 仍读取原 stage 路径并依赖现有 V1/准确成果约束，尚未独立校验 stamp；真正采用时必须一起接活动执行身份。自动 terminated-timeout 恢复的安全次数上限仍按整个 job 历史累计，不能声称所有重试限制都已按执行重置。历史工作留在既有不可变 saved-work receipts，未来采用须先冻结旧工作，再按明确依赖与复用计划切换活动阶段及输入，不能复制同名 prompt 或清空后整单重跑。本地验证见[执行恢复边界专项](../acceptance/desktop-ux-coverage-20261026/execution-work-boundaries/README.md)。G03 / UX-A03 与整体 goal 仍 active；B 已选，具体定价公式未定。

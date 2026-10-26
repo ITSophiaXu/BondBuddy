@@ -7,7 +7,7 @@ import {Pool,type PoolClient} from 'pg';
 import {isolatedTestDatabase} from './test-database.js';
 import {digest,transaction} from './data.js';
 import {grantCredits} from './billing.js';
-import {assertRunExecution,resolveRunExecution,type RunExecutionIdentity} from './run-execution.js';
+import {assertRunExecution,resolveRunExecution,readExecutionStages,type RunExecutionIdentity} from './run-execution.js';
 import {action,beginRunStage,checkpoint,checkpointStage,claim,finish,pauseAtCheckpoint,pauseRun,
   recordAuthoringActivity,recordPotentialCall,recordReviewAction,releaseLease,renew,upgradeStageCheckpoint,type Lease} from './queue.js';
 
@@ -190,6 +190,49 @@ test('initial execution identity is automatic, immutable, exact and enforced at 
       await checkpointStage(pool,f.lease,'identity_control',{accepted:true});
       assert.deepEqual((await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[f.jobId])).rows[0].checkpoint.stages.identity_control,{accepted:true},'The unmodified identity remains usable');
       await action(pool,f.owner,f.runId,'pause');assert.equal(await pauseAtCheckpoint(pool,f.lease),true);
+    });
+
+    await t.test('stage writes stamp the exact input and generic progress preserves saved work and reconciliation history',async()=>{
+      const f=await fixture('running');
+      const history={...f.lease.checkpoint,provider_results:[],operator_reconciliations:{'historical-attempt':{decision:'confirmed_not_sent'}}};
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[f.jobId,history]);
+      await checkpointStage(pool,f.lease,'identity_control',{accepted:true});
+      await upgradeStageCheckpoint(pool,f.lease,'identity_control',{accepted:true,upgraded:true});
+      await checkpoint(pool,f.lease,'synthetic_progress',{step:'saved'});
+      const saved=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[f.jobId])).rows[0].checkpoint;
+      assert.deepEqual(saved.stage_execution,{execution_version:1,input_revision:2,input_hash:f.hash});
+      assert.deepEqual(readExecutionStages(saved,f.lease),{existing_stage:{saved:'original immutable-input work'},identity_control:{accepted:true,upgraded:true}});
+      assert.deepEqual(saved.provider_results,history.provider_results);
+      assert.deepEqual(saved.operator_reconciliations,history.operator_reconciliations);
+      const before=await snapshot(pool,f);
+      await assert.rejects(checkpoint(pool,f.lease,'synthetic_progress',{provider_results:[{call_id:'invented'}]}),mismatch);
+      assert.deepEqual(await snapshot(pool,f),before);
+      await action(pool,f.owner,f.runId,'pause');assert.equal(await pauseAtCheckpoint(pool,f.lease),true);
+    });
+
+    await t.test('a foreign stage stamp blocks claim, saved-work writes and resume without being repaired',async()=>{
+      const f=await fixture('running');
+      const foreign={...f.lease.checkpoint,stage_execution:{execution_version:2,input_revision:3,input_hash:'e'.repeat(64)}};
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[f.jobId,foreign]);
+      const before=await snapshot(pool,f);
+      for(const [name,write] of writes){
+        await assert.rejects(write(pool,f.lease),mismatch,name);
+        assert.deepEqual(await snapshot(pool,f),before,name);
+      }
+      // Cancellation/pause remain available even when saved work is not readable.
+      await action(pool,f.owner,f.runId,'pause');
+      await pool.query("UPDATE bb_runs SET state='paused',stage='user_paused' WHERE id=$1",[f.runId]);
+      await pool.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL WHERE id=$1",[f.jobId]);
+      const paused=await snapshot(pool,f);
+      await assert.rejects(action(pool,f.owner,f.runId,'resume'),mismatch);
+      assert.deepEqual(await snapshot(pool,f),paused);
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[f.jobId,f.lease.checkpoint]);
+      const queued=await fixture('queued');
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[queued.jobId,foreign]);
+      const queuedBefore=await snapshot(pool,queued);
+      await assert.rejects(claim(pool,600,{runKinds:['update']}),mismatch);
+      assert.deepEqual(await snapshot(pool,queued),queuedBefore);
+      await action(pool,queued.owner,queued.runId,'pause');
     });
 
     await t.test('missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state',async()=>{

@@ -1,0 +1,95 @@
+{
+  "scope": "Execution stage and provider-call recovery boundaries. V1 only; no adoption, quote, charge or final supplemental Word journey.",
+  "runs": [
+    {
+      "id": "2026-10-26T19-45-47-560Z-pg-start-direct-41904-a0411f47",
+      "mode": "pg-start-direct",
+      "status": 0,
+      "finished": "2026-10-26T19:45:49.091Z"
+    },
+    {
+      "id": "2026-10-26T19-46-15-876Z-database-audit-25568-c558b74b",
+      "mode": "database-audit",
+      "status": 0,
+      "finished": "2026-10-26T19:46:16.336Z"
+    },
+    {
+      "id": "2026-10-26T19-46-39-934Z-api-build-23312-c8f34a33",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T19:46:58.565Z"
+    },
+    {
+      "id": "2026-10-26T19-47-47-826Z-worker-build-22216-5ab3ccdb",
+      "mode": "worker-build",
+      "status": 0,
+      "finished": "2026-10-26T19:48:03.531Z"
+    },
+    {
+      "id": "2026-10-26T19-48-30-838Z-build-34728-8b0054e1",
+      "mode": "build",
+      "status": 0,
+      "finished": "2026-10-26T19:49:29.822Z"
+    },
+    {
+      "id": "2026-10-26T19-49-24-864Z-api-build-41392-60557103",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T19:49:42.019Z"
+    },
+    {
+      "id": "2026-10-26T19-50-33-229Z-api-build-41592-6971cdb6",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T19:50:49.432Z"
+    },
+    {
+      "id": "2026-10-26T19-51-02-020Z-source-before-50260-5fc60110",
+      "mode": "source-before",
+      "status": 0,
+      "finished": "2026-10-26T19:51:07.004Z"
+    },
+    {
+      "id": "2026-10-26T19-51-14-087Z-api-boundaries-5888-09a5873d",
+      "mode": "api-boundaries",
+      "status": 0,
+      "finished": "2026-10-26T19:52:14.304Z",
+      "tests": 39,
+      "pass": 39,
+      "fail": 0,
+      "skipped": 0
+    },
+    {
+      "id": "2026-10-26T19-52-14-837Z-api-work-regressions-39572-d58f07c7",
+      "mode": "api-work-regressions",
+      "status": 0,
+      "finished": "2026-10-26T19:54:58.142Z",
+      "tests": 150,
+      "pass": 149,
+      "fail": 0,
+      "skipped": 1
+    },
+    {
+      "id": "2026-10-26T19-55-00-272Z-worker-boundaries-44588-bc081345",
+      "mode": "worker-boundaries",
+      "status": 0,
+      "finished": "2026-10-26T19:56:11.749Z",
+      "tests": 69,
+      "pass": 67,
+      "fail": 0,
+      "skipped": 2
+    },
+    {
+      "id": "2026-10-26T19-56-32-900Z-source-after-41884-97b75c06",
+      "mode": "source-after",
+      "status": 0,
+      "finished": "2026-10-26T19:56:48.457Z"
+    },
+    {
+      "id": "2026-10-26T19-56-44-336Z-pg-stop-34008-f964adbc",
+      "mode": "pg-stop",
+      "status": 0,
+      "finished": "2026-10-26T19:56:45.333Z"
+    }
+  ]
+}

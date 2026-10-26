@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergePublicReview, publicReviewCategories, publicComparisonMaterials, reviewPublicStage, verifiedSearchSources, type PublicAnalysis } from './review-public-stage.js';
+import { mergePublicReview, publicReviewCategories, publicComparisonMaterials, reviewPublicStage as durablePublicStage, verifiedSearchSources, type PublicAnalysis } from './review-public-stage.js';
 import { reviewFixture } from '../../../packages/domain/dist/review-test-fixtures.js';
 import { isReviewReport, type ReviewReport } from '@bondbuddy/contracts';
 import { reviewPromptRecordId, type ReviewAnalysisInput } from './review-model-stage.js';
@@ -9,6 +9,40 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { CodexAdapterConfig } from './codex-adapter.js';
 import { callMaterialTool, createMaterialToolTrace, type MaterialToolData, type MaterialModelEnvelope } from './authoring-material-tools.js';
 import { recordMaterialToolRead } from './material-tool-trace.js';
+
+type PublicStageOptions = NonNullable<Parameters<typeof durablePublicStage>[0]>;
+type AttemptState = Awaited<ReturnType<NonNullable<PublicStageOptions['readAttempts']>>>;
+const syntheticHistories = new WeakMap<object, { ctx: StageContext; attempts: AttemptState['attempts'] }>();
+const syntheticAttempts: NonNullable<PublicStageOptions['readAttempts']> = async (pool, _lease, logicalCallId) => {
+  const history = syntheticHistories.get(pool)!;
+  const attempts = history.attempts.filter(a => !logicalCallId || a.logical_call_id === logicalCallId);
+  return { identity: history.ctx.lease, checkpoint: history.ctx.lease.checkpoint, attempts, all_attempts: attempts, legacy_attempts: [],
+    next_attempt_no: Math.max(0, ...attempts.map(a => a.attempt_no)) + 1,
+    needs_reconciliation: history.attempts.some(a => a.status === 'pending_reconcile'), foreign_needs_reconciliation: false };
+};
+/** Model seams commit the same prompt/call metadata the real durable adapter supplies. */
+function reviewPublicStage(options: PublicStageOptions = {}) {
+  const model = options.model;
+  return durablePublicStage({ ...options, readAttempts: options.readAttempts ?? syntheticAttempts,
+    ...(model ? { model: (settings => {
+      const stage = model(settings);
+      return { ...stage, run: async ctx => {
+        const result = await stage.run(ctx);
+        if (result.kind === 'done') {
+          const key = `${settings.name}_prompt`;
+          ctx.checkpoint[key] ??= { snapshot_id: `snapshot-${settings.logicalCallId}` };
+          const history = syntheticHistories.get(ctx.pool)!;
+          if (!history.attempts.some(a => a.logical_call_id === settings.logicalCallId)) history.attempts.push({
+            call_id: `call-${settings.logicalCallId}`, logical_call_id: settings.logicalCallId, attempt_no: 1,
+            status: 'completed', usage_status: 'measured', prompt_snapshot_ref: ctx.checkpoint[key]!.snapshot_id as string,
+            observed: true, operator_retry: false, execution_version: ctx.lease.executionVersion,
+            input_revision: ctx.lease.inputRevision, input_hash: ctx.lease.inputHash,
+          });
+        }
+        return result;
+      } };
+    }) as NonNullable<PublicStageOptions['model']> } : {}) });
+}
 
 test('actual query or opened URL alone never proves returned source content', () => {
   const time = '2026-10-02T00:00:00Z';
@@ -70,10 +104,17 @@ test('differential public scope preserves the old concern when search is unavail
 });
 
 function stageContext(input: ReviewAnalysisInput, report: ReviewReport, events: ReturnType<typeof fixture>['events'], attempts: Record<string,unknown>[] = []): StageContext {
-  return {run:{id:'synthetic',owner_user_id:input.evidence.owner_user_id,project_id:report.project_id,input_revision:1,input_hash:input.input_hash},
+  const ctx = {run:{id:'synthetic',owner_user_id:input.evidence.owner_user_id,project_id:report.project_id,input_revision:1,input_hash:input.input_hash},
+    lease:{jobId:'synthetic-job',runId:'synthetic',owner:input.evidence.owner_user_id,token:'synthetic-token',attempts:1,
+      executionVersion:1,inputRevision:1,inputHash:input.input_hash,checkpoint:{}},
     checkpoint:{},values:new Map([['model_generation',{report,input}]]),signal:new AbortController().signal,
-    pool:{query:async(sql:string)=>({rows:sql.includes('bb_input_revisions')?[{manifest:{issuer_name:publicContext.issuer,review:{input:{as_of:publicContext.as_of}}}}]
-      :sql.includes('bb_model_call_attempts')?attempts:[{events,content_sha256:inputManifestHash(events)}]})}} as unknown as StageContext;
+    pool:{query:async(sql:string, params:unknown[])=>({rows:sql.includes('bb_input_revisions')?[{manifest:{issuer_name:publicContext.issuer,review:{input:{as_of:publicContext.as_of}}}}]
+      :[{events,content_sha256:inputManifestHash(events),call_id:params[5]}]})}} as unknown as StageContext;
+  syntheticHistories.set(ctx.pool, {ctx, attempts: attempts.map((a, index) => ({ call_id: `existing-${index}`,
+    logical_call_id: a.logical_call_id as string, attempt_no: 1, status: (a.status ?? 'completed') as 'completed',
+    usage_status: 'measured', prompt_snapshot_ref: (a.prompt_snapshot_id ?? 'legacy-prompt') as string,
+    observed: true, operator_retry: false, execution_version: 1, input_revision: 1, input_hash: input.input_hash })) });
+  return ctx;
 }
 function comparisonEnvelope(data: MaterialToolData, output: PublicAnalysis, readCount = 1): MaterialModelEnvelope {
   const trace=createMaterialToolTrace(data);
@@ -207,3 +248,51 @@ test('completed unavailable search remains unavailable when environment later en
     assert.deepEqual(await stage.run(ctx),first);assert.equal(calls,0);
   }finally{if(original===undefined)delete process.env.BB_REVIEW_WEB_SEARCH_ENABLED;else process.env.BB_REVIEW_WEB_SEARCH_ENABLED=original;}
 });
+
+test('public protocol selection ignores verified predecessor calls but whole-job unknown work still pauses',async()=>enabled(async()=>{
+  const {input,report,events}=fixture(),ctx=stageContext(input,report,events);
+  let calls=0;
+  const historical={call_id:'predecessor-search',logical_call_id:'m3-public-search',attempt_no:1,status:'completed' as const,
+    usage_status:'measured',prompt_snapshot_ref:'predecessor-prompt',observed:true,operator_retry:false,
+    execution_version:1,input_revision:1,input_hash:'b'.repeat(64)};
+  // This consumer seam models a verified predecessor; it does not open a V2 database execution.
+  const readAttempts: NonNullable<PublicStageOptions['readAttempts']>=async(...args)=>{
+    const current=await syntheticAttempts(...args);
+    return {...current,all_attempts:[historical,...current.all_attempts]};
+  };
+  const stage=reviewPublicStage({readAttempts,config:()=>({} as CodexAdapterConfig),model:options=>({name:options.name,run:async()=>{
+    calls++;assert.equal(options.logicalCallId,'m3-public-search-v2');return {kind:'fail',code:'DATA_UNAVAILABLE'};
+  }})});
+  assert.equal((await stage.run(ctx)).kind,'done');assert.equal(calls,1);
+  const blocked=reviewPublicStage({readAttempts:async(...args)=>({...await readAttempts(...args),needs_reconciliation:true,foreign_needs_reconciliation:true}),
+    model:options=>({name:options.name,run:async()=>{calls++;return {kind:'fail',code:'DATA_UNAVAILABLE'};}})});
+  assert.deepEqual(await blocked.run(ctx),{kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'});
+  assert.equal(calls,1);
+}));
+
+test('missing execution binding is a failure before public model or evidence work',async()=>{
+  const {input,report,events}=fixture(),ctx=stageContext(input,report,events);let calls=0;
+  const invalid=Object.assign(new Error('exact execution binding missing'),{code:'INPUT_REVISION_CONFLICT'});
+  const stage=reviewPublicStage({readAttempts:async()=>{throw invalid;},
+    model:options=>({name:options.name,run:async()=>{calls++;return {kind:'fail',code:'DATA_UNAVAILABLE'};}})});
+  await assert.rejects(stage.run(ctx),error=>error===invalid);assert.equal(calls,0);
+});
+
+test('public sources read only the exact completed search call and reject a changed prompt',async()=>enabled(async()=>{
+  const {input,report,events,check}=fixture(),ctx=stageContext(input,report,events);
+  const query=ctx.pool.query.bind(ctx.pool);const selected:unknown[][]=[];
+  ctx.pool.query=(async(sql:string,params:unknown[])=>{
+    if(sql.includes('bb_model_web_search_evidence'))selected.push(params);
+    return query(sql,params);
+  }) as typeof ctx.pool.query;
+  const model: NonNullable<PublicStageOptions['model']>=options=>({name:options.name,run:async()=>options.logicalCallId==='m3-public-search-v2'
+    ?{kind:'done',value:{checks:[{...check,source_record_ids:[]}]}}:{kind:'fail',code:'DATA_UNAVAILABLE'}});
+  assert.equal((await reviewPublicStage({config:()=>({} as CodexAdapterConfig),model}).run(ctx)).kind,'done');
+  assert.equal(selected.length,1);assert.deepEqual(selected[0]!.slice(3),['synthetic-job','m3-public-search-v2','call-m3-public-search-v2']);
+  selected.length=0;
+  const changed=reviewPublicStage({config:()=>({} as CodexAdapterConfig),model,readAttempts:async(...args)=>{
+    const state=await syntheticAttempts(...args);
+    return args[2]?{...state,attempts:state.attempts.map(a=>({...a,prompt_snapshot_ref:'wrong-prompt'}))}:state;
+  }});
+  await assert.rejects(changed.run(ctx),{code:'INPUT_REVISION_CONFLICT'});assert.equal(selected.length,0);
+}));

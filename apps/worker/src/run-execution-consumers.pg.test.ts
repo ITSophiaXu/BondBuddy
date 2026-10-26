@@ -5,7 +5,7 @@ import {Pool} from 'pg';
 import {uid,digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
 import {claim,type Lease} from '@bondbuddy/api/queue';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {runPipelineOnce,type StageContext} from './run-pipeline.js';
+import {runPipelineOnce,codexModelStage,type StageContext} from './run-pipeline.js';
 import {recordM4Progress} from './m4-action-progress.js';
 import {lockIntegrityObservation} from './integrity-browser-stage.js';
 import {isolatedTestDatabase} from './test-database.js';
@@ -64,6 +64,32 @@ test('worker consumers resolve only the exact initial execution and reject later
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND type='run.progress'",[f.runId])).rows[0].n,1);
       await assert.rejects(pool.query(`INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
         VALUES($1,$2,$3,2,1,$4)`,[f.owner,f.project,f.runId,f.hash]),{code:'23514'});
+    });
+    await t.test('a saved prompt from another input or snapshot kind is rejected before reading bytes or entering the adapter',async()=>{
+      const f=await fixture(),lease=await claim(pool,60,{runKinds:['generation']});assert.ok(lease);assert.equal(lease.runId,f.runId);
+      const run=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[f.runId])).rows[0];
+      await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,2,$2,1,$3,'{}','[]','[]')`,[f.project,f.owner,f.hash]);
+      let reads=0,calls=0;
+      const blobs={getIfExists:async()=>{reads++;throw Error('Foreign prompt bytes must not be read');}} as unknown as PrivateBlobs;
+      const stage=codexModelStage({name:'model_generation',logicalCallId:'synthetic-scope',config:()=>{calls++;throw Error('Foreign prompt must not reach adapter');},
+        buildPrompt:async()=>{throw Error('An existing prompt is never silently rebuilt');},schema:{type:'object'},validate:()=>true,resultSchemaVersion:'synthetic-v1'});
+      for(const [index,kind,revision,hash] of [[1,'user_prompt',1,f.hash],[2,'model_request',2,f.hash],[3,'model_request',1,'c'.repeat(64)]] as const){
+        const snapshot=uid();
+        await pool.query(`INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,'synthetic-v1',$9,$10)`,[snapshot,f.owner,f.project,f.runId,kind,index,`users/${f.owner}/projects/${f.project}/snapshots/${snapshot}`,digest('synthetic-private-prompt'),revision,hash]);
+        const ctx={pool,blobs,lease,run,signal:new AbortController().signal,checkpoint:{model_generation_prompt:{snapshot_id:snapshot}},values:new Map()} as StageContext;
+        assert.deepEqual(await stage.run(ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
+      }
+      assert.equal(reads,0);assert.equal(calls,0);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[f.jobId])).rows[0].n,0);
+    });
+    await t.test('the actual pipeline refuses another execution stage set before skipping or starting any work',async()=>{
+      const f=await fixture();let calls=0;
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[f.jobId,{stage_execution:{execution_version:2,input_revision:2,input_hash:'e'.repeat(64)},stages:{model_generation:{completed:true}}}]);
+      const before=(await pool.query('SELECT * FROM bb_jobs WHERE id=$1',[f.jobId])).rows[0];
+      await assert.rejects(runPipelineOnce({pool,blobs:{} as PrivateBlobs,runKinds:['generation'],stages:[{name:'model_generation',run:async()=>{calls++;return {kind:'stopped'};}}]}),{code:'INPUT_REVISION_CONFLICT'});
+      assert.equal(calls,0);assert.deepEqual((await pool.query('SELECT * FROM bb_jobs WHERE id=$1',[f.jobId])).rows[0],before);
     });
   }finally{await pool.end();}
 });

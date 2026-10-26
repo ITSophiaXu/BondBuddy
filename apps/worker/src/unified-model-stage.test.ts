@@ -4,6 +4,7 @@ import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { chunkEvidence, promptLocator, unifiedModelGenerationStage } from './unified-model-stage.js';
 import type { UnifiedInput } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
+import type { readExecutionProviderAttempts } from '@bondbuddy/api/provider-results';
 
 function input(source = true): UnifiedInput {
   const record = (material: string, id: string, text: string) => ({record_id:id,material_id:material,material_version:1,content_hash:'a'.repeat(64),locator_type:'text_line' as const,locator:{},literal_quote:text,context:'',extraction_method:'native_text' as const,extractor_version:'synthetic',confidence:null,uncertainty:[],formatting:{}});
@@ -12,7 +13,27 @@ function input(source = true): UnifiedInput {
     {pin:{material_id:'report',material_version:1,role:'audit',sha256:'b'.repeat(64)},filename:'合成财务材料',mediaType:'text/plain',objectKey:'private/report',records:[record('report','r1','2025年净资产120万元')]},
     ...(source ? [{pin:{material_id:'source',material_version:1,role:'historical',sha256:'c'.repeat(64)},filename:'合成参考',mediaType:'text/plain',objectKey:'private/source',records:[record('source','s1','2024年净资产100万元'),record('source','s2','其他条款')]}] : [])] };
 }
-const ctx = () => ({run:{input_hash:'f'.repeat(64)},values:new Map(),checkpoint:{}} as unknown as StageContext);
+const ctx = () => ({run:{id:'synthetic-run',owner_user_id:'synthetic-owner',project_id:'synthetic-project',input_revision:1,input_hash:'f'.repeat(64)},values:new Map(),checkpoint:{}} as unknown as StageContext);
+
+function readingRecovery(ctx: StageContext, current = true) {
+  const logical_call_id='unified-v3-read_0_0';
+  const timeout={call_id:'timeout',logical_call_id,attempt_no:1,status:'failed' as const,usage_status:'unknown',observed:true,operator_retry:true,
+    execution_version:1,input_revision:1,input_hash:ctx.run.input_hash,prompt_snapshot_ref:'timeout-prompt'};
+  const completed={...timeout,call_id:'parent-completed',attempt_no:2,status:'completed' as const,usage_status:'measured',operator_retry:false,prompt_snapshot_ref:'parent-prompt'};
+  const ref={logical_call_id,call_id:completed.call_id,attempt_no:completed.attempt_no,result_id:'parent-result',
+    result_ref:'private/parent-result',result_sha256:'a'.repeat(64),result_schema_version:'unified-read-v3'};
+  ctx.lease={jobId:'synthetic-job',runId:ctx.run.id,owner:ctx.run.owner_user_id,token:'synthetic-lease',attempts:1,executionVersion:current?1:2,
+    inputRevision:ctx.run.input_revision,inputHash:ctx.run.input_hash,checkpoint:{operator_reconciliations:{timeout:{actor:'worker_timeout_recovery',
+      reason_code:'terminated_timeout_auto_retry',decision:'retry_unknown_usage',logical_call_id}}}};
+  let resultOverride: Record<string,unknown>={};
+  ctx.pool={query:async()=>({rows:[{...ref,id:ref.result_id,attempt_id:completed.call_id,prompt_snapshot_ref:completed.prompt_snapshot_ref,...resultOverride}]})} as unknown as StageContext['pool'];
+  const readAttempts: typeof readExecutionProviderAttempts=async(_pool,_lease,id)=>{
+    const all_attempts=(ctx.lease.checkpoint.provider_results?[timeout,completed]:[timeout]).filter(a=>!id||a.logical_call_id===id);
+    return {identity:ctx.lease,checkpoint:ctx.lease.checkpoint,all_attempts,attempts:current?all_attempts:[],legacy_attempts:[],
+      next_attempt_no:Math.max(0,...all_attempts.map(a=>a.attempt_no))+1,needs_reconciliation:false,foreign_needs_reconciliation:false};
+  };
+  return {readAttempts,ref,corrupt:(change:Record<string,unknown>)=>{resultOverride=change;}};
+}
 
 test('direct authoring starts with the source update, even with large supporting files; no prereading barrier',async()=>{
  const material=input();const seed=material.materials[0].records[0];
@@ -118,10 +139,9 @@ test('only a recovered timed-out reading batch splits; IDs and complete record c
   const material=input();const seed=material.materials[0]!.records[0]!;
   material.materials[0]!.records=Array.from({length:401},(_,i)=>({...seed,record_id:`r${i}`,literal_quote:`合成数值${i}`}));
   const context=ctx();
-  context.lease={jobId:'synthetic-job',runId:'synthetic-run',owner:'synthetic-owner',token:'synthetic-lease',attempts:1,executionVersion:1,inputRevision:context.run.input_revision,inputHash:context.run.input_hash,
-    checkpoint:{operator_reconciliations:{timeout:{actor:'worker_timeout_recovery',reason_code:'terminated_timeout_auto_retry',decision:'retry_unknown_usage',logical_call_id:'unified-v3-read_0_0'}}}};
+  const recovery=readingRecovery(context);
   const sent=new Map<string,string[]>();let secondPartAttempts=0;
-  const stage=unifiedModelGenerationStage({load:async()=>material,model:options=>({name:options.name,run:async c=>{
+  const stage=unifiedModelGenerationStage({readAttempts:recovery.readAttempts,load:async()=>material,model:options=>({name:options.name,run:async c=>{
     const data=JSON.parse((await options.buildPrompt(c)).split('输入数据：\n')[1]!);
     if(options.logicalCallId==='unified-v3-read_0_0_part_1' && secondPartAttempts++===0)
       return {kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'};
@@ -141,9 +161,28 @@ test('only a recovered timed-out reading batch splits; IDs and complete record c
   assert.equal((await stage.run(context)).kind,'done');
   assert.deepEqual([...sent.keys()],['unified-v3-read_0_0_part_0','unified-v3-read_0_0_part_1','unified-v3-read_0_1']);
   assert.deepEqual([...sent.values()].map(ids=>ids.length),[200,200,1]);
-  context.lease.checkpoint.provider_results=[{logical_call_id:'unified-v3-read_0_0'}];
+  context.lease.checkpoint.provider_results=[recovery.ref];
   sent.clear();assert.equal((await stage.run(context)).kind,'done');
   assert.deepEqual([...sent.keys()],['unified-v3-read_0_0','unified-v3-read_0_1'],'an already completed parent keeps its original replay identity');
+});
+
+test('verified predecessor reading history cannot split this execution or hide a corrupt result',async()=>{
+  const context=ctx(),recovery=readingRecovery(context,false),calls:string[]=[];
+  context.lease.checkpoint.provider_results=[recovery.ref];
+  const stage=unifiedModelGenerationStage({readAttempts:recovery.readAttempts,load:async()=>input(),model:options=>({name:options.name,run:async()=>{
+    calls.push(options.logicalCallId);return {kind:'pause',stage:'provider_reconcile',reason:'synthetic_stop'};
+  }})});
+  assert.deepEqual(await stage.run(context),{kind:'pause',stage:'provider_reconcile',reason:'synthetic_stop'});
+  assert.deepEqual(calls,['unified-v3-read_0_0']);
+  calls.length=0;recovery.corrupt({prompt_snapshot_ref:'another-prompt'});
+  await assert.rejects(stage.run(context),{code:'INPUT_REVISION_CONFLICT'});assert.deepEqual(calls,[]);
+});
+
+test('whole-job pending calls pause reading recovery before a new parent or child call',async()=>{
+  const context=ctx(),recovery=readingRecovery(context);let calls=0;
+  const stage=unifiedModelGenerationStage({readAttempts:async(...args)=>({...await recovery.readAttempts(...args),needs_reconciliation:true}),
+    load:async()=>input(),model:options=>({name:options.name,run:async()=>{calls++;return {kind:'fail',code:'DATA_UNAVAILABLE'};}})});
+  assert.deepEqual(await stage.run(context),{kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'});assert.equal(calls,0);
 });
 
 test('prompt keeps layout coordinates without repeating private stable anchors',()=>{

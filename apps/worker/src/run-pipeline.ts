@@ -39,7 +39,7 @@ import { markTestWord } from './test-word-marking.js';
 import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
 import type { ApprovedGenerationIssuerBinding } from './no-history-model-stage.js';
 import type { ProduceTargetPeriodCandidateSnapshotRequest } from './target-period-candidate-snapshot-producer.js';
-import {resolveRunExecution} from '@bondbuddy/api/run-execution';
+import {resolveRunExecution,readExecutionStages} from '@bondbuddy/api/run-execution';
 import {lockStageRunExecution} from './run-execution-lease.js';
 
 /**
@@ -519,7 +519,9 @@ export function codexModelStage(options: {
         await checkpointStage(pool, lease, promptStage, { snapshot_id: snapshotId });
         ctx.checkpoint[promptStage] = { snapshot_id: snapshotId };
       }
-      const ref = (await pool.query('SELECT object_key,content_sha256 FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4', [snapshotId, run.owner_user_id, run.project_id, run.id])).rows[0];
+      const ref = (await pool.query(`SELECT object_key,content_sha256 FROM bb_snapshot_refs
+        WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4 AND snapshot_kind='model_request'
+          AND input_revision=$5 AND input_hash=$6`, [snapshotId, run.owner_user_id, run.project_id, run.id,lease.inputRevision,lease.inputHash])).rows[0];
       if (!ref) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
       const bytes = await blobs.getIfExists(ref.object_key);
       if (!bytes || digest(bytes) !== ref.content_sha256.trim()) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
@@ -594,7 +596,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   let currentStage: string | undefined;
   try {
     const run=await resolveRunExecution(pool,lease.owner,lease.runId,lease) as RunRow;
-    const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
+    const checkpoint = { ...readExecutionStages(lease.checkpoint,lease) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
       validateBeforeModelCall: async () => {

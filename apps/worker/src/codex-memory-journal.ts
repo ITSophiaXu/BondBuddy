@@ -22,5 +22,9 @@ export class MemoryCodexJournal implements CodexJournal {
   async recordObservation(observation: ProviderCallObservation, options: { retryable?: boolean } = {}) { this.events.push(`observation:${observation.attempt_no}`); this.observations.push({ observation, retryable: options.retryable === true }); }
   async recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime) { this.events.push(`runtime:${intent.attempt_no}`); this.runtimes.push(runtime); }
   async latestAttempt() { return this.prior; }
+  async attemptState(_logicalCallId: string) {
+    const latest=await this.latestAttempt();
+    return {latest,next_attempt_no:(latest?.attempt_no??0)+1,execution_attempt_count:latest?.attempt_no??0};
+  }
   async readCompleted(_logicalCallId: string, _attemptNo: number): Promise<{ value: unknown; result_sha256: string } | null> { return null; }
 }

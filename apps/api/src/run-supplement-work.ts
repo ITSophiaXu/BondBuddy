@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { RunSupplementDraftResponse } from '@bondbuddy/contracts';
 import { Problem, type PrivateBlobs, digest, transaction } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import { assertRunExecution } from './run-execution.js';
+import { assertRunExecution, readExecutionStages } from './run-execution.js';
 import { assertModelCallExecution } from './model-call-execution.js';
 import { providerCallNeedsReconciliation } from './queue.js';
 
@@ -27,12 +27,13 @@ export async function captureRunSupplementWork(db: PoolClient, r: any, job: any,
     || job.state !== 'paused' || !job.user_pause_requested || job.lease_token || job.lease_until
     || await providerCallNeedsReconciliation(db, job.id)) throw unavailable();
   const execution = await assertRunExecution(db, r), source = checkpoint(job.checkpoint);
+  const stages = readExecutionStages(source, execution);
   const refs = source.provider_results ?? [];
   const results = (await db.query(`SELECT p.*,a.status AS attempt_status FROM bb_provider_result_refs p
     JOIN bb_model_call_attempts a ON a.id=p.attempt_id AND a.owner_user_id=p.owner_user_id AND a.job_id=p.job_id
     WHERE p.owner_user_id=$1 AND p.project_id=$2 AND p.run_id=$3 AND p.job_id=$4 ORDER BY p.id`,
   [r.owner_user_id, r.project_id, r.id, job.id])).rows;
-  if (Object.keys(source.stages ?? {}).length > 10000 || results.length > 10000 || refs.length !== results.length) throw unavailable();
+  if (Object.keys(stages).length > 10000 || results.length > 10000 || refs.length !== results.length) throw unavailable();
   const seen = new Set<string>();
   for (const result of results) {
     if (result.attempt_status !== 'completed' || seen.has(result.attempt_id)
@@ -63,7 +64,8 @@ export async function runSupplementWorkSummary(db: Db, r: any, job: any, revisio
   const count = Number((await db.query(`SELECT count(*)::int AS n FROM bb_run_supplement_saved_results
     WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 AND supplement_revision=$4`,
   [r.owner_user_id, r.project_id, r.id, revision])).rows[0].n);
-  const stageCount = Object.keys(source.stages ?? {}).length;
+  const stageCount = Object.keys(readExecutionStages(source, { executionVersion: work.execution_version,
+    inputRevision: work.input_revision, inputHash: work.input_hash.trim() })).length;
   if (count !== (source.provider_results ?? []).length || stageCount > 10000 || count > 10000) throw unavailable();
   return { status: !job || inputManifestHash(job.checkpoint) !== hash ? 'stale_boundary' : 'captured',
     stage_count: stageCount, result_count: count };
@@ -109,6 +111,8 @@ async function readCapturedResultLocked(input: Omit<CapturedReadInput, 'db'> & {
     || row.id !== input.resultId || row.result_schema_version !== input.resultSchemaVersion || row.execution_version !== 1
     || row.checkpoint_hash.trim() !== inputManifestHash(checkpoint(row.source_checkpoint))
     || row.source_checkpoint.provider_results?.filter((entry: unknown) => matches(entry, row)).length !== 1) throw unavailable();
+  readExecutionStages(row.source_checkpoint, { executionVersion: row.execution_version,
+    inputRevision: row.input_revision, inputHash: row.input_hash.trim() });
   const binding = await assertModelCallExecution(input.db, { owner: input.owner, projectId: input.projectId, runId: input.runId,
     jobId: row.job_id, attemptId: row.attempt_id, executionVersion: row.execution_version,
     inputRevision: row.input_revision, inputHash: row.input_hash.trim() });

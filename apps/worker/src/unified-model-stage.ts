@@ -1,4 +1,5 @@
-import { digest } from '@bondbuddy/api/data';
+import { digest, Problem } from '@bondbuddy/api/data';
+import { readExecutionProviderAttempts } from '@bondbuddy/api/provider-results';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput, UnifiedInputPending, type UnifiedInput, type UnifiedMaterial } from './unified-input.js';
@@ -204,7 +205,9 @@ async function revisionModelPlan(ctx: StageContext, input: UnifiedInput, pin: Re
 }
 
 /** Every call uses the existing durable journal: completed results replay; unknown calls never resend. */
-export function unifiedModelGenerationStage(options: { model?: typeof codexModelStage; load?: typeof loadUnifiedInput; config?: ReturnType<typeof loadCodexAdapterConfig>; direct?: boolean } = {}): RunStage {
+export function unifiedModelGenerationStage(options: { model?: typeof codexModelStage; load?: typeof loadUnifiedInput; config?: ReturnType<typeof loadCodexAdapterConfig>; direct?: boolean;
+  /** Test seam for the durable, execution-bound recovery history reader. */
+  readAttempts?: typeof readExecutionProviderAttempts } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
     try {
       const input = await (options.load ?? loadUnifiedInput)(ctx);
@@ -258,10 +261,34 @@ export function unifiedModelGenerationStage(options: { model?: typeof codexModel
         for (const [c, records] of chunkEvidence(evidenceFor(material),12000,400,64000).entries()) {
           const id=`read_${m}_${c}`;
           const dispositions=ctx.lease?.checkpoint.operator_reconciliations as Record<string,{actor?:string;reason_code?:string;logical_call_id?:string;decision?:string}>|undefined;
-          const timedOut=Object.values(dispositions??{}).some(d=>d.actor==='worker_timeout_recovery' &&
-            d.reason_code==='terminated_timeout_auto_retry' && d.decision==='retry_unknown_usage' && d.logical_call_id===`unified-v3-${id}`);
+          const logicalCallId=`unified-v3-${id}`;
+          const timeoutCandidates=Object.entries(dispositions??{}).filter(([,d])=>d.actor==='worker_timeout_recovery' &&
+            d.reason_code==='terminated_timeout_auto_retry' && d.decision==='retry_unknown_usage' && d.logical_call_id===logicalCallId);
           const resultRefs=ctx.lease?.checkpoint.provider_results;
-          const completedParent=Array.isArray(resultRefs) && resultRefs.some(r=>r?.logical_call_id===`unified-v3-${id}`);
+          const parentRefs=Array.isArray(resultRefs)?resultRefs.filter(r=>r?.logical_call_id===logicalCallId):[];
+          let timedOut=false,completedParent=false;
+          if(timeoutCandidates.length || parentRefs.length){
+            const history=await (options.readAttempts??readExecutionProviderAttempts)(ctx.pool,ctx.lease,logicalCallId);
+            if(history.needs_reconciliation)return {kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'};
+            const currentIds=new Set(history.attempts.map(a=>a.call_id));
+            for(const [callId] of timeoutCandidates){
+              const attempt=history.all_attempts.find(a=>a.call_id===callId && a.logical_call_id===logicalCallId);
+              if(!attempt)throw new Problem(409,'INPUT_REVISION_CONFLICT','Reading recovery does not match its exact execution call');
+              if(currentIds.has(callId) && attempt.status==='failed' && attempt.operator_retry)timedOut=true;
+            }
+            for(const ref of parentRefs){
+              const attempt=history.all_attempts.find(a=>a.call_id===ref.call_id && a.logical_call_id===logicalCallId && a.attempt_no===ref.attempt_no);
+              if(!attempt || typeof ref.result_id!=='string')throw new Problem(409,'INPUT_REVISION_CONFLICT','Reading result has no exact execution call');
+              const saved=(await ctx.pool.query(`SELECT * FROM bb_provider_result_refs WHERE owner_user_id=$1 AND project_id=$2
+                AND run_id=$3 AND job_id=$4 AND id=$5`,[ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id,ctx.lease.jobId,ref.result_id])).rows;
+              const result=saved[0];
+              if(saved.length!==1 || result.attempt_id!==attempt.call_id || result.logical_call_id!==logicalCallId
+                || result.attempt_no!==attempt.attempt_no || result.prompt_snapshot_ref!==attempt.prompt_snapshot_ref
+                || result.result_ref!==ref.result_ref || result.result_sha256?.trim()!==ref.result_sha256 || result.result_schema_version!==ref.result_schema_version)
+                throw new Problem(409,'INPUT_REVISION_CONFLICT','Reading result does not match its saved execution prompt');
+              if(currentIds.has(attempt.call_id))completedParent=true;
+            }
+          }
           // Keep all original batch IDs stable. Only an evidenced timeout splits into
           // deterministic child calls; completed siblings/children replay unchanged.
           const middle=Math.ceil(records.length/2);

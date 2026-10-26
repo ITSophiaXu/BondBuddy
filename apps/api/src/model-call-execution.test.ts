@@ -51,7 +51,7 @@ test('missing, duplicate, foreign, altered input and incomplete prompt bindings 
 
 test('actual provider lookups never turn an existing unbound prompted attempt into a new call',async()=>{
   const lease:Lease={owner:'owner',runId:'run',jobId:'job',token:'token',attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:hash};
-  const run={id:'run',owner_user_id:'owner',project_id:'project',input_revision:1,input_hash:hash};
+  const run={id:'run',owner_user_id:'owner',project_id:'project',input_revision:1,input_hash:hash,checkpoint:{}};
   let bindingReads=0,blobReads=0;
   const pool={query:async(sql:string)=>{
     if(sql.includes('FROM bb_model_call_execution_bindings')){bindingReads++;return {rows:[]};}

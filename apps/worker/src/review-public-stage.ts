@@ -2,6 +2,8 @@ import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { isReviewReport, type ReviewReport, type ReviewPublicSource, type ReviewEvidenceRef } from '@bondbuddy/contracts';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { Problem } from '@bondbuddy/api/data';
+import { readExecutionProviderAttempts } from '@bondbuddy/api/provider-results';
 import { composeContainedPrompt, loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { chunkReviewRecords, reviewPromptRecordId, type ReviewAnalysisInput } from './review-model-stage.js';
@@ -122,7 +124,27 @@ export function mergePublicReview(report: ReviewReport, analysis: PublicAnalysis
   return linked;
 }
 
-type PublicStageOptions = { model?: typeof codexModelStage; config?: typeof loadCodexAdapterConfig };
+type PublicStageOptions = { model?: typeof codexModelStage; config?: typeof loadCodexAdapterConfig;
+  /** Test seam; production always resolves and verifies durable execution bindings. */
+  readAttempts?: typeof readExecutionProviderAttempts };
+
+/** Search evidence belongs to the completed call that produced this execution's
+ * result. Earlier attempts and predecessor executions cannot contribute sources. */
+async function currentSearchEvents(ctx: StageContext, options: PublicStageOptions, logicalCallId: string, stageName: string): Promise<SearchEvent[] | null> {
+  const state = await (options.readAttempts ?? readExecutionProviderAttempts)(ctx.pool, ctx.lease, logicalCallId);
+  if (state.needs_reconciliation) return null;
+  const attempt = state.attempts.filter(a => a.logical_call_id === logicalCallId)
+    .sort((a, b) => b.attempt_no - a.attempt_no)[0];
+  const snapshot = ctx.checkpoint[`${stageName}_prompt`]?.snapshot_id;
+  if (!attempt || attempt.status !== 'completed' || typeof snapshot !== 'string' || attempt.prompt_snapshot_ref !== snapshot)
+    throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Public search result does not match its exact execution prompt');
+  const rows = (await ctx.pool.query(`SELECT events,content_sha256,call_id FROM bb_model_web_search_evidence
+    WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 AND job_id=$4 AND logical_call_id=$5 AND call_id=$6`,
+  [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.id, ctx.lease.jobId, logicalCallId, attempt.call_id])).rows;
+  if (rows.length > 1 || rows.some(r => r.call_id !== attempt.call_id))
+    throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Public search evidence does not match its exact call');
+  return rows.flatMap(r => { if (inputManifestHash(r.events) !== r.content_sha256.trim()) throw new Error('WEB_SEARCH_EVIDENCE_CHANGED'); return r.events as SearchEvent[]; });
+}
 /** Already-started v1 calls keep their original prompts, IDs and durable result validation. */
 function legacyReviewPublicStage(options: PublicStageOptions): RunStage {
   return { name: 'public_review', replay: true, run: async ctx => {
@@ -148,8 +170,8 @@ function legacyReviewPublicStage(options: PublicStageOptions): RunStage {
     const outcome = await stage.run(ctx);
     if (outcome.kind === 'stopped' || outcome.kind === 'pause') return outcome;
     if (outcome.kind !== 'done') return merge(null, [], '真实公开检索未取得可确认的完成结果，本维度未覆盖；调用错误和未知用量保留审计，其他维度继续。');
-    const rows = (await ctx.pool.query('SELECT events,content_sha256 FROM bb_model_web_search_evidence WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 AND logical_call_id=$4 ORDER BY created_at', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.id, 'm3-public-search'])).rows;
-    const events = rows.flatMap(r => { if (inputManifestHash(r.events) !== r.content_sha256.trim()) throw new Error('WEB_SEARCH_EVIDENCE_CHANGED'); return r.events as SearchEvent[]; });
+    const events = await currentSearchEvents(ctx, options, 'm3-public-search', 'public_review');
+    if (!events) return { kind: 'pause', stage: 'provider_reconcile', reason: 'provider_result_pending' };
     const verified = verifiedSearchSources(events), search = outcome.value as PublicAnalysis;
     if (!verified.size) return merge(search, events);
     const publicSources = [...verified].map(([url, value]) => ({ url, ...value }));
@@ -180,7 +202,7 @@ function legacyReviewPublicStage(options: PublicStageOptions): RunStage {
 
 const PUBLIC_SEARCH_CALL = 'm3-public-search-v2';
 const PUBLIC_COMPARE_CALL = 'm3-public-compare-v2';
-type PublicAttempt = { logical_call_id: string; status?: string; prompt_snapshot_id?: string | null };
+type PublicAttempt = { logical_call_id: string; status?: string; prompt_snapshot_ref: string };
 const legacyCall = (id: string) => id === 'm3-public-search' || /^m3-public-compare-\d+$/.test(id);
 const newCall = (id: string) => id === PUBLIC_SEARCH_CALL || id === PUBLIC_COMPARE_CALL;
 
@@ -201,7 +223,7 @@ export function publicComparisonMaterials(input: ReviewAnalysisInput, report: Re
 function promptChanged(ctx: StageContext, attempts: PublicAttempt[], prefix: string, name: string, logicalCallId: string): boolean {
   const checkpoint = ctx.checkpoint ?? {};
   return Object.keys(checkpoint).some(key => key.startsWith(prefix) && key.endsWith('_prompt') && key !== `${name}_prompt`)
-    || attempts.some(a => a.logical_call_id === logicalCallId && a.prompt_snapshot_id !== checkpoint[`${name}_prompt`]?.snapshot_id);
+    || attempts.some(a => a.logical_call_id === logicalCallId && a.prompt_snapshot_ref !== checkpoint[`${name}_prompt`]?.snapshot_id);
 }
 
 /**
@@ -213,12 +235,15 @@ export function reviewPublicStage(options: PublicStageOptions = {}): RunStage {
     const analysis = ctx.values.get('model_generation') as { report: ReviewReport; input: ReviewAnalysisInput } | undefined;
     if (!analysis) return { kind: 'fail', code: 'VALIDATION_FAILED' };
     const checkpoint = ctx.checkpoint ?? {};
-    const attempts = (await ctx.pool.query(`SELECT DISTINCT ON(a.logical_call_id) a.logical_call_id,a.status,a.prompt_snapshot_id FROM bb_model_call_attempts a
-      JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
-      JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
-      WHERE a.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND a.logical_call_id LIKE 'm3-public-%'
-      ORDER BY a.logical_call_id,a.attempt_no DESC`,
-    [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.id])).rows as PublicAttempt[];
+    const state = await (options.readAttempts ?? readExecutionProviderAttempts)(ctx.pool, ctx.lease);
+    if (state.needs_reconciliation) return { kind: 'pause', stage: 'provider_reconcile', reason: 'provider_result_pending' };
+    const latest = new Map<string, typeof state.attempts[number]>();
+    for (const attempt of state.attempts) if (attempt.logical_call_id.startsWith('m3-public-')
+      && (!latest.has(attempt.logical_call_id) || latest.get(attempt.logical_call_id)!.attempt_no < attempt.attempt_no))
+      latest.set(attempt.logical_call_id, attempt);
+    const attempts: PublicAttempt[] = [...latest.values()];
+    if (state.legacy_attempts.some(a => a.logical_call_id.startsWith('m3-public-')))
+      throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Public search call has no exact execution prompt binding');
     const oldState = Object.keys(checkpoint).some(k => k === 'public_review_prompt' || /^public_compare_\d+_prompt$/.test(k))
       || attempts.some(a => legacyCall(a.logical_call_id));
     const newState = (checkpoint.model_generation?.public_review as Record<string, unknown> | undefined)?.execution_mode === 'cli-public-v2'
@@ -232,7 +257,7 @@ export function reviewPublicStage(options: PublicStageOptions = {}): RunStage {
       if (attempts.some(a => {
         const name = a.logical_call_id === 'm3-public-search' ? 'public_review_prompt'
           : `public_compare_${a.logical_call_id.slice('m3-public-compare-'.length)}_prompt`;
-        return a.prompt_snapshot_id !== checkpoint[name]?.snapshot_id;
+        return a.prompt_snapshot_ref !== checkpoint[name]?.snapshot_id;
       })) return { kind: 'pause', stage: 'capability_not_ready', reason: 'public_review_snapshot_changed' };
       return legacyReviewPublicStage(options).run(ctx);
     }
@@ -281,9 +306,8 @@ export function reviewPublicStage(options: PublicStageOptions = {}): RunStage {
     const searched = await searchStage.run(ctx);
     if (searched.kind === 'stopped' || searched.kind === 'pause') return searched;
     if (searched.kind !== 'done') return merge(null, [], '真实公开检索未取得可确认的完成结果，本维度未覆盖；调用错误和未知用量保留审计，其他维度继续。');
-    const rows = (await ctx.pool.query('SELECT events,content_sha256 FROM bb_model_web_search_evidence WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 AND logical_call_id=$4 ORDER BY created_at',
-      [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.id, PUBLIC_SEARCH_CALL])).rows;
-    const events = rows.flatMap(r => { if (inputManifestHash(r.events) !== r.content_sha256.trim()) throw new Error('WEB_SEARCH_EVIDENCE_CHANGED'); return r.events as SearchEvent[]; });
+    const events = await currentSearchEvents(ctx, options, PUBLIC_SEARCH_CALL, searchName);
+    if (!events) return { kind: 'pause', stage: 'provider_reconcile', reason: 'provider_result_pending' };
     const verified = verifiedSearchSources(events), search = searched.value as PublicAnalysis;
     if (!verified.size) return merge(search, events);
     const materials = publicComparisonMaterials(analysis.input, analysis.report);

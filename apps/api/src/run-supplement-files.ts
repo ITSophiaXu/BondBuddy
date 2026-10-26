@@ -6,6 +6,7 @@ import { Problem, digest, transaction, type PrivateBlobs } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { readRunExecutionInput } from './run-execution-input.js';
 import { readCapturedSupplementResult } from './run-supplement-work.js';
+import { readExecutionStages } from './run-execution.js';
 import { extractRunFileReferences, type RunFileReference } from './run-file-reference.js';
 
 /** Service-internal authority. No public DTO, artifact or download grant is created. */
@@ -30,11 +31,13 @@ async function workScope(db: Pool | PoolClient, input: Input) {
   [input.owner, input.projectId, input.runId, input.revision])).rows[0];
   if (!work || work.execution_version !== 1 || !record(work.source_checkpoint)
     || inputManifestHash(work.source_checkpoint) !== work.checkpoint_hash.trim()) throw unavailable();
+  const stages = readExecutionStages(work.source_checkpoint, { executionVersion: work.execution_version,
+    inputRevision: work.input_revision, inputHash: work.input_hash.trim() });
   const frozen = await readRunExecutionInput(db, input.owner, input.runId, {
     executionVersion: work.execution_version, inputRevision: work.input_revision, inputHash: work.input_hash.trim(),
   });
   if (frozen.run.project_id !== input.projectId || !record(frozen.input.manifest)) throw unavailable();
-  return { work, manifest: frozen.input.manifest as Record<string, any>, frozen };
+  return { work, manifest: frozen.input.manifest as Record<string, any>, frozen, stages };
 }
 
 type WorkScope = Awaited<ReturnType<typeof workScope>>;
@@ -104,7 +107,7 @@ async function withSource<T>(input: Input, visit: (pins: CapturedSupplementFileP
     await db.query("SELECT pg_advisory_xact_lock(hashtext('run_work_files'),hashtext($1::text))", [input.runId]);
     const scope = await workScope(db, input), { work, manifest, frozen } = scope;
     const correction = source.field === 'correction_result';
-    const value = work.source_checkpoint.stages?.model_generation?.[source.field];
+    const value = scope.stages.model_generation?.[source.field];
     if (!record(value)) throw unavailable();
     if (correction) { if (!correctionSource(scope, true)) throw unavailable(); }
     else {

@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
-import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
+import { latestProviderAttempt, loadProviderAttemptState, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
 import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
@@ -83,6 +83,10 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
   async latestAttempt(logicalCallId: string): Promise<PriorAttempt | null> {
     const row=await latestProviderAttempt(this.codexInput.pool,this.codexInput.lease,logicalCallId);
     return row?{call_id:row.call_id,attempt_no:row.attempt_no,status:row.status,observed:row.observed,operator_retry:row.operator_retry}:null;
+  }
+
+  async attemptState(logicalCallId: string) {
+    return loadProviderAttemptState(this.codexInput.pool,this.codexInput.lease,logicalCallId);
   }
 
   async readCompleted(logicalCallId: string, attemptNo: number) {
