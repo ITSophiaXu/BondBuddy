@@ -16,6 +16,7 @@ import {integrityRecords,type IntegritySearchEvent} from './integrity-evidence.j
 import {projectFilesRoot} from './project-file-tools.js';
 import {M4_FILE_MAX} from './m4-file-workspace.js';
 import {officialIntegrityRecord,type IntegrityBrowserOptions} from './integrity-browser-stage.js';
+import {lockStageRunExecution} from './run-execution-lease.js';
 
 type StoredFile={key:string;sha256:string;byte_size:number};
 type Report={version:'integrity-output-v1';input_hash:string;files:Partial<Record<'company'|'person',StoredFile>>};
@@ -28,8 +29,7 @@ async function storedRecords(ctx:StageContext,subjectId:string){
  return rows.map(r=>r.record as IntegrityRecord);
 }
 async function lockObservationWrite(c:import('pg').PoolClient,ctx:StageContext){
- const r=await c.query("SELECT 1 FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2 AND r.state='running' AND j.id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now() FOR UPDATE OF r,j",[ctx.run.owner_user_id,ctx.run.id,ctx.lease.jobId,ctx.lease.token]);
- if(!r.rowCount)throw Error('WORKER_LEASE_LOST');
+ if(!await lockStageRunExecution(c,ctx))throw Error('WORKER_LEASE_LOST');
 }
 async function persistResult(ctx:StageContext,records:IntegrityRecord[]){
  const result={version:'integrity-records-v1',records},hash=inputManifestHash(result);

@@ -26,11 +26,20 @@ test('report registration locks the project catalog and rejects expired or cance
       source_material:{material_id:'synthetic-source',material_version:1,sha256:hash},scope:{mode:'full_review',finding_ids:[]},
       findings:[],coverage:[],limitations:['Synthetic registration only'],created_at:'2026-10-04T00:00:00Z'};
     const ctx={pool,run:{id:runId,owner_user_id:owner,project_id:project,input_revision:1,input_hash:hash},
-      lease:{jobId,runId,owner,token}} as Pick<StageContext,'pool'|'run'|'lease'>;
+      lease:{jobId,runId,owner,token,attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:hash}} as Pick<StageContext,'pool'|'run'|'lease'>;
     const rows=async()=>(await pool.query('SELECT id,report,content_sha256 FROM bb_review_reports WHERE run_id=$1',[runId])).rows;
     return {ctx,report,rows};
   }
   try{
+    await t.test('publication refuses the wrong immutable execution despite a live original token',async()=>{
+      const f=await fixture(),initial={...f.ctx.lease};
+      for(const changed of [{inputHash:'b'.repeat(64)},{inputRevision:2},{executionVersion:2}]){
+        Object.assign(f.ctx.lease,initial,changed);
+        await assert.rejects(registerReviewReport(f.ctx,f.report),{code:'INPUT_REVISION_CONFLICT'});
+        assert.deepEqual(await f.rows(),[]);
+      }
+      Object.assign(f.ctx.lease,initial);assert.equal(await registerReviewReport(f.ctx,f.report),true);
+    });
     await t.test('live lease registers once and only exact report bytes replay',async()=>{
       const f=await fixture();assert.equal(await registerReviewReport(f.ctx,f.report),true);
       const before=await f.rows();assert.equal(before.length,1);assert.equal(before[0].content_sha256.trim(),inputManifestHash(f.report));

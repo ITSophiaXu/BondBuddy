@@ -9,6 +9,7 @@ import { digest, transaction } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage, recordReviewAction } from '@bondbuddy/api/queue';
 import type { RunStage, StageContext } from './run-pipeline.js';
+import {lockStageRunExecution} from './run-execution-lease.js';
 
 const runFile = promisify(execFile), repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 /** Shares the project lock with adoption/execution so a cancelled old writer cannot change the catalog behind a new acceptance. */
@@ -19,14 +20,10 @@ export async function registerReviewReport(ctx:Pick<StageContext,'pool'|'run'|'l
     const project=(await client.query(`SELECT id FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL FOR UPDATE`,
       [ctx.run.project_id,ctx.run.owner_user_id])).rows[0];
     if(!project)return false;
-    const run=(await client.query(`SELECT state,input_hash,input_revision FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 FOR UPDATE`,
-      [ctx.run.id,ctx.run.owner_user_id,ctx.run.project_id])).rows[0];
     // The queue sets claimed and checkpointed jobs to running. Paused, stop/cancelled
     // and every terminal state must obtain a new normal claim before publication.
-    if(!run||run.state!=='running'||String(run.input_hash).trim()!==ctx.run.input_hash.trim()||run.input_revision!==report.input_revision)return false;
-    const job=(await client.query(`SELECT id FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running'
-      AND lease_token=$4 AND lease_until>clock_timestamp() FOR UPDATE`,[ctx.lease.jobId,ctx.run.owner_user_id,ctx.run.id,ctx.lease.token])).rows[0];
-    if(!job)return false;
+    const run=await lockStageRunExecution(client,ctx);
+    if(!run||run.input_revision!==report.input_revision)return false;
     const hash=inputManifestHash(report),saved=await client.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report)
       VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id) DO NOTHING RETURNING id`,
       [report.report_id,ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id,report.version,hash,report]);

@@ -6,7 +6,7 @@ test('global assistant CLI gets the selected context and proposes cards without 
     try{
       const manifest=f.input.manifest as M4QaManifest;manifest.content=content;manifest.billing_task='m4_task_assistance';
       manifest.assistant_context={project_id:'source-project',project_name:'Synthetic',issuer_name:'Synthetic',market:'sse',offering:'private',reporting_cutoff:'2025-09-30',action:null};
-      f.ctx.run.input_hash=inputManifestHash(manifest);let calls=0;
+      f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;let calls=0;
       const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
         calls++;await options.fileWorkspace!.prepare(f.directory);
         const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
@@ -60,11 +60,12 @@ async function fixture(kind:'document'|'qa'='document') {
   const manifest=kind==='document'?document:qa;
   const store=new Map<string,Buffer>([['source',source]]),persisted:{sql:string;args?:unknown[]}[]=[];
   const ctx={run:{id:'run',owner_user_id:'owner',project_id:'project',input_revision:1,input_hash:inputManifestHash(manifest),task_kind:kind==='document'?'generation':'qa',billing_mode:'platform_trial'},
-    lease:{owner:'owner',runId:'run',jobId:'job',token:'lease',attempts:1,checkpoint:{}},checkpoint:{},values:new Map(),signal:new AbortController().signal,
+    lease:{owner:'owner',runId:'run',jobId:'job',token:'lease',attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:inputManifestHash(manifest)},checkpoint:{},values:new Map(),signal:new AbortController().signal,
     blobs:{put:async(key:string,bytes:Buffer)=>{store.set(key,bytes);},getIfExistsBounded:async(key:string)=>store.get(key)??null}} as unknown as StageContext;
   const query=async(sql:string,args?:unknown[])=>{
     persisted.push({sql,args});
     if(sql.startsWith('SELECT r.*'))return {rows:[{...ctx.run,state:'running',event_cursor:0}]};
+    if(sql.includes('FROM bb_run_execution_versions'))return {rows:[{owner_user_id:ctx.run.owner_user_id,project_id:ctx.run.project_id,run_id:ctx.run.id,execution_version:1,input_revision:ctx.run.input_revision,input_hash:ctx.run.input_hash}]};
     if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:'job',state:'running',lease_token:'lease',lease_until:new Date(Date.now()+60000)}]};
     if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
     if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
@@ -88,7 +89,7 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
     const manifest=f.input.manifest as M4DocumentManifest;manifest.input.document_type=documentType;manifest.market=market;
     manifest.billing_task=({private_summary:'m4_G05',underwriter:'m4_G02',legal:'m4_G03'} as const)[documentType];
     manifest.knowledge=loadM4Knowledge(market,documentType);manifest.input.requirements=[{requirement_id:'r',text:'不要生成签署页',message_id:'m',message_version:1}];manifest.input.supplemental_requirements='重点说明偿债安排，保留财务表格';
-    f.ctx.run.input_hash=inputManifestHash(manifest);
+    f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;
     let calls=0;
     const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
       calls++;assert.ok(options.fileWorkspace);assert.equal(options.materialTools,undefined);assert.equal(options.reviewTools,undefined);
@@ -175,7 +176,7 @@ test('M4 QA receives exact execution proposal and reading context but returns in
     manifest.billing_task='m4_task_assistance';manifest.content='资料已确认，按当前报价开始制作私募摘要';
     manifest.context={...manifest.context,document_type:'private_summary',draft_version:7};
     manifest.execution_proposal={document_type:'private_summary',expected_draft_version:7,quote_id:'exact-visible-quote'};
-    f.ctx.run.input_hash=inputManifestHash(manifest);
+    f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;
     const frozenHash=f.ctx.run.input_hash;let calls=0;
     const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
       calls++;await options.fileWorkspace!.prepare(f.directory);
@@ -205,7 +206,7 @@ test('M4 Q04 financial comparison requires a host receipt while concept methods 
   ]){
     const f=await fixture('qa');
     try{
-      const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content=scenario.content;f.ctx.run.input_hash=inputManifestHash(manifest);
+      const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content=scenario.content;f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;
       const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
         await options.fileWorkspace!.prepare(f.directory);await writeFile(join(f.directory,'output/reply.json'),JSON.stringify(reply({content:scenario.answer})));
         return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-call'} as never,{text:''})};
@@ -221,7 +222,7 @@ test('M4 Q04 financial comparison requires a host receipt while concept methods 
 test('M4 Q04 two-period numerical result and difference come from the host receipt instead of model text',async()=>{
   const f=await fixture('qa');
   try{
-    const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content='比较两期偿债能力';f.ctx.run.input_hash=inputManifestHash(manifest);
+    const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content='比较两期偿债能力';f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;
     const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
       await options.fileWorkspace!.prepare(f.directory);
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8')),source={...input.authorized_sources[0],locator:'text/1-1'};
@@ -303,7 +304,7 @@ test('M4 template registry and edit-base kind are explicit; retiring the exact o
     manifest.template_material=f.pin;manifest.input.fields.broker='Synthetic Broker';
     let template={broker:'Synthetic Broker',document_type:'init',market:'sse',sha256:f.pin.sha256,material:f.pin,retired_at:new Date()};
     let baseKind='document';
-    const refresh=()=>{f.ctx.run.input_hash=inputManifestHash(manifest);return {manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;};
+    const refresh=()=>{f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;return {manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;};
     f.ctx.pool={query:async(sql:string)=>sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
       sql.includes('FROM bb_m4_templates')?{rows:[template]}:sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:f.pin.sha256}]}:
       sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]}} as unknown as StageContext['pool'];

@@ -16,9 +16,10 @@ import { registerProjectFileOutcome } from './project-file-storage.js';
 import { syncAuthoringProgress } from './authoring-progress.js';
 import { creditBalance,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
+import { assertRunExecution, type RunExecutionIdentity } from './run-execution.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
-export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
+export type Lease = RunExecutionIdentity & { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
 export type RunKind = typeof TASK_KINDS[number];
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
   if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)
@@ -86,6 +87,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
+    const execution=await assertRunExecution(client,r);
     if(r.channel==='non_production_test'){
       try { await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash}); }
       catch(error){
@@ -103,7 +105,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     const token=uid();
     await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
     await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
-    return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
+    return {...execution,jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
   });
 }
 
@@ -111,6 +113,7 @@ async function lockedLease(client:PoolClient, lease:Lease) {
   const r=await run(client,lease.owner,lease.runId,true);
   const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
   if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
+  await assertRunExecution(client,r,lease);
   return {r,j};
 }
 
@@ -246,6 +249,7 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j || r.state!=='paused' || j.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting reconciliation');
+    await assertRunExecution(client,r);
     const q=await client.query("UPDATE bb_model_call_attempts SET status=$5,provider_request_id=$6,updated_at=now() WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 AND status='pending_reconcile' RETURNING id",[owner,j.id,logicalCallId,attemptNo,status,providerRequestId??null]);
     if(!q.rowCount)throw missing();
     await event(client,r,'paused','provider_reconcile','provider_call_reconciled');
@@ -258,6 +262,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+    if(kind==='resume')await assertRunExecution(client,r);
     if(kind==='pause'){
       if(!['update','generation','review'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
@@ -739,6 +744,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    await assertRunExecution(client,r);
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
@@ -785,6 +791,7 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
     if(!r || r.state!=='paused' || r.stage!=='provider_reconcile')return false;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
     if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until)return false;
+    await assertRunExecution(client,r);
     const input=await client.query(`SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2
       AND revision=$3 AND input_hash=$4 AND manifest->'update_details'->>'authoring_mode'='unified_v1'`,
       [owner,r.project_id,r.input_revision,r.input_hash]);
@@ -856,6 +863,7 @@ export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,i
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
     const prior=j.checkpoint?.review_assembly_recovery;
+    await assertRunExecution(client,r);
     if(prior){
       if(prior.policy!=='review_assembly_v1'||prior.reuse_only!==true||prior.attempt_id!==input.attemptId||prior.result_sha256!==input.resultSha256||prior.actor!==input.actor)
         throw new Problem(409,'IDEMPOTENCY_CONFLICT','Review recovery already has another identity');
@@ -928,6 +936,7 @@ export async function requeueGeneratedWordDelivery(pool:Pool,input:{runId:string
     if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
+    await assertRunExecution(client,r);
     if(j.checkpoint?.word_pair_delivery_recovery)return {run_id:r.id,idempotent:true};
     const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','No recoverable completed Word pair');
     if(r.channel!=='production'||r.state!=='failed'||j.state!=='failed'||j.lease_token||j.lease_until||r.artifact_id)throw refuse();
@@ -969,6 +978,7 @@ export async function repairUnifiedTimeoutRetry(pool:Pool,input:{runId:string;at
     if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
+    await assertRunExecution(client,r);
     const repaired=j.checkpoint?.timeout_retry_repairs?.[input.attemptId];
     if(repaired)return {run_id:r.id,attempt_id:input.attemptId,idempotent:true};
     const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','Run does not match the interrupted timeout retry');
@@ -1040,6 +1050,7 @@ export async function resolveOperatorReconciliation(pool:Pool,input:{runId:strin
     const r=q.rows[0];if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
+    await assertRunExecution(client,r);
     const a=(await client.query('SELECT id,status FROM bb_model_call_attempts WHERE id=$1 AND owner_user_id=$2 AND job_id=$3 FOR UPDATE',[input.attemptId,r.owner_user_id,j.id])).rows[0];
     if(!a)throw missing();
     const previous=j.checkpoint?.operator_reconciliations?.[a.id];

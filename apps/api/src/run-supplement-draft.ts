@@ -11,6 +11,7 @@ import { conflict, date, missing, Problem, run, transaction, uid } from './data.
 import { assertTestChannelReadable } from './non-production-test.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { providerCallNeedsReconciliation } from './queue.js';
+import { assertRunExecution } from './run-execution.js';
 
 type BasePin = ReviewMaterialPin & { source_project_id: string; role?: string };
 type Base = { pins: BasePin[]; supported: boolean };
@@ -156,6 +157,7 @@ export function registerRunSupplementDraftRoutes(app: FastifyInstance, pool: () 
     // so an uncertain PUT can be recovered after its transaction has completed.
     const r = await run(db, user, id, true); assertTestChannelReadable(r.channel);
     const job = (await db.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE', [user, id])).rows[0];
+    await assertRunExecution(db, r);
     const base = await frozenBase(db, user, r, job);
     const latest = (await db.query(`SELECT * FROM bb_run_supplement_drafts WHERE owner_user_id=$1 AND run_id=$2 ORDER BY revision DESC LIMIT 1`, [user, id])).rows[0];
     return { r, job, base, latest };

@@ -22,7 +22,7 @@ test('review actions preserve execution state and obey owner, lease, replay and 
       VALUES($1,$2,$3,1,$4,$5,'review',$4,'running','provider_call')`,[runId,owner,project,hash,randomUUID()]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,checkpoint,lease_token,lease_until)
       VALUES($1,$2,$3,'run','review','running','review_cli_v3_prompt','{"stages":{"input_lock":{"fixed":true}}}',$4,now()+interval '60 seconds')`,[jobId,owner,runId,token]);
-    const lease:Lease={jobId,runId,owner,token,checkpoint:{},attempts:1};
+    const lease:Lease={jobId,runId,owner,token,checkpoint:{},attempts:1,executionVersion:1,inputRevision:1,inputHash:hash};
     const action:ReviewAction={version:'review-action-v1',action_id:hash,code:'read_materials',state:'started'};
     const events=async()=>(await pool.query('SELECT seq,state,stage,payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq',[runId])).rows;
     return {lease,action,events};

@@ -61,7 +61,7 @@ async function fixture(pool: Pool) {
     const token = uid();
     const job = (await pool.query("UPDATE bb_jobs SET state='running',stage='claimed',lease_token=$2,lease_until=now()+interval '60 seconds',attempts=attempts+1 WHERE run_id=$1 RETURNING id,checkpoint", [runId, token])).rows[0];
     await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1", [runId]);
-    const lease: Lease = { jobId: job.id, runId, owner, token, checkpoint: job.checkpoint, attempts: 1 };
+    const lease: Lease = { jobId: job.id, runId, owner, token, checkpoint: job.checkpoint, attempts: 1, executionVersion: 1, inputRevision: 1, inputHash: input.input_hash };
     return { project, runId, lease, inputHash: input.input_hash as string };
   }
   return { ownerA, ownerB, reader, viewer, nobody, operatorUser, app, as, runFor };

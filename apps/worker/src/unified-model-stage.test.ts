@@ -118,7 +118,7 @@ test('only a recovered timed-out reading batch splits; IDs and complete record c
   const material=input();const seed=material.materials[0]!.records[0]!;
   material.materials[0]!.records=Array.from({length:401},(_,i)=>({...seed,record_id:`r${i}`,literal_quote:`合成数值${i}`}));
   const context=ctx();
-  context.lease={jobId:'synthetic-job',runId:'synthetic-run',owner:'synthetic-owner',token:'synthetic-lease',attempts:1,
+  context.lease={jobId:'synthetic-job',runId:'synthetic-run',owner:'synthetic-owner',token:'synthetic-lease',attempts:1,executionVersion:1,inputRevision:context.run.input_revision,inputHash:context.run.input_hash,
     checkpoint:{operator_reconciliations:{timeout:{actor:'worker_timeout_recovery',reason_code:'terminated_timeout_auto_retry',decision:'retry_unknown_usage',logical_call_id:'unified-v3-read_0_0'}}}};
   const sent=new Map<string,string[]>();let secondPartAttempts=0;
   const stage=unifiedModelGenerationStage({load:async()=>material,model:options=>({name:options.name,run:async c=>{

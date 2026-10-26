@@ -11,6 +11,7 @@ import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { claim, finishPlatformProbe, pauseRun, renew, type Lease } from '@bondbuddy/api/queue';
 import { CodexAdapterError, loadCodexAdapterConfig, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
+import {resolveRunExecution} from '@bondbuddy/api/run-execution';
 
 type Template = { version: string; prompt: string; schema: Record<string, unknown>; validate: (value: unknown) => boolean };
 // SYNTHETIC. Contains no user, customer or bond data.
@@ -43,7 +44,7 @@ const safeCode = (error: unknown) => {
 };
 
 async function ensurePromptSnapshot(pool: Pool, blobs: PrivateBlobs, lease: Lease, template: Template) {
-  const run = (await pool.query('SELECT project_id,input_revision,input_hash FROM bb_runs WHERE owner_user_id=$1 AND id=$2', [lease.owner, lease.runId])).rows[0];
+  const run=await resolveRunExecution(pool,lease.owner,lease.runId,lease);
   const existing = await pool.query("SELECT id FROM bb_snapshot_refs WHERE owner_user_id=$1 AND run_id=$2 AND snapshot_kind='model_request' ORDER BY created_at,id LIMIT 1", [lease.owner, lease.runId]);
   if (existing.rows[0]) return { projectId: run.project_id as string, promptRef: existing.rows[0].id as string };
   const version = Number((await pool.query("SELECT COALESCE(max(version),0)+1 AS v FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'", [lease.owner, run.project_id])).rows[0].v);

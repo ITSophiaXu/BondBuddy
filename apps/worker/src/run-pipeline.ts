@@ -39,6 +39,8 @@ import { markTestWord } from './test-word-marking.js';
 import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
 import type { ApprovedGenerationIssuerBinding } from './no-history-model-stage.js';
 import type { ProduceTargetPeriodCandidateSnapshotRequest } from './target-period-candidate-snapshot-producer.js';
+import {resolveRunExecution} from '@bondbuddy/api/run-execution';
+import {lockStageRunExecution} from './run-execution-lease.js';
 
 /**
  * Trusted #33 pinned generation issuer binding loader. The production runtime builds the
@@ -129,7 +131,7 @@ export const unavailableTestRuleCapability: TestRuleCapabilityLoader = async () 
 export type InputRevisionRow = { input_hash: string; draft_revision: number; material_versions: unknown;
   manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
 
-async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRevisionRow,
+async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRevisionRow,lease:Lease,
   loader: TestRuleCapabilityLoader = unavailableTestRuleCapability): Promise<InputBindingGate | null> {
   if (!input.manifest || inputManifestHash(input.manifest) !== String(input.input_hash).trim() ||
       String(input.input_hash).trim() !== run.input_hash.trim())
@@ -151,8 +153,10 @@ async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRev
     return {kind:'pause',stage:'capability_not_ready',reason:'test_grant_hash_mismatch'};
   if(!isTestUncoveredItems(capability.uncoveredItems))
     return {kind:'pause',stage:'capability_not_ready',reason:'test_rule_capability_invalid'};
-  await pool.query('UPDATE bb_runs SET uncovered_items=$2 WHERE id=$1 AND channel=\'non_production_test\'',
-    [run.id,JSON.stringify(capability.uncoveredItems)]);
+  await transaction(pool,async client=>{
+    if(!await lockStageRunExecution(client,{run,lease}))throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
+    await client.query('UPDATE bb_runs SET uncovered_items=$2 WHERE id=$1 AND channel=\'non_production_test\'',[run.id,JSON.stringify(capability.uncoveredItems)]);
+  });
   return null;
 }
 
@@ -303,7 +307,7 @@ export const inputLockStage: RunStage = {
   name: 'input_lock',
   // Recovery must re-check the production rule pin before any later stage can run.
   replay: true,
-  run: async ({ pool, run, reviewedContextLoader, testRuleCapabilityLoader, loadGenerationIssuerBinding, produceTargetPeriodCandidates }) => {
+  run: async ({ pool, run, lease,reviewedContextLoader, testRuleCapabilityLoader, loadGenerationIssuerBinding, produceTargetPeriodCandidates }) => {
     const q = await pool.query(`SELECT i.input_hash,i.draft_revision,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
       JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id AND p.deleted_at IS NULL
       WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
@@ -323,7 +327,7 @@ export const inputLockStage: RunStage = {
     const issuerBindingGate = await verifyGenerationIssuerBinding(run, manifest, loadGenerationIssuerBinding);
     if (issuerBindingGate) return issuerBindingGate;
     await invokeTargetPeriodCandidateProducer(pool, run, input, produceTargetPeriodCandidates);
-    if(run.channel==='non_production_test')return (await verifyTestRuleCapability(pool,run,input,testRuleCapabilityLoader)) ?? {kind:'done'};
+    if(run.channel==='non_production_test')return (await verifyTestRuleCapability(pool,run,input,lease,testRuleCapabilityLoader)) ?? {kind:'done'};
     return (await verifyProductionRulePin(pool, run, input, reviewedContextLoader)) ?? { kind: 'done' };
   },
 };
@@ -589,7 +593,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
   let currentStage: string | undefined;
   try {
-    const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind,channel,test_grant_id,billing_mode FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
+    const run=await resolveRunExecution(pool,lease.owner,lease.runId,lease) as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
@@ -609,7 +613,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (generationGate) return generationGate;
       if(run.channel==='non_production_test')
         return (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
-          await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader);
+          await verifyTestRuleCapability(pool,run,input,lease,deps.testRuleCapabilityLoader);
       return (await verifyUpdateIssuerIdentityBinding(pool, run, input.manifest)) ?? await verifyProductionRulePin(pool, run, input, deps.reviewedContextLoader);
     } };
     for (const stage of deps.stages) {
@@ -619,7 +623,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         const gate=input
           ? (await verifyGenerationIssuerBinding(run,input.manifest,deps.loadGenerationIssuerBinding)) ??
             (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
-            await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader)
+            await verifyTestRuleCapability(pool,run,input,lease,deps.testRuleCapabilityLoader)
           : {kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
         if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return 'paused';}
         if(gate?.kind==='fail'){await finish(pool,lease,'failed',{errorCode:gate.code,failedStage:stage.name});return 'failed';}
@@ -659,7 +663,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       const reviewArtifacts: { id: string; version: number; kind: string }[] = [];
       const m4Artifacts:M4ArtifactRegistration[]=[];
       const uncovered:TestUncoveredItem[]=run.channel==='non_production_test'
-        ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
+        ? (await resolveRunExecution(pool,run.owner_user_id,run.id,lease)).uncovered_items ?? []
         : [];
       const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
       if (outcome.baselineBytes && outcome.deliveryPolicy !== 'generated_pair_v1') {
@@ -701,10 +705,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
           ...(typeof outcome.wordSummary?.preview_content==='string'?{preview_content:outcome.wordSummary.preview_content}:{})});
         if(m4Artifacts.length!==2 || !m4Artifacts.some(a=>a.kind==='preparation_note')) {await finish(pool,lease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE',failedStage:stage.name});return 'failed';}
         const settled=await transaction(pool,async client=>{
-          const activeRun=(await client.query(`SELECT 1 FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND state='running' FOR UPDATE`,[run.id,run.owner_user_id])).rowCount;
-          const current=activeRun && (await client.query(`SELECT 1 FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 AND id=$3 AND state='running'
-            AND lease_token=$4 AND lease_until>now() FOR UPDATE`,[run.id,run.owner_user_id,lease.jobId,lease.token])).rowCount;
-          if(!current)throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
+          if(!await lockStageRunExecution(client,ctx))throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
           await registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts);
           return settleM4Metering(client,run.owner_user_id,run.id);
         });
@@ -712,9 +713,12 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       }
       if (reviewExecution) {
         reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: outcome.cleanBytes || reviewExecution.operation === 'revision' ? 'revision' : 'report' });
-        for (const artifact of reviewArtifacts) await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
-          VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
-        [run.owner_user_id,run.project_id,run.id,artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);
+        await transaction(pool,async client=>{
+          if(!await lockStageRunExecution(client,ctx))throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
+          for (const artifact of reviewArtifacts) await client.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
+            VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,
+          [run.owner_user_id,run.project_id,run.id,artifact.id,artifact.version,artifact.kind,`${artifact.kind}-${run.id}.docx`]);
+        });
       }
       if (cleanArtifactId) {
         const pair = { ...outcome.wordSummary, revision_artifact_id: delivered.artifactId,

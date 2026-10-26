@@ -49,7 +49,7 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     const job=(await pool.query("UPDATE bb_jobs SET state='running',stage='claimed',lease_token=$2,lease_until=now()+interval '60 seconds',attempts=attempts+1 WHERE run_id=$1 RETURNING id,checkpoint,attempts",[runId,token])).rows[0];
     assert.ok(job);
     await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1",[runId]);
-    const lease={jobId:job.id as string,runId,owner,token,checkpoint:job.checkpoint,attempts:job.attempts as number};
+    const lease={jobId:job.id as string,runId,owner,token,checkpoint:job.checkpoint,attempts:job.attempts as number,executionVersion:1,inputRevision:1,inputHash:input.input_hash};
     const blobs=azureBlobs(blob!);
     const promptKey=`users/${owner}/projects/${project}/snapshots/synthetic_prompt_v1`;
     await blobs.put(promptKey,Buffer.from('synthetic prompt body containing OTP 123456 and Cookie secret'),'text/plain');

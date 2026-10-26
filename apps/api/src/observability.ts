@@ -5,6 +5,7 @@ import { digest, isAutoTestExecutionKeyStorage, missing, transaction, uid, type 
 import { guardEvidenceWrite } from './evidence-gate.js';
 import type { UploadRejectionReason, UploadStructureDetail } from './upload-safety.js';
 import { errorDiagnostic, type RecoveryOutcome } from './error-diagnostics.js';
+import { assertRunExecution } from './run-execution.js';
 
 const safeCode=/^[a-z][a-z0-9_]{0,63}$/;
 const validId=(value:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -91,13 +92,26 @@ export async function recordLogicalJob(client:PoolClient,input:{owner:string;pro
 export async function rejectOperation(pool:Pool,input:Parameters<typeof recordOperation>[1]) {
   await transaction(pool,client=>recordOperation(client,{...input,status:'rejected'}));
 }
+type SnapshotScope={owner:string;projectId:string;runId?:string;inputRevision?:number;inputHash?:string};
+/** Run-bound writers take project -> run before their intent; registration rechecks it. */
+export async function assertSnapshotScope(client:PoolClient,input:SnapshotScope) {
+  if(input.inputRevision){const rev=await client.query('SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[input.owner,input.projectId,input.inputRevision,input.inputHash]);if(!rev.rowCount)throw missing();}
+  if(input.runId){
+    // The reference INSERT needs this FK lock too. Take it before the run so a
+    // project-first report/recovery writer can never wait on a run we hold.
+    const project=await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR KEY SHARE',[input.owner,input.projectId]);
+    if(!project.rowCount)throw missing();
+    const result=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND ($4::integer IS NULL OR input_revision=$4) FOR UPDATE',[input.owner,input.projectId,input.runId,input.inputRevision??null]);
+    const row=result.rows[0];if(!row)throw missing();
+    await assertRunExecution(client,row);
+  }
+}
 export async function saveSnapshotRef(pool:Pool,input:{owner:string;projectId:string;runId?:string;kind:'user_prompt'|'model_request'|'structured_input';version:number;objectKey:string;sha256:string;redactionVersion:string;inputRevision?:number;inputHash?:string;templateVersion?:string;rulePackVersion?:string;modelParametersVersion?:string;blobs:PrivateBlobs}, lockedClient?:PoolClient) {
   if(!input.objectKey.startsWith(`users/${input.owner}/projects/${input.projectId}/snapshots/`)||!/^[A-Za-z0-9_-]{1,128}$/.test(input.objectKey.slice(`users/${input.owner}/projects/${input.projectId}/snapshots/`.length))||!/^[a-f0-9]{64}$/.test(input.sha256)||!safeCode.test(input.redactionVersion))throw new Error('Invalid private snapshot metadata');
   const bytes=await input.blobs.get(input.objectKey);
   if(digest(bytes)!==input.sha256)throw new Error('Snapshot hash mismatch');
   const persist=async (client:PoolClient)=>{
-    if(input.inputRevision){const rev=await client.query('SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[input.owner,input.projectId,input.inputRevision,input.inputHash]);if(!rev.rowCount)throw missing();}
-    if(input.runId){const run=await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND ($4::integer IS NULL OR input_revision=$4)',[input.owner,input.projectId,input.runId,input.inputRevision??null]);if(!run.rowCount)throw missing();}
+    await assertSnapshotScope(client,input);
     const id=uid();
     await client.query('INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash,template_version,rule_pack_version,model_parameters_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[id,input.owner,input.projectId,input.runId??null,input.kind,input.version,input.objectKey,input.sha256,input.redactionVersion,input.inputRevision??null,input.inputHash??null,input.templateVersion??null,input.rulePackVersion??null,input.modelParametersVersion??null]);
     await emitInternal(client,internalEvent({kind:'prompt.snapshot_saved',owner:input.owner,projectId:input.projectId,runId:input.runId,traceId:input.runId??id,promptSnapshotRef:id}));

@@ -50,8 +50,8 @@ function harness(pool: Pool, trial: TrialConfig, options: { blobs?: boolean } = 
   async function leaseFor(owner: string, runId: string): Promise<Lease> {
     const token = uid();
     const job = (await pool.query("UPDATE bb_jobs SET state='running',stage='claimed',lease_token=$2,lease_until=now()+interval '60 seconds',attempts=attempts+1 WHERE run_id=$1 RETURNING id,checkpoint", [runId, token])).rows[0];
-    await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1", [runId]);
-    return { jobId: job.id, runId, owner, token, checkpoint: job.checkpoint, attempts: 1 };
+    const run=(await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1 RETURNING input_revision,input_hash", [runId])).rows[0];
+    return { jobId: job.id, runId, owner, token, checkpoint: job.checkpoint, attempts: 1, executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash.trim() };
   }
   return { app, as, project, submit, ready, leaseFor };
 }

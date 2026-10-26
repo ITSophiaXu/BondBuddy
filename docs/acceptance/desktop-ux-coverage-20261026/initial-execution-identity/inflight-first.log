@@ -1,0 +1,31 @@
+
+Running 1 test using 1 worker
+
+
+
+[1/1] tests\run-supplement-inflight-main.spec.ts:71:1 › real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result
+  1) tests\run-supplement-inflight-main.spec.ts:71:1 › real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "paused"
+    Received: "idle"
+
+      152 |     expect(resumed.checkpoint).toEqual(paused.checkpoint);expect(await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft`)).toMatchObject({revision:1,adopted:false,can_save:false});
+      153 |     const resumedEvidence=await evidence(f),identities=(rows:Row[])=>rows.map(({id,run_id})=>({id,run_id}));expect(identities(resumedEvidence.ownerJobs)).toEqual(identities(afterSave.ownerJobs));
+    > 154 |     active=execute();void active.catch(()=>{});expect(await active).toBe('paused');active=undefined;
+          |                                                                     ^
+      155 |     expect(following).toBe(1);expect(await starts()).toHaveLength(1);expect(await durable(f)).toEqual(savedCall);
+      156 |     const replayed=await state(f);expect(replayed).toMatchObject({id:f.runId,job_id:f.jobId,state:'paused',stage:'capability_not_ready',input_revision:1,input_hash:f.hash,execution_request_id:started.execution_request_id});
+      157 |     expect(replayed.checkpoint.stages?.model_generation).toEqual(paused.checkpoint.stages?.model_generation);expect(replayed.checkpoint.provider_results).toEqual(paused.checkpoint.provider_results);
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-inflight-main.spec.ts:154:69
+
+    Error Context: ..\..\.local\initial-execution\inflight-results\run-supplement-inflight-ma-5fe58-al-resume-reuses-its-result\error-context.md
+
+    Error Context: ..\..\.local\initial-execution\inflight-results\run-supplement-inflight-ma-5fe58-al-resume-reuses-its-result\error-context.md
+
+
+  1 failed
+    tests\run-supplement-inflight-main.spec.ts:71:1 › real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result
+(node:33664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

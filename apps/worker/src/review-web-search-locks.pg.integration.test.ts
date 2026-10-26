@@ -26,7 +26,7 @@ test('web evidence follows the run -> job order and cancellation fencing',{skip:
       VALUES($1,$2,$3,'review','synthetic','running',$4,now()+interval '60 seconds',1)`,[jobId,owner,runId,token]);
     await observer.query(`INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id)
       VALUES($1,$2,$3,'synthetic-web-review',1,'pending_reconcile','synthetic-model')`,[callId,owner,jobId]);
-    const lease:Lease={owner,jobId,runId,token,attempts:1,checkpoint:{}};
+    const lease:Lease={owner,jobId,runId,token,attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash};
     const intent:ProviderCallIntent={owner_user_id:owner,project_id:projectId,job_id:jobId,run_id:runId,trace_id:runId,
       logical_call_id:'synthetic-web-review',call_id:callId,attempt_no:1,model_id:'synthetic-model',model_config_version:'synthetic-v1',prompt_snapshot_ref:'synthetic-prompt'};
     return {lease,intent,journal:new CodexDurableJournal({pool,blobs,lease,validateResult:()=>true})};
@@ -47,6 +47,16 @@ test('web evidence follows the run -> job order and cancellation fencing',{skip:
     assert.fail('evidence transaction did not reach the held run lock');
   }
   try{
+    await t.test('a live token cannot write evidence under another input or execution version',async()=>{
+      const f=await fixture(),initial={...f.lease};
+      for(const changed of [{inputHash:'b'.repeat(64)},{inputRevision:2},{executionVersion:2}]){
+        Object.assign(f.lease,initial,changed);
+        await assert.rejects(f.journal.recordWebSearchEvents(f.intent,[]),{code:'INPUT_REVISION_CONFLICT'});
+        assert.equal((await observer.query('SELECT count(*)::int n FROM bb_model_web_search_evidence WHERE call_id=$1',[f.intent.call_id])).rows[0].n,0);
+      }
+      Object.assign(f.lease,initial);await f.journal.recordWebSearchEvents(f.intent,[]);
+      assert.equal((await observer.query('SELECT count(*)::int n FROM bb_model_web_search_evidence WHERE call_id=$1',[f.intent.call_id])).rows[0].n,1);
+    });
     await t.test('renewal retains access to the job while evidence waits for its run',async()=>{
       const f=await fixture(),holder=await lockRun(f.lease);
       const writing=f.journal.recordWebSearchEvents(f.intent,[]).then(()=>({error:null}),error=>({error}));

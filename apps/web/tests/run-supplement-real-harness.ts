@@ -152,7 +152,7 @@ export async function startRealSupplement(){
     assert.equal((await fetch(`${baseURL}/api/v1/projects/${f.projectId}/materials/${pin.material_id}/download?version=${pin.material_version}`)).status,401,'Private bytes require an actual authenticated session');
   };
   let closed=false;
-  return {baseURL,artifactRoot,pool,owner,csrf,access,headers,request,upload,fixture,evidence,verifyBytes,
+  return {baseURL,artifactRoot,pool,blobs,owner,csrf,access,headers,request,upload,fixture,evidence,verifyBytes,
     async close(){
       if(closed)return;closed=true;
       try{await app.close();}finally{await pool.end();}

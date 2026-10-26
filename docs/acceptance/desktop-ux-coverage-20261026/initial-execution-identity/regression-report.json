@@ -1,0 +1,401 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-real-main.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\initial-execution\\regression-results",
+      "--reporter=line,json"
+    ],
+    "configFile": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\playwright.config.ts",
+    "rootDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/initial-execution/regression-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "run-supplement-real-main.spec.ts",
+      "file": "run-supplement-real-main.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "real main M3 review-updates: actual creation shape saves preparation and resumes the same original revision",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4773,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T10:47:43.490Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1075cbfac63619586638-7f264362e8fbff267966",
+          "file": "run-supplement-real-main.spec.ts",
+          "line": 72,
+          "column": 1
+        },
+        {
+          "title": "real main m1: browser pause, private-byte upload, save, reload and same-run original-material resume",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4055,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T10:47:54.931Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1075cbfac63619586638-cc34b3463db2622f6404",
+          "file": "run-supplement-real-main.spec.ts",
+          "line": 89,
+          "column": 56
+        },
+        {
+          "title": "real main m3: browser pause, private-byte upload, save, reload and same-run original-material resume",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3498,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T10:47:59.003Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1075cbfac63619586638-1d216001005833816c2a",
+          "file": "run-supplement-real-main.spec.ts",
+          "line": 89,
+          "column": 56
+        },
+        {
+          "title": "real main m4: browser pause, private-byte upload, save, reload and same-run original-material resume",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3830,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T10:48:02.518Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1075cbfac63619586638-7dbb9320faf78a4fe153",
+          "file": "run-supplement-real-main.spec.ts",
+          "line": 89,
+          "column": 56
+        },
+        {
+          "title": "real main M3: accepted save response loss recovers the exact PostgreSQL receipt without a second PUT",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1850,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T10:48:06.364Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1075cbfac63619586638-8bbc9658ad9d89da50ed",
+          "file": "run-supplement-real-main.spec.ts",
+          "line": 112,
+          "column": 1
+        },
+        {
+          "title": "real main M4: independent browser contexts preserve conflicting edits until explicit CAS resolution",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5769,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T10:48:08.235Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1075cbfac63619586638-0f62ceed4c9b534c95b7",
+          "file": "run-supplement-real-main.spec.ts",
+          "line": 125,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-26T10:47:36.253Z",
+    "duration": 38935.43,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

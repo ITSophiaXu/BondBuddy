@@ -1,0 +1,94 @@
+▶ independent prompt registration requires the initial execution before Blob writes and intent locks
+  ✔ V1 registers with exact input pins and with legacy optional pins omitted (428.8271ms)
+  ✔ missing execution rejects both independent registration paths without new durable evidence (31.433ms)
+  ✔ wrong_hash execution rejects both independent registration paths without new durable evidence (30.0996ms)
+  ✔ wrong owner, project, revision and hash retain their original not-found semantics (86.3795ms)
+  ✔ waiting for the run leaves its committed intent available to another transaction (119.0683ms)
+✔ independent prompt registration requires the initial execution before Blob writes and intent locks (699.8412ms)
+▶ runtime evidence shares run -> job lock order with renewal and cancellation
+  ✔ renewal keeps the job lock available while runtime waits for the run (412.4154ms)
+  ✔ cancellation wins before evidence locks and prevents a late runtime insert (67.8589ms)
+  ✔ owner, project, token and expired lease remain enforced (32.6184ms)
+  ✔ every independent provider boundary rejects a different execution version or input under the same live token (80.0936ms)
+✔ runtime evidence shares run -> job lock order with renewal and cancellation (596.9063ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (7635.4655ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4494ms) # SKIP
+▶ review actions preserve execution state and obey owner, lease, replay and terminal boundaries
+  ✔ atomic progress/outbox, stable identity, no stage/checkpoint or billing mutation (274.3265ms)
+  ✔ expired/wrong leases, foreign owners, paused and terminal tasks reject late actions (107.1325ms)
+  ✔ a cancelled task winning the run lock cannot receive in-flight activity (143.7812ms)
+✔ review actions preserve execution state and obey owner, lease, replay and terminal boundaries (528.8903ms)
+✔ long review timelines retain bounded completed categories with ordering, deduplication and owner/project isolation (1675.8378ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (2123.803ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (139.2375ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (645.7711ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (280.3306ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (3193.1782ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (142.8003ms)
+  ✔ owner (412.5709ms)
+  ✔ project (167.2309ms)
+  ✔ input revision (167.7395ms)
+  ✔ input hash (134.89ms)
+  ✔ execution request id (124.0464ms)
+  ✔ request hash (124.6077ms)
+  ✔ valid successor input pair (157.9079ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (3151.3793ms)
+✔ real review-result update can prepare supplements and resume its original input (2226.1452ms)
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (42.4584ms)
+  ✔ old request receipt survives a later save and explicit resume (96.509ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1302.1469ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (89.7139ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (289.4008ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1320.7813ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (569.9387ms)
+  ✔ wrong hash (104.0128ms)
+  ✔ wrong owner (14.7732ms)
+  ✔ wrong project (14.92ms)
+  ✔ duplicate additions (15.4328ms)
+  ✔ unknown replacement (15.3157ms)
+  ✔ duplicate replacements (17.3121ms)
+  ✔ different role (13.9984ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (1023.358ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (1005.0477ms)
+  ✔ saving (53.1376ms)
+  ✔ paused_lease (57.212ms)
+  ✔ automatic_pause (71.9488ms)
+  ✔ pending_provider (121.1502ms)
+  ✔ completed_unknown (65.1178ms)
+  ✔ failed_unknown (64.1333ms)
+  ✔ terminal (59.6632ms)
+  ✔ archived (45.3306ms)
+  ✔ unsupported (48.9856ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (99.4202ms)
+  ✔ deleted project is owner-safe 404 (20.6207ms)
+  ✔ test-channel metadata obeys the deployment read gate (23.0255ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1863.3019ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (919.9458ms)
+  ✔ m3 (71.1081ms)
+  ✔ m4 (94.9244ms)
+  ✔ inconsistent M3 version is unavailable (43.8382ms)
+  ✔ inconsistent M3 operation is unavailable (40.6036ms)
+  ✔ inconsistent M3 origin is unavailable (58.907ms)
+  ✔ inconsistent M3 missing_review is unavailable (37.8469ms)
+  ✔ inconsistent review-result update source_run is unavailable (40.719ms)
+  ✔ inconsistent review-result update source_pin is unavailable (43.4625ms)
+  ✔ inconsistent review-result update materials is unavailable (43.9003ms)
+  ✔ inconsistent review-result update requirements is unavailable (48.702ms)
+  ✔ inconsistent review-result update operation is unavailable (39.3192ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (88.5418ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1694.145ms)
+ℹ tests 76
+ℹ suites 0
+ℹ pass 75
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 99445.5706

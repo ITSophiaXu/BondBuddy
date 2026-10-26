@@ -162,7 +162,7 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     if (!revision && (result.checkpoint?.stages?.ocr_evidence || ['image/png','image/jpeg'].includes(result.media_type) ||
         snapshot?.response.warnings.some(w => ['PDF_PAGES_WITHOUT_TEXT','PDF_IMAGES_NOT_OCRD'].includes(w.code)))) {
       const ocrScope = { owner: ctx.run.owner_user_id, projectId: ctx.run.project_id, materialId: pin.material_id,
-        version: pin.material_version, purpose: 'full_ocr' as const, runId: ctx.run.id, leaseToken: ctx.lease.token };
+        version: pin.material_version, purpose: 'full_ocr' as const, runId: ctx.run.id, leaseToken: ctx.lease.token,executionIdentity:ctx.lease };
       const { aggregate } = await processOcrV2(ctx.pool,ctx.blobs,ocrScope);
       if (aggregate.coverage !== 'complete') throw new UnifiedInputPending('authoring_ocr_incomplete');
       records = [];

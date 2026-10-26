@@ -1,0 +1,68 @@
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (495.8314ms)
+﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.5931ms) # SKIP
+✔ global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text (307.7938ms)
+✔ M4 sse/private_summary single CLI file task receives knowledge/requirements and delivers editable Word (2005.3664ms)
+✔ M4 szse/private_summary single CLI file task receives knowledge/requirements and delivers editable Word (2058.3868ms)
+✔ M4 sse/underwriter single CLI file task receives knowledge/requirements and delivers editable Word (1891.6169ms)
+✔ M4 szse/underwriter single CLI file task receives knowledge/requirements and delivers editable Word (1803.8179ms)
+✔ M4 sse/legal single CLI file task receives knowledge/requirements and delivers editable Word (1778.3853ms)
+✔ M4 szse/legal single CLI file task receives knowledge/requirements and delivers editable Word (1743.3827ms)
+✔ M4 missing output is honest, readonly input tampering fails and changed pinned method does not call CLI (205.0139ms)
+✔ M4 QA reads fixed history and host recomputes operands; fabricated CLI numerical text is replaced (388.3608ms)
+✔ M4 QA missing calculation asks for inputs, invalid/cross-owner references are rejected (104.5675ms)
+✔ M4 QA receives exact execution proposal and reading context but returns intent without creating Word or mutating input (113.7485ms)
+✔ M4 Q04 financial comparison requires a host receipt while concept methods and textual comparison remain usable (447.0948ms)
+✔ M4 Q04 two-period numerical result and difference come from the host receipt instead of model text (397.562ms)
+✔ M4 semantic guard distinguishes whole-action denial, method questions and local limits; unavailable work cannot execute (1.2257ms)
+✔ new opinion types preserve explicit execution and local restrictions, but whole-action denial still wins (0.2223ms)
+✔ M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable (0.2579ms)
+✔ M4 router requires explicit input-lock marker; ordinary M1 generation retains its route (3.0533ms)
+✔ M4 input gate checks topic, subtype, scope and exact owned source hash (5.6726ms)
+✔ M4 template registry and edit-base kind are explicit; retiring the exact old version does not silently change it (6.6574ms)
+✔ M4 file reads reject traversal and hardlinks, and progress exposes safe reasons only (8.3588ms)
+﹣ M4 output symlink never publishes external bytes (0.2927ms) # SKIP
+✔ v2 PostgreSQL physical-page resume, negative cache readback, retry and cost history (synthetic) (3652.2986ms)
+✔ v2 interrupted partial write preserves success, unknown consumption and only retries missing pages (synthetic) (540.6988ms)
+✔ v2 preflight attempts cannot evade the cumulative five-page budget via new request IDs (synthetic) (576.8276ms)
+▶ web evidence follows the run -> job order and cancellation fencing
+  ✔ a live token cannot write evidence under another input or execution version (456.93ms)
+  ✔ renewal retains access to the job while evidence waits for its run (137.8846ms)
+  ✔ cancellation winning the run lock rejects late evidence (61.7755ms)
+  ✔ project binding and expired lease still reject evidence (20.166ms)
+✔ web evidence follows the run -> job order and cancellation fencing (680.9835ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (227.9888ms)
+  ✔ live lease registers once and only exact report bytes replay (34.8016ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (107.958ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (220.9291ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (596.1295ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (338.2174ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (42.4428ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (58.4715ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (36.0442ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (70.638ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (549.8842ms)
+✔ pause reasons use a stable public machine code (1.2047ms)
+✔ unexpected run errors retain diagnostic identifiers without logging input text (1.2962ms)
+✔ direct authoring starts with the source update, even with large supporting files; no prereading barrier (112.5563ms)
+✔ direct no-source drafting uses uploaded materials without a prereading or reference-library prerequisite (7.3211ms)
+✔ unified update reads raw supporting records and requires complete baseline coverage and valid citations (synthetic) (3.5266ms)
+✔ pinned knowledge citations are accepted with exact hash provenance; invented paths still fail (3.0695ms)
+✔ no-source route writes chapters using issuer materials without a library or approved fact service (synthetic) (2.9142ms)
+✔ unknown provider outcome stops all following generation and delivery (synthetic) (2.9938ms)
+✔ chunking preserves each raw record exactly once without silent truncation (1.8288ms)
+✔ only a recovered timed-out reading batch splits; IDs and complete record coverage survive replay (50.516ms)
+✔ prompt keeps layout coordinates without repeating private stable anchors (0.855ms)
+✔ chunking bounds serialized UTF-8 including locator overhead without losing records (0.8414ms)
+✔ the input_lock stage re-verifies a pinned generation issuer binding from an injected loader (504.8152ms)
+✔ a producer failure is swallowed and never blocks the rest of the run (305.6234ms)
+✔ the producer call site skips inputs without financial materials and reads no rows for them (0.5183ms)
+ℹ tests 57
+ℹ suites 0
+ℹ pass 55
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 102194.9783

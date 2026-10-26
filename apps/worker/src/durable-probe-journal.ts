@@ -7,6 +7,7 @@ import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { Problem, transaction, run as getRun } from '@bondbuddy/api/data';
 import { guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
+import { assertRunExecution } from '@bondbuddy/api/run-execution';
 
 // This is an internal worker seam. It never accepts a browser principal and is not
 // installed by the production worker entry point until the live release gates pass.
@@ -65,6 +66,7 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
         AND a.id=$6 AND a.logical_call_id=$7 AND a.attempt_no=$8 FOR UPDATE OF j,a`,
       [intent.job_id,intent.owner_user_id,intent.run_id,intent.project_id,lease.token,intent.call_id,intent.logical_call_id,intent.attempt_no]);
       if(!active.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Web search evidence lease or attempt is no longer valid');
+      await assertRunExecution(client,run,lease);
       const hash=inputManifestHash(events);
       await client.query(`INSERT INTO bb_model_web_search_evidence(call_id,owner_user_id,project_id,run_id,job_id,logical_call_id,content_sha256,events)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(call_id) DO NOTHING`,

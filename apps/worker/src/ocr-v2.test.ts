@@ -58,7 +58,7 @@ async function fixture(pool: Pool, blobs: PrivateBlobs, count: number) {
   await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,lease_token,lease_until)
     VALUES($1,$2,$3,'update','historical_revision','running','materials_ready',$4,now()+interval '1 hour')`,
   [uid(), owner, runId, leaseToken]);
-  const full: OcrV2Scope = { owner, projectId, materialId, version: 1, purpose: 'full_ocr', runId, leaseToken };
+  const full: OcrV2Scope = { owner, projectId, materialId, version: 1, purpose: 'full_ocr', runId, leaseToken,executionIdentity:{executionVersion:1,inputRevision:1,inputHash} };
   const preflight: OcrV2Scope = { owner, projectId, materialId, version: 1, purpose: 'source_preflight' };
   const document: OcrDocumentIdentityV2 = {
     owner_user_id: owner, project_id: projectId, page_count: count, processor_version: 'bondbuddy-ocr-2.0.1',

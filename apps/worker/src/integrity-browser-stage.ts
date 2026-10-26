@@ -6,6 +6,7 @@ import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {codexModelStage,type StageContext,type StageOutcome} from './run-pipeline.js';
 import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
 import {collectIntegrityWebsite,integritySearchQuery,type IntegrityCollector,type BrowserCollection} from './integrity-browser.js';
+import {lockStageRunExecution} from './run-execution-lease.js';
 
 type StoredCapture={metadata:IntegrityCapture;screenshot_key:string;text_key:string};
 type Batch=Omit<BrowserCollection,'captures'>&{captures:StoredCapture[]};
@@ -22,8 +23,7 @@ export function validateIntegrityAssessment(value:unknown,subject:Pick<Integrity
  return Value.Check(IntegrityBrowserAssessmentSchema,value)&&value.findings.every(f=>f.quote.trim().length>=4&&materials.some(m=>m.ref===f.capture_id&&m.text.includes(f.quote))&&(f.subject_match!=='company_name'||subject.kind==='company'&&f.quote.includes(subject.name)));
 }
 export async function lockIntegrityObservation(c:import('pg').PoolClient,ctx:StageContext){
- const r=await c.query("SELECT 1 FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2 AND r.state='running' AND j.id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now() FOR UPDATE OF r,j",[ctx.run.owner_user_id,ctx.run.id,ctx.lease.jobId,ctx.lease.token]);
- if(!r.rowCount)throw Error('WORKER_LEASE_LOST');
+ if(!await lockStageRunExecution(c,ctx))throw Error('WORKER_LEASE_LOST');
 }
 async function loadBatch(ctx:StageContext,subjectId:string,siteId:string):Promise<Batch|undefined>{
  const row=(await ctx.pool.query('SELECT payload,sha256 FROM bb_integrity_browser_batches WHERE owner_user_id=$1 AND run_id=$2 AND subject_id=$3 AND site_id=$4',[ctx.run.owner_user_id,ctx.run.id,subjectId,siteId])).rows[0];

@@ -191,18 +191,21 @@ export async function processOcrV2(pool: Pool, blobs: PrivateBlobs, scope: OcrV2
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  const [purpose, owner, projectId, materialId, version, runId, leaseToken] = process.argv.slice(2);
+  const [purpose, owner, projectId, materialId, version, runId, leaseToken,executionVersion,inputRevision,inputHash] = process.argv.slice(2);
   if (!['source_preflight', 'full_ocr'].includes(purpose ?? '') || !owner || !projectId || !materialId ||
       !/^[1-9]\d*$/.test(version ?? '') || (purpose === 'full_ocr') !== !!runId ||
       (purpose === 'full_ocr') !== !!leaseToken ||
+      (purpose==='full_ocr'&&(!/^[1-9]\d*$/.test(executionVersion??'')||!Number.isSafeInteger(Number(executionVersion))||!/^[1-9]\d*$/.test(inputRevision??'')||!Number.isSafeInteger(Number(inputRevision))||!/^[a-f0-9]{64}$/.test(inputHash??'')))||
+      (purpose==='source_preflight'&&!!(executionVersion||inputRevision||inputHash))||
       !process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING)
     throw new Error('OCR_V2_WORKER_CONFIGURATION_REQUIRED');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const result = await processOcrV2(pool, azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING), {
-      owner, projectId, materialId, version: Number(version), purpose: purpose as OcrV2Scope['purpose'],
-      ...(runId ? { runId, leaseToken } : {})
-    });
+    const common={owner,projectId,materialId,version:Number(version)};
+    const scope:OcrV2Scope=purpose==='full_ocr'
+      ?{...common,purpose:'full_ocr',runId:runId!,leaseToken:leaseToken!,executionIdentity:{executionVersion:Number(executionVersion),inputRevision:Number(inputRevision),inputHash:inputHash!}}
+      :{...common,purpose:'source_preflight'};
+    const result = await processOcrV2(pool, azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING),scope);
     process.stdout.write(JSON.stringify({ coverage: result.aggregate.coverage,
       successful_pages: result.aggregate.successful_pages.length, page_count: result.aggregate.document.page_count,
       attempted_pages: result.responses.map(response => response.attempted_pages) }) + '\n');

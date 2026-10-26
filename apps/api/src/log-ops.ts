@@ -8,7 +8,7 @@ import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, ERROR_CATEGORIES, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { assertTestChannelReadable, testChannelEnabled } from './non-production-test.js';
-import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
+import { assertSnapshotScope, emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
 import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
 
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -689,6 +689,9 @@ export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input:
   await pool.query('INSERT INTO bb_prompt_blob_intents(id,owner_user_id,project_id,object_key) VALUES($1,$2,$3,$4)', [intentId, input.owner, input.projectId, objectKey]);
   try {
     return await transaction(pool, async client => {
+      // Project -> run -> intent matches report/recovery writers and rejects a
+      // corrupt execution identity before private bytes are written.
+      if (input.runId) await assertSnapshotScope(client, input);
       // Keep the intent locked across Blob IO and reference commit. The sweeper
       // cannot delete an in-flight write even when it passes its grace period.
       await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
