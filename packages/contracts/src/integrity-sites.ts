@@ -98,6 +98,15 @@ export const INTEGRITY_SITE_LIMIT = INTEGRITY_SITES.length;
 
 const specialCities:Record<string,string>={深圳:'广东',厦门:'福建',宁波:'浙江',青岛:'山东',大连:'辽宁'};
 export const INTEGRITY_PROVINCES=REGION_PORTALS.filter(r=>!(r.name in specialCities)).map(r=>r.name);
+/** Reuse explicit registration first; infer only unambiguous locality prefixes, never a person's name. */
+export function inferIntegrityRegion(subject:{name:string;kind:string;province:string;city:string}){
+ const normalize=(s:string)=>s.trim().replace(/省$|市$|壮族自治区$|回族自治区$|维吾尔自治区$|自治区$/g,'');
+ if(subject.province.trim())return {province:normalize(subject.province),city:subject.city.trim()};
+ if(subject.kind!=='company')return {province:'',city:subject.city.trim()};
+ const prefix=subject.name.trim().replace(/^[（(]/,'');
+ const province=INTEGRITY_PROVINCES.find(p=>prefix.startsWith(p)||normalize(subject.city)===p);
+ return {province:province??specialCities[normalize(subject.city)]??'',city:subject.city.trim()};
+}
 export function integrityPortal(province:string,city:string){
   province=province.replace(/省$|市$|壮族自治区$|回族自治区$|维吾尔自治区$|自治区$/g,'');city=city.trim().replace(/市$/,'');
   if((!city&&Object.values(specialCities).includes(province))||(specialCities[city]&&specialCities[city]!==province))return undefined;

@@ -13,6 +13,7 @@ services:
     cap_drop: [ALL]
     deploy: {resources: {limits: {cpus: '0.25', memory: 128M}}}
   worker:
+    init: true
     # Compose >= 2.24.4: replace, do not append a second seccomp profile.
     security_opt: !override [no-new-privileges:true, "seccomp=./security/integrity-browser-seccomp.json", "apparmor=bondbuddy-codex-v1"]
     environment:
