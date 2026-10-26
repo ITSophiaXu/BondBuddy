@@ -1,0 +1,127 @@
+{
+  "version": "review-body-deletion-sources-v1",
+  "head": "f0ac8fffbd3ae1631c3872a3112feb73890df8ad",
+  "snapshot": "runs/2026-10-26T22-28-11-230Z-source-after-7896-6b539b72/snapshot.json.gz",
+  "snapshot_sha256": "f7abe42149a06fd2f38d24c2f56400872da64efb21e53a9963cb0ac872c2423f",
+  "source_count": 9,
+  "normalization": "Index identity is compared with git hash-object --path using actual repository attributes/filters. Raw working bytes separately match the explicit final tested snapshot.",
+  "sources": [
+    {
+      "path": "apps/api/src/deletion-lifecycle.test.ts",
+      "working": {
+        "bytes": 21390,
+        "sha256": "5bc75b2979488c89c7ae74056d502481647949c9485459210345191fab6aa2e6"
+      },
+      "index": {
+        "bytes": 21132,
+        "sha256": "00e8cb6718d0c0ad0c343f097b0dcd8fc5286126a3dbe705ae4d7a48268f5669",
+        "git_object": "b3998c0b0dd0d7f933e4d21e85eebb1913064bea"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/deletion-lifecycle.ts",
+      "working": {
+        "bytes": 13615,
+        "sha256": "d4ede886f9f4ea25150f956cf6165f828abaf90205be2717d5ea0bf548605de2"
+      },
+      "index": {
+        "bytes": 13414,
+        "sha256": "3eafea7600c161ccc62a15e84077813a4a063fa5f0aafb811222805eaa9a5710",
+        "git_object": "1900d8ff0a175a76bf741b979309e21dff0de317"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/review-body-deletion-migration-fixture.ts",
+      "working": {
+        "bytes": 1202,
+        "sha256": "00ac6611a62cc18bf32db214126701b476f0896c1fcb183f9b55357fa3ac10b0"
+      },
+      "index": {
+        "bytes": 1202,
+        "sha256": "00ac6611a62cc18bf32db214126701b476f0896c1fcb183f9b55357fa3ac10b0",
+        "git_object": "d865dd1bc4dc60f86d8353c8cc3a22697f2b9cab"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/review-body-deletion-migration.pg.test.ts",
+      "working": {
+        "bytes": 4830,
+        "sha256": "21996c0ae86b39fa3bc12f5f1f36cb68d09ad41d9e27dfd7bd91b8eba445c98e"
+      },
+      "index": {
+        "bytes": 4830,
+        "sha256": "21996c0ae86b39fa3bc12f5f1f36cb68d09ad41d9e27dfd7bd91b8eba445c98e",
+        "git_object": "f18121024a76908ac1999103562f3f21b9276e5d"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/review-body-deletion-test-fixture.ts",
+      "working": {
+        "bytes": 8570,
+        "sha256": "45c7ac50b35cacf5558156947b29e030ca3fe5a914f0e45ea41de104bcbd7f67"
+      },
+      "index": {
+        "bytes": 8568,
+        "sha256": "3fac4981ba0fa1c60b697a08192eb8b0179c555ee77eaa6898048b80bbc91ca2",
+        "git_object": "5e176db30e9857ce921a213eb0cab0ddd11a95d8"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/review-body-deletion.pg.test.ts",
+      "working": {
+        "bytes": 20077,
+        "sha256": "5cf3d1fe06c322c3281fa80e22cbb7f06d65ccf492cee0a72d9104418759d6ee"
+      },
+      "index": {
+        "bytes": 20074,
+        "sha256": "48511ccd17910834a8966a87ca02a3c05ca958648d1534f47a99360708db1806",
+        "git_object": "d0e5a4dea4e592f49cb202ae5f0d8633155e2df2"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/review-body-deletion.ts",
+      "working": {
+        "bytes": 4010,
+        "sha256": "42aaf8fe75259232f1620b79db1d4b34054d1ce136e4badb2831a25fdbbb98f2"
+      },
+      "index": {
+        "bytes": 4010,
+        "sha256": "42aaf8fe75259232f1620b79db1d4b34054d1ce136e4badb2831a25fdbbb98f2",
+        "git_object": "f0ee8597818e42c99f4db69d04e496a6dfe10843"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/review-editor-execution.pg.test.ts",
+      "working": {
+        "bytes": 20646,
+        "sha256": "7cf9bb1aada7e49d2b246ae5e10b3d5daadecc57e795454dfef6fb030e64c3a8"
+      },
+      "index": {
+        "bytes": 20646,
+        "sha256": "7cf9bb1aada7e49d2b246ae5e10b3d5daadecc57e795454dfef6fb030e64c3a8",
+        "git_object": "8a0d2fa89bf75d090dc93734efb9d449ffd294a7"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "db/migrations/0134_review_body_deletion.sql",
+      "working": {
+        "bytes": 17737,
+        "sha256": "1c7f9047ebfa698a6c6760d46e23a4f2a70b830c144329eeedb23da8c59d7b4b"
+      },
+      "index": {
+        "bytes": 17737,
+        "sha256": "1c7f9047ebfa698a6c6760d46e23a4f2a70b830c144329eeedb23da8c59d7b4b",
+        "git_object": "676e8f15db9fcf4819440d3a9e538ed784190267"
+      },
+      "git_filtered_working_matches_index": true
+    }
+  ]
+}

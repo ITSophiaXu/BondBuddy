@@ -161,14 +161,21 @@ test('missing canonical storage never falls back to legacy and damaged storage f
   {skip:!connection,timeout:30000},async t=>{
     const f=await context();t.after(f.close);await registerReviewEditorSnapshot(f.pool,f.lease,f.projectId,f.snapshot);await f.publish();
     await rolledBack(f,async client=>{
+      // Reproduce impossible historical missing storage only in this private
+      // clone transaction. A real deletion now requires its policy and receipt;
+      // restore both guards before exercising the reader, then roll back all.
       await client.query('ALTER TABLE bb_review_execution_editors DISABLE TRIGGER bb_review_execution_editor_immutable');
+      await client.query('ALTER TABLE bb_review_execution_editors DISABLE TRIGGER bb_review_body_deleted');
       await client.query('DELETE FROM bb_review_execution_editors WHERE run_id=$1',[f.runId]);
+      await client.query('ALTER TABLE bb_review_execution_editors ENABLE TRIGGER bb_review_body_deleted');
+      await client.query('ALTER TABLE bb_review_execution_editors ENABLE TRIGGER bb_review_execution_editor_immutable');
       assert.equal((await client.query('SELECT 1 FROM bb_review_editors WHERE run_id=$1',[f.runId])).rowCount,1);
       await assert.rejects(reviewEditor(client,f.owner,f.projectId,f.runId,f.lease),missing);
     });
     await rolledBack(f,async client=>{
       await client.query('ALTER TABLE bb_review_execution_editors DISABLE TRIGGER bb_review_execution_editor_immutable');
       await client.query(`UPDATE bb_review_execution_editors SET snapshot=jsonb_set(snapshot,'{source_filename}','"Synthetic changed filename"') WHERE run_id=$1`,[f.runId]);
+      await client.query('ALTER TABLE bb_review_execution_editors ENABLE TRIGGER bb_review_execution_editor_immutable');
       await assert.rejects(reviewEditor(client,f.owner,f.projectId,f.runId,f.lease),unavailable);
     });
     assert.equal((await f.get()).statusCode,200,'corruption is confined to rolled-back disposable clone transactions');

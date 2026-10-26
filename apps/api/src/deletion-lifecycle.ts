@@ -5,6 +5,7 @@ import { DATA_POLICY_VERSION, DELETION_PURGED_CONTENT, DELETION_RETAINED_METADAT
 import { azureBlobs, transaction, uid, type PrivateBlobs } from './data.js';
 import { purgeLogContent, retentionPolicyFromEnv } from './log-ops.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv, type StorageLifecyclePolicy } from './storage-lifecycle.js';
+import { purgeDeletedReviewBodies, type ReviewBodyDeletionResult } from './review-body-deletion.js';
 
 const MAX_BATCH_SIZE = 50;
 
@@ -45,7 +46,8 @@ export type DeletedContentPolicy = {
   afterBlobDeletes?: (subject: string) => Promise<void>;
 };
 
-export type DeletedContentResult = { materialsPurged: number; projectsPurged: number; objectsDeleted: number; failed: number };
+export type DeletedContentResult = { materialsPurged: number; projectsPurged: number; objectsDeleted: number;
+  reviewBodies: ReviewBodyDeletionResult; failed: number };
 
 type StoredOcr = { page_objects?: Record<string, { key?: unknown }> };
 
@@ -162,11 +164,15 @@ async function purgeDeletedProjects(pool: Pool, blobs: PrivateBlobs, policy: Del
  */
 export async function runDeletedContentPurge(pool: Pool, blobs: PrivateBlobs, policy: DeletedContentPolicy): Promise<DeletedContentResult> {
   if (!Number.isSafeInteger(policy.deletedContentPurgeDays) || policy.deletedContentPurgeDays < 0) throw new Error('Deleted content purge requires a non-negative integer window');
-  const batchSize = Math.min(MAX_BATCH_SIZE, policy.batchSize ?? MAX_BATCH_SIZE);
+  const requestedBatch = policy.batchSize ?? MAX_BATCH_SIZE;
+  if (!Number.isSafeInteger(requestedBatch) || requestedBatch < 1) throw new Error('Invalid deleted content purge batch size');
+  const batchSize = Math.min(MAX_BATCH_SIZE, requestedBatch);
   const now = (policy.now ?? (() => new Date()))();
   const materials = await purgeMaterialDerived(pool, blobs, policy, batchSize);
   const projects = await purgeDeletedProjects(pool, blobs, policy, batchSize, now);
-  return { materialsPurged: materials.purged, projectsPurged: projects.purged, objectsDeleted: materials.objects + projects.objects, failed: materials.failed + projects.failed };
+  const reviewBodies = await purgeDeletedReviewBodies(pool, policy);
+  return { materialsPurged: materials.purged, projectsPurged: projects.purged, objectsDeleted: materials.objects + projects.objects,
+    reviewBodies, failed: materials.failed + projects.failed + reviewBodies.failed };
 }
 
 /** Full user-deletion pass: original bytes (0006), derived content (0026), prompt/provider content (#79). */

@@ -248,6 +248,14 @@ M4 共用真实文书 writer，准备时按原执行核对来源项目、主文�
 采用前仍须完成的耦合边界已再次只读核对：
 
 - 当前 plan/basis reader 及 captured-file reader 要求原执行仍 active 且原 checkpoint 仍 paused。采用后不能直接调用这些准备器；须按不可变采用回执区分 current lease 和 historical source，实际三类 stage、model journal、collector、promoter 与 finish 一起消费新身份。
-- 有效采用必须与 storage tombstone 删除资格使用同一锁协议，按所有已接受 execution 及 M4 snapshot 保留材料；candidate/plan 继续不产生 pin。`processTombstone` 最后核对与 Blob 删除之间的窗口尚需处理。V1 正文清理还缺 canonical/legacy editor/report、input/business snapshot 和 delivery naming 等副本，须防止 bridge/reader 复活已清理正文，并补清已有 purge receipt 的项目。
+- 有效采用必须与 storage tombstone 删除资格使用同一锁协议，按所有已接受 execution 及 M4 snapshot 保留材料；candidate/plan 继续不产生 pin。`0133` 已处理最后核对与 Blob 删除之间的窗口，见[材料删除屏障](../acceptance/desktop-ux-coverage-20261026/material-retention-barrier/README.md)。`0134` 单独处理下节四份复核正文副本；input/business snapshot、delivery naming、M4 正文、checkpoint 及其他项目正文仍须清理，不能把四表回执当作全部正文完成。
 - 项目→run→job 内须原子重核并登记采用回执、候选 input、successor execution、业务 snapshot、head 和新 stage 身份；旧结果保留为历史，新阶段不继承已完成 model_generation。0125/0129/0130 实际成果消费者、`0130` 最新 delivery-plan 与 M4 finalizer 的 V1 来源条件须一并接通，不能仅删除 V1 检查。
 - B 追加授权、resume/claim/recordPotentialCall、独立追加段 reservation/扣款/结算和失败取消处理须成套启用。当前单 run reservation 与原 authoring 上限不能被覆盖为追加账。定价未定期间可完成独立前提及关闭 gate 的实现，不能声称付费续做已可用。
+
+### 2026-10-27：已删除项目的四份复核正文副本
+
+新增 `0134` 与真实删除生命周期调用，删除已过配置窗口的项目内 legacy/canonical 复核 editor/report 正文。普通终态日志保留期和归档不触发业务正文删除；业务删除窗口采用数据库时间，调用方未来时间不能提前清除正文。独立查询实际剩余正文，不把原先仅删除成果 Blob 的项目回执当作完成，因此历史漏清项目也会回访。
+
+四表只允许准确已删除项目策略下的真实 DELETE，并在同事务保存来源、hash、原 PostgreSQL 微秒时间与政策回执；UPDATE 和 TRUNCATE 仍拒绝。所有 legacy/canonical INSERT、桥接和幂等重放先核对项目；`SHARE NOWAIT` 同时阻止普通 `deleted_at` 更新越过在途写入，并避免旧 run-first writer 与清理形成锁反转。原全局 immutable、输入、执行及账本保护不放宽。
+
+这只关闭四表副本，不是整个项目正文清理。未新增采用、后继执行、追加报价、模型调用或 Word；B 已确定，B1/B2 公式仍待选择。验证证据单独见[四表清理专项](../acceptance/desktop-ux-coverage-20261026/review-body-deletion/README.md)，不增加 G03 用户旅程通过数，完整 goal 保持 active。
