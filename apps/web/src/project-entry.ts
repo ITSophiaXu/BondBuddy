@@ -33,13 +33,13 @@ export class ProjectEntry {
       document.querySelectorAll<HTMLInputElement>('[name=review-project]').forEach(r=>{r.checked=r.value===this.selected;r.addEventListener('change',()=>{this.selected=r.value;document.querySelector<HTMLButtonElement>('#continue-review')!.disabled=this.busy;});});
       document.querySelector<HTMLButtonElement>('#continue-review')!.disabled=!this.selected||this.busy;
       document.querySelector<HTMLButtonElement>('#review-project-more')!.hidden=!this.cursor;status.textContent=this.items.length?'':'暂无匹配项目，可新建项目开始。';
-    }catch(e){if(this.live()&&gen===this.generation)status.textContent=friendlyError(e);}
+    }catch(e){if(this.live()&&gen===this.generation)status.textContent=friendlyError(e,'read');}
   }
   private async open(){
     if(this.busy||!this.selected)return;this.busy=true;
     const button=document.querySelector<HTMLButtonElement>('#continue-review')!;button.disabled=true;button.textContent='正在打开…';
     try{await this.options.open(this.selected,this.controller.signal);}
-    catch(e){if(this.live())document.querySelector('#review-entry-error')!.textContent=friendlyError(e);}
+    catch(e){if(this.live())document.querySelector('#review-entry-error')!.textContent=friendlyError(e,'action');}
     finally{this.busy=false;if(this.live()){button.disabled=!this.selected;button.textContent=this.options.next;}}
   }
 }

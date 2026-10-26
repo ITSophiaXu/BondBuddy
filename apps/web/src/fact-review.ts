@@ -170,7 +170,7 @@ export class FactReview {
       throw new Error('FACT_CANDIDATE_PAGINATION_LIMIT');
     } catch (error) {
       if (this.disposed || this.controller.signal.aborted) return;
-      this.status(error instanceof ApiError ? friendlyError(error) : '候选集合未完整读取，决定入口保持关闭。请稍后重新读取。');
+      this.status(error instanceof ApiError ? friendlyError(error, 'read') : '候选集合未完整读取，决定入口保持关闭。请稍后重新读取。');
     } finally {
       this.loading = false;
       if (button && !this.disposed) { button.disabled = false; button.textContent = this.loaded ? '刷新事实候选' : '重新读取事实候选'; }
@@ -225,7 +225,7 @@ export class FactReview {
       if (error instanceof ApiError && error.status === 409) {
         draft.conflict = true;
         draft.message = '决定未保存：候选或请求发生冲突。输入已保留，请刷新候选后核对。';
-      } else draft.message = error instanceof ApiError ? friendlyError(error) : '保存结果未确认。输入已保留；重试会沿用同一请求 ID。';
+      } else draft.message = error instanceof ApiError ? friendlyError(error, 'save') : '保存结果未确认。输入已保留；重试会沿用同一请求 ID。';
       this.message(hash, draft.message);
     } finally {
       draft.submitting = false;

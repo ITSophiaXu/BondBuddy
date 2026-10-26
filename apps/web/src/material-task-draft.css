@@ -1,0 +1,19 @@
+[data-material-task-draft] { margin-top: 18px; }
+[data-material-task-draft] > p { max-width: 88ch; line-height: 1.8; }
+[data-material-task-draft] [data-task-draft-state] { padding: 10px 14px; background: #f1f4eb; border-radius: 6px; }
+[data-material-task-draft] .m4-comparison-row { margin: 14px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+[data-material-task-draft] .m4-comparison-row > h4 { margin: 0; padding: 12px 16px; font-size: 14px; background: #f3f5ed; overflow-wrap: anywhere; }
+[data-material-task-draft] .m4-comparison-row > h4 small { margin-left: 12px; font-weight: 400; color: #8c672d; }
+[data-material-task-draft] .m4-comparison-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+[data-material-task-draft] [data-task-draft-side] { min-width: 0; padding: 14px 16px; }
+[data-material-task-draft] [data-task-draft-side="current"] { border-left: 1px solid var(--line); }
+[data-material-task-draft] [data-task-draft-side] > strong { font-size: 12px; color: var(--muted); }
+[data-material-task-draft] .m4-comparison-block + .m4-comparison-block { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+[data-material-task-draft] .m4-comparison-block p { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-material-task-draft] [data-comparison-unverified] { color: #8c672d; }
+[data-material-task-draft] details { font-size: 12px; line-height: 1.8; }
+[data-material-task-draft] summary { cursor: pointer; }
+[data-material-task-draft] [data-comparison-reference] dl { margin: 8px 0; overflow-wrap: anywhere; }
+[data-material-task-draft] [data-comparison-reference] dt { color: var(--muted); }
+[data-material-task-draft] [data-comparison-reference] dd { margin: 0 0 6px; white-space: pre-wrap; }
+[data-material-task-draft] summary:focus-visible { outline: 2px solid var(--m4-green, #245647); outline-offset: 4px; }

@@ -1,15 +1,16 @@
 import { RECOVERY_CHANNEL_KINDS, RECOVERY_POLICY } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
+import type { ErrorOperation } from './user-facing-error';
 import { date, esc } from './ui';
 import { PASSWORD_HELP, USERNAME_PATTERN } from './register';
 const labels:Record<typeof RECOVERY_CHANNEL_KINDS[number],string>={email:'邮箱',support_chat:'原客服会话（如微信号）'};
-const errorText=(error:unknown)=>error instanceof ApiError && error.code==='CHALLENGE_INVALID'?'确认码或链接无效、已使用或已过期，请联系原客服重新核验。':error instanceof ApiError && error.status===404?'记录不可用，或当前账号没有处理权限。':friendlyError(error);
+const errorText=(error:unknown,operation:ErrorOperation)=>error instanceof ApiError && error.code==='CHALLENGE_INVALID'?'确认码或链接无效、已使用或已过期，请联系原客服重新核验。':error instanceof ApiError && error.status===404?'记录不可用，或当前账号没有处理权限。':friendlyError(error,operation);
 const policy='只能通过事先绑定的联系方式核验账号归属。没有可靠旧记录时不能重置，原账号资料仍保留。';
 
 export async function mountRecoveryAccount(api:ApiClient,live:()=>boolean) {
   const container=document.querySelector<HTMLElement>('#account-recovery')!;
   let state:Dto<'RecoveryAccountResponse'>;
-  try {state=await api.recoveryAccount();}catch(error){if(live())container.innerHTML=`<h2>账号找回</h2><p class="muted">${esc(errorText(error))}</p>`;return;}
+  try {state=await api.recoveryAccount();}catch(error){if(live())container.innerHTML=`<h2>账号找回</h2><p class="muted">${esc(errorText(error,'read'))}</p>`;return;}
   if(!live())return;
   const paint=()=>{
     container.innerHTML=`<h2>账号找回</h2><p class="muted">${policy}</p><p>${state.current?`已绑定${labels[state.current.kind]}：${esc(state.current.contact_masked)}`:'尚未绑定恢复联系方式。'}</p>
@@ -26,13 +27,13 @@ export async function mountRecoveryAccount(api:ApiClient,live:()=>boolean) {
       const input={kind:form.querySelector<HTMLSelectElement>('#recovery-kind')!.value as Dto<'RecoveryBindingRequest'>['kind'],contact:form.querySelector<HTMLInputElement>('#recovery-contact')!.value.trim(),current_password:password.value};
       password.value='';
       try{await api.recoveryBind(input);if(!live())return;state=await api.recoveryAccount();if(live())paint();}
-      catch(error){if(live())message.textContent=errorText(error);}finally{button.disabled=false;}
+      catch(error){if(live())message.textContent=errorText(error,'save');}finally{button.disabled=false;}
     });
     container.querySelector<HTMLFormElement>('#recovery-confirm-form')?.addEventListener('submit',async event=>{
       event.preventDefault();const form=event.currentTarget as HTMLFormElement,button=form.querySelector('button')!;button.disabled=true;
       const code=form.querySelector<HTMLInputElement>('#recovery-code')!;
       try{state=await api.recoveryConfirm(state.pending!.binding_id,code.value.trim());if(live()){paint();container.querySelector('#recovery-account-message')!.textContent='恢复联系方式已确认。';}}
-      catch(error){if(live())message.textContent=errorText(error);}finally{code.value='';button.disabled=false;}
+      catch(error){if(live())message.textContent=errorText(error,'save');}finally{code.value='';button.disabled=false;}
     });
     if(state.support_operator)mountSupport(api,container.querySelector('#recovery-support')!,live);
   };paint();
@@ -56,7 +57,7 @@ function mountSupport(api:ApiClient,root:HTMLElement,live:()=>boolean) {
         output.querySelector<HTMLButtonElement>('button')!.addEventListener('click',async event=>{
           const button=event.currentTarget as HTMLButtonElement;button.disabled=true;
           try{const result=await api.supportCode(id);if(current(r))output.innerHTML=`<p>只发送到：${esc(result.contact)}</p><label for="support-secret">一次性确认码</label><input id="support-secret" readonly value="${esc(result.code)}"/><p>有效至 ${esc(date(result.expires_at))}。刷新页面后不再显示；重新生成会作废旧码。</p>`;}
-          catch(error){if(current(r))message.textContent=errorText(error);}finally{button.disabled=false;}
+          catch(error){if(current(r))message.textContent=errorText(error,'submit');}finally{button.disabled=false;}
         });
       }else{
         const ticket=await api.supportTicket(id);if(!current(r))return;
@@ -66,10 +67,10 @@ function mountSupport(api:ApiClient,root:HTMLElement,live:()=>boolean) {
         button?.addEventListener('click',async()=>{
           button.disabled=true;
           try{const result=await api.supportIssue(id,ticket.binding_id);if(current(r))output.innerHTML=`<p>只发送到：${esc(ticket.contact)}</p><label for="support-secret">一次性重置链接</label><input id="support-secret" readonly value="${esc(new URL(result.reset_path,location.origin).href)}"/><p>有效至 ${esc(date(result.expires_at))}。用户自行设置密码；用后请回到工单查看结果并通知原渠道。刷新页面后不再显示此链接。</p>`;}
-          catch(error){if(current(r))message.textContent=errorText(error);}finally{button.disabled=false;}
+          catch(error){if(current(r))message.textContent=errorText(error,'submit');}finally{button.disabled=false;}
         });
       }
-    }catch(error){if(current(r))message.textContent=errorText(error);}
+    }catch(error){if(current(r))message.textContent=errorText(error,'read');}
   });
 }
 
@@ -77,7 +78,7 @@ export async function renderRecoveryPage(api:ApiClient,root:HTMLElement,mode:'re
   root.innerHTML=`<main id="main" class="closed-layout" tabindex="-1"><section class="panel form-panel"><a class="brand" href="#/">BondBuddy</a><h1>${mode==='reset'?'设置新密码':'人工找回账号'}</h1><p class="muted">${mode==='reset'?'新密码设置成功后，所有旧会话将退出。':policy}</p><div id="recovery-public-body"><p role="status">正在读取找回信息…</p></div><p id="recovery-public-message" class="form-message" role="status"></p><a class="back-link" href="#/">返回登录</a></section></main>`;
   const body=root.querySelector<HTMLElement>('#recovery-public-body')!,message=root.querySelector<HTMLElement>('#recovery-public-message')!;
   let info:Dto<'RecoveryInfoResponse'>;
-  try{info=await api.recoveryInfo();}catch(error){if(live())body.textContent=errorText(error);return;}
+  try{info=await api.recoveryInfo();}catch(error){if(live())body.textContent=errorText(error,'read');return;}
   if(!live())return;
   if(!info.enabled){body.textContent='人工找回尚未开放，请妥善保管密码。';return;}
   if(mode==='request'){
@@ -85,7 +86,7 @@ export async function renderRecoveryPage(api:ApiClient,root:HTMLElement,mode:'re
     body.querySelector('form')!.addEventListener('submit',async event=>{
       event.preventDefault();const button=body.querySelector('button')!;button.disabled=true;
       try{const result=await api.recoveryRequest(body.querySelector<HTMLInputElement>('input')!.value.trim());if(live())body.innerHTML=`<p>已收到申请，需要核验原账号归属。</p><p>请把工单号 <code>${esc(result.ticket_id)}</code> 交给客服 ${esc(info.support_contact!)}，说明遇到的问题。请勿发送密码、验证码、身份证或客户材料。</p><p>${policy}</p>`;}
-      catch(error){if(live())message.textContent=errorText(error);}finally{button.disabled=false;}
+      catch(error){if(live())message.textContent=errorText(error,'submit');}finally{button.disabled=false;}
     });
   }else{
     if(!token){body.textContent='请重新打开客服发送的完整重置链接。';return;}
@@ -95,7 +96,7 @@ export async function renderRecoveryPage(api:ApiClient,root:HTMLElement,mode:'re
       if(password.value!==confirm.value){message.textContent='两次输入的新密码不一致。';return;}
       button.disabled=true;
       try{await api.recoveryReset(token!,password.value);token=undefined;if(live())done();}
-      catch(error){if(live())message.textContent=errorText(error);}finally{password.value='';confirm.value='';button.disabled=false;}
+      catch(error){if(live())message.textContent=errorText(error,'save');}finally{password.value='';confirm.value='';button.disabled=false;}
     });
   }
 }

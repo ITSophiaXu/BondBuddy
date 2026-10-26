@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 // Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
 const now = '2026-09-27T12:00:00Z';
 const id = 'synthetic-execution-project';
+const priorArtifact = { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now };
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const emptyMessages = { version: 1, content_sha256: hash('bondbuddy:empty-project-messages'), message_ids: [] };
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -27,6 +28,9 @@ function fixture() {
     reporting_periods:reportingWindow('sse','private','2024-12-31'),status:'user_asserted'}];
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
+    artifacts: new Map<string, Dto<'ArtifactResponse'>>(),
+    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'],
+    priorTasks: [] as Dto<'ProjectTasksResponse'>['items'],
     nextInputRevision: undefined as number | undefined, patchRequests: 0,
     holdProjectRead: false, releaseProjectRead: undefined as (() => void) | undefined,
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
@@ -50,6 +54,30 @@ function fixture() {
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
     blockers: undefined as string[] | undefined };
 }
+function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunResponse'>, revisionId: string) {
+  expect(run.project_id).toBe(id); expect(run.channel).toBe('production');
+  run.state='succeeded'; run.artifact_id=revisionId;
+  const cleanId=`${revisionId}-clean`;
+  const wordDelivery: NonNullable<Dto<'ArtifactResponse'>['word_delivery']> = {
+    variant:'revision', revision_artifact_id:revisionId, clean_artifact_id:cleanId,
+    writer_version:'bondbuddy-unified-word-1.0.0', source_sha256:state.materials.find(m=>m.role==='historical')?.sha256??null,
+    baseline_hash:null, effective_baseline_sha256:null, plan_hash:null, delivery_policy:'generated_pair_v1',
+    content_review:'not_performed', baseline_kind:'uploaded_source', replacements:null, columns:null,
+    pending_review_count:0, pending_review:[],
+  };
+  const primary: Dto<'ArtifactResponse'> = { artifact_id:revisionId, run_id:run.run_id, version:1,
+    filename:'合成募集书修订版.docx', media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    sha256:hash(`synthetic-revision:${revisionId}`), quality_status:'passed', delivery_status:'available',
+    download_url:`/api/v1/artifacts/${revisionId}/download`, expires_at:'2099-01-01T00:00:00Z', word_delivery:wordDelivery };
+  const clean: Dto<'ArtifactResponse'> = { ...primary, artifact_id:cleanId, filename:'合成募集书清洁版.docx',
+    sha256:hash(`synthetic-clean:${revisionId}`), download_url:`/api/v1/artifacts/${cleanId}/download`,
+    word_delivery:{...wordDelivery,variant:'clean'} };
+  state.artifacts.set(primary.artifact_id,primary); state.artifacts.set(clean.artifact_id,clean);
+  state.generatedVersions.push({version_id:`generated-${run.run_id}`,sequence:state.generatedVersions.length+2,
+    origin:'generated',filename:clean.filename!,sha256:clean.sha256,created_at:now,material_id:null,material_version:null,
+    artifact_id:clean.artifact_id,artifact_version:clean.version,revision_artifact_id:primary.artifact_id,run_id:run.run_id});
+  return {primary,clean};
+}
 async function setup(page: Page, state = fixture(), canStart = true) {
   await page.context().route('**/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/v1', '');
@@ -69,15 +97,30 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       }
       return json(route, 200, state.project);
     }
-    if(path===`/projects/${id}/tasks`){state.listPages.push(url.searchParams.get('cursor')??'first');const skip=state.paginate&&!url.searchParams.has('cursor');return json(route,200,{...taskPage(id,skip?[]:[...state.runs.values()].reverse(),state.project.kind),page:{has_more:skip,next_cursor:skip?'page-two':null}});}
+    if(path===`/projects/${id}/tasks`){state.listPages.push(url.searchParams.get('cursor')??'first');const skip=state.paginate&&!url.searchParams.has('cursor');const tasks=taskPage(id,[...state.runs.values()].reverse(),state.project.kind);return json(route,200,{...tasks,items:skip?[]:[...tasks.items,...state.priorTasks],page:{has_more:skip,next_cursor:skip?'page-two':null}});}
     if (path === '/projects') {
       state.listPages.push(url.searchParams.get('cursor') ?? 'first');
       const lastRun = [...state.runs.values()].at(-1);
       const skip = state.paginate && !url.searchParams.has('cursor');
       return json(route, 200, { items: skip ? [] : [{ ...state.project, latest_run: lastRun ? { run_id: lastRun.run_id, state: lastRun.state, updated_at: now } : null,
-        latest_artifact: { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now } }], page: { next_cursor: skip ? 'page-two' : null, has_more: skip } });
+        latest_artifact: priorArtifact }], page: { next_cursor: skip ? 'page-two' : null, has_more: skip } });
     }
     if (path === `/projects/${id}/events`) return json(route, 200, { items: state.materials.map((m, i) => ({ event_id: `event-${i}`, schema_version: 1, project_id: id, trace_id: 'trace', seq: i + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: m.material_id } })), next_cursor: null });
+    if(path===`/projects/${id}/prospectus-versions`&&method==='GET'){
+      const material=state.materials.find(m=>m.role==='historical');
+      const versions:Dto<'ProspectusVersionsResponse'>={project_id:id,current_version_id:material?'source-version':null,selection_revision:material?1:0,inactive_material_ids:[],versions:material?[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]:[]};
+      if(state.generatedVersions.length){
+        versions.versions.push(...state.generatedVersions);
+        versions.current_version_id=state.generatedVersions.at(-1)!.version_id;
+        versions.selection_revision+=state.generatedVersions.length;
+      }
+      return json(route,200,versions);
+    }
+    const artifactMatch=path.match(/^\/artifacts\/([^/]+)$/);
+    if(artifactMatch&&method==='GET'){
+      const artifact=state.artifacts.get(decodeURIComponent(artifactMatch[1]));
+      return artifact?json(route,200,artifact):json(route,404,{code:'NOT_FOUND'});
+    }
     if (path === `/projects/${id}/messages` && method === 'GET') return json(route, 200,
       { conversation_id: id, items: [], project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
     if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
@@ -182,13 +225,28 @@ async function setup(page: Page, state = fixture(), canStart = true) {
   });
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
-  if (canStart) await expect(page.getByRole('button', { name: '开始编制', exact: true })).toBeEnabled();
-  else await expect(page.getByRole('button', { name: '开始编制', exact: true })).toBeDisabled();
+  if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  else await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeDisabled();
   return state;
 }
 async function prepare(page: Page) {
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
+}
+async function continueAuthoring(page: Page) {
+  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
+}
+async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
+  expect(run.project_id).toBe(id);
+  await page.goto('/#tasks');
+  await page.locator(`.collection-project[data-project-id="${run.project_id}"] [data-tasks="${run.project_id}"]`).click();
+  const task = page.locator(`[data-task-panel="${run.project_id}"] [data-run-id="${run.run_id}"]`);
+  const href = `#/projects/${encodeURIComponent(run.project_id)}?from=projects&run=${encodeURIComponent(run.run_id)}`;
+  await expect(task.locator('a')).toHaveAttribute('href', href);
+  await task.locator('a').click();
+  await expect.poll(() => new URL(page.url()).hash).toBe(href);
+  await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision',String(run.input_revision));
 }
 
 test('M2 shortage preserves inputs, recharge never executes, returning starts directly',async({page})=>{
@@ -211,7 +269,10 @@ test('M2 shortage preserves inputs, recharge never executes, returning starts di
   state.order!.state='paid';state.order!.credited_at=now;state.available+=20000;
   await page.getByRole('button',{name:'刷新支付状态'}).click();await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
   expect(state.executes).toHaveLength(0);
-  await page.getByRole('link',{name:'返回项目继续更新'}).first().click();
+  const returnWork=page.getByRole('link',{name:'返回刚才的工作'}).first(),returnHref=await returnWork.getAttribute('href');
+  expect(returnHref?.split('?')[0]).toBe('#/projects/'+state.project.project_id);
+  expect(new URLSearchParams(returnHref!.split('?')[1]).get('resume')).toBe('credits');
+  await returnWork.click();
   await expect(page.locator('#execute-input')).toHaveText('继续更新');expect(state.executes).toHaveLength(0);
   await page.locator('#execute-input').click();
   await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('quote-test-v1');
@@ -319,7 +380,7 @@ test('authoring materials stay read-only after starting until an explicit next v
     await expect(picker).toBeDisabled();
   }
   await expect(page.locator('#materials-state-description')).toContainText('继续修改');
-  await page.getByRole('button', { name: '继续修改', exact: true }).click();
+  await continueAuthoring(page);
   await expect(picker).toBeEnabled();
   await expect(picker.locator('..')).toBeVisible();
   await expect(source).toBeEnabled();
@@ -365,7 +426,8 @@ test('lost execute response retries the same key; reload restores the actual tas
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.dropExecute=true;
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('连接中断');
-  await page.locator('#execute-input').click();
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await page.locator('#retry-execution').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   expect(state.executes).toHaveLength(2); expect(state.executes[0]).toEqual(state.executes[1]); expect(state.runs.size).toBe(1);
   await page.reload(); await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
@@ -383,13 +445,19 @@ test('lost snapshot response requires readback and explicit selection, without a
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
 
-test('double click and edits during submission preserve the locked request', async ({ page }) => {
+test('double click and editing locks during submission preserve the locked request', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
   await expect(page.locator('#execute-input')).toBeDisabled();
-  await page.getByLabel('补充募集书更新说明').fill('下一轮的补充'); state.releaseExecute!();
+  const sent = structuredClone(state.executes[0]);
+  await expect(page.locator('#project-conversation-root')).toBeHidden();
+  await expect(page.locator('#material-editing')).toHaveAttribute('disabled', '');
+  await expect(page.locator('[data-upload-role]').first()).toBeDisabled();
+  await expect(page.locator('#draft-form')).toHaveAttribute('inert', '');
+  state.releaseExecute!();
   await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','1');
   expect(state.executes).toHaveLength(1); expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
+  expect(state.executes[0]).toEqual(sent);
 });
 
 test('editing while preflight is pending discards that result; next action locks a new revision', async ({ page }) => {
@@ -546,13 +614,14 @@ test('v3 recheck restores failed test run v8; explicit new input v9 uses a disti
     }
   }
   state.preflightError=undefined; state.checkStatus='ready'; state.nextInputRevision=9;
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await continueAuthoring(page);
   await expect(page.locator('#execute-input')).toBeEnabled();
   await page.locator('#execute-input').click();
   await expect.poll(()=>state.executes.length).toBe(1);
   const fresh=state.snapshots.get(9)!;
   const productionKey=`web-update-${hash(JSON.stringify([id,9,fresh.input_hash]))}`;
   await expect.poll(()=>state.inputs.length).toBe(2);
+  expect(state.inputs[1].edit_base).toBeNull();
   expect(state.project.input_revision).toBe(9);
   expect(state.preflights.at(-1)).toEqual({input_revision:9,input_hash:fresh.input_hash});
   expect(state.executes[0].execution_request_id).toBe(productionKey);
@@ -890,6 +959,7 @@ test('restored snapshot retains exact user assertion pins in a new version', asy
   state.snapshots.get(1)!.credit_facility_supplements=[pin];
   await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
   await page.getByRole('button',{name:'编辑项目信息'}).click();
+  await page.locator('details.update-optional-section[data-update-group=other] > summary').click();
   await page.getByLabel('其他已知信息').fill('下一轮补充');
   await expect(page.locator('#save-state')).toHaveText('已保存');
   await page.getByRole('button',{name:'保存并继续'}).click();
@@ -898,13 +968,17 @@ test('restored snapshot retains exact user assertion pins in a new version', asy
 
 test('failed task recovery cannot enable a new snapshot until the server record is read', async ({page})=>{
   const state=await setup(page);
-  await page.route('**/api/v1/projects?*',route=>json(route,503,{code:'DATA_UNAVAILABLE'}));
+  const taskHistoryUrl=(url:URL)=>url.pathname===`/api/v1/projects/${id}/tasks`;
+  let failedReads=0;
+  await page.route(taskHistoryUrl,route=>{failedReads++;return json(route,503,{code:'DATA_UNAVAILABLE'});});
   await page.reload();
   await expect(page.locator('#execution-message')).not.toBeEmpty();
   await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(failedReads).toBeGreaterThan(0);
   expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
-  await page.unroute('**/api/v1/projects?*'); await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await page.unroute(taskHistoryUrl); await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
 });
 
 test('a test terminal state in the production channel never exposes a deliverable',async({page})=>{
@@ -919,16 +993,24 @@ test('a test terminal state in the production channel never exposes a deliverabl
 test('continuing after completion creates a new input and retains the preceding successful artifact without reload',async({page})=>{
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  const first=[...state.runs.values()][0]; first.state='succeeded'; first.artifact_id='first-successful-artifact';
+  const first=[...state.runs.values()][0];
+  const {primary,clean}=registerGeneratedPair(state,first,'first-successful-artifact');
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已生成');
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await continueAuthoring(page);
+  await expect(page.locator('[data-next-authoring-summary]')).toContainText(clean.filename!);
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
-  await expect(page.getByRole('link',{name:'查看此前成功成果'})).toHaveAttribute('href','#/artifacts/first-successful-artifact');
+  await expect(page.getByRole('link',{name:'查看此前成功成果'})).toHaveAttribute('href',`#/artifacts/first-successful-artifact?return_project=${id}`);
   expect(state.runs.size).toBe(2);
   expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
   expect(state.executes[0].execution_request_id).not.toBe(state.executes[1].execution_request_id);
+  expect(state.inputs[0]).not.toHaveProperty('edit_base');
+  expect(state.inputs[1].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
+  expect(state.inputs[1].prospectus_selection_revision).toBe(2);
+  expect(state.inputs[1].material_versions).toEqual(state.inputs[0].material_versions);
+  expect(primary.word_delivery?.clean_artifact_id).toBe(clean.artifact_id);
+  expect(clean.word_delivery?.revision_artifact_id).toBe(first.artifact_id);
 });
 
 
@@ -937,11 +1019,20 @@ for (const [reason, message] of [
   ['kill_switch', '更新服务暂时停用，服务恢复后自动继续。']]) {
   test(`trial pause ${reason}: reload and automatic recovery preserve one run`, async ({ page }) => {
     const state = fixture(); state.checkStatus = 'ready'; state.runStage = 'trial_limit'; state.runReason = reason;
-    await setup(page, state); await page.locator('#execute-input').click();
+    // This task belongs to the same project and points to the existing version-1 artifact.
+    // Keep it out of runs: that map tracks only this test's newly submitted execution.
+    const priorPage=taskPage(id,[{run_id:priorArtifact.run_id,project_id:id,state:'succeeded',stage:'word_delivery',artifact_id:priorArtifact.artifact_id,updated_at:priorArtifact.created_at}],state.project.kind);
+    expect(Value.Check(schemas.ProjectTasksResponse,priorPage)).toBe(true);
+    await setup(page, state);
+    state.priorTasks=priorPage.items;
+    await page.locator('#execute-input').click();
+    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await page.getByRole('button',{name:'重新读取',exact:true}).click();
     await expect(page.locator('.execution-summary')).toHaveText(message);
     await expect(page.getByRole('button', { name: '继续更新', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '查看材料', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '查看此前成功成果' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '查看此前成功成果' })).toHaveAttribute('href',`#/artifacts/${priorArtifact.artifact_id}?return_project=${id}`);
     if (reason === 'model_tokens_per_user_per_day' && process.env.BB_TRIAL_UX_DIR) {
       for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
         await page.setViewportSize({ width, height });
@@ -952,6 +1043,7 @@ for (const [reason, message] of [
     }
     await page.reload();
     await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.getByRole('link', { name: '查看此前成功成果' })).toHaveAttribute('href',`#/artifacts/${priorArtifact.artifact_id}?return_project=${id}`);
     await expect(page.locator('#resume-run')).toHaveCount(0);
     const run = [...state.runs.values()][0];
     const originalInput = run.input_hash;
@@ -961,6 +1053,7 @@ for (const [reason, message] of [
     await expect(page.locator('#cancel-run')).toBeVisible();
     expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
     expect(state.inputs).toHaveLength(1); expect(run.input_hash).toBe(originalInput);
+    expect(state.runs.size).toBe(1); expect(run.project_id).toBe(id); expect(run.run_id).not.toBe(priorArtifact.run_id);
   });
 }
 
@@ -1026,7 +1119,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await expect(row).toContainText('服务器已确认保存');
     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
-    await expect(page.getByRole('button',{name:'开始编制',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
     expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:1, puts:1});
     expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
     if (process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR) {
@@ -1074,7 +1167,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
     await setup(page, state, false);
-    await page.getByLabel('为历史／参考募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
+    const historyPicker = page.getByLabel('为历史／参考募集书选择文件');
+    await expect(historyPicker).toBeEnabled();
+    await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
+    await historyPicker.setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
     await expect(history).toContainText('正在保存');
     await expect.poll(() => releaseSave).toBeDefined(); releaseSave!();
@@ -1102,10 +1198,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await source.getByLabel('原发行市场',{exact:true}).selectOption('sse');
     await source.getByLabel('原品种',{exact:true}).selectOption('private');
     await source.getByRole('radio',{name:'年末',exact:true}).check();
-    await page.getByRole('button', { name: '开始编制', exact: true }).click();
+    await page.getByRole('button', { name: '开始更新', exact: true }).click();
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await expect(page.locator('#execution-preflight')).toBeHidden();
-    await expect(page.getByRole('button', { name: '保留待确认项并开始编制' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /保留待确认项并开始(?:编制|更新)/ })).toHaveCount(0);
     expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
     expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
     expect(state.inputs[0].material_versions).toEqual(state.materials.map(m => ({ material_id: m.material_id, material_version: 1 })));
@@ -1123,7 +1219,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
 test('all-projects update keeps its list context through progress, edit and refresh',async({page})=>{
  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
- await page.goto('/#tasks');await page.getByRole('link',{name:'合成任务项目',exact:true}).click();
+ await openListedRun(page,[...state.runs.values()][0]);
  await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await expect(page).toHaveURL(/from=projects/);await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
  await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
@@ -1146,17 +1242,17 @@ for (const scenario of [
   await expect(page.locator('#cancel-run')).toBeVisible();
   const originalInput = structuredClone(state.inputs[0]);
   if (scenario.query === null) {
-    await page.goto('/#tasks'); await page.getByRole('link', { name: state.project.name, exact: true }).click();
+    await openListedRun(page,[...state.runs.values()][0]);
   } else await page.goto(`/#/projects/${id}?${scenario.query}`);
   await expect(page).toHaveURL(/from=projects/);
   await page.getByRole('button', { name: '停止本次任务', exact: true }).click();
   await expect(page.locator('#execution-progress')).toContainText('本轮已停止');
-  await page.getByRole('button', { name: '继续修改', exact: true }).click();
+  await continueAuthoring(page);
   await expect(page.locator('#material-recovery-status')).toContainText('已恢复 2 份材料');
   await expect(page.locator('.material-file-row')).toHaveCount(2);
   // Re-entering the cancelled project must recover the same files before editing.
   await page.reload();
-  await page.getByRole('button', { name: '继续修改', exact: true }).click();
+  await continueAuthoring(page);
   await expect(page.locator('#material-recovery-status')).toContainText('已恢复 2 份材料');
   const picker = page.getByLabel('为审计报告（可含报表及附注）选择文件');
   await expect(picker).toBeEnabled();
@@ -1183,6 +1279,9 @@ for (const scenario of [
     await mkdir(evidence, { recursive: true });
     await page.screenshot({ path: join(evidence, `cancel-supplement-${scenario.width}-${scenario.query === null ? 'list' : 'step'}.png`) });
   }
+  await page.locator('[data-next-leave]').click();
+  expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('run')).toBe('synthetic-run-1');
+  expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('prepare')).toBe(false);
   await page.reload(); await page.getByRole('button', { name: '查看材料', exact: true }).click();
   await expect(page.locator('.material-file-row')).toHaveCount(3);
   await expect(picker).toBeDisabled();
@@ -1258,12 +1357,17 @@ test('dashboard update preserves filtered workbench context through execution, e
 for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historical upload (${reloadBeforeDelete ? 'restored' : 'same session'})`, async ({ page }) => {
   const state = fixture(); state.checkStatus = 'ready'; state.runState = 'running'; state.runStage = 'file_authoring'; state.runReason = '';
   await page.setViewportSize({width: reloadBeforeDelete ? 390 : 1440, height: reloadBeforeDelete ? 844 : 960});
+  // These are ordinary reference materials, not adopted prospectus versions.
+  // Registered versions retain their separate deletion protection.
+  const unregistered:Dto<'ProspectusVersionsResponse'>={project_id:id,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]};
+  await page.route(`**/api/v1/projects/${id}/prospectus-versions`,route=>json(route,200,unregistered));
   await setup(page, state);
   await page.locator('#execute-input').click();
   await expect(page.locator('#cancel-run')).toBeVisible();
   const originalInput = structuredClone(state.inputs[0]);
+  expect(originalInput.prospectus_selection_revision).toBe(0);
   await page.getByRole('button', {name:'停止本次任务',exact:true}).click();
-  await page.getByRole('button', {name:'继续修改',exact:true}).click();
+  await continueAuthoring(page);
   let failDelete = false, deletes = 0, nextName = '', sequence = 0;
   await page.route(`**/api/v1/projects/${id}/materials/*`, async route => {
     if (route.request().method() !== 'DELETE') return route.fallback();
@@ -1297,7 +1401,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await expect(wrong).toContainText('服务器已确认保存');
   await wrong.locator('[data-source-field="relation"]').selectOption('parent');
   await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.relation).toBe('parent');
-  if (reloadBeforeDelete) { await page.reload(); await page.getByRole('button',{name:'继续修改',exact:true}).click(); }
+  if (reloadBeforeDelete) { await page.reload(); await continueAuthoring(page); }
   await remove('误传募集书.pdf',false);
   expect(deletes).toBe(1);
   await expect(wrong).toBeVisible();
@@ -1322,12 +1426,14 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   const evidence=process.env.BB_UX_EVIDENCE_DIR;
   if(evidence) {await mkdir(evidence,{recursive:true});await correct.evaluate(el=>el.scrollIntoView({block:'start'}));await page.evaluate(()=>window.scrollBy(0,-90));await page.screenshot({path:join(evidence,`implementation-${reloadBeforeDelete?'mobile':'desktop'}.png`)});}
   await page.reload();
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await continueAuthoring(page);
   await expect(correct).toBeVisible();
   await expect(page.locator('.material-file-row')).toHaveCount(2);
   await page.locator('#execute-input').click();
   await expect.poll(()=>state.inputs.length).toBe(2);
   expect(state.inputs[0]).toEqual(originalInput);
+  expect(state.inputs[1].prospectus_selection_revision).toBe(0);
+  expect(state.inputs[1].edit_base).toBeNull();
   expect(state.inputs[1].material_versions.map(m=>m.material_id).sort()).toEqual(['replacement-2','synthetic-audit']);
   expect(JSON.stringify(state.inputs[1])).not.toContain('replacement-1');
   expect(JSON.stringify(state.inputs[1])).not.toContain('误传发行人');

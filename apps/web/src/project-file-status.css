@@ -1,0 +1,34 @@
+/* Keep desktop filenames readable beside status; file operations get their own line. */
+@media (min-width: 761px) {
+  #file-list > .collection-file[data-file-key^="project-file:"] {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  #file-list > .collection-file[data-file-key^="project-file:"] > .collection-file-icon {
+    flex: 0 0 22px;
+  }
+
+  #file-list > .collection-file[data-file-key^="project-file:"] > .collection-file-info {
+    flex: 1 1 260px;
+    min-width: min(260px, calc(100% - 34px));
+  }
+
+  #file-list > .collection-file[data-file-key^="project-file:"] > .pw-file-actions {
+    flex: 1 0 calc(100% - 34px);
+    min-width: 0;
+    max-width: none;
+    margin-left: 34px;
+    justify-content: flex-start;
+  }
+
+  #file-list > .collection-file[data-file-key^="project-file:"] > .pw-file-note {
+    flex-basis: calc(100% - 34px);
+    margin-left: 34px;
+  }
+
+  #file-list > .collection-file[data-file-key^="project-file:"] .pw-file-note {
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+}

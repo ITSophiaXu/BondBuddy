@@ -15,7 +15,7 @@ export async function renderOcrReview(context:Context,projectId:string,materialI
   try {review=await context.api.request<OcrReview>('GET',path);}
   catch(error){
     if(token!==context.epoch())return;
-    context.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(projectId)}">← 返回项目</a><h1>材料识别核对</h1><p class="form-message" role="status">${esc(error instanceof ApiError && error.status===404?'此材料暂时没有可查看的识别结果，或已无法访问。':friendlyError(error))}</p><p id="page-error" role="alert" hidden></p>`,'projects');return;
+    context.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(projectId)}">← 返回项目</a><h1>材料识别核对</h1><p class="form-message" role="status">${esc(error instanceof ApiError && error.status===404?'此材料暂时没有可查看的识别结果，或已无法访问。':friendlyError(error,'read'))}</p><p id="page-error" role="alert" hidden></p>`,'projects');return;
   }
   if(token!==context.epoch())return;
   context.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(projectId)}">← 返回项目</a><div class="page-heading"><div><h1>材料识别核对</h1><p class="muted">对照原页片段，保存你的校正说明。用户校正不等于审计确认。</p></div></div>
@@ -113,7 +113,7 @@ export async function renderOcrReview(context:Context,projectId:string,materialI
         ].map(([label,value])=>`<dt>${label}</dt><dd>${display(value)}</dd>`).join('')}</dl>`:'<p>当前原文尚无已保存的用户校正。</p>';
         refreshed=updated;acknowledge.hidden=false;
         status.textContent='已读取最新记录。请与上方本次输入核对；尚未再次保存。';
-      } catch(error){if(currentSelection())status.textContent=`${friendlyError(error)} 当前输入保留。`;}
+      } catch(error){if(currentSelection())status.textContent=`${friendlyError(error,'read')} 当前输入保留。`;}
       finally{if(currentSelection())reload.disabled=false;}
     });
     acknowledge.addEventListener('click',()=>{
@@ -135,7 +135,7 @@ export async function renderOcrReview(context:Context,projectId:string,materialI
         if(error instanceof ApiError&&error.status===409){
           conflicted=true;refreshed=undefined;conflictPanel.hidden=false;acknowledge.hidden=true;latestPanel.replaceChildren();
           status.textContent='识别或校正版本已变化。当前输入保留，请读取最新校正并核对。';
-        }else status.textContent=friendlyError(error);
+        }else status.textContent=friendlyError(error,'save');
       }}
       finally{submitting=false;syncSave();controls.forEach(control=>control.disabled=false);}
     });

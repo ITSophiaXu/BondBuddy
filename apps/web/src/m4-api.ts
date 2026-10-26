@@ -20,6 +20,7 @@ export class M4Api {
   execute(id:string,input:M4ExecuteRequest){return this.api.request<{run:Run}>('POST',`/m4/topics/${encodeURIComponent(id)}/execute`,input,{},this.signal);}
   material(id:string,material:M4MaterialPin){return this.api.request<void>('POST',`/m4/topics/${encodeURIComponent(id)}/materials`,{material}, {},this.signal);}
   template(input:M4TemplateCreateRequest){return this.api.request<{template:M4Template}>('POST','/m4/templates',input,{},this.signal);}
+  templates(){return this.api.request<{templates:M4Template[]}>('GET','/m4/templates',undefined,{},this.signal);}
   async preview(artifact:M4Artifact){
     const p=await this.api.request<{artifact:M4Artifact;content:string}>('GET',`/m4/artifacts/${encodeURIComponent(artifact.artifact_id)}/versions/${artifact.artifact_version}/preview`,undefined,{},this.signal);
     if(p.artifact?.artifact_id!==artifact.artifact_id||p.artifact.artifact_version!==artifact.artifact_version||p.artifact.sha256!==artifact.sha256||typeof p.content!=='string')throw new ApiError(0,'DATA_UNAVAILABLE');

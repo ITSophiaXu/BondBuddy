@@ -1,6 +1,7 @@
 import { ReviewRevisionHandlingSchema, type ReviewArtifact, type ReviewMaterialPin, type ReviewPlan, type ReviewReport, type ReviewRevisionHandling } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { ApiClient, friendlyError, type Dto } from './api.js';
+import { UserFacingError } from './user-facing-error';
 import { sourceLocator } from './review-presentation.js';
 import { esc } from './ui.js';
 
@@ -17,7 +18,7 @@ type HandlingContext = {
 const statusLabels: Record<ReviewRevisionHandling['items'][number]['status'], string> = {
   modified: '已修改', not_modified: '未修改', needs_evidence: '待补证',
 };
-class HandlingError extends Error {}
+class HandlingError extends UserFacingError {}
 
 /** The dialog is pinned to the clicked artifact, never to a later workspace refresh. */
 export function checkedRevisionHandling(metadata: Dto<'ArtifactResponse'>, context: HandlingContext): ReviewRevisionHandling {
@@ -82,7 +83,7 @@ export class RevisionHandlingDialog {
         content.innerHTML = revisionHandlingHtml(checkedRevisionHandling(metadata, pinned), pinned);
       } catch (error) {
         if (controller.signal.aborted) return;
-        content.innerHTML = `<p>执行版本 V${pinned.version} · 来源报告 ${esc(pinned.sourceReportId ?? '待核对')}</p><p role="alert">${esc(error instanceof HandlingError ? error.message : friendlyError(error))}</p><button class="btn secondary small">重试读取处理清单</button>`;
+        content.innerHTML = `<p>执行版本 V${pinned.version} · 来源报告 ${esc(pinned.sourceReportId ?? '待核对')}</p><p role="alert">${esc(error instanceof HandlingError ? error.message : friendlyError(error,'read'))}</p><button class="btn secondary small">重试读取处理清单</button>`;
         content.querySelector('button')!.addEventListener('click', () => void load());
       }
     };

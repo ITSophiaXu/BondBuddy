@@ -20,7 +20,7 @@ export function sourceFields(material: Dto<'MaterialResponse'>, sources: readonl
   const cutoff = source?.reporting_periods.map(p => p.end).filter((end): end is string => !!end).sort().at(-1) ?? null;
   const saved = cutoffSelection(cutoff), transient = selections.get(key(material));
   const selection = transient?.signature === JSON.stringify(source?.reporting_periods ?? []) ? transient : saved;
-  return `<fieldset class="source-prospectus" data-source-material="${esc(material.material_id)}"><legend>原稿信息（上传后必填）</legend><div class="source-fields">
+  return `<fieldset class="source-prospectus" data-source-material="${esc(material.material_id)}" data-source-material-version="${material.material_version}" data-source-sha256="${esc(material.sha256)}"><legend>原稿信息（上传后必填）</legend><div class="source-fields">
     <label>与目标发行人的关系<select aria-label="与目标发行人的关系" data-source-field="relation" required><option value="">请选择</option>${Object.entries(SOURCE_RELATIONS).map(([key, label]) => option(key, label, source?.relation)).join('')}</select></label>
     <label>原发行市场<select aria-label="原发行市场" data-source-field="market" required><option value="">请选择</option>${MARKETS.map(key => option(key, MARKET_LABELS[key], source?.market)).join('')}</select></label>
     <label>原品种<select aria-label="原品种" data-source-field="offering" required><option value="">请选择</option>${(source?.market ? MARKET_OFFERINGS[source.market] : []).map(key => option(key, OFFERING_LABELS[key], source?.offering)).join('')}</select></label>

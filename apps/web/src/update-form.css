@@ -1,5 +1,20 @@
 .update-form .update-section + .update-section{border-top:1px solid var(--line);margin-top:28px;padding-top:24px}
 .update-form .update-section h2{margin-bottom:12px}.update-form .optional{font-size:12px;font-weight:400;color:var(--muted)}
+.update-form .update-optional-section + .update-optional-section{margin-top:0;padding-top:0}
+.update-form .update-optional-section>summary{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;min-height:62px;padding:14px 0;cursor:pointer;list-style:none;border-radius:4px}
+.update-form .update-optional-section>summary::-webkit-details-marker{display:none}
+.update-form .update-optional-section>summary::before{content:'›';font-size:22px;line-height:1;color:var(--muted);transition:transform .15s}
+.update-form .update-optional-section[open]>summary::before{transform:rotate(90deg)}
+.update-form .update-optional-section>summary:focus-visible{outline:2px solid var(--green);outline-offset:4px}
+.update-group-title{font-size:15px;font-weight:600;line-height:1.7;min-width:0}.update-group-title .optional{margin-left:6px}
+.update-form .update-group-state{margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);white-space:nowrap}
+.update-form .update-group-error{font-size:12px;color:#a43a31}.update-form .update-group-error[hidden]{display:none}
+.update-form .update-optional-content{padding:0 0 22px 24px;min-width:0}
+.update-form .update-optional-content>.field-hint:first-child{margin-top:0}
+.update-form [data-update-invalid]{border-color:#b9483d;outline-color:#b9483d}
+.update-form .update-field-error,.update-form .update-validation-summary{margin:7px 0 0;color:#a43a31;font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.update-form .update-validation-summary{margin:0 0 18px;padding:10px 12px;border:1px solid #e6bbb5;border-radius:6px;background:#fff6f4}
+.update-form .update-optional-section[data-update-invalid=true]>.update-optional-content{border-left:2px solid #e6bbb5;padding-left:22px}
 .update-form h2 .required{font-size:12px;font-weight:400;margin-left:8px}
 .update-form output{display:block;min-height:46px;padding:12px;border:1px solid var(--line);border-radius:7px;background:#f7f9f3;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
 .update-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.update-field.full{grid-column:1/-1}
@@ -13,4 +28,5 @@
 .supplement-panel{position:sticky;top:24px}.supplement-panel ul{padding-left:20px;font-size:13px;line-height:2}
 .update-form .detail-layout{align-items:start}.update-form .form-panel{min-width:0}.update-form .context-panel{min-width:0}
 @media(max-width:1100px){.update-grid{grid-template-columns:1fr}}@media(max-width:900px){.supplement-panel{position:static}}
+@media(max-width:600px){.update-form .update-optional-content{padding-left:0}.update-form .update-optional-section[data-update-invalid=true]>.update-optional-content{padding-left:10px}.update-form .update-group-error{flex-basis:100%;padding-left:24px}.update-form .update-optional-section>summary{gap:6px 8px}}
 .financial-upload-guidance{padding:12px 14px;margin:12px 0;background:#f2f7e9;border-radius:6px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}.financial-upload-guidance ul{padding-left:20px;margin:6px 0}.financial-upload-guidance p{margin:4px 0 0;color:#64745c}
