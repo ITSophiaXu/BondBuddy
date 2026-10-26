@@ -1,0 +1,3612 @@
+{
+  "synthetic": true,
+  "scope": "Real browser/frontend with synthetic HTTP and controlled Word bytes; no model, worker, real ledger or professional/client compatibility acceptance.",
+  "base": "develop@50bd3dfb",
+  "branch": "codex/desktop-ux-coverage-20261026",
+  "adoption": "Replace each rerun file as a whole; never add repeated executions as new tests. Separate new assistant/review journeys are reported independently.",
+  "source_adoption": "First snapshot: assistant6cc. A/B snapshot: assistant52d4 after same-project source preservation. C runs a clean Vite server after final builds, with unchanged assistant52d4 and MaterialWorkspace3e0e own-property guard. C reruns all affected material suites, account and new assistant/review journeys. Other product modules are unchanged; final existing assistant/browser suites were adopted from B.",
+  "excluded": [
+    {
+      "file": "project-execution.spec.ts",
+      "title": "M2 deferred charge prototype screenshots",
+      "reason": "Opt-in screenshot collector excluded by final desktop config; initial invocation accidentally enabled screenshot collection from the wrong cwd."
+    },
+    {
+      "file": "review-workspace.spec.ts",
+      "title": "annotated source prototype screenshots",
+      "reason": "Optional prototype screenshot collector was skipped in the first report and is excluded by the final configuration."
+    }
+  ],
+  "product_sources": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "52D4B853C592737E4EC4B051A1E2B9010C96A1DD34D2ABFEBD0A5316B231F7F5",
+      "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\project-assistant.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "3E0E14D31966D7353F9C879E6FF0E0C5C7327078B147BFF9B259E5C16681F598",
+      "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\material-workspace.ts"
+    }
+  ],
+  "totals": {
+    "passed": 662,
+    "failed": 0,
+    "skipped": 6,
+    "flaky": 0
+  },
+  "new_journeys": {
+    "included_in_totals": true,
+    "assistant_continuation": {
+      "passed": 21,
+      "failed": 0,
+      "evidence": "assistant-continuation.md"
+    },
+    "review_completion_download": {
+      "passed": 2,
+      "failed": 0,
+      "evidence": "review-completion-download.md"
+    }
+  },
+  "history": [
+    {
+      "phase": "first",
+      "report": "desktop-coverage-first-report.json",
+      "report_sha256": "e651b4de8f80c6779518c53e7ab467cc672a5ca291537cee37b59924e5295404",
+      "assistant_source_sha256": "6cc224ce84816cc038ed3b185906446d04902c9537b3e0de4fc9273ada715d53",
+      "stats": {
+        "startTime": "2026-10-26T07:32:20.508Z",
+        "duration": 1196627.9209999999,
+        "expected": 549,
+        "skipped": 7,
+        "unexpected": 67,
+        "flaky": 0
+      },
+      "failures": [
+        {
+          "file": "account.spec.ts",
+          "title": "closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        },
+        {
+          "file": "batch-delivery-workbench.spec.ts",
+          "title": "batch delivery: explicit three-file package, stopped later work, exact paired Word and next preparation at 1440px",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('#pf-prospectus')\nTimeout: 5000ms\n- Expected substring  - 1\n+ Received string     + 7\n\n- 当前版本：V\n+ 项目募集说明书项目当前稿：V3 · 募集说明书_V3.docx上传新版本\n+       当前版本 · V3募集说明书_V3.docx用户上传 · 2026年10月25日 22:00下载原文件\n+       支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动生成或扣费。\n+       \n+       版本历史（1）“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。版本序号表示保存顺序。V3 · 募集说明书_V3.docx用户上传 · 2026年10月25日 22:00项目当前稿文件版本详情记录所属项目generation-entry-source-S版本记录source-v3版本序号V3保存时间2026-10-25T14:00:00Z文件校验值 SHA-256aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa材料编号source-material材料版本1项目当前稿下载原文件\n+       上传募集书新版本先保存文件，再选择是否采用为当前稿；旧版保留。保存和采用不会启动付费更新。原稿信息仍需按文件填写。上传并保存\n+       \n\nCall log:\n  - Expect \"toContainText\" locator('#pf-prospectus') with timeout 5000ms\n  - waiting for locator('#pf-prospectus')\n    14 × locator resolved to <div id=\"pf-prospectus\">…</div>\n       - unexpected value \"项目募集说明书项目当前稿：V3 · 募集说明书_V3.docx上传新版本\n      当前版本 · V3募集说明书_V3.docx用户上传 · 2026年10月25日 22:00下载原文件\n      支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动生成或扣费。\n      \n      版本历史（1）“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。版本序号表示保存顺序。V3 · 募集说明书_V3.docx用户上传 · 2026年10月25日 22:00项目当前稿文件版本详情"
+        },
+        {
+          "file": "m4-workspace.spec.ts",
+          "title": "legacy MaterialWorkspace component first save and concurrent upload share creation and retain entered requirements",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: real CAS conflict exposes every input and keeps the exact complete local body",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: recovered dirty cache uses the entire saved version only after explicit choice",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: schema-valid cache under the wrong document key is preserved and cannot save to another type",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: defer and Escape keep recovered contents and create no save request",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: identical full inputs are folded and an explicit saved-version choice does not invent a new version",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: fresh names require unique complete pins and never borrow a similar file",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: equal requirement text with different message provenance remains a visible reference change",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: keep rereads a second server change and requires another explicit choice",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: server rereads a second server change and requires another explicit choice",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: failed comparison read retains local intent and explicit reload reads fresh data",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a late opening read cannot reclaim document type",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a late opening read cannot reclaim local text",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a late opening read cannot reclaim leave",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a late choice read cannot save newer local text that was never compared",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a lost PUT before saving stays guarded through reload and explicit recheck",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a lost PUT after saving stays guarded through reload and explicit recheck",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: a pending original execution arriving behind the cache queue prevents the choice",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: unknown original upload blocks comparison and preserves its request and target",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: PDF explicitly adds a supplement and preserves the source and complete draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: DOCX explicitly adds a supplement and preserves the source and complete draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: XLSX explicitly adds a supplement and preserves the source and complete draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: DOCX explicitly replaces only the source in the complete current draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: PDF explicitly replaces only the source in the complete current draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a source entry never offers an enabled XLSX adoption or silently adds a supplement",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a project-file binding fixes its source while allowing explicit supplements without losing any input",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: exact same-name reads stay read only and cancelled registrations retain entry focus",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: pagination beyond fifty, Chinese project search and local material search stay read only",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: repeated adoption clicks share one original registration and one saved choice",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: closing and changing type while registration waits never adopts into either draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: newer local requirements survive a late registration without adopting unreviewed input",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: leaving the component while registration waits preserves the server registration without saving a draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: an old response cannot close or adopt into a reopened picker with another purpose",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: late material reads from the old project cannot replace the newly selected project",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: changing source project during registration keeps its receipt separate from the draft",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: newly arrived original pending, upload and cache guards block adoption and preserve their state",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a lost registration receipt never claims absence or silently resubmits or adopts",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for init",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for underwriter",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for legal",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for private_summary",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for application",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for recommendation",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for annual",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for semiannual",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for issuer",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for financial",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for credit",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "pr745-market-acceptance.spec.ts",
+          "title": "project file continuation retains NAFMII / MTN for proceeds",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\src\\style.css'"
+        },
+        {
+          "file": "project-assistant.spec.ts",
+          "title": "desktop, focus and narrow assistant stay within viewport and preserve normal page layout",
+          "status": "unexpected",
+          "error": "TypeError: Cannot read properties of null (reading 'x')"
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "lost execute response retries the same key; reload restores the actual task",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('#execution-message')\nExpected substring: \"连接中断\"\nReceived string:    \"提交结果暂未确认，请先重新读取状态后再继续。 提交结果尚未确认，请重新读取或点击“核对上次提交”；核对会沿用原请求。\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" locator('#execution-message') with timeout 5000ms\n  - waiting for locator('#execution-message')\n    2 × locator resolved to <p role=\"status\" id=\"execution-message\"></p>\n      - unexpected value \"\"\n    12 × locator resolved to <p role=\"status\" id=\"execution-message\">提交结果暂未确认，请先重新读取状态后再继续。 提交结果尚未确认，请重新读取或点击“核对上次提交”；…</p>\n       - unexpected value \"提交结果暂未确认，请先重新读取状态后再继续。 提交结果尚未确认，请重新读取或点击“核对上次提交”；核对会沿用原请求。\"\n"
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "lost upload acknowledgement restores start without resending desktop",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.material-file-row').filter({ hasText: 'lost.pdf' })\nExpected substring: \"服务器已确认保存\"\nReceived string:    \"lost.pdf审计报告（可含报表及附注） · 35 B上传回执与原文件声明不一致，尚未确认材料保存，请重试确认原上传。重试此文件移除此行\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.material-file-row').filter({ hasText: 'lost.pdf' }) with timeout 5000ms\n  - waiting for locator('.material-file-row').filter({ hasText: 'lost.pdf' })\n    - locator resolved to <li class=\"material-file-row\" data-upload-phase=\"checking\" data-upload-id=\"2893b496-2187-4d89-909c-bae8e0b3cd2f\">…</li>\n    - unexpected value \"lost.pdf审计报告（可含报表及附注） · 35 B正在确认保存结果…取消此文件\"\n    13 × locator resolved to <li class=\"material-file-row\" data-upload-phase=\"failed\" data-upload-id=\"2893b496-2187-4d89-909c-bae8e0b3cd2f\">…</li>\n       - unexpected value \"lost.pdf审计报告（可含报表及附注） · 35 B上传回执与原文件声明不一致，尚未确认材料保存，请重试确认原上传。重试此文件移除此行\"\n"
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "material workflow desktop: upload, retry, pending evidence, one-click execution and reopen",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.material-file-row').filter({ hasText: '合成历史稿.docx' })\nExpected substring: \"正在保存\"\nReceived string:    \"合成历史稿.docx本企业历史募集书 · 22 B上传回执与原文件声明不一致，尚未确认材料保存，请重试确认原上传。重试此文件移除此行\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.material-file-row').filter({ hasText: '合成历史稿.docx' }) with timeout 5000ms\n  - waiting for locator('.material-file-row').filter({ hasText: '合成历史稿.docx' })\n    5 × locator resolved to <li class=\"material-file-row\" data-upload-phase=\"checking\" data-upload-id=\"ef4d4aa6-057f-4d2a-a0fa-02dca2ed82e9\">…</li>\n      - unexpected value \"合成历史稿.docx本企业历史募集书 · 22 B正在确认保存结果…取消此文件\"\n    9 × locator resolved to <li class=\"material-file-row\" data-upload-phase=\"failed\" data-upload-id=\"ef4d4aa6-057f-4d2a-a0fa-02dca2ed82e9\">…</li>\n      - unexpected value \"合成历史稿.docx本企业历史募集书 · 22 B上传回执与原文件声明不一致，尚未确认材料保存，请重试确认原上传。重试此文件移除此行\"\n"
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "cancel then supplement materials from project list",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "cancel then supplement materials from reloaded material step",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "cancel then supplement materials from query order and run link",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "replace mistaken historical upload (same session)",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "replace mistaken historical upload (restored)",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "M2 deferred charge prototype screenshots",
+          "status": "unexpected",
+          "error": "Error: page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at http://prototype.test/credit-visibility.html?state=ready\nCall log:\n  - navigating to \"http://prototype.test/credit-visibility.html?state=ready\", waiting until \"load\"\n"
+        },
+        {
+          "file": "project-execution.spec.ts",
+          "title": "model progress summaries survive tool bursts, pagination and reload 1440",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\product-prototype\\public\\authoring-live-progress.html'"
+        },
+        {
+          "file": "review-workspace.spec.ts",
+          "title": "review inline requirements and global floating assistant comparison 1440",
+          "status": "unexpected",
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\lezhai\\Downloads\\product-prototype\\public\\review-requirements.html'"
+        },
+        {
+          "file": "review-workspace.spec.ts",
+          "title": "delete review uploads, retry failures and preserve report history 1440",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('#review-status')\nExpected substring: \"删除未完成\"\nReceived string:    \"删除结果暂未确认。服务暂时无法完成操作，结果尚未确认。请刷新项目状态；仍无法继续时联系支持。 请先重新读取材料列表，核对后再继续。\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" locator('#review-status') with timeout 5000ms\n  - waiting for locator('#review-status')\n    14 × locator resolved to <p role=\"status\" id=\"review-status\" class=\"review-status review-warning\">删除结果暂未确认。服务暂时无法完成操作，结果尚未确认。请刷新项目状态；仍无法继续时联系支持。 请先…</p>\n       - unexpected value \"删除结果暂未确认。服务暂时无法完成操作，结果尚未确认。请刷新项目状态；仍无法继续时联系支持。 请先重新读取材料列表，核对后再继续。\"\n"
+        }
+      ]
+    },
+    {
+      "phase": "correction-a",
+      "report": "desktop-correction-a-report.json",
+      "report_sha256": "94e90a5d2c3219400504ad3704fa01a8e47966c5acf48c6ae5477bdd8a3ca916",
+      "assistant_source_sha256": "52d4b853c592737e4ec4b051a1e2b9010c96a1dd34d2abfebd0a5316b231f7f5",
+      "stats": {
+        "startTime": "2026-10-26T07:54:46.081Z",
+        "duration": 272803.32,
+        "expected": 117,
+        "skipped": 0,
+        "unexpected": 4,
+        "flaky": 0
+      },
+      "failures": [
+        {
+          "file": "generation-entry-intent.spec.ts",
+          "title": "generation entry: pending recovery retains the exact original envelope through generic conflict, acceptance, polling and refresh",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('#pf-prospectus')\nTimeout: 5000ms\n- Expected substring  - 1\n+ Received string     + 7\n\n- 项目当前稿：V3\n+ 项目募集说明书项目当前稿：V4 · 募集说明书_V3.docx上传新版本\n+       当前版本 · V4募集说明书_V3.docx用户上传 · 2026年10月25日 22:00下载原文件\n+       支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动生成或扣费。\n+       \n+       版本历史（1）“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。版本序号表示保存顺序。V4 · 募集说明书_V3.docx用户上传 · 2026年10月25日 22:00项目当前稿文件版本详情记录所属项目generation-entry-source-S版本记录source-v4版本序号V4保存时间2026-10-25T14:00:00Z文件校验值 SHA-256aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa材料编号source-material材料版本1项目当前稿下载原文件\n+       上传募集书新版本先保存文件，再选择是否采用为当前稿；旧版保留。保存和采用不会启动付费更新。原稿信息仍需按文件填写。上传并保存\n+       \n\nCall log:\n  - Expect \"toContainText\" locator('#pf-prospectus') with timeout 5000ms\n  - waiting for locator('#pf-prospectus')\n    14 × locator resolved to <div id=\"pf-prospectus\">…</div>\n       - unexpected value \"项目募集说明书项目当前稿：V4 · 募集说明书_V3.docx上传新版本\n      当前版本 · V4募集说明书_V3.docx用户上传 · 2026年10月25日 22:00下载原文件\n      支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动生成或扣费。\n      \n      版本历史（1）“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。版本序号表示保存顺序。V4 · 募集说明书_V3.docx用户上传 · 2026年10月25日 22:00项目当前稿文件版本"
+        },
+        {
+          "file": "material-draft-comparison.spec.ts",
+          "title": "material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toBeAttached() failed\n\nLocator: locator('#m4-tabs')\nExpected: attached\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeAttached\" locator('#m4-tabs') with timeout 5000ms\n  - waiting for locator('#m4-tabs')\n"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input",
+          "status": "unexpected",
+          "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('#m4-status')\nExpected substring: \"这个项目已在其他页面修改\"\nReceived string:    \"保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" locator('#m4-status') with timeout 5000ms\n  - waiting for locator('#m4-status')\n    14 × locator resolved to <p role=\"status\" id=\"m4-status\" class=\"m4-status error\">保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。</p>\n       - unexpected value \"保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。\"\n"
+        },
+        {
+          "file": "material-reference-picker.spec.ts",
+          "title": "material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice",
+          "status": "unexpected",
+          "error": "Error: expect(received).toBe(expected) // Object.is equality\n\nExpected: true\nReceived: false"
+        }
+      ]
+    },
+    {
+      "phase": "correction-b",
+      "report": "desktop-correction-b-report.json",
+      "report_sha256": "38d232229db17a2fc6f9fa9799ea97754995ee017a196590b6d71526bbf8ec1d",
+      "assistant_source_sha256": "52d4b853c592737e4ec4b051a1e2b9010c96a1dd34d2abfebd0a5316b231f7f5",
+      "stats": {
+        "startTime": "2026-10-26T08:00:46.247Z",
+        "duration": 295930.68299999996,
+        "expected": 138,
+        "skipped": 4,
+        "unexpected": 1,
+        "flaky": 0
+      },
+      "failures": [
+        {
+          "file": "account.spec.ts",
+          "title": "closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab",
+          "status": "unexpected",
+          "error": "Test timeout of 30000ms exceeded."
+        }
+      ]
+    },
+    {
+      "phase": "correction-c",
+      "report": "desktop-correction-c-report.json",
+      "report_sha256": "d3d2e7ab257a4eca0a994f928f9b3a561350479dcfe8734c9aeeaba404110c88",
+      "assistant_source_sha256": "52d4b853c592737e4ec4b051a1e2b9010c96a1dd34d2abfebd0a5316b231f7f5",
+      "stats": {
+        "startTime": "2026-10-26T08:08:20.012Z",
+        "duration": 209770.42,
+        "expected": 154,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "failures": []
+    }
+  ],
+  "suites": [
+    {
+      "file": "account.spec.ts",
+      "phase": "correction-c",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "settings show server account facts as text and revoke only other sessions",
+          "status": "expected"
+        },
+        {
+          "title": "password change checks input locally, keeps the session on a wrong password and reports revoked sessions",
+          "status": "expected"
+        },
+        {
+          "title": "closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab",
+          "status": "expected"
+        },
+        {
+          "title": "a session revoked elsewhere returns to login instead of showing account data",
+          "status": "expected"
+        },
+        {
+          "title": "unified account keeps two basic fields and opens security settings only on request",
+          "status": "expected"
+        },
+        {
+          "title": "a review payment order returns to the original review workspace",
+          "status": "expected"
+        },
+        {
+          "title": "credit history separates settlement, reservation and release; paginates and persists after reload",
+          "status": "expected"
+        },
+        {
+          "title": "credit history retries failures without claiming an empty ledger or discarding loaded rows",
+          "status": "expected"
+        },
+        {
+          "title": "credit history shows actual order states and refreshes arrival and balance without executing tasks",
+          "status": "expected"
+        },
+        {
+          "title": "credit history aborts pending pages and clears private records on logout",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "all-projects.spec.ts",
+      "phase": "first",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "old workbench redirects to projects; totals include every page and filters survive reload",
+          "status": "expected"
+        },
+        {
+          "title": "failed later page never becomes partial totals and refresh errors preserve prior data",
+          "status": "expected"
+        },
+        {
+          "title": "inline tasks, scoped menu, project consistency link and responsive layout",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "authoring-continuation.spec.ts",
+      "phase": "first",
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "1440: continue and refresh restore only preparation intent with the exact saved summary",
+          "status": "expected"
+        },
+        {
+          "title": "initial task read does not freeze safe draft editing and a saved name survives run restoration",
+          "status": "expected"
+        },
+        {
+          "title": "explicit generation creates one new immutable input/run using the exact clean pin and existing versions",
+          "status": "expected"
+        },
+        {
+          "title": "a historical successful run defaults to its own clean output even when current points at a newer result",
+          "status": "expected"
+        },
+        {
+          "title": "explicit current choice uses current_version_id and persists that choice across refresh",
+          "status": "expected"
+        },
+        {
+          "title": "failed task with no current version requires an explicit null edit base and reuses financial material",
+          "status": "expected"
+        },
+        {
+          "title": "missing exact result mapping blocks until the user explicitly selects current, without substituting the revision file",
+          "status": "expected"
+        },
+        {
+          "title": "an active same-project task takes precedence over a terminal run preparation URL",
+          "status": "expected"
+        },
+        {
+          "title": "a newer terminal task clears an older preparation URL instead of preparing or executing again",
+          "status": "expected"
+        },
+        {
+          "title": "an input saved after preparation without a corresponding task requires record review and never resumes preparation",
+          "status": "expected"
+        },
+        {
+          "title": "changed selection stops before input creation and requires explicit basis refresh before generation",
+          "status": "expected"
+        },
+        {
+          "title": "an in-flight explicit basis refresh preserves dirty local fields when another page changes selection",
+          "status": "expected"
+        },
+        {
+          "title": "a late basis response cannot restore exited preparation or overwrite a newer explicit choice",
+          "status": "expected"
+        },
+        {
+          "title": "detail steps preserve preparation and actual periods; explicit target change affects only the next snapshot",
+          "status": "expected"
+        },
+        {
+          "title": "preparation never leaks to another project or owner and a foreign requested run cannot enable execution",
+          "status": "expected"
+        },
+        {
+          "title": "basis read failure and mismatched saved source identity block without guessed pins or replacement uploads",
+          "status": "expected"
+        },
+        {
+          "title": "lost continuation execute response freezes editing and retries the identical complete request after server completion",
+          "status": "expected"
+        },
+        {
+          "title": "unknown execute without acceptance survives read-only refresh and a definitive quote rejection recovers the same input",
+          "status": "expected"
+        },
+        {
+          "title": "read-only execution refresh finds an exact completed receipt without retrying or creating another task",
+          "status": "expected"
+        },
+        {
+          "title": "continuation QUOTE_CHANGED recovers a fresh quote on the same locked input",
+          "status": "expected"
+        },
+        {
+          "title": "continuation QUOTE_REQUIRED recovers a fresh quote on the same locked input",
+          "status": "expected"
+        },
+        {
+          "title": "continuation CREDITS_INSUFFICIENT recovers a fresh quote on the same locked input",
+          "status": "expected"
+        },
+        {
+          "title": "lost continuation input response requires honest readback and never guesses that the saved input is executable",
+          "status": "expected"
+        },
+        {
+          "title": "authoring preparation: repeated continue preserves explicit current basis",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "authoring-onboarding.spec.ts",
+      "phase": "first",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "issuer-only creation keeps five optional native groups collapsed and never starts 1440",
+          "status": "expected"
+        },
+        {
+          "title": "all five optional groups preserve amounts, units and multiple purposes after collapsed create and reload 1440",
+          "status": "expected"
+        },
+        {
+          "title": "basic edits preserve custom name, source metadata, unusual reporting periods, notes and folded values",
+          "status": "expected"
+        },
+        {
+          "title": "submitting a hidden malformed amount opens its group and focuses the precise error before create",
+          "status": "expected"
+        },
+        {
+          "title": "continuing with a hidden over-registration amount focuses issuance and saves only after correction",
+          "status": "expected"
+        },
+        {
+          "title": "draft 409 retains local folded fields and never overwrites a newer server revision",
+          "status": "expected"
+        },
+        {
+          "title": "network save failure retains fields without background retry and explicit retry keeps the CAS revision",
+          "status": "expected"
+        },
+        {
+          "title": "finance-only project uses the existing explicit start and locks the exact no-source draft through preflight, quote and reload",
+          "status": "expected"
+        },
+        {
+          "title": "desktop authoring journey creates with finance, downloads its accepted pair, continues from that clean draft and returns to the original pair",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "authoring-source-guide.spec.ts",
+      "phase": "first",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "authoring source guide: first exact source opens every user-collapsed ancestor and only moves focus",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: user fills each exact source, next reference opens its folded group, then explicit start pins the saved declarations",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: a source missing only its period focuses an unchecked quarter without choosing a date or copying the target period",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: mismatched DOM id refuses another source and reports refresh without changing inputs",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: mismatched DOM version refuses another source and reports refresh without changing inputs",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: mismatched DOM hash refuses another source and reports refresh without changing inputs",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: duplicate exact source fieldsets are ambiguous and never pick the first matching copy",
+          "status": "expected"
+        },
+        {
+          "title": "authoring source guide: absent or complete sources, higher-priority restoration or invalid draft, and a locked task expose no actionable shortcut",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "batch-delivery-workbench.spec.ts",
+      "phase": "correction-c",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "batch delivery: explicit three-file package, stopped later work, exact paired Word and next preparation at 1440px",
+          "status": "expected"
+        },
+        {
+          "title": "batch delivery: an older in-flight workspace GET cannot restore running after stopping later files",
+          "status": "expected"
+        },
+        {
+          "title": "batch delivery: failed read keeps delivered files and stopped state, and explicit refresh only rereads",
+          "status": "expected"
+        },
+        {
+          "title": "batch delivery: paused batch and exact paused or awaiting-input run remain readable through explicit stop and resumed completion",
+          "status": "expected"
+        },
+        {
+          "title": "batch delivery: R19 unknown preparation has priority over an in-flight stopped-batch result read",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "billing-navigation.spec.ts",
+      "phase": "first",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "recharge order keeps execution ownership and returns to the exact mapped review",
+          "status": "expected"
+        },
+        {
+          "title": "associated-file recharge retains the check and never claims automatic batch continuation",
+          "status": "expected"
+        },
+        {
+          "title": "a topic-only wallet retains navigation without assigning the original project to its order",
+          "status": "expected"
+        },
+        {
+          "title": "an external recharge return target is discarded",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "consistency-confirmation.spec.ts",
+      "phase": "first",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 1,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "consistency confirmation: native file entry reviews differences and confirms only two of three actionable original files",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: a direct file update shows one exact original with its own 4,500 point scope",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: incomplete manual projection says item details were not supplied instead of claiming zero remaining work",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: unknown receipt restores the original scope after delivery and live changes",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: unknown receipt restores the original scope after delivery and live changes even when the original check leaves the recent list",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: legacy pending snapshot degrades honestly while retrying the unchanged original envelope",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: foreign-binding pending snapshot degrades honestly while retrying the unchanged original envelope",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: partial-files pending snapshot degrades honestly while retrying the unchanged original envelope",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation: twelve selected catalogue files keep a keyboard-scrollable review body and reachable fixed fee controls",
+          "status": "expected"
+        },
+        {
+          "title": "consistency confirmation current collector: same-name selection and twelve-file desktop review",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "file": "consistency-history.spec.ts",
+      "phase": "first",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "consistency history: an exact check beyond the recent thirty opens its pinned source and original file, then returns through the current family",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: explicit refresh re-reads the old check and preserves its exact original while performing only GET requests",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: a failed poll keeps the last readable old running check and the next poll automatically recovers that same run",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: a failed initial old-check read can be retried explicitly without creating a task or charge",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: a requested check already in the recent list needs no individual read",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: HTTP 404 for the pinned check never shows the latest result instead",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: HTTP 403 for the pinned check never shows the latest result instead",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: HTTP 503 for the pinned check never shows the latest result instead",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: HTTP 403 after an earlier successful read removes the old result instead of retaining its actions",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: HTTP 404 after an earlier successful read removes the old result instead of retaining its actions",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: ambiguous or empty run= never requests another check",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: ambiguous or empty run=consistency-originals-checked-v1&run=synthetic-other-check never requests another check",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: a successful response for a different run is rejected without displaying any substituted result",
+          "status": "expected"
+        },
+        {
+          "title": "consistency history: latest view does not request an older record and has no invented absolute round numbers",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "consistency-manual-reading.spec.ts",
+      "phase": "first",
+      "passed": 46,
+      "failed": 0,
+      "skipped": 1,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "manual reading baseline: file manual facet still leaves mixed manual findings after automatic findings and has no item navigation",
+          "status": "skipped"
+        },
+        {
+          "title": "manual reading: native project-file entry keeps every finding, classifies null and non-null manual items, and preserves each group order",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: keyboard first/previous/next/file controls reveal exact items, stop at both boundaries and never execute",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same finding ID in a second file stays scoped to its complete file identity",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: file manual facet and item reading preserve one selected file and the original 4,500 point explicit confirmation boundary",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: a manual status with zero supplied findings says details unavailable and never says no differences",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: actual first control keeps focus and real long-page position through native active-task polls",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: actual previous control keeps focus and real long-page position through native active-task polls",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: actual next control keeps focus and real long-page position through native active-task polls",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: actual file control keeps focus and real long-page position through native active-task polls",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.target_span_id invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.original invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.replacement invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.source_span_id invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.source_quote invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.source_location invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.target_location invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.reason invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.field invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.period invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.unit invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed origin.kind invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.target_span_id invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.original invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.replacement invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.source_span_id invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.source_quote invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.source_location invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.target_location invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.reason invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.field invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.period invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.unit invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: same-ID changed target.kind invalidates the full finding identity without borrowing its neighbor",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive missing-origin projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive missing-target projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive duplicate-origin projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive duplicate-target projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive changed-adjacency projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive family projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive sequence projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive hash projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: defensive source projection cannot reuse a stale control or another item",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: duplicate IDs across manual and automatic findings retain every row and disable ambiguous item entry",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: a detached control from another check cannot navigate matching IDs in the current check",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: a real unknown update remains frozen while reading and an open confirmation keeps priority across polling",
+          "status": "expected"
+        },
+        {
+          "title": "manual reading: long-item return preserves exact R30 downloads, file href, revision import and explicit free recheck",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "consistency-update-history.spec.ts",
+      "phase": "first",
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "update history: projects task entry resolves beyond the recent thirty and downloads its original V2 pair instead of current V3",
+          "status": "expected"
+        },
+        {
+          "title": "update history: files task entry resolves beyond the recent thirty and downloads its original V2 pair instead of current V3",
+          "status": "expected"
+        },
+        {
+          "title": "update history: the failed original run never borrows its later successful retry after resolving its old check",
+          "status": "expected"
+        },
+        {
+          "title": "update history: an update-only link with a missing workspace remains readable through reload without preparing it",
+          "status": "expected"
+        },
+        {
+          "title": "update history: a recent-list acceptance needs no individual lookup",
+          "status": "expected"
+        },
+        {
+          "title": "update history: HTTP 403 for the original task does not substitute another update and can be read again explicitly",
+          "status": "expected"
+        },
+        {
+          "title": "update history: HTTP 404 for the original task does not substitute another update and can be read again explicitly",
+          "status": "expected"
+        },
+        {
+          "title": "update history: HTTP 503 for the original task does not substitute another update and can be read again explicitly",
+          "status": "expected"
+        },
+        {
+          "title": "update history: HTTP 403 after an earlier read removes the old delivery actions",
+          "status": "expected"
+        },
+        {
+          "title": "update history: HTTP 404 after an earlier read removes the old delivery actions",
+          "status": "expected"
+        },
+        {
+          "title": "update history: empty update never borrows another task or delivery",
+          "status": "expected"
+        },
+        {
+          "title": "update history: duplicate update never borrows another task or delivery",
+          "status": "expected"
+        },
+        {
+          "title": "update history: conflicting check never borrows another task or delivery",
+          "status": "expected"
+        },
+        {
+          "title": "update history: conflicting file never borrows another task or delivery",
+          "status": "expected"
+        },
+        {
+          "title": "update history: unrelated-check in an individual response cannot become the requested task",
+          "status": "expected"
+        },
+        {
+          "title": "update history: duplicate-acceptance in an individual response cannot become the requested task",
+          "status": "expected"
+        },
+        {
+          "title": "update history: invalid-schema in an individual response cannot become the requested task",
+          "status": "expected"
+        },
+        {
+          "title": "update history: a running old patch survives a failed poll and automatically recovers the same original task",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "desktop-file-workflow.spec.ts",
+      "phase": "first",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "a non-init leaf presets the top upload; changing the type keeps the same File and saves only the real selected family with its CAS",
+          "status": "expected"
+        },
+        {
+          "title": "without a selected document type native validation and an explicit synthetic submit both stop before upload; the same File can then be saved after selection",
+          "status": "expected"
+        },
+        {
+          "title": "a row upload remains locked to its family and an unknown receipt survives a new leaf, expanded history and a blocked task navigation with the original envelope",
+          "status": "expected"
+        },
+        {
+          "title": "four loaded tasks with no server continuation expose the fourth inside this project and can be collapsed without a request",
+          "status": "expected"
+        },
+        {
+          "title": "twenty-five tasks load an actual twenty-item head and its cursor page without losing or duplicating the older five",
+          "status": "expected"
+        },
+        {
+          "title": "refresh follows the fresh cursor chain through a new head to the previously read tail and refreshes every retained task",
+          "status": "expected"
+        },
+        {
+          "title": "a failed older page and a later failed full-range refresh retain the entire readable history and retry only reads",
+          "status": "expected"
+        },
+        {
+          "title": "a schema-valid continuation that duplicates a newer head is rejected atomically and the original cursor remains retryable",
+          "status": "expected"
+        },
+        {
+          "title": "an older child execution task opens its exact native result and shell return rereads the loaded range and restores a non-executing history row",
+          "status": "expected"
+        },
+        {
+          "title": "the real thirty-second refresh preserves a task row while a new head arrives, and a missing remembered run returns to the history heading instead of a substitute",
+          "status": "expected"
+        },
+        {
+          "title": "optional initial and returning task reads never delay files or take focus from a newer Chinese search",
+          "status": "expected"
+        },
+        {
+          "title": "expanded task memory is isolated by project and owner and a real logout clears the same owner’s old loaded boundary",
+          "status": "expected"
+        },
+        {
+          "title": "an exact R30 file context overrides ordinary task reading memory and focuses its verified current family",
+          "status": "expected"
+        },
+        {
+          "title": "an explicit new file type and Chinese query keep the expanded task range but never restore its old task focus or scroll",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "file-generation-workbench.spec.ts",
+      "phase": "first",
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "prepared source opens document selection without preparation or initial bulk selection",
+          "status": "expected"
+        },
+        {
+          "title": "workspace is prepared only after its initial GET returns 404",
+          "status": "expected"
+        },
+        {
+          "title": "uploaded template immediately updates readiness and library: first",
+          "status": "expected"
+        },
+        {
+          "title": "uploaded template immediately updates readiness and library: retry",
+          "status": "expected"
+        },
+        {
+          "title": "uploaded template immediately updates readiness and library: replacement",
+          "status": "expected"
+        },
+        {
+          "title": "missing templates explain why only the selected package cannot run",
+          "status": "expected"
+        },
+        {
+          "title": "scope and authoring fees are reviewed before an exact public batch request",
+          "status": "expected"
+        },
+        {
+          "title": "common requirements append only to selected files and confirmation captures saved draft versions",
+          "status": "expected"
+        },
+        {
+          "title": "unsaved common note survives reopening and is appended before confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "a partially saved note resumes its original document scope after reselection and reload",
+          "status": "expected"
+        },
+        {
+          "title": "note recovery preserves a later append from another page without duplicating the original note",
+          "status": "expected"
+        },
+        {
+          "title": "stopping a partial note operation preserves saved requirements and never applies them to a new selection",
+          "status": "expected"
+        },
+        {
+          "title": "unavailable browser session storage prevents a generation request before any batch is submitted",
+          "status": "expected"
+        },
+        {
+          "title": "support save retry retains frozen document scope and never repeats accepted upload bytes",
+          "status": "expected"
+        },
+        {
+          "title": "uncertain upload completion reconciles the original session while selection stays frozen",
+          "status": "expected"
+        },
+        {
+          "title": "empty or unsupported support files are rejected before upload and allow a valid replacement",
+          "status": "expected"
+        },
+        {
+          "title": "stopping a partially saved support package releases preparation and preserves accepted material",
+          "status": "expected"
+        },
+        {
+          "title": "uncertain 408 generation requires explicit recovery with the identical frozen envelope",
+          "status": "expected"
+        },
+        {
+          "title": "uncertain 429 generation requires explicit recovery with the identical frozen envelope",
+          "status": "expected"
+        },
+        {
+          "title": "uncertain network generation requires explicit recovery with the identical frozen envelope",
+          "status": "expected"
+        },
+        {
+          "title": "a generic conflict after network uncertainty preserves the original pending request",
+          "status": "expected"
+        },
+        {
+          "title": "an expired session during batch submission keeps the signed-out page clear of stale recovery UI",
+          "status": "expected"
+        },
+        {
+          "title": "a trusted expired-input receipt requires explicit preparation and a new package confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "the task-list entry opens an existing running batch with the API and navigation projects preserved",
+          "status": "expected"
+        },
+        {
+          "title": "latest batch can seed scope while an explicit cached empty choice wins",
+          "status": "expected"
+        },
+        {
+          "title": "selection and requirements cache isolate account owners and actual API projects sharing navigation",
+          "status": "expected"
+        },
+        {
+          "title": "pending request cache cannot appear under another API project or owner",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "integrity-continuation.spec.ts",
+      "phase": "first",
+      "passed": 43,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "1440: explicit whole-round adoption is local, exact and survives refresh without POST",
+          "status": "expected"
+        },
+        {
+          "title": "opening either check or export history and returning to preparation never adopts it",
+          "status": "expected"
+        },
+        {
+          "title": "cancelling adoption leaves the current complete preparation unchanged",
+          "status": "expected"
+        },
+        {
+          "title": "local adopted edits persist without saving and leave old history immutable",
+          "status": "expected"
+        },
+        {
+          "title": "a requested missing historical run never falls back to current preparation",
+          "status": "expected"
+        },
+        {
+          "title": "pending/all filters use original automatic status and do not turn attached evidence into clearance",
+          "status": "expected"
+        },
+        {
+          "title": "a terminal missing record is pending without borrowing another subject result",
+          "status": "expected"
+        },
+        {
+          "title": "next pending follows original subject/site order and preserves the saved subject position",
+          "status": "expected"
+        },
+        {
+          "title": "reusing an existing historical version sends its exact pin to the original check from export history",
+          "status": "expected"
+        },
+        {
+          "title": "selecting the newer material version is explicit and never substitutes it for the old exact pin",
+          "status": "expected"
+        },
+        {
+          "title": "a reused material still requires a user supplied actual query time",
+          "status": "expected"
+        },
+        {
+          "title": "company-only websites cannot attach personnel evidence",
+          "status": "expected"
+        },
+        {
+          "title": "free export requires explicit confirmation and freezes all current evidence against the original check",
+          "status": "expected"
+        },
+        {
+          "title": "a paid new check confirms 5,000 and freezes the whole adopted roster without inheriting old findings",
+          "status": "expected"
+        },
+        {
+          "title": "cancelling the paid confirmation performs no save, query, export or upload",
+          "status": "expected"
+        },
+        {
+          "title": "local storage persistence failure blocks execution before any draft or paid POST",
+          "status": "expected"
+        },
+        {
+          "title": "unknown paid check before acceptance reopens read-only and retries the complete original body",
+          "status": "expected"
+        },
+        {
+          "title": "unknown paid check after acceptance reopens read-only and retries the complete original body",
+          "status": "expected"
+        },
+        {
+          "title": "unknown free export before acceptance keeps original check and evidence body across refresh",
+          "status": "expected"
+        },
+        {
+          "title": "unknown free export after acceptance keeps original check and evidence body across refresh",
+          "status": "expected"
+        },
+        {
+          "title": "unknown evidence before acceptance retries the original material pin and body without uploading",
+          "status": "expected"
+        },
+        {
+          "title": "an accepted unknown evidence request is recognized only by complete exact authoritative readback",
+          "status": "expected"
+        },
+        {
+          "title": "an unknown uploaded evidence request retains the verified pin and never uploads the same bytes twice",
+          "status": "expected"
+        },
+        {
+          "title": "unknown draft refresh compares every field and the exact revision without sending another save",
+          "status": "expected"
+        },
+        {
+          "title": "local historical preparation is isolated by project",
+          "status": "expected"
+        },
+        {
+          "title": "another account cannot restore the prior owner preparation or paid request",
+          "status": "expected"
+        },
+        {
+          "title": "a matching-looking unrelated check is never treated as an unknown paid receipt",
+          "status": "expected"
+        },
+        {
+          "title": "definitive CREDITS_INSUFFICIENT rejection retains preparation and requires another explicit 5,000 confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "definitive INPUT_REVISION_CONFLICT rejection retains preparation and requires another explicit 5,000 confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "definitive QUOTE_CHANGED rejection retains preparation and requires another explicit 5,000 confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "an export evidence conflict does not silently modify or replay its original confirmation body",
+          "status": "expected"
+        },
+        {
+          "title": "a same-id evidence readback with changed note or material pin cannot settle an unknown attachment",
+          "status": "expected"
+        },
+        {
+          "title": "a retained journal recovers the original paid envelope after the main cache is removed without an automatic POST",
+          "status": "expected"
+        },
+        {
+          "title": "an acknowledged paid run remains confirmed when local journal deletion readback fails",
+          "status": "expected"
+        },
+        {
+          "title": "a paid acknowledgement with one failed main-cache save shows confirmed recovery and only retries local storage",
+          "status": "expected"
+        },
+        {
+          "title": "replaying an unknown paid envelope after another page edits main storage preserves the foreign preparation",
+          "status": "expected"
+        },
+        {
+          "title": "an unknown draft GET mismatch presents both preparations and explicit local rebase performs no POST",
+          "status": "expected"
+        },
+        {
+          "title": "raw evidence fields survive close, reopen and refresh while blank actual time stays blank",
+          "status": "expected"
+        },
+        {
+          "title": "a deduplicated upload with the original upload ID attaches the exact existing material without adding another file",
+          "status": "expected"
+        },
+        {
+          "title": "a schema-valid upload receipt with wrong sha256 is rejected before attaching evidence",
+          "status": "expected"
+        },
+        {
+          "title": "a schema-valid upload receipt with wrong byte_size is rejected before attaching evidence",
+          "status": "expected"
+        },
+        {
+          "title": "a schema-valid upload receipt with wrong media_type is rejected before attaching evidence",
+          "status": "expected"
+        },
+        {
+          "title": "a schema-valid upload receipt with wrong role is rejected before attaching evidence",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "integrity-delivery.spec.ts",
+      "phase": "first",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "integrity delivery: old exact Word, original-round evidence, free queued/running/succeeded export and both new Word files retain the old bytes",
+          "status": "expected"
+        },
+        {
+          "title": "integrity delivery: evidence saved through the original UI after export acceptance grows shared history but stays outside that frozen Word",
+          "status": "expected"
+        },
+        {
+          "title": "integrity delivery: selected export metadata artifact_id mismatch rejects bytes and explicit retry downloads its exact Word",
+          "status": "expected"
+        },
+        {
+          "title": "integrity delivery: selected export metadata version mismatch rejects bytes and explicit retry downloads its exact Word",
+          "status": "expected"
+        },
+        {
+          "title": "integrity delivery: selected export metadata run_id mismatch rejects bytes and explicit retry downloads its exact Word",
+          "status": "expected"
+        },
+        {
+          "title": "integrity delivery: ambiguous same-ID descriptors are rejected before metadata without borrowing either kind or the latest round",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "m4-workspace.spec.ts",
+      "phase": "correction-c",
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "SSE opinion template exposes recovered headings and is pinned in the submitted draft",
+          "status": "expected"
+        },
+        {
+          "title": "case template application and recommendation selectors preserve scope and drafts at 1440px",
+          "status": "expected"
+        },
+        {
+          "title": "duplicate feedback: material generation source keeps the original and explains reuse",
+          "status": "expected"
+        },
+        {
+          "title": "duplicate feedback: material generation material keeps the original and explains reuse",
+          "status": "expected"
+        },
+        {
+          "title": "missing exchange lists the action, focuses the field and only starts after it is filled",
+          "status": "expected"
+        },
+        {
+          "title": "initiation lists all missing fields while switching types removes irrelevant template requirements",
+          "status": "expected"
+        },
+        {
+          "title": "supplemental-only legal drafts remain eligible",
+          "status": "expected"
+        },
+        {
+          "title": "whole-document edit bases remain eligible without re-uploading the source",
+          "status": "expected"
+        },
+        {
+          "title": "server-reported missing input shows safe field guidance and preserves the draft",
+          "status": "expected"
+        },
+        {
+          "title": "legacy quotation: one click starts and balance drops only after success at 1440px",
+          "status": "expected"
+        },
+        {
+          "title": "insufficient credits show a recharge action, retain input and never auto-start",
+          "status": "expected"
+        },
+        {
+          "title": "a double click and a lost acknowledgement retry use the same execution and reserve once",
+          "status": "expected"
+        },
+        {
+          "title": "an input edit while the internal quote is pending cannot submit a stale draft",
+          "status": "expected"
+        },
+        {
+          "title": "a failed task releases the reservation without reducing balance",
+          "status": "expected"
+        },
+        {
+          "title": "a cancelled task releases the reservation without reducing balance",
+          "status": "expected"
+        },
+        {
+          "title": "legacy MaterialWorkspace component first save and concurrent upload share creation and retain entered requirements",
+          "status": "expected"
+        },
+        {
+          "title": "prototype material navigation, cards, source modes and only one optional requirements box",
+          "status": "expected"
+        },
+        {
+          "title": "direct requirements save without a message or charge, remain per type and survive reload",
+          "status": "expected"
+        },
+        {
+          "title": "replacing the source adopts only saved bytes and restores that exact file without a version selector",
+          "status": "expected"
+        },
+        {
+          "title": "generation pins direct requirements and progress is on the page; edits never change running input",
+          "status": "expected"
+        },
+        {
+          "title": "completion keeps older reader, new real artifact appears once and preview failure still permits download",
+          "status": "expected"
+        },
+        {
+          "title": "whole-document continuation keeps original source and requirements",
+          "status": "expected"
+        },
+        {
+          "title": "busy source project retains form and does not automatically execute when released",
+          "status": "expected"
+        },
+        {
+          "title": "another page changing view state can be reconciled on the material form without chat or lost requirements",
+          "status": "expected"
+        },
+        {
+          "title": "a draft save failure retains direct requirements and retry saves before execution",
+          "status": "expected"
+        },
+        {
+          "title": "generation failure is visible beside the button without a false save retry on desktop",
+          "status": "expected"
+        },
+        {
+          "title": "material fits viewport 1440",
+          "status": "expected"
+        },
+        {
+          "title": "template scope follows broker and exchange, and missing scope is explained before upload bytes",
+          "status": "expected"
+        },
+        {
+          "title": "polling keeps a focused native file input connected",
+          "status": "expected"
+        },
+        {
+          "title": "live phases, terminal states and persistent task tabs keep the same immutable task",
+          "status": "expected"
+        },
+        {
+          "title": "completion and reload retain paired downloads; download errors stay beside the exact file",
+          "status": "expected"
+        },
+        {
+          "title": "historical note from another run is not presented as this result",
+          "status": "expected"
+        },
+        {
+          "title": "refresh preserves an expanded preview and its reading position",
+          "status": "expected"
+        },
+        {
+          "title": "explicit legacy topic with source project context keeps the linked source on reload",
+          "status": "expected"
+        },
+        {
+          "title": "project material link opens exact running run and keeps navigation on refresh",
+          "status": "expected"
+        },
+        {
+          "title": "project material link opens exact succeeded run and keeps navigation on refresh",
+          "status": "expected"
+        },
+        {
+          "title": "project material link opens exact failed run and keeps navigation on refresh",
+          "status": "expected"
+        },
+        {
+          "title": "delete owned material source and support without changing task history 1440",
+          "status": "expected"
+        },
+        {
+          "title": "linked source is not deleted from another project and own material unlocks after cancellation",
+          "status": "expected"
+        },
+        {
+          "title": "dynamic material progress, persistent tabs, pause/resume and wallet polling at 1440px",
+          "status": "expected"
+        },
+        {
+          "title": "dynamic material zero balance keeps the draft and does not execute",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "material-draft-comparison.spec.ts",
+      "phase": "correction-c",
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "material draft comparison: real CAS conflict exposes every input and keeps the exact complete local body",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: recovered dirty cache uses the entire saved version only after explicit choice",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: schema-valid cache under the wrong document key is preserved and cannot save to another type",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: defer and Escape keep recovered contents and create no save request",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: identical full inputs are folded and an explicit saved-version choice does not invent a new version",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: fresh names require unique complete pins and never borrow a similar file",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: equal requirement text with different message provenance remains a visible reference change",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: keep rereads a second server change and requires another explicit choice",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: server rereads a second server change and requires another explicit choice",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: failed comparison read retains local intent and explicit reload reads fresh data",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a late opening read cannot reclaim document type",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a late opening read cannot reclaim local text",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a late opening read cannot reclaim leave",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a late choice read cannot save newer local text that was never compared",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a lost PUT before saving stays guarded through reload and explicit recheck",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a lost PUT after saving stays guarded through reload and explicit recheck",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: a pending original execution arriving behind the cache queue prevents the choice",
+          "status": "expected"
+        },
+        {
+          "title": "material draft comparison: unknown original upload blocks comparison and preserves its request and target",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "material-reference-picker.spec.ts",
+      "phase": "correction-c",
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "material reference picker: PDF explicitly adds a supplement and preserves the source and complete draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: DOCX explicitly adds a supplement and preserves the source and complete draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: XLSX explicitly adds a supplement and preserves the source and complete draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: DOCX explicitly replaces only the source in the complete current draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: PDF explicitly replaces only the source in the complete current draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: a source entry never offers an enabled XLSX adoption or silently adds a supplement",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: a project-file binding fixes its source while allowing explicit supplements without losing any input",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: exact same-name reads stay read only and cancelled registrations retain entry focus",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: pagination beyond fifty, Chinese project search and local material search stay read only",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: repeated adoption clicks share one original registration and one saved choice",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: closing and changing type while registration waits never adopts into either draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: newer local requirements survive a late registration without adopting unreviewed input",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: leaving the component while registration waits preserves the server registration without saving a draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: an old response cannot close or adopt into a reopened picker with another purpose",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: late material reads from the old project cannot replace the newly selected project",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: changing source project during registration keeps its receipt separate from the draft",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: newly arrived original pending, upload and cache guards block adoption and preserve their state",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice",
+          "status": "expected"
+        },
+        {
+          "title": "material reference picker: a lost registration receipt never claims absence or silently resubmits or adopts",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "material-task-draft.spec.ts",
+      "phase": "first",
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "material task draft: legal input to the native latest failed init task returns to the complete current init draft without restoring its old manifest",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: pending requirements and original unknown discussion/execution envelopes survive a read-only return without implicit adoption",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: a recovered dirty init draft is compared and returned intact while legal remains a separate complete draft",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: a cancelled init task without an output returns from legal to current init without creating work",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: a rejected init task without an output returns from legal to current init without creating work",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: the running task returns to its own current input while keeping the original project active guard",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: the paused task returns to its own current input while keeping the original project active guard",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: exact deep-link and reload display the historical task but retain the current twelve draft inputs",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: identical filenames with changed material versions and artifact hashes stay visibly different through complete exact references",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: equal requirement text with different message provenance remains a changed current input rather than an unchanged requirement",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: selected historical text can keep a stale return control visible but a changed manifest cannot redirect it to another current draft",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: duplicate task IDs do not choose a manifest or return target by array order",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: a task run from another execution project has no enabled current-draft return",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: scheduled native polling preserves comparison, unchanged/ref disclosures, keyboard focus and actual desktop reading position",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: a polled same-name new source pin does not inherit the old reference disclosure or its keyboard focus",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: artifact continuation still changes only the target edit base and retains every current input and the unrelated legal draft",
+          "status": "expected"
+        },
+        {
+          "title": "material task draft: read-only comparison retains complete long requirement DOM text without page horizontal overflow at desktop widths",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "parallel-projects.spec.ts",
+      "phase": "first",
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "parallel project summaries show synchronization and exact linked task destinations without writes",
+          "status": "expected"
+        },
+        {
+          "title": "B completion and a slow B receipt preserve A older tasks, focused exact link and reading position",
+          "status": "expected"
+        },
+        {
+          "title": "the 30-second visible poll preserves the loaded older range and keyboard focus",
+          "status": "expected"
+        },
+        {
+          "title": "a failed middle task page keeps the complete prior range and the next successful refresh adopts a complete new range",
+          "status": "expected"
+        },
+        {
+          "title": "an open project menu reanchors after reorder and Escape returns to the current trigger",
+          "status": "expected"
+        },
+        {
+          "title": "a removed project closes its stale menu safely after background refresh",
+          "status": "expected"
+        },
+        {
+          "title": "a archived project closes its stale menu safely after background refresh",
+          "status": "expected"
+        },
+        {
+          "title": "an explicit archive during an older pending collection read queues a fresh read and updates the exact counts",
+          "status": "expected"
+        },
+        {
+          "title": "a project moving from position 30 to 31 retains its older task range and reading position on background refresh",
+          "status": "expected"
+        },
+        {
+          "title": "a project moving from position 30 to 31 retains its older task range and reading position on same-tab result return",
+          "status": "expected"
+        },
+        {
+          "title": "search composition and the active search focus are not replaced by another project refresh",
+          "status": "expected"
+        },
+        {
+          "title": "an initial offline visit without cached projects shows an idle offline state until a real online read succeeds",
+          "status": "expected"
+        },
+        {
+          "title": "offline keeps the last synchronized range and reconnect only becomes fresh after its response",
+          "status": "expected"
+        },
+        {
+          "title": "hidden pages skip polling and becoming visible refreshes the same expanded project",
+          "status": "expected"
+        },
+        {
+          "title": "a failed project refresh keeps the old rows and the last successful synchronization evidence",
+          "status": "expected"
+        },
+        {
+          "title": "a late owner project response cannot recreate private rows after a cross-tab session change",
+          "status": "expected"
+        },
+        {
+          "title": "same-tab exact result navigation and browser back restore the older reading range from fresh project data",
+          "status": "expected"
+        },
+        {
+          "title": "four viewport layouts keep parallel projects and retained task range usable",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "pr745-market-acceptance.spec.ts",
+      "phase": "correction-c",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "project file continuation retains NAFMII / MTN for init",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for underwriter",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for legal",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for private_summary",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for application",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for recommendation",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for annual",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for semiannual",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for issuer",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for financial",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for credit",
+          "status": "expected"
+        },
+        {
+          "title": "project file continuation retains NAFMII / MTN for proceeds",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "project-assistant.spec.ts",
+      "phase": "correction-b",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "duplicate feedback: assistant attachments identify renamed duplicates without another material",
+          "status": "expected"
+        },
+        {
+          "title": "global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs",
+          "status": "expected"
+        },
+        {
+          "title": "a slow autosave receipt survives background polling without a false conversation conflict",
+          "status": "expected"
+        },
+        {
+          "title": "paid QA shows real cap, sends only after confirmation and preserves requested content",
+          "status": "expected"
+        },
+        {
+          "title": "update card has no upfront price and recharge retains the project",
+          "status": "expected"
+        },
+        {
+          "title": "fixed QA states the exact price and success/failure terms before confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "editable task card uses quarters and optional requirements; insufficient input never executes",
+          "status": "expected"
+        },
+        {
+          "title": "desktop, focus and narrow assistant stay within viewport and preserve normal page layout",
+          "status": "expected"
+        },
+        {
+          "title": "attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload",
+          "status": "expected"
+        },
+        {
+          "title": "assistant closes to the bottom-right launcher and restores page space - desktop",
+          "status": "expected"
+        },
+        {
+          "title": "assistant closes to the bottom-right launcher and restores page space - small-desktop",
+          "status": "expected"
+        },
+        {
+          "title": "assistant closes to the bottom-right launcher and restores page space - narrow",
+          "status": "expected"
+        },
+        {
+          "title": "assistant closes to the bottom-right launcher and restores page space - zoom-equivalent",
+          "status": "expected"
+        },
+        {
+          "title": "desktop pages reflow beside the assistant at standard and wide widths",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "project-document-journey.spec.ts",
+      "phase": "first",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "project workbench saves then adopts a source and delivers a partially successful confirmed update",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "project-execution.spec.ts",
+      "phase": "correction-b",
+      "passed": 60,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "M2 shortage preserves inputs, recharge never executes, returning starts directly",
+          "status": "expected"
+        },
+        {
+          "title": "M2 a changed price is checked again without revealing or confirming the amount",
+          "status": "expected"
+        },
+        {
+          "title": "M2 a legacy empty quote cannot offer a new free task",
+          "status": "expected"
+        },
+        {
+          "title": "M2 missing uploaded source metadata blocks the next action before quote or execution",
+          "status": "expected"
+        },
+        {
+          "title": "ready input saves, preflights and executes through one explicit action",
+          "status": "expected"
+        },
+        {
+          "title": "authoring materials stay read-only after starting until an explicit next version",
+          "status": "expected"
+        },
+        {
+          "title": "blocked preflight keeps backend gates and does not turn five diagnostics into user tasks or runs",
+          "status": "expected"
+        },
+        {
+          "title": "lost execute response retries the same key; reload restores the actual task",
+          "status": "expected"
+        },
+        {
+          "title": "lost snapshot response requires readback and explicit selection, without another snapshot POST",
+          "status": "expected"
+        },
+        {
+          "title": "double click and editing locks during submission preserve the locked request",
+          "status": "expected"
+        },
+        {
+          "title": "editing while preflight is pending discards that result; next action locks a new revision",
+          "status": "expected"
+        },
+        {
+          "title": "409 preserves target input and never submits a run",
+          "status": "expected"
+        },
+        {
+          "title": "unified rejection leaves history optional and preserves saved financial material",
+          "status": "expected"
+        },
+        {
+          "title": "legacy reference plus audit upgrades to unified input without requiring a new project",
+          "status": "expected"
+        },
+        {
+          "title": "a unified INPUT_REQUIRED preserves source roles and rechecks the same immutable input",
+          "status": "expected"
+        },
+        {
+          "title": "recheck replaces rejected input v3 with current v7 materials without submitting a run",
+          "status": "expected"
+        },
+        {
+          "title": "v3 recheck restores failed test run v8; explicit new input v9 uses a distinct production key",
+          "status": "expected"
+        },
+        {
+          "title": "stale recheck with a dirty local draft stops without writing it over the fresh project",
+          "status": "expected"
+        },
+        {
+          "title": "recheck rejects an inconsistent latest input without retrying the old revision",
+          "status": "expected"
+        },
+        {
+          "title": "unified input includes reference materials and does not ask for reclassification",
+          "status": "expected"
+        },
+        {
+          "title": "a legacy generation rejection keeps references optional and supports rechecking",
+          "status": "expected"
+        },
+        {
+          "title": "preflight processing wait checks the same input without calling the file damaged or generation unavailable",
+          "status": "expected"
+        },
+        {
+          "title": "temporary start failure retains support reference and does not claim missing materials",
+          "status": "expected"
+        },
+        {
+          "title": "unified authoring includes all uploaded source materials without a second selection form",
+          "status": "expected"
+        },
+        {
+          "title": "legacy generation task kind is retained with unified source metadata",
+          "status": "expected"
+        },
+        {
+          "title": "reference parsing is handled by the unified worker after an immutable task is submitted",
+          "status": "expected"
+        },
+        {
+          "title": "unified input rejection preserves the selected version without silently substituting newer material",
+          "status": "expected"
+        },
+        {
+          "title": "manual task refresh invalidates a late paused poll without replaying task actions",
+          "status": "expected"
+        },
+        {
+          "title": "paginated recovery and real task actions keep one run",
+          "status": "expected"
+        },
+        {
+          "title": "resumed source-input task shows compilation without a false blocker",
+          "status": "expected"
+        },
+        {
+          "title": "provider timeout explains service recovery and keeps the same task after automatic retry",
+          "status": "expected"
+        },
+        {
+          "title": "account switch ignores an in-flight execute result",
+          "status": "expected"
+        },
+        {
+          "title": "foreign execute response is rejected",
+          "status": "expected"
+        },
+        {
+          "title": "unknown blockers remain explicit; prototype workspace captures all states without fake progress",
+          "status": "expected"
+        },
+        {
+          "title": "restored snapshot retains exact user assertion pins in a new version",
+          "status": "expected"
+        },
+        {
+          "title": "failed task recovery cannot enable a new snapshot until the server record is read",
+          "status": "expected"
+        },
+        {
+          "title": "a test terminal state in the production channel never exposes a deliverable",
+          "status": "expected"
+        },
+        {
+          "title": "continuing after completion creates a new input and retains the preceding successful artifact without reload",
+          "status": "expected"
+        },
+        {
+          "title": "trial pause model_tokens_per_user_per_day: reload and automatic recovery preserve one run",
+          "status": "expected"
+        },
+        {
+          "title": "trial pause kill_switch: reload and automatic recovery preserve one run",
+          "status": "expected"
+        },
+        {
+          "title": "trial stage stays honest without events; a different paused stage discards the old limit reason",
+          "status": "expected"
+        },
+        {
+          "title": "operator denial remains a failed task without automatic-recovery guidance",
+          "status": "expected"
+        },
+        {
+          "title": "lost upload acknowledgement restores start without resending desktop",
+          "status": "expected"
+        },
+        {
+          "title": "material workflow desktop: upload, retry, pending evidence, one-click execution and reopen",
+          "status": "expected"
+        },
+        {
+          "title": "all-projects update keeps its list context through progress, edit and refresh",
+          "status": "expected"
+        },
+        {
+          "title": "cancel then supplement materials from project list",
+          "status": "expected"
+        },
+        {
+          "title": "cancel then supplement materials from reloaded material step",
+          "status": "expected"
+        },
+        {
+          "title": "cancel then supplement materials from query order and run link",
+          "status": "expected"
+        },
+        {
+          "title": "credit visibility: one click starts and running receipt follows settlement and retry",
+          "status": "expected"
+        },
+        {
+          "title": "credit visibility: trial explains zero charge before and during execution",
+          "status": "expected"
+        },
+        {
+          "title": "credit visibility: an in-flight old receipt is refreshed after the run completes",
+          "status": "expected"
+        },
+        {
+          "title": "dashboard update preserves filtered workbench context through execution, edit, reload and return",
+          "status": "expected"
+        },
+        {
+          "title": "replace mistaken historical upload (same session)",
+          "status": "expected"
+        },
+        {
+          "title": "replace mistaken historical upload (restored)",
+          "status": "expected"
+        },
+        {
+          "title": "uploaded source without an issuer name can start and preserves target identity",
+          "status": "expected"
+        },
+        {
+          "title": "M2 exact balance: single click and retries retain one execution 1440",
+          "status": "expected"
+        },
+        {
+          "title": "M2 balance refresh never starts and stale insufficient balance rejects before a run",
+          "status": "expected"
+        },
+        {
+          "title": "model progress summaries survive tool bursts, pagination and reload 1440",
+          "status": "expected"
+        },
+        {
+          "title": "live authoring: queue, model activity, growing credits, pause and partial settlement 1440",
+          "status": "expected"
+        },
+        {
+          "title": "dynamic balance: 1 point starts, exhaustion dialog, refresh and automatic same-run resume 1440",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "project-file-return.spec.ts",
+      "phase": "first",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "filtered file to its exact task and the real return link keeps the directory, Chinese search, folds and readable row; reload uses the URL",
+          "status": "expected"
+        },
+        {
+          "title": "browser Back rereads a new current draft and restores only its stable file family, without focusing an old execution action",
+          "status": "expected"
+        },
+        {
+          "title": "manual refresh, a failed refresh and the real 30-second refresh preserve filters, folds, focus and reading position",
+          "status": "expected"
+        },
+        {
+          "title": "a delayed initial prospectus panel cannot override a new real user scroll with its remembered reading position",
+          "status": "expected"
+        },
+        {
+          "title": "a controlled in-flight refresh respects a newer Chinese search and the user scroll instead of restoring its earlier row",
+          "status": "expected"
+        },
+        {
+          "title": "Chinese IME composition keeps the existing file list and URL until the committed text is ready",
+          "status": "expected"
+        },
+        {
+          "title": "a removed file never transfers its remembered focus or anchor to an unrelated file with the same name",
+          "status": "expected"
+        },
+        {
+          "title": "another project and owner start independently, and a real logout then login clears the same account’s old return memory",
+          "status": "expected"
+        },
+        {
+          "title": "explicit filters replace the complete remembered filter set, type canonicalizes its folder, and invalid or duplicate parameters reject the set",
+          "status": "expected"
+        },
+        {
+          "title": "verified R30 file context takes priority, while any invalid exact-context parameter bypasses ordinary memory without overwriting it",
+          "status": "expected"
+        },
+        {
+          "title": "an unknown original upload blocks navigation at the canonical filter URL and retains the entire original upload and CAS envelope",
+          "status": "expected"
+        },
+        {
+          "title": "an unknown consistency submission keeps its original request through a blocked exact return and readonly download, then returns to the ordinary file view",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "project-qa-recovery.spec.ts",
+      "phase": "first",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "draft acknowledgement with a failed local write retains the full original pending revision and recovers through GET only",
+          "status": "expected"
+        },
+        {
+          "title": "answer acknowledgement with a failed local write keeps the original complete envelope and retries without a second accepted run",
+          "status": "expected"
+        },
+        {
+          "title": "free preparation acknowledgement with a failed local write keeps the original source pin and recovers without another upload",
+          "status": "expected"
+        },
+        {
+          "title": "an unknown accepted answer keeps pending when its later retry receives CSRF_DENIED",
+          "status": "expected"
+        },
+        {
+          "title": "an unknown accepted answer keeps pending when its later retry receives NOT_FOUND",
+          "status": "expected"
+        },
+        {
+          "title": "another page changing the same cache scope freezes this page while preserving its input and requires explicit adoption",
+          "status": "expected"
+        },
+        {
+          "title": "a real server CAS conflict preserves both complete drafts until explicit local choice",
+          "status": "expected"
+        },
+        {
+          "title": "a real server CAS conflict preserves both complete drafts until explicit server choice",
+          "status": "expected"
+        },
+        {
+          "title": "schema-only defensive duplicate answer mapping cannot be adopted or submitted",
+          "status": "expected"
+        },
+        {
+          "title": "schema-only defensive unknown answer mapping cannot be adopted or submitted",
+          "status": "expected"
+        },
+        {
+          "title": "an unavailable historical material version remains selected and blocks answering until explicitly removed",
+          "status": "expected"
+        },
+        {
+          "title": "unchanged owner project and draft revision produce the same execution key across pages and one accepted run",
+          "status": "expected"
+        },
+        {
+          "title": "another page acknowledging the same request cannot make this page discard its original pending through draft adoption",
+          "status": "expected"
+        },
+        {
+          "title": "a delayed active-run poll cannot replace the draft while supplementary upload is awaiting completion",
+          "status": "expected"
+        },
+        {
+          "title": "a full reopen finds the original free preparation in its journal when the main cache is empty and never submits automatically",
+          "status": "expected"
+        },
+        {
+          "title": "an acknowledged answer stays confirmed when journal removal succeeds but its single readback throws",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "prospectus-saved-reentry.spec.ts",
+      "phase": "first",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "saved prospectus reentry: upload V2, leave through all projects, return through the real project title, review and cancel without writes, then explicitly adopt once and reload",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: a first saved version remains without a current selection across native project reentry",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: a deliberate rollback keeps V1 current and describes later retained versions as not current without inferring they were never adopted",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: retaining only earlier versions does not imply a newer saved candidate when the highest sequence is current",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: equal filenames retain distinct version, material version and hash references and download the exact old and new OOXML bytes",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: a generated saved version exposes its exact artifact version and hash without inventing a material identity",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: the native generation source step discovers the same retained candidate without preparing drafts or starting generation",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: unchanged native scheduled refresh retains history, exact reference disclosure and its keyboard focus",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: a public-schema-valid foreign-project version projection does not claim a verified saved candidate or exact reference",
+          "status": "expected"
+        },
+        {
+          "title": "saved prospectus reentry: a public-schema-valid duplicate-version version projection does not claim a verified saved candidate or exact reference",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "qa-result-next.spec.ts",
+      "phase": "first",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "qa result next: valid missing summary follows original order and both long-result navigations preserve preparation through live polling",
+          "status": "expected"
+        },
+        {
+          "title": "qa result next: first unanswered original question focuses its own selection row without selecting it or borrowing a later answer",
+          "status": "expected"
+        },
+        {
+          "title": "qa result next: no missing work has no missing shortcut, while invalid follow-up reports unverifiable scope and blocks navigation or adoption",
+          "status": "expected"
+        },
+        {
+          "title": "qa result next: exact historical questions, supplement and 120-credit confirmation progress to new and old synthetic Word without merging rounds",
+          "status": "expected"
+        },
+        {
+          "title": "qa result next: mismatched artifact ID and run ID both reject bytes for the selected old round, and an explicit history change downloads its own Word",
+          "status": "expected"
+        },
+        {
+          "title": "qa result next: busy navigation cannot adopt or move, and an unknown answer receipt retains the original locked preparation",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "register.spec.ts",
+      "phase": "first",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "login page switches to registration, validates locally and lands logged in with the agreement version",
+          "status": "expected"
+        },
+        {
+          "title": "409, 422, 429 and network failures show friendly messages and keep the form",
+          "status": "expected"
+        },
+        {
+          "title": "registration stays closed when no agreement version is configured",
+          "status": "expected"
+        },
+        {
+          "title": "the agreement link opens the data-policy page without an account",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "result-handoff-assistant.spec.ts",
+      "phase": "first",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "assistant historical review card opens its original structured report despite a newer result and survives reload",
+          "status": "expected"
+        },
+        {
+          "title": "assistant historical update card opens the original delivered artifact and downloads its original bytes",
+          "status": "expected"
+        },
+        {
+          "title": "assistant historical generation card opens its exact assistant-topic result instead of the saved newer reading tab",
+          "status": "expected"
+        },
+        {
+          "title": "assistant failed review card opens its own task state rather than newer result",
+          "status": "expected"
+        },
+        {
+          "title": "assistant paused update card reads its original run while a prior result remains available",
+          "status": "expected"
+        },
+        {
+          "title": "assistant running generation card opens its own fixed input and controls instead of the prior result",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "review-editor-recovery.spec.ts",
+      "phase": "first",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "unknown export receipt freezes decisions and explicitly retries the identical envelope after reopen",
+          "status": "expected"
+        },
+        {
+          "title": "unavailable recovery storage prevents submitting a fresh export",
+          "status": "expected"
+        },
+        {
+          "title": "legacy complete pending receipt keeps its request id and cannot auto submit on mount",
+          "status": "expected"
+        },
+        {
+          "title": "explicit history callback follows successful exact load only",
+          "status": "expected"
+        },
+        {
+          "title": "dirty preview retains downloads of the pinned saved Word",
+          "status": "expected"
+        },
+        {
+          "title": "late 401 after export cannot restore private editor or submitted callback",
+          "status": "expected"
+        },
+        {
+          "title": "malformed pending receipt is preserved and blocks fresh export instead of replacing its key",
+          "status": "expected"
+        },
+        {
+          "title": "busy receipt blocks leaving and acknowledged cached dirty preview can leave",
+          "status": "expected"
+        },
+        {
+          "title": "download metadata with a substituted artifact id never requests bytes",
+          "status": "expected"
+        },
+        {
+          "title": "another tab pending envelope cannot overwrite or replace this page uncertain request",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "review-flow-editor.spec.ts",
+      "phase": "first",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "review flow: discard restores viewed V1, clears only its cache and unlocks followup/history without export",
+          "status": "expected"
+        },
+        {
+          "title": "review flow: manual return to baseline keeps caret and controls in sync, while nonmanual hidden draft survives reload clean",
+          "status": "expected"
+        },
+        {
+          "title": "review flow: category selects the visible finding and export retains every decision across category changes",
+          "status": "expected"
+        },
+        {
+          "title": "review flow: switching historical editions resets an absent category and editing never targets a filtered-out finding",
+          "status": "expected"
+        },
+        {
+          "title": "review flow: own baseline-equivalent pending stays locked and another page pending is recovered instead of discarded",
+          "status": "expected"
+        },
+        {
+          "title": "review flow: failed scoped cache clear keeps manual work and blocks continuation until storage recovery and explicit discard",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "review-followup.spec.ts",
+      "phase": "first",
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "historical editor V1 adds one durable requirement without silently adopting latest V2 or executing",
+          "status": "expected"
+        },
+        {
+          "title": "failed CAS save retains modal edits and retry replaces failed text A with edited text B once",
+          "status": "expected"
+        },
+        {
+          "title": "readable historical V1 item saves its explanation as text and requires an explicit full-review start",
+          "status": "expected"
+        },
+        {
+          "title": "structured finding discuss reaches the same next-round requirement flow",
+          "status": "expected"
+        },
+        {
+          "title": "structured finding dispute reaches the same next-round requirement flow",
+          "status": "expected"
+        },
+        {
+          "title": "structured finding explain reaches the same next-round requirement flow",
+          "status": "expected"
+        },
+        {
+          "title": "explicitly choosing historical clean V1 imports the exact catalog artifact while project current stays V2",
+          "status": "expected"
+        },
+        {
+          "title": "mismatched imported clean hash keeps the modal and never replaces the saved source or requirements",
+          "status": "expected"
+        },
+        {
+          "title": "ambiguous clean catalog entries do not offer an adoption shortcut or guess a latest version",
+          "status": "expected"
+        },
+        {
+          "title": "dirty manual choices require free export before preparing another review and free export does not quote AI",
+          "status": "expected"
+        },
+        {
+          "title": "unknown free-export receipt locks the followup entry and reload never submits or starts another review",
+          "status": "expected"
+        },
+        {
+          "title": "supplements during a running review become next-round requirements and leave the frozen current input unchanged",
+          "status": "expected"
+        },
+        {
+          "title": "historical structured source download pins material V1 when the draft contains V2",
+          "status": "expected"
+        },
+        {
+          "title": "default results URL without a run opens the displayed latest editor item followup",
+          "status": "expected"
+        },
+        {
+          "title": "default results URL without a run opens the displayed latest readable item followup",
+          "status": "expected"
+        },
+        {
+          "title": "a slow exact-clean import cannot overwrite a server draft refreshed during the receipt wait",
+          "status": "expected"
+        },
+        {
+          "title": "an explanation opened before a new report refresh cannot relabel the old finding as the new report",
+          "status": "expected"
+        },
+        {
+          "title": "a readable dimension with prose and no parsed items can still prepare exact V1 supplemental requirements",
+          "status": "expected"
+        },
+        {
+          "title": "lost draft request before commit remains editable until explicit retry",
+          "status": "expected"
+        },
+        {
+          "title": "lost draft response after commit is reconciled read-only",
+          "status": "expected"
+        },
+        {
+          "title": "unknown draft request with a newer different server body becomes a conflict instead of borrowing the newer version",
+          "status": "expected"
+        },
+        {
+          "title": "a concrete editor item leads through real supplement upload to a fixed full review while old V1 remains downloadable",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "review-result-continuity.spec.ts",
+      "phase": "first",
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "completed task result opens its exact V2 even when V1 was selected and V3 also exists",
+          "status": "expected"
+        },
+        {
+          "title": "specified file edition V1 survives reload, tab changes and a newly completed V3; Word stays V1",
+          "status": "expected"
+        },
+        {
+          "title": "choosing V2 from editor history updates the URL and reloads the same editor and Word",
+          "status": "expected"
+        },
+        {
+          "title": "blocked navigation after choosing V2 keeps the V2 URL and unsaved manual edits when storage writes fail",
+          "status": "expected"
+        },
+        {
+          "title": "a new V3 stays separate from V1 until the explicit latest-result link is followed",
+          "status": "expected"
+        },
+        {
+          "title": "unknown specified run clearly reports missing result without substituting the latest V2",
+          "status": "expected"
+        },
+        {
+          "title": "structured V1 report is resolved through its historical run and keeps its own Word after refresh",
+          "status": "expected"
+        },
+        {
+          "title": "structured revision keeps its source report while downloads belong to the selected revision run",
+          "status": "expected"
+        },
+        {
+          "title": "without timeline the exact old edition is recovered from owned history rather than the latest result",
+          "status": "expected"
+        },
+        {
+          "title": "a temporarily absent historical task preserves its frozen export recovery instead of destroying the editor",
+          "status": "expected"
+        },
+        {
+          "title": "a historical run belonging to another project cannot reveal an editor or the latest owned result",
+          "status": "expected"
+        },
+        {
+          "title": "structured historical report rejects a mismatched run instead of displaying V2",
+          "status": "expected"
+        },
+        {
+          "title": "structured historical report rejects a mismatched project instead of displaying V2",
+          "status": "expected"
+        },
+        {
+          "title": "an editor response for a different run is rejected before its document or controls are rendered",
+          "status": "expected"
+        },
+        {
+          "title": "Word metadata with a different run cannot download bytes for the selected edition",
+          "status": "expected"
+        },
+        {
+          "title": "Word metadata with a different artifact cannot download bytes for the selected edition",
+          "status": "expected"
+        },
+        {
+          "title": "Word metadata with a different version cannot download bytes for the selected edition",
+          "status": "expected"
+        },
+        {
+          "title": "a specified running task in making stays a progress page and is not treated as a missing completed result",
+          "status": "expected"
+        },
+        {
+          "title": "a new active task keeps the selected old Word while progress and reload retain their separate task",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "review-workspace.spec.ts",
+      "phase": "correction-b",
+      "passed": 55,
+      "failed": 0,
+      "skipped": 4,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "inline requirements save before start and later edits do not change the fixed task input",
+          "status": "expected"
+        },
+        {
+          "title": "failed requirement save retains editable text, blocks start, and retries without chat",
+          "status": "expected"
+        },
+        {
+          "title": "finding requirements return to the inline field and task links open main-page progress",
+          "status": "expected"
+        },
+        {
+          "title": "review inline requirements and global floating assistant comparison 1440",
+          "status": "expected"
+        },
+        {
+          "title": "explicit cross-business review preparation keeps exact intent and authorized source: valid",
+          "status": "expected"
+        },
+        {
+          "title": "explicit cross-business review preparation keeps exact intent and authorized source: stale",
+          "status": "expected"
+        },
+        {
+          "title": "explicit cross-business review preparation keeps exact intent and authorized source: foreign",
+          "status": "expected"
+        },
+        {
+          "title": "explicit cross-business review preparation keeps exact intent and authorized source: missing",
+          "status": "expected"
+        },
+        {
+          "title": "explicit cross-business review preparation keeps exact intent and authorized source: binding_failed",
+          "status": "expected"
+        },
+        {
+          "title": "new review project opens categorized materials with inline requirements: #/projects/synthetic-review-project",
+          "status": "expected"
+        },
+        {
+          "title": "new review project opens categorized materials with inline requirements: #/projects/synthetic-review-project/review?tab=materials",
+          "status": "expected"
+        },
+        {
+          "title": "review summary, counted filters and downloads stay ahead of findings",
+          "status": "expected"
+        },
+        {
+          "title": "source controls show the pinned excerpt and download only the exact material version",
+          "status": "expected"
+        },
+        {
+          "title": "revision results expose handling reasons and locations without chat or execution",
+          "status": "expected"
+        },
+        {
+          "title": "workbench handling reads the exact historical revision and returns to its history",
+          "status": "expected"
+        },
+        {
+          "title": "handling remains unavailable on missing metadata, stale artifact association or invalid status and can retry",
+          "status": "expected"
+        },
+        {
+          "title": "result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded",
+          "status": "expected"
+        },
+        {
+          "title": "direct report links without a valid explicit tab open results",
+          "status": "expected"
+        },
+        {
+          "title": "input conflicts display both versions and require explicit adoption; foreign owners cannot recover another project draft",
+          "status": "expected"
+        },
+        {
+          "title": "differential report labels carried-forward findings and all-projects history remains reachable",
+          "status": "expected"
+        },
+        {
+          "title": "latest revision downloads identify their execution and retain the source report findings",
+          "status": "expected"
+        },
+        {
+          "title": "evidence upload retries the same session and pins original finding; differential execution stays explicit",
+          "status": "expected"
+        },
+        {
+          "title": "workbench alone owns version history and retains stopped/failed snapshots and exact report navigation",
+          "status": "expected"
+        },
+        {
+          "title": "paused recheck retains the report without claiming its findings are currently being processed",
+          "status": "expected"
+        },
+        {
+          "title": "file-only report downloads without structured findings 1360",
+          "status": "expected"
+        },
+        {
+          "title": "file-only report downloads without structured findings 581",
+          "status": "expected"
+        },
+        {
+          "title": "readable report navigation, findings, search and persistent downloads 1360",
+          "status": "expected"
+        },
+        {
+          "title": "readable report navigation, findings, search and persistent downloads 581",
+          "status": "expected"
+        },
+        {
+          "title": "readable view failure is retryable, preserves Word, and never re-executes review",
+          "status": "expected"
+        },
+        {
+          "title": "annotated source docx: download, source limits, reload, no rerun",
+          "status": "expected"
+        },
+        {
+          "title": "annotated source pdf: download, source limits, reload, no rerun",
+          "status": "expected"
+        },
+        {
+          "title": "unified review materials preserve inline requirements 1360",
+          "status": "expected"
+        },
+        {
+          "title": "duplicate feedback: review cached and renamed receipts remain visible at 1440",
+          "status": "expected"
+        },
+        {
+          "title": "duplicate feedback: evidence dialog names reused material while preserving the finding link",
+          "status": "expected"
+        },
+        {
+          "title": "duplicate feedback: selecting an in-flight file twice retains a named notice after completion",
+          "status": "expected"
+        },
+        {
+          "title": "duplicate feedback: cached duplicate retains its notice when saving the draft needs a retry",
+          "status": "expected"
+        },
+        {
+          "title": "direct upload retries saved bytes without a modal or duplicate upload",
+          "status": "expected"
+        },
+        {
+          "title": "upload queue keeps other pickers usable through bytes, server save and draft save at 1360",
+          "status": "expected"
+        },
+        {
+          "title": "unknown first upload holds the ordered queue and explicit recovery preserves its original session",
+          "status": "expected"
+        },
+        {
+          "title": "draft-save retry continues saved material and invalid file can be removed",
+          "status": "expected"
+        },
+        {
+          "title": "real stage, paused state and cancellation appear in the main panel without assistant",
+          "status": "expected"
+        },
+        {
+          "title": "file report omits task metadata and update entry while historical Word pairs stay available",
+          "status": "expected"
+        },
+        {
+          "title": "compact review creation preserves quarter, review kind and existing optional details on edits",
+          "status": "expected"
+        },
+        {
+          "title": "synthetic workspace design scenes",
+          "status": "skipped"
+        },
+        {
+          "title": "workspace prototype parity at desktop and narrow widths",
+          "status": "skipped"
+        },
+        {
+          "title": "review navigation retains the app scale while keeping its own layout",
+          "status": "expected"
+        },
+        {
+          "title": "paid review starts with one point without confirmation and zero balance preserves inputs 1440",
+          "status": "expected"
+        },
+        {
+          "title": "enabled review never starts free when its price is missing",
+          "status": "expected"
+        },
+        {
+          "title": "review task receipt displays the actual reserved, charged and released points",
+          "status": "expected"
+        },
+        {
+          "title": "dashboard review progress keeps its collection context through tab changes and reload",
+          "status": "expected"
+        },
+        {
+          "title": "paid review response loss keeps quote and intent on explicit retry",
+          "status": "expected"
+        },
+        {
+          "title": "review headings share one content edge at 1440",
+          "status": "expected"
+        },
+        {
+          "title": "repeated start clicks during quote lookup create one review without confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "review live progress refreshes actual debit and activities, survives reload and exposes pause without another execution",
+          "status": "expected"
+        },
+        {
+          "title": "review live design comparison uses independent synthetic markup",
+          "status": "skipped"
+        },
+        {
+          "title": "review credit prototype comparison",
+          "status": "skipped"
+        },
+        {
+          "title": "delete review uploads, retry failures and preserve report history 1440",
+          "status": "expected"
+        },
+        {
+          "title": "review upload deletion unlocks after cancellation and repeated upload creates a fresh material",
+          "status": "expected"
+        },
+        {
+          "title": "review setup explains scope and generates a name 1440",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "word-roundtrip.spec.ts",
+      "phase": "first",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "project file row opens the exact run and native continuation delivers retained old and new drafts at 1440",
+          "status": "expected"
+        },
+        {
+          "title": "same-name mismatches, missing run, file patch, plain topic and unavailable registries never guess a continuation",
+          "status": "expected"
+        },
+        {
+          "title": "download original DOCX, save an explicit row-targeted Word revision, retain bytes and freely check all current files at 1440",
+          "status": "expected"
+        },
+        {
+          "title": "a newer file while the original dialog is open rejects the original CAS and retains the selected local file",
+          "status": "expected"
+        },
+        {
+          "title": "an accepted import with a lost reply resumes only the original identity and does not mistake a later latest version for this save",
+          "status": "expected"
+        },
+        {
+          "title": "confirmed save followed by list failure stays confirmed and a read-only refresh locates the exact saved version even after a third draft",
+          "status": "expected"
+        },
+        {
+          "title": "an unresolved original import is isolated from another signed-in owner and remains available to the original owner",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "generation-entry-intent.spec.ts",
+      "phase": "correction-c",
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "generation entry: the real missing-document row preserves its target through the source step without a business write",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: invalid intent does not replace a cached choice and plain explicit empty selection still wins over the latest batch",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: cache adoption belongs to the owner and actual API project when a navigation project is shared",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: unsaved note has the explicit keep outcome",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: unsaved note has the explicit transfer outcome",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: unsaved note has the explicit clear outcome",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: an already identical single selection retains its unsaved note without a conflict card",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: failing to clear the local note never changes selection or consumes intent",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: note clear succeeds before a failed selection save, leaving a recoverable old selection and empty note",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: ordinary adoption saves first and a failed save retains intent through refresh and step links",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: corrupt cache read preserves original state and blocks an empty replacement until reread",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: throw cache read preserves original state and blocks an empty replacement until reread",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: a manual checkbox choice cancels waiting intent and survives refresh",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: a manual all choice cancels waiting intent and survives refresh",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: a manual none choice cancels waiting intent and survives refresh",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: pending recovery retains the exact original envelope through generic conflict, acceptance, polling and refresh",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: only a trusted expired-input receipt unlocks explicit reprepare without silently adopting the new type",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: a live results poll cannot repaint through an unknown cache after explicit preparation fails",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: a partial note operation keeps its original scope when explicitly continued",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: a partial note operation keeps its original scope when explicitly stopped",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: original support upload recovery can continue without redirecting its scope to the newly clicked type",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: original support upload recovery can stop without redirecting its scope to the newly clicked type",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: original template upload recovery can continue without redirecting its scope to the newly clicked type",
+          "status": "expected"
+        },
+        {
+          "title": "generation entry: original template upload recovery can stop without redirecting its scope to the newly clicked type",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "assistant-continuation.spec.ts",
+      "phase": "correction-c",
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "continuing a successful card selects its exact original clean result and saves only a draft",
+          "status": "expected"
+        },
+        {
+          "title": "original result missing never reuses an earlier selected baseline",
+          "status": "expected"
+        },
+        {
+          "title": "original result ambiguous never reuses an earlier selected baseline",
+          "status": "expected"
+        },
+        {
+          "title": "original result invalid-version never reuses an earlier selected baseline",
+          "status": "expected"
+        },
+        {
+          "title": "original result foreign-project never reuses an earlier selected baseline",
+          "status": "expected"
+        },
+        {
+          "title": "original result shared-artifact never reuses an earlier selected baseline",
+          "status": "expected"
+        },
+        {
+          "title": "unverified original artifact wrong-run keeps the complete prior draft",
+          "status": "expected"
+        },
+        {
+          "title": "unverified original artifact wrong-version keeps the complete prior draft",
+          "status": "expected"
+        },
+        {
+          "title": "unverified original artifact wrong-hash keeps the complete prior draft",
+          "status": "expected"
+        },
+        {
+          "title": "unverified original artifact unavailable keeps the complete prior draft",
+          "status": "expected"
+        },
+        {
+          "title": "unverified original artifact wrong-media keeps the complete prior draft",
+          "status": "expected"
+        },
+        {
+          "title": "unverified original artifact revision-instead-of-clean keeps the complete prior draft",
+          "status": "expected"
+        },
+        {
+          "title": "a failed original project read keeps the complete prior draft and does not prepare another task",
+          "status": "expected"
+        },
+        {
+          "title": "a failed original artifact read keeps the complete prior draft and does not prepare another task",
+          "status": "expected"
+        },
+        {
+          "title": "continuing an old project A card replaces project B source context durably and prepares only the A confirmation",
+          "status": "expected"
+        },
+        {
+          "title": "same-project continuation preserves saved assistant source information until preparation",
+          "status": "expected"
+        },
+        {
+          "title": "generation continues the exact document through confirmation, explicit execution, the same completed run and a verified Word download",
+          "status": "expected"
+        },
+        {
+          "title": "a late original result cannot replace another-card",
+          "status": "expected"
+        },
+        {
+          "title": "a late original result cannot replace new-conversation",
+          "status": "expected"
+        },
+        {
+          "title": "a late original result cannot replace new-draft",
+          "status": "expected"
+        },
+        {
+          "title": "successful review cards keep the existing review preparation flow without requiring a Word edit base",
+          "status": "expected"
+        }
+      ]
+    },
+    {
+      "file": "review-completion-download.spec.ts",
+      "phase": "correction-c",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "tests": [
+        {
+          "title": "free manual export downloads the new V3 Word pair while historical V1 keeps its exact bytes and identity",
+          "status": "expected"
+        },
+        {
+          "title": "supplemented full review downloads its completed new V3 Word pair and still preserves the old V1 Word",
+          "status": "expected"
+        }
+      ]
+    }
+  ]
+}

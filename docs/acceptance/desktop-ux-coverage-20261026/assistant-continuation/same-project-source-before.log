@@ -1,0 +1,56 @@
+
+Running 1 test using 1 worker
+
+(node:42232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 tests\assistant-continuation.spec.ts:157:1 › same-project continuation preserves saved assistant source information until preparation (3.7s)
+
+
+  1) tests\assistant-continuation.spec.ts:157:1 › same-project continuation preserves saved assistant source information until preparation
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 6
+    + Received  + 6
+
+    @@ -1,20 +1,20 @@
+      Array [
+        Object {
+    -     "issuer_name": "已保存的原发行人修订名称",
+    -     "market": "szse",
+    +     "issuer_name": "合成原发行人",
+    +     "market": "sse",
+          "material_id": "source-A",
+          "material_version": 1,
+          "offering": "private",
+    -     "relation": "parent",
+    +     "relation": "same_issuer",
+          "reporting_periods": Array [
+            Object {
+    -         "end": "2024-12-31",
+    +         "end": "2025-12-31",
+              "evidence_refs": Array [],
+              "period_kind": "annual",
+    -         "scope": "parent",
+    -         "start": "2024-01-01",
+    +         "scope": "consolidated",
+    +         "start": "2025-01-01",
+              "status": "user_asserted",
+            },
+          ],
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": "user_asserted",
+
+      167 |   expect(s.data.project.update_details.source_prospectuses).toEqual([serverSource]);
+      168 |   await continueOriginal(page);await expect(page.locator('[data-status]')).toContainText('已选中这项任务的原成果');
+    > 169 |   expect(s.w.view.assistant.source_prospectuses).toEqual([savedSource]);
+          |                                                  ^
+      170 |   expect(s.data.project.update_details.source_prospectuses).toEqual([serverSource]);
+      171 |   expect(s.writes.every(write=>write.path==='/m4/topics/topic/view')).toBe(true);
+      172 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\assistant-continuation.spec.ts:169:50
+
+    Error Context: ..\..\.local\same-project-source-before\assistant-continuation-sam-efe8d-formation-until-preparation\error-context.md
+
+  1 failed
+    tests\assistant-continuation.spec.ts:157:1 › same-project continuation preserves saved assistant source information until preparation

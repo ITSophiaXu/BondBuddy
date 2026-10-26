@@ -1,0 +1,181 @@
+
+Running 143 tests using 2 workers
+
+(node:49508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:37008) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   1 tests\project-assistant.spec.ts:44:1 › duplicate feedback: assistant attachments identify renamed duplicates without another material (3.1s)
+  ok   2 tests\account.spec.ts:114:1 › settings show server account facts as text and revoke only other sessions (3.8s)
+  ok   4 tests\account.spec.ts:153:1 › password change checks input locally, keeps the session on a wrong password and reports revoked sessions (3.1s)
+  ok   3 tests\project-assistant.spec.ts:85:1 › global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs (6.0s)
+  ok   6 tests\project-assistant.spec.ts:93:1 › a slow autosave receipt survives background polling without a false conversation conflict (2.5s)
+  ok   7 tests\project-assistant.spec.ts:114:1 › paid QA shows real cap, sends only after confirmation and preserves requested content (2.3s)
+  ok   8 tests\project-assistant.spec.ts:119:1 › update card has no upfront price and recharge retains the project (5.9s)
+  ok   9 tests\project-assistant.spec.ts:132:1 › fixed QA states the exact price and success/failure terms before confirmation (1.4s)
+  ok  10 tests\project-assistant.spec.ts:138:1 › editable task card uses quarters and optional requirements; insufficient input never executes (1.4s)
+  ok  11 tests\project-assistant.spec.ts:144:1 › desktop, focus and narrow assistant stay within viewport and preserve normal page layout (1.6s)
+  ok  12 tests\project-assistant.spec.ts:158:1 › attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload (7.5s)
+  ok  13 tests\project-assistant.spec.ts:193:1 › assistant closes to the bottom-right launcher and restores page space - desktop (2.5s)
+  ok  14 tests\project-assistant.spec.ts:193:1 › assistant closes to the bottom-right launcher and restores page space - small-desktop (3.0s)
+  x    5 tests\account.spec.ts:186:1 › closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab (30.0s)
+(node:18032) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  15 tests\project-assistant.spec.ts:193:1 › assistant closes to the bottom-right launcher and restores page space - narrow (2.9s)
+  ok  16 tests\account.spec.ts:251:1 › a session revoked elsewhere returns to login instead of showing account data (2.6s)
+  ok  17 tests\project-assistant.spec.ts:193:1 › assistant closes to the bottom-right launcher and restores page space - zoom-equivalent (4.2s)
+  ok  18 tests\account.spec.ts:264:1 › unified account keeps two basic fields and opens security settings only on request (3.0s)
+  ok  20 tests\account.spec.ts:299:1 › a review payment order returns to the original review workspace (2.5s)
+  ok  21 tests\account.spec.ts:346:1 › credit history separates settlement, reservation and release; paginates and persists after reload (5.2s)
+  ok  19 tests\project-assistant.spec.ts:249:1 › desktop pages reflow beside the assistant at standard and wide widths (11.4s)
+  ok  22 tests\account.spec.ts:355:1 › credit history retries failures without claiming an empty ledger or discarding loaded rows (3.3s)
+  ok  23 tests\account.spec.ts:363:1 › credit history shows actual order states and refreshes arrival and balance without executing tasks (3.5s)
+  ok  24 tests\project-execution.spec.ts:260:1 › M2 shortage preserves inputs, recharge never executes, returning starts directly (4.3s)
+  ok  25 tests\account.spec.ts:372:1 › credit history aborts pending pages and clears private records on logout (2.8s)
+  ok  26 tests\project-execution.spec.ts:289:1 › M2 a changed price is checked again without revealing or confirming the amount (3.4s)
+  ok  27 tests\review-workspace.spec.ts:159:1 › inline requirements save before start and later edits do not change the fixed task input (3.1s)
+  ok  28 tests\project-execution.spec.ts:303:1 › M2 a legacy empty quote cannot offer a new free task (2.1s)
+  ok  30 tests\project-execution.spec.ts:313:1 › M2 missing uploaded source metadata blocks the next action before quote or execution (2.0s)
+  ok  29 tests\review-workspace.spec.ts:177:1 › failed requirement save retains editable text, blocks start, and retries without chat (3.2s)
+  ok  31 tests\project-execution.spec.ts:323:1 › ready input saves, preflights and executes through one explicit action (2.3s)
+  ok  32 tests\review-workspace.spec.ts:192:1 › finding requirements return to the inline field and task links open main-page progress (2.5s)
+  ok  33 tests\project-execution.spec.ts:335:1 › authoring materials stay read-only after starting until an explicit next version (4.3s)
+  ok  34 tests\review-workspace.spec.ts:214:31 › review inline requirements and global floating assistant comparison 1440 (3.8s)
+  ok  36 tests\review-workspace.spec.ts:255:83 › explicit cross-business review preparation keeps exact intent and authorized source: valid (3.0s)
+  ok  35 tests\project-execution.spec.ts:402:1 › blocked preflight keeps backend gates and does not turn five diagnostics into user tasks or runs (3.7s)
+  ok  37 tests\review-workspace.spec.ts:255:83 › explicit cross-business review preparation keeps exact intent and authorized source: stale (1.6s)
+  ok  39 tests\review-workspace.spec.ts:255:83 › explicit cross-business review preparation keeps exact intent and authorized source: foreign (1.8s)
+  ok  38 tests\project-execution.spec.ts:433:1 › lost execute response retries the same key; reload restores the actual task (4.3s)
+  ok  40 tests\review-workspace.spec.ts:255:83 › explicit cross-business review preparation keeps exact intent and authorized source: missing (3.0s)
+  ok  41 tests\project-execution.spec.ts:446:1 › lost snapshot response requires readback and explicit selection, without another snapshot POST (2.5s)
+  ok  42 tests\review-workspace.spec.ts:255:83 › explicit cross-business review preparation keeps exact intent and authorized source: binding_failed (2.5s)
+  ok  43 tests\project-execution.spec.ts:457:1 › double click and editing locks during submission preserve the locked request (2.8s)
+  ok  44 tests\review-workspace.spec.ts:279:85 › new review project opens categorized materials with inline requirements: #/projects/synthetic-review-project (2.8s)
+  ok  45 tests\project-execution.spec.ts:472:1 › editing while preflight is pending discards that result; next action locks a new revision (2.7s)
+  ok  47 tests\project-execution.spec.ts:485:1 › 409 preserves target input and never submits a run (1.9s)
+  ok  46 tests\review-workspace.spec.ts:279:85 › new review project opens categorized materials with inline requirements: #/projects/synthetic-review-project/review?tab=materials (2.6s)
+  ok  49 tests\review-workspace.spec.ts:303:1 › review summary, counted filters and downloads stay ahead of findings (2.0s)
+  ok  48 tests\project-execution.spec.ts:492:1 › unified rejection leaves history optional and preserves saved financial material (3.0s)
+  ok  50 tests\review-workspace.spec.ts:323:1 › source controls show the pinned excerpt and download only the exact material version (2.3s)
+  ok  51 tests\project-execution.spec.ts:502:1 › legacy reference plus audit upgrades to unified input without requiring a new project (3.3s)
+  ok  52 tests\review-workspace.spec.ts:351:1 › revision results expose handling reasons and locations without chat or execution (2.6s)
+  ok  53 tests\project-execution.spec.ts:527:1 › a unified INPUT_REQUIRED preserves source roles and rechecks the same immutable input (2.7s)
+  ok  54 tests\review-workspace.spec.ts:360:1 › workbench handling reads the exact historical revision and returns to its history (2.1s)
+  ok  55 tests\project-execution.spec.ts:559:1 › recheck replaces rejected input v3 with current v7 materials without submitting a run (1.9s)
+  ok  56 tests\review-workspace.spec.ts:366:1 › handling remains unavailable on missing metadata, stale artifact association or invalid status and can retry (2.0s)
+  ok  58 tests\review-workspace.spec.ts:373:1 › result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded (3.3s)
+  ok  57 tests\project-execution.spec.ts:594:1 › v3 recheck restores failed test run v8; explicit new input v9 uses a distinct production key (3.6s)
+  ok  59 tests\review-workspace.spec.ts:390:1 › direct report links without a valid explicit tab open results (1.8s)
+  ok  60 tests\project-execution.spec.ts:644:1 › stale recheck with a dirty local draft stops without writing it over the fresh project (4.0s)
+  ok  61 tests\review-workspace.spec.ts:400:1 › input conflicts display both versions and require explicit adoption; foreign owners cannot recover another project draft (4.1s)
+  ok  62 tests\project-execution.spec.ts:680:1 › recheck rejects an inconsistent latest input without retrying the old revision (2.8s)
+  ok  63 tests\review-workspace.spec.ts:409:1 › differential report labels carried-forward findings and all-projects history remains reachable (2.0s)
+  ok  65 tests\review-workspace.spec.ts:419:1 › latest revision downloads identify their execution and retain the source report findings (1.1s)
+  ok  64 tests\project-execution.spec.ts:694:1 › unified input includes reference materials and does not ask for reclassification (3.3s)
+  ok  66 tests\review-workspace.spec.ts:425:1 › evidence upload retries the same session and pins original finding; differential execution stays explicit (2.8s)
+  ok  67 tests\project-execution.spec.ts:705:1 › a legacy generation rejection keeps references optional and supports rechecking (2.6s)
+  ok  68 tests\review-workspace.spec.ts:457:1 › workbench alone owns version history and retains stopped/failed snapshots and exact report navigation (2.9s)
+  ok  69 tests\project-execution.spec.ts:724:1 › preflight processing wait checks the same input without calling the file damaged or generation unavailable (2.7s)
+  ok  70 tests\review-workspace.spec.ts:467:1 › paused recheck retains the report without claiming its findings are currently being processed (2.0s)
+  ok  71 tests\project-execution.spec.ts:744:1 › temporary start failure retains support reference and does not claim missing materials (2.3s)
+  ok  72 tests\review-workspace.spec.ts:481:72 › file-only report downloads without structured findings 1360 (2.8s)
+  ok  73 tests\project-execution.spec.ts:754:1 › unified authoring includes all uploaded source materials without a second selection form (2.8s)
+  ok  74 tests\review-workspace.spec.ts:481:72 › file-only report downloads without structured findings 581 (3.1s)
+  ok  75 tests\project-execution.spec.ts:764:1 › legacy generation task kind is retained with unified source metadata (2.3s)
+  ok  77 tests\project-execution.spec.ts:787:1 › reference parsing is handled by the unified worker after an immutable task is submitted (1.8s)
+  ok  76 tests\review-workspace.spec.ts:500:72 › readable report navigation, findings, search and persistent downloads 1360 (2.3s)
+  ok  78 tests\project-execution.spec.ts:799:1 › unified input rejection preserves the selected version without silently substituting newer material (2.9s)
+  ok  79 tests\review-workspace.spec.ts:500:72 › readable report navigation, findings, search and persistent downloads 581 (4.9s)
+  ok  80 tests\project-execution.spec.ts:809:1 › manual task refresh invalidates a late paused poll without replaying task actions (3.7s)
+  ok  81 tests\review-workspace.spec.ts:533:1 › readable view failure is retryable, preserves Word, and never re-executes review (3.5s)
+  ok  83 tests\review-workspace.spec.ts:544:39 › annotated source docx: download, source limits, reload, no rerun (3.8s)
+  ok  82 tests\project-execution.spec.ts:827:1 › paginated recovery and real task actions keep one run (6.6s)
+  ok  84 tests\review-workspace.spec.ts:544:39 › annotated source pdf: download, source limits, reload, no rerun (3.1s)
+  ok  85 tests\project-execution.spec.ts:881:1 › resumed source-input task shows compilation without a false blocker (4.2s)
+  ok  86 tests\review-workspace.spec.ts:597:72 › unified review materials preserve inline requirements 1360 (4.6s)
+  ok  87 tests\project-execution.spec.ts:903:1 › provider timeout explains service recovery and keeps the same task after automatic retry (4.2s)
+  ok  88 tests\review-workspace.spec.ts:613:31 › duplicate feedback: review cached and renamed receipts remain visible at 1440 (3.9s)
+  ok  89 tests\project-execution.spec.ts:924:1 › account switch ignores an in-flight execute result (2.7s)
+  ok  90 tests\review-workspace.spec.ts:632:1 › duplicate feedback: evidence dialog names reused material while preserving the finding link (1.8s)
+  ok  91 tests\project-execution.spec.ts:932:1 › foreign execute response is rejected (1.9s)
+  ok  92 tests\review-workspace.spec.ts:643:1 › duplicate feedback: selecting an in-flight file twice retains a named notice after completion (2.3s)
+  ok  93 tests\project-execution.spec.ts:938:1 › unknown blockers remain explicit; prototype workspace captures all states without fake progress (4.9s)
+  ok  94 tests\review-workspace.spec.ts:654:1 › duplicate feedback: cached duplicate retains its notice when saving the draft needs a retry (3.1s)
+  ok  96 tests\review-workspace.spec.ts:666:1 › direct upload retries saved bytes without a modal or duplicate upload (1.8s)
+  ok  95 tests\project-execution.spec.ts:965:1 › restored snapshot retains exact user assertion pins in a new version (4.8s)
+  ok  97 tests\review-workspace.spec.ts:677:31 › upload queue keeps other pickers usable through bytes, server save and draft save at 1360 (4.0s)
+  ok  98 tests\project-execution.spec.ts:978:1 › failed task recovery cannot enable a new snapshot until the server record is read (3.3s)
+  ok  99 tests\review-workspace.spec.ts:718:1 › unknown first upload holds the ordered queue and explicit recovery preserves its original session (2.9s)
+  ok 100 tests\project-execution.spec.ts:993:1 › a test terminal state in the production channel never exposes a deliverable (2.8s)
+  ok 101 tests\review-workspace.spec.ts:738:1 › draft-save retry continues saved material and invalid file can be removed (2.8s)
+  ok 103 tests\review-workspace.spec.ts:752:1 › real stage, paused state and cancellation appear in the main panel without assistant (2.8s)
+  ok 102 tests\project-execution.spec.ts:1002:1 › continuing after completion creates a new input and retains the preceding successful artifact without reload (3.6s)
+  ok 104 tests\review-workspace.spec.ts:763:1 › file report omits task metadata and update entry while historical Word pairs stay available (5.0s)
+  ok 105 tests\project-execution.spec.ts:1029:3 › trial pause model_tokens_per_user_per_day: reload and automatic recovery preserve one run (7.1s)
+  ok 106 tests\review-workspace.spec.ts:781:1 › compact review creation preserves quarter, review kind and existing optional details on edits (3.9s)
+  -  108 tests\review-workspace.spec.ts:806:1 › synthetic workspace design scenes
+  -  109 tests\review-workspace.spec.ts:833:1 › workspace prototype parity at desktop and narrow widths
+  ok 110 tests\review-workspace.spec.ts:848:1 › review navigation retains the app scale while keeping its own layout (3.0s)
+  ok 107 tests\project-execution.spec.ts:1029:3 › trial pause kill_switch: reload and automatic recovery preserve one run (5.7s)
+  ok 111 tests\review-workspace.spec.ts:876:31 › paid review starts with one point without confirmation and zero balance preserves inputs 1440 (3.0s)
+  ok 113 tests\review-workspace.spec.ts:897:1 › enabled review never starts free when its price is missing (2.5s)
+  ok 112 tests\project-execution.spec.ts:1069:1 › trial stage stays honest without events; a different paused stage discards the old limit reason (6.2s)
+  ok 115 tests\project-execution.spec.ts:1090:1 › operator denial remains a failed task without automatic-recovery guidance (2.8s)
+  ok 114 tests\review-workspace.spec.ts:903:1 › review task receipt displays the actual reserved, charged and released points (4.0s)
+  ok 116 tests\project-execution.spec.ts:1103:3 › lost upload acknowledgement restores start without resending desktop (3.0s)
+  ok 117 tests\review-workspace.spec.ts:918:1 › dashboard review progress keeps its collection context through tab changes and reload (3.0s)
+  ok 119 tests\review-workspace.spec.ts:925:1 › paid review response loss keeps quote and intent on explicit retry (1.8s)
+  ok 120 tests\review-workspace.spec.ts:933:31 › review headings share one content edge at 1440 (1.9s)
+  ok 121 tests\review-workspace.spec.ts:944:1 › repeated start clicks during quote lookup create one review without confirmation (3.2s)
+  ok 118 tests\project-execution.spec.ts:1140:3 › material workflow desktop: upload, retry, pending evidence, one-click execution and reopen (7.4s)
+  ok 123 tests\project-execution.spec.ts:1229:1 › all-projects update keeps its list context through progress, edit and refresh (4.5s)
+  ok 122 tests\review-workspace.spec.ts:953:1 › review live progress refreshes actual debit and activities, survives reload and exposes pause without another execution (8.3s)
+  -  125 tests\review-workspace.spec.ts:977:1 › review live design comparison uses independent synthetic markup
+  -  126 tests\review-workspace.spec.ts:987:1 › review credit prototype comparison
+  ok 124 tests\project-execution.spec.ts:1247:4 › cancel then supplement materials from project list (6.1s)
+  ok 127 tests\review-workspace.spec.ts:1002:31 › delete review uploads, retry failures and preserve report history 1440 (2.6s)
+  ok 129 tests\review-workspace.spec.ts:1028:1 › review upload deletion unlocks after cancellation and repeated upload creates a fresh material (2.9s)
+  ok 128 tests\project-execution.spec.ts:1247:4 › cancel then supplement materials from reloaded material step (5.8s)
+  ok 130 tests\review-workspace.spec.ts:1044:31 › review setup explains scope and generates a name 1440 (2.4s)
+  ok 131 tests\project-execution.spec.ts:1247:4 › cancel then supplement materials from query order and run link (5.0s)
+  ok 132 tests\project-execution.spec.ts:1303:1 › credit visibility: one click starts and running receipt follows settlement and retry (4.7s)
+  ok 133 tests\project-execution.spec.ts:1330:1 › credit visibility: trial explains zero charge before and during execution (1.5s)
+  ok 134 tests\project-execution.spec.ts:1341:1 › credit visibility: an in-flight old receipt is refreshed after the run completes (3.7s)
+  ok 135 tests\project-execution.spec.ts:1356:1 › dashboard update preserves filtered workbench context through execution, edit, reload and return (2.5s)
+  ok 136 tests\project-execution.spec.ts:1367:49 › replace mistaken historical upload (same session) (5.3s)
+  ok 137 tests\project-execution.spec.ts:1367:49 › replace mistaken historical upload (restored) (6.9s)
+  ok 138 tests\project-execution.spec.ts:1452:1 › uploaded source without an issuer name can start and preserves target identity (2.4s)
+  ok 139 tests\project-execution.spec.ts:1476:31 › M2 exact balance: single click and retries retain one execution 1440 (2.4s)
+  ok 140 tests\project-execution.spec.ts:1485:1 › M2 balance refresh never starts and stale insufficient balance rejects before a run (2.1s)
+  ok 141 tests\project-execution.spec.ts:1505:31 › model progress summaries survive tool bursts, pagination and reload 1440 (10.2s)
+  ok 142 tests\project-execution.spec.ts:1548:31 › live authoring: queue, model activity, growing credits, pause and partial settlement 1440 (10.5s)
+  ok 143 tests\project-execution.spec.ts:1587:31 › dynamic balance: 1 point starts, exhaustion dialog, refresh and automatic same-run resume 1440 (8.0s)
+
+
+  1) tests\account.spec.ts:186:1 › closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('button', { name: '登录', exact: true })
+        - locator resolved to <button type="submit" class="button primary">登录</button>
+      - attempting click action
+        - waiting for element to be visible, enabled and stable
+
+
+      244 |   await page.getByRole('button', { name: '返回登录页' }).click();
+      245 |   await page.getByLabel('用户名').fill('owner_a'); await page.getByLabel('密码').fill(state.password);
+    > 246 |   await page.getByRole('button', { name: '登录', exact: true }).click();
+          |                                                               ^
+      247 |   await expect(page.getByText('用户名或密码不正确，请重试。')).toBeVisible();
+      248 |   expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length }))).toEqual({ local: 0, session: 0 });
+      249 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\account.spec.ts:246:63
+
+    Error Context: ..\..\.local\desktop-correction-b\account-closure-lists-bloc-7dd31--no-private-data-in-any-tab\error-context.md
+
+  1 failed
+    tests\account.spec.ts:186:1 › closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab
+  4 skipped
+  138 passed (4.9m)

@@ -288,7 +288,8 @@ export class MaterialWorkspace {
   private marketFields(input:M4DraftInput){
     const markets=input.project_file?MARKETS:M4_DOCUMENT_MARKETS[input.document_type];
     const label=(markets as readonly string[]).includes('nafmii')?'市场':'交易所';
-    const offerings=(MARKET_OFFERINGS[input.fields.market as keyof typeof MARKET_OFFERINGS]??[]).filter(offering=>m4DocumentScopeSupported(input.document_type,input.fields.market,offering,!!input.project_file));
+    const availableOfferings=Object.hasOwn(MARKET_OFFERINGS,input.fields.market)?MARKET_OFFERINGS[input.fields.market as keyof typeof MARKET_OFFERINGS]:[];
+    const offerings=availableOfferings.filter(offering=>m4DocumentScopeSupported(input.document_type,input.fields.market,offering,!!input.project_file));
     return `<h2>选择${label}与品种</h2><label class="field" for="m4-market"><span>${label} <span class="required">*</span></span><select id="m4-market" data-m4-field="market"><option value="">请选择${label}</option>${markets.map(value=>`<option value="${value}" ${input.fields.market===value?'selected':''}>${MARKET_LABELS[value]}</option>`).join('')}</select></label>${input.project_file||input.document_type==='recommendation'?`<label class="field" for="m4-offering"><span>债券品种 <span class="required">*</span></span><select id="m4-offering" data-m4-field="offering"><option value="">请选择品种</option>${offerings.map(value=>`<option value="${value}" ${input.fields.offering===value?'selected':''}>${OFFERING_LABELS[value]}</option>`).join('')}</select></label>`:''}`;
   }
   private caseTemplatePicker(input:M4DraftInput){

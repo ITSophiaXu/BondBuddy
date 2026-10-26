@@ -234,8 +234,16 @@ async function prepare(page: Page) {
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
 }
 async function continueAuthoring(page: Page) {
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();
-  await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
+  const continuationSummary=page.locator('[data-next-authoring-summary] .continuation-summary');
+  const continueButton=page.getByRole('button',{name:'继续修改',exact:true});
+  await expect.poll(async()=>await continuationSummary.isVisible()||await continueButton.isVisible()).toBe(true);
+  if(!await continuationSummary.isVisible())await continueButton.click();
+  await expect(continuationSummary).toBeVisible();
+  // Reload restores preparation from its URL; open the native material group
+  // just as the explicit continue action does before inspecting saved files.
+  const materials=page.locator('#project-materials-details');
+  if(!await materials.evaluate(element=>(element as HTMLDetailsElement).open))await materials.locator(':scope > summary').click();
+  await expect(materials).toHaveAttribute('open','');
 }
 async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
   expect(run.project_id).toBe(id);
@@ -425,7 +433,8 @@ test('blocked preflight keeps backend gates and does not turn five diagnostics i
 test('lost execute response retries the same key; reload restores the actual task', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.dropExecute=true;
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('连接中断');
+  await expect(page.locator('#execution-message')).toContainText('提交结果暂未确认');
+  await expect(page.locator('#execution-message')).toContainText('核对会沿用原请求');
   await expect(page.locator('#execute-input')).toBeDisabled();
   await page.locator('#retry-execution').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
@@ -1101,7 +1110,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       const request = route.request(), path = new URL(request.url()).pathname;
       if (path.endsWith('/uploads')) {
         creates++;
-        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:now, max_bytes:100_000_000 });
+        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:'2099-01-01T00:00:00Z', max_bytes:100_000_000 });
       }
       if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
       if (path.endsWith('/complete')) {
@@ -1141,7 +1150,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/materials/uploads')) {
         const uploadId = `synthetic-upload-${uploads.size + 1}`;
         uploads.set(uploadId, request.postDataJSON());
-        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
+        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 100_000_000 });
       }
       if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
       if (path.endsWith('/complete')) {
@@ -1197,7 +1206,8 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('same_issuer');
     await source.getByLabel('原发行市场',{exact:true}).selectOption('sse');
     await source.getByLabel('原品种',{exact:true}).selectOption('private');
-    await source.getByRole('radio',{name:'年末',exact:true}).check();
+    await source.locator('label.quarter').filter({hasText:'年末'}).click();
+    await expect(source.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
     await page.getByRole('button', { name: '开始更新', exact: true }).click();
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await expect(page.locator('#execution-preflight')).toBeHidden();
@@ -1420,7 +1430,8 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await correct.locator('[data-source-field="market"]').selectOption('sse');
   await correct.locator('[data-source-field="offering"]').selectOption('private');
   await correct.locator('[data-source-field="year"]').selectOption('2024');
-  await correct.locator('[data-source-field="quarter"][value="12-31"]').check();
+  await correct.locator('label.quarter').filter({hasText:'年末'}).click();
+  await expect(correct.locator('[data-source-field="quarter"][value="12-31"]')).toBeChecked();
   await expect(page.locator('#execute-input')).toBeEnabled();
   await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.reporting_periods.length).toBeGreaterThan(0);
   const evidence=process.env.BB_UX_EVIDENCE_DIR;

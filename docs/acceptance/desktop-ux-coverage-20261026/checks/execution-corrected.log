@@ -1,0 +1,15 @@
+
+Running 8 tests using 1 worker
+
+(node:40044) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\project-execution.spec.ts:433:1 › lost execute response retries the same key; reload restores the actual task (4.5s)
+  ok 2 tests\project-execution.spec.ts:1103:3 › lost upload acknowledgement restores start without resending desktop (4.4s)
+  ok 3 tests\project-execution.spec.ts:1140:3 › material workflow desktop: upload, retry, pending evidence, one-click execution and reopen (10.2s)
+  ok 4 tests\project-execution.spec.ts:1247:4 › cancel then supplement materials from project list (8.9s)
+  ok 5 tests\project-execution.spec.ts:1247:4 › cancel then supplement materials from reloaded material step (8.8s)
+  ok 6 tests\project-execution.spec.ts:1247:4 › cancel then supplement materials from query order and run link (8.9s)
+  ok 7 tests\project-execution.spec.ts:1367:49 › replace mistaken historical upload (same session) (8.1s)
+  ok 8 tests\project-execution.spec.ts:1367:49 › replace mistaken historical upload (restored) (10.2s)
+
+  8 passed (1.2m)

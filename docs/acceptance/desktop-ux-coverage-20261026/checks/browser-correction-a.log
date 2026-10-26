@@ -1,0 +1,277 @@
+
+Running 121 tests using 2 workers
+
+(node:7532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:34820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   2 tests\generation-entry-intent.spec.ts:9:1 › generation entry: the real missing-document row preserves its target through the source step without a business write (4.0s)
+  ok   3 tests\generation-entry-intent.spec.ts:25:1 › generation entry: invalid intent does not replace a cached choice and plain explicit empty selection still wins over the latest batch (2.6s)
+  ok   4 tests\generation-entry-intent.spec.ts:34:1 › generation entry: cache adoption belongs to the owner and actual API project when a navigation project is shared (2.6s)
+  ok   5 tests\generation-entry-intent.spec.ts:46:58 › generation entry: unsaved note has the explicit keep outcome (3.6s)
+  ok   6 tests\generation-entry-intent.spec.ts:46:58 › generation entry: unsaved note has the explicit transfer outcome (4.8s)
+  ok   7 tests\generation-entry-intent.spec.ts:46:58 › generation entry: unsaved note has the explicit clear outcome (3.1s)
+  ok   1 tests\batch-delivery-workbench.spec.ts:29:31 › batch delivery: explicit three-file package, stopped later work, exact paired Word and next preparation at 1440px (23.2s)
+  ok   8 tests\generation-entry-intent.spec.ts:67:1 › generation entry: an already identical single selection retains its unsaved note without a conflict card (3.9s)
+  ok  10 tests\generation-entry-intent.spec.ts:74:1 › generation entry: failing to clear the local note never changes selection or consumes intent (3.5s)
+  ok   9 tests\batch-delivery-workbench.spec.ts:71:1 › batch delivery: an older in-flight workspace GET cannot restore running after stopping later files (6.1s)
+  ok  12 tests\batch-delivery-workbench.spec.ts:81:1 › batch delivery: failed read keeps delivered files and stopped state, and explicit refresh only rereads (2.2s)
+  ok  11 tests\generation-entry-intent.spec.ts:83:1 › generation entry: note clear succeeds before a failed selection save, leaving a recoverable old selection and empty note (4.7s)
+  ok  14 tests\generation-entry-intent.spec.ts:93:1 › generation entry: ordinary adoption saves first and a failed save retains intent through refresh and step links (5.7s)
+  ok  15 tests\generation-entry-intent.spec.ts:102:48 › generation entry: corrupt cache read preserves original state and blocks an empty replacement until reread (3.3s)
+  ok  16 tests\generation-entry-intent.spec.ts:102:48 › generation entry: throw cache read preserves original state and blocks an empty replacement until reread (4.3s)
+  ok  17 tests\generation-entry-intent.spec.ts:113:56 › generation entry: a manual checkbox choice cancels waiting intent and survives refresh (5.0s)
+  ok  13 tests\batch-delivery-workbench.spec.ts:95:1 › batch delivery: paused batch and exact paused or awaiting-input run remain readable through explicit stop and resumed completion (24.9s)
+  ok  18 tests\generation-entry-intent.spec.ts:113:56 › generation entry: a manual all choice cancels waiting intent and survives refresh (6.4s)
+  ok  20 tests\generation-entry-intent.spec.ts:113:56 › generation entry: a manual none choice cancels waiting intent and survives refresh (5.7s)
+  ok  19 tests\batch-delivery-workbench.spec.ts:110:1 › batch delivery: R19 unknown preparation has priority over an in-flight stopped-batch result read (9.5s)
+  ok  22 tests\m4-workspace.spec.ts:12:1 › SSE opinion template exposes recovered headings and is pinned in the submitted draft (3.5s)
+  ok  23 tests\m4-workspace.spec.ts:24:31 › case template application and recommendation selectors preserve scope and drafts at 1440px (3.6s)
+  ok  24 tests\m4-workspace.spec.ts:136:53 › duplicate feedback: material generation source keeps the original and explains reuse (2.8s)
+  x   21 tests\generation-entry-intent.spec.ts:121:1 › generation entry: pending recovery retains the exact original envelope through generic conflict, acceptance, polling and refresh (15.2s)
+  ok  25 tests\m4-workspace.spec.ts:136:53 › duplicate feedback: material generation material keeps the original and explains reuse (3.5s)
+(node:48752) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  26 tests\m4-workspace.spec.ts:155:1 › missing exchange lists the action, focuses the field and only starts after it is filled (1.9s)
+  ok  27 tests\m4-workspace.spec.ts:166:1 › initiation lists all missing fields while switching types removes irrelevant template requirements (1.6s)
+  ok  29 tests\m4-workspace.spec.ts:177:1 › supplemental-only legal drafts remain eligible (2.5s)
+  ok  28 tests\generation-entry-intent.spec.ts:135:1 › generation entry: only a trusted expired-input receipt unlocks explicit reprepare without silently adopting the new type (5.3s)
+  ok  30 tests\m4-workspace.spec.ts:182:1 › whole-document edit bases remain eligible without re-uploading the source (4.9s)
+  ok  32 tests\m4-workspace.spec.ts:187:1 › server-reported missing input shows safe field guidance and preserves the draft (3.1s)
+  ok  31 tests\generation-entry-intent.spec.ts:143:1 › generation entry: a live results poll cannot repaint through an unknown cache after explicit preparation fails (6.0s)
+  ok  33 tests\m4-workspace.spec.ts:218:73 › legacy quotation: one click starts and balance drops only after success at 1440px (4.7s)
+  ok  34 tests\generation-entry-intent.spec.ts:156:51 › generation entry: a partial note operation keeps its original scope when explicitly continued (5.4s)
+  ok  35 tests\m4-workspace.spec.ts:238:1 › insufficient credits show a recharge action, retain input and never auto-start (3.0s)
+  ok  36 tests\generation-entry-intent.spec.ts:156:51 › generation entry: a partial note operation keeps its original scope when explicitly stopped (3.3s)
+  ok  37 tests\m4-workspace.spec.ts:252:1 › a double click and a lost acknowledgement retry use the same execution and reserve once (4.1s)
+  ok  38 tests\generation-entry-intent.spec.ts:167:101 › generation entry: original support upload recovery can continue without redirecting its scope to the newly clicked type (7.0s)
+  ok  39 tests\m4-workspace.spec.ts:265:1 › an input edit while the internal quote is pending cannot submit a stale draft (4.5s)
+  ok  41 tests\m4-workspace.spec.ts:276:52 › a failed task releases the reservation without reducing balance (6.9s)
+  ok  40 tests\generation-entry-intent.spec.ts:167:101 › generation entry: original support upload recovery can stop without redirecting its scope to the newly clicked type (9.3s)
+  ok  42 tests\m4-workspace.spec.ts:276:52 › a cancelled task releases the reservation without reducing balance (4.9s)
+  ok  43 tests\generation-entry-intent.spec.ts:167:101 › generation entry: original template upload recovery can continue without redirecting its scope to the newly clicked type (7.2s)
+  ok  44 tests\m4-workspace.spec.ts:284:1 › legacy MaterialWorkspace component first save and concurrent upload share creation and retain entered requirements (5.0s)
+  ok  46 tests\m4-workspace.spec.ts:299:1 › prototype material navigation, cards, source modes and only one optional requirements box (2.2s)
+  ok  45 tests\generation-entry-intent.spec.ts:167:101 › generation entry: original template upload recovery can stop without redirecting its scope to the newly clicked type (6.7s)
+  ok  47 tests\m4-workspace.spec.ts:314:1 › direct requirements save without a message or charge, remain per type and survive reload (7.3s)
+  ok  48 tests\material-draft-comparison.spec.ts:22:1 › material draft comparison: real CAS conflict exposes every input and keeps the exact complete local body (3.8s)
+  ok  49 tests\m4-workspace.spec.ts:325:1 › replacing the source adopts only saved bytes and restores that exact file without a version selector (3.4s)
+  ok  50 tests\material-draft-comparison.spec.ts:75:1 › material draft comparison: recovered dirty cache uses the entire saved version only after explicit choice (3.5s)
+  ok  52 tests\material-draft-comparison.spec.ts:84:1 › material draft comparison: schema-valid cache under the wrong document key is preserved and cannot save to another type (2.2s)
+  ok  51 tests\m4-workspace.spec.ts:349:1 › generation pins direct requirements and progress is on the page; edits never change running input (4.4s)
+  ok  53 tests\material-draft-comparison.spec.ts:108:1 › material draft comparison: defer and Escape keep recovered contents and create no save request (2.7s)
+  ok  54 tests\m4-workspace.spec.ts:359:1 › completion keeps older reader, new real artifact appears once and preview failure still permits download (3.1s)
+  ok  55 tests\material-draft-comparison.spec.ts:116:1 › material draft comparison: identical full inputs are folded and an explicit saved-version choice does not invent a new version (3.0s)
+  ok  56 tests\m4-workspace.spec.ts:370:1 › whole-document continuation keeps original source and requirements (3.1s)
+  ok  58 tests\m4-workspace.spec.ts:377:1 › busy source project retains form and does not automatically execute when released (3.8s)
+  x   57 tests\material-draft-comparison.spec.ts:129:1 › material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input (6.6s)
+(node:34708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  59 tests\m4-workspace.spec.ts:384:1 › another page changing view state can be reconciled on the material form without chat or lost requirements (3.7s)
+  ok  60 tests\material-draft-comparison.spec.ts:143:1 › material draft comparison: fresh names require unique complete pins and never borrow a similar file (1.8s)
+  ok  61 tests\m4-workspace.spec.ts:397:1 › a draft save failure retains direct requirements and retry saves before execution (2.6s)
+  ok  63 tests\m4-workspace.spec.ts:408:71 › generation failure is visible beside the button without a false save retry on desktop (2.5s)
+  ok  62 tests\material-draft-comparison.spec.ts:171:1 › material draft comparison: equal requirement text with different message provenance remains a visible reference change (3.7s)
+  ok  64 tests\m4-workspace.spec.ts:423:35 › material fits viewport 1440 (2.2s)
+  ok  65 tests\material-draft-comparison.spec.ts:182:51 › material draft comparison: keep rereads a second server change and requires another explicit choice (2.3s)
+  ok  66 tests\m4-workspace.spec.ts:429:1 › template scope follows broker and exchange, and missing scope is explained before upload bytes (2.3s)
+  ok  67 tests\material-draft-comparison.spec.ts:182:51 › material draft comparison: server rereads a second server change and requires another explicit choice (2.3s)
+  ok  68 tests\m4-workspace.spec.ts:439:1 › polling keeps a focused native file input connected (1.5s)
+  ok  69 tests\material-draft-comparison.spec.ts:198:1 › material draft comparison: failed comparison read retains local intent and explicit reload reads fresh data (2.6s)
+  ok  70 tests\m4-workspace.spec.ts:491:1 › live phases, terminal states and persistent task tabs keep the same immutable task (4.0s)
+  ok  71 tests\material-draft-comparison.spec.ts:208:73 › material draft comparison: a late opening read cannot reclaim document type (2.6s)
+  ok  73 tests\material-draft-comparison.spec.ts:208:73 › material draft comparison: a late opening read cannot reclaim local text (2.4s)
+  ok  72 tests\m4-workspace.spec.ts:506:1 › completion and reload retain paired downloads; download errors stay beside the exact file (4.4s)
+  ok  74 tests\material-draft-comparison.spec.ts:208:73 › material draft comparison: a late opening read cannot reclaim leave (2.6s)
+  ok  75 tests\m4-workspace.spec.ts:517:1 › historical note from another run is not presented as this result (1.8s)
+  ok  77 tests\m4-workspace.spec.ts:543:1 › refresh preserves an expanded preview and its reading position (1.4s)
+  ok  76 tests\material-draft-comparison.spec.ts:224:1 › material draft comparison: a late choice read cannot save newer local text that was never compared (3.1s)
+  ok  78 tests\m4-workspace.spec.ts:550:1 › explicit legacy topic with source project context keeps the linked source on reload (2.0s)
+  ok  79 tests\material-draft-comparison.spec.ts:234:54 › material draft comparison: a lost PUT before saving stays guarded through reload and explicit recheck (3.0s)
+  ok  80 tests\m4-workspace.spec.ts:557:62 › project material link opens exact running run and keeps navigation on refresh (3.3s)
+  ok  81 tests\material-draft-comparison.spec.ts:234:54 › material draft comparison: a lost PUT after saving stays guarded through reload and explicit recheck (3.7s)
+  ok  82 tests\m4-workspace.spec.ts:557:62 › project material link opens exact succeeded run and keeps navigation on refresh (2.9s)
+  ok  83 tests\material-draft-comparison.spec.ts:255:1 › material draft comparison: a pending original execution arriving behind the cache queue prevents the choice (2.1s)
+  ok  84 tests\m4-workspace.spec.ts:557:62 › project material link opens exact failed run and keeps navigation on refresh (3.5s)
+  ok  85 tests\material-draft-comparison.spec.ts:266:1 › material draft comparison: unknown original upload blocks comparison and preserves its request and target (3.3s)
+  ok  87 tests\material-reference-picker.spec.ts:89:56 › material reference picker: PDF explicitly adds a supplement and preserves the source and complete draft (2.1s)
+  ok  86 tests\m4-workspace.spec.ts:570:31 › delete owned material source and support without changing task history 1440 (4.4s)
+  ok  88 tests\material-reference-picker.spec.ts:89:56 › material reference picker: DOCX explicitly adds a supplement and preserves the source and complete draft (2.9s)
+  ok  89 tests\m4-workspace.spec.ts:589:1 › linked source is not deleted from another project and own material unlocks after cancellation (2.6s)
+  ok  90 tests\material-reference-picker.spec.ts:89:56 › material reference picker: XLSX explicitly adds a supplement and preserves the source and complete draft (2.3s)
+  ok  92 tests\material-reference-picker.spec.ts:92:48 › material reference picker: DOCX explicitly replaces only the source in the complete current draft (2.3s)
+  ok  93 tests\material-reference-picker.spec.ts:92:48 › material reference picker: PDF explicitly replaces only the source in the complete current draft (1.9s)
+  ok  91 tests\m4-workspace.spec.ts:598:72 › dynamic material progress, persistent tabs, pause/resume and wallet polling at 1440px (6.4s)
+  ok  94 tests\material-reference-picker.spec.ts:96:3 › material reference picker: a source entry never offers an enabled XLSX adoption or silently adds a supplement (2.1s)
+  ok  95 tests\m4-workspace.spec.ts:622:1 › dynamic material zero balance keeps the draft and does not execute (2.7s)
+  ok  96 tests\material-reference-picker.spec.ts:103:3 › material reference picker: a project-file binding fixes its source while allowing explicit supplements without losing any input (2.6s)
+  ok  97 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for init (1.9s)
+  ok  99 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for underwriter (2.4s)
+  ok 100 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for legal (2.0s)
+  ok  98 tests\material-reference-picker.spec.ts:120:3 › material reference picker: exact same-name reads stay read only and cancelled registrations retain entry focus (4.9s)
+  ok 101 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for private_summary (2.2s)
+  ok 103 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for application (1.9s)
+  ok 102 tests\material-reference-picker.spec.ts:142:3 › material reference picker: pagination beyond fifty, Chinese project search and local material search stay read only (3.9s)
+  ok 104 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for recommendation (2.2s)
+  ok 105 tests\material-reference-picker.spec.ts:157:3 › material reference picker: repeated adoption clicks share one original registration and one saved choice (2.3s)
+  ok 106 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for annual (2.5s)
+  ok 107 tests\material-reference-picker.spec.ts:166:3 › material reference picker: closing and changing type while registration waits never adopts into either draft (2.9s)
+  ok 108 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for semiannual (2.1s)
+  ok 110 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for issuer (1.6s)
+  ok 109 tests\material-reference-picker.spec.ts:175:3 › material reference picker: newer local requirements survive a late registration without adopting unreviewed input (3.1s)
+  ok 111 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for financial (2.2s)
+  ok 113 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for credit (2.1s)
+  ok 114 tests\pr745-market-acceptance.spec.ts:5:37 › project file continuation retains NAFMII / MTN for proceeds (2.1s)
+  x  112 tests\material-reference-picker.spec.ts:184:3 › material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input (8.5s)
+(node:39900) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 115 tests\material-reference-picker.spec.ts:206:3 › material reference picker: leaving the component while registration waits preserves the server registration without saving a draft (3.2s)
+  ok 116 tests\material-reference-picker.spec.ts:224:3 › material reference picker: an old response cannot close or adopt into a reopened picker with another purpose (2.7s)
+  ok 117 tests\material-reference-picker.spec.ts:232:3 › material reference picker: late material reads from the old project cannot replace the newly selected project (2.8s)
+  ok 118 tests\material-reference-picker.spec.ts:242:3 › material reference picker: changing source project during registration keeps its receipt separate from the draft (2.3s)
+  ok 119 tests\material-reference-picker.spec.ts:255:3 › material reference picker: newly arrived original pending, upload and cache guards block adoption and preserve their state (6.5s)
+  x  120 tests\material-reference-picker.spec.ts:269:3 › material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice (2.8s)
+(node:41188) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 121 tests\material-reference-picker.spec.ts:279:3 › material reference picker: a lost registration receipt never claims absence or silently resubmits or adopts (2.1s)
+
+
+  1) tests\generation-entry-intent.spec.ts:121:1 › generation entry: pending recovery retains the exact original envelope through generic conflict, acceptance, polling and refresh
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('#pf-prospectus')
+    Timeout: 5000ms
+    - Expected substring  - 1
+    + Received string     + 7
+
+    - 项目当前稿：V3
+    + 项目募集说明书项目当前稿：V4 · 募集说明书_V3.docx上传新版本
+    +       当前版本 · V4募集说明书_V3.docx用户上传 · 2026年10月25日 22:00下载原文件
+    +       支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动生成或扣费。
+    +
+    +       版本历史（1）“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。版本序号表示保存顺序。V4 · 募集说明书_V3.docx用户上传 · 2026年10月25日 22:00项目当前稿文件版本详情记录所属项目generation-entry-source-S版本记录source-v4版本序号V4保存时间2026-10-25T14:00:00Z文件校验值 SHA-256aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa材料编号source-material材料版本1项目当前稿下载原文件
+    +       上传募集书新版本先保存文件，再选择是否采用为当前稿；旧版保留。保存和采用不会启动付费更新。原稿信息仍需按文件填写。上传并保存
+    +
+
+    Call log:
+      - Expect "toContainText" locator('#pf-prospectus') with timeout 5000ms
+      - waiting for locator('#pf-prospectus')
+        14 × locator resolved to <div id="pf-prospectus">…</div>
+           - unexpected value "项目募集说明书项目当前稿：V4 · 募集说明书_V3.docx上传新版本
+          当前版本 · V4募集说明书_V3.docx用户上传 · 2026年10月25日 22:00下载原文件
+          支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动生成或扣费。
+
+          版本历史（1）“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。版本序号表示保存顺序。V4 · 募集说明书_V3.docx用户上传 · 2026年10月25日 22:00项目当前稿文件版本详情记录所属项目generation-entry-source-S版本记录source-v4版本序号V4保存时间2026-10-25T14:00:00Z文件校验值 SHA-256aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa材料编号source-material材料版本1项目当前稿下载原文件
+          上传募集书新版本先保存文件，再选择是否采用为当前稿；旧版保留。保存和采用不会启动付费更新。原稿信息仍需按文件填写。上传并保存
+          "
+
+
+       at generation-entry-fixtures.ts:131
+
+      129 | export async function documents(page:Page){
+      130 |   await expect(page.locator('#pf-source-next,#pf-generate').first()).toBeVisible();
+    > 131 |   if(await page.locator('#pf-source-next').isVisible()){await expect(page.locator('#pf-prospectus')).toContainText('项目当前稿：V3');await page.locator('#pf-source-next').click();}
+          |                                                                                                      ^
+      132 |   await expect(page.locator('#pf-generate')).toBeVisible();
+      133 | }
+      134 | export function assertFixture(s:State){expect(s.unexpected).toEqual([]);expect(s.errors).toEqual([]);expect(s.calls.filter(c=>/\/(?:quote|execute|credit-quote|checks|updates|answer)(?:\/|$)/.test(c.path))).toEqual([]);}
+        at documents (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\generation-entry-fixtures.ts:131:102)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\generation-entry-intent.spec.ts:132:141
+
+    Error Context: ..\..\.local\desktop-correction-a\generation-entry-intent-ge-758e5-eptance-polling-and-refresh\error-context.md
+
+  2) tests\material-draft-comparison.spec.ts:129:1 › material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input
+
+    Error: expect(locator).toBeAttached() failed
+
+    Locator: locator('#m4-tabs')
+    Expected: attached
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeAttached" locator('#m4-tabs') with timeout 5000ms
+      - waiting for locator('#m4-tabs')
+
+
+       at m4-upload-thirteenth-fixtures.ts:142
+
+      140 |   }, { owner: options.owner ?? ids.owner, topic: ids.topic, project: ids.project, sourceProject: ids.sourceProject, entry: options.entry ?? 'topic' });
+      141 |   for (const path of ['src/style.css', '../../product-prototype/public/styles.css', '../../product-prototype/public/source-prospectus.css', '../../product-prototype/public/project-workspace.css', 'src/prototype-adapter.css']) await page.addStyleTag({ content: (await readFile(resolve(process.cwd(), path), 'utf8')).replace(/@import\s+[^;]+;/g, '') });
+    > 142 |   if ((options.owner ?? ids.owner) === ids.owner) await expect(page.locator('#m4-tabs')).toBeAttached();
+          |                                                                                          ^
+      143 | }
+      144 | export const writes = (state: State) => state.calls.filter(call => call.method !== 'GET');
+      145 | export const uploads = (state: State, kind: 'create' | 'bytes' | 'complete') => state.calls.filter(call => kind === 'create' ? call.method === 'POST' && /\/materials\/uploads$/.test(call.path) : kind === 'bytes' ? call.method === 'PUT' && call.path.endsWith('/bytes') : call.method === 'POST' && call.path.endsWith('/complete'));
+        at mount (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\m4-upload-thirteenth-fixtures.ts:142:90)
+        at restore (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-draft-comparison-fixtures.ts:89:56)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-draft-comparison.spec.ts:132:107
+
+    Error Context: ..\..\.local\desktop-correction-a\material-draft-comparison--85c73-display-and-the-saved-input\error-context.md
+
+  3) tests\material-reference-picker.spec.ts:184:3 › material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('#m4-status')
+    Expected substring: "这个项目已在其他页面修改"
+    Received string:    "保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('#m4-status') with timeout 5000ms
+      - waiting for locator('#m4-status')
+        14 × locator resolved to <p role="status" id="m4-status" class="m4-status error">保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。</p>
+           - unexpected value "保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。"
+
+
+      189 |     const expected = { ...structuredClone(original), supplemental_requirements: text };
+      190 |     await settle(page); await expect.poll(() => draftWrites(state).length).toBe(1);
+    > 191 |     await expect(page.locator('#m4-status')).toContainText('这个项目已在其他页面修改');
+          |                                              ^
+      192 |     const conflictMessage = await page.locator('#m4-status').innerText(), conflicted = (await observe(page)).drafts.private_summary;
+      193 |     expect(conflicted.input).toEqual(expected); expect(conflicted.dirty).toBe(true); expect(conflicted.conflict).toBe(true);
+      194 |     expect(draftWrites(state)).toEqual([{ expected_version: 3, input: expected }]); expect(currentInput(state)).toEqual(original);
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker.spec.ts:191:46
+
+    Error: page.waitForResponse: Test ended.
+
+       at material-reference-picker-fixtures.ts:109
+
+      107 | export async function beginHeldAdoption(page: Page, state: State, purpose: Purpose = 'material', selected = state.pdf) {
+      108 |   await openPicker(page, purpose); await expect(adopt(page, selected)).toBeEnabled(); const hold = await holdLibrary(state);
+    > 109 |   const response = page.waitForResponse(value => value.request().method() === 'POST' && new URL(value.url()).pathname.endsWith(`/m4/topics/${ids.topic}/materials`));
+          |                         ^
+      110 |   await adopt(page, selected).click(); await expect.poll(hold.entered).toBe(true); return { ...hold, response };
+      111 | }
+      112 | export async function finishHeld(page: Page, state: State, hold: Awaited<ReturnType<typeof beginHeldAdoption>>, selected = state.pdf) {
+        at beginHeldAdoption (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker-fixtures.ts:109:25)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker.spec.ts:185:76
+
+    Error Context: ..\..\.local\desktop-correction-a\material-reference-picker--8ca43-nd-the-complete-newer-input\error-context.md
+
+  4) tests\material-reference-picker.spec.ts:269:3 › material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      272 |     await openPicker(page, 'material'); await adopt(page, state.pdf).click(); await settle(page); await expect.poll(() => draftWrites(state).length).toBe(1);
+      273 |     expect(draftWrites(state)[0]).toEqual({ expected_version: 3, input: expectedInput(original, 'material', state.pdf) });
+    > 274 |     const current = (await observe(page)).drafts.private_summary; expect(current.input).toEqual(expectedInput(original, 'material', state.pdf)); expect(current.dirty).toBe(true); expect(current.conflict).toBe(true);
+          |                                                                                                                                                                                                             ^
+      275 |     expect(currentInput(state).supplemental_requirements).toBe('服务器另一页新要求'); expect(state.workspace.materials.some(value => pinKey(value) === pinKey(state.pdf))).toBe(true);
+      276 |     await expect(page.locator('#m4-status')).toContainText(/冲突|版本|核对/); expect(libraryWrites(state)).toHaveLength(1); noBusiness(state);
+      277 |   });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker.spec.ts:274:205
+
+    Error Context: ..\..\.local\desktop-correction-a\material-reference-picker--78381-saved-complete-local-choice\error-context.md
+
+  4 failed
+    tests\generation-entry-intent.spec.ts:121:1 › generation entry: pending recovery retains the exact original envelope through generic conflict, acceptance, polling and refresh
+    tests\material-draft-comparison.spec.ts:129:1 › material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input
+    tests\material-reference-picker.spec.ts:184:3 › material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input
+    tests\material-reference-picker.spec.ts:269:3 › material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice
+  117 passed (4.5m)

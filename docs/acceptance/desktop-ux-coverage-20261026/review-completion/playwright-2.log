@@ -1,0 +1,9 @@
+
+Running 2 tests using 1 worker
+
+(node:41784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\review-completion-download.spec.ts:83:1 › free manual export downloads the new V3 Word pair while historical V1 keeps its exact bytes and identity (7.6s)
+  ok 2 tests\review-completion-download.spec.ts:110:1 › supplemented full review downloads its completed new V3 Word pair and still preserves the old V1 Word (6.1s)
+
+  2 passed (19.3s)

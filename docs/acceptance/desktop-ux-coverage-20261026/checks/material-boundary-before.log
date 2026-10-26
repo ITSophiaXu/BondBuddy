@@ -1,0 +1,106 @@
+
+Running 3 tests using 1 worker
+
+(node:23712) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 tests\material-draft-comparison.spec.ts:129:1 › material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input (6.2s)
+(node:24516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  2 tests\material-reference-picker.spec.ts:184:3 › material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input (7.0s)
+(node:46628) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  3 tests\material-reference-picker.spec.ts:269:3 › material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice (3.3s)
+
+
+  1) tests\material-draft-comparison.spec.ts:129:1 › material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input
+
+    Error: expect(locator).toBeAttached() failed
+
+    Locator: locator('#m4-tabs')
+    Expected: attached
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeAttached" locator('#m4-tabs') with timeout 5000ms
+      - waiting for locator('#m4-tabs')
+
+
+       at m4-upload-thirteenth-fixtures.ts:142
+
+      140 |   }, { owner: options.owner ?? ids.owner, topic: ids.topic, project: ids.project, sourceProject: ids.sourceProject, entry: options.entry ?? 'topic' });
+      141 |   for (const path of ['src/style.css', '../../product-prototype/public/styles.css', '../../product-prototype/public/source-prospectus.css', '../../product-prototype/public/project-workspace.css', 'src/prototype-adapter.css']) await page.addStyleTag({ content: (await readFile(resolve(process.cwd(), path), 'utf8')).replace(/@import\s+[^;]+;/g, '') });
+    > 142 |   if ((options.owner ?? ids.owner) === ids.owner) await expect(page.locator('#m4-tabs')).toBeAttached();
+          |                                                                                          ^
+      143 | }
+      144 | export const writes = (state: State) => state.calls.filter(call => call.method !== 'GET');
+      145 | export const uploads = (state: State, kind: 'create' | 'bytes' | 'complete') => state.calls.filter(call => kind === 'create' ? call.method === 'POST' && /\/materials\/uploads$/.test(call.path) : kind === 'bytes' ? call.method === 'PUT' && call.path.endsWith('/bytes') : call.method === 'POST' && call.path.endsWith('/complete'));
+        at mount (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\m4-upload-thirteenth-fixtures.ts:142:90)
+        at restore (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-draft-comparison-fixtures.ts:89:56)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-draft-comparison.spec.ts:132:107
+
+    Error Context: ..\..\.local\material-contract-diagnosis-before\material-draft-comparison--85c73-display-and-the-saved-input\error-context.md
+
+  2) tests\material-reference-picker.spec.ts:184:3 › material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('#m4-status')
+    Expected substring: "这个项目已在其他页面修改"
+    Received string:    "保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('#m4-status') with timeout 5000ms
+      - waiting for locator('#m4-status')
+        14 × locator resolved to <p role="status" id="m4-status" class="m4-status error">保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。</p>
+           - unexpected value "保存结果暂未确认，请重新读取当前记录后再继续。 本页草稿已保留。"
+
+
+      189 |     const expected = { ...structuredClone(original), supplemental_requirements: text };
+      190 |     await settle(page); await expect.poll(() => draftWrites(state).length).toBe(1);
+    > 191 |     await expect(page.locator('#m4-status')).toContainText('这个项目已在其他页面修改');
+          |                                              ^
+      192 |     const conflictMessage = await page.locator('#m4-status').innerText(), conflicted = (await observe(page)).drafts.private_summary;
+      193 |     expect(conflicted.input).toEqual(expected); expect(conflicted.dirty).toBe(true); expect(conflicted.conflict).toBe(true);
+      194 |     expect(draftWrites(state)).toEqual([{ expected_version: 3, input: expected }]); expect(currentInput(state)).toEqual(original);
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker.spec.ts:191:46
+
+    Error: page.waitForResponse: Test ended.
+
+       at material-reference-picker-fixtures.ts:109
+
+      107 | export async function beginHeldAdoption(page: Page, state: State, purpose: Purpose = 'material', selected = state.pdf) {
+      108 |   await openPicker(page, purpose); await expect(adopt(page, selected)).toBeEnabled(); const hold = await holdLibrary(state);
+    > 109 |   const response = page.waitForResponse(value => value.request().method() === 'POST' && new URL(value.url()).pathname.endsWith(`/m4/topics/${ids.topic}/materials`));
+          |                         ^
+      110 |   await adopt(page, selected).click(); await expect.poll(hold.entered).toBe(true); return { ...hold, response };
+      111 | }
+      112 | export async function finishHeld(page: Page, state: State, hold: Awaited<ReturnType<typeof beginHeldAdoption>>, selected = state.pdf) {
+        at beginHeldAdoption (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker-fixtures.ts:109:25)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker.spec.ts:185:76
+
+    Error Context: ..\..\.local\material-contract-diagnosis-before\material-reference-picker--8ca43-nd-the-complete-newer-input\error-context.md
+
+  3) tests\material-reference-picker.spec.ts:269:3 › material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      272 |     await openPicker(page, 'material'); await adopt(page, state.pdf).click(); await settle(page); await expect.poll(() => draftWrites(state).length).toBe(1);
+      273 |     expect(draftWrites(state)[0]).toEqual({ expected_version: 3, input: expectedInput(original, 'material', state.pdf) });
+    > 274 |     const current = (await observe(page)).drafts.private_summary; expect(current.input).toEqual(expectedInput(original, 'material', state.pdf)); expect(current.dirty).toBe(true); expect(current.conflict).toBe(true);
+          |                                                                                                                                                                                                             ^
+      275 |     expect(currentInput(state).supplemental_requirements).toBe('服务器另一页新要求'); expect(state.workspace.materials.some(value => pinKey(value) === pinKey(state.pdf))).toBe(true);
+      276 |     await expect(page.locator('#m4-status')).toContainText(/冲突|版本|核对/); expect(libraryWrites(state)).toHaveLength(1); noBusiness(state);
+      277 |   });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\material-reference-picker.spec.ts:274:205
+
+    Error Context: ..\..\.local\material-contract-diagnosis-before\material-reference-picker--78381-saved-complete-local-choice\error-context.md
+
+  3 failed
+    tests\material-draft-comparison.spec.ts:129:1 › material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input
+    tests\material-reference-picker.spec.ts:184:3 › material reference picker: a late registration preserves the specific prior draft conflict and the complete newer input
+    tests\material-reference-picker.spec.ts:269:3 › material reference picker: a draft CAS conflict keeps registration separate from the unsaved complete local choice

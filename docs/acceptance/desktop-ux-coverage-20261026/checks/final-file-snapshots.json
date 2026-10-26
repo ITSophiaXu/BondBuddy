@@ -1,0 +1,57 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "52D4B853C592737E4EC4B051A1E2B9010C96A1DD34D2ABFEBD0A5316B231F7F5",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\project-assistant.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "3E0E14D31966D7353F9C879E6FF0E0C5C7327078B147BFF9B259E5C16681F598",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\material-workspace.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "37BD2A04CAE635E3777AEB3F9C2A9BBE6AD109ED2EF1A69BFECBCE558CFACAC9",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\assistant-continuation.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "FA3609A674E64666BC848A2CCED5F41269D87D1DAAFACDB7016A4F15E35478F4",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\authoring-onboarding.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "147B5BB3403AFB3179E183DDA1C4FBAA66860D978245889353ACD80BA95679A6",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\review-completion-download.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "8640CC02C8F4A83D6758CA55C8FF015081DA37E5CE0CEEFFBD6E616FEC8EE71F",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\project-assistant.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "757AC5BF26AF3E4C9B349D1CEF652E65D2D7FE89C94CBB5C67CEBA0B26747378",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\project-execution.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "9EE5F25857DC95530A9CF6B82A0A9C0B24A16318D4BB4A0EDEA8B13A0C921A30",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\review-workspace.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "E32F76E077954474E2F59B437E34BB181D2D52EF76059EE577F325893E913AC4",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\account.spec.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "3CEFD460428409201FA165BB2B893796C90AC4B27C43C73AF490598BE07F970F",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\generation-entry-fixtures.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "721F7D294F00C726B57650B1792681F016D5F1F829CBDA24F2EF4E66D7127E56",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\playwright.desktop-coverage.config.ts"
+  }
+]

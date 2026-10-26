@@ -1,10 +1,11 @@
 import { duplicateUploadMessage, isReusedUpload } from './duplicate-upload';
 import { artifactFilename } from './artifact-download';
 import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,M4_DOCUMENT_MARKETS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
-  sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
+  sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,M4ArtifactPinSchema,
   type AssistantAction,type AssistantCard,type AssistantCardRequest,type AssistantResult,type M4Workspace,type M4Topic,
   type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
 import { ApiClient,ApiError,friendlyError,type Dto } from './api';
+import { Value } from '@sinclair/typebox/value';
 import { UserFacingError, type ErrorOperation } from './user-facing-error';
 import { M4Api } from './m4-api';
 import { ReviewApi } from './review-api';
@@ -54,6 +55,7 @@ export class ProjectAssistant {
   private cacheBaselines=new Map<string,AssistantViewCacheRecord|null>();
   private editGeneration=0;private runtimeGeneration=0;private actionPending=0;private actionUncertain=false;
   private readingGeneration=0;
+  private continuationIntent=0;
   private templateGeneration=0;
   private templateSaved=new Map<string,AssistantTemplateUploadEnvelope>();
   private assistantProjectCopies?:AssistantProjectCopyRecovery;
@@ -110,7 +112,7 @@ export class ProjectAssistant {
   private viewConflict=false;
   private conversationRequest?:{projectId?:string;key:string};
   private projects:Dto<'ProjectListResponse'>['items']=[];
-  private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
+  private event=(event:Event)=>{this.continuationIntent++;const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
     this.open=true;this.formOpen=false;this.changed();},'submit');};
   constructor(private api:ApiClient,private owner:string){
     this.m4=new M4Api(api,this.controller.signal);this.materialUploads=new AssistantUploadRecovery(api,this.m4,owner,()=>this.live,{coordinatePrepare:topic=>{if(this.workspace?.topic.topic_id===topic&&(this.templatePreparing||this.copyPreparing||this.copyReading||this.copyProblem||this.viewConflict||this.cacheProblem||this.actionUncertain))throw new AssistantInputError('请先核对原模板、材料复用及完整会话草稿，再添加材料。');}});this.viewCache=new AssistantViewCache(api,owner,()=>this.live);this.host.className='bb-assistant';document.body.append(this.host);
@@ -480,14 +482,63 @@ export class ProjectAssistant {
     this.invalidateTask();this.paintStatus();void this.drainUploads();
   }
   private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=artifactFilename(a);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+  private async continueCard(id:string,intent:number){
+    const matches=this.cards.filter(card=>card.card_id===id),card=matches[0];
+    if(matches.length!==1||!card?.run||card.run.state!=='succeeded'||card.run.project_id!==card.project_id)throw new AssistantInputError('原任务记录无法核实，请重新打开这项任务；当前草稿保留。');
+    if(this.templateBlocked())throw new AssistantInputError(this.error);
+    const topic=this.workspace!.topic.topic_id,project=this.workspace!.topic.project_id,epoch=this.epoch,embedded=this.embeddedProject;
+    if(card.operation==='generation'&&card.project_id!==project)throw new AssistantInputError('原材料任务与当前对话不一致，请从原任务重新打开；当前草稿保留。');
+    const original=structuredClone(this.viewSnapshot()!),dataBefore=this.data?structuredClone(this.data):undefined;
+    const identity=(value:AssistantCard)=>({id:value.card_id,project:value.project_id,operation:value.operation,document:value.document_type,request:value.execution_request_id,run:value.run?{id:value.run.run_id,project:value.run.project_id,state:value.run.state}:null});
+    const selected=identity(card);
+    const current=()=>{
+      const cards=this.cards.filter(value=>value.card_id===id);
+      if(!this.scopeCurrent(topic,project)||this.epoch!==epoch||this.embeddedProject!==embedded||this.continuationIntent!==intent||
+        !assistantSame(this.viewSnapshot(),original)||!assistantSame(this.data,dataBefore)||cards.length!==1||!assistantSame(identity(cards[0]),selected))
+        throw new AssistantInputError('当前选择或草稿已变化，已保留本页输入。请从需要修改的原任务重新选择。');
+    };
+    const read=async<T>(request:()=>Promise<T>)=>{try{const result=await request();current();return result;}catch(error){current();throw error;}};
+    // Read and verify first. Missing results must never reuse an earlier selected baseline.
+    const data=await read(()=>this.projectData(card.project_id));
+    if(data?.project?.project_id!==card.project_id||!Array.isArray(data.materials)||!Array.isArray(data.results))throw new AssistantInputError('原项目与任务记录不一致，请重新读取；当前草稿保留。');
+    let baseline:M4MessageContext['reading_artifact'];
+    if(card.operation!=='review'){
+      const results=data.results.filter(result=>result?.run_id===card.run!.run_id),result=results[0];
+      if(results.length!==1||!result||!Value.Check(M4ArtifactPinSchema,result.pin)||result.pin.source_project_id!==card.project_id||
+        data.results.filter(value=>value?.pin?.artifact_id===result.pin.artifact_id).length!==1)
+        throw new AssistantInputError('无法唯一确认这项任务的原成果，请先打开原任务核对。当前草稿和已选成果保留，尚未准备新的修改任务。');
+      const artifact=await read(()=>this.api.artifact(result.pin.artifact_id,this.controller.signal));
+      if(artifact?.artifact_id!==result.pin.artifact_id||artifact.run_id!==card.run.run_id||artifact.version!==result.pin.artifact_version||artifact.sha256!==result.pin.sha256||
+        artifact.delivery_status!=='available'||artifact.quality_status!=='passed'||artifact.media_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||
+        card.operation==='update'&&artifact.word_delivery&&(artifact.word_delivery.variant!=='clean'||artifact.word_delivery.clean_artifact_id!==artifact.artifact_id))
+        throw new AssistantInputError('这项任务的原成果版本或下载状态无法核实，请先打开原任务核对。当前草稿和已选成果保留，尚未准备新的修改任务。');
+      baseline=structuredClone(result.pin);
+    }
+    current();if(this.templateBlocked())throw new AssistantInputError(this.error);
+    if(card.operation!=='generation'){
+      const sameProject=this.view.assistant!.project_id===card.project_id,sourceOverride=this.view.assistant!.source_prospectuses;
+      this.data=data;
+      this.view.assistant!.project_id=card.project_id;
+      if(sameProject&&sourceOverride)(data.project.update_details??=emptyUpdateDetails()).source_prospectuses=structuredClone(sourceOverride);
+      this.view.assistant!.source_prospectuses=structuredClone(data.project.update_details?.source_prospectuses??[]);
+      delete this.view.assistant!.copy_source_project_id;delete this.view.assistant!.project_creation_request_id;
+      if(this.view.unsent_context.source_material?.source_project_id!==card.project_id)this.view.unsent_context.source_material=null;
+    }
+    // Review prepares its existing review flow and does not consume an edit baseline.
+    if(card.operation!=='review')this.view.unsent_context.reading_artifact=baseline!;
+    await this.useAction({business:card.operation,requirements:'',fields:card.document_type?{document_type:card.document_type}:{}});
+    this.status=card.operation==='review'?'已打开复核准备，请核对本次材料与要求；尚未开始任务。':'已选中这项任务的原成果，请填写修改要求并核对；尚未开始任务。';
+  }
   private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;if(this.embeddedProject&&['toggle','wide','project','current-project'].includes(a??''))return;
+    if(['continue','new','current-project','select','action','shortcut','edit','project'].includes(a??''))this.continuationIntent++;
+    const continuationIntent=this.continuationIntent;
     if(a==='embed-retry'&&this.embeddedProject&&this.host.parentElement){await this.embedProject(this.host.parentElement,this.embeddedProject);return;}
     if(a==='toggle'){await this.setOpen(!this.open);return;}
     if(a==='wide'){this.wide=!this.wide;this.paint();return;}
     if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
     if(a==='close-project'||a==='project'&&this.projectPicker){this.projectPicker=false;this.paint();this.host.querySelector<HTMLElement>('[data-a="project"]')?.focus();return;}
     if(a==='hide-form'){this.formOpen=false;this.paint();return;}
-    const operation:ErrorOperation=a==='download'?'download':['send','execute','new','current-project','prepare'].includes(a??'')?'submit':['template-read','copy-read','project'].includes(a??'')?'read':['recover-view','keep-local-view','template-resume','template-remove','template-orphan-remove','copy-resume','copy-stop','copy-orphan-remove','action','shortcut','retry-upload','remove-upload','continue'].includes(a??'')?'save':'action';
+    const operation:ErrorOperation=a==='download'?'download':['send','execute','new','current-project','prepare'].includes(a??'')?'submit':['template-read','copy-read','project','continue'].includes(a??'')?'read':['recover-view','keep-local-view','template-resume','template-remove','template-orphan-remove','copy-resume','copy-stop','copy-orphan-remove','action','shortcut','retry-upload','remove-upload'].includes(a??'')?'save':'action';
     await this.work(async()=>{
       if(a==='recover-view')await this.resolveView(false);
       if(a==='keep-local-view')await this.resolveView(true);
@@ -514,8 +565,7 @@ export class ProjectAssistant {
       if(a==='download')await this.download(el.dataset.id!);
       if(a==='retry-upload'){const u=this.currentUploads().find(u=>u.id===el.dataset.id);if(u&&u.kind!=='template'){await this.upload(u);if(this.data&&this.workspace?.topic.topic_id===u.topic&&this.data.project.project_id===u.project)this.data=await this.projectData(u.project);await this.poll();}}
       if(a==='remove-upload'){const u=this.currentUploads().find(u=>u.id===el.dataset.id);if(u?.kind==='material'&&u.recovery)await this.materialUploads.forget(u.recovery);this.uploads=this.uploads.filter(item=>item!==u);this.invalidateTask();}
-      if(a==='continue'){const c=this.cards.find(c=>c.card_id===el.dataset.id);if(c?.run){this.data=await this.projectData(c.project_id);const result=this.data.results.find(r=>r.run_id===c.run!.run_id);if(result)this.view.unsent_context.reading_artifact=result.pin;
-        await this.useAction({business:c.operation,requirements:'',fields:c.document_type?{document_type:c.document_type}:{}});}}
+      if(a==='continue')await this.continueCard(el.dataset.id!,continuationIntent);
     },operation);
   }
   private input(event:Event){const el=event.target as HTMLInputElement;

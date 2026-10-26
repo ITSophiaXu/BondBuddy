@@ -1011,7 +1011,7 @@ for(const width of [1440,390])test(`delete review uploads, retry failures and pr
   page.on('dialog',dialog=>dialog.accept());
   const button=page.getByRole('button',{name:'删除 合成审计报告.docx',exact:true});
   await expect(button).toBeVisible();await button.click();
-  await expect(page.locator('#review-status')).toContainText('删除未完成');await expect(button).toBeEnabled();
+  await expect(page.locator('#review-status')).toContainText('删除结果暂未确认');await expect(button).toBeEnabled();
   await button.click();await expect(button).toHaveCount(0);
   await expect.poll(()=>s.workspace.draft.material_versions.some(m=>m.material_id==='material-1')).toBe(false);
   expect(s.workspace.draft.source_material_ref?.material_id).toBe('material-0');

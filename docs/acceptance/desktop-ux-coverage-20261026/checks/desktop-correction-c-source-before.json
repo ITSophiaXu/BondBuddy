@@ -1,0 +1,12 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "52D4B853C592737E4EC4B051A1E2B9010C96A1DD34D2ABFEBD0A5316B231F7F5",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\project-assistant.ts"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "3E0E14D31966D7353F9C879E6FF0E0C5C7327078B147BFF9B259E5C16681F598",
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\material-workspace.ts"
+  }
+]
