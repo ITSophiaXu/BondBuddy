@@ -1,0 +1,740 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "baseline_commit": "b893ea9c",
+  "recorded_at": "2026-10-26T16:37:48.854Z",
+  "goal_complete": false,
+  "g03_complete": false,
+  "aggregate": null,
+  "count_policy": "Every invocation is separate; overlapping, diagnostic and corrective runs are never added.",
+  "environment": {
+    "platform": "Windows",
+    "node": "24.22.1",
+    "postgresql": "16.14",
+    "port": 15528,
+    "runtime_global_override": null,
+    "final_pgoptions": null
+  },
+  "selected_results": [
+    {
+      "name": "api-focused",
+      "phase": "initial",
+      "acceptance": false,
+      "receipt": "api-focused.json",
+      "log": "api-focused.log",
+      "started": "2026-10-26T16:15:04.136Z",
+      "finished": "2026-10-26T16:17:00.034Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-execution-delivery.pg.test.js",
+        "apps/api/dist/artifact-filename.test.js",
+        "apps/api/dist/artifact-execution.test.js",
+        "apps/api/dist/artifact-execution.pg.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+      },
+      "status": 1,
+      "signal": null,
+      "pid": 50296,
+      "counts": {
+        "tests": 40,
+        "pass": 38,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "skips": [],
+      "aggregate": null
+    },
+    {
+      "name": "api-consumers",
+      "phase": "initial",
+      "acceptance": false,
+      "receipt": "api-consumers.json",
+      "log": "api-consumers.log",
+      "started": "2026-10-26T16:15:04.146Z",
+      "finished": "2026-10-26T16:20:32.752Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/artifact-history.test.js",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/project-collection.pg.test.js",
+        "apps/api/dist/project-list.test.js",
+        "apps/api/dist/project-file-update-history.test.js",
+        "apps/api/dist/project-file-check-history.test.js",
+        "apps/api/dist/project-file-batch-recovery.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/review-linked-workspace.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/m4-workspace.pg.test.js",
+        "apps/api/dist/m4-case-templates.test.js",
+        "apps/api/dist/unified-authoring.test.js",
+        "apps/api/dist/update-project.test.js",
+        "apps/api/dist/project-kind-conversion.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+      },
+      "status": 1,
+      "signal": null,
+      "pid": 17476,
+      "counts": {
+        "tests": 93,
+        "pass": 82,
+        "fail": 10,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.7941ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "api-delivery",
+      "phase": "initial",
+      "acceptance": false,
+      "receipt": "api-delivery.json",
+      "log": "api-delivery.log",
+      "started": "2026-10-26T16:15:04.164Z",
+      "finished": "2026-10-26T16:17:30.701Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/word-delivery-artifact.test.js",
+        "apps/api/dist/generated-word-delivery.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/review-billing.pg.test.js",
+        "apps/api/dist/review-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-fixed-billing.pg.test.js",
+        "apps/api/dist/review-price-activation.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+      },
+      "status": 1,
+      "signal": null,
+      "pid": 15816,
+      "counts": {
+        "tests": 14,
+        "pass": 12,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.3655ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "worker-unit",
+      "phase": "initial",
+      "acceptance": false,
+      "receipt": "worker-unit.json",
+      "log": "worker-unit.log",
+      "started": "2026-10-26T16:15:04.164Z",
+      "finished": "2026-10-26T16:15:41.146Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/review-input-execution.test.js",
+        "apps/worker/dist/m4-input.test.js",
+        "apps/worker/dist/m4-stages.test.js",
+        "apps/worker/dist/unified-execution-input.test.js",
+        "apps/worker/dist/review-file-stage.test.js",
+        "apps/worker/dist/unified-input.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 47760,
+      "counts": {
+        "tests": 64,
+        "pass": 62,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ M4 output symlink never publishes external bytes (0.2489ms) # SKIP",
+        "﹣ report symlinks cannot publish outside files (0.5369ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "worker-pg",
+      "phase": "initial",
+      "acceptance": false,
+      "receipt": "worker-pg.json",
+      "log": "worker-pg.log",
+      "started": "2026-10-26T16:15:04.180Z",
+      "finished": "2026-10-26T16:18:06.347Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/artifact-execution-source.pg.test.js",
+        "apps/worker/dist/execution-input-loaders.pg.test.js",
+        "apps/worker/dist/run-execution-consumers.pg.test.js",
+        "apps/worker/dist/m3-review-pipeline.pg.integration.test.js",
+        "apps/worker/dist/m4-pipeline.pg.test.js",
+        "apps/worker/dist/unified-authoring.pg.test.js",
+        "apps/worker/dist/authoring-pause.pg.test.js",
+        "apps/worker/dist/review-project-e2e.pg.test.js",
+        "apps/worker/dist/review-reassembly.test.js",
+        "apps/worker/dist/review-word-registration.pg.integration.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 3052,
+      "counts": {
+        "tests": 42,
+        "pass": 38,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 4,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history (1.1601ms) # SKIP",
+        "﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.453ms) # SKIP",
+        "﹣ project review: real dual Word delivery, explicit promotion, manual export, idempotency and owner isolation (1.2116ms) # SKIP",
+        "﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.8799ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "api-history-jit-diagnostic",
+      "phase": "diagnostic_only",
+      "acceptance": false,
+      "receipt": "api-history-jit-diagnostic.json",
+      "log": "api-history-jit-diagnostic.log",
+      "started": "2026-10-26T16:18:23.475Z",
+      "finished": "2026-10-26T16:20:19.375Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "apps/api/dist/artifact-history.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 28908,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "skips": [],
+      "aggregate": null
+    },
+    {
+      "name": "api-focused-1",
+      "phase": "broad_final",
+      "acceptance": true,
+      "receipt": "api-focused-1.json",
+      "log": "api-focused-1.log",
+      "started": "2026-10-26T16:24:40.751Z",
+      "finished": "2026-10-26T16:26:25.184Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-execution-delivery.pg.test.js",
+        "apps/api/dist/artifact-filename.test.js",
+        "apps/api/dist/artifact-execution.test.js",
+        "apps/api/dist/artifact-execution.pg.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "PGOPTIONS": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027d"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 15964,
+      "counts": {
+        "tests": 41,
+        "pass": 41,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "skips": [],
+      "aggregate": null
+    },
+    {
+      "name": "api-consumers-1",
+      "phase": "broad_final",
+      "acceptance": false,
+      "receipt": "api-consumers-1.json",
+      "log": "api-consumers-1.log",
+      "started": "2026-10-26T16:24:40.759Z",
+      "finished": "2026-10-26T16:29:42.138Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/artifact-history.test.js",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/project-collection.pg.test.js",
+        "apps/api/dist/project-list.test.js",
+        "apps/api/dist/project-file-update-history.test.js",
+        "apps/api/dist/project-file-check-history.test.js",
+        "apps/api/dist/project-file-batch-recovery.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/review-linked-workspace.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/m4-workspace.pg.test.js",
+        "apps/api/dist/m4-case-templates.test.js",
+        "apps/api/dist/unified-authoring.test.js",
+        "apps/api/dist/update-project.test.js",
+        "apps/api/dist/project-kind-conversion.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "PGOPTIONS": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027d"
+      },
+      "status": 1,
+      "signal": null,
+      "pid": 44392,
+      "counts": {
+        "tests": 93,
+        "pass": 88,
+        "fail": 4,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.4946ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "api-delivery-1",
+      "phase": "broad_final",
+      "acceptance": true,
+      "receipt": "api-delivery-1.json",
+      "log": "api-delivery-1.log",
+      "started": "2026-10-26T16:24:40.775Z",
+      "finished": "2026-10-26T16:27:21.762Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/word-delivery-artifact.test.js",
+        "apps/api/dist/generated-word-delivery.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/review-billing.pg.test.js",
+        "apps/api/dist/review-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-fixed-billing.pg.test.js",
+        "apps/api/dist/review-price-activation.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "PGOPTIONS": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027d"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 27020,
+      "counts": {
+        "tests": 14,
+        "pass": 13,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.3827ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "worker-unit-1",
+      "phase": "broad_final",
+      "acceptance": true,
+      "receipt": "worker-unit-1.json",
+      "log": "worker-unit-1.log",
+      "started": "2026-10-26T16:24:40.771Z",
+      "finished": "2026-10-26T16:25:23.874Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/review-input-execution.test.js",
+        "apps/worker/dist/m4-input.test.js",
+        "apps/worker/dist/m4-stages.test.js",
+        "apps/worker/dist/unified-execution-input.test.js",
+        "apps/worker/dist/review-file-stage.test.js",
+        "apps/worker/dist/unified-input.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "PGOPTIONS": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027d"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 45152,
+      "counts": {
+        "tests": 64,
+        "pass": 62,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ M4 output symlink never publishes external bytes (0.294ms) # SKIP",
+        "﹣ report symlinks cannot publish outside files (0.3307ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "worker-pg-1",
+      "phase": "broad_final",
+      "acceptance": true,
+      "receipt": "worker-pg-1.json",
+      "log": "worker-pg-1.log",
+      "started": "2026-10-26T16:24:40.783Z",
+      "finished": "2026-10-26T16:27:34.732Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/artifact-execution-source.pg.test.js",
+        "apps/worker/dist/execution-input-loaders.pg.test.js",
+        "apps/worker/dist/run-execution-consumers.pg.test.js",
+        "apps/worker/dist/m3-review-pipeline.pg.integration.test.js",
+        "apps/worker/dist/m4-pipeline.pg.test.js",
+        "apps/worker/dist/unified-authoring.pg.test.js",
+        "apps/worker/dist/authoring-pause.pg.test.js",
+        "apps/worker/dist/review-project-e2e.pg.test.js",
+        "apps/worker/dist/review-reassembly.test.js",
+        "apps/worker/dist/review-word-registration.pg.integration.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "PGOPTIONS": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027d"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 41504,
+      "counts": {
+        "tests": 42,
+        "pass": 38,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 4,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history (1.1608ms) # SKIP",
+        "﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.0456ms) # SKIP",
+        "﹣ project review: real dual Word delivery, explicit promotion, manual export, idempotency and owner isolation (1.3559ms) # SKIP",
+        "﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.0935ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "name": "api-consumers-2",
+      "phase": "final_consumer_correction",
+      "acceptance": true,
+      "receipt": "api-consumers-2.json",
+      "log": "api-consumers-2.log",
+      "started": "2026-10-26T16:32:38.273Z",
+      "finished": "2026-10-26T16:36:09.044Z",
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/artifact-history.test.js",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/project-collection.pg.test.js",
+        "apps/api/dist/project-list.test.js",
+        "apps/api/dist/project-file-update-history.test.js",
+        "apps/api/dist/project-file-check-history.test.js",
+        "apps/api/dist/project-file-batch-recovery.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/review-linked-workspace.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/m4-workspace.pg.test.js",
+        "apps/api/dist/m4-case-templates.test.js",
+        "apps/api/dist/unified-authoring.test.js",
+        "apps/api/dist/update-project.test.js",
+        "apps/api/dist/project-kind-conversion.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "PGOPTIONS": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027d"
+      },
+      "status": 0,
+      "signal": null,
+      "pid": 22428,
+      "counts": {
+        "tests": 93,
+        "pass": 92,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "skips": [
+        "﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.4352ms) # SKIP"
+      ],
+      "aggregate": null
+    }
+  ],
+  "source_freezes": {
+    "initial_files": 1674,
+    "initial_equal": true,
+    "broad_files": 1674,
+    "broad_equal": true,
+    "final_files": 1674,
+    "final_equal": true,
+    "initial_to_broad": [
+      {
+        "path": "apps/api/dist/artifact-execution.pg.test.js",
+        "before": "31fd176d5eb61a13efcc0d50be77062ea4936c85f7aead066da6d05d252772d6",
+        "after": "d06c80f0670734b9bed06031edf837218a8aee5e80e2f3e9c5b4cf493c1aaa73"
+      },
+      {
+        "path": "apps/api/dist/artifact-history.js",
+        "before": "322c9ccd4df16a40d5f53d91c6ff828577ba1c511bc3a6e7c594dc73bd14784b",
+        "after": "c911e365e6555bdb5a704ba2b65bc32e9d6567c35811120469f865d092f53f26"
+      },
+      {
+        "path": "apps/api/dist/m4-workspace.pg.test.js",
+        "before": "6814344a0f71a0791466310136ba59374c0aea5b502d4dd49461c0cfc6b8054b",
+        "after": "f4647e2578948fd471073c9587e73e7df66a9399996b7ec1e59f7fe03a0fcea2"
+      },
+      {
+        "path": "apps/api/dist/non-production-test.test.js",
+        "before": "ff421e94631d179d5129cd8ebaa27d0fb9214114b6b7e10bde1bc0440dfbfdd3",
+        "after": "d1b132d50afe52342da4798c4d1fdfd0ebc50f7852c52f38ac29a35ea0e9a618"
+      },
+      {
+        "path": "apps/api/dist/project-list.js",
+        "before": "e11ecb44a664ac0682c101be888312c64cccdfd374c7c69b4036134ece678704",
+        "after": "6ecfc66745e06a9c35fb2cb67ca01fa094a23daa2e03dac9ab32204a7f942287"
+      },
+      {
+        "path": "apps/api/dist/review-readable-retention.pg.test.js",
+        "before": "3a2085184a9e561e30b7cd0d80c63d15cac971f5e0e774412366c9e1fd8cc6e4",
+        "after": "0a12c85a2d40b8ee892332573fb3a8c2c18c7fd3d2a2f973ab64c9cf527d664a"
+      },
+      {
+        "path": "apps/api/dist/run-execution-delivery.pg.test.js",
+        "before": "af7e151cbaf0b86f1021ddee4bdfd69030465200ee30faf4aefb3117960ad1a4",
+        "after": "2ccbfa78a9a71c2f2c9302909dfede9413eade28fd4854baa922a144e43b13e7"
+      },
+      {
+        "path": "apps/api/src/artifact-execution.pg.test.ts",
+        "before": "559cfa6b1affc1cea97b1483ceca3a1fa5a9fa7df7928c4c8f08c4e2679ed37c",
+        "after": "de9649406f4459a6ad6f8ffb3543d8db78f71ae4362f1c112c8d66d0598ba112"
+      },
+      {
+        "path": "apps/api/src/artifact-history.ts",
+        "before": "d48249e9ccf24bc21afe62fa10d7be7bda75633adc1b8fca716bbaaed6ccaee6",
+        "after": "cf98653c03a73110641e6ef540c4d0ee733e41d055f7d3de3286d739394e1d99"
+      },
+      {
+        "path": "apps/api/src/m4-workspace.pg.test.ts",
+        "before": "5512f2234007ed35750d0b23bb6d0592084500b662acf7584058264427d82d49",
+        "after": "fb3735c15a6f49eb15a9c9aba5740e6c10c3bfaa9c1eea6a5a88f2f0755313a7"
+      },
+      {
+        "path": "apps/api/src/non-production-test.test.ts",
+        "before": "50b983f2836375f464717d75dcdd73f6bd0b333b53b88933cbffd0034a937f39",
+        "after": "3bb640b54a3be97c5280e4a77540efe9219f16e47b172eb562ff96e2b5777c0d"
+      },
+      {
+        "path": "apps/api/src/project-list.ts",
+        "before": "82a419d225917bc133d71e27ececd83d36b133ae669caffd6bbb157dbd026a18",
+        "after": "600ceb9725df88c7953b9f0c1e1eefc85f06ddace26fa94b7fc8563cbfc1980a"
+      },
+      {
+        "path": "apps/api/src/review-readable-retention.pg.test.ts",
+        "before": "9dd1b8dbce56c7baa490f5df059c19090a2800d94dfe8e9bed838ed5904af55c",
+        "after": "03799f35dad12dccd7a1cf3794aa345a63cad2599f448c03563a0f14a874153b"
+      },
+      {
+        "path": "apps/api/src/run-execution-delivery.pg.test.ts",
+        "before": "dffa92a15648990f755e100ec19f0bc51f982a60a2588b7f3e66220b7813e09b",
+        "after": "b639fa2ad16e3dda654cc513448ea7fe808dc287a5910a47878d95edb4a69ed0"
+      },
+      {
+        "path": "db/migrations/0126_run_execution_deliveries.sql",
+        "before": "341274fc5e7a828182b5c633a576b3cf8877d0063aaff94eba94172498345e69",
+        "after": "6176959e943235fa037768399246e8bb7a5eedbca355f92939be9d2e8e061ff8"
+      }
+    ],
+    "broad_to_final": [
+      {
+        "path": "apps/api/dist/artifact-history.js",
+        "before": "c911e365e6555bdb5a704ba2b65bc32e9d6567c35811120469f865d092f53f26",
+        "after": "1bdd0b1b512406cdafbb698666beea3c13284e24ea4a821303b1c514884216a2"
+      },
+      {
+        "path": "apps/api/dist/artifact-history.test.js",
+        "before": "24c4772e52ea09e9e232d2589b02f1791ea751f234836f371a70fec2de44f2ef",
+        "after": "d5b905b93f703cf647ec9918d62240ae192189107174de19099a09daefbb84df"
+      },
+      {
+        "path": "apps/api/dist/project-list.js",
+        "before": "6ecfc66745e06a9c35fb2cb67ca01fa094a23daa2e03dac9ab32204a7f942287",
+        "after": "e506a42bcb5129a22c1405748b6a30d9f335b510767b078ee0fb771f6a28fcd8"
+      },
+      {
+        "path": "apps/api/src/artifact-history.test.ts",
+        "before": "192d826f4b6b08b8e9cd9f9fa7f39af5ce549642ceeb333b2532949438f14892",
+        "after": "169accfa88bac3be9323e00d204166815bc82976e5bf931e4c83e4e181916e5c"
+      },
+      {
+        "path": "apps/api/src/artifact-history.ts",
+        "before": "cf98653c03a73110641e6ef540c4d0ee733e41d055f7d3de3286d739394e1d99",
+        "after": "2231d56dcef1c074f0b4eec15f2445551b59569a44f355a2b6387805f92c4d50"
+      },
+      {
+        "path": "apps/api/src/project-list.ts",
+        "before": "600ceb9725df88c7953b9f0c1e1eefc85f06ddace26fa94b7fc8563cbfc1980a",
+        "after": "685b4882cf4cdf8195c78c8104ab6cf924d6ec71101c9879959462139e68aad2"
+      }
+    ]
+  },
+  "database_audit": {
+    "sibling_templates": [
+      {
+        "database": "bb_execution_delivery_template_20261027",
+        "runs": 0,
+        "artifacts": 0,
+        "deliveries": 0,
+        "members": 0
+      },
+      {
+        "database": "bb_execution_delivery_template_20261027b",
+        "runs": 0,
+        "artifacts": 0,
+        "deliveries": 0,
+        "members": 0
+      },
+      {
+        "database": "bb_execution_delivery_template_20261027c",
+        "runs": 0,
+        "artifacts": 0,
+        "deliveries": 0,
+        "members": 0
+      }
+    ],
+    "server_version": "16.14",
+    "server_port": "15528",
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/delivery-postgres/data",
+    "schema": [
+      {
+        "filename": "0126_run_execution_deliveries.sql"
+      },
+      {
+        "filename": "0125_artifact_execution_bindings.sql"
+      },
+      {
+        "filename": "0124_run_execution_business_snapshots.sql"
+      }
+    ],
+    "runs": 0,
+    "executions": 0,
+    "reviews": 0,
+    "m4": 0,
+    "artifacts": 0,
+    "artifact_bindings": 0,
+    "deliveries": 0,
+    "delivery_members": 0,
+    "clones": [],
+    "other_clients": [],
+    "postmaster_pid": 38116
+  },
+  "postgres_stopped": {
+    "status": 3,
+    "stdout": "pg_ctl: no server running\r\n",
+    "stderr": ""
+  },
+  "limits": [
+    "Only existing V1; no successor adoption, active execution switch, surcharge formula/confirmation/accounting or full UX-A03 acceptance.",
+    "M4 durable preserves existing non-dynamic persistence permissions; it does not claim terminal success.",
+    "The existing history DTO requires a baseline for any pair; valid two-member first-authoring delivery remains omitted from that list.",
+    "No browser, real provider, Azure, payment or Word/WPS layout acceptance in this increment. Synthetic private bytes exercise real PostgreSQL, promoters, readers and finish transactions.",
+    "Initial failed invocations and diagnostic-only JIT-off run are retained and never promoted into final acceptance.",
+    "Legacy receipts use terminal-event chronology and available exact registry evidence; gaps have no authorization fallback."
+  ],
+  "corrections": [
+    "0126 initial CASE syntax and view/base composite-function incompatibility corrected before the initial source freeze.",
+    "Canonical UTC member JSON and complete per-phase provenance validation prevent timezone drift and partial damaged receipts.",
+    "Project collection SQL aliases, assistant result selection and latest-result projections now consume frozen delivery data.",
+    "Legacy migration tests remove the complete later scaffold only in private clones. Seeded terminal fixtures now follow real job/run/event order and timestamps.",
+    "A non-inlined invoker phase predicate bounds repeated proof expansion. History then reads its exact validated receipt members directly to avoid repeated nested view planning; final correction changed only history, its integration test and the project-list alias (six src/js files); the complete consumer group was rerun."
+  ],
+  "not_implemented": [
+    "V2 adoption and successor execution",
+    "per-execution review reports, editors, M4 registries and output identifiers",
+    "saved-work incremental reuse with new materials",
+    "B surcharge formula, confirmed quote and cumulative accounting",
+    "complete same-task supplementary-material desktop journey"
+  ]
+}

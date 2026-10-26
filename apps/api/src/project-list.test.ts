@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
-import { azureBlobs } from './data.js';
+import { azureBlobs, type PrivateBlobs } from './data.js';
 import { claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -66,9 +66,13 @@ test('#10 PostgreSQL global search, literal names, tied cursor pages, archive is
   }
 });
 
-test('#10 actual run status and previous successful Word remain available after a newer failure and archive', {skip:!connection||!blobConnection},async()=>{
+test('#10 actual run status and previous successful Word remain available after a newer failure and archive', {skip:!runConnection},async()=>{
   const pool=new Pool({connectionString:runConnection});const owner=`list-${randomUUID()}`;
-  const blobs=azureBlobs(blobConnection!);
+  const contents=new Map<string,Buffer>();
+  const memory:PrivateBlobs={put:async(key,bytes)=>{contents.set(key,bytes);},get:async key=>{const bytes=contents.get(key);assert.ok(bytes);return bytes;},
+    getIfExists:async key=>contents.get(key)??null,getIfExistsBounded:async(key,max)=>{const bytes=contents.get(key);return bytes&&bytes.length<=max?bytes:null;},
+    exists:async key=>contents.has(key),delete:async key=>{contents.delete(key);}};
+  const blobs=blobConnection?azureBlobs(blobConnection):memory;
   const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try {
@@ -83,15 +87,21 @@ test('#10 actual run status and previous successful Word remain available after 
     assert.equal((await send('GET','/api/v1/projects?archive=archived')).json().items[0].status,'running','archive does not cancel or pause the running job');
     await send('POST',`/api/v1/projects/${p.project_id}/archive`,{archived:false});
     const bytes=makeSyntheticDocxFixture();const artifact=await promoteWordArtifact(pool,lease,bytes,blobs);
+    const unused=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic unused list candidate'}),blobs);
     assert.equal((await row()).json().items[0].latest_artifact,null,'promotion alone is not a successful result');
     await finish(pool,lease,'succeeded',{artifactId:artifact.artifactId,artifactVersion:artifact.artifactVersion,blobs});
     assert.equal((await row()).json().items[0].status,'succeeded');
+    const delivered=(await row()).json().items[0].latest_artifact;
+    const receipt=(await pool.query("SELECT delivered_at FROM bb_run_execution_deliveries WHERE run_id=$1 AND delivery_phase='final'",[lease.runId])).rows[0];
+    assert.equal(delivered.created_at,receipt.delivered_at.toISOString(),'latest result time is its accepted delivery time');
     const second=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});assert.equal(second.statusCode,202,second.body);
     const secondLease=await claim(pool,30);assert.ok(secondLease);assert.equal(secondLease.runId,second.json().run_id);
     await finish(pool,secondLease,'failed',{errorCode:'DATA_UNAVAILABLE'});
     const latest=(await row()).json().items[0];assert.equal(latest.status,'failed');assert.equal(latest.latest_run.run_id,secondLease.runId);
     assert.equal(latest.latest_artifact.artifact_id,artifact.artifactId,'new failure keeps the earlier successful result');
     assert.equal((await send('GET','/api/v1/projects?status=failed')).json().items.length,1);
+    await pool.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=$3,created_at=created_at+interval '10 days',updated_at=now() WHERE id=$1",[lease.runId,unused.artifactId,unused.artifactVersion]);
+    assert.deepEqual((await row()).json().items[0].latest_artifact,delivered,'current run primary and timestamps do not replace the accepted result');
     await send('POST',`/api/v1/projects/${p.project_id}/archive`,{archived:true});
     const archived=(await send('GET','/api/v1/projects?archive=archived')).json().items[0];assert.equal(archived.latest_artifact.artifact_id,artifact.artifactId);
     const metadata=await send('GET',`/api/v1/artifacts/${artifact.artifactId}`);assert.equal(metadata.statusCode,200,metadata.body);

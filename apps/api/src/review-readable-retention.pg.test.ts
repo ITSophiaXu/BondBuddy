@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Pool } from 'pg';
-import { digest, uid, type PrivateBlobs } from './data.js';
+import { digest, transaction, uid, type PrivateBlobs } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -82,8 +82,17 @@ async function context(){
       VALUES($1,1,$2,$3,$4,$5,$6,'passed','available',$7)`,[artifactId,owner,runId,DOCX,wordHash,artifactKey,evidenceId]);
     await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
       VALUES($1,$2,$3,$4,1,'report','synthetic-report.docx')`,[owner,projectId,runId,artifactId]);
-    await pool.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1",[runId,artifactId]);
-    await pool.query("UPDATE bb_jobs SET state='succeeded' WHERE id=$1",[jobId]);
+    // This is a seeded delivery, but its terminal boundary has the same locks,
+    // job/run ordering, timestamp and event cursor as the real queue transaction.
+    await transaction(pool,async c=>{
+      await c.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,runId]);
+      await c.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,jobId]);
+      await c.query("UPDATE bb_jobs SET state='succeeded',stage='succeeded',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[jobId]);
+      const terminal=(await c.query("UPDATE bb_runs SET state='succeeded',stage='succeeded',artifact_id=$2,artifact_version=1,event_cursor=event_cursor+1,updated_at=now() WHERE id=$1 RETURNING event_cursor",[runId,artifactId])).rows[0];
+      await c.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload)
+        VALUES($1,$2,$3,$4,$3,'run.state_changed','succeeded','succeeded',$5)`,
+        [uid(),owner,runId,terminal.event_cursor,{reason:'synthetic_readable_delivery',channel:'production'}]);
+    });
     const row={id:resultId,prompt_snapshot_ref:promptId,owner_user_id:owner,project_id:projectId,run_id:runId,input_hash:inputHash,
       call_id:callId,result_ref:resultKey,result_sha256:resultHash,byte_size:result.length};
     const read=()=>readReviewMarkdown(readerPool,blobs,row);

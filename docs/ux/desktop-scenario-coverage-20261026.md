@@ -215,3 +215,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 ### 后续成果执行来源增量
 
 新增[成果绑定准确执行来源](../acceptance/desktop-ux-coverage-20261026/artifact-execution-bindings/README.md)：0125 对全部 artifact 状态/业务版本绑定不可变执行/输入身份，实际 API/Worker 消费者读取准确 V1 来源，缺失不能回退旧 artifact/run。真实 PG、HTTP 授权下载和 Worker previous_output 门验证有效来源可用、缺失来源拒绝且旧历史保留。最终各独立组为 API 26/26、消费者 89 pass/2 skip、交付 13 pass/1 skip、Worker 62 pass/2 skip、Worker PG 38 pass/4 skip；新 Worker 测试随后仅顺序化单连接证据查询，最终 1/1，不与前组累计。首次失败及修正、1,670 项源码冻结和本轮数据库停机证据独立保留。没有浏览器或新输入续做全旅程，V2/采用、版本化报告/成果、重做增量和 B 追加价格仍未完成，G03 与完整 goal 保持 active。
+
+### 后续实际交付记录增量
+
+[执行交付记录验收](../acceptance/desktop-ux-coverage-20261026/execution-deliveries/README.md)追加准确 V1 交付 receipt 与成员，不再以整个 run 成功或当前配对推断所有候选均已交付。终态与原结算事务共同提交，旧非动态 M4 耐久读取另记阶段；命名、历史分页、助手成果选择、最新成果和 previous_output 使用准确交付。完整成员及来源丢失时对应阶段拒读，实时撤销和测试授权仍有效。各组与各轮结果只在专项 summary 中分别列明，不相加为用户旅程覆盖率。新增检查还确认两成员首稿被旧历史 baseline 必需条件漏列的独立待修边界，不声称历史功能已全覆盖。本轮没有采用新材料、追加报价确认、后继执行或完整桌面新输入续做验收，G03 和完整 goal 继续 active。

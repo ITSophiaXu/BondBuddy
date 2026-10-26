@@ -3,14 +3,47 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
-import { azureBlobs, digest } from './data.js';
-import { claim, finish, promoteWordArtifact } from './queue.js';
+import { azureBlobs, digest, type PrivateBlobs } from './data.js';
+import { checkpointStage, claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { pdfSample,PDF } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection=await isolatedTestDatabase(undefined,'project-collection');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
+test('project collection keeps the delivered names, file groups and exact members after mutable job/primary changes',{skip:!connection},async()=>{
+  const pool=new Pool({connectionString:connection}),owner='collection-receipt-'+randomUUID();
+  const contents=new Map<string,Buffer>();
+  const blobs:PrivateBlobs={put:async(key,bytes)=>{contents.set(key,bytes);},get:async key=>{const bytes=contents.get(key);assert.ok(bytes);return bytes;},
+    getIfExists:async key=>contents.get(key)??null,getIfExistsBounded:async(key,max)=>{const bytes=contents.get(key);return bytes&&bytes.length<=max?bytes:null;},
+    exists:async key=>contents.has(key),delete:async key=>{contents.delete(key);}};
+  const origin='http://bondbuddy.test';
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const ok=async(method:string,url:string,payload?:unknown)=>{const response=await app.inject({method:method as any,url,payload:payload as any,headers:{origin}});assert.ok(response.statusCode<300,response.body);return response.json();};
+  try{
+    const p=await ok('POST','/api/v1/projects',{name:'Synthetic frozen project',kind:'update',issuer_name:'Synthetic issuer',market:'sse',offering:'private'});
+    const input=await ok('POST',`/api/v1/projects/${p.project_id}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+    const run=await ok('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:1,input_hash:input.input_hash,
+      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});
+    const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,run.run_id);
+    const promote=(text:string)=>promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text}),blobs,'generated_pair_v1');
+    const revision=await promote('Synthetic published revision'),clean=await promote('Synthetic published clean'),orphan=await promote('Synthetic unused candidate');
+    assert.equal(revision.status,'available');assert.equal(clean.status,'available');assert.equal(orphan.status,'available');
+    await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:revision.artifactId,clean_artifact_id:clean.artifactId});
+    const files=()=>ok('GET',`/api/v1/projects/${p.project_id}/files`);
+    assert.deepEqual((await files()).items,[],'saving verified candidates does not publish them');
+    await finish(pool,lease,'succeeded',{artifactId:revision.artifactId,artifactVersion:revision.artifactVersion,blobs});
+    const delivered=(await files()).items;
+    assert.equal(delivered.length,2);
+    assert.equal(delivered.find((file:any)=>file.file_id===clean.artifactId)?.file_key,`${p.project_id}:update:clean`);
+    assert.equal(delivered.find((file:any)=>file.file_id===revision.artifactId)?.file_key,`${p.project_id}:update:revision`);
+    assert.match(delivered.find((file:any)=>file.file_id===clean.artifactId)?.filename,/清洁版/);
+    assert.match(delivered.find((file:any)=>file.file_id===revision.artifactId)?.filename,/修订版/);
+    await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages,word_delivery_pair}',jsonb_build_object('revision_artifact_id',$2::text,'clean_artifact_id',$2::text)) WHERE run_id=$1",[run.run_id,orphan.artifactId]);
+    await pool.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[run.run_id,orphan.artifactId,orphan.artifactVersion]);
+    assert.deepEqual((await files()).items,delivered,'live job pairing and run primary do not rename, regroup or add delivery members');
+  }finally{await app.close();await pool.end();}
+});
 test('project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation',{skip:!connection||!storage},async()=>{
   const pool=new Pool({connectionString:connection});const firstOwner='collection-'+randomUUID();let owner=firstOwner;
   const blobs=azureBlobs(storage!);const origin='http://bondbuddy.test';

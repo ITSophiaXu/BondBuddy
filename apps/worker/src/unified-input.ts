@@ -67,7 +67,7 @@ export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: Revi
 /** Reload the exact successful report and its immutable source input on every recovery. */
 export async function reviewResultArtifact(pool:Pool,run:RunRow,pin:ReviewResultPin){
   if(!Value.Check(ReviewResultPinSchema,pin))return null;
-  const row=(await pool.query(`SELECT a.object_key,a.sha256,i.input_hash,i.manifest,e.snapshot FROM bb_execution_artifact_versions a
+  const row=(await pool.query(`SELECT a.object_key,a.sha256,i.input_hash,i.manifest,e.snapshot FROM bb_delivered_artifact_versions a
     JOIN bb_review_artifacts ra ON ra.artifact_id=a.id AND ra.artifact_version=a.version AND ra.owner_user_id=a.owner_user_id AND ra.run_id=a.run_id AND ra.kind='report'
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id AND r.project_id=ra.project_id
     JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
@@ -116,9 +116,12 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
 }
 
 async function previousArtifact(pool: Pool, run: RunRow, pin: NonNullable<UnifiedAuthoringInput['previous_output']>) {
-  const row = (await pool.query(`SELECT a.object_key,a.sha256 FROM bb_execution_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
-    WHERE a.id=$1 AND a.version=$2 AND a.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND r.input_revision=$6
-      AND r.state='succeeded' AND a.quality_status='passed' AND a.delivery_status='available'`,
+  const row = (await pool.query(`SELECT a.object_key,a.sha256 FROM bb_delivered_artifact_versions a
+    JOIN bb_run_execution_delivery_artifact_details d ON d.owner_user_id=a.owner_user_id AND d.run_id=a.run_id
+      AND d.artifact_id=a.id AND d.artifact_version=a.version
+    WHERE a.id=$1 AND a.version=$2 AND a.owner_user_id=$3 AND d.project_id=$4 AND d.run_id=$5 AND d.input_revision=$6
+      AND d.delivery_phase='final' AND d.terminal_state='succeeded' AND d.channel='production'
+      AND a.quality_status='passed' AND a.delivery_status='available'`,
   [pin.artifact_id,pin.version,run.owner_user_id,run.project_id,pin.run_id,pin.input_revision])).rows[0];
   return row && String(row.sha256).trim() === pin.sha256 ? row : null;
 }

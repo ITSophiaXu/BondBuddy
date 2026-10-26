@@ -6,6 +6,7 @@ import { inputManifestHash } from './production-rule-pin.js';
 import { creditBalance,quoteDto } from './billing.js';
 import { m4QuoteDto } from './m4-billing.js';
 import { draft as reviewDraft } from './review-workspace.js';
+import { artifactDownloadName, artifactNameColumns, artifactNameJoins } from './artifact-filename.js';
 
 type Db=Pool|PoolClient;
 const param=(r:FastifyRequest,k:string)=>(r.params as Record<string,string>)[k];
@@ -73,15 +74,16 @@ export function registerProjectAssistant(app:FastifyInstance,db:()=>Pool,owner:(
   app.get('/api/v1/assistant/projects/:project_id',async request=>{
     const user=await owner(request),id=param(request,'project_id'),p=await project(db(),user,id);
     const materials=(await db().query('SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC',[user,id])).rows.map(materialDto);
-    const rows=(await db().query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.created_at,r.input_revision,
-      COALESCE(m.filename,'清洁版募集说明书.docx') AS filename
-      FROM bb_execution_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
-      JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
-      LEFT JOIN bb_m4_artifacts m ON m.artifact_id=a.id AND m.artifact_version=a.version AND m.owner_user_id=a.owner_user_id
-      WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND a.delivery_status='available' AND a.quality_status='passed'
-      AND (a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' OR m.kind='document') ORDER BY r.created_at DESC`,[user,id])).rows;
-    const results:AssistantResult[]=rows.map(a=>({pin:{source_project_id:id,artifact_id:a.id,artifact_version:a.version,sha256:a.sha256.trim()},
-      run_id:a.run_id,filename:a.filename,label:`${a.filename} · ${date(a.created_at).slice(0,16).replace('T',' ')}`,created_at:date(a.created_at)}));
+    const rows=(await db().query(`SELECT a.id,a.version,a.sha256,a.media_type,n_delivery.run_id,n_delivery.delivered_at AS created_at,
+      n_delivery.input_revision,${artifactNameColumns('a')}
+      FROM bb_delivered_artifact_versions a ${artifactNameJoins('a')}
+      WHERE n_delivery.owner_user_id=$1 AND n_delivery.project_id=$2 AND n_delivery.delivery_phase='final'
+        AND n_delivery.terminal_state='succeeded' AND n_delivery.channel='production' AND a.delivery_status='available' AND a.quality_status='passed'
+        AND ((a.id=n_delivery.word_delivery_pair->>'clean_artifact_id' AND a.version=(n_delivery.word_delivery_pair->>'clean_artifact_version')::integer)
+          OR n_delivery.naming_m4_kind='document')
+      ORDER BY n_delivery.delivered_at DESC,n_delivery.run_id DESC,n_delivery.execution_version DESC,a.id DESC,a.version DESC`,[user,id])).rows;
+    const results:AssistantResult[]=rows.map(a=>{const filename=artifactDownloadName(a).filename;return {pin:{source_project_id:id,artifact_id:a.id,artifact_version:a.version,sha256:a.sha256.trim()},
+      run_id:a.run_id,filename,label:`${filename} · ${date(a.created_at).slice(0,16).replace('T',' ')}`,created_at:date(a.created_at)};});
     return {project:projectDto(p),materials,results};
   });
   const path='/api/v1/assistant/topics/:topic_id/cards';

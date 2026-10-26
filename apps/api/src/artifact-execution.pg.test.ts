@@ -90,7 +90,18 @@ function memoryBlobs(): PrivateBlobs {
     exists: async key => values.has(key), delete: async key => { values.delete(key); } };
 }
 async function removeScaffold(db: Db) {
-  await db.query(`DROP TABLE bb_artifact_execution_bindings CASCADE;
+  // Recreate 0125 on its real predecessor schema, only inside private clones.
+  // Later delivery FKs and triggers must leave together, not as a half-schema.
+  await db.query(`DROP VIEW IF EXISTS bb_run_execution_delivery_artifact_details CASCADE;
+    DROP TABLE IF EXISTS bb_run_execution_delivery_artifacts,bb_run_execution_deliveries,bb_run_execution_delivery_gaps CASCADE;
+    DROP FUNCTION IF EXISTS bb_capture_terminal_execution_delivery() CASCADE;
+    DROP FUNCTION IF EXISTS bb_capture_run_execution_delivery(text,text,text,text) CASCADE;
+    DROP FUNCTION IF EXISTS bb_capture_m4_durable_delivery(text,text) CASCADE;
+    DROP FUNCTION IF EXISTS bb_check_run_execution_delivery() CASCADE;
+    DROP FUNCTION IF EXISTS bb_check_run_execution_delivery_artifact() CASCADE;
+    DROP FUNCTION IF EXISTS bb_run_execution_delivery_plan(text,text,text,text) CASCADE;
+    DROP FUNCTION IF EXISTS bb_execution_delivery_artifact_ready(bb_artifact_versions,text,timestamptz) CASCADE;
+    DROP TABLE bb_artifact_execution_bindings CASCADE;
     DROP FUNCTION bb_bind_artifact_execution() CASCADE;
     DROP FUNCTION bb_check_artifact_execution_binding() CASCADE;
     DROP FUNCTION bb_guard_artifact_execution_identity() CASCADE;

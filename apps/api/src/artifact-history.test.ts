@@ -67,19 +67,22 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
         contents.set(key, bytes);
         await pool.query(`INSERT INTO bb_word_delivery_evidence
           (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
-           quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
-          VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7)`,
+           quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence,created_at)
+          VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7,$8)`,
           [evidenceId, user, id, artifactId, hash, bytes.length,
-            { sha256: hash, byte_size: bytes.length, validator_version: 'synthetic-validator', quality_status: 'passed' }]);
+            { sha256: hash, byte_size: bytes.length, validator_version: 'synthetic-validator', quality_status: 'passed' }, options.time]);
         await pool.query(`INSERT INTO bb_artifact_versions
-          (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
-          VALUES($1,1,$2,$3,$4,$5,$6,'passed',$7,$8)`,
-          [artifactId, user, id, word, hash, key, options.testGrantId ? 'test_only' : 'available', evidenceId]);
+          (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id,created_at)
+          VALUES($1,1,$2,$3,$4,$5,$6,'passed',$7,$8,$9)`,
+          [artifactId, user, id, word, hash, key, options.testGrantId ? 'test_only' : 'available', evidenceId, options.time]);
         return key;
       }
       const primaryKey = state === 'succeeded' || state === 'test_completed' ? await artifact(primary) : null;
       if (options.bundle) { await artifact(clean); await artifact(baseline); }
-      await pool.query(`UPDATE bb_runs SET state=$2,updated_at=$3,artifact_id=$4,artifact_version=$5 WHERE id=$1`,
+      await pool.query('UPDATE bb_jobs SET state=$2,stage=$2,lease_token=NULL,lease_until=NULL WHERE run_id=$1',[id,state]);
+      await pool.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload,occurred_at)
+        VALUES($1,$2,$3,1,$3,'run.state_changed',$4,$4,'{}',$5)`,[randomUUID(),user,id,state,options.time]);
+      await pool.query(`UPDATE bb_runs SET state=$2,stage=$2,event_cursor=1,updated_at=$3,artifact_id=$4,artifact_version=$5 WHERE id=$1`,
         [id, state, options.time, primaryKey ? primary : null, primaryKey ? 1 : null]);
       return { id, primary, clean, baseline, primaryKey };
     }
@@ -103,6 +106,9 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       await pool.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,
         '{stages,word_delivery_pair,baseline_artifact_id}',to_jsonb($2::text)) WHERE run_id=$1`,
         [mixedRun.id, otherProjectResult.baseline]);
+      assert.ok((await read(url())).json().items.some((item: { run_id: string }) => item.run_id === mixedRun.id),
+        'a later mutable job pair cannot replace the exact pair already delivered');
+      await pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1", [mixedRun.primary]);
       const olderFirst = [middle, latest].sort((a, b) => b.id.localeCompare(a.id));
       const first = await read(`${url()}?limit=1`);
       assert.equal(first.statusCode, 200, first.body);
@@ -115,6 +121,12 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
         ['channel', 'completed_at', 'input_revision', 'primary_artifact', 'run_id', 'state', 'word_delivery']);
       const cursor = first.json().page.next_cursor as string;
       assert.ok(cursor);
+      for (const indexes of [[4], [4, 7]]) {
+        const overflow = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+        for (const index of indexes) overflow[index] = 2147483648;
+        const rejected = await read(`${url()}?cursor=${Buffer.from(JSON.stringify(overflow)).toString('base64url')}`);
+        assert.equal(rejected.statusCode, 422, 'cursor execution must fit the persisted PostgreSQL integer');
+      }
       const newSuccess = await makeRun(firstProject, { time: '2026-09-29T12:00:00.000001Z', bundle: true });
       const version2Evidence = randomUUID(), version2Key = `synthetic/history/${randomUUID()}`;
       await pool.query(`INSERT INTO bb_word_delivery_evidence
@@ -128,6 +140,7 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
         SELECT id,2,owner_user_id,run_id,media_type,sha256,$2,quality_status,delivery_status,$3
         FROM bb_artifact_versions WHERE id=$1 AND version=1`, [newSuccess.clean, version2Key, version2Evidence]);
       contents.set(version2Key, bytes);
+      await pool.query("UPDATE bb_runs SET updated_at=now()+interval '1 day' WHERE id=$1",[olderFirst[1].id]);
       const second = await read(`${url()}?limit=1&cursor=${encodeURIComponent(cursor)}`);
       assert.equal(second.statusCode, 200, second.body);
       assert.deepEqual(second.json().items.map((item: { run_id: string }) => item.run_id), [olderFirst[1].id]);
@@ -137,10 +150,11 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       assert.equal(third.json().items[0].word_delivery, null, 'single Word result does not claim a revision/baseline pair');
       assert.deepEqual(third.json().page, { has_more: false, next_cursor: null });
       assert.ok(!(await read(url())).json().items.some((item: { run_id: string }) => item.run_id === mixedRun.id),
-        'same-owner artifacts from another project/run cannot complete a mixed pair');
+        'revocation remains live even when the captured delivery pair is immutable');
       assert.equal((await read(url())).json().items[0].run_id, newSuccess.id, 'fresh list sees newer success');
-      assert.equal((await read(url())).json().items[0].word_delivery.clean.version, 2,
-        'a second deliverable sibling version does not duplicate the run or yield the older file');
+      assert.equal((await read(url())).json().items[0].word_delivery.clean.version, 1,
+        'an artifact registered after completion cannot replace the exact delivered clean copy');
+
       assert.equal((await read(url())).json().items.length, 4, 'only successful update runs are listed');
       assert.equal(await countGrants(), 0, 'history reads do not mint download grants');
       const direct = await read(`/api/v1/artifacts/${early.primary}`);
@@ -163,11 +177,12 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       assert.equal(await countGrants(), 1, 'failed read created no grant');
       contents.set(newSuccess.primaryKey!, bytes);
       assert.equal((await read(url())).statusCode, 200);
-      contents.delete(version2Key);
+      const publishedCleanKey = `synthetic/history/${newSuccess.clean}`;
+      contents.delete(publishedCleanKey);
       const missingSibling = await read(url());
       assert.equal(missingSibling.statusCode, 503, missingSibling.body);
       assert.equal(missingSibling.json().code, 'DATA_UNAVAILABLE', 'a missing clean file cannot be advertised in a complete bundle');
-      contents.set(version2Key, bytes);
+      contents.set(publishedCleanKey, bytes);
 
       for (const suffix of ['?cursor=bogus', '?limit=51', '?limit=0', '?extra=1']) {
         const invalid = await read(`${url()}${suffix}`);
@@ -210,6 +225,7 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       const corrupt = await pool.connect();
       try {
         await corrupt.query('BEGIN');
+        await corrupt.query('ALTER TABLE bb_run_execution_delivery_artifacts DROP CONSTRAINT bb_execution_delivery_member_origin');
         await corrupt.query('ALTER TABLE bb_artifact_execution_bindings DISABLE TRIGGER bb_artifact_execution_immutable');
         await corrupt.query('DELETE FROM bb_artifact_execution_bindings WHERE artifact_id=$1',[newSuccess.primary]);
         await corrupt.query('ALTER TABLE bb_artifact_execution_bindings ENABLE TRIGGER bb_artifact_execution_immutable');

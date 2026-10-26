@@ -8,7 +8,7 @@ export async function readProjectFileAsset(db:Db,owner:string,asset:ProjectFileA
   const pin=asset.pin;await project(db,owner,pin.source_project_id);
   const row=asset.kind==='material'
     ? (await db.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[owner,pin.source_project_id,asset.pin.material_id,asset.pin.material_version])).rows[0]
-    : (await db.query(`SELECT a.*,r.project_id FROM bb_execution_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
+    : (await db.query(`SELECT a.*,r.project_id FROM bb_delivered_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
       WHERE a.owner_user_id=$1 AND r.project_id=$2 AND a.id=$3 AND a.version=$4 AND a.delivery_status='available' AND a.quality_status='passed'`,[owner,pin.source_project_id,asset.pin.artifact_id,asset.pin.artifact_version])).rows[0];
   if(!row||row.sha256.trim()!==pin.sha256)throw missing();
   return row;
@@ -101,7 +101,7 @@ export async function registerProjectFileOutcome(c:PoolClient,run:any,artifact:{
   if(!link&&operation?.operation!=='patch'&&!(input?.kind==='document'&&input?.version==='m4-document-input-v1'))return;
   const owner=run.owner_user_id;
   const asset=async(id:string,version?:number):Promise<ProjectFileAsset>=>{
-    const a=(await c.query(`SELECT * FROM bb_execution_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3
+    const a=(await c.query(`SELECT * FROM bb_delivered_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3
       AND ($4::int IS NULL OR version=$4) AND delivery_status='available' AND quality_status='passed' ORDER BY version DESC LIMIT 1`,[owner,run.id,id,version??null])).rows[0];
     if(!a)throw missing();return {kind:'artifact',pin:{source_project_id:run.project_id,artifact_id:a.id,artifact_version:a.version,sha256:a.sha256.trim()}};
   };

@@ -1,0 +1,155 @@
+✔ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (87208.7284ms)
+✔ eleven distinct case layouts select by type, market, offering and explicit variant; bytes are pinned (312.3767ms)
+✔ new material validation is actionable without changing existing initiation requirements (1.6495ms)
+✔ missing material generation input returns all actionable fields without tasks, quotes or charges (1499.3012ms)
+✔ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (2887.0949ms)
+✔ synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes (1742.8644ms)
+✔ synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage (1972.2674ms)
+✔ M4 free task preparation and unavailable capabilities do not turn basic QA into free help (0.7116ms)
+✔ product help remains free with selected sources while mixed professional questions remain paid (1.8407ms)
+✔ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (48852.5214ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.5095ms)
+✔ assistant baseline choices retain exact delivered names, pair and time after current run/job projections change (2230.4811ms)
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (1870.9391ms)
+✔ project collection keeps the delivered names, file groups and exact members after mutable job/primary changes (2333.5893ms)
+﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.4946ms) # SKIP
+✔ batch recovery code is part of the public error contract (1.1343ms)
+✔ an accepted receipt is returned before inspecting a changed current source or draft (360.5494ms)
+✔ a missing receipt and advanced source selection return a trusted expired rejection (39.2934ms)
+✔ re-adopting the same source still expires the old selection revision without a receipt (21.8938ms)
+✔ an early archived-project conflict never becomes proof that an old receipt is missing (21.4675ms)
+✔ a missing receipt and advanced persisted draft return the trusted expired code (23.0885ms)
+✔ idempotency and active-batch conflicts retain their original public codes (39.0049ms)
+✔ unavailable sources and future input versions do not claim irreversible expiry (55.6687ms)
+✔ authorization failure never becomes an expired-input receipt (19.2796ms)
+✔ old exact check is readable outside the unchanged recent 30 and retains original pins and all updates (328.0554ms)
+✔ old check marks a changed source adoption as stale without replacing its fixed source (25.4096ms)
+✔ old running check does not expose a stored result as completed (24.0715ms)
+✔ exact check returns the same safe 404 for missing (22.5413ms)
+✔ exact check returns the same safe 404 for other owner (16.1228ms)
+✔ exact check returns the same safe 404 for other project (15.0189ms)
+✔ exact check returns the same safe 404 for mismatched project (17.8975ms)
+✔ exact check returns the same safe 404 for patch operation (14.9948ms)
+✔ exact check returns the same safe 404 for foreign project (14.3382ms)
+✔ deleted project is rejected before reading any source or operation (17.3203ms)
+✔ unauthenticated exact read never queries the database (14.9111ms)
+✔ accepted old update reads its exact original check outside the unchanged recent thirty and retains V2 separately from a later V3 retry (344.0746ms)
+✔ an original running update remains distinct from its successful retry and has no invented delivery (31.8546ms)
+✔ an original paused update remains distinct from its successful retry and has no invented delivery (18.62ms)
+✔ an original failed update remains distinct from its successful retry and has no invented delivery (15.1115ms)
+✔ an original cancelled update remains distinct from its successful retry and has no invented delivery (28.7775ms)
+✔ accepted-update history rejects no-acceptance with the same safe 404 (15.9171ms)
+✔ accepted-update history rejects other-owner with the same safe 404 (16.7307ms)
+✔ accepted-update history rejects other-project with the same safe 404 (19.0261ms)
+✔ accepted-update history rejects run-project with the same safe 404 (14.189ms)
+✔ accepted-update history rejects not-patch with the same safe 404 (15.0942ms)
+✔ accepted-update history rejects duplicate-acceptance with the same safe 404 (15.8997ms)
+✔ accepted-update history rejects manifest-check with the same safe 404 (14.5082ms)
+✔ accepted-update history rejects manifest-file with the same safe 404 (12.8575ms)
+✔ accepted-update history rejects manifest-family with the same safe 404 (13.6463ms)
+✔ accepted-update history rejects manifest-sha with the same safe 404 (16.9758ms)
+✔ accepted-update history rejects manifest-source with the same safe 404 (12.5619ms)
+✔ accepted-update history rejects malformed-manifest with the same safe 404 (11.7788ms)
+✔ accepted-update history rejects missing-check with the same safe 404 (11.8097ms)
+✔ accepted-update history rejects duplicate-update with the same safe 404 (12.2515ms)
+✔ accepted-update history rejects wrong-projected-file with the same safe 404 (12.046ms)
+✔ accepted-update history rejects duplicate-file with the same safe 404 (14.4227ms)
+✔ accepted-update history refuses missing patch (10.1404ms)
+✔ accepted-update history refuses check used as patch (12.6493ms)
+✔ accepted-update history refuses different owned project (11.8586ms)
+✔ accepted-update history refuses foreign project (11.7184ms)
+✔ deleted project and unauthenticated session are rejected before reading update or check records (25.5383ms)
+✔ accepted-update history OpenAPI reuses the public check DTO and owned GET path parameters (1.2771ms)
+✔ owner conversion preserves the old input and refuses its preflight and execute; replay is durable (1532.2276ms)
+✔ conversion rejects historical material and terminal run, and serializes against a new input lock (2188.9332ms)
+✔ conversion rejects a completed historical upload without a material version, but permits a deleted material (1013.7563ms)
+✖ #10 PostgreSQL global search, literal names, tied cursor pages, archive isolation and transaction rollback (1524.194ms)
+✖ #10 actual run status and previous successful Word remain available after a newer failure and archive (1129.8802ms)
+✔ reply citations require the actual immutable report, never finding text (5.9543ms)
+✔ legacy origin is explicitly unknown and nested internal fields never reach a task card (1.0664ms)
+✔ M3 proposals explicitly adopt, lock executable requirements and project one durable task timeline (2627.8645ms)
+✔ an adopted typed revision can become a new quick-action scope without losing requirements or rewriting its prior execution (1438.626ms)
+✔ readable report keeps valid legacy files readable and accepts exact live registry metadata (976.4033ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✔ prompt_snapshot (874.1228ms)
+  ✔ provider_result (883.029ms)
+✔ readable report rechecks parent tombstones after waiting, before any private Blob read (1758.3081ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✔ purged_file (998.6889ms)
+  ✔ closed_account (974.2983ms)
+  ✔ deleted_project (1045.3209ms)
+✔ readable report rechecks file state and account/project visibility after the file lock wait (3019.8283ms)
+✔ real working-file purge waits for readable report validation and denies the next raw read (1359.7794ms)
+✔ readable view loads the exact private Markdown, no prompts or final chatter (4.3089ms)
+✔ cross-run references, mismatched input/hash, unavailable or invalid UTF8 safely disable only the optional view (1.5801ms)
+✔ purged parents and visibility lost while waiting for the file deny further private reads (0.7819ms)
+✔ registered unavailable, purging, purged or mismatched files deny reads even while their bytes remain (2.5953ms)
+✔ M3 ownership, independent drafts, idempotency, immutable input, mutex and failed version history (2623.8555ms)
+✔ existing knowledge snapshots are selected by target type, including all eleven scopes (84.5764ms)
+✔ source declarations never select target knowledge and stale material replacements fail (17.5808ms)
+✔ PPN locks the complete 20261013 writing framework without leaking it to other target products (75.4585ms)
+✔ PPN review retains its prior rule sources without treating the update template as review policy (9.4495ms)
+✔ source metadata uses public enums and validates dates without converting user declarations into evidence (1.6177ms)
+✔ source-name-free declarations pass the same API gate used by input locking, quote and execute (1.0064ms)
+✔ project HTTP schema rejects malformed target periods, invented fields, string booleans and extra DFI questionnaire (1053.068ms)
+✖ saved details round-trip, old clients preserve them, snapshots are immutable, conflicts and owners are enforced (1237.1318ms)
+ℹ tests 93
+ℹ suites 0
+ℹ pass 88
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 301263.7838
+
+✖ failing tests:
+
+test at apps\api\dist\project-assistant.pg.test.js:62:1
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (1870.9391ms)
+  AssertionError [ERR_ASSERTION]: {"code":"DATA_UNAVAILABLE","message":"Internal error","retryable":true,"field_errors":[],"correlation_id":"771ff929-f474-4150-8e98-835477c65484"}
+      at ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/project-assistant.pg.test.js:67:101)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/project-assistant.pg.test.js:78:24)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\project-list.test.js:14:1
+✖ #10 PostgreSQL global search, literal names, tied cursor pages, archive isolation and transaction rollback (1524.194ms)
+  AssertionError [ERR_ASSERTION]: {"code":"DATA_UNAVAILABLE","message":"Internal error","retryable":true,"field_errors":[],"correlation_id":"3ca0f3cc-5707-42d9-9d9c-06351ba10565"}
+  
+  500 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/project-list.test.js:28:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\project-list.test.js:78:1
+✖ #10 actual run status and previous successful Word remain available after a newer failure and archive (1129.8802ms)
+  TypeError [Error]: Cannot read properties of undefined (reading '0')
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/project-list.test.js:98:48)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\update-project.test.js:45:1
+✖ saved details round-trip, old clients preserve them, snapshots are immutable, conflicts and owners are enforced (1237.1318ms)
+  TypeError [Error]: Cannot read properties of undefined (reading 'some')
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/update-project.test.js:125:72)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

@@ -329,7 +329,7 @@ test('M4 template registry and edit-base kind are explicit; retiring the exact o
     f.ctx.pool={query:async(sql:string,args?:unknown[])=>gateExecutionRows(f.ctx,manifest,sql,args)
       ??(sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
       sql.includes('FROM bb_m4_templates')?{rows:[template]}:sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:f.pin.sha256}]}:
-      sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_execution_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]})} as unknown as StageContext['pool'];
+      sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_delivered_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]})} as unknown as StageContext['pool'];
     assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null);
     template={...template,broker:''};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail','init still requires a broker');
     manifest.input.document_type='private_summary';manifest.billing_task='m4_G05';template={...template,document_type:'private_summary'};delete manifest.input.fields.broker;

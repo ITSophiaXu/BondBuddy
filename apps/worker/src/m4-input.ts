@@ -36,7 +36,7 @@ async function authorizedMaterial(pool: Pool, owner: string, pin: M4MaterialPin)
     ? {pin, filename: row.filename, mediaType: row.media_type, objectKey: row.object_key} : null;
 }
 async function authorizedArtifact(pool: Pool, owner: string, pin: M4ArtifactPin): Promise<M4WorkerArtifact | null> {
-  const row = (await pool.query(`SELECT a.object_key,a.media_type,a.sha256,m.body_content FROM bb_execution_artifact_versions a
+  const row = (await pool.query(`SELECT a.object_key,a.media_type,a.sha256,m.body_content FROM bb_delivered_artifact_versions a
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id AND p.deleted_at IS NULL
     LEFT JOIN bb_m4_artifacts m ON m.owner_user_id=a.owner_user_id AND m.artifact_id=a.id AND m.artifact_version=a.version

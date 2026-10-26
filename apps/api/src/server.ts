@@ -842,13 +842,16 @@ export function createServer(settings: Settings = {}) {
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       if (p.update_details?.authoring_mode === 'unified_v1') {
         const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(p, resolved, currentMessageSet);
-        const previous = (await client.query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.input_revision,i.manifest
-          FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
-          JOIN bb_execution_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
-          JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
-          WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND r.channel='production'
+        const previous = (await client.query(`SELECT a.id,a.version,a.sha256,d.run_id,d.input_revision,i.manifest
+          FROM bb_run_execution_deliveries d
+          JOIN bb_delivered_artifact_versions a ON a.id=d.word_delivery_pair->>'clean_artifact_id' AND a.owner_user_id=d.owner_user_id AND a.run_id=d.run_id
+            AND a.version=(d.word_delivery_pair->>'clean_artifact_version')::integer
+          JOIN bb_run_execution_delivery_artifact_details member ON member.owner_user_id=d.owner_user_id AND member.run_id=d.run_id
+            AND member.execution_version=d.execution_version AND member.artifact_id=a.id AND member.artifact_version=a.version AND member.delivery_phase='final'
+          JOIN bb_input_revisions i ON i.owner_user_id=d.owner_user_id AND i.project_id=d.project_id AND i.revision=d.input_revision AND i.input_hash=d.input_hash
+          WHERE d.owner_user_id=$1 AND d.project_id=$2 AND d.delivery_phase='final' AND d.terminal_state='succeeded' AND d.channel='production'
             AND a.quality_status='passed' AND a.delivery_status='available'
-            AND ($3::text IS NULL OR (a.id=$3 AND a.version=$4 AND a.sha256=$5)) ORDER BY r.created_at DESC LIMIT 1`,
+            AND ($3::text IS NULL OR (a.id=$3 AND a.version=$4 AND a.sha256=$5)) ORDER BY d.delivered_at DESC,d.run_id DESC,d.execution_version DESC LIMIT 1`,
             [user,id,b.edit_base?.artifact_id??null,b.edit_base?.artifact_version??null,b.edit_base?.sha256??null])).rows[0];
         const sourceKey = (items: {material_id:string;material_version:number;role:string;sha256:string}[]) => JSON.stringify(items.filter(m => ['historical','reference'].includes(m.role)).map(m => [m.material_id,m.material_version,m.sha256]).sort());
         if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
@@ -1544,19 +1547,19 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_execution_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_delivered_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
-      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
+      ${artifactNameJoins('a')}
+      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=n_delivery.test_grant_id AND tg.user_id=a.owner_user_id
+        AND tg.project_id=n_delivery.project_id AND tg.input_revision=n_delivery.input_revision AND tg.input_hash=n_delivery.input_hash
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       LEFT JOIN bb_review_pdf_delivery_evidence pdf_e ON pdf_e.owner_user_id=a.owner_user_id AND pdf_e.run_id=a.run_id AND pdf_e.id=a.review_pdf_delivery_evidence_id
-      ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
-        ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
-         (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
+        ((n_delivery.channel='production' AND (n_delivery.terminal_state='succeeded' OR (n_delivery.delivery_phase='m4_durable' AND r.state='succeeded')) AND a.delivery_status='available') OR
+         (n_delivery.channel='non_production_test' AND $3::boolean AND n_delivery.terminal_state='test_completed' AND a.delivery_status='test_only'
           AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id,testChannelEnabled()]);
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
-    const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
-    const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
+    const pair=a.naming_pair as Record<string,unknown>|undefined;
     if (pair?.revision_handling && (!Value.Check(ReviewRevisionHandlingSchema,pair.revision_handling) || pair.review_passed !== false)) throw new Problem(503,'DATA_UNAVAILABLE','Revision handling snapshot is invalid');
     const variant=pair?.revision_artifact_id===a.id?'revision':pair?.clean_artifact_id===a.id?'clean':pair?.baseline_artifact_id===a.id?'baseline':null;
     const wordDelivery=variant ? {variant,revision_artifact_id:pair!.revision_artifact_id,clean_artifact_id:pair!.clean_artifact_id,
@@ -1577,15 +1580,16 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_execution_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_delivered_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
-      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
+      ${artifactNameJoins('a')}
+      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=n_delivery.test_grant_id AND tg.user_id=a.owner_user_id
+        AND tg.project_id=n_delivery.project_id AND tg.input_revision=n_delivery.input_revision AND tg.input_hash=n_delivery.input_hash
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       LEFT JOIN bb_review_pdf_delivery_evidence pdf_e ON pdf_e.owner_user_id=a.owner_user_id AND pdf_e.run_id=a.run_id AND pdf_e.id=a.review_pdf_delivery_evidence_id
-      ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
-        ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
-         (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
+        ((n_delivery.channel='production' AND (n_delivery.terminal_state='succeeded' OR (n_delivery.delivery_phase='m4_durable' AND r.state='succeeded')) AND a.delivery_status='available') OR
+         (n_delivery.channel='non_production_test' AND $3::boolean AND n_delivery.terminal_state='test_completed' AND a.delivery_status='test_only'
           AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id,testChannelEnabled()]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();

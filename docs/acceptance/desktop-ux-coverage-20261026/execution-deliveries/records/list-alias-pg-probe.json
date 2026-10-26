@@ -1,0 +1,6 @@
+{
+  "recorded_at": "2026-10-26T16:31:15.113Z",
+  "query": "EXPLAIN SELECT bb_execution_delivery_phase_valid(completed) FROM bb_run_execution_deliveries completed CROSS JOIN (SELECT 0::int AS completed) summary",
+  "code": "42883",
+  "message": "function bb_execution_delivery_phase_valid(integer) does not exist"
+}

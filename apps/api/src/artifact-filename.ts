@@ -1,23 +1,13 @@
 import { resultFilename, M4_DOCUMENT_LABELS, type M4DocumentType } from '@bondbuddy/contracts';
 
-/** Shared aliases keep all download DTOs and Content-Disposition on the same frozen metadata. */
-export const artifactNameColumns = (alias: 'a' | 'v') => [
-  'n_integrity.kind AS naming_integrity_kind',alias + '.created_at AS naming_created_at', 'r.input_revision AS naming_input_revision',
-  'n_input.manifest AS naming_manifest', 'n_review.version AS naming_review_version',
-  'n_review_art.kind AS naming_review_kind', 'n_m4.kind AS naming_m4_kind',
-  'n_m4.revision_number AS naming_m4_revision', 'n_m4.document_type AS naming_m4_type',
-  'n_execution.manifest AS naming_m4_manifest', "n_job.checkpoint#>'{stages,word_delivery_pair}' AS naming_pair"
-].join(',');
-export const artifactNameJoins = (alias: 'a' | 'v') => {
-  const owner = alias + '.owner_user_id', run = alias + '.run_id';
-  return ' LEFT JOIN bb_integrity_artifacts n_integrity ON n_integrity.owner_user_id='+owner+' AND n_integrity.artifact_id='+alias+'.id AND n_integrity.artifact_version='+alias+'.version' +
-    ' LEFT JOIN bb_input_revisions n_input ON n_input.owner_user_id=' + owner + ' AND n_input.project_id=r.project_id AND n_input.revision=r.input_revision' +
-    ' LEFT JOIN bb_review_executions n_review ON n_review.owner_user_id=' + owner + ' AND n_review.run_id=' + run +
-    ' LEFT JOIN bb_review_artifacts n_review_art ON n_review_art.owner_user_id=' + owner + ' AND n_review_art.artifact_id=' + alias + '.id AND n_review_art.artifact_version=' + alias + '.version' +
-    ' LEFT JOIN bb_m4_artifacts n_m4 ON n_m4.owner_user_id=' + owner + ' AND n_m4.artifact_id=' + alias + '.id AND n_m4.artifact_version=' + alias + '.version' +
-    ' LEFT JOIN bb_m4_executions n_execution ON n_execution.owner_user_id=' + owner + ' AND n_execution.run_id=' + run +
-    ' LEFT JOIN bb_jobs n_job ON n_job.owner_user_id=' + owner + ' AND n_job.run_id=' + run;
-};
+/** Delivery metadata is frozen with its exact members; current job/input drafts never rename old files. */
+export const artifactNameColumns = (_alias: 'a' | 'v') => [
+  'naming_integrity_kind','naming_created_at','naming_input_revision','naming_manifest','naming_review_version',
+  'naming_review_kind','naming_m4_kind','naming_m4_revision','naming_m4_type','naming_m4_manifest','naming_pair',
+].map(field => 'n_delivery.' + field + ' AS ' + field).join(',');
+export const artifactNameJoins = (alias: 'a' | 'v') =>
+  ' LEFT JOIN bb_run_execution_delivery_artifact_details n_delivery ON n_delivery.owner_user_id=' + alias + '.owner_user_id' +
+  ' AND n_delivery.run_id=' + alias + '.run_id AND n_delivery.artifact_id=' + alias + '.id AND n_delivery.artifact_version=' + alias + '.version';
 export function artifactDownloadName(row: any, pair: any = row.naming_pair): { filename: string; display_version: number } {
   const manifest = row.naming_manifest ?? {}, m4 = row.naming_m4_manifest ?? {};
   if(manifest.version==='project-qa-v1')return {filename:resultFilename({project:manifest.source?.filename?.replace(/\.(docx|doc)$/i,''),kind:manifest.operation==='answer'?'已回填回答':'问题清单解析稿',version:Number(row.naming_input_revision??1),createdAt:row.naming_created_at,mediaType:row.media_type}),display_version:Number(row.naming_input_revision??1)};

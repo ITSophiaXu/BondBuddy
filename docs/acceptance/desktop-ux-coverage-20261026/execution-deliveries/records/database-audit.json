@@ -1,0 +1,50 @@
+{
+  "sibling_templates": [
+    {
+      "database": "bb_execution_delivery_template_20261027",
+      "runs": 0,
+      "artifacts": 0,
+      "deliveries": 0,
+      "members": 0
+    },
+    {
+      "database": "bb_execution_delivery_template_20261027b",
+      "runs": 0,
+      "artifacts": 0,
+      "deliveries": 0,
+      "members": 0
+    },
+    {
+      "database": "bb_execution_delivery_template_20261027c",
+      "runs": 0,
+      "artifacts": 0,
+      "deliveries": 0,
+      "members": 0
+    }
+  ],
+  "server_version": "16.14",
+  "server_port": "15528",
+  "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/delivery-postgres/data",
+  "schema": [
+    {
+      "filename": "0126_run_execution_deliveries.sql"
+    },
+    {
+      "filename": "0125_artifact_execution_bindings.sql"
+    },
+    {
+      "filename": "0124_run_execution_business_snapshots.sql"
+    }
+  ],
+  "runs": 0,
+  "executions": 0,
+  "reviews": 0,
+  "m4": 0,
+  "artifacts": 0,
+  "artifact_bindings": 0,
+  "deliveries": 0,
+  "delivery_members": 0,
+  "clones": [],
+  "other_clients": [],
+  "postmaster_pid": 38116
+}

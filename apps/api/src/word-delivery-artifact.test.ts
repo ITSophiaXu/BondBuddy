@@ -14,7 +14,7 @@ test('checked revision metadata exposes clean and baseline downloads with pendin
   let owner = 'owner-a';
   const query = async (sql: string, values: unknown[] = []) => {
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes('FROM bb_execution_artifact_versions a')) {
+    if (sql.includes('FROM bb_delivered_artifact_versions a')) {
       if (owner !== 'owner-a' || !['word-revision', 'word-clean', 'word-baseline'].includes(String(values[1]))) return { rows: [] };
       return { rows: [{ id: values[1], owner_user_id: owner, project_id: 'project-a', run_id: 'run-1', version: 1,
         media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

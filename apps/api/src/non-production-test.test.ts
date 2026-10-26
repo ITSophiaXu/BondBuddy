@@ -192,6 +192,8 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     const client=await pool.connect();
     await client.query('BEGIN');
     try{
+      await client.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,testRun.run_id]);
+      await client.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[user,testRun.run_id]);
       const evidenceId=randomUUID();
       await client.query(`INSERT INTO bb_word_delivery_evidence
         (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
@@ -201,7 +203,13 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
       await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
         VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','test_only',$6)`,
         [artifactId,user,testRun.run_id,artifactHash,`synthetic-test/${artifactId}`,evidenceId]);
-      await client.query("UPDATE bb_runs SET state='test_completed',artifact_id=$2,artifact_version=1 WHERE id=$1",[testRun.run_id,artifactId]);
+      // Match the terminal transaction's job -> run -> event order and one
+      // transaction timestamp; the authorization fixture does not run a model.
+      await client.query("UPDATE bb_jobs SET state='test_completed',stage='test_completed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE run_id=$1",[testRun.run_id]);
+      const terminal=(await client.query("UPDATE bb_runs SET state='test_completed',stage='test_completed',artifact_id=$2,artifact_version=1,event_cursor=event_cursor+1,updated_at=now() WHERE id=$1 RETURNING event_cursor",[testRun.run_id,artifactId])).rows[0];
+      await client.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload)
+        VALUES($1,$2,$3,$4,$3,'run.state_changed','test_completed','test_completed',$5)`,
+        [randomUUID(),user,testRun.run_id,terminal.event_cursor,{reason:'synthetic_test_delivery',channel:'non_production_test'}]);
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
     await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[testRun.run_id]),

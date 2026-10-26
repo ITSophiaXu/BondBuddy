@@ -81,8 +81,11 @@ test('Worker unifiedInputGate consumes previous_output only with its complete ex
     assert.equal(binding.owner_user_id, owner); assert.equal(binding.project_id, projectId); assert.equal(binding.run_id, sourceRunId);
     assert.equal(binding.execution_version, 1); assert.equal(binding.input_revision, 2); assert.equal(binding.input_hash.trim(), sourceHash);
     assert.equal(await unifiedInputGate(pool, run, input), null, 'the exact earlier output remains usable after saving a newer input');
+    await pool.query("UPDATE bb_runs SET state='paused',artifact_id=NULL,artifact_version=NULL,updated_at=now() WHERE id=$1", [sourceRunId]);
+    assert.equal(await unifiedInputGate(pool, run, input), null,
+      'a later run projection cannot revoke or substitute the exact earlier final delivery');
     const tables = ['bb_runs', 'bb_jobs', 'bb_input_revisions', 'bb_run_execution_versions', 'bb_artifact_versions',
-      'bb_artifact_execution_bindings', 'bb_word_delivery_evidence', 'bb_run_events', 'bb_outbox',
+      'bb_artifact_execution_bindings', 'bb_run_execution_deliveries', 'bb_run_execution_delivery_artifacts', 'bb_word_delivery_evidence', 'bb_run_events', 'bb_outbox',
       'bb_model_call_attempts', 'bb_credit_reservations', 'bb_credit_events'] as const;
     const evidence = async (db: Pick<Pool, 'query'>) => {
       const rows: Record<string, unknown> = {};
@@ -106,6 +109,7 @@ test('Worker unifiedInputGate consumes previous_output only with its complete ex
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('ALTER TABLE bb_run_execution_delivery_artifacts DROP CONSTRAINT bb_execution_delivery_member_origin');
       await client.query('ALTER TABLE bb_artifact_execution_bindings DISABLE TRIGGER bb_artifact_execution_immutable');
       await client.query('DELETE FROM bb_artifact_execution_bindings WHERE artifact_id=$1 AND artifact_version=$2', [promoted.artifactId, promoted.artifactVersion]);
       await client.query('ALTER TABLE bb_artifact_execution_bindings ENABLE TRIGGER bb_artifact_execution_immutable');

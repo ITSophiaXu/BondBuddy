@@ -1,0 +1,18 @@
+{
+  "started": "2026-10-26T16:12:37.401Z",
+  "finished": "2026-10-26T16:12:52.717Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+    "-p",
+    "apps/api/tsconfig.json"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "environment": {
+    "BB_RUN_RUNTIME_ENABLED": null,
+    "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027b"
+  },
+  "status": 2,
+  "signal": null,
+  "pid": 39312
+}

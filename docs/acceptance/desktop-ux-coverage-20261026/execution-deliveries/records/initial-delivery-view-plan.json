@@ -1,0 +1,643 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Nested Loop",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Join Type": "Inner",
+      "Startup Cost": 65.75,
+      "Total Cost": 76.26,
+      "Plan Rows": 1,
+      "Plan Width": 592,
+      "Inner Unique": true,
+      "Join Filter": "((b.owner_user_id = e.owner_user_id) AND (b.run_id = e.run_id) AND (b.project_id = e.project_id) AND (b.input_revision = e.input_revision) AND (b.input_hash = e.input_hash))",
+      "Plans": [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Inner",
+          "Startup Cost": 65.61,
+          "Total Cost": 75.43,
+          "Plan Rows": 1,
+          "Plan Width": 1708,
+          "Inner Unique": true,
+          "Join Filter": "((a.owner_user_id = b.owner_user_id) AND (a.run_id = b.run_id) AND (a.version = b.artifact_version) AND (b.created_at = a.created_at))",
+          "Plans": [
+            {
+              "Node Type": "Nested Loop",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Join Type": "Inner",
+              "Startup Cost": 65.46,
+              "Total Cost": 74.6,
+              "Plan Rows": 1,
+              "Plan Width": 1348,
+              "Inner Unique": true,
+              "Join Filter": "(a.owner_user_id = i.owner_user_id)",
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 65.34,
+                  "Total Cost": 74.27,
+                  "Plan Rows": 1,
+                  "Plan Width": 1020,
+                  "Inner Unique": true,
+                  "Join Filter": "((a.version = m.artifact_version) AND (m.artifact_sha256 = a.sha256))",
+                  "Plans": [
+                    {
+                      "Node Type": "Nested Loop",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Join Type": "Inner",
+                      "Startup Cost": 65.19,
+                      "Total Cost": 73.46,
+                      "Plan Rows": 1,
+                      "Plan Width": 720,
+                      "Inner Unique": true,
+                      "Plans": [
+                        {
+                          "Node Type": "Unique",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Startup Cost": 65.05,
+                          "Total Cost": 65.06,
+                          "Plan Rows": 1,
+                          "Plan Width": 1441,
+                          "Plans": [
+                            {
+                              "Node Type": "Sort",
+                              "Parent Relationship": "Outer",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Startup Cost": 65.05,
+                              "Total Cost": 65.05,
+                              "Plan Rows": 1,
+                              "Plan Width": 1441,
+                              "Sort Key": [
+                                "m.owner_user_id",
+                                "m.artifact_version",
+                                "(CASE WHEN (m.delivery_phase = 'final'::text) THEN 0 ELSE 1 END)"
+                              ],
+                              "Plans": [
+                                {
+                                  "Node Type": "Nested Loop",
+                                  "Parent Relationship": "Outer",
+                                  "Parallel Aware": false,
+                                  "Async Capable": false,
+                                  "Join Type": "Inner",
+                                  "Startup Cost": 1.13,
+                                  "Total Cost": 65.04,
+                                  "Plan Rows": 1,
+                                  "Plan Width": 1441,
+                                  "Inner Unique": true,
+                                  "Join Filter": "((d.execution_version = primary_member.execution_version) AND (d.delivery_phase = primary_member.delivery_phase) AND (b_2.run_id = primary_member.run_id) AND (d.primary_artifact_id = primary_member.artifact_id) AND (d.primary_artifact_version = primary_member.artifact_version) AND (d.primary_sha256 = primary_member.artifact_sha256))",
+                                  "Plans": [
+                                    {
+                                      "Node Type": "Nested Loop",
+                                      "Parent Relationship": "Outer",
+                                      "Parallel Aware": false,
+                                      "Async Capable": false,
+                                      "Join Type": "Inner",
+                                      "Startup Cost": 1.01,
+                                      "Total Cost": 64.24,
+                                      "Plan Rows": 1,
+                                      "Plan Width": 924,
+                                      "Inner Unique": true,
+                                      "Join Filter": "((b_2.owner_user_id = e_1.owner_user_id) AND (b_2.run_id = e_1.run_id) AND (b_2.project_id = e_1.project_id) AND (b_2.input_revision = e_1.input_revision) AND (b_2.input_hash = e_1.input_hash))",
+                                      "Plans": [
+                                        {
+                                          "Node Type": "Nested Loop",
+                                          "Parent Relationship": "Outer",
+                                          "Parallel Aware": false,
+                                          "Async Capable": false,
+                                          "Join Type": "Inner",
+                                          "Startup Cost": 0.86,
+                                          "Total Cost": 63.42,
+                                          "Plan Rows": 1,
+                                          "Plan Width": 1976,
+                                          "Inner Unique": true,
+                                          "Join Filter": "((a_1.owner_user_id = b_2.owner_user_id) AND (a_1.run_id = b_2.run_id) AND (a_1.version = b_2.artifact_version) AND (b_2.created_at = a_1.created_at))",
+                                          "Plans": [
+                                            {
+                                              "Node Type": "Nested Loop",
+                                              "Parent Relationship": "Outer",
+                                              "Parallel Aware": false,
+                                              "Async Capable": false,
+                                              "Join Type": "Inner",
+                                              "Startup Cost": 0.72,
+                                              "Total Cost": 62.59,
+                                              "Plan Rows": 1,
+                                              "Plan Width": 1668,
+                                              "Inner Unique": true,
+                                              "Join Filter": "((m.artifact_version = a_1.version) AND (a_1.created_at = m.naming_created_at) AND (a_1.sha256 = m.artifact_sha256))",
+                                              "Plans": [
+                                                {
+                                                  "Node Type": "Nested Loop",
+                                                  "Parent Relationship": "Outer",
+                                                  "Parallel Aware": false,
+                                                  "Async Capable": false,
+                                                  "Join Type": "Inner",
+                                                  "Startup Cost": 0.57,
+                                                  "Total Cost": 61.78,
+                                                  "Plan Rows": 1,
+                                                  "Plan Width": 1592,
+                                                  "Inner Unique": true,
+                                                  "Join Filter": "((d.project_id = b_1.project_id) AND (d.execution_version = b_1.execution_version) AND (b_1.input_revision = d.input_revision) AND (b_1.input_hash = d.input_hash) AND (m.artifact_version = b_1.artifact_version))",
+                                                  "Plans": [
+                                                    {
+                                                      "Node Type": "Nested Loop",
+                                                      "Parent Relationship": "Outer",
+                                                      "Parallel Aware": false,
+                                                      "Async Capable": false,
+                                                      "Join Type": "Inner",
+                                                      "Startup Cost": 0.43,
+                                                      "Total Cost": 60.96,
+                                                      "Plan Rows": 1,
+                                                      "Plan Width": 2080,
+                                                      "Inner Unique": true,
+                                                      "Join Filter": "((d.project_id = m.project_id) AND (d.execution_version = m.execution_version) AND (d.input_revision = m.input_revision) AND (d.input_hash = m.input_hash) AND (d.delivery_phase = m.delivery_phase))",
+                                                      "Plans": [
+                                                        {
+                                                          "Node Type": "Nested Loop",
+                                                          "Parent Relationship": "Outer",
+                                                          "Parallel Aware": false,
+                                                          "Async Capable": false,
+                                                          "Join Type": "Inner",
+                                                          "Startup Cost": 0.29,
+                                                          "Total Cost": 9.99,
+                                                          "Plan Rows": 1,
+                                                          "Plan Width": 1388,
+                                                          "Inner Unique": false,
+                                                          "Plans": [
+                                                            {
+                                                              "Node Type": "Nested Loop",
+                                                              "Parent Relationship": "Outer",
+                                                              "Parallel Aware": false,
+                                                              "Async Capable": false,
+                                                              "Join Type": "Inner",
+                                                              "Startup Cost": 0.14,
+                                                              "Total Cost": 9.19,
+                                                              "Plan Rows": 1,
+                                                              "Plan Width": 688,
+                                                              "Inner Unique": false,
+                                                              "Plans": [
+                                                                {
+                                                                  "Node Type": "Seq Scan",
+                                                                  "Parent Relationship": "Outer",
+                                                                  "Parallel Aware": false,
+                                                                  "Async Capable": false,
+                                                                  "Relation Name": "bb_input_revisions",
+                                                                  "Alias": "i_1",
+                                                                  "Startup Cost": 0,
+                                                                  "Total Cost": 1.01,
+                                                                  "Plan Rows": 1,
+                                                                  "Plan Width": 328
+                                                                },
+                                                                {
+                                                                  "Node Type": "Index Scan",
+                                                                  "Parent Relationship": "Inner",
+                                                                  "Parallel Aware": false,
+                                                                  "Async Capable": false,
+                                                                  "Scan Direction": "Forward",
+                                                                  "Index Name": "bb_runs_project_activity_idx",
+                                                                  "Relation Name": "bb_runs",
+                                                                  "Alias": "r_1",
+                                                                  "Startup Cost": 0.14,
+                                                                  "Total Cost": 8.17,
+                                                                  "Plan Rows": 1,
+                                                                  "Plan Width": 360,
+                                                                  "Index Cond": "((owner_user_id = i_1.owner_user_id) AND (project_id = i_1.project_id))",
+                                                                  "Filter": "((i_1.revision = input_revision) AND (i_1.input_hash = input_hash))"
+                                                                }
+                                                              ]
+                                                            },
+                                                            {
+                                                              "Node Type": "Index Scan",
+                                                              "Parent Relationship": "Inner",
+                                                              "Parallel Aware": false,
+                                                              "Async Capable": false,
+                                                              "Scan Direction": "Forward",
+                                                              "Index Name": "bb_run_execution_delivery_artifacts_pkey",
+                                                              "Relation Name": "bb_run_execution_delivery_artifacts",
+                                                              "Alias": "m",
+                                                              "Startup Cost": 0.14,
+                                                              "Total Cost": 0.79,
+                                                              "Plan Rows": 1,
+                                                              "Plan Width": 700,
+                                                              "Index Cond": "((run_id = r_1.id) AND (artifact_id = 'synthetic-probe'::text))",
+                                                              "Filter": "(r_1.owner_user_id = owner_user_id)"
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "Node Type": "Index Scan",
+                                                          "Parent Relationship": "Inner",
+                                                          "Parallel Aware": false,
+                                                          "Async Capable": false,
+                                                          "Scan Direction": "Forward",
+                                                          "Index Name": "bb_execution_deliveries_history_idx",
+                                                          "Relation Name": "bb_run_execution_deliveries",
+                                                          "Alias": "d",
+                                                          "Startup Cost": 0.14,
+                                                          "Total Cost": 50.94,
+                                                          "Plan Rows": 1,
+                                                          "Plan Width": 692,
+                                                          "Index Cond": "((owner_user_id = r_1.owner_user_id) AND (run_id = r_1.id))",
+                                                          "Filter": "(artifact_manifest = (SubPlan 1))",
+                                                          "Plans": [
+                                                            {
+                                                              "Node Type": "Aggregate",
+                                                              "Strategy": "Plain",
+                                                              "Partial Mode": "Simple",
+                                                              "Parent Relationship": "SubPlan",
+                                                              "Subplan Name": "SubPlan 1",
+                                                              "Parallel Aware": false,
+                                                              "Async Capable": false,
+                                                              "Startup Cost": 50.14,
+                                                              "Total Cost": 50.15,
+                                                              "Plan Rows": 1,
+                                                              "Plan Width": 32,
+                                                              "Plans": [
+                                                                {
+                                                                  "Node Type": "Nested Loop",
+                                                                  "Parent Relationship": "Outer",
+                                                                  "Parallel Aware": false,
+                                                                  "Async Capable": false,
+                                                                  "Join Type": "Inner",
+                                                                  "Startup Cost": 0.86,
+                                                                  "Total Cost": 50.12,
+                                                                  "Plan Rows": 1,
+                                                                  "Plan Width": 933,
+                                                                  "Inner Unique": true,
+                                                                  "Join Filter": "((all_bindings.project_id = all_members.project_id) AND (all_bindings.input_revision = all_members.input_revision) AND (all_bindings.input_hash = all_members.input_hash))",
+                                                                  "Plans": [
+                                                                    {
+                                                                      "Node Type": "Nested Loop",
+                                                                      "Parent Relationship": "Outer",
+                                                                      "Parallel Aware": false,
+                                                                      "Async Capable": false,
+                                                                      "Join Type": "Inner",
+                                                                      "Startup Cost": 0.72,
+                                                                      "Total Cost": 41.93,
+                                                                      "Plan Rows": 1,
+                                                                      "Plan Width": 1529,
+                                                                      "Inner Unique": true,
+                                                                      "Join Filter": "((b_3.owner_user_id = i_2.owner_user_id) AND (e_2.project_id = i_2.project_id) AND (e_2.input_revision = i_2.revision) AND (e_2.input_hash = i_2.input_hash))",
+                                                                      "Plans": [
+                                                                        {
+                                                                          "Node Type": "Nested Loop",
+                                                                          "Parent Relationship": "Outer",
+                                                                          "Parallel Aware": false,
+                                                                          "Async Capable": false,
+                                                                          "Join Type": "Inner",
+                                                                          "Startup Cost": 0.72,
+                                                                          "Total Cost": 40.9,
+                                                                          "Plan Rows": 1,
+                                                                          "Plan Width": 2385,
+                                                                          "Inner Unique": true,
+                                                                          "Join Filter": "((b_3.owner_user_id = r_2.owner_user_id) AND (e_2.project_id = r_2.project_id) AND (e_2.input_revision = r_2.input_revision) AND (e_2.input_hash = r_2.input_hash))",
+                                                                          "Plans": [
+                                                                            {
+                                                                              "Node Type": "Nested Loop",
+                                                                              "Parent Relationship": "Outer",
+                                                                              "Parallel Aware": false,
+                                                                              "Async Capable": false,
+                                                                              "Join Type": "Inner",
+                                                                              "Startup Cost": 0.58,
+                                                                              "Total Cost": 32.72,
+                                                                              "Plan Rows": 1,
+                                                                              "Plan Width": 2089,
+                                                                              "Inner Unique": true,
+                                                                              "Join Filter": "((b_3.owner_user_id = e_2.owner_user_id) AND (b_3.project_id = e_2.project_id) AND (b_3.input_revision = e_2.input_revision) AND (b_3.input_hash = e_2.input_hash))",
+                                                                              "Plans": [
+                                                                                {
+                                                                                  "Node Type": "Nested Loop",
+                                                                                  "Parent Relationship": "Outer",
+                                                                                  "Parallel Aware": false,
+                                                                                  "Async Capable": false,
+                                                                                  "Join Type": "Inner",
+                                                                                  "Startup Cost": 0.43,
+                                                                                  "Total Cost": 24.54,
+                                                                                  "Plan Rows": 1,
+                                                                                  "Plan Width": 1765,
+                                                                                  "Inner Unique": true,
+                                                                                  "Plans": [
+                                                                                    {
+                                                                                      "Node Type": "Nested Loop",
+                                                                                      "Parent Relationship": "Outer",
+                                                                                      "Parallel Aware": false,
+                                                                                      "Async Capable": false,
+                                                                                      "Join Type": "Inner",
+                                                                                      "Startup Cost": 0.29,
+                                                                                      "Total Cost": 16.35,
+                                                                                      "Plan Rows": 1,
+                                                                                      "Plan Width": 1405,
+                                                                                      "Inner Unique": true,
+                                                                                      "Plans": [
+                                                                                        {
+                                                                                          "Node Type": "Index Scan",
+                                                                                          "Parent Relationship": "Outer",
+                                                                                          "Parallel Aware": false,
+                                                                                          "Async Capable": false,
+                                                                                          "Scan Direction": "Forward",
+                                                                                          "Index Name": "bb_run_execution_delivery_artifacts_pkey",
+                                                                                          "Relation Name": "bb_run_execution_delivery_artifacts",
+                                                                                          "Alias": "all_members",
+                                                                                          "Startup Cost": 0.14,
+                                                                                          "Total Cost": 8.16,
+                                                                                          "Plan Rows": 1,
+                                                                                          "Plan Width": 1557,
+                                                                                          "Index Cond": "((run_id = d.run_id) AND (execution_version = d.execution_version) AND (delivery_phase = d.delivery_phase))"
+                                                                                        },
+                                                                                        {
+                                                                                          "Node Type": "Index Scan",
+                                                                                          "Parent Relationship": "Inner",
+                                                                                          "Parallel Aware": false,
+                                                                                          "Async Capable": false,
+                                                                                          "Scan Direction": "Forward",
+                                                                                          "Index Name": "bb_artifact_owned_run_version_key",
+                                                                                          "Relation Name": "bb_artifact_versions",
+                                                                                          "Alias": "a_2",
+                                                                                          "Startup Cost": 0.14,
+                                                                                          "Total Cost": 8.18,
+                                                                                          "Plan Rows": 1,
+                                                                                          "Plan Width": 368,
+                                                                                          "Index Cond": "((owner_user_id = all_members.owner_user_id) AND (run_id = d.run_id) AND (id = all_members.artifact_id) AND (version = all_members.artifact_version))",
+                                                                                          "Filter": "((created_at = all_members.naming_created_at) AND (sha256 = all_members.artifact_sha256))"
+                                                                                        }
+                                                                                      ]
+                                                                                    },
+                                                                                    {
+                                                                                      "Node Type": "Index Scan",
+                                                                                      "Parent Relationship": "Inner",
+                                                                                      "Parallel Aware": false,
+                                                                                      "Async Capable": false,
+                                                                                      "Scan Direction": "Forward",
+                                                                                      "Index Name": "bb_artifact_execution_delivery_key",
+                                                                                      "Relation Name": "bb_artifact_execution_bindings",
+                                                                                      "Alias": "b_3",
+                                                                                      "Startup Cost": 0.14,
+                                                                                      "Total Cost": 8.17,
+                                                                                      "Plan Rows": 1,
+                                                                                      "Plan Width": 408,
+                                                                                      "Index Cond": "((owner_user_id = a_2.owner_user_id) AND (run_id = d.run_id) AND (execution_version = 1) AND (artifact_id = a_2.id) AND (artifact_version = a_2.version))",
+                                                                                      "Filter": "(created_at = a_2.created_at)"
+                                                                                    }
+                                                                                  ]
+                                                                                },
+                                                                                {
+                                                                                  "Node Type": "Index Scan",
+                                                                                  "Parent Relationship": "Inner",
+                                                                                  "Parallel Aware": false,
+                                                                                  "Async Capable": false,
+                                                                                  "Scan Direction": "Forward",
+                                                                                  "Index Name": "bb_run_execution_versions_pkey",
+                                                                                  "Relation Name": "bb_run_execution_versions",
+                                                                                  "Alias": "e_2",
+                                                                                  "Startup Cost": 0.14,
+                                                                                  "Total Cost": 8.16,
+                                                                                  "Plan Rows": 1,
+                                                                                  "Plan Width": 364,
+                                                                                  "Index Cond": "((run_id = d.run_id) AND (execution_version = 1))"
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "Node Type": "Index Scan",
+                                                                              "Parent Relationship": "Inner",
+                                                                              "Parallel Aware": false,
+                                                                              "Async Capable": false,
+                                                                              "Scan Direction": "Forward",
+                                                                              "Index Name": "bb_runs_pkey",
+                                                                              "Relation Name": "bb_runs",
+                                                                              "Alias": "r_2",
+                                                                              "Startup Cost": 0.14,
+                                                                              "Total Cost": 8.16,
+                                                                              "Plan Rows": 1,
+                                                                              "Plan Width": 360,
+                                                                              "Index Cond": "(id = d.run_id)"
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "Node Type": "Seq Scan",
+                                                                          "Parent Relationship": "Inner",
+                                                                          "Parallel Aware": false,
+                                                                          "Async Capable": false,
+                                                                          "Relation Name": "bb_input_revisions",
+                                                                          "Alias": "i_2",
+                                                                          "Startup Cost": 0,
+                                                                          "Total Cost": 1.01,
+                                                                          "Plan Rows": 1,
+                                                                          "Plan Width": 328
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    {
+                                                                      "Node Type": "Index Only Scan",
+                                                                      "Parent Relationship": "Inner",
+                                                                      "Parallel Aware": false,
+                                                                      "Async Capable": false,
+                                                                      "Scan Direction": "Forward",
+                                                                      "Index Name": "bb_artifact_execution_delivery_key",
+                                                                      "Relation Name": "bb_artifact_execution_bindings",
+                                                                      "Alias": "all_bindings",
+                                                                      "Startup Cost": 0.14,
+                                                                      "Total Cost": 8.17,
+                                                                      "Plan Rows": 1,
+                                                                      "Plan Width": 400,
+                                                                      "Index Cond": "((owner_user_id = b_3.owner_user_id) AND (run_id = d.run_id) AND (execution_version = d.execution_version) AND (artifact_id = b_3.artifact_id) AND (artifact_version = b_3.artifact_version))"
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "Node Type": "Index Only Scan",
+                                                      "Parent Relationship": "Inner",
+                                                      "Parallel Aware": false,
+                                                      "Async Capable": false,
+                                                      "Scan Direction": "Forward",
+                                                      "Index Name": "bb_artifact_execution_delivery_key",
+                                                      "Relation Name": "bb_artifact_execution_bindings",
+                                                      "Alias": "b_1",
+                                                      "Startup Cost": 0.14,
+                                                      "Total Cost": 0.8,
+                                                      "Plan Rows": 1,
+                                                      "Plan Width": 400,
+                                                      "Index Cond": "((owner_user_id = r_1.owner_user_id) AND (run_id = r_1.id) AND (artifact_id = 'synthetic-probe'::text))"
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "Node Type": "Index Scan",
+                                                  "Parent Relationship": "Inner",
+                                                  "Parallel Aware": false,
+                                                  "Async Capable": false,
+                                                  "Scan Direction": "Forward",
+                                                  "Index Name": "bb_artifact_owned_run_version_key",
+                                                  "Relation Name": "bb_artifact_versions",
+                                                  "Alias": "a_1",
+                                                  "Startup Cost": 0.14,
+                                                  "Total Cost": 0.8,
+                                                  "Plan Rows": 1,
+                                                  "Plan Width": 368,
+                                                  "Index Cond": "((owner_user_id = r_1.owner_user_id) AND (run_id = r_1.id) AND (id = 'synthetic-probe'::text))"
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "Node Type": "Index Scan",
+                                              "Parent Relationship": "Inner",
+                                              "Parallel Aware": false,
+                                              "Async Capable": false,
+                                              "Scan Direction": "Forward",
+                                              "Index Name": "bb_artifact_execution_delivery_key",
+                                              "Relation Name": "bb_artifact_execution_bindings",
+                                              "Alias": "b_2",
+                                              "Startup Cost": 0.14,
+                                              "Total Cost": 0.81,
+                                              "Plan Rows": 1,
+                                              "Plan Width": 408,
+                                              "Index Cond": "((owner_user_id = r_1.owner_user_id) AND (project_id = r_1.project_id) AND (run_id = r_1.id) AND (execution_version = 1) AND (input_revision = r_1.input_revision) AND (input_hash = r_1.input_hash) AND (artifact_id = 'synthetic-probe'::text))"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "Node Type": "Index Only Scan",
+                                          "Parent Relationship": "Inner",
+                                          "Parallel Aware": false,
+                                          "Async Capable": false,
+                                          "Scan Direction": "Forward",
+                                          "Index Name": "bb_execution_exact_input_key",
+                                          "Relation Name": "bb_run_execution_versions",
+                                          "Alias": "e_1",
+                                          "Startup Cost": 0.14,
+                                          "Total Cost": 0.8,
+                                          "Plan Rows": 1,
+                                          "Plan Width": 364,
+                                          "Index Cond": "((owner_user_id = r_1.owner_user_id) AND (project_id = r_1.project_id) AND (run_id = r_1.id) AND (execution_version = 1) AND (input_revision = r_1.input_revision) AND (input_hash = r_1.input_hash))"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "Node Type": "Index Scan",
+                                      "Parent Relationship": "Inner",
+                                      "Parallel Aware": false,
+                                      "Async Capable": false,
+                                      "Scan Direction": "Forward",
+                                      "Index Name": "bb_execution_delivery_primary_idx",
+                                      "Relation Name": "bb_run_execution_delivery_artifacts",
+                                      "Alias": "primary_member",
+                                      "Startup Cost": 0.12,
+                                      "Total Cost": 0.77,
+                                      "Plan Rows": 1,
+                                      "Plan Width": 364,
+                                      "Index Cond": "(run_id = r_1.id)"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "Node Type": "Index Scan",
+                          "Parent Relationship": "Inner",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Scan Direction": "Forward",
+                          "Index Name": "bb_runs_project_activity_idx",
+                          "Relation Name": "bb_runs",
+                          "Alias": "r",
+                          "Startup Cost": 0.14,
+                          "Total Cost": 8.16,
+                          "Plan Rows": 1,
+                          "Plan Width": 360,
+                          "Index Cond": "((owner_user_id = m.owner_user_id) AND (id = m.run_id))"
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Index Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "bb_artifact_owned_run_version_key",
+                      "Relation Name": "bb_artifact_versions",
+                      "Alias": "a",
+                      "Startup Cost": 0.14,
+                      "Total Cost": 0.8,
+                      "Plan Rows": 1,
+                      "Plan Width": 592,
+                      "Index Cond": "((owner_user_id = r.owner_user_id) AND (run_id = r.id) AND (id = 'synthetic-probe'::text))"
+                    }
+                  ]
+                },
+                {
+                  "Node Type": "Index Only Scan",
+                  "Parent Relationship": "Inner",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Scan Direction": "Forward",
+                  "Index Name": "bb_input_test_grant_scope_key",
+                  "Relation Name": "bb_input_revisions",
+                  "Alias": "i",
+                  "Startup Cost": 0.12,
+                  "Total Cost": 0.32,
+                  "Plan Rows": 1,
+                  "Plan Width": 328,
+                  "Index Cond": "((owner_user_id = r.owner_user_id) AND (project_id = r.project_id) AND (revision = r.input_revision) AND (input_hash = r.input_hash))"
+                }
+              ]
+            },
+            {
+              "Node Type": "Index Scan",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Scan Direction": "Forward",
+              "Index Name": "bb_artifact_execution_delivery_key",
+              "Relation Name": "bb_artifact_execution_bindings",
+              "Alias": "b",
+              "Startup Cost": 0.14,
+              "Total Cost": 0.81,
+              "Plan Rows": 1,
+              "Plan Width": 408,
+              "Index Cond": "((owner_user_id = r.owner_user_id) AND (project_id = r.project_id) AND (run_id = r.id) AND (execution_version = 1) AND (input_revision = r.input_revision) AND (input_hash = r.input_hash) AND (artifact_id = 'synthetic-probe'::text))"
+            }
+          ]
+        },
+        {
+          "Node Type": "Index Only Scan",
+          "Parent Relationship": "Inner",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Scan Direction": "Forward",
+          "Index Name": "bb_execution_exact_input_key",
+          "Relation Name": "bb_run_execution_versions",
+          "Alias": "e",
+          "Startup Cost": 0.14,
+          "Total Cost": 0.8,
+          "Plan Rows": 1,
+          "Plan Width": 364,
+          "Index Cond": "((owner_user_id = r.owner_user_id) AND (project_id = r.project_id) AND (run_id = r.id) AND (execution_version = 1) AND (input_revision = r.input_revision) AND (input_hash = r.input_hash))"
+        }
+      ]
+    }
+  }
+]

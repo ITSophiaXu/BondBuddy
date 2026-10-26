@@ -1,0 +1,10 @@
+{
+  "completed_at": "2026-10-26T16:05:30.471Z",
+  "session_id": 35251,
+  "start_chunk": "57ff7a",
+  "completion_chunk": "9bf43d",
+  "exit_code": 0,
+  "cluster": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/delivery-postgres/data",
+  "pg_version": "16",
+  "evidence": "exec_command session completion; raw shell transcript remains in this chat"
+}
