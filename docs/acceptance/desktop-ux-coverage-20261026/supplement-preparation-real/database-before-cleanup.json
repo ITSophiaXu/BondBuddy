@@ -1,0 +1,21 @@
+{
+  "server_version": "16.14",
+  "schema": [
+    {
+      "filename": "0118_run_supplement_drafts.sql"
+    },
+    {
+      "filename": "0117_run_origin_input_immutable.sql"
+    }
+  ],
+  "template_run_count": 0,
+  "template_draft_count": 0,
+  "remaining_clones": [
+    {
+      "datname": "bb_g03_template_20261026_t23268_6901368d"
+    },
+    {
+      "datname": "bb_g03_template_20261026_t37024_d81a8d48"
+    }
+  ]
+}

@@ -80,6 +80,8 @@
 
 验证与当前源码绑定见[补料准备专项验收](../acceptance/desktop-ux-coverage-20261026/supplement-preparation/README.md)。隔离真实 PostgreSQL/HTTP 与合成桌面组件测试分开记录，均不冒充完整新输入续做、模型处理或最终 Word 验收。**G03 / UX-A03 仍未完成，原目标保持 active。**
 
+后续[真实主页面联通专项](../acceptance/desktop-ux-coverage-20261026/supplement-preparation-real/README.md)又验证完整 main → session/CSRF → PG → 私有本地字节上传/下载 → 准备保存 → 刷新 → 明确原材料恢复，含准确失落回执和两个浏览器 context 的 CAS，最终 6/6；后端准备专项 44/44。同时修复真实 `review-updates` 任务的 `authoring.review_result` 合法输入被误判 503 的兼容问题，原快照/输入/账本和 job 身份保持。普通 queued 起点和合成源成果均明确标记，没有模型保存进度暂停、采用新输入、追加报价/收费、Azure 或新 Word 证据；该联通专项仍不关闭 G03。
+
 ## 需要确定的一项产品规则：补料重做费用
 
 普通暂停、原输入恢复、重复下载和系统内部恢复已有规则，不重新索取这些决定。补料导致的必要重做已确定另行报价，剩余待定的是追加价格的计算基准与适用范围。

@@ -8,6 +8,8 @@
 
 本地又增加[按原任务保存补料准备](../acceptance/desktop-ux-coverage-20261026/supplement-preparation/README.md)：三类暂停页接入真实上传恢复与草稿保存/读取、CAS、准确回执恢复和原材料继续确认。准备来自固定 run 输入及 M3/M4 执行快照；保存不采用、不执行、不扣追加费用，草稿独有资料不成为永久 pin。专项 PostgreSQL/HTTP 与桌面组件证据分别记录。该切片没有实现采用新输入后的执行/报价/成果，不能关闭 G03，也不计入历史 662 项或据此声称主要功能全部覆盖。
 
+随后完成[真实主页面与后端联通验收](../acceptance/desktop-ux-coverage-20261026/supplement-preparation-real/README.md)：真实 main、HTTP/session/CSRF、隔离 PG 和私有本地字节连续运行 **6/6**，后端完整准备专项 **44/44**。同时修复复核成果续改使用 `authoring.review_result` 时被补料读取误判 503、阻断原材料恢复的回归；保留普通复核与错误快照的严格拒绝。此轮证明准备保存、准确回执/CAS 及同原 job 的原输入恢复，不含 Azure、模型、采用/追加账务或新 Word；G03 仍开放。已检查的最新范围中未确认其他新的主要功能缺口，不能据此推导完整目标比例。
+
 ## 来源与范围
 
 - 既有十五类业务目录来自本机历史档案 `ux-implementation-20261025/ux-evidence/all-scenarios-coverage-matrix.md:208–224`。原档案 R1–R44 的分段合成证据用于定位已有能力，不能把其中“尚未远程集成”继续套在已经合并的当前版本上。

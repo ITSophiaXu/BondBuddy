@@ -1,0 +1,14 @@
+
+Running 6 tests using 1 worker
+
+
+
+[1/6] tests\run-supplement-real-main.spec.ts:72:1 › real main M3 review-updates: actual creation shape saves preparation and resumes the same original revision
+[2/6] tests\run-supplement-real-main.spec.ts:89:56 › real main m1: browser pause, private-byte upload, save, reload and same-run original-material resume
+[3/6] tests\run-supplement-real-main.spec.ts:89:56 › real main m3: browser pause, private-byte upload, save, reload and same-run original-material resume
+[4/6] tests\run-supplement-real-main.spec.ts:89:56 › real main m4: browser pause, private-byte upload, save, reload and same-run original-material resume
+[5/6] tests\run-supplement-real-main.spec.ts:112:1 › real main M3: accepted save response loss recovers the exact PostgreSQL receipt without a second PUT
+[6/6] tests\run-supplement-real-main.spec.ts:125:1 › real main M4: independent browser contexts preserve conflicting edits until explicit CAS resolution
+  6 passed (34.9s)
+(node:30300) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

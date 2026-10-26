@@ -4,10 +4,12 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
-import { digest, transaction, uid } from './data.js';
+import { digest, transaction, uid, type PrivateBlobs } from './data.js';
 import { creditBalance, grantCredits } from './billing.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { emptyM4Draft } from './m4-workspace.js';
+import { claim, finish } from './queue.js';
+import { syntheticReviewPair } from './review-delivery-test-fixture.js';
 import type { ReviewMaterialPin, RunSupplementChange } from '@bondbuddy/contracts';
 
 const connection = await isolatedTestDatabase(undefined, 'run-supplement-draft');
@@ -15,9 +17,9 @@ const origin = 'http://bondbuddy.test';
 const ok = (r: { statusCode: number; body: string; json(): any }) => {
   assert.ok(r.statusCode >= 200 && r.statusCode < 300, r.body); return r.json();
 };
-async function context() {
+async function context(blobs?: PrivateBlobs) {
   const pool = new Pool({ connectionString: connection }), owner = `supplement-${uid()}`;
-  const app = createServer({ pool, allowedOrigin: origin, enableSyntheticQueue: true });
+  const app = createServer({ pool, blobs, allowedOrigin: origin, enableSyntheticQueue: true });
   const session = async (user: string) => {
     const access = uid(), csrf = uid();
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [user, `supplement_${uid().replaceAll('-', '').slice(0, 20)}`]);
@@ -42,18 +44,25 @@ async function context() {
       VALUES($1,$2,$3,$4,$5,$6,'synthetic.pdf','application/pdf',16,$7,$8,'persisted')`, [id, version, user, projectId, upload, role, sha, `users/${user}/projects/${projectId}/synthetic/materials/${upload}`]);
     return { material_id: id, material_version: version, sha256: sha } satisfies ReviewMaterialPin;
   };
-  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin') => {
+  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm3_result' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin' | 'missing_review' | 'source_run' | 'source_pin' | 'materials' | 'requirements') => {
     const task = flow === 'm4' || flow === 'm1_generation' ? 'generation' : flow === 'm3' ? 'review' : 'update';
-    const projectId = await project(task);
+    const projectId = await project(flow === 'm3_result' ? 'review' : task);
     const sourceProject = flow === 'm4' ? await project() : projectId;
     const basePin = await material(sourceProject), runId = uid(), jobId = uid();
     const normalPin = { ...basePin, role: 'other' };
-    const reviewInput = { source_material_ref: basePin, material_versions: [basePin], requirements: [{ text: 'Frozen review requirement' }], as_of: '2026-09-30' };
+    const reviewInput = { source_material_ref: basePin, material_versions: [basePin], requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : [{ text: 'Frozen review requirement' }], as_of: '2026-09-30' };
+    const reviewOrigin = { entrypoint: 'synthetic' }, sourceRunId = uid();
     let manifest: any = { draft_revision: 1, issuer_name: 'Frozen issuer', market: 'sse', offering: 'private',
       update_details: { reporting_cutoff: '2026-09-30' }, goals: ['Frozen original goal'], requirements: ['Frozen original requirement'],
       materials: [normalPin], rule_pack_version: 'frozen-rules', template_version: 'frozen-template', reference_release: 'frozen-reference' };
     let topic: string | undefined;
-    if (flow === 'm3') manifest.review = { version: 'review_v1', version_number: 1, operation: 'full_review', input: reviewInput, finding_ids: [], origin: { entrypoint: 'synthetic' } };
+    if (flow === 'm3' && reviewDrift !== 'missing_review') manifest.review = { version: 'review_v1', version_number: 1, operation: 'full_review', input: reviewInput, finding_ids: [], origin: reviewOrigin };
+    if (flow === 'm3_result') { manifest.project_kind = 'review'; manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [], knowledge: [],
+      knowledge_status: 'authoring_reference_not_compliance_approval', review_result: {
+        version: 'review-result-v1', run_id: sourceRunId, input_revision: 1, input_hash: digest('Synthetic source input'),
+        artifact_id: uid(), artifact_version: 1, sha256: digest('Synthetic source result'), source_material: basePin,
+        requirements: 'Frozen revision requirement',
+      } }; }
     if (flow === 'm4') {
       topic = uid();
       await pool.query(`INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash)
@@ -72,10 +81,16 @@ async function context() {
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'paused','user_paused')`, [runId, owner, projectId, hash, uid(), task, digest(uid())]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,user_pause_requested,checkpoint)
       VALUES($1,$2,$3,$4,$5,'paused','user_paused',true,$6)`, [jobId, owner, runId, task, flow === 'm4' ? 'm4_document_v1' : 'default', { saved_work: 'original checkpoint' }]);
-    if (flow === 'm3') await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+    if (flow === 'm3' || flow === 'm3_result') await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
       VALUES($1,$2,$3,$4,$5,$6)`, [runId, owner, projectId, reviewDrift === 'version' ? 2 : 1,
-      reviewDrift === 'operation' ? 'differential_review' : 'full_review',
-      { input: reviewInput, finding_ids: [], plan: null, origin: reviewDrift === 'origin' ? { entrypoint: 'different' } : manifest.review.origin }]);
+      reviewDrift === 'operation' ? 'differential_review' : flow === 'm3_result' ? 'revision' : 'full_review',
+      { input: { ...reviewInput,
+          ...(reviewDrift === 'source_pin' ? { source_material_ref: { ...basePin, sha256: digest('Different source') } } : {}),
+          ...(reviewDrift === 'materials' ? { material_versions: [] } : {}),
+          ...(reviewDrift === 'requirements' ? { requirements: ['Different requirement'] } : {}),
+        }, finding_ids: [], plan: null, origin: reviewDrift === 'origin' ? { entrypoint: 'different' } : reviewOrigin,
+        ...(flow === 'm3_result' ? { source_run_id: reviewDrift === 'source_run' ? uid() : sourceRunId } : {}),
+      }]);
     if (flow === 'm4') await pool.query('INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)', [runId, owner, topic, manifest, hash]);
     const url = `/api/v1/runs/${runId}/supplement-draft`;
     const request = (changes: RunSupplementChange[] = [], expected_revision = 0) => ({ request_id: uid(), expected_revision, base_input_revision: 1, base_input_hash: hash, changes });
@@ -100,6 +115,55 @@ async function context() {
   });
   return { pool, app, owner, headers, send, session, project, material, fixture, evidence, close: async () => { await app.close(); await pool.end(); } };
 }
+
+test('real review-result update can prepare supplements and resume its original input', { skip: !connection }, async () => {
+  const bytes = new Map<string, Buffer>();
+  const blobs: PrivateBlobs = {
+    put: async (key, value) => { bytes.set(key, Buffer.from(value)); },
+    get: async key => { const value = bytes.get(key); assert.ok(value); return value; },
+    getIfExists: async key => bytes.get(key) ?? null,
+    getIfExistsBounded: async (key, limit) => { const value = bytes.get(key); if (value && value.length > limit) throw new Error('Synthetic byte bound'); return value ?? null; },
+    exists: async key => bytes.has(key), delete: async key => { bytes.delete(key); },
+  };
+  const c = await context(blobs);
+  try {
+    const projectId = await c.project('review'), base = `/api/v1/projects/${projectId}`;
+    const sourcePin = await c.material(projectId, 'historical');
+    const input = { source_material_ref: sourcePin, material_versions: [sourcePin], requirements: [], as_of: null };
+    ok(await c.send('PUT', `${base}/review-draft`, { kind: 'input', expected_version: 0, input }));
+    const source = ok(await c.send('POST', `${base}/review-executions`, {
+      execution_request_id: uid(), operation: 'full_review', expected_input_version: 1,
+      source_report_id: null, expected_plan_version: null, finding_ids: [],
+    }));
+    const lease = await claim(c.pool, 30, { runKinds: ['review'] }); assert.ok(lease); assert.equal(lease.runId, source.run_id);
+    const artifact = await syntheticReviewPair(c.pool, lease, blobs);
+    await finish(c.pool, lease, 'succeeded', { artifactId: artifact.artifactId, artifactVersion: 1, blobs });
+    const updated = ok(await c.send('POST', `${base}/review-updates`, {
+      execution_request_id: uid(), source_run_id: source.run_id, requirements: 'Synthetic result follow-up',
+    }));
+    const runId = updated.run_id, url = `/api/v1/runs/${runId}/supplement-draft`;
+    const frozen = (await c.pool.query(`SELECT r.input_revision,r.input_hash,i.manifest,e.snapshot,e.operation
+      FROM bb_runs r JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.revision=r.input_revision
+      JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1`, [runId])).rows[0];
+    assert.equal(frozen.manifest.review, undefined, 'real result updates use authoring.review_result');
+    assert.equal(frozen.manifest.authoring.review_result.run_id, source.run_id);
+    assert.equal(frozen.snapshot.source_run_id, source.run_id); assert.equal(frozen.operation, 'revision');
+    ok(await c.send('POST', `/api/v1/runs/${runId}/pause`, { reason: 'Synthetic preparation' }));
+    const initial = ok(await c.send('GET', url));
+    assert.equal(initial.can_save, true); assert.deepEqual(initial.base_materials.map((m: any) => m.material_id), [sourcePin.material_id]);
+    const added = await c.material(projectId), changes = [{ material: added, replaces: null }];
+    const request = { request_id: uid(), expected_revision: 0, base_input_revision: updated.input_revision, base_input_hash: updated.input_hash, changes };
+    const balance = await creditBalance(c.pool, c.owner), saved = ok(await c.send('PUT', url, request));
+    assert.equal(saved.revision, 1); assert.deepEqual(saved.changes, changes); assert.equal(saved.adopted, false);
+    assert.deepEqual(ok(await c.send('GET', `${url}?request_id=${request.request_id}`)).changes, changes);
+    const resumed = ok(await c.send('POST', `/api/v1/runs/${runId}/resume`, { reason: 'Explicit original input' }));
+    assert.equal(resumed.run_id, runId); assert.equal(resumed.input_revision, updated.input_revision); assert.equal(resumed.input_hash, updated.input_hash);
+    const after = (await c.pool.query(`SELECT r.input_revision,r.input_hash,i.manifest,e.snapshot,e.operation
+      FROM bb_runs r JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.revision=r.input_revision
+      JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1`, [runId])).rows[0];
+    assert.deepEqual(after, frozen); assert.deepEqual(await creditBalance(c.pool, c.owner), balance);
+  } finally { await c.close(); }
+});
 
 test('supplement preparation persists on the original run without adopting, executing or charging', { skip: !connection }, async t => {
   const c = await context();
@@ -281,8 +345,16 @@ test('supplement base and business snapshots remain frozen across M3 and cross-p
       assert.equal(saved.result_materials[0].source_project_id, f.projectId); assert.equal(saved.adopted, false);
       assert.deepEqual(await c.evidence(f), before, 'original snapshot and current editable draft are both preserved');
     });
-    for (const drift of ['version', 'operation', 'origin'] as const) await t.test(`inconsistent M3 ${drift} is unavailable`, async () => {
+    for (const drift of ['version', 'operation', 'origin', 'missing_review'] as const) await t.test(`inconsistent M3 ${drift} is unavailable`, async () => {
       const f = await c.fixture('m3', drift), before = await c.evidence(f);
+      assert.equal((await c.send('GET', f.url)).statusCode, 503);
+      assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 503);
+      assert.deepEqual(await c.evidence(f), before);
+    });
+    for (const drift of ['source_run', 'source_pin', 'materials', 'requirements', 'operation'] as const) await t.test(`inconsistent review-result update ${drift} is unavailable`, async () => {
+      // Insert inconsistent synthetic records up front; immutable inputs and
+      // snapshots are never updated to manufacture these negative cases.
+      const f = await c.fixture('m3_result', drift), before = await c.evidence(f);
       assert.equal((await c.send('GET', f.url)).statusCode, 503);
       assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 503);
       assert.deepEqual(await c.evidence(f), before);

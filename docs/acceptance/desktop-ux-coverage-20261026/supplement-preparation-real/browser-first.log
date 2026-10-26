@@ -1,0 +1,37 @@
+
+Running 5 tests using 1 worker
+
+
+
+[1/5] tests\run-supplement-real-main.spec.ts:46:56 › real main m1: browser pause, private-byte upload, save, reload and same-run original-material resume
+[2/5] tests\run-supplement-real-main.spec.ts:46:56 › real main m3: browser pause, private-byte upload, save, reload and same-run original-material resume
+[3/5] tests\run-supplement-real-main.spec.ts:46:56 › real main m4: browser pause, private-byte upload, save, reload and same-run original-material resume
+  1) tests\run-supplement-real-main.spec.ts:46:56 › real main m4: browser pause, private-byte upload, save, reload and same-run original-material resume
+
+    AssertionError: M4 frozen manifest must satisfy the actual public schema
+
+       at run-supplement-real-harness.ts:94
+
+      92 |       await request('PUT',`/api/v1/m4/topics/${topic}/drafts/underwriter`,{expected_version:0,input});
+      93 |       manifest={version:'m4-document-input-v1',kind:'document',project_name:source.name,topic_id:topic,execution_scope_project_id:source.project_id,draft_version:1,input,template_material:null,market:'sse',offering:'private',knowledge:[],billing_task:'m4_G01'};
+    > 94 |       assert.ok(isM4Manifest(manifest),'M4 frozen manifest must satisfy the actual public schema');
+         |              ^
+      95 |     }
+      96 |     const hash=inputManifestHash(manifest),task=surface==='m4'?'generation':surface==='m3'?'review':'update';
+      97 |     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        at Object.fixture (C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-real-harness.ts:94:14)
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-real-main.spec.ts:47:106
+
+    Error Context: ..\..\.local\supplement-preparation-real\browser-results\run-supplement-real-main-r-8ec00-un-original-material-resume\error-context.md
+
+    Error Context: ..\..\.local\supplement-preparation-real\browser-results\run-supplement-real-main-r-8ec00-un-original-material-resume\error-context.md
+
+
+[4/5] tests\run-supplement-real-main.spec.ts:68:1 › real main M3: accepted save response loss recovers the exact PostgreSQL receipt without a second PUT
+[5/5] tests\run-supplement-real-main.spec.ts:81:1 › real main M4: independent browser contexts preserve conflicting edits until explicit CAS resolution
+  1 failed
+    tests\run-supplement-real-main.spec.ts:46:56 › real main m4: browser pause, private-byte upload, save, reload and same-run original-material resume
+  2 did not run
+  2 passed (42.3s)
+(node:23268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

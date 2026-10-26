@@ -1,0 +1,3 @@
+# Keep the committed evidence hashes stable across checkout platforms.
+* text eol=lf
+*.png binary

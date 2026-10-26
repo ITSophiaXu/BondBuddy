@@ -1,0 +1,7 @@
+{
+  "files": 1031,
+  "before_sha256": "122cb987a7946190c6d18d95ce1d0ec5ced2b7605acf3ebb5f533344306ad1ec",
+  "after_sha256": "122cb987a7946190c6d18d95ce1d0ec5ced2b7605acf3ebb5f533344306ad1ec",
+  "unchanged": true,
+  "scope": "apps/web/{src,dist}, apps/api/{src,dist}, packages/contracts/{src,dist}; full lists retained in .local/supplement-preparation-real"
+}

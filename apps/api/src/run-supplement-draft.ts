@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import {
-  M1_UPLOAD_MATERIAL_ROLES, ReviewMaterialPinSchema,
+  M1_UPLOAD_MATERIAL_ROLES, ReviewDraftInputSchema, ReviewMaterialPinSchema, ReviewResultPinSchema,
   RunSupplementDraftRequestSchema, RunSupplementDraftQuerySchema, RunSupplementDraftResponseSchema,
   type ReviewMaterialPin, type RunSupplementChange, type RunSupplementDraftRequest,
   type RunSupplementDraftResponse, type RunSupplementMaterial,
@@ -20,6 +20,20 @@ function stale(): never { throw conflict('INPUT_REVISION_CONFLICT', '补料草�
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
 const pinKey = (pin: ReviewMaterialPin) => `${pin.material_id}\0${pin.material_version}\0${pin.sha256}`;
 const same = (a: unknown, b: unknown) => inputManifestHash(a) === inputManifestHash(b);
+
+/** Result follow-ups use unified authoring, with a separate immutable review snapshot. */
+function reviewResultSnapshotMatches(manifest: Record<string, any>, execution: any, taskKind: string, materials: unknown[]) {
+  if (taskKind !== 'update' || execution.operation !== 'revision' || !record(execution.snapshot)
+    || !Value.Check(ReviewDraftInputSchema, execution.snapshot.input) || !record(manifest.authoring) || manifest.authoring.version !== 'unified_v1'
+    || !Value.Check(ReviewResultPinSchema, manifest.authoring.review_result) || !materials.every(record)) return false;
+  const result = manifest.authoring.review_result, input = execution.snapshot.input;
+  return execution.snapshot.source_run_id === result.run_id
+    && same(input.source_material_ref, result.source_material)
+    && input.material_versions.some((pin: unknown) => same(pin, result.source_material))
+    && same(input.material_versions, materials.map(material => ({ material_id: material.material_id,
+      material_version: material.material_version, sha256: material.sha256 })))
+    && same(input.requirements, result.requirements ? [result.requirements] : []);
+}
 
 /** Read the accepted input, never the project's later editable draft. */
 async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Promise<Base> {
@@ -41,10 +55,16 @@ async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Prom
     if (!Array.isArray(manifest.materials)) raw = [];
     else raw = manifest.materials;
     const execution = (await db.query('SELECT * FROM bb_review_executions WHERE owner_user_id=$1 AND run_id=$2', [owner, r.id])).rows[0];
-    if (manifest.review && !execution || execution && (!record(execution.snapshot) || !record(manifest.review)
-      || manifest.review.version !== 'review_v1' || !record(execution.snapshot.input) || !record(manifest.review.input)
-      || !same(execution.snapshot.input, manifest.review.input) || execution.version !== manifest.review.version_number
-      || execution.operation !== manifest.review.operation || !same(execution.snapshot.origin ?? null, manifest.review.origin ?? null))) corrupt();
+    const hasReviewResult = record(manifest.authoring) && Object.hasOwn(manifest.authoring, 'review_result');
+    if ((manifest.review || hasReviewResult) && !execution) corrupt();
+    if (execution) {
+      if (manifest.review) {
+        if (!record(execution.snapshot) || !record(manifest.review) || manifest.review.version !== 'review_v1'
+          || !record(execution.snapshot.input) || !record(manifest.review.input)
+          || !same(execution.snapshot.input, manifest.review.input) || execution.version !== manifest.review.version_number
+          || execution.operation !== manifest.review.operation || !same(execution.snapshot.origin ?? null, manifest.review.origin ?? null)) corrupt();
+      } else if (!reviewResultSnapshotMatches(manifest, execution, r.task_kind, raw)) corrupt();
+    }
     supported = ['update', 'review', 'generation'].includes(r.task_kind) && Array.isArray(manifest.materials)
       && (!String(job?.subtype).startsWith('m4_'));
   }
