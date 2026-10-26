@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Value} from '@sinclair/typebox/value';
-import {IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,inferIntegrityRegion,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
+import {integrityRecordPresentation,IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,inferIntegrityRegion,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
 import {promoteWordArtifact} from '@bondbuddy/api/queue';
 import {digest,transaction} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
@@ -63,7 +63,7 @@ async function workpaper(ctx:StageContext,input:IntegrityInput,records:Integrity
   const files:Report['files']={};
   for(const kind of ['company','person'] as const){
    const subjects=safe.draft.subjects.filter(s=>s.kind===kind);if(!subjects.length)continue;
-   const payload={input:{...safe,draft:{...safe.draft,subjects}},records:records.filter(r=>subjects.some(s=>s.id===r.subject_id)),evidence:attachments.filter(e=>subjects.some(s=>s.id===e.record.subject_id)),automatic:automatic.filter(e=>subjects.some(s=>s.id===e.subject_id))};
+   const payload={input:{...safe,draft:{...safe.draft,subjects}},records:records.filter(r=>subjects.some(s=>s.id===r.subject_id)).map(r=>({...r,presentation:integrityRecordPresentation(r)})),evidence:attachments.filter(e=>subjects.some(s=>s.id===e.record.subject_id)),automatic:automatic.filter(e=>subjects.some(s=>s.id===e.subject_id))};
    await writeFile(join(dir,'input.json'),JSON.stringify(payload),{mode:0o600});
    await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',[join(projectFilesRoot,'python/bondbuddy_file_authoring/integrity_report.py'),join(dir,'input.json'),join(dir,kind+'.docx')],{cwd:projectFilesRoot,signal:ctx.signal,timeout:120000,maxBuffer:1024*1024});
    const bytes=await readFile(join(dir,kind+'.docx'));if(!bytes.length||bytes.length>M4_FILE_MAX)throw Error('FILE_OUTPUT_STORE_FAILED');

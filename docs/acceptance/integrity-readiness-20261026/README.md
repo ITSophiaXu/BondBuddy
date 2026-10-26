@@ -1,4 +1,4 @@
-# 诚信核查加载等待、地区条件与结果界面修复
+# 诚信核查加载等待、地区条件与精确结果状态
 
 本批程序修复开发和自测完成，尚未部署，待统一发布。用户尚未验收；**不能据此认定所有官网已达到“仅无结果或验证码/登录”这一验收要求。**
 
@@ -11,6 +11,14 @@
 - 新查询的技术失败/未确认不再分类为缺少人工信息。保留网站已经返回的相关搜索结果，即使模型未解读成功，也不要求上传证据。结果页以“查看查询记录”为入口，删除补证上传表单，保留历史证据下载、原始截图校验、免费重新导出。历史数据及其原始原因不重写；旧访问拦截也不统一改标为验证码。
 - Word 的未完成提示同步去除强制补证要求；继续排除失败/未确认截图作为结果插图。
 
+## 结果状态细分（2026-10-26 用户补充要求）
+
+- 新采集保存结构化原因、发生阶段、HTTP 状态、可见错误摘要、尝试次数及实际耗时。分别显示搜索无返回结果、搜索返回结果、页面空白、页面加载超时、查询结果加载超时、查询控件未就绪、本次结果未确认、网站拒绝访问、HTTP 响应错误、网络连接失败、验证码、登录及操作未完成。没有具体失败原因的历史记录明确标注未记录，不推测 HTTP 状态或认证要求。
+- 结果页与 Word 共用 contracts 中的状态展示函数。无结果使用中性状态；明确不利记录突出显示。未执行网站在任务结束后显示未执行，不继续显示等待查询。
+- 新版解读将具体事项、逐字引文、来源截图、事项性质及主体匹配情况持久化。企业全称匹配的不利记录、身份未确认的不利线索、一般信息与其他主体记录分别展示；人员同名不能标为身份已确认。模型给出的每条引文必须实际存在于指定截图文字中，企业全称匹配的引文必须包含企业全称。原文未载明的处罚状态、整改、日期和金额不能补写。
+- 增加可选 browser.diagnostic 和 findings，不重写已哈希保存的记录，无数据库迁移。由不可变采集批次决定模型解读版本：历史无诊断批次沿用 v1，新批次使用 assessment-v2，暂停恢复不会额外切换版本或重复解读。
+- 仍不要求上传补充证据。具体原因用于说明查询边界，HTTP 错误和空白超时不会变成“无结果”。
+
 ## 测试与边界
 
 Windows，已有 Node 22.14 / Chromium 1243；部分定向浏览器回归使用 Node 24.22。官网和模型 fixture 均明确为 synthetic。
@@ -18,10 +26,12 @@ Windows，已有 Node 22.14 / Chromium 1243；部分定向浏览器回归使用 
 | 验证 | 结果 |
 | --- | --- |
 | 全仓 `npm run build`、`npm run check:contracts` | 通过；最终源码再经 worker/web TypeScript 检查及定向回归 |
-| `BB_TEST_INTEGRITY_BROWSER=1 node --test --test-concurrency=1 apps/worker/dist/integrity-readiness.test.js apps/worker/dist/integrity-browser.test.js` | 37 通过，0 失败，0 跳过 |
+| `BB_TEST_INTEGRITY_BROWSER=1 node --test --test-concurrency=1 apps/worker/dist/integrity-readiness.test.js apps/worker/dist/integrity-browser.test.js` | 43 通过，0 失败，0 跳过 |
 | 真实 API / PostgreSQL 16 / Azurite / 队列 / 积分 / 截图 / Word 链路与证据测试 | 7 通过，0 失败，0 跳过 |
-| Python `test_integrity_report.py` | 3 通过 |
-| `apps/web/tests/integrity-browser.spec.ts` | 5 通过，1440×960、390×960、1265×712；HTTP 数据为 synthetic |
+| Python `test_integrity_report.py` | 4 通过 |
+| `apps/web/tests/integrity-browser.spec.ts` | 6 通过，1440×960、390×960、1265×712；HTTP 数据为 synthetic |
+
+新增共享状态呈现测试 3/3、引文及主体匹配校验测试 1/1 通过，含历史记录保持不变和没有引用的企业身份判断被拒绝。最新完整构建通过，追加测试后再次编译 contracts / worker 并通过 contracts 检查。UI 状态矩阵初次使用了目录中不存在的合成站点 ID，修正为真实目录 ID 后 6/6 通过；首轮失败日志保留在私有 work 中。
 
 端到端使用本次单独初始化的本机 PostgreSQL（15456）和 Azurite（10036），未连接生产数据。验证包括一次扣费、免费重导出、恢复复用、归属隔离、原图 hash 校验和 Word 图片保真。完成后已停止本次测试依赖。初次测试启动的沙箱权限、Azurite 冷启动等待及 Node 22 导入问题已修复后复验；页面导航状态监听曾遇到弹窗 Frame 尚未创建的异常，已修复并由弹窗回归覆盖。原失败日志保留在私有 work 目录。
 
@@ -43,6 +53,8 @@ Windows，已有 Node 22.14 / Chromium 1243；部分定向浏览器回归使用 
 | --- | --- | --- |
 | 1440×960 结果页 | [原结果页](before-results-1440.png) | [结果页](results-1440.png) |
 | 390×960 证据弹窗 | [原补证弹窗](before-evidence-390.png) | [查询记录弹窗](evidence-390.png) |
+
+补充状态矩阵与具体不利事项展示：[精确状态矩阵](precise-statuses-1440.png)、[不利记录详情](adverse-record-1440.png)。本轮是既有 PR #744 / `f5049c0` 的状态细分增量，按用户追加截图要求调整文案与事项显示；布局沿用上述原型。
 
 以上为合成页面测试截图；官网真实查询诊断未提交到仓库。
 

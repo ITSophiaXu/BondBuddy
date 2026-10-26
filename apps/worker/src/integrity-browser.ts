@@ -1,14 +1,14 @@
-import {chromium,type BrowserContext,type Page,type Response} from 'playwright';
+import {chromium,type BrowserContext,type Page,type Response,type Request} from 'playwright';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import type {IntegrityBrowser,IntegritySite,IntegritySubject} from '@bondbuddy/contracts';
+import {integrityDiagnosticLabel,type IntegrityDiagnostic,type IntegrityBrowser,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
 import {integrityProxy,integrityBrowserUrlAllowed} from './integrity-browser-network.js';
 import {startIntegrityDesktop,type IntegrityDesktop} from './integrity-desktop.js';
-import {visibleText,firstVisible,challenge as blocker,pageErrors as errors,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading} from './integrity-browser-page.js';
+import {visibleText,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading} from './integrity-browser-page.js';
 
 export type BrowserCapture={kind:'result'|'detail'|'blocker';url:string;title:string;captured_at:string;page:number;text:string;screenshot:Buffer};
-export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[]};
+export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic};
 export type IntegrityCollector=(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal)=>Promise<BrowserCollection>;
 export function integrityBrowserEnvironment(cacheDirectory:string){
  const env:Record<string,string>={XDG_CACHE_HOME:cacheDirectory};
@@ -65,12 +65,14 @@ export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signa
 /** Injectable context only for controlled browser fixtures. Production always uses the protected proxy. */
 export async function collectInContext(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits=collectionLimits):Promise<BrowserCollection>{
  let result:BrowserCollection|undefined;
+ const started=Date.now();
  const attempts=limits.attempts??collectionLimits.attempts;
  for(let attempt=0;attempt<attempts;attempt++){
   // Official credit search entry observed from the portal's search button (2026-10-26).
   // A broken portal shell must not prevent the normal query form from loading.
   const entry=site.id==='credit-china'&&attempt>0?new URL('/xinyongxinxi/index.html',site.links[0].url).href:site.links[0].url;
   signal.throwIfAborted();result=await collectAttempt(context,site,subject,signal,limits,entry);
+  if(result.diagnostic)Object.assign(result.diagnostic,{attempts:attempt+1,elapsed_ms:Date.now()-started});
   if(!['failed','unverified'].includes(result.outcome))return result;
  }
  if(!result)throw Error('INVALID_COLLECTION_LIMITS');
@@ -82,9 +84,11 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
  const query=integritySearchQuery(site,subject);
  const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图直接采集隔离服务器桌面的完整屏幕，含浏览器和 XFCE 原生系统面板（北京时间），未叠加时间或绘制时钟栏；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，无需上传补充证据。',captures:[]};
  let page=await context.newPage();page.setDefaultTimeout(Math.min(limits.waitMs,15000));page.setDefaultNavigationTimeout(limits.waitMs);
- let onResponse:((response:Response)=>void)|undefined;
- let navigationStatus=0;
- const onNavigation=(response:Response)=>{try{if(response.request().isNavigationRequest()&&response.frame()===page.mainFrame())navigationStatus=response.status();}catch{/* Popup navigation can precede creation of its frame. */}};
+ let onResponse:((response:Response)=>void)|undefined,onRequestFailed:((request:Request)=>void)|undefined;
+ let phase:IntegrityDiagnostic['phase']='open';
+ const navigationStatuses=new WeakMap<Page,number>();
+ const onNavigation=(response:Response)=>{try{const frame=response.frame();if(response.request().isNavigationRequest()&&frame===frame.page().mainFrame())navigationStatuses.set(frame.page(),response.status());}catch{/* Popup navigation can precede creation of its frame. */}};
+ const mark=(d:IntegrityDiagnostic,outcome:BrowserCollection['outcome']='failed',explanation='未取得可确认的查询结果。')=>{result.diagnostic=d;result.outcome=outcome;result.reason=`${integrityDiagnosticLabel(d)}。${explanation}${d.detail?` 页面反馈：${d.detail}`:''} 无需补充信息或上传证据。`;};
  context.on('response',onNavigation);
  const diagnostic=async()=>{try{result.captures.push(await capturePage(page,'blocker',1));}catch{/* A blank/error document is never fabricated as evidence. */}};
  try{
@@ -95,29 +99,33 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   const readyDeadline=Date.now()+limits.waitMs;
   while(Date.now()<readyDeadline){
    signal.throwIfAborted();text=await visibleText(page);
-   if(await blocker(page,text)){result.outcome='blocked';result.reason='官网要求验证码或登录，自动查询已停止；无需补充信息或上传证据，其他网站继续。';await diagnostic();return result;}
-   if(errors.test(text)){result.outcome='failed';result.reason=`官网访问异常${navigationStatus>=400?`（HTTP ${navigationStatus}）`:''}，未取得查询结果；无需补充信息或上传证据。`;await diagnostic();return result;}
+   if(errors.test(text)){mark(pageFailure(text,navigationStatuses.get(page)??0,phase));await diagnostic();return result;}
+   const gate=await blocker(page,text);if(gate){mark({code:gate,phase},'blocked','自动查询已停止，其他网站继续。');await diagnostic();return result;}
    form=await searchInput(page);if(form)break;
    if(!openedSearch){const opener=await firstVisible(page.getByRole('link',{name:/^(站内搜索|搜索|查询|信息查询)$/}).or(page.getByRole('button',{name:/^(站内搜索|搜索|查询|信息查询)$/})));if(opener){openedSearch=true;await opener.click({noWaitAfter:true});}}
    const opened=context.pages().filter(p=>!p.isClosed());if(opened.length>1)page=opened.at(-1)!;
    await page.waitForTimeout(300);
   }
-  if(!form){result.reason=loadingOnly(text)?'官网页面持续空白或仍在加载，未保存空白截图；无需补充信息或上传证据。':'官网查询控件未就绪，未完成查询；无需补充信息或上传证据。';if(navigationStatus>=400){result.outcome='failed';result.reason=`官网响应 HTTP ${navigationStatus}。`+result.reason;}await diagnostic();return result;}
+  if(!form){const status=navigationStatuses.get(page)??0;if(status>=400)mark(pageFailure(text,status,phase));else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)?'page_load_timeout':'query_form_unavailable',phase},'unverified',`等待 ${limits.waitMs/1000} 秒后仍未能查询${loadingOnly(text)?'，未保存空白或加载中的截图':''}。`);await diagnostic();return result;}
+  phase='query';
   if(site.id.startsWith('execution-')){const region=await courtRegion(page,subject);if(region){result.scope+=` 执行法院范围：${region}。`;if(region!=='全国')result.limitation+=` 官网要求选择地区，本次仅查询${region}，不覆盖其他地区执行案件。`;}}
   await form.input.fill(query);
   const baseline=resultSignature(await visibleText(page),query);
-  const beforePages=context.pages();let changedResponse=false;
-  onResponse=(response:Response)=>{const request=response.request();try{let body=request.postData()??'';try{body=JSON.stringify(JSON.parse(body));}catch{}const sent=decodeURIComponent((request.url()+' '+body).replace(/\+/g,' '));if(response.ok()&&sent.includes(query))changedResponse=true;}catch{/* Unverifiable encoded requests are not proof of a submitted full-name search. */}};context.on('response',onResponse);
+  const beforePages=context.pages();let changedResponse=false,queryStatus=0,queryNetworkError='';
+  const carriesQuery=(request:Request)=>{try{let body=request.postData()??'';try{body=JSON.stringify(JSON.parse(body));}catch{}return decodeURIComponent((request.url()+' '+body).replace(/\+/g,' ')).includes(query);}catch{return false;}};
+  onResponse=(response:Response)=>{if(carriesQuery(response.request())){queryStatus=response.status();changedResponse=response.ok();queryNetworkError='';}};context.on('response',onResponse);
+  onRequestFailed=(request:Request)=>{if(carriesQuery(request)){queryNetworkError=request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0]??'查询请求未完成';changedResponse=false;}};context.on('requestfailed',onRequestFailed);
   const button=await searchButton(form.frame);
   if(button)await button.click({noWaitAfter:true});else await form.input.press('Enter',{noWaitAfter:true});
   result.search_performed=true;
+  phase='results';
   const deadline=Date.now()+limits.waitMs;let previous='',stable=0,verified=false;
   while(Date.now()<deadline){
    signal.throwIfAborted();await page.waitForTimeout(600);
    const opened=context.pages().filter(p=>!beforePages.includes(p)&&!p.isClosed());if(opened.length)page=opened.at(-1)!;
    text=await visibleText(page).catch(()=>'');
-   if(await blocker(page,text)){result.outcome='blocked';result.reason='查询需要验证码或登录，自动查询已停止；无需上传补充证据，其他网站继续。';break;}
-   if(errors.test(text)){result.outcome='failed';result.reason='提交查询后官网返回错误，未获得结果；无需补充信息或上传证据。';break;}
+   if(errors.test(text)){mark(pageFailure(text,queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,phase));break;}
+   const gate=await blocker(page,text);if(gate){mark({code:gate,phase},'blocked','已提交查询，官网要求验证后才能继续，其他网站继续。');break;}
    const reflected=await queryReflected(page,query,text);
    const compact=resultSignature(text,query),candidate=outcome(text,query);
    stable=compact===previous?stable+1:0;previous=compact;
@@ -126,9 +134,14 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   }
   context.off('response',onResponse);
   if(result.outcome==='blocked'||result.outcome==='failed'){await diagnostic();return result;}
-  if(!verified){result.reason='已提交查询，但官网尚未返回可确认的本次结果；无需补充信息或上传证据。';await diagnostic();return result;}
+  if(!verified){const status=queryStatus>=400?queryStatus:navigationStatuses.get(page)??0;
+   if(queryNetworkError)mark({code:'network_error',phase,detail:queryNetworkError});
+   else if(status>=400)mark(pageFailure(text,status,phase));
+   else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)?'result_load_timeout':'result_unverified',phase},'unverified',`已提交查询，等待 ${limits.waitMs/1000} 秒后${loadingOnly(text)||await resultsLoading(page)?'页面仍未加载完成':'仍无法确认页面对应本次查询'}。`);
+   await diagnostic();return result;}
+  result.diagnostic={code:result.outcome==='no_results'?'no_results':'results',phase};
   result.captures.push(await capturePage(page,'result',1));
-  result.reason=result.outcome==='no_results'?'本次官网站内查询未检索到相关结果；仅限所列查询词和页面范围，不代表无风险。':'官网检索到相关内容；需核对同名主体、记录事项与影响。';
+  result.reason=result.outcome==='no_results'?'搜索无返回结果：官网已响应本次查询，页面明确显示无结果；仅限所列查询词和页面范围，不代表无风险。':'搜索返回结果：官网已响应本次查询，具体事项与主体关联见下方记录。';
   if(result.outcome==='no_results')return result;
   // Preserve subsequent pages when the site exposes a normal next-page control.
   for(let n=2;n<=limits.maxPages;n++){
@@ -151,6 +164,11 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   }
   result.limitation+=` 本次保留 ${result.captures.filter(c=>c.kind==='result').length} 页查询截图，最多采集 ${limits.maxPages} 页；未展示的结果不在本次核查范围内。`;
   return result;
- }catch(error){signal.throwIfAborted();result.outcome='failed';const code=error instanceof Error?(error.message.match(/net::[A-Z_]+|EMPTY_OFFICIAL_PAGE|NO_OFFICIAL_PAGE_CAPTURE/)?.[0]??(error.name==='TimeoutError'?'加载超时':'页面操作未完成')):'页面操作未完成';result.reason=`官网加载或查询未完成（${code}），未取得可确认结果；无需补充信息或上传证据。`;await diagnostic();return result;}
- finally{context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));}
+ }catch(error){signal.throwIfAborted();const network=error instanceof Error?error.message.match(/net::[A-Z_]+/)?.[0]:undefined;
+  if(result.captures.some(c=>c.kind==='result')&&['results','no_results'].includes(result.outcome)){result.limitation+=` 后续页面采集未完成${network?`（${network}）`:''}，已取得的查询结果仍保留。`;return result;}
+  const text=await visibleText(page).catch(()=>''),status=navigationStatuses.get(page)??0;
+  if(status>=400||errors.test(text))mark(pageFailure(text,status,phase));
+  else mark({code:network?'network_error':error instanceof Error&&error.name==='TimeoutError'?(!text.trim()?'blank_page_timeout':phase==='open'?'page_load_timeout':phase==='results'?'result_load_timeout':'operation_failed'):'operation_failed',phase,...(network?{detail:network}:{})});
+  await diagnostic();return result;}
+ finally{context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);if(onRequestFailed)context.off('requestfailed',onRequestFailed);await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));}
 }

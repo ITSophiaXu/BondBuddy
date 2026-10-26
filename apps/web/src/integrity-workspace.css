@@ -68,3 +68,5 @@
 .integrity-browser-evidence figcaption{font-weight:600;margin-bottom:6px}
 .integrity-browser-evidence figure>a{display:block;overflow-wrap:anywhere}
 .integrity-browser-evidence img{display:block;width:100%;height:auto;margin:12px 0}
+.pf-chip.integrity-status-neutral{background:#f0f3f5;color:#435361}.pf-chip.integrity-status-warning{background:#fff3e2;color:#9a570d}.pf-chip.integrity-status-danger{background:#fce9e7;color:#a72821}
+.integrity-result-description{white-space:pre-line}.integrity-finding{margin:18px 0;padding-top:12px;border-top:1px solid var(--border,#e5e7eb)}.integrity-finding h3{font-size:16px;margin:0 0 8px}.integrity-finding>small{color:var(--text-muted,#69727c)}

@@ -13,13 +13,28 @@ export type IntegrityDraft=Static<typeof IntegrityDraftSchema>;
 export const IntegritySourceSchema=obj({url:Type.String({maxLength:4096}),title:short,quote:text,retrieved_at:time,tool_call_id:id,sha256:hash});
 export const IntegrityCaptureSchema=obj({id,kind:Type.Union((['result','detail','blocker'] as const).map(x=>Type.Literal(x))),url:Type.String({maxLength:4096}),title:short,captured_at:time,page:Type.Integer({minimum:1,maximum:20}),screenshot_sha256:hash,text_sha256:hash,byte_size:Type.Integer({minimum:1,maximum:15000000})});
 export type IntegrityCapture=Static<typeof IntegrityCaptureSchema>;
-export const IntegrityBrowserSchema=obj({version:Type.Literal('official-browser-v1'),outcome:Type.Union((['results','no_results','blocked','failed','unverified'] as const).map(x=>Type.Literal(x))),scope:text,limitation:text,captures:Type.Array(IntegrityCaptureSchema,{maxItems:20})});
+export const IntegrityDiagnosticSchema=obj({
+ code:Type.Union((['results','no_results','captcha_required','login_required','authentication_required','access_denied','http_error','blank_page_timeout','page_load_timeout','result_load_timeout','query_form_unavailable','result_unverified','network_error','page_error','operation_failed'] as const).map(x=>Type.Literal(x))),
+ phase:Type.Union((['open','query','results'] as const).map(x=>Type.Literal(x))),
+ http_status:Type.Optional(Type.Integer({minimum:400,maximum:599})),detail:Type.Optional(Type.String({maxLength:500})),
+ attempts:Type.Optional(Type.Integer({minimum:1,maximum:10})),elapsed_ms:Type.Optional(Type.Integer({minimum:0}))
+});
+export type IntegrityDiagnostic=Static<typeof IntegrityDiagnosticSchema>;
+export const IntegrityBrowserSchema=obj({version:Type.Literal('official-browser-v1'),outcome:Type.Union((['results','no_results','blocked','failed','unverified'] as const).map(x=>Type.Literal(x))),scope:text,limitation:text,captures:Type.Array(IntegrityCaptureSchema,{maxItems:20}),diagnostic:Type.Optional(IntegrityDiagnosticSchema)});
 export type IntegrityBrowser=Static<typeof IntegrityBrowserSchema>;
+// Keep v1 readable for durable model responses created before structured findings.
 export const IntegrityBrowserInterpretationSchema=obj({summary:text,findings:Type.Array(obj({capture_id:id,quote:text,explanation:text}),{maxItems:20})});
 export type IntegrityBrowserInterpretation=Static<typeof IntegrityBrowserInterpretationSchema>;
+export const IntegrityFindingSchema=obj({capture_id:id,quote:text,explanation:text,title:Type.String({minLength:1,maxLength:200}),
+ nature:Type.Union((['adverse','information','uncertain'] as const).map(x=>Type.Literal(x))),
+ subject_match:Type.Union((['company_name','unconfirmed','different_subject'] as const).map(x=>Type.Literal(x)))});
+export type IntegrityFinding=Static<typeof IntegrityFindingSchema>;
+export const IntegrityBrowserAssessmentSchema=obj({summary:text,findings:Type.Array(IntegrityFindingSchema,{maxItems:20})});
+export type IntegrityBrowserAssessment=Static<typeof IntegrityBrowserAssessmentSchema>;
 export const IntegrityRecordSchema=obj({subject_id:id,site_id:id,site_name:short,urls:Type.Array(Type.String({maxLength:4096})),query:Type.String({maxLength:4000}),
-  status:Type.Union((['public_matches','no_public_results','needs_manual','not_applicable','query_failed'] as const).map(x=>Type.Literal(x))),reason:text,checked_at:time,sources:Type.Array(IntegritySourceSchema,{maxItems:30}),search_performed:Type.Boolean(),browser:Type.Optional(IntegrityBrowserSchema)});
+  status:Type.Union((['public_matches','no_public_results','needs_manual','not_applicable','query_failed'] as const).map(x=>Type.Literal(x))),reason:text,checked_at:time,sources:Type.Array(IntegritySourceSchema,{maxItems:30}),search_performed:Type.Boolean(),browser:Type.Optional(IntegrityBrowserSchema),findings:Type.Optional(Type.Array(IntegrityFindingSchema,{maxItems:20}))});
 export type IntegrityRecord=Static<typeof IntegrityRecordSchema>;
+export * from './integrity-presentation.js';
 export const IntegrityInputSchema=obj({version:Type.Literal('integrity-round-v1'),operation:Type.Union([Type.Literal('check'),Type.Literal('export')]),
   round_id:id,project_name:short,draft:IntegrityDraftSchema,price_version:Type.Literal(INTEGRITY_PRICE.version),points:Type.Integer({minimum:0}),
   records:Type.Array(IntegrityRecordSchema,{maxItems:100*INTEGRITY_SITE_LIMIT}),evidence_ids:Type.Array(id,{maxItems:2000}),collector:Type.Optional(Type.Literal('official-browser-v1'))});

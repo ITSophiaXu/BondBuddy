@@ -31,7 +31,7 @@ test('page readiness, query conditions, retries and honest results in real Chrom
  try{
   await t.test('blank shell becomes a form after DOMContentLoaded',async()=>{
    const r=await run(url=>url.pathname==='/query'?'ok':html('',`setTimeout(()=>{document.body.innerHTML=${JSON.stringify(form)};${submit}},700)`));
-   assert.equal(r.outcome,'no_results');assert.match(r.captures[0].text,/河南合成测试企业/);
+   assert.equal(r.outcome,'no_results');assert.equal(r.diagnostic?.code,'no_results');assert.match(r.captures[0].text,/河南合成测试企业/);
   });
   await t.test('same-site visible iframe form and results',async()=>{
    const r=await run(url=>url.pathname==='/query'?'ok':url.pathname==='/frame'?html(form,submit):html('<iframe src="/frame" style="width:900px;height:500px"></iframe>'));
@@ -51,10 +51,10 @@ test('page readiness, query conditions, retries and honest results in real Chrom
    assert.equal(visits,2);assert.equal(r.outcome,'no_results');assert.equal(r.captures.length,1);assert.equal(r.captures[0].kind,'result');
   });
   await t.test('persistent blank remains incomplete and produces no screenshot',async()=>{
-   const r=await run(()=>html(''));assert.equal(r.outcome,'unverified');assert.equal(r.search_performed,false);assert.equal(r.captures.length,0);assert.match(r.reason,/无需.*证据/);
+   const r=await run(()=>html(''));assert.equal(r.outcome,'unverified');assert.equal(r.diagnostic?.code,'blank_page_timeout');assert.equal(r.search_performed,false);assert.equal(r.captures.length,0);assert.match(r.reason,/无需.*证据/);
   });
   await t.test('loading-only page does not become an evidence screenshot',async()=>{
-   const r=await run(()=>html('加载中…'));assert.equal(r.captures.length,0);assert.equal(r.outcome,'unverified');
+   const r=await run(()=>html('加载中…'));assert.equal(r.captures.length,0);assert.equal(r.outcome,'unverified');assert.equal(r.diagnostic?.code,'page_load_timeout');
   });
   for(const national of [true,false])await t.test(`court province selector ${national?'keeps nationwide coverage':'uses inferred Henan'}`,async()=>{
    const r=await run(url=>url.pathname==='/query'?'ok':html(form+`<select id="province"><option value="">请选择</option>${national?'<option value="0">全国</option>':''}<option value="41">河南省</option><option value="13">河北省</option></select>`,submit.replace("const q=",`if(document.querySelector('select').value!=='${national?'0':'41'}')return;const q=`)),options,INTEGRITY_SITES.find(s=>s.id==='execution-dishonest')!);
@@ -66,7 +66,7 @@ test('page readiness, query conditions, retries and honest results in real Chrom
   });
   await t.test('visible captcha is stopped without retries or invented missing information',async()=>{
    let visits=0;const r=await run(()=>{visits++;return html(form+'<input id="captcha" placeholder="验证码">');},{...options,attempts:2});
-   assert.equal(r.outcome,'blocked');assert.equal(r.search_performed,false);assert.equal(visits,1);assert.match(r.reason,/验证码或登录/);
+   assert.equal(r.outcome,'blocked');assert.equal(r.diagnostic?.code,'captcha_required');assert.equal(r.search_performed,false);assert.equal(visits,1);assert.match(r.reason,/需要验证码/);assert.doesNotMatch(r.reason,/登录/);
   });
   await t.test('unchanged stale zero is never accepted as this query',async()=>{
    const r=await run(url=>url.pathname==='/query'?'ok':html(form.replace('请输入名称','共0条'),`document.querySelector('#submit').onclick=()=>fetch('/query?q='+encodeURIComponent(document.querySelector('input').value));`));assert.equal(r.outcome,'unverified');
@@ -80,7 +80,25 @@ test('page readiness, query conditions, retries and honest results in real Chrom
   });
   await t.test('failed response does not verify an apparent zero',async()=>{
    const context=await browser.newContext();await context.route('**/*',route=>new URL(route.request().url()).pathname==='/query'?route.fulfill({status:503,body:'unavailable'}):route.fulfill({contentType:'text/html',body:html(form,submit)}));
-   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.outcome,'unverified');}finally{await context.close();}
+   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.outcome,'failed');assert.equal(r.diagnostic?.code,'http_error');assert.equal(r.diagnostic?.http_status,503);assert.equal(r.diagnostic?.phase,'results');}finally{await context.close();}
+  });
+  await t.test('a result spinner timing out has a different cause from an unchanged unverified zero',async()=>{
+   const r=await run(url=>url.pathname==='/query'?'ok':html(form,submit.replace("document.querySelector('main').textContent=","document.querySelector('main').setAttribute('aria-busy','true');document.querySelector('main').textContent=")));
+   assert.equal(r.diagnostic?.code,'result_load_timeout');assert.equal(r.search_performed,true);
+   const stale=await run(url=>url.pathname==='/query'?'ok':html(form.replace('请输入名称','共0条'),"document.querySelector('#submit').onclick=()=>fetch('/query?q='+encodeURIComponent(document.querySelector('input').value));"));
+   assert.equal(stale.diagnostic?.code,'result_unverified');
+  });
+  await t.test('login gate is distinct from captcha',async()=>{
+   const r=await run(()=>html('<h1>请先登录</h1><input type="password">'));
+   assert.equal(r.diagnostic?.code,'login_required');assert.doesNotMatch(r.reason,/验证码/);
+  });
+  for(const status of [403,400,503])await t.test(`HTTP ${status} is preserved even for an empty response`,async()=>{
+   const context=await browser.newContext();await context.route('**/*',route=>route.fulfill({status,contentType:'text/html',body:html(status===403?'403 Forbidden GeoBL':'')}));
+   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.diagnostic?.http_status,status);assert.equal(r.diagnostic?.code,status===403?'access_denied':'http_error');assert.match(r.reason,new RegExp('HTTP '+status));if(status===403)assert.match(r.diagnostic?.detail??'',/GeoBL/);}finally{await context.close();}
+  });
+  await t.test('network failure is reported without claiming an empty search',async()=>{
+   const context=await browser.newContext();await context.route('**/*',route=>route.abort('namenotresolved'));
+   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.diagnostic?.code,'network_error');assert.match(r.diagnostic?.detail??'',/ERR_NAME_NOT_RESOLVED/);assert.equal(r.search_performed,false);}finally{await context.close();}
   });
   await t.test('abort while waiting for a blank homepage stops immediately',async()=>{
    const context=await browser.newContext();await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:html('')}));

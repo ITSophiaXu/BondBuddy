@@ -1,10 +1,15 @@
 import type {Page, Frame, Locator} from 'playwright';
-import {inferIntegrityRegion, type IntegritySubject} from '@bondbuddy/contracts';
+import {inferIntegrityRegion, type IntegrityDiagnostic,type IntegritySubject} from '@bondbuddy/contracts';
 
 // Do not assume a DOMContentLoaded event means a portal's JavaScript form is ready.
 const SEARCH_INPUT='input[type=search],input[placeholder*="搜索"],input[placeholder*="查询"],input[placeholder*="名称"],input[placeholder*="姓名"],input[placeholder*="关键"],input[id*=search i],input[name*=search i],input[id*=keyword i],input[name*=keyword i],input[id*=pName],input[name*=name i],input[id*=qname i],input[id*=iname i],input[id*=kw i]';
 const SEARCH_ACTION=/^(搜索|搜一搜|搜\s*索|查\s*询|查询信息|Search|检索)$/i;
-export const pageErrors=/\b50[234]\s+(bad gateway|service unavailable|gateway timeout)\b|网页无法访问|系统维护|服务不可用|访问过于频繁|访问受限|拒绝访问|已被拦截|请求已被阻断|access denied|403\s*Forbidden|GeoBL|^\s*50[234]\s*$/i;
+export const pageErrors=/\b50[234]\s+(bad gateway|service unavailable|gateway timeout)\b|网页无法访问|系统维护|服务不可用|访问过于频繁|访问受限|拒绝访问|已被拦截|请求已被阻断|access denied|403\s*Forbidden|^\s*Forbidden\b|GeoBL|^\s*50[234]\s*$/im;
+export function pageFailure(text:string,status:number,phase:IntegrityDiagnostic['phase']):IntegrityDiagnostic{
+ const denied=status===403||/Forbidden|access denied|GeoBL|访问受限|拒绝访问|已被拦截|请求已被阻断/i.test(text);
+ const detail=text.split('\n').find(line=>pageErrors.test(line))?.trim().slice(0,500);
+ return {code:denied?'access_denied':status>=400?'http_error':'page_error',phase,...(status>=400?{http_status:status}:{}),...(detail?{detail}:{} )};
+}
 export const loadingOnly=(text:string)=>!text.trim()||/^(加载中|正在加载|请稍候|请稍后|loading)[\s.。…!！]*$/i.test(text.trim());
 export async function visibleFrames(page:Page):Promise<Frame[]>{
  const frames:Frame[]=[];
@@ -23,9 +28,13 @@ export async function firstVisible(locator:Locator){
 }
 export async function challenge(page:Page,text:string){
  // A footer login link, a help article mentioning captcha, or a WAF error is not an authentication gate.
- if(/请完成.{0,8}(验证|登录)|向右滑动|拖动.{0,12}(滑块|验证)|请(?:输入|填写).{0,8}验证码|请先登录|登录后.{0,10}(查询|查看)|verify you are human|sign in to continue/i.test(text))return true;
- for(const frame of await visibleFrames(page))if(await frame.locator('input[type=password]:visible,iframe[src*="captcha"]:visible,iframe[src*="verify"]:visible,input[placeholder*="验证码"]:visible,input[id*=captcha i]:visible,input[name*=captcha i]:visible,input[id=yzm]:visible,input[id=yzmInput]:visible,input[id=j_captcha]:visible').count())return true;
- return false;
+ let captcha=/请完成.{0,8}验证|向右滑动|拖动.{0,12}(滑块|验证)|请(?:输入|填写).{0,8}验证码|verify you are human/i.test(text);
+ let login=/请完成.{0,8}登录|请先登录|登录后.{0,10}(查询|查看)|sign in to continue/i.test(text);
+ for(const frame of await visibleFrames(page)){
+  captcha ||= !!await frame.locator('iframe[src*="captcha"]:visible,iframe[src*="verify"]:visible,input[placeholder*="验证码"]:visible,input[id*=captcha i]:visible,input[name*=captcha i]:visible,input[id=yzm]:visible,input[id=yzmInput]:visible,input[id=j_captcha]:visible').count();
+  login ||= !!await frame.locator('input[type=password]:visible').count();
+ }
+ return captcha&&login?'authentication_required':captcha?'captcha_required':login?'login_required':undefined;
 }
 export async function searchInput(page:Page){
  for(const frame of await visibleFrames(page)){

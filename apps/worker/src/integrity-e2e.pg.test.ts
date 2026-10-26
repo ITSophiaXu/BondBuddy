@@ -47,11 +47,11 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:ctx.run.project_id,runId:ctx.run.id,kind:'model_request',version,body:prompt,inputRevision:ctx.run.input_revision,inputHash:ctx.run.input_hash,templateVersion:o.templateVersion});
   const intent={owner_user_id:owner,project_id:ctx.run.project_id,job_id:ctx.lease.jobId,run_id:ctx.run.id,trace_id:ctx.run.id,logical_call_id:o.logicalCallId,call_id:randomUUID(),attempt_no:1,model_id:'synthetic-integrity',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot};
   await journal.recordIntent(intent);calls++;
-  if(o.resultSchemaVersion==='integrity-browser-interpretation-v1'){
+  if(['integrity-browser-interpretation-v1','integrity-browser-assessment-v2'].includes(o.resultSchemaVersion)){
    const captures=(await pool.query('SELECT c.* FROM bb_integrity_browser_captures c WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id',[owner,ctx.run.id])).rows;
    const current=captures.find(c=>'integrity_browser_'+inputManifestHash({subject:c.subject_id,site:c.site_id}).slice(0,24)===o.logicalCallId)!;
    const text=(await blobs.get(current.text_key)).toString('utf8');
-   const value={summary:'Synthetic model interpretation',findings:[{capture_id:current.id,quote:text.includes('被要求补充材料')?text.slice(text.indexOf('查询结果')):text,explanation:'合成测试解读：需核对主体与补充材料。'}]};
+   const value={summary:'Synthetic model interpretation',findings:[{capture_id:current.id,quote:text.includes('被要求补充材料')?text.slice(text.indexOf('查询结果')):text,explanation:'合成记录显示被要求补充材料，不能据此认定存在违法失信。',...(o.resultSchemaVersion==='integrity-browser-assessment-v2'?{title:'申报事项：被要求补充材料',nature:'information',subject_match:'unconfirmed'}:{})}]};
    assert.ok(o.validate(value));
    assert.equal(o.validate({summary:'forged',findings:[{capture_id:current.id,quote:'未出现的伪造引用',explanation:'forged'}]}),false,'model cannot cite invented evidence');
    const ref=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),o.resultSchemaVersion);
@@ -73,7 +73,11 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   if(!searchEnabled)return {query:'',search_performed:false,outcome:'failed',scope:'Synthetic unavailable',limitation:'Synthetic only',reason:'未取得查询记录',captures:[]};
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
   await integrityWebsiteFixture(context,subject.kind==='company'&&site.id==='execution'?'failure':'hits');
-  try{return await collectInContext(context,site,subject,signal,{waitMs:5000,maxPages:1});}finally{await context.close();}
+  try{const collection=await collectInContext(context,site,subject,signal,{waitMs:5000,maxPages:1});
+   // Simulate one pre-upgrade immutable batch alongside new v2 batches, including pause/resume replay.
+   if(subject.kind==='company'&&site.id==='gsxt')delete collection.diagnostic;
+   return collection;
+  }finally{await context.close();}
  }});
  const execute=()=>runPipelineOnce({pool,blobs,leaseSeconds:120,runKinds:['generation'],stages:[inputLockStage,materialsReadyStage,stage,integrityDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
  try{
