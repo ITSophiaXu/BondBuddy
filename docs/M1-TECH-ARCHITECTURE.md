@@ -858,4 +858,12 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 追加迁移 `0120_model_call_execution_bindings.sql` 将真实 prompted attempt 与准确 V1/input/prompt 绑定，旧记录只回填已有准确元数据，不伪造缺失来源。真实 provider latest/重放/runtime/observation 先选原调用再验证绑定；缺绑定不能当成没有旧调用而重新发送。`0121_run_supplement_saved_work.sql` 在补料保存的 run→job 锁和安全人工暂停事务内冻结 checkpoint 与准确已完成 result refs；并发、幂等、旧回执和变更边界沿原准备协议。公共 `saved_work` 仅返回状态和计数，不返回对象地址或正文，不授予下载或后继执行。
 
-内服 `readCapturedSupplementResult()` 使用独立只读事务，按 prompt_snapshot→provider_result 获得与 `purgeLogContent()` 相同的内容锁，在 Blob I/O 和异步 schema 校验期间保持，并在等待后重查清理、归属及原输入。结果文件仍按原清理和删除规则处理；没有采用后继输入、长期保留新材料、创建额外任务或新增收费。具体证据及尚缺的旧 Word 绑定、增量处理和账务闭环见 [保存工作引用验收](acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)。
+内服 `readCapturedSupplementResult()` 使用独立只读事务，按 prompt_snapshot→provider_result 获得与 `purgeLogContent()` 相同的内容锁，在 Blob I/O 和异步 schema 校验期间保持，并在等待后重查清理、归属及原输入。结果 JSON 仍按原清理和删除规则处理；没有采用后继输入、长期保留新材料、创建额外任务或新增收费。后续审计确认原始 Word 附件不能由 JSON 的清理推导其已清除，见下节；[保存工作引用验收](acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)保留原轮证据范围。
+
+### 2026-10-26：新原稿声明与准确旧工作文件读取（本地未发布）
+
+补料 changes 可携带唯一 `SourceProspectusSchema` 的准确声明；新稿不继承旧声明或目标报告期。服务按材料准确 pin、M1 unified 范围及共享来源校验编译候选，同时更新候选内两处原稿声明。来源集合变化且原输入已关联旧成果时，需要明确 `discard_previous_output:true` 才在候选中移除旧 previous_output/edit_baseline；原 run、输入和成果不变。M3/M4 不能借该字段改写自己的已确认来源。字段沿原请求 hash、CAS、未知回执、本机刷新和冲突协议保存。没有新数据库迁移、采用或收费。
+
+`run-file-reference.ts` 为五种真实 collector 定义内部准确路径和文件引用校验，逐项检查所有成功、可选及 error 输出，不用宽泛 prefix 校验授权文件；M3 provider 的 `correction` 保留目录不能冒充普通 attempt。`run-supplement-files.ts` 从准确准备回执派生包含 execution/input、checkpoint/source hash 的私有 pin，读取重算完整 pin 并 bounded 校验原字节。provider 来源持续持有 prompt/result 内容锁；本地 correction 还须匹配准确 review execution/input/origin 和合法 export-only 快照。项目文件分支须有合法业务 manifest 和准确 operation；当前该任务没有 HTTP 补料准备，底层识别不构成用户流程交付。
+
+这些 pin 不创建公开 artifact、下载 grant、账本或后继调用，也不承诺所有字节可用。原始 `owners/...` 工作文件还缺完整写入 intent、inventory 和清理 tombstone，不能凭 JSON/source metadata 声称其生命周期已解决；下一步须覆盖 Blob 写入成功而结果保存失败的孤儿窗口、附件先于 JSON 的清理和账号/项目删除。具体实现、失败记录与当前边界见[来源与文件读取验收](acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)，G03 仍未完成。

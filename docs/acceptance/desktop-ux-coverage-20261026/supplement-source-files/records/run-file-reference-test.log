@@ -1,0 +1,17 @@
+✔ real collector envelopes extract exact provider, local correction and project-file references (5.5183ms)
+✔ explicit review correction provider output can mix its exact attempt and local correction files (1.1378ms)
+✔ single-reference validator supports storing before an output envelope exists (0.4183ms)
+✔ foreign scope, different attempt and path mutations are rejected by complete key equality (1.1526ms)
+✔ all schemas reject unknown files, extra ref/envelope fields and invalid ref structures (1.9854ms)
+✔ input binding, schema, provenance and hash validation fail closed even for empty error results (2.6733ms)
+✔ file-specific size limits accept boundaries and reject nonpositive, fractional and oversized bytes (1.8789ms)
+✔ partial errors inventory every valid retained file and never excuse malformed optional files (1.2843ms)
+✔ revision no-change JSON output and completion metadata remain strict (1.4649ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1019.0922

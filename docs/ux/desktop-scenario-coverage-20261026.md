@@ -10,7 +10,7 @@
 
 随后完成[真实主页面与后端联通验收](../acceptance/desktop-ux-coverage-20261026/supplement-preparation-real/README.md)：真实 main、HTTP/session/CSRF、隔离 PG 和私有本地字节连续运行 **6/6**，后端完整准备专项 **44/44**。同时修复复核成果续改使用 `authoring.review_result` 时被补料读取误判 503、阻断原材料恢复的回归；保留普通复核与错误快照的严格拒绝。此轮证明准备保存、准确回执/CAS 及同原 job 的原输入恢复，不含 Azure、模型、采用/追加账务或新 Word；G03 仍开放。已检查的最新范围中未确认其他新的主要功能缺口，不能据此推导完整目标比例。
 
-后续[初始执行身份专项](../acceptance/desktop-ux-coverage-20261026/initial-execution-identity/README.md)已保护不可变 V1，并验证受控本地 adapter 在途结果保存、手动暂停和原结果复用。当前[候选输入专项](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)进一步接通 M1/M3/M4 实际 loader 的准确输入读取，以及补料保存后的完整候选和材料核对。候选没有被采用或执行，V2、追加报价/确认、后继模型调用和新成果验收仍未完成；这些独立回归不能累计为新的用户旅程覆盖率，G03 继续为主要功能缺口。
+后续[初始执行身份专项](../acceptance/desktop-ux-coverage-20261026/initial-execution-identity/README.md)已保护不可变 V1，并验证受控本地 adapter 在途结果保存、手动暂停和原结果复用。当前[候选输入专项](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)进一步接通 M1/M3/M4 实际 loader 的准确输入读取，以及补料保存后的完整候选和材料核对。本地[来源与私有文件读取增量](../acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)补充新原稿声明、明确放弃候选的旧成果关联，以及准确回执下旧工作文件的内部字节校验；原始工作文件的清理索引仍有缺口。候选没有被采用或执行，V2、追加报价/确认、后继模型调用和新成果验收仍未完成；这些独立回归不能累计为新的用户旅程覆盖率，G03 继续为主要功能缺口。
 
 [保存工作引用专项](../acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)再将草稿与安全暂停的准确已保存结果关联，页面区分已有记录、尚未捕获及进度变化。模型工作绑定、私有结果读取和清理竞争形成独立验证；它们没有完成后继业务执行、追加收费或新版成果交付，整体覆盖率仍不据测试数量上调。
 

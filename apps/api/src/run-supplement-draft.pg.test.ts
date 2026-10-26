@@ -11,13 +11,18 @@ import { emptyM4Draft } from './m4-workspace.js';
 import { claim, finish } from './queue.js';
 import { syntheticReviewPair } from './review-delivery-test-fixture.js';
 import { loadM4Knowledge } from './m4-knowledge.js';
-import { emptyUpdateDetails, type ReviewMaterialPin, type RunSupplementChange } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, type ReviewMaterialPin, type RunSupplementChange, type SourceProspectus } from '@bondbuddy/contracts';
 
 const connection = await isolatedTestDatabase(undefined, 'run-supplement-draft');
 const origin = 'http://bondbuddy.test';
 const ok = (r: { statusCode: number; body: string; json(): any }) => {
   assert.ok(r.statusCode >= 200 && r.statusCode < 300, r.body); return r.json();
 };
+const sourceDeclaration = (pin: ReviewMaterialPin, overrides: Partial<SourceProspectus> = {}): SourceProspectus => ({
+  ...pin, issuer_name: 'Synthetic declared issuer', relation: 'same_issuer', market: 'sse', offering: 'private',
+  reporting_periods: [{ start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: null,
+    status: 'needs_confirmation', evidence_refs: [] }], status: 'user_asserted', ...overrides,
+});
 async function context(blobs?: PrivateBlobs) {
   const pool = new Pool({ connectionString: connection }), owner = `supplement-${uid()}`;
   const app = createServer({ pool, blobs, allowedOrigin: origin, enableSyntheticQueue: true });
@@ -45,12 +50,13 @@ async function context(blobs?: PrivateBlobs) {
       VALUES($1,$2,$3,$4,$5,$6,'synthetic.pdf','application/pdf',16,$7,$8,'persisted')`, [id, version, user, projectId, upload, role, sha, `users/${user}/projects/${projectId}/synthetic/materials/${upload}`]);
     return { material_id: id, material_version: version, sha256: sha } satisfies ReviewMaterialPin;
   };
-  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm3_result' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin' | 'missing_review' | 'source_run' | 'source_pin' | 'materials' | 'requirements', canonical = false) => {
+  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm3_result' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin' | 'missing_review' | 'source_run' | 'source_pin' | 'materials' | 'requirements', canonical = false,
+    sourceContext?: { role: 'historical' | 'reference'; boundOutput?: boolean }) => {
     const task = flow === 'm4' || flow === 'm1_generation' ? 'generation' : flow === 'm3' ? 'review' : 'update';
     const projectId = await project(flow === 'm3_result' ? 'review' : task);
     const sourceProject = flow === 'm4' ? await project() : projectId;
-    const basePin = await material(sourceProject), runId = uid(), jobId = uid();
-    const normalPin = { ...basePin, role: 'other' };
+    const basePin = await material(sourceProject, sourceContext?.role ?? 'other'), runId = uid(), jobId = uid();
+    const normalPin = { ...basePin, role: sourceContext?.role ?? 'other' };
     const reviewInput = { source_material_ref: basePin, material_versions: [basePin], requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : canonical ? ['Frozen review requirement'] : [{ text: 'Frozen review requirement' }], as_of: '2026-09-30' };
     const reviewOrigin = canonical ? { version: 'review-execution-origin-v1', entrypoint: 'quick_action', accepted_proposal: null, context_report_ref: null } : { entrypoint: 'synthetic' }, sourceRunId = uid();
     let manifest: any = { draft_revision: 1, issuer_name: 'Frozen issuer', market: 'sse', offering: 'private',
@@ -61,6 +67,14 @@ async function context(blobs?: PrivateBlobs) {
       manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [],
         knowledge: [{ path: 'synthetic-frozen.md', sha256: digest('Synthetic frozen knowledge'), markdown: 'Synthetic frozen knowledge' }],
         knowledge_status: 'authoring_reference_not_compliance_approval' };
+      if (sourceContext) {
+        const source = sourceDeclaration(basePin);
+        manifest.authoring.source_prospectuses = [source]; manifest.update_details.source_prospectuses = [structuredClone(source)];
+        if (sourceContext.boundOutput) {
+          manifest.authoring.previous_output = { artifact_id: uid(), version: 1, sha256: digest('Synthetic original output'), run_id: uid(), input_revision: 1 };
+          manifest.authoring.edit_baseline = { market: 'sse', offering: 'private', reporting_periods: structuredClone(source.reporting_periods) };
+        }
+      }
     }
     let topic: string | undefined;
     if (flow === 'm3' && reviewDrift !== 'missing_review') manifest.review = { version: 'review_v1', version_number: 1, operation: 'full_review', input: reviewInput, finding_ids: [], origin: reviewOrigin };
@@ -429,5 +443,93 @@ test('supplement base and business snapshots remain frozen across M3 and cross-p
       assert.equal(ok(await c.send('PUT', f.url, body)).revision, 1);
       await assert.rejects(c.pool.query("UPDATE bb_run_supplement_drafts SET changes='[]' WHERE run_id=$1", [f.runId]), (error: unknown) => (error as { code?: string }).code === '23514');
     });
+  } finally { await c.close(); }
+});
+
+test('source-only supplement edits preserve exact idempotent receipts and require a fresh revision and CAS', { skip: !connection }, async () => {
+  const c = await context();
+  try {
+    const f = await c.fixture('m1', undefined, true, { role: 'historical', boundOutput: true });
+    const replacement = await c.material(f.projectId, 'historical', c.owner, f.basePin.material_id, 2);
+    const incomplete = sourceDeclaration(replacement, { issuer_name: null, relation: null, market: null, offering: null, reporting_periods: [] });
+    const incompleteChange: RunSupplementChange = { material: replacement, replaces: f.basePin,
+      source_prospectus: incomplete, discard_previous_output: true };
+    const before = await c.evidence(f), firstRequest = f.request([incompleteChange]);
+    const initial = ok(await c.send('GET', f.url));
+    assert.deepEqual(initial.source_context, { kind: 'm1_authoring', previous_output_bound: true });
+    const first = ok(await c.send('PUT', f.url, firstRequest));
+    assert.equal(first.revision, 1); assert.equal(first.adopted, false);
+    assert.equal(first.input_preview.status, 'needs_information');
+    assert.equal(first.input_preview.issues[0].code, 'source_information_required');
+    assert.equal(first.input_preview.candidate_input_hash, null);
+    assert.deepEqual(first.changes, [incompleteChange]);
+    assert.deepEqual(ok(await c.send('PUT', f.url, firstRequest)), first);
+
+    const complete = sourceDeclaration(replacement), secondChange: RunSupplementChange = { ...incompleteChange, source_prospectus: complete };
+    assert.equal((await c.send('PUT', f.url, { ...firstRequest, changes: [secondChange] })).statusCode, 409,
+      'a declaration edit changes the exact request hash');
+    assert.equal((await c.send('PUT', f.url, f.request([secondChange], 0))).statusCode, 409,
+      'source-only edits obey receipt CAS');
+    const secondRequest = f.request([secondChange], 1), second = ok(await c.send('PUT', f.url, secondRequest));
+    assert.equal(second.revision, 2); assert.equal(second.input_preview.status, 'prepared');
+    assert.ok(second.input_preview.candidate_input_hash);
+    const changedDeclaration = sourceDeclaration(replacement, { relation: 'parent', issuer_name: 'Explicitly different declared source' });
+    const thirdChange: RunSupplementChange = { ...secondChange, source_prospectus: changedDeclaration };
+    const thirdRequest = f.request([thirdChange], 2), third = ok(await c.send('PUT', f.url, thirdRequest));
+    assert.equal(third.revision, 3); assert.equal(third.input_preview.status, 'prepared');
+    assert.notEqual(third.input_preview.candidate_input_hash, second.input_preview.candidate_input_hash);
+    assert.deepEqual(ok(await c.send('PUT', f.url, thirdRequest)), third);
+    assert.equal((await c.send('PUT', f.url, f.request([secondChange], 2))).statusCode, 409);
+    const oldReceipt = ok(await c.send('GET', `${f.url}?request_id=${firstRequest.request_id}`));
+    assert.equal(oldReceipt.revision, 1); assert.equal(oldReceipt.latest_revision, 3);
+    assert.deepEqual(oldReceipt.changes, [incompleteChange]); assert.equal(oldReceipt.input_preview.status, 'needs_information');
+    assert.deepEqual((await c.pool.query('SELECT changes FROM bb_run_supplement_drafts WHERE run_id=$1 ORDER BY revision', [f.runId])).rows.map(row => row.changes),
+      [[incompleteChange], [secondChange], [thirdChange]]);
+    assert.deepEqual(await c.evidence(f), before, 'declaring a new source never changes old input, execution, output or credits');
+    assert.equal((await c.pool.query('SELECT bb_material_bytes_pinned($1,$2,$3,$4) AS pinned',
+      [c.owner, f.projectId, replacement.material_id, replacement.material_version])).rows[0].pinned, false);
+  } finally { await c.close(); }
+});
+
+test('HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    const f = await c.fixture('m1', undefined, true, { role: 'reference', boundOutput: true });
+    const replacement = await c.material(f.projectId, 'reference', c.owner, f.basePin.material_id, 2);
+    const complete = sourceDeclaration(replacement);
+    const before = await c.evidence(f);
+    const choice = ok(await c.send('PUT', f.url, f.request([{ material: replacement, replaces: f.basePin, source_prospectus: complete }])));
+    assert.equal(choice.input_preview.status, 'needs_information');
+    assert.ok(choice.input_preview.issues.some((issue: any) => issue.code === 'source_baseline_choice_required'));
+    assert.equal(choice.input_preview.candidate_input_hash, null);
+    assert.deepEqual(await c.evidence(f), before);
+    for (const [name, declaration] of [
+      ['wrong material', sourceDeclaration(replacement, { material_id: uid() })],
+      ['wrong revision', sourceDeclaration(replacement, { material_version: 1 })],
+      ['wrong content', sourceDeclaration(replacement, { sha256: digest('different source bytes') })],
+      ['incompatible market', sourceDeclaration(replacement, { market: 'sse', offering: 'mtn' })],
+    ] as Array<[string, SourceProspectus]>) await t.test(name, async () => {
+      const response = await c.send('PUT', f.url, f.request([{ material: replacement, replaces: f.basePin,
+        source_prospectus: declaration, discard_previous_output: true }], 1));
+      assert.equal(response.statusCode, 422, response.body);
+    });
+    const ordinary = await c.material(f.projectId, 'audit');
+    assert.equal((await c.send('PUT', f.url, f.request([{ material: ordinary, replaces: null, source_prospectus: sourceDeclaration(ordinary) }], 1))).statusCode, 422);
+    assert.equal((await c.send('PUT', f.url, f.request([{ material: ordinary, replaces: null, discard_previous_output: true }], 1))).statusCode, 422);
+    for (const flow of ['m3', 'm4'] as const) await t.test(`${flow} cannot accept M1 source authority`, async () => {
+      const other = await c.fixture(flow, undefined, true), added = await c.material(other.projectId, 'historical');
+      const evidence = await c.evidence(other);
+      assert.equal((await c.send('PUT', other.url, other.request([{ material: added, replaces: null, source_prospectus: sourceDeclaration(added) }]))).statusCode, 422);
+      assert.equal((await c.pool.query('SELECT count(*)::int AS n FROM bb_run_supplement_drafts WHERE run_id=$1', [other.runId])).rows[0].n, 0);
+      assert.deepEqual(await c.evidence(other), evidence);
+    });
+    const withoutOutput = await c.fixture('m1', undefined, true), source = await c.material(withoutOutput.projectId, 'historical');
+    const noOutputBefore = await c.evidence(withoutOutput);
+    assert.deepEqual(ok(await c.send('GET', withoutOutput.url)).source_context, { kind: 'm1_authoring', previous_output_bound: false });
+    assert.equal((await c.send('PUT', withoutOutput.url, withoutOutput.request([{ material: source, replaces: null,
+      source_prospectus: sourceDeclaration(source), discard_previous_output: true }]))).statusCode, 422);
+    assert.deepEqual(await c.evidence(withoutOutput), noOutputBefore);
+    assert.equal((await c.pool.query('SELECT count(*)::int AS n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 1,
+      'semantic errors create no additional receipt');
   } finally { await c.close(); }
 });

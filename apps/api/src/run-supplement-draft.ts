@@ -13,7 +13,7 @@ import { inputManifestHash } from './production-rule-pin.js';
 import { providerCallNeedsReconciliation } from './queue.js';
 import { assertRunExecution } from './run-execution.js';
 import { readRunExecutionInput } from './run-execution-input.js';
-import { compileRunSupplementInput } from './run-supplement-input.js';
+import { compileRunSupplementInput, runSupplementSourceContext, validRunSupplementSourceChanges } from './run-supplement-input.js';
 import { captureRunSupplementWork, runSupplementWorkSummary } from './run-supplement-work.js';
 
 type BasePin = ReviewMaterialPin & { source_project_id: string; role?: string };
@@ -123,7 +123,7 @@ async function saveBlock(db: PoolClient, owner: string, r: any, job: any, base: 
   return null;
 }
 
-async function validateChanges(db: PoolClient, owner: string, projectId: string, base: RunSupplementMaterial[], changes: RunSupplementChange[]) {
+async function validateChanges(db: PoolClient, owner: string, projectId: string, base: RunSupplementMaterial[], changes: RunSupplementChange[], manifest: unknown) {
   const added = new Set<string>(), replaced = new Set<string>(), identities = new Set<string>();
   for (const change of changes) {
     const key = pinKey(change.material);
@@ -135,6 +135,8 @@ async function validateChanges(db: PoolClient, owner: string, projectId: string,
     if (!row || row.sha256.trim() !== change.material.sha256) stale();
     const material = await materialDetails(db, owner, { ...change.material, source_project_id: projectId });
     if (!material.available) stale();
+    if (!validRunSupplementSourceChanges(manifest, [change], [material]))
+      invalid('原稿声明必须属于本次 M1 补料的准确历史／参考稿版本；旧成果关联只能在原任务已有关联时明确放弃。');
     if (base.some(pin => pinKey(pin) === key)) invalid('该材料版本已在原任务中，无需再次补充。');
     if (change.replaces) {
       const replacement = pinKey(change.replaces), original = base.find(pin => pinKey(pin) === replacement);
@@ -162,6 +164,7 @@ async function response(db: PoolClient, owner: string, r: any, job: any, base: B
     request_id: receipt?.request_id ?? null, saved_at: receipt ? date(receipt.saved_at) : null,
     base_input_revision: r.input_revision, base_input_hash: r.input_hash.trim(), base_materials: baseMaterials,
     changes, result_materials: result, input_preview: preview,
+    ...(runSupplementSourceContext(base.manifest) ? { source_context: runSupplementSourceContext(base.manifest) } : {}),
     saved_work: await runSupplementWorkSummary(db, r, job, receipt?.revision ?? 0),
     can_save: blocked === null, blocked_reason: blocked, adopted: false };
 }
@@ -208,7 +211,7 @@ export function registerRunSupplementDraftRoutes(app: FastifyInstance, pool: () 
       const blocked = await saveBlock(db, user, r, job, base);
       if (blocked) throw conflict('INPUT_REVISION_CONFLICT', blocked);
       const baseMaterials = await Promise.all(base.pins.map(pin => materialDetails(db, user, pin)));
-      await validateChanges(db, user, r.project_id, baseMaterials, b.changes);
+      await validateChanges(db, user, r.project_id, baseMaterials, b.changes, base.manifest);
       const receipt = (await db.query(`INSERT INTO bb_run_supplement_drafts(owner_user_id,project_id,run_id,revision,request_id,request_hash,base_input_revision,base_input_hash,changes)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [user, r.project_id, id, (latest?.revision ?? 0) + 1, b.request_id, hash, r.input_revision, r.input_hash.trim(), JSON.stringify(b.changes)])).rows[0];

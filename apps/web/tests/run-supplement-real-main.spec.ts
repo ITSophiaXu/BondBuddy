@@ -1,6 +1,10 @@
 import {expect,test,type BrowserContext,type Locator,type Page} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {emptyUpdateDetails,reportingWindow,updateDetailsErrors,type UnifiedAuthoringInput} from '@bondbuddy/contracts';
+import {digest,uid} from '../../api/dist/data.js';
+import {inputManifestHash} from '../../api/dist/production-rule-pin.js';
+import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {startRealSupplement,type RealFixture,type RealSurface} from './run-supplement-real-harness';
 
 let real:Awaited<ReturnType<typeof startRealSupplement>>;
@@ -65,6 +69,38 @@ function resumedSameJob(f:RealFixture,before:any,after:any){
     expect(stable(current),'Original job identity, checkpoint and attempts remain exact').toEqual(stable(previous));
   }
   expect(after.ownerJobs.filter((job:any)=>job.id===f.jobId&&job.run_id===f.runId)).toHaveLength(1);
+}
+
+async function sourceBoundM1Fixture():Promise<RealFixture>{
+  // Only this test's original queued boundary is seeded. Its project, session,
+  // source material and all supplement operations use the actual server.
+  // edit_baseline is valid frozen metadata; no previous artifact or model result is invented.
+  const details={...emptyUpdateDetails(),authoring_mode:'unified_v1' as const,source_prospectuses:[],
+    reporting_cutoff:'2026-09-30',target_reporting_periods:reportingWindow('sse','private','2026-09-30'),
+    supplementary_notes:'合成验收：原项目草稿信息应在本轮补料填写后保持不变。'};
+  expect(updateDetailsErrors(details)).toEqual([]);
+  const project=await real.request('POST','/api/v1/projects',{creation_request_id:uid(),name:'合成 M1 原稿信息隔离验收',kind:'update',
+    issuer_name:'合成原项目发行人',market:'sse',offering:'private',update_details:details});
+  const projectId=project.project_id as string,sourceBytes=makeSyntheticDocxFixture({text:'Synthetic original input for isolated source-declaration preparation'});
+  const material=await real.upload(projectId,'synthetic-source-context-original.docx',sourceBytes,'other','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const basePin={material_id:material.material_id,material_version:material.material_version,sha256:material.sha256};
+  const current=await real.request('GET',`/api/v1/projects/${projectId}`);
+  const knowledge='Synthetic frozen source-declaration knowledge';
+  const authoring:UnifiedAuthoringInput={version:'unified_v1',source_prospectuses:[],requirements:[],
+    edit_baseline:{market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2024-12-31')},
+    knowledge:[{path:'synthetic-source-declaration.md',sha256:digest(knowledge),markdown:knowledge}],
+    knowledge_status:'authoring_reference_not_compliance_approval'};
+  const manifest={project_kind:'update',name:current.name,draft_revision:current.draft_revision,issuer_name:current.issuer_name,
+    market:'sse',offering:'private',update_details:current.update_details,materials:[{...basePin,role:'other'}],authoring};
+  const hash=inputManifestHash(manifest),runId=uid(),jobId=uid();
+  await real.pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+    VALUES($1,1,$2,$3,$4,$5,$6,'[]')`,[projectId,real.owner,current.draft_revision,hash,manifest,JSON.stringify(manifest.materials)]);
+  await real.pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[projectId]);
+  await real.pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage)
+    VALUES($1,$2,$3,1,$4,$5,'update',$6,'queued','queued')`,[runId,real.owner,projectId,hash,uid(),digest(uid())]);
+  await real.pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,user_pause_requested,checkpoint)
+    VALUES($1,$2,$3,'update','default','queued','queued',false,$4)`,[jobId,real.owner,runId,{synthetic_original_checkpoint:'seeded queued boundary with edit_baseline metadata'}]);
+  return {surface:'m1',projectId,sourceProject:projectId,basePin,sourceBytes,runId,jobId,topic:undefined,manifest,hash,route:`/#/projects/${projectId}?run=${runId}`};
 }
 
 // Keep this first: its real queue claim must select the newly created source review,
@@ -133,6 +169,93 @@ test('real main: a new prospectus is saved while its missing source declaration 
   await expect(host(page,f).getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
   await capture(page,f,'source-information-required');
   await writeFile(join(real.artifactRoot,'source-information-required-assertions.json'),JSON.stringify({synthetic:true,full_main:true,receipt,before,after:await real.evidence(f)},null,2));
+});
+
+test('real main M1: complete source fields and explicit baseline discard stay in the supplement receipt without editing the project draft',async({page,context})=>{
+  test.setTimeout(60000);await page.setViewportSize({width:1440,height:960});await auth(context);
+  const f=await sourceBoundM1Fixture(),panel=await openPaused(page,f);
+  expect(await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft`)).toMatchObject({source_context:{kind:'m1_authoring',previous_output_bound:true}});
+  await panel.locator('[data-supplement-intent]').selectOption('');await panel.locator('[data-supplement-role]').selectOption('historical');
+  const newBytes=makeSyntheticDocxFixture({text:'Synthetic newly uploaded historical prospectus with independently declared source scope'});
+  const completed=page.waitForResponse(r=>r.request().method()==='POST'&&/\/materials\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname));
+  await panel.locator('[data-supplement-file]').setInputFiles({name:'synthetic-declared-historical.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:newBytes});
+  const upload=await completed;expect(upload.status()).toBe(200);const material=await upload.json();
+  expect(material.material_id).not.toBe(f.basePin.material_id);await real.verifyBytes({projectId:f.projectId},material,newBytes);
+  const editor=panel.locator('[data-supplement-source]');await expect(editor).toBeVisible();
+  const before:any=await real.evidence(f),projectWrites:string[]=[];
+  expect(before.project[0].update_details.source_prospectuses).toEqual([]);expect(before.attempts).toEqual([]);
+  expect(before.creditEvents.length).toBeGreaterThan(0);expect(before.balance).toEqual({available:10000,frozen:0});
+  page.on('request',request=>{if(request.method()==='PATCH'&&new URL(request.url()).pathname===`/api/v1/projects/${f.projectId}`)projectWrites.push(request.postData()??'');});
+  // Observe real native events at both phases. A source edit must reach the
+  // supplement controller, then stop before shared document/ancestor delegates.
+  await page.evaluate(runId=>{
+    const probe={captured:[] as string[],bubbled:[] as string[]};(window as any).__supplementSourceProbe=probe;
+    const observe=(events:string[])=>(event:Event)=>{const target=event.target;
+      // paint() can replace the edited control during dispatch; composedPath
+      // still identifies its original panel when a missing stop would bubble.
+      if(target instanceof HTMLElement&&event.composedPath().some(node=>node instanceof HTMLElement&&node.matches(`[data-run-supplement="${runId}"]`))
+        &&(target.hasAttribute('data-source-field')||target.hasAttribute('data-supplement-discard-output')))
+        events.push(target.getAttribute('data-source-field')??(target.hasAttribute('data-supplement-discard-output')?'discard':''));};
+    document.addEventListener('change',observe(probe.captured),true);document.addEventListener('change',observe(probe.bubbled));
+  },f.runId);
+  await editor.locator('[data-source-field="relation"]').selectOption('similar_business');
+  await editor.locator('[data-source-field="market"]').selectOption('nafmii');
+  await editor.locator('[data-source-field="offering"]').selectOption('mtn');
+  await editor.locator('[data-source-field="year"]').selectOption('2025');
+  await editor.locator('label.quarter').filter({hasText:'6月末'}).click();
+  await expect(editor.locator('[data-source-field="quarter"][value="06-30"]')).toBeChecked();
+  await expect(editor.locator('[data-source-required-message]')).toHaveText('原稿信息已填写完整。');
+  await expect(editor.locator('[data-supplement-discard-output]')).not.toBeChecked();
+  const declaration={material_id:material.material_id,material_version:material.material_version,sha256:material.sha256,
+    issuer_name:null,relation:'similar_business',market:'nafmii',offering:'mtn',reporting_periods:reportingWindow('nafmii','mtn','2025-06-30'),status:'user_asserted'};
+  const changes=[{material:{material_id:material.material_id,material_version:material.material_version,sha256:material.sha256},replaces:null,source_prospectus:declaration}];
+  const saving=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname===`/api/v1/runs/${f.runId}/supplement-draft`);
+  await action(panel,'save').click();const firstResponse=await saving;expect(firstResponse.status()).toBe(200);
+  expect(firstResponse.request().headers()['x-bb-csrf']).toBe(real.csrf);expect(firstResponse.request().postDataJSON().changes).toEqual(changes);
+  const first=await firstResponse.json();expect(first.changes).toEqual(changes);
+  expect(first.input_preview).toMatchObject({status:'needs_information',candidate_input_hash:null,issues:[{code:'source_baseline_choice_required',material_id:material.material_id}]});
+  await expect(panel.locator('[data-supplement-input-preview]')).toContainText('明确本次候选输入放弃旧成果关联');
+  preparationOnly(f,before,await real.evidence(f),[first]);
+  await editor.locator('[data-supplement-discard-output]').check();
+  const confirmedChanges=[{...changes[0],discard_previous_output:true}];
+  const confirming=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname===`/api/v1/runs/${f.runId}/supplement-draft`);
+  await action(panel,'save').click();const response=await confirming;expect(response.status()).toBe(200);
+  expect(response.request().postDataJSON().changes).toEqual(confirmedChanges);
+  const receipt=await response.json();expect(receipt).toMatchObject({revision:2,adopted:false,base_input_revision:1,base_input_hash:f.hash,
+    source_context:{kind:'m1_authoring',previous_output_bound:true},input_preview:{status:'prepared',issues:[]}});
+  expect(receipt.changes).toEqual(confirmedChanges);expect(receipt.input_preview.candidate_input_hash).toMatch(/^[a-f0-9]{64}$/);
+  expect(receipt.input_preview.candidate_input_hash).not.toBe(f.hash);
+  // Main draft autosave debounces for 800 ms. Allow that entire window before
+  // proving source controls produced no project PATCH or editable-draft mutation.
+  await page.waitForTimeout(1000);expect(projectWrites).toEqual([]);await expect(page.locator('#save-state')).toHaveText('已保存');
+  const probe=await page.evaluate(()=>(window as any).__supplementSourceProbe);
+  expect(probe.captured).toEqual(['relation','market','offering','year','quarter','discard']);expect(probe.bubbled).toEqual([]);
+  const after:any=await real.evidence(f);preparationOnly(f,before,after,[first,receipt]);
+  expect(after.input[0].manifest.authoring.edit_baseline).toEqual(f.manifest.authoring.edit_baseline);
+  const rows=(await real.pool.query('SELECT revision,changes FROM bb_run_supplement_drafts WHERE run_id=$1 ORDER BY revision',[f.runId])).rows;
+  expect(rows).toEqual([{revision:1,changes},{revision:2,changes:confirmedChanges}]);
+  await page.reload();const restored=await ready(page,f),source=restored.locator('[data-supplement-source]');
+  await expect(source.locator('[data-source-field="relation"]')).toHaveValue('similar_business');
+  await expect(source.locator('[data-source-field="market"]')).toHaveValue('nafmii');await expect(source.locator('[data-source-field="offering"]')).toHaveValue('mtn');
+  await expect(source.locator('[data-source-field="year"]')).toHaveValue('2025');await expect(source.locator('[data-source-field="quarter"][value="06-30"]')).toBeChecked();
+  await expect(source.locator('[data-supplement-discard-output]')).toBeChecked();await expect(action(restored,'save')).toBeDisabled();
+  const baselineLayout=await source.locator('.run-supplement-baseline-choice').evaluate(label=>{
+    const checkbox=label.querySelector('input')!,text=label.querySelector('span')!;
+    const rect=(element:Element)=>{const {x,y,width,height}=element.getBoundingClientRect();return {x,y,width,height};};
+    return {checkbox:rect(checkbox),text:rect(text),label:rect(label)};
+  });
+  expect(baselineLayout.checkbox.width).toBeGreaterThanOrEqual(12);expect(baselineLayout.checkbox.width).toBeLessThanOrEqual(24);
+  expect(baselineLayout.checkbox.height).toBeGreaterThanOrEqual(12);expect(baselineLayout.checkbox.height).toBeLessThanOrEqual(24);
+  expect(baselineLayout.text.width).toBeGreaterThan(200);expect(baselineLayout.label.height).toBeLessThanOrEqual(64);
+  expect(baselineLayout.text.x+baselineLayout.text.width).toBeLessThanOrEqual(baselineLayout.label.x+baselineLayout.label.width+1);
+  await expect(restored.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
+  await expect(restored.getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
+  expect(await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft`)).toMatchObject({revision:2,adopted:false,changes:confirmedChanges});
+  preparationOnly(f,before,await real.evidence(f),[first,receipt]);expect(projectWrites).toEqual([]);
+  await capture(page,f,'source-declaration-isolated');
+  await writeFile(join(real.artifactRoot,'m1-source-declaration-isolated-assertions.json'),JSON.stringify({synthetic:true,full_main:true,
+    original_boundary:'Seeded queued input with valid edit_baseline metadata; no model execution or previous output artifact is claimed',
+    first,receipt,probe,projectWrites,baselineLayout,before,after:await real.evidence(f)},null,2));
 });
 
 test('real main M3: accepted save response loss recovers the exact PostgreSQL receipt without a second PUT',async({page,context})=>{

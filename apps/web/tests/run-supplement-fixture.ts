@@ -65,6 +65,7 @@ export function supplementFixture(){
     holdDraftRead:false,releaseDraftRead:undefined as (()=>void)|undefined,holdSave:false,releaseSave:undefined as (()=>void)|undefined,
     holdComplete:false,releaseComplete:undefined as (()=>void)|undefined,dropCompleteOnce:false,canSave:true,blockedReason:null as string|null,
     inputPreview:null as RunSupplementInputPreview|null,
+    sourceContext:null as RunSupplementDraftResponse['source_context']|null,
     savedWork:null as RunSupplementSavedWork|null,workStageCount:0,workResultCount:0,
   };
 }
@@ -79,6 +80,7 @@ export function supplementResponse(s:SupplementFixture,requestId:string|null=nul
     result_materials:structuredClone(result),saved_work:structuredClone(s.savedWork??{status:'not_captured',stage_count:0,result_count:0}),input_preview:s.inputPreview??(s.changes.length?{
       compiler_version:'run-supplement-input-v1',status:'prepared',candidate_input_hash:supplementHash(JSON.stringify(s.changes)),issues:[],
     }:{compiler_version:'run-supplement-input-v1',status:'unchanged',candidate_input_hash:null,issues:[]}),
+    ...(s.sourceContext?{source_context:structuredClone(s.sourceContext)}:{}),
     can_save:s.canSave&&s.run.state==='paused',blocked_reason:s.canSave&&s.run.state==='paused'?null:s.blockedReason??'本次任务尚未安全暂停，请先核对任务状态。',adopted:false};
 }
 

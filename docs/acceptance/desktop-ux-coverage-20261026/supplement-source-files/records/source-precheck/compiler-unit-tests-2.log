@@ -1,0 +1,27 @@
+✔ ordinary authoring supplements preserve every frozen context and return independent candidate bytes (5.7336ms)
+✔ no changes do not produce an adoptable input; unavailable bytes do not produce a candidate hash (0.6799ms)
+✔ new historical/reference bytes never inherit a declaration from another version or current project data (5.838ms)
+✔ explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate (13.5562ms)
+✔ complete source information still requires an explicit choice for every changed source bound to an old output (1.9471ms)
+✔ same-content different source revisions require their own exact declaration and incomplete fields remain saveable information gaps (2.606ms)
+✔ new source declarations without an old output prepare normally and do not accept a meaningless discard flag (1.5559ms)
+✔ source metadata rejects wrong exact pins, ordinary evidence roles and non-M1 contexts without changing input (2.2639ms)
+✔ M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot (0.9229ms)
+✔ M3 unchanged evidence links preserve the exact original report, finding and material identity (0.8538ms)
+✔ M3 replacing linked source or evidence requires explicit new evidence mapping without rewriting old links (1.1862ms)
+✔ M3 source replacements preserve the DOCX/PDF boundary while ordinary text evidence stays usable (1.3742ms)
+✔ M3 correction exports retain the original editor decisions and cannot be converted into new material processing (0.482ms)
+✔ accepted M3 origin, finding revisions and report follow-ups retain their original authority and cannot be rewritten (1.5505ms)
+✔ M4 preserves cross-project source, duplicated source/template pins, edit base and all business context (1.6193ms)
+✔ material limits and malformed shared-schema inputs fail without partially changing any input (2.2907ms)
+✔ M4 source/template-only pins remain outside evidence, while its evidence limit is enforced independently (1.7914ms)
+✔ legacy M3 origin may remain absent and malformed or mismatched review snapshots cannot be guessed (0.8868ms)
+✔ a result material list cannot silently inject, omit or retarget materials outside the saved changes (0.5734ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1984.5347

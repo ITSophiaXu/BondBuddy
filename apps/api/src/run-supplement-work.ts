@@ -71,7 +71,7 @@ export async function runSupplementWorkSummary(db: Db, r: any, job: any, revisio
 
 type CapturedReadInput = { db: Pool; blobs: PrivateBlobs; owner: string; projectId: string;
   runId: string; revision: number; resultId: string; resultSchemaVersion: string;
-  validate: (value: unknown) => boolean | Promise<boolean> };
+  validate: (value: unknown, db: PoolClient) => boolean | Promise<boolean> };
 
 /** Service-internal read, serialized with prompt/result content purges through
  * Blob I/O and asynchronous validation. This grants no execution or download. */
@@ -119,6 +119,6 @@ async function readCapturedResultLocked(input: Omit<CapturedReadInput, 'db'> & {
   if (!bytes || bytes.length !== Number(row.byte_size) || digest(bytes) !== row.result_sha256.trim()) throw unavailable();
   let value: unknown;
   try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); } catch { throw unavailable(); }
-  if (!await input.validate(value)) throw unavailable();
+  if (!await input.validate(value, input.db)) throw unavailable();
   return value;
 }

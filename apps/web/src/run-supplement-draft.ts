@@ -4,8 +4,10 @@ import {ApiClient, ApiError, friendlyError, type Dto} from './api';
 import {UserFacingError} from './user-facing-error';
 import {UploadRecovery, UploadRecoveryNeedsFileError, type UploadRecoveryRecord} from './upload-recovery';
 import {date, esc} from './ui';
+import {sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage} from './source-prospectus';
 import './schema-formats';
 import './run-supplement-draft.css';
+import '../../../product-prototype/public/source-prospectus.css';
 
 type Response = Dto<'RunSupplementDraftResponse'>;
 type Request = Dto<'RunSupplementDraftRequest'>;
@@ -84,6 +86,15 @@ export class RunSupplementDraftPanel {
     });
     this.element.addEventListener('change',event=>{
       const target=event.target;
+      if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement){
+        const source=target.closest<HTMLElement>('[data-supplement-source]');
+        if(source&&(target.hasAttribute('data-source-field')||target.hasAttribute('data-supplement-discard-output'))){
+          // The main material page also delegates shared source-field events.
+          // Supplement edits belong exclusively to this run's preparation receipt.
+          event.stopPropagation();
+          this.editSource(source,target);return;
+        }
+      }
       if(target instanceof HTMLSelectElement&&target.hasAttribute('data-supplement-intent')){this.intent=target.value;const base=this.server?.base_materials.find(m=>key(m)===this.intent);if(base)this.role=base.role;this.paint();}
       if(target instanceof HTMLSelectElement&&target.hasAttribute('data-supplement-role'))this.role=target.value as typeof this.role;
       if(target instanceof HTMLInputElement&&target.hasAttribute('data-supplement-file')){const file=target.files?.[0];target.value='';target.blur();if(file)void this.addFile(file);}
@@ -95,6 +106,7 @@ export class RunSupplementDraftPanel {
   private live(){return !this.controller.signal.aborted&&this.current();}
   private get canSave(){return !!this.server?.can_save&&this.paused!==false&&!this.latestUnavailable;}
   private get dirty(){return !!this.server&&!same(this.changes,this.server.changes);}
+  private get sourceScope(){return `run-supplement:${this.owner}:${this.projectId}:${this.runId}`;}
   private get needsWorkCapture(){return !!this.server&&this.server.revision>0&&this.server.saved_work.status!=='captured';}
   get hasUnconfirmed(){return this.busy||this.dirty||!!this.pending||this.files.size>0||this.storageProblem||this.storageConflict;}
   get blocksLeave(){return this.busy||this.files.size>0||(this.dirty||!!this.pending)&&(this.storageProblem||this.storageConflict);}
@@ -202,6 +214,29 @@ export class RunSupplementDraftPanel {
     if(!this.pending&&!this.latest&&this.dirty)this.persist();
   }
   private say(message:string,error=false){this.notice=message;this.error=error;this.paint();this.changed();}
+  private editSource(host:HTMLElement,target:HTMLInputElement|HTMLSelectElement){
+    if(this.busy||this.pending||this.latest||!this.canSave||this.storageProblem||this.storageConflict||!this.server?.source_context)return;
+    const change=this.changes.find(value=>key(value.material)===host.dataset.supplementSource);
+    const material=change&&this.metadata.get(key(change.material));
+    if(!change||!material||!['historical','reference'].includes(material.role))return;
+    if(target instanceof HTMLInputElement&&target.hasAttribute('data-supplement-discard-output')){
+      if(!this.server.source_context.previous_output_bound)return;
+      if(target.checked)change.discard_previous_output=true;else delete change.discard_previous_output;
+    }else{
+      const fields=target.closest<HTMLElement>('[data-source-material]');if(!fields)return;
+      const previous=change.source_prospectus&&key(change.source_prospectus)===key(change.material)?change.source_prospectus:undefined;
+      change.source_prospectus=readSourceFields(fields,material,previous,target.dataset.sourceField,this.sourceScope);
+      // Keep the active source control connected while updating dependent options and summaries.
+      if(target.dataset.sourceField==='market'){
+        const template=document.createElement('template');template.innerHTML=sourceFields(material,[change.source_prospectus],this.sourceScope);
+        fields.querySelector('[data-source-field="offering"]')!.innerHTML=template.content.querySelector('[data-source-field="offering"]')!.innerHTML;
+      }
+      fields.querySelector('[data-source-period-summary]')!.textContent=sourcePeriodSummary(change.source_prospectus.reporting_periods);
+      fields.querySelector('[data-source-required-message]')!.textContent=sourceRequiredMessage(change.source_prospectus);
+    }
+    this.generation++;this.notice='原稿信息已在本页修改，请保存补料草稿确认；尚未采用。';this.error=false;
+    this.persist();this.paint();this.changed();
+  }
   private async addFile(file:File){
     if(this.busy||this.pending||this.latest||!this.canSave||!this.server||this.storageProblem||this.storageConflict)return;
     const replaces=this.server.base_materials.find(m=>key(m)===this.intent),role=replaces?.role??this.role;
@@ -366,18 +401,32 @@ export class RunSupplementDraftPanel {
       :'已记录暂停位置。继续时核对已有进度。';
     return `<div data-supplement-saved-work><h4>已保存工作记录</h4><p>${esc(message)}</p></div>`;
   }
-  private changesHtml(changes:Change[]){return changes.length?`<ul class="run-supplement-changes">${changes.map(c=>`<li><strong>${esc(this.materialLabel(c.material))}</strong><span>${c.replaces?`拟替换原材料：${esc(this.materialLabel(c.replaces))}`:'拟新增材料'} · 尚未采用</span>${changes===this.changes?`<button type="button" class="text-btn" data-supplement-action="remove" data-material="${esc(key(c.material))}" ${this.busy||this.pending||!this.canSave||this.storageProblem||this.storageConflict?'disabled':''}>移除补料选择</button>`:''}</li>`).join('')}</ul>`:'<p>尚未选择补料。</p>';}
+  private sourceHtml(change:Change,editable:boolean){
+    const material=this.metadata.get(key(change.material));
+    if(!material||!['historical','reference'].includes(material.role)||!this.server?.source_context)return '';
+    if(!editable)return `<p>原稿信息：${esc(sourceRequiredMessage(change.source_prospectus))}${change.discard_previous_output?' 本次候选输入明确放弃旧成果关联。':''}</p>`;
+    const disabled=this.busy||!!this.pending||!!this.latest||!this.canSave||this.storageProblem||this.storageConflict;
+    return `<div data-supplement-source="${esc(key(change.material))}"><fieldset class="run-supplement-source-editor" ${disabled?'disabled':''}>${sourceFields(material,change.source_prospectus?[change.source_prospectus]:[],this.sourceScope)}${this.server.source_context.previous_output_bound?`<label class="run-supplement-baseline-choice"><input type="checkbox" data-supplement-discard-output ${change.discard_previous_output?'checked':''}><span>本次候选输入放弃旧成果关联，按本次填写的原稿信息准备</span></label><p>这里只记录候选输入的选择，原任务和旧成果文件保持不变；尚未采用或继续任务。</p>`:''}</fieldset></div>`;
+  }
+  private changesHtml(changes:Change[]){return changes.length?`<ul class="run-supplement-changes">${changes.map(c=>`<li><strong>${esc(this.materialLabel(c.material))}</strong><span>${c.replaces?`拟替换原材料：${esc(this.materialLabel(c.replaces))}`:'拟新增材料'} · 尚未采用</span>${this.sourceHtml(c,changes===this.changes)}${changes===this.changes?`<button type="button" class="text-btn" data-supplement-action="remove" data-material="${esc(key(c.material))}" ${this.busy||this.pending||!this.canSave||this.storageProblem||this.storageConflict?'disabled':''}>移除补料选择</button>`:''}</li>`).join('')}</ul>`:'<p>尚未选择补料。</p>';}
   private paint(){
     if(!this.live())return;
     const focused=document.activeElement instanceof HTMLElement&&this.element.contains(document.activeElement)?document.activeElement:undefined;
     // Retain the connected native input until its file chooser returns.
     if(focused instanceof HTMLInputElement&&focused.type==='file')return;
     const focusAction=focused?.dataset.supplementAction,focusSelect=focused?.hasAttribute('data-supplement-intent')?'[data-supplement-intent]':focused?.hasAttribute('data-supplement-role')?'[data-supplement-role]':undefined;
+    const focusSource=focused?.closest<HTMLElement>('[data-supplement-source]')?.dataset.supplementSource;
+    const focusSourceField=focused?.dataset.sourceField,focusDiscard=focused?.hasAttribute('data-supplement-discard-output');
+    const focusRadio=focused instanceof HTMLInputElement&&focused.type==='radio'?focused.value:undefined;
     const baseOpen=this.element.querySelector<HTMLDetailsElement>('[data-supplement-base]')?.open??false;
     const resultOpen=this.element.querySelector<HTMLDetailsElement>('[data-supplement-result]')?.open??false;
     const disabled=this.busy||!this.canSave||!!this.pending||!!this.latest||this.storageProblem||this.storageConflict;
     this.element.innerHTML=`<header><h3>本轮任务补料</h3><span class="run-supplement-badge">尚未采用</span></header><p>先保存文件，再保存本轮补料草稿。保存不会继续任务或扣取重做费用。</p>${this.server?`<details data-supplement-base ${baseOpen?'open':''}><summary>查看本轮提交的原材料</summary><p>以下为本轮提交时固定的材料。</p><ul>${this.server.base_materials.map(m=>`<li>${esc(this.materialLabel(m))}</li>`).join('')||'<li>无原材料记录</li>'}</ul></details>${!this.server.can_save?`<p class="run-supplement-note">${esc(this.server.blocked_reason??'当前暂不能保存补料，请先确认任务已手动暂停且当前处理已保存。')} 已保存的补料仍会保留。</p>`:''}<div class="run-supplement-picker"><label>这份补料的用途<select data-supplement-intent ${disabled?'disabled':''}><option value="">新增材料</option>${this.server.base_materials.map(m=>`<option value="${esc(key(m))}" ${this.intent===key(m)?'selected':''}>替换：${esc(this.materialLabel(m))}</option>`).join('')}</select></label><label>材料类别<select data-supplement-role ${disabled||this.intent?'disabled':''}>${roles.map(r=>`<option value="${r.code}" ${this.role===r.code?'selected':''}>${esc(r.label)}</option>`).join('')}</select></label><label class="run-supplement-file">添加并保存文件<input type="file" data-supplement-file accept="${['historical','reference'].includes(this.role)?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" ${disabled?'disabled':''}></label></div>${this.records.length?`<ul class="run-supplement-uploads">${this.records.map(r=>`<li><strong>${esc(r.declaration.filename)}</strong><p role="status">${esc(this.uploadErrors.get(r.id)??this.uploadStatus.get(r.id)??(r.material?'文件已保存；请核对补料草稿':'原文件保存待确认'))}</p><button type="button" class="text-btn" data-supplement-action="upload-resume" data-upload-id="${esc(r.id)}" ${disabled?'disabled':''}>${r.material?'核对已保存文件':'继续保存原文件'}</button>${this.needsFile.has(r.id)?`<label>重新选择原文件<input type="file" data-supplement-reselect="${esc(r.id)}" ${disabled?'disabled':''}></label>`:''}<button type="button" class="text-btn" data-supplement-action="upload-forget" data-upload-id="${esc(r.id)}" ${this.busy||this.pending?'disabled':''}>停止本机文件待办</button></li>`).join('')}</ul>`:''}<h4>补料选择${this.dirty?' · 尚未保存':''}</h4>${this.changesHtml(this.changes)}${this.latest?`<div class="run-supplement-conflict"><h4>最新已保存内容（V${this.latest.revision}）</h4>${this.changesHtml(this.latest.changes)}<button type="button" class="btn secondary" data-supplement-action="use-latest" ${this.busy?'disabled':''}>改用最新保存内容</button><button type="button" class="btn secondary" data-supplement-action="keep-local" ${this.busy?'disabled':''}>保留本页选择，准备重新保存</button></div>`:''}<p data-supplement-saved>${this.server.saved_at?`草稿已保存 · ${esc(date(this.server.saved_at))} · V${this.server.revision}`:'补料草稿尚未保存'} · 尚未采用</p><div class="form-actions"><button type="button" class="btn primary" data-supplement-action="save" ${disabled||(!this.dirty&&!this.needsWorkCapture)?'disabled':''}>保存补料草稿</button><button type="button" class="text-btn" data-supplement-action="reload" ${this.busy?'disabled':''}>重新读取补料</button>${this.pending?`<button type="button" class="btn secondary" data-supplement-action="receipt" ${this.busy?'disabled':''}>核对原保存回执</button><button type="button" class="btn secondary" data-supplement-action="retry-save" ${this.busy||!this.canSave||this.storageProblem||this.storageConflict?'disabled':''}>重试原保存请求</button>`:''}</div>${this.inputPreviewHtml(resultOpen)}${this.savedWorkHtml()}<p class="run-supplement-note">重做部分另行报价，确认追加金额后继续；计价口径待确认。目前保存的补料尚不能采用到本轮。</p><button type="button" class="btn secondary" disabled>采用补料并继续（待定价规则确认）</button>`:`<p>正在读取本轮原材料与补料草稿…</p><button type="button" class="text-btn" data-supplement-action="reload">重新读取补料</button>`}${this.storageConflict?'<button type="button" class="btn secondary" data-supplement-action="local-reload">载入另一页面的补料记录</button>':''}<p class="run-supplement-status ${this.error?'error':''}" role="${this.error?'alert':'status'}">${esc(this.notice)}</p>`;
-    if(focusSelect)this.element.querySelector<HTMLElement>(focusSelect)?.focus({preventScroll:true});
+    if(focusSource&&(focusSourceField||focusDiscard)){
+      const selector=`[data-supplement-source="${CSS.escape(focusSource)}"] ${focusDiscard?'[data-supplement-discard-output]':`[data-source-field="${CSS.escape(focusSourceField!)}"]${focusRadio?`[value="${CSS.escape(focusRadio)}"]`:''}`}`;
+      this.element.querySelector<HTMLElement>(selector)?.focus({preventScroll:true});
+    }
+    else if(focusSelect)this.element.querySelector<HTMLElement>(focusSelect)?.focus({preventScroll:true});
     else if(focusAction)this.element.querySelector<HTMLElement>(`[data-supplement-action="${CSS.escape(focusAction)}"]`)?.focus({preventScroll:true});
   }
   dispose(){this.resumeResolve?.(false);this.resumeResolve=undefined;this.resumeDialog?.remove();this.controller.abort();window.removeEventListener('storage',this.storageChanged);this.element.remove();this.files.clear();}

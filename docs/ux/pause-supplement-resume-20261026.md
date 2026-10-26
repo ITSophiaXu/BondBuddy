@@ -90,7 +90,17 @@
 
 `GET/PUT supplement-draft` 当前还会按冻结 manifest 和准确准备回执确定性编译完整候选输入。可表达的普通补料同步 M1 材料、M3 输入与候选快照、M4 证据清单，原目标、知识、要求和来源保持；响应仅增加 `input_preview` 的编译版本、候选 hash 和材料核对结果。页面在保存回执确认后显示核对结果和完整材料清单，本机未保存变更不会沿用旧“已核对”提示。
 
-新历史/参考原稿没有新声明、已确认复核范围/报告续改、M3 被引用证据替换或修订导出、非 Word/PDF 复核原稿，以及 M4 主文档/模板替换会保留草稿并显示明确限制；不能用形状合法的旧 pin 或声明假装新材料已经可执行。登记材料被删除或登记校验不符时不返回候选 hash；预览不读取 Blob，实际字节仍由执行门验证。候选只在读取/保存响应中计算，没有新输入 revision、持久候选表、采用回执、新保留 pin、报价或执行授权。`prepared` 只表示材料候选可完整编译，原任务的其他业务门、后继版本协议和已确认追加报价仍须逐项满足。详见[当前验收](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)，G03 保持开放。
+M1 新历史/参考原稿当前可在补料中填写准确原稿声明，复用唯一 `SourceProspectusSchema` 和原填写控件；声明绑定准确 material/version/hash，不继承旧稿或目标报告期。来源集合改变且原任务关联 `previous_output` / `edit_baseline` 时，只有明确选择在本次候选中放弃旧成果关联才可完成候选编译。原任务、旧输入、原成果不被删除或修改，尚未采用的候选也不会执行。新声明未填完整仍可免费保存，预览如实列出缺项；来源字段和明确选择进入原 changes 的请求 hash、CAS、回执恢复及本机刷新协议。
+
+已确认复核范围/报告续改、M3 被引用证据替换或修订导出、非 Word/PDF 复核原稿，以及 M4 主文档/模板替换仍会保留草稿并显示明确限制；不能用形状合法的旧 pin 或声明假装新材料已经可执行。登记材料被删除或登记校验不符时不返回候选 hash；预览不读取 Blob，实际字节仍由执行门验证。候选只在读取/保存响应中计算，没有新输入 revision、持久候选表、采用回执、新保留 pin、报价或执行授权。`prepared` 只表示材料候选可完整编译，原任务的其他业务门、后继版本协议和已确认追加报价仍须逐项满足。历史证据见[候选验收](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)，本轮证据见[来源与文件读取验收](../acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)，G03 保持开放。
+
+### 私有旧工作文件的实际边界
+
+服务内部可从准确补料回执的冻结 checkpoint 和已完成 provider JSON 派生文件 pin，逐项绑定 owner/project/run、草稿 revision、execution/input、来源 hash、准确文件名/key/hash/size。读取再次核对完整 pin 并 bounded 校验字节；损坏、缺失、错误调用目录、错误 schema 或 prompt/result tombstone 均拒绝，不调用模型、不扣费、不创建 artifact 或下载 grant。已保存 JSON 的计数不等于文件可用；缺工作文件不阻止免费保存材料。
+
+实际文件来源包括 provider-backed M1/M3/M4、M3 本地 `correction_result`，以及项目文件操作的本地结果。最后一类目前没有开放 HTTP 补料准备，不能以底层文件格式识别宣称其已支持补料。旧版纯本地 Word writer 的 JSON 可能只有 plan/report，只有已提升 artifact 或准确 pair checkpoint 才能证明存在对应 Word，不能推造文件。
+
+审计还发现 `owners/...` 原始工作文件没有完整 inventory/intent/tombstone：现行内容清理删 provider JSON，项目清理删已提升 artifact 的复制品，均不足以证明所有原始工作文件已清除。后续必须在写 Blob 前登记准确对象意图，处理写文件成功而结果保存失败的孤儿窗口；附件清理完成后再清理其 JSON，保留暂停中工作并遵守账号/项目删除。当前精确读取没有补齐这一生命周期，也没有将文件交给后继生成执行。
 
 ## 需要确定的一项产品规则：补料重做费用
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   emptyUpdateDetails, M4DocumentManifestSchema, ReviewExecutionOriginSchema, RunSupplementInputPreviewSchema,
-  type ReviewMaterialPin, type RunSupplementMaterial,
+  type ReviewMaterialPin, type RunSupplementMaterial, type SourceProspectus,
 } from '@bondbuddy/contracts';
 import { digest } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
@@ -17,6 +17,11 @@ const material = (id: string, role: RunSupplementMaterial['role'] = 'other', ver
 const pin = (value: ReviewMaterialPin): ReviewMaterialPin => ({ material_id: value.material_id, material_version: value.material_version, sha256: value.sha256 });
 const ordinaryPin = (value: RunSupplementMaterial) => ({ ...pin(value), role: value.role });
 const scopedPin = (value: RunSupplementMaterial) => ({ ...pin(value), source_project_id: value.source_project_id });
+const sourceDeclaration = (value: ReviewMaterialPin, overrides: Partial<SourceProspectus> = {}): SourceProspectus => ({
+  ...pin(value), issuer_name: 'Declared source issuer', relation: 'same_issuer', market: 'sse', offering: 'private',
+  reporting_periods: [{ start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: null,
+    status: 'needs_confirmation', evidence_refs: [] }], status: 'user_asserted', ...overrides,
+});
 function unified(materials = [material('original')]) {
   return {
     draft_revision: 4, issuer_name: 'Frozen target issuer', market: 'sse', offering: 'private', goals: ['Frozen goal'], requirements: ['Frozen requirement'],
@@ -98,8 +103,99 @@ test('new historical/reference bytes never inherit a declaration from another ve
     assert.deepEqual(manifest, before);
     const added = material('new-source', role);
     const addition = compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [old, added], changes: [{ material: pin(added), replaces: null }] });
-    check(addition, 'needs_information'); assert.equal(addition.preview.issues[0].material_id, added.material_id);
+    check(addition, 'needs_information'); assert.ok(addition.preview.issues.some(value => value.material_id === added.material_id));
   }
+});
+
+test('explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate', () => {
+  for (const role of ['historical', 'reference'] as const) {
+    const old = material('source', role), replacement = material('source', role, 2), unchanged = material('unchanged-source', 'reference');
+    const manifest: any = unified([old, unchanged]), oldDeclaration = sourceDeclaration(old), keptDeclaration = sourceDeclaration(unchanged, { relation: 'parent' });
+    manifest.authoring.source_prospectuses = [oldDeclaration, keptDeclaration];
+    manifest.update_details.source_prospectuses = structuredClone(manifest.authoring.source_prospectuses);
+    manifest.authoring.edit_baseline = { market: 'sse', offering: 'private', reporting_periods: oldDeclaration.reporting_periods };
+    const before = structuredClone(manifest), declaration = sourceDeclaration(replacement, { relation: 'subsidiary', issuer_name: 'New explicitly declared issuer' });
+    const result = compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [replacement, unchanged],
+      changes: [{ material: pin(replacement), replaces: pin(old), source_prospectus: declaration, discard_previous_output: true }] });
+    check(result, 'prepared');
+    const candidate = result.candidate!.manifest as any;
+    const byId = (a: SourceProspectus, b: SourceProspectus) => a.material_id.localeCompare(b.material_id);
+    assert.deepEqual([...candidate.authoring.source_prospectuses].sort(byId), [declaration, keptDeclaration].sort(byId));
+    assert.deepEqual(candidate.update_details.source_prospectuses, candidate.authoring.source_prospectuses);
+    assert.deepEqual(candidate.materials, [replacement, unchanged].map(ordinaryPin));
+    assert.equal(Object.hasOwn(candidate.authoring, 'previous_output'), false);
+    assert.equal(Object.hasOwn(candidate.authoring, 'edit_baseline'), false);
+    assert.deepEqual(candidate.update_details.target_reporting_periods, before.update_details.target_reporting_periods);
+    assert.deepEqual(manifest, before, 'the original source declarations and generated result stay immutable');
+    candidate.authoring.source_prospectuses[0].reporting_periods[0].end = '2030-12-31';
+    assert.deepEqual(manifest, before);
+  }
+});
+
+test('complete source information still requires an explicit choice for every changed source bound to an old output', () => {
+  const old = material('source', 'historical'), replacement = material('source', 'historical', 2), added = material('new-source', 'reference');
+  const manifest: any = unified([old]); manifest.authoring.source_prospectuses = [sourceDeclaration(old)];
+  manifest.update_details.source_prospectuses = structuredClone(manifest.authoring.source_prospectuses);
+  const before = structuredClone(manifest);
+  const replacementChange = { material: pin(replacement), replaces: pin(old), source_prospectus: sourceDeclaration(replacement) };
+  const addedChange = { material: pin(added), replaces: null, source_prospectus: sourceDeclaration(added) };
+  for (const changes of [[replacementChange], [{ ...replacementChange, discard_previous_output: true as const }, addedChange]]) {
+    const result = compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null,
+      resultMaterials: changes.length === 1 ? [replacement] : [replacement, added], changes });
+    check(result, 'needs_information');
+    assert.ok(result.preview.issues.some(value => value.code === 'source_baseline_choice_required'));
+    assert.equal(result.candidate, null); assert.deepEqual(manifest, before);
+  }
+});
+
+test('same-content different source revisions require their own exact declaration and incomplete fields remain saveable information gaps', () => {
+  const old = material('source', 'historical'), replacement = { ...material('source', 'historical', 2), sha256: old.sha256 };
+  const manifest: any = unified([old]); manifest.authoring.source_prospectuses = [sourceDeclaration(old)];
+  manifest.update_details.source_prospectuses = structuredClone(manifest.authoring.source_prospectuses);
+  const before = structuredClone(manifest);
+  for (const declaration of [undefined, sourceDeclaration(replacement, { relation: null, reporting_periods: [] })]) {
+    const result = compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [replacement],
+      changes: [{ material: pin(replacement), replaces: pin(old), ...(declaration ? { source_prospectus: declaration } : {}), discard_previous_output: true }] });
+    check(result, 'needs_information'); assert.equal(result.preview.issues[0].code, 'source_information_required');
+    assert.deepEqual(manifest, before);
+  }
+  const staleDeclaration = compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [replacement],
+    changes: [{ material: pin(replacement), replaces: pin(old), source_prospectus: sourceDeclaration(old), discard_previous_output: true }] });
+  check(staleDeclaration, 'unsupported');
+  assert.deepEqual(manifest, before);
+});
+
+test('new source declarations without an old output prepare normally and do not accept a meaningless discard flag', () => {
+  const old = material('original'), added = material('added-source', 'reference'), manifest: any = unified([old]);
+  delete manifest.authoring.previous_output;
+  const before = structuredClone(manifest), declaration = sourceDeclaration(added);
+  const change = { material: pin(added), replaces: null, source_prospectus: declaration };
+  const result = compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [old, added], changes: [change] });
+  check(result, 'prepared');
+  assert.deepEqual((result.candidate!.manifest.authoring as any).source_prospectuses, [declaration]);
+  assert.deepEqual((result.candidate!.manifest.update_details as any).source_prospectuses, [declaration]);
+  check(compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [old, added],
+    changes: [{ ...change, discard_previous_output: true }] }), 'unsupported');
+  assert.deepEqual(manifest, before);
+});
+
+test('source metadata rejects wrong exact pins, ordinary evidence roles and non-M1 contexts without changing input', () => {
+  const source = material('new-source', 'historical'), manifest: any = unified(), before = structuredClone(manifest);
+  for (const wrong of [sourceDeclaration(source, { material_id: 'foreign-source' }), sourceDeclaration(source, { material_version: 2 }),
+    sourceDeclaration(source, { sha256: digest('other bytes') }), sourceDeclaration(source, { market: 'sse', offering: 'mtn' })]) {
+    check(compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [material('original'), source],
+      changes: [{ material: pin(source), replaces: null, source_prospectus: wrong, discard_previous_output: true }] }), 'unsupported');
+  }
+  const ordinary = material('ordinary-evidence', 'audit');
+  check(compileRunSupplementInput({ projectId, manifest, reviewSnapshot: null, resultMaterials: [material('original'), ordinary],
+    changes: [{ material: pin(ordinary), replaces: null, source_prospectus: sourceDeclaration(ordinary) }] }), 'unsupported');
+  const review = m3(), m4Fixture = m4();
+  check(compileRunSupplementInput({ projectId, ...review, resultMaterials: [material('source', 'historical'), material('evidence', 'audit'), source],
+    changes: [{ material: pin(source), replaces: null, source_prospectus: sourceDeclaration(source) }] }), 'unsupported');
+  check(compileRunSupplementInput({ projectId, manifest: m4Fixture.manifest, reviewSnapshot: null,
+    resultMaterials: [m4Fixture.source, m4Fixture.evidence, m4Fixture.template, source],
+    changes: [{ material: pin(source), replaces: null, source_prospectus: sourceDeclaration(source) }] }), 'unsupported');
+  assert.deepEqual(manifest, before);
 });
 
 test('M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot', () => {

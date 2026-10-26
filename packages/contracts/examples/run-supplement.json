@@ -17,6 +17,21 @@
       }
     },
     {
+      "name": "source declaration and explicit output discard are pinned preparation intent",
+      "schema": "RunSupplementChange", "valid": true,
+      "value": {
+        "material": {"material_id":"synthetic-source","material_version":2,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+        "replaces": {"material_id":"synthetic-source","material_version":1,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "source_prospectus": {"material_id":"synthetic-source","material_version":2,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","issuer_name":null,"relation":"parent","market":"sse","offering":"private","reporting_periods":[],"status":"user_asserted"},
+        "discard_previous_output": true
+      }
+    },
+    {
+      "name": "a false output choice cannot masquerade as an explicit discard",
+      "schema": "RunSupplementChange", "valid": false,
+      "value": {"material":{"material_id":"synthetic-source","material_version":2,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"replaces":null,"discard_previous_output":false}
+    },
+    {
       "name": "supplement receipt lookup accepts original save identity",
       "schema": "RunSupplementDraftQuery",
       "valid": true,

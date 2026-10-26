@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T12:04:56.537Z",
+  "finished": "2026-10-26T12:04:57.648Z",
+  "args": [
+    "--test",
+    "apps/web/dist-test/source-prospectus.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

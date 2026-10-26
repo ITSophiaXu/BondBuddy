@@ -4,7 +4,9 @@ import {
   M1_UPLOAD_MATERIAL_ROLES, M4DocumentManifestSchema, ProjectMessageSetMemberSchema,
   ReviewDraftInputSchema, ReviewExecutionOriginSchema, ReviewMaterialPinSchema,
   RunSupplementChangeSchema, RunSupplementMaterialSchema, SourceProspectusSchema, UpdateDetailsSchema,
+  emptyUpdateDetails, sourceProspectusInputGaps, updateDetailsErrors,
   type ReviewMaterialPin, type RunSupplementChange, type RunSupplementInputPreview, type RunSupplementMaterial,
+  type RunSupplementDraftResponse, type SourceProspectus,
 } from '@bondbuddy/contracts';
 import { digest } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
@@ -37,12 +39,37 @@ function output(status: RunSupplementInputPreview['status'], issues: Issue[] = [
 }
 const unsupported = () => output('unsupported', [issue('input_unsupported', '当前任务的材料关联尚不能完整核对，草稿可以保存；暂不能采用。')]);
 
+/** Frozen-input context only; current project declarations and automatic output selection are never consulted. */
+export function runSupplementSourceContext(manifest: unknown): RunSupplementDraftResponse['source_context'] {
+  if (!record(manifest) || manifest.review || manifest.version === 'm4-document-input-v1'
+    || !record(manifest.authoring) || manifest.authoring.version !== 'unified_v1'
+    || Object.hasOwn(manifest.authoring, 'review_result') || Object.hasOwn(manifest.authoring, 'review_revision')
+    || !Value.Check(UpdateDetailsSchema, manifest.update_details) || manifest.update_details.authoring_mode !== 'unified_v1') return undefined;
+  return { kind: 'm1_authoring', previous_output_bound: Object.hasOwn(manifest.authoring, 'previous_output')
+    || Object.hasOwn(manifest.authoring, 'edit_baseline') };
+}
+
+/** Shared semantic validation for direct HTTP saves and the pure candidate compiler. */
+export function validRunSupplementSourceChanges(manifest: unknown, changes: RunSupplementChange[], materials: RunSupplementMaterial[]): boolean {
+  const context = runSupplementSourceContext(manifest);
+  return changes.every(change => {
+    if (change.source_prospectus === undefined && change.discard_previous_output === undefined) return true;
+    const material = materials.find(value => key(value) === key(change.material));
+    if (!context || !material || !['historical', 'reference'].includes(material.role)) return false;
+    if (change.discard_previous_output !== undefined && !context.previous_output_bound) return false;
+    const source = change.source_prospectus;
+    return source === undefined || Value.Check(SourceProspectusSchema, source) && key(source) === key(change.material)
+      && !updateDetailsErrors({ ...emptyUpdateDetails(), source_prospectuses: [source] }).length;
+  });
+}
+
 /** A candidate is preparation only. This compiler neither adopts inputs nor grants execution authority. */
 export function compileRunSupplementInput(args: Args): Result {
   const { projectId, manifest, reviewSnapshot, changes, resultMaterials } = args;
   if (!changes.length) return output('unchanged');
   if (!projectId || !Value.Check(Type.Array(RunSupplementChangeSchema, { maxItems: 60 }), changes)
     || !Value.Check(Type.Array(RunSupplementMaterialSchema, { maxItems: 300 }), resultMaterials)) return unsupported();
+  if (!validRunSupplementSourceChanges(manifest, changes, resultMaterials)) return unsupported();
   const unavailable = resultMaterials.filter(material => !material.available)
     .map(material => issue('material_unavailable', '这份材料暂时无法读取，请恢复材料后再继续。', material.material_id));
   if (unavailable.length) return output('needs_information', unavailable);
@@ -159,13 +186,36 @@ export function compileRunSupplementInput(args: Args): Result {
     || authoring.knowledge_status !== 'authoring_reference_not_compliance_approval' || !Array.isArray(authoring.knowledge)
     || !authoring.knowledge.every((value: unknown) => record(value) && typeof value.path === 'string' && value.path.length > 0
       && typeof value.markdown === 'string' && typeof value.sha256 === 'string' && digest(value.markdown) === value.sha256)) return unsupported();
-  const sourceIssues = changes.flatMap(change => {
+  const sourceChanges = changes.filter(change => {
     const material = resultMaterials.find(value => key(value) === key(change.material))!;
-    return ['historical', 'reference'].includes(material.role)
-      ? [issue('source_information_required', '历史／参考募集书更换或补充后，需要重新填写这份原稿的信息。', material.material_id)] : [];
+    return ['historical', 'reference'].includes(material.role);
   });
-  if (sourceIssues.length) return output('needs_information', sourceIssues);
   m.materials = replacePins(m.materials, false);
   if (m.materials.length > 60) return output('needs_information', [issue('material_limit', '本次编制材料最多支持 60 份，请调整补充材料。')]);
+  const sourceIssues: Issue[] = [];
+  if (sourceChanges.length) {
+    const changed = new Set(sourceChanges.map(change => key(change.material)));
+    const candidateSources: SourceProspectus[] = m.materials.filter((material: RecordValue) => ['historical', 'reference'].includes(material.role))
+      .flatMap((material: RecordValue) => {
+        if (changed.has(key(pin(material)))) {
+          const declaration = sourceChanges.find(change => key(change.material) === key(pin(material)))?.source_prospectus;
+          return declaration ? [structuredClone(declaration)] : [];
+        }
+        // An unchanged source retains only its exact frozen declaration; no ID-only/version fallback.
+        return authoring.source_prospectuses.filter((source: SourceProspectus) => key(source) === key(pin(material)));
+      });
+    for (const gap of sourceProspectusInputGaps(m.materials, candidateSources)) sourceIssues.push(issue('source_information_required',
+      `历史／参考募集书更换或补充后，需要重新填写这份原稿的信息：${gap.missing.join('、')}。`, gap.material_id));
+    if (runSupplementSourceContext(manifest)?.previous_output_bound) {
+      for (const change of sourceChanges) if (!change.discard_previous_output) sourceIssues.push(issue('source_baseline_choice_required',
+        '原任务仍关联旧成果。请明确本次候选输入放弃旧成果关联，再按本次原稿准备。', change.material.material_id));
+      // Only the cloned candidate loses its inherited output. The original run and files are untouched.
+      delete authoring.previous_output;
+      delete authoring.edit_baseline;
+    }
+    authoring.source_prospectuses = candidateSources;
+    m.update_details.source_prospectuses = structuredClone(candidateSources);
+  }
+  if (sourceIssues.length) return output('needs_information', sourceIssues);
   return output('prepared', [], { manifest: m, reviewSnapshot: snapshot });
 }

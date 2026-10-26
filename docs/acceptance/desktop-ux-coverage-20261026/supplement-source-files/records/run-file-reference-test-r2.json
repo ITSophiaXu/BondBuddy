@@ -1,0 +1,8 @@
+{
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "started_at_utc": "2026-10-26T12:09:27.6761611Z",
+  "exit_code": 0,
+  "finished_at_utc": "2026-10-26T12:09:28.8826254Z",
+  "command": "node --test apps/api/.run-file-reference-test/run-file-reference.test.js",
+  "log": "run-file-reference-test-r2.log"
+}

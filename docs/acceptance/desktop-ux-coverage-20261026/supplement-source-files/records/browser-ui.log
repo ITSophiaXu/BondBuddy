@@ -1,0 +1,80 @@
+
+Running 22 tests using 1 worker
+
+
+
+[1/22] tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[2/22] tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[3/22] tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[4/22] tests\run-supplement-draft.spec.ts:56:1 › captured work discloses result references and hides old confirmation during local edits and unknown saves
+[5/22] tests\run-supplement-draft.spec.ts:72:1 › a changed pause boundary requires a new explicit save even when the material choices are unchanged
+[6/22] tests\run-supplement-draft.spec.ts:87:1 › an old saved draft can capture work on a new save without changing its empty material selection
+[7/22] tests\run-supplement-draft.spec.ts:98:1 › saved material issues remain distinct from adoption, and local edits hide stale check results
+[8/22] tests\run-supplement-draft.spec.ts:112:1 › replacement source declarations start empty and survive source-only edits, an unknown receipt and refresh
+[9/22] tests\run-supplement-draft.spec.ts:149:1 › new reference information edits retain their exact declaration through a CAS keep-local resolution
+  1) tests\run-supplement-draft.spec.ts:149:1 › new reference information edits retain their exact declaration through a CAS keep-local resolution 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.check: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-source]').locator('[data-source-field="quarter"][value="12-31"]')
+        - locator resolved to <input type="radio" value="12-31" data-source-field="quarter" name="source-quarter-run-supplement:supplement-owner:supplement-project:supplement-run/material-supplement-upload-1/1/103a9da5de89c90068adb38da9ec58f4aff2fbe3f3070aa61d0edb752c52b544"/>
+      - attempting click action
+        2 × waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <label class="quarter">…</label> intercepts pointer events
+        - retrying click action
+        - waiting 20ms
+        2 × waiting for element to be visible, enabled and stable
+          - element is visible, enabled and stable
+          - scrolling into view if needed
+          - done scrolling
+          - <label class="quarter">…</label> intercepts pointer events
+        - retrying click action
+          - waiting 100ms
+        54 × waiting for element to be visible, enabled and stable
+           - element is visible, enabled and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <label class="quarter">…</label> intercepts pointer events
+         - retrying click action
+           - waiting 500ms
+
+
+      158 |   await source.locator('[data-source-field="offering"]').selectOption('private');
+      159 |   await source.locator('[data-source-field="year"]').selectOption('2024');
+    > 160 |   await source.locator('[data-source-field="quarter"][value="12-31"]').check();
+          |                                                                        ^
+      161 |   await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);
+      162 |   const first=structuredClone(s.saves[0]);
+      163 |   await source.locator('[data-source-field="relation"]').selectOption('parent');await expect(action(host,'save')).toBeEnabled();
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-draft.spec.ts:160:72
+
+    Error Context: ..\..\.local\supplement-source-files\browser-ui-results\run-supplement-draft-new-r-3b759-a-CAS-keep-local-resolution\error-context.md
+
+
+
+
+[10/22] tests\run-supplement-draft.spec.ts:174:1 › replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving
+[11/22] tests\run-supplement-draft.spec.ts:189:1 › unsaved completed upload and add intent survive reload without silently creating a draft revision
+[12/22] tests\run-supplement-draft.spec.ts:195:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+[13/22] tests\run-supplement-draft.spec.ts:205:1 › CAS use-latest choice discards local choices only after explicit selection
+[14/22] tests\run-supplement-draft.spec.ts:212:1 › accepted PUT with a lost response is recovered by its exact receipt without a second save
+[15/22] tests\run-supplement-draft.spec.ts:219:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found
+[16/22] tests\run-supplement-draft.spec.ts:229:1 › unknown save persists through refresh and reads the original receipt even when a newer revision exists
+[17/22] tests\run-supplement-draft.spec.ts:237:1 › server can_save prevents a save while still showing the exact frozen base and explicit blocked reason
+[18/22] tests\run-supplement-draft.spec.ts:243:1 › a lost upload completion receipt is recovered before saving the preparation without resending bytes
+[19/22] tests\run-supplement-draft.spec.ts:251:1 › an upload completion after leaving its owner/run surface cannot attach or save to the new view
+[20/22] tests\run-supplement-draft.spec.ts:260:1 › mismatched exact receipt keeps the original request pending and prevents original-material resume until verified
+[21/22] tests\run-supplement-draft.spec.ts:270:1 › a delayed availability GET from V0 cannot offer an older draft after save confirms V1
+[22/22] tests\run-supplement-draft.spec.ts:281:1 › failure reading a newer draft does not turn an already verified original save receipt back into unknown
+  1 failed
+    tests\run-supplement-draft.spec.ts:149:1 › new reference information edits retain their exact declaration through a CAS keep-local resolution 
+  21 passed (1.2m)
+(node:50344) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:26480) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

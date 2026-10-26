@@ -1,6 +1,7 @@
 import {Type,type Static,type TObject,type TProperties} from '@sinclair/typebox';
 import {ReviewMaterialPinSchema} from './review-workspace.js';
 import {M1_UPLOAD_MATERIAL_ROLES} from './material-partitions.js';
+import {SourceProspectusSchema} from './update-project.js';
 
 const strict=<T extends TProperties>(properties:T):TObject<T>=>Type.Object(properties,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128});
@@ -16,7 +17,12 @@ export const RunSupplementMaterialSchema=strict({
  filename:Type.String({minLength:1}),role:Type.Union(M1_UPLOAD_MATERIAL_ROLES.map(role=>Type.Literal(role))),
  media_type:Type.String({minLength:1}),available:Type.Boolean(),
 });
-export const RunSupplementChangeSchema=strict({material:pin,replaces:Type.Union([pin,Type.Null()])});
+export const RunSupplementChangeSchema=strict({
+ material:pin,replaces:Type.Union([pin,Type.Null()]),
+ source_prospectus:Type.Optional(SourceProspectusSchema),
+ // Candidate-input intent only. This neither deletes an old artifact nor changes the accepted run.
+ discard_previous_output:Type.Optional(Type.Literal(true)),
+});
 export const RunSupplementDraftRequestSchema=strict({
  request_id:id,expected_revision:draftRevision,base_input_revision:revision,base_input_hash:hash,
  changes:Type.Array(RunSupplementChangeSchema,{maxItems:60}),
@@ -30,7 +36,7 @@ export const RunSupplementSavedWorkSchema=Type.Union([
 ]);
 /** A deterministic preparation preview; it never grants adoption or execution. */
 export const RunSupplementInputIssueSchema=strict({
- code:Type.Union((['material_unavailable','source_information_required','review_scope_bound','m4_source_bound','m4_template_bound','input_unsupported','material_limit'] as const).map(code=>Type.Literal(code))),
+ code:Type.Union((['material_unavailable','source_information_required','source_baseline_choice_required','review_scope_bound','m4_source_bound','m4_template_bound','input_unsupported','material_limit'] as const).map(code=>Type.Literal(code))),
  material_id:nullableId,message:Type.String({minLength:1,maxLength:1200}),
 });
 export const RunSupplementInputPreviewSchema=Type.Union([
@@ -50,6 +56,7 @@ export const RunSupplementDraftResponseSchema=strict({
  result_materials:Type.Array(RunSupplementMaterialSchema,{maxItems:300}),
  input_preview:RunSupplementInputPreviewSchema,
  saved_work:RunSupplementSavedWorkSchema,
+ source_context:Type.Optional(strict({kind:Type.Literal('m1_authoring'),previous_output_bound:Type.Boolean()})),
  can_save:Type.Boolean(),blocked_reason:Type.Union([Type.String({minLength:1,maxLength:1200}),Type.Null()]),
  adopted:Type.Literal(false),
 });

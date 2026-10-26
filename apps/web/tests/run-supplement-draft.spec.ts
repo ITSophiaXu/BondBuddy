@@ -109,6 +109,78 @@ test('saved material issues remain distinct from adoption, and local edits hide 
   expect(s.saves).toHaveLength(1);expect(s.controls).toEqual([]);
 });
 
+test('replacement source declarations start empty and survive source-only edits, an unknown receipt and refresh',async({page})=>{
+  const s=supplementFixture(),old=s.materials[0];
+  s.sourceContext={kind:'m1_authoring',previous_output_bound:true};
+  s.project.update_details!.source_prospectuses=[{...supplementPin(old),issuer_name:'不得复制的旧原稿发行人',relation:'parent',market:'sse',offering:'private',
+    reporting_periods:[{start:'2024-01-01',end:'2024-12-31',period_kind:'annual',scope:'parent',status:'user_asserted',evidence_refs:[]}],status:'user_asserted'}];
+  const replacement={...old,material_version:2,upload_id:'synthetic-new-source-version',filename:'新版原稿.docx'};
+  s.materials.push(replacement);s.changes=[{material:supplementPin(replacement),replaces:supplementPin(old)}];s.revision=1;
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s);
+  const host=await ready(page),source=host.locator('[data-supplement-source]');
+  await expect(source.locator('[data-source-field="relation"]')).toHaveValue('');
+  await expect(source.locator('[data-source-field="market"]')).toHaveValue('');
+  await expect(source.locator('[data-source-field="quarter"]:checked')).toHaveCount(0);
+  await expect(source).not.toContainText('不得复制的旧原稿发行人');
+  await expect(source.locator('[data-supplement-discard-output]')).not.toBeChecked();
+  const baseline=source.locator('.run-supplement-baseline-choice');
+  const [labelBox,checkboxBox,textBox]=await Promise.all([baseline.boundingBox(),baseline.locator('input').boundingBox(),baseline.locator('span').boundingBox()]);
+  expect(labelBox).not.toBeNull();expect(checkboxBox).not.toBeNull();expect(textBox).not.toBeNull();
+  expect(checkboxBox!.width).toBeGreaterThanOrEqual(14);expect(checkboxBox!.width).toBeLessThanOrEqual(24);
+  expect(checkboxBox!.height).toBeGreaterThanOrEqual(14);expect(checkboxBox!.height).toBeLessThanOrEqual(24);
+  expect(textBox!.width).toBeGreaterThan(labelBox!.width/2);
+  expect(textBox!.x).toBeGreaterThanOrEqual(checkboxBox!.x+checkboxBox!.width+4);
+  await source.locator('[data-source-field="relation"]').selectOption('subsidiary');
+  await source.locator('[data-source-field="market"]').selectOption('nafmii');
+  await source.locator('[data-source-field="offering"]').selectOption('mtn');
+  await source.locator('[data-source-field="year"]').selectOption('2025');
+  // Source quarter radios are visually hidden; their visible labels are the user click targets.
+  await source.locator('label.quarter').filter({hasText:'9月末'}).click();
+  await expect(source.locator('[data-source-field="quarter"][value="09-30"]')).toBeChecked();
+  await baseline.locator('span').click();await expect(source.locator('[data-supplement-discard-output]')).toBeChecked();
+  await expect(source).toContainText('原稿信息已填写完整');await expect(action(host,'save')).toBeEnabled();
+  expect(s.saves).toEqual([]);expect(s.changes[0].source_prospectus).toBeUndefined();
+  const restored=await remount(page,s,'panel'),restoredSource=restored.locator('[data-supplement-source]');
+  await expect(restoredSource.locator('[data-source-field="relation"]')).toHaveValue('subsidiary');
+  await expect(restoredSource.locator('[data-source-field="offering"]')).toHaveValue('mtn');
+  await expect(restoredSource.locator('[data-supplement-discard-output]')).toBeChecked();
+  s.dropSaveOnce=true;s.failReceiptReads=true;await action(restored,'save').click();
+  await expect(restored).toContainText('原保存结果尚未确认');await expect(restoredSource.locator('[data-source-field="relation"]')).toBeDisabled();
+  expect(s.saves).toHaveLength(1);expect(s.saves[0].expected_revision).toBe(1);
+  expect(s.saves[0].changes[0]).toMatchObject({material:supplementPin(replacement),replaces:supplementPin(old),discard_previous_output:true,
+    source_prospectus:{...supplementPin(replacement),issuer_name:null,relation:'subsidiary',market:'nafmii',offering:'mtn',status:'user_asserted'}});
+  expect(s.saves[0].changes[0].source_prospectus!.reporting_periods.map(p=>p.end)).toContain('2025-09-30');
+  await remount(page,s,'panel');s.failReceiptReads=false;await action(panel(page),'receipt').click();
+  await expect(panel(page)).toContainText('草稿已保存');expect(s.saves).toHaveLength(1);
+  expect(s.changes).toEqual(s.saves[0].changes);expect(s.run.input_revision).toBe(7);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+});
+
+test('new reference information edits retain their exact declaration through a CAS keep-local resolution',async({page})=>{
+  const s=supplementFixture();s.sourceContext={kind:'m1_authoring',previous_output_bound:false};
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await ready(page);
+  await host.locator('[data-supplement-role]').selectOption('reference');
+  await host.locator('[data-supplement-file]').setInputFiles(file('新参考募集书.docx','Synthetic source bytes only'));
+  const source=host.locator('[data-supplement-source]');await expect(source).toBeVisible();
+  await expect(source.locator('[data-supplement-discard-output]')).toHaveCount(0);
+  await source.locator('[data-source-field="relation"]').selectOption('similar_business');
+  await source.locator('[data-source-field="market"]').selectOption('sse');
+  await source.locator('[data-source-field="offering"]').selectOption('private');
+  await source.locator('[data-source-field="year"]').selectOption('2024');
+  await source.locator('label.quarter').filter({hasText:'年末'}).click();
+  await expect(source.locator('[data-source-field="quarter"][value="12-31"]')).toBeChecked();
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);
+  const first=structuredClone(s.saves[0]);
+  await source.locator('[data-source-field="relation"]').selectOption('parent');await expect(action(host,'save')).toBeEnabled();
+  s.revision=2;s.changes[0].source_prospectus!.relation='same_issuer';
+  await action(host,'save').click();await expect(action(host,'keep-local')).toBeVisible();
+  await action(host,'keep-local').click();
+  await expect(source.locator('[data-source-field="relation"]')).toHaveValue('parent');
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(3);
+  expect(s.saves[2].expected_revision).toBe(2);expect(s.saves[2].changes[0].material).toEqual(first.changes[0].material);
+  expect(s.saves[2].changes[0].source_prospectus).toEqual({...first.changes[0].source_prospectus!,relation:'parent'});
+  expect(s.saves[2].changes[0].discard_previous_output).toBeUndefined();expect(s.byteWrites).toBe(1);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+});
+
 test('replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving',async({page})=>{
   const s=supplementFixture();s.holdComplete=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);
   const host=await ready(page),audit=s.base[1],intent=host.locator('[data-supplement-intent]');
