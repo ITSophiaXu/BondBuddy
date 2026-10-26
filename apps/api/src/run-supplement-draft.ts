@@ -12,9 +12,11 @@ import { assertTestChannelReadable } from './non-production-test.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { providerCallNeedsReconciliation } from './queue.js';
 import { assertRunExecution } from './run-execution.js';
+import { readRunExecutionInput } from './run-execution-input.js';
+import { compileRunSupplementInput } from './run-supplement-input.js';
 
 type BasePin = ReviewMaterialPin & { source_project_id: string; role?: string };
-type Base = { pins: BasePin[]; supported: boolean };
+type Base = { pins: BasePin[]; supported: boolean; manifest: Record<string, any>; reviewSnapshot: unknown | null };
 function invalid(message: string): never { throw new Problem(422, 'VALIDATION_FAILED', message); }
 function corrupt(): never { throw new Problem(503, 'DATA_UNAVAILABLE', '原任务的固定输入暂时无法读取，请稍后重试。'); }
 function stale(): never { throw conflict('INPUT_REVISION_CONFLICT', '补料草稿或原任务版本已变化，请刷新后重试。'); }
@@ -38,14 +40,22 @@ function reviewResultSnapshotMatches(manifest: Record<string, any>, execution: a
 
 /** Read the accepted input, never the project's later editable draft. */
 async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Promise<Base> {
-  const input = (await db.query(`SELECT * FROM bb_input_revisions
-    WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [owner, r.project_id, r.input_revision])).rows[0];
+  // Share the exact input reader used by real worker consumers. The caller has
+  // already checked the run identity; unreadable frozen input remains a 503.
+  let frozen;
+  try { frozen = await readRunExecutionInput(db, owner, r.id, {
+    executionVersion: 1, inputRevision: r.input_revision, inputHash: r.input_hash.trim(),
+  }); } catch (error) {
+    if (error instanceof Problem && error.code === 'INPUT_REVISION_CONFLICT') corrupt();
+    throw error;
+  }
+  const { input, reviewExecution, m4Execution } = frozen;
   if (!input || !record(input.manifest) || input.input_hash.trim() !== r.input_hash.trim()
     || inputManifestHash(input.manifest) !== r.input_hash.trim()) corrupt();
   const manifest = input.manifest;
   let raw: unknown[], supported = false;
   if (job?.subtype === 'm4_document_v1') {
-    const execution = (await db.query('SELECT * FROM bb_m4_executions WHERE owner_user_id=$1 AND run_id=$2', [owner, r.id])).rows[0];
+    const execution = m4Execution;
     if (!execution || execution.input_hash.trim() !== r.input_hash.trim() || !same(execution.manifest, manifest)
       || manifest.version !== 'm4-document-input-v1' || manifest.kind !== 'document'
       || !record(manifest.input) || !Array.isArray(manifest.input.materials)) corrupt();
@@ -55,7 +65,7 @@ async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Prom
   } else {
     if (!Array.isArray(manifest.materials)) raw = [];
     else raw = manifest.materials;
-    const execution = (await db.query('SELECT * FROM bb_review_executions WHERE owner_user_id=$1 AND run_id=$2', [owner, r.id])).rows[0];
+    const execution = reviewExecution;
     const hasReviewResult = record(manifest.authoring) && Object.hasOwn(manifest.authoring, 'review_result');
     if ((manifest.review || hasReviewResult) && !execution) corrupt();
     if (execution) {
@@ -83,7 +93,7 @@ async function frozenBase(db: PoolClient, owner: string, r: any, job: any): Prom
     seen.add(key); pins.push({ ...pin, source_project_id: source, ...(value.role ? { role: value.role } : {}) });
   }
   if (pins.length > 240) corrupt();
-  return { pins, supported };
+  return { pins, supported, manifest, reviewSnapshot: reviewExecution?.snapshot ?? null };
 }
 
 async function materialDetails(db: PoolClient, owner: string, pin: BasePin): Promise<RunSupplementMaterial> {
@@ -145,10 +155,12 @@ async function response(db: PoolClient, owner: string, r: any, job: any, base: B
   const result = baseMaterials.map(pin => replacements.get(pinKey(pin)) ?? pin);
   changes.forEach((change, index) => { if (!change.replaces) result.push(additions[index]); });
   const blocked = await saveBlock(db, owner, r, job, base);
+  const { preview } = compileRunSupplementInput({ projectId: r.project_id, manifest: base.manifest,
+    reviewSnapshot: base.reviewSnapshot, resultMaterials: result, changes });
   return { run_id: r.id, project_id: r.project_id, revision: receipt?.revision ?? 0, latest_revision: latest,
     request_id: receipt?.request_id ?? null, saved_at: receipt ? date(receipt.saved_at) : null,
     base_input_revision: r.input_revision, base_input_hash: r.input_hash.trim(), base_materials: baseMaterials,
-    changes, result_materials: result, can_save: blocked === null, blocked_reason: blocked, adopted: false };
+    changes, result_materials: result, input_preview: preview, can_save: blocked === null, blocked_reason: blocked, adopted: false };
 }
 
 export function registerRunSupplementDraftRoutes(app: FastifyInstance, pool: () => Pool, owner: (r: FastifyRequest) => Promise<string>) {

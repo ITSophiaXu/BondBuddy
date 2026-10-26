@@ -10,7 +10,8 @@ import { inputManifestHash } from './production-rule-pin.js';
 import { emptyM4Draft } from './m4-workspace.js';
 import { claim, finish } from './queue.js';
 import { syntheticReviewPair } from './review-delivery-test-fixture.js';
-import type { ReviewMaterialPin, RunSupplementChange } from '@bondbuddy/contracts';
+import { loadM4Knowledge } from './m4-knowledge.js';
+import { emptyUpdateDetails, type ReviewMaterialPin, type RunSupplementChange } from '@bondbuddy/contracts';
 
 const connection = await isolatedTestDatabase(undefined, 'run-supplement-draft');
 const origin = 'http://bondbuddy.test';
@@ -44,17 +45,23 @@ async function context(blobs?: PrivateBlobs) {
       VALUES($1,$2,$3,$4,$5,$6,'synthetic.pdf','application/pdf',16,$7,$8,'persisted')`, [id, version, user, projectId, upload, role, sha, `users/${user}/projects/${projectId}/synthetic/materials/${upload}`]);
     return { material_id: id, material_version: version, sha256: sha } satisfies ReviewMaterialPin;
   };
-  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm3_result' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin' | 'missing_review' | 'source_run' | 'source_pin' | 'materials' | 'requirements') => {
+  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm3_result' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin' | 'missing_review' | 'source_run' | 'source_pin' | 'materials' | 'requirements', canonical = false) => {
     const task = flow === 'm4' || flow === 'm1_generation' ? 'generation' : flow === 'm3' ? 'review' : 'update';
     const projectId = await project(flow === 'm3_result' ? 'review' : task);
     const sourceProject = flow === 'm4' ? await project() : projectId;
     const basePin = await material(sourceProject), runId = uid(), jobId = uid();
     const normalPin = { ...basePin, role: 'other' };
-    const reviewInput = { source_material_ref: basePin, material_versions: [basePin], requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : [{ text: 'Frozen review requirement' }], as_of: '2026-09-30' };
-    const reviewOrigin = { entrypoint: 'synthetic' }, sourceRunId = uid();
+    const reviewInput = { source_material_ref: basePin, material_versions: [basePin], requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : canonical ? ['Frozen review requirement'] : [{ text: 'Frozen review requirement' }], as_of: '2026-09-30' };
+    const reviewOrigin = canonical ? { version: 'review-execution-origin-v1', entrypoint: 'quick_action', accepted_proposal: null, context_report_ref: null } : { entrypoint: 'synthetic' }, sourceRunId = uid();
     let manifest: any = { draft_revision: 1, issuer_name: 'Frozen issuer', market: 'sse', offering: 'private',
       update_details: { reporting_cutoff: '2026-09-30' }, goals: ['Frozen original goal'], requirements: ['Frozen original requirement'],
       materials: [normalPin], rule_pack_version: 'frozen-rules', template_version: 'frozen-template', reference_release: 'frozen-reference' };
+    if (canonical && (flow === 'm1' || flow === 'm1_generation')) {
+      manifest.update_details = { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30' };
+      manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [],
+        knowledge: [{ path: 'synthetic-frozen.md', sha256: digest('Synthetic frozen knowledge'), markdown: 'Synthetic frozen knowledge' }],
+        knowledge_status: 'authoring_reference_not_compliance_approval' };
+    }
     let topic: string | undefined;
     if (flow === 'm3' && reviewDrift !== 'missing_review') manifest.review = { version: 'review_v1', version_number: 1, operation: 'full_review', input: reviewInput, finding_ids: [], origin: reviewOrigin };
     if (flow === 'm3_result') { manifest.project_kind = 'review'; manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [], knowledge: [],
@@ -71,7 +78,7 @@ async function context(blobs?: PrivateBlobs) {
       manifest = { version: 'm4-document-input-v1', kind: 'document', project_name: 'Frozen source', topic_id: topic,
         execution_scope_project_id: sourceProject, draft_version: 1, input: { ...emptyM4Draft('underwriter'), source_material: pin,
           materials: [pin], fields: { issuer_name: 'Frozen issuer', market: 'sse' }, requirements: [{ requirement_id: 'frozen', text: 'Frozen requirement', message_id: uid(), message_version: 1 }] },
-        template_material: null, market: 'sse', offering: 'private', knowledge: [{ version: 'frozen-knowledge' }], billing_task: 'm4_G01' };
+        template_material: null, market: 'sse', offering: 'private', knowledge: canonical ? loadM4Knowledge('sse', 'underwriter', 'private') : [{ version: 'frozen-knowledge' }], billing_task: 'm4_G01' };
     }
     const hash = inputManifestHash(manifest), pins = flow === 'm4' ? [...manifest.input.materials, manifest.input.source_material] : manifest.materials;
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version,reference_release)
@@ -98,6 +105,7 @@ async function context(blobs?: PrivateBlobs) {
   };
   const evidence = async (f: Awaited<ReturnType<typeof fixture>>) => ({
     run: (await pool.query('SELECT * FROM bb_runs WHERE id=$1', [f.runId])).rows,
+    executionVersions: (await pool.query('SELECT * FROM bb_run_execution_versions WHERE run_id=$1 ORDER BY execution_version', [f.runId])).rows,
     job: (await pool.query('SELECT * FROM bb_jobs WHERE run_id=$1', [f.runId])).rows,
     input: (await pool.query('SELECT * FROM bb_input_revisions WHERE project_id=$1 ORDER BY revision', [f.projectId])).rows,
     project: (await pool.query('SELECT * FROM bb_projects WHERE id=$1', [f.projectId])).rows,
@@ -155,6 +163,9 @@ test('real review-result update can prepare supplements and resume its original 
     const request = { request_id: uid(), expected_revision: 0, base_input_revision: updated.input_revision, base_input_hash: updated.input_hash, changes };
     const balance = await creditBalance(c.pool, c.owner), saved = ok(await c.send('PUT', url, request));
     assert.equal(saved.revision, 1); assert.deepEqual(saved.changes, changes); assert.equal(saved.adopted, false);
+    assert.equal(saved.input_preview.status, 'needs_information');
+    assert.equal(saved.input_preview.candidate_input_hash, null);
+    assert.equal(saved.input_preview.issues[0].code, 'review_scope_bound');
     assert.deepEqual(ok(await c.send('GET', `${url}?request_id=${request.request_id}`)).changes, changes);
     const resumed = ok(await c.send('POST', `/api/v1/runs/${runId}/resume`, { reason: 'Explicit original input' }));
     assert.equal(resumed.run_id, runId); assert.equal(resumed.input_revision, updated.input_revision); assert.equal(resumed.input_hash, updated.input_hash);
@@ -162,6 +173,50 @@ test('real review-result update can prepare supplements and resume its original 
       FROM bb_runs r JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.revision=r.input_revision
       JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1`, [runId])).rows[0];
     assert.deepEqual(after, frozen); assert.deepEqual(await creditBalance(c.pool, c.owner), balance);
+  } finally { await c.close(); }
+});
+
+test('real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    for (const flow of ['m1', 'm3', 'm4'] as const) await t.test(flow, async () => {
+      const f = await c.fixture(flow, undefined, true), added = await c.material(f.projectId, 'audit');
+      const body = f.request([{ material: added, replaces: null }]), expected = structuredClone(f.manifest);
+      if (flow === 'm4') expected.input.materials.push({ ...added, source_project_id: f.projectId });
+      else {
+        expected.materials.push({ ...added, role: 'audit' });
+        if (flow === 'm3') expected.review.input.material_versions.push(added);
+      }
+      const before = await c.evidence(f), saved = ok(await c.send('PUT', f.url, body));
+      assert.deepEqual(saved.input_preview, { compiler_version: 'run-supplement-input-v1', status: 'prepared',
+        candidate_input_hash: inputManifestHash(expected), issues: [] });
+      assert.notEqual(saved.input_preview.candidate_input_hash, f.hash);
+      assert.equal(saved.adopted, false); assert.deepEqual(await c.evidence(f), before);
+      // Later editable project context is unrelated to this exact saved preparation.
+      await c.pool.query("UPDATE bb_projects SET issuer_name='Unrelated new draft',draft_revision=99 WHERE id=$1", [f.projectId]);
+      assert.deepEqual(ok(await c.send('GET', `${f.url}?request_id=${body.request_id}`)).input_preview, saved.input_preview);
+      assert.deepEqual(ok(await c.send('PUT', f.url, body)).input_preview, saved.input_preview);
+      assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_execution_versions WHERE run_id=$1', [f.runId])).rows[0].n, 1);
+      assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 1);
+      await c.pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1 AND version=$2', [added.material_id, added.material_version]);
+      const unavailable = ok(await c.send('GET', `${f.url}?request_id=${body.request_id}`));
+      assert.equal(unavailable.input_preview.status, 'needs_information');
+      assert.equal(unavailable.input_preview.candidate_input_hash, null);
+      assert.equal(unavailable.input_preview.issues[0].code, 'material_unavailable');
+      assert.deepEqual(unavailable.changes, saved.changes, 'availability never changes the immutable save receipt');
+    });
+    await t.test('new source declarations and bound M4 source replacements remain explicit', async () => {
+      const m1 = await c.fixture('m1', undefined, true), source = await c.material(m1.projectId, 'historical');
+      const before = await c.evidence(m1), saved = ok(await c.send('PUT', m1.url, m1.request([{ material: source, replaces: null }])));
+      assert.equal(saved.input_preview.status, 'needs_information');
+      assert.equal(saved.input_preview.issues[0].code, 'source_information_required');
+      assert.equal(saved.input_preview.candidate_input_hash, null); assert.deepEqual(await c.evidence(m1), before);
+      const m4 = await c.fixture('m4', undefined, true), replacement = await c.material(m4.projectId);
+      const previous = await c.evidence(m4), bound = ok(await c.send('PUT', m4.url, m4.request([{ material: replacement, replaces: m4.basePin }])));
+      assert.equal(bound.input_preview.status, 'needs_information');
+      assert.equal(bound.input_preview.issues[0].code, 'm4_source_bound');
+      assert.equal(bound.input_preview.candidate_input_hash, null); assert.deepEqual(await c.evidence(m4), previous);
+    });
   } finally { await c.close(); }
 });
 

@@ -34,6 +34,7 @@
         "base_materials": [{"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_project_id": "synthetic-project", "filename": "原材料.pdf", "role": "other", "media_type": "application/pdf", "available": true}],
         "changes": [{"material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "replaces": null}],
         "result_materials": [{"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_project_id": "synthetic-project", "filename": "原材料.pdf", "role": "other", "media_type": "application/pdf", "available": true}, {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "source_project_id": "synthetic-project", "filename": "补充材料.pdf", "role": "other", "media_type": "application/pdf", "available": false}],
+        "input_preview": {"compiler_version": "run-supplement-input-v1", "status": "needs_information", "candidate_input_hash": null, "issues": [{"code": "material_unavailable", "material_id": "synthetic-new", "message": "这份材料暂不可用，请恢复后再核对。"}]},
         "can_save": false, "blocked_reason": "本次任务已继续，已保存的准备记录仍可查看。", "adopted": false
       }
     },

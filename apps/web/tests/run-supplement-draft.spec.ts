@@ -30,6 +30,10 @@ for(const surface of ['m1','m3','m4'] as const)test(`desktop ${surface}: paused 
   const host=await add(page);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);expect(s.completions).toHaveLength(1);
   expect(s.saves).toEqual([]);expect(s.controls).toEqual([]);await expect(host).toContainText('尚未采用');
   await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);await expect(host).toContainText('草稿已保存');
+  await expect(host.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
+  await host.locator('[data-supplement-result] summary').click();
+  await expect(host.locator('[data-supplement-result]')).toContainText('原冻结募集书.docx');
+  await expect(host.locator('[data-supplement-result]')).toContainText('补充审计证据.txt');
   expect(s.saves[0]).toMatchObject({expected_revision:0,base_input_revision:7,base_input_hash:frozen.run.input_hash,changes:[{replaces:null}]});
   expect(s.saves[0].changes[0].material.sha256).toBe(supplementHash('synthetic supplement evidence'));
   expect({run:s.run,input:s.input,project:s.project,reviewDraft:s.review.draft,m4Drafts:s.m4.drafts}).toEqual(frozen);
@@ -46,6 +50,20 @@ for(const surface of ['m1','m3','m4'] as const)test(`desktop ${surface}: paused 
   await continueButton.click();await confirm.locator('[data-supplement-resume-confirm]').click();
   await expect.poll(()=>s.controls).toEqual(['resume']);expect(s.saves).toHaveLength(1);expect(s.unexpectedMutations).toEqual([]);
   expect(s.run).toMatchObject({run_id:frozen.run.run_id,input_revision:7,input_hash:frozen.run.input_hash,execution_request_id:frozen.run.execution_request_id});
+});
+
+test('saved material issues remain distinct from adoption, and local edits hide stale check results',async({page})=>{
+  const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);
+  const host=await add(page);await action(host,'save').click();await expect(host.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
+  s.inputPreview={compiler_version:'run-supplement-input-v1',status:'needs_information',candidate_input_hash:null,
+    issues:[{code:'source_information_required',material_id:null,message:'原稿信息需要重新填写。'}]};
+  await action(host,'reload').click();await expect(host.locator('[data-supplement-input-preview]')).toContainText('原稿信息需要重新填写');
+  await expect(host.locator('[data-supplement-input-preview]')).not.toContainText('材料关联已核对');
+  await expect(host).toContainText('补料选择已保存');expect(s.controls).toEqual([]);expect(s.saves).toHaveLength(1);
+  await add(page,'另一份补充证据.txt','Different synthetic bytes');
+  await expect(host.locator('[data-supplement-input-preview]')).toContainText('请先保存并确认回执');
+  await expect(host.locator('[data-supplement-input-preview]')).not.toContainText('原稿信息需要重新填写');
+  expect(s.saves).toHaveLength(1);expect(s.controls).toEqual([]);
 });
 
 test('replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving',async({page})=>{
@@ -95,7 +113,10 @@ test('accepted PUT with a lost response is recovered by its exact receipt withou
 
 test('unaccepted PUT with a lost response retries the identical request only after receipt says not found',async({page})=>{
   const s=supplementFixture();s.dropUnacceptedSaveOnce=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
-  await action(host,'save').click();await expect(action(host,'retry-save')).toBeVisible();expect(s.revision).toBe(0);expect(s.saves).toHaveLength(1);
+  await action(host,'save').click();await expect(action(host,'retry-save')).toBeVisible();
+  // The pending controls render before fetch dispatch. Wait for the actual HTTP
+  // boundary before asserting that the intentionally unaccepted PUT was sent.
+  await expect.poll(()=>s.saves).toHaveLength(1);expect(s.revision).toBe(0);
   const original=structuredClone(s.saves[0]);await expect.poll(()=>s.reads.includes(original.request_id)).toBe(true);await expect(action(host,'retry-save')).toBeEnabled();
   await action(host,'retry-save').click();await expect.poll(()=>s.revision).toBe(1);expect(s.saves).toEqual([original,original]);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);
 });

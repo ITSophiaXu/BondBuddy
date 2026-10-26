@@ -17,7 +17,7 @@
 
 源码核对：`packages/contracts/src/index.ts:298` 的 `RunActionRequest` 仅包含 `reason`；第 441–443 行的 cancel/pause/resume 共用该请求。`apps/api/src/server.ts:1536` 将这三类请求交给 queue；`queue.ts:255–314` 的 resume 只恢复原 job，没有新输入采用步骤。`apps/worker/src/run-pipeline.ts:592` 从 run 读取同一个输入，`:593` 从单一 stage 检查点恢复；`file-authoring-stage.ts:26` 按该 input_hash 验证已保存模型结果。仅把新 input_hash 换入 run 会破坏这些关联，不能作为实现方案。
 
-当前 `apps/worker/src/authoring-pause.pg.test.ts` 的单条测试验证“保存当前处理后暂停，继续时不重复已保存步骤”；没有补料或新输入。现有浏览器报告的固定输入暂停断言同样不能证明 UX-A03。**本次是源码/决定审计，没有执行新的运行态补料测试，没有将源码缺口伪报成一次产品实测失败。**
+最初审计时，`apps/worker/src/authoring-pause.pg.test.ts` 的单条测试只验证“保存当前处理后暂停，继续时不重复已保存步骤”；没有补料或新输入。后续[初始执行身份专项](../acceptance/desktop-ux-coverage-20261026/initial-execution-identity/README.md)已增加完整 main 下受控本地 adapter 在途调用保存、暂停、补料准备和原结果复用证据。它证明固定输入恢复的真实 worker 机制，仍没有采用新输入，也不能证明 UX-A03 已完成。最初的源码缺口没有被伪报为一次运行失败。
 
 因此：FG-001 历史暂停入口缺口已被后续能力覆盖；FG-002“新材料明确进入同一业务任务”仍为 `functional_gap`；补料后的输入/执行版本与必要重做费用仍有 `design_gap`。UX-A03 新协议验收为 `not_run`。既有 15/15 旅程和 662 个浏览器 pass 保留其原始证据范围，完整 goal 尚未达到主要功能全部覆盖。
 
@@ -39,6 +39,8 @@
 
 已落实一个独立前提：新增迁移 `0117_run_origin_input_immutable.sql` 保护已有任务的原 run/owner/project、原 input revision/hash 和原执行请求身份，正常状态、积分与成果更新仍可执行。隔离 PostgreSQL 回归为 34 pass / 0 fail / 1 skip；[验证范围与原始记录](../acceptance/desktop-ux-coverage-20261026/run-origin/README.md)单独列明。该保护没有增加活动执行版本、新材料采用、追加费率或续做能力，以下新协议仍为 proposed，G03 不关闭。
 
+后续迁移 `0119_initial_run_execution_identity.sql` 已追加不可变初始 V1，真实 queue、Lease、prompt、provider、OCR 和独立 worker 写入核对准确身份；数据库仍明确禁止 V2。当前又通过 `readRunExecutionInput()` 将补料准备与 M1/M3/M4 实际 loader 接到同一准确输入读取，M3/M4 gate 消费该读取返回的归属一致快照。它没有版本化原业务表或开放后继执行；[候选输入专项](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)记录当前边界。
+
 - 保留 `bb_runs` 的原始执行请求和原始输入关联；每份 `bb_input_revisions` 继续不可变。追加“run 的执行版本”关系，记录业务 run、序号、前一版本、本次完整输入 revision/hash、补料采用请求及旧工作引用。活动版本以 CAS 推进；不得原地修改旧输入或执行请求哈希。
 - 补料草稿从该任务的已采用输入构建，不从项目最新草稿猜测。原始募集书、目标企业/期间、文种、规则、模板及授权保持明确。可新增或明确替换证据材料；修改任务目标、文种或范围须先按现有业务规则确认，不能借补料隐式改变任务类别。
 - 拟新增 owner-scoped 的续做准备/读取和明确采用操作，唯一 schema 放在 `packages/contracts/`。采用请求携带幂等请求 ID、预期活动执行版本、预期暂停边界、完整新输入引用及费用确认引用。旧 `resume {reason}` 继续表示原输入恢复。
@@ -55,11 +57,11 @@
 
 | 当前边界 | 新协议需要的处理 |
 | --- | --- |
-| `queue.ts:21` 的 Lease 不含执行版本；`:110` 的锁验证主要检查租约 | 租约携带执行版本；活动、调用意图、检查点、计费采样和文件提升均核验版本与租约。旧执行版本的迟到写入不得进入新版本 |
-| `observability.ts:100` 要求 prompt snapshot 的输入等于 run 原输入 | 允许准确属于该 run 的版本化输入，核对授权关联；不能直接去掉检查。Run DTO、执行回执和历史明确区分初始输入与当前采用输入，保留原执行请求的幂等身份 |
+| Lease 已必带 V1/revision/hash，queue、provider、OCR 和独立写入已检查准确身份；当前无可执行后继版本 | 后继采用时继续核验活动版本及租约；旧执行版本的迟到写入不得进入新版本，不能直接放宽现有 V1 限制 |
+| prompt snapshot 已锁住原任务并验证准确 V1 输入，保留原身份约束 | 后继输入须有准确执行关联与授权；不能直接去掉检查。Run DTO、执行回执和历史明确区分初始输入与当前采用输入，保留原执行请求的幂等身份 |
 | `durable-probe-journal.ts:81` 按逻辑调用查最后 attempt；file authoring 使用常量 `file-authoring-v1` | 每个执行版本使用稳定的工作单元身份及依赖指纹；崩溃恢复重用同一调用，补料的新处理使用新身份。不能靠盲目增加 attempt 重放旧工作 |
-| stage 检查点只按 stage 名索引，旧输入验证与 material readiness 多处直接读取 run 输入 | 全部执行读取统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
-| `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；各 input gate 比对它们的原快照 | 追加每执行版本的业务快照/报告关联，并保持旧记录不可变；review/M4 的 gate、模型、成果登记及历史都解析准确版本。只加通用活动输入指针不足以支持这两类业务 |
+| stage 检查点仍只按 stage 名索引；共享输入 reader 与三个实际 loader 目前只接受 V1 | 后继执行统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
+| `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；实际 loader/gate 已消费准确 V1 快照 | 仍须追加每执行版本的业务快照/报告关联，并保持旧记录不可变；模型、成果登记及历史也须解析准确版本。只接通共享读取不足以支持后继执行 |
 | 既有 artifact 不直接记录 input revision，部分来源通过 run 反查；多个成果登记按 `(run_id, kind)` 唯一 | 增加不可变的 artifact→执行版本/输入关系；已有唯一结果索引仅作为“当前结果”投影，历史关联另行追加。项目募集书、文件族、previous_output、复核来源和助手准确成果续改均使用准确关联 |
 | `server.ts` 的成果/下载校验主要依赖整个 run 已成功；`unified-input.ts` 的 previous_output 只允许已成功来源任务 | 下载授权进一步绑定具体成果/执行版本和该版本交付状态，避免新版本成功后把旧暂存 Word 一并变为正式交付。新增私有的前序工作 pin，按 owner、同 run、执行版本、Blob 和 hash 核对暂停时已保存文件；不放宽公开成功成果门，也不伪造旧版本成功 |
 | `0097_m4_cross_project_material_retention.sql` 的材料 pin 判定沿原 run 输入/M4 快照读取 | 保留所有已采用执行版本、旧模型结果及历史成果所引用的材料字节，不能只 pin 原输入或当前输入。清理/归档/账号删除继续遵守既有生命周期政策 |
@@ -81,6 +83,12 @@
 验证与当前源码绑定见[补料准备专项验收](../acceptance/desktop-ux-coverage-20261026/supplement-preparation/README.md)。隔离真实 PostgreSQL/HTTP 与合成桌面组件测试分开记录，均不冒充完整新输入续做、模型处理或最终 Word 验收。**G03 / UX-A03 仍未完成，原目标保持 active。**
 
 后续[真实主页面联通专项](../acceptance/desktop-ux-coverage-20261026/supplement-preparation-real/README.md)又验证完整 main → session/CSRF → PG → 私有本地字节上传/下载 → 准备保存 → 刷新 → 明确原材料恢复，含准确失落回执和两个浏览器 context 的 CAS，最终 6/6；后端准备专项 44/44。同时修复真实 `review-updates` 任务的 `authoring.review_result` 合法输入被误判 503 的兼容问题，原快照/输入/账本和 job 身份保持。普通 queued 起点和合成源成果均明确标记，没有模型保存进度暂停、采用新输入、追加报价/收费、Azure 或新 Word 证据；该联通专项仍不关闭 G03。
+
+### 当前候选输入与材料核对
+
+`GET/PUT supplement-draft` 当前还会按冻结 manifest 和准确准备回执确定性编译完整候选输入。可表达的普通补料同步 M1 材料、M3 输入与候选快照、M4 证据清单，原目标、知识、要求和来源保持；响应仅增加 `input_preview` 的编译版本、候选 hash 和材料核对结果。页面在保存回执确认后显示核对结果和完整材料清单，本机未保存变更不会沿用旧“已核对”提示。
+
+新历史/参考原稿没有新声明、已确认复核范围/报告续改、M3 被引用证据替换或修订导出、非 Word/PDF 复核原稿，以及 M4 主文档/模板替换会保留草稿并显示明确限制；不能用形状合法的旧 pin 或声明假装新材料已经可执行。登记材料被删除或登记校验不符时不返回候选 hash；预览不读取 Blob，实际字节仍由执行门验证。候选只在读取/保存响应中计算，没有新输入 revision、持久候选表、采用回执、新保留 pin、报价或执行授权。`prepared` 只表示材料候选可完整编译，原任务的其他业务门、后继版本协议和已确认追加报价仍须逐项满足。详见[当前验收](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)，G03 保持开放。
 
 ## 需要确定的一项产品规则：补料重做费用
 

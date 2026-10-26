@@ -847,3 +847,9 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 截图基准扩展为 52 个网站/栏目，加 2 项注册地监管。contracts 中维护唯一目录与容量，保留旧网站 ID，web 使用分类紧凑选择器，API 默认空范围，worker 以栏目主题或路径区分同域搜索。无新增迁移与依赖，计费仍为每轮 5,000 积分。详见 [增量验收](acceptance/integrity-sites-20261022/README.md)。
 
 2026-10-26 状态增量：contracts 新增可选 `browser.diagnostic` 与结构化 `findings`，web 与 Word 共用 `integrityRecordPresentation`。HTTP/空白/加载阶段/认证要求按观察记录；客户界面与 Word 使用“网站拒绝访问”等中文说明，原始 HTTP 状态、网络错误与页面错误摘要仅留在诊断数据中，不直接拼入展示文案。历史记录使用同一展示规则，业务范围和原始证据保留。具体不利事项、一般信息与主体未确认分别展示。旧采集批次沿用 v1 模型结果，新批次固定 assessment-v2；记录与证据哈希不重写。无新增迁移，详细状态和回归见上述开发验证。
+
+### 2026-10-26：补料候选与准确执行输入读取（本地未发布）
+
+`@bondbuddy/api/run-execution-input` 提供 `readRunExecutionInput(db, owner, runId, expectedIdentity)`，先经不可变初始 V1 resolver 验证 Lease 绑定，再按准确 revision/hash 读取不可变输入和同 owner/project/run 的复核、M4 业务快照。补料准备与 M1/M3/M4 实际 loader 共用此入口；M3/M4 loader 将已读取快照交给原 gate，显式缺失不回退旧查询，独立 gate 调用保留原数据库校验。当前仍只允许 V1，未增加活动版本或后继快照表。
+
+补料 `GET/PUT` 在原准备回执上确定性编译候选，公共 `input_preview` schema 仅在 contracts 定义。候选 hash 来自完整冻结 manifest 加显式材料变更；不读取后来项目草稿，不覆盖原执行输入、来源声明、已确认复核计划或旧模板绑定。复杂来源、证据关联或导出语义当前不能完整表达时，保存仍成功，预览明确阻断，绝不把候选 hash 当采用/费用授权。候选不持久化、不创建任务、不计费，不改变材料保留策略；当前无新增迁移。前后端须使用相同新增响应契约。用户已选必要重做另行报价且确认后继续，具体计价公式仍未确定。实现、独立回归与剩余 G03 缺口见 [候选输入验收](acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)。

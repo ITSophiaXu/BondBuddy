@@ -72,7 +72,7 @@ export async function startRealSupplement(){
     return request('POST',`/api/v1/projects/${project}/materials/uploads/${session.upload_id}/complete`,{byte_size:bytes.length,sha256});
   };
   const createProject=async(kind:string,name:string)=>request('POST','/api/v1/projects',{creation_request_id:uid(),name,kind,issuer_name:'合成测试发行人',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}});
-  const fixture=async(surface:RealSurface,reviewUpdate=false)=>{
+  const fixture=async(surface:RealSurface,reviewUpdate=false,candidateReady=false)=>{
     const source=await createProject(surface==='m3'?'review':'update',`合成 ${surface.toUpperCase()} 补料主页面验收`);
     let projectId=source.project_id,topic:string|undefined;
     const sourceBytes=makeSyntheticDocxFixture({text:`Synthetic original material ${surface} ${uid()}`});
@@ -100,6 +100,12 @@ export async function startRealSupplement(){
       return {surface,projectId,sourceProject:source.project_id,basePin,sourceBytes,runId:target.run_id as string,jobId:job.id as string,topic,manifest:input.manifest,hash:row.input_hash.trim() as string,route:`/#/projects/${projectId}/review?tab=making&run=${target.run_id}`};
     }
     let manifest:any={project_kind:surface==='m3'?'review':'update',name:source.name,draft_revision:1,issuer_name:source.issuer_name,market:'sse',offering:'private',update_details:source.update_details,materials:[{...basePin,role:'other'}]};
+    if(surface==='m1'&&candidateReady){
+      manifest.update_details={...source.update_details,target_reporting_periods:[{start:'2026-01-01',end:'2026-09-30',period_kind:'interim',scope:null,status:'user_asserted',evidence_refs:[]}]};
+      manifest.authoring={version:'unified_v1',source_prospectuses:[],requirements:[],
+        knowledge:[{path:'synthetic-frozen.md',sha256:digest('Synthetic frozen knowledge'),markdown:'Synthetic frozen knowledge'}],
+        knowledge_status:'authoring_reference_not_compliance_approval'};
+    }
     if(surface==='m3'){
       await request('PUT',`/api/v1/projects/${projectId}/review-draft`,{kind:'input',expected_version:0,input:reviewInput});
       manifest.review={version:'review_v1',operation:'full_review',report_id:uid(),version_number:1,draft_version:1,input:reviewInput,origin,context_messages:[],source_report_id:null,finding_ids:[],source_report_sha256:null};

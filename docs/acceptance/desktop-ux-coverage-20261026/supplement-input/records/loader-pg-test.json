@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T11:18:38.058Z",
+  "finished": "2026-10-26T11:18:46.533Z",
+  "args": [
+    "--test",
+    "apps/worker/dist/execution-input-loaders.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

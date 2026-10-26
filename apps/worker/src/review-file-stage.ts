@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { isReviewReport } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -36,9 +37,15 @@ export function validReviewFileResult(value: unknown, ctx: StageContext): value 
 }
 
 export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFileInput> {
-  const row = (await ctx.pool.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
-    [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
-  if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row)) throw Error('INPUT_REVISION_CONFLICT');
+  if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
+    throw Error('INPUT_REVISION_CONFLICT');
+  const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);
+  if (resolved.run.project_id !== ctx.run.project_id || resolved.run.task_kind !== ctx.run.task_kind
+    || resolved.run.input_revision !== ctx.run.input_revision || resolved.run.input_hash.trim() !== ctx.run.input_hash.trim())
+    throw Error('INPUT_REVISION_CONFLICT');
+  const row = resolved.input;
+  if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row, resolved.reviewExecution)) throw Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as ReviewManifest;
   if (!['review-file-v1','review-correction-v2'].includes(manifest.review.file_delivery?.version ?? '') || manifest.review.operation === 'revision'
     || !Array.isArray(manifest.review.file_delivery?.knowledge)

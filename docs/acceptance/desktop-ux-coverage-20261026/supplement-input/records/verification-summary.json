@@ -1,0 +1,258 @@
+{
+  "synthetic": true,
+  "baseline_commit": "4386a62e",
+  "new_adoption_executed": false,
+  "new_paid_pricing_approved": false,
+  "source_files_unchanged": 2008,
+  "database": {
+    "server_version": "16.14",
+    "schema": [
+      {
+        "filename": "0119_initial_run_execution_identity.sql"
+      },
+      {
+        "filename": "0118_run_supplement_drafts.sql"
+      }
+    ],
+    "runs": 0,
+    "executions": 0,
+    "clones": []
+  },
+  "builds": [
+    {
+      "name": "contracts-build.json",
+      "started": "2026-10-26T11:05:34.967Z",
+      "finished": "2026-10-26T11:05:41.733Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "packages/contracts/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "api-build-1.json",
+      "started": "2026-10-26T11:06:42.899Z",
+      "finished": "2026-10-26T11:06:57.677Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "worker-build-2.json",
+      "started": "2026-10-26T11:17:45.927Z",
+      "finished": "2026-10-26T11:18:00.876Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/worker/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "web-tsc-3.json",
+      "started": "2026-10-26T11:17:46.867Z",
+      "finished": "2026-10-26T11:18:06.042Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "--noEmit",
+        "-p",
+        "apps/web/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "web-build.json",
+      "started": "2026-10-26T11:10:20.577Z",
+      "finished": "2026-10-26T11:10:23.838Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\vite\\bin\\vite.js",
+        "build"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+      "status": 0
+    },
+    {
+      "name": "contracts-check.json",
+      "started": "2026-10-26T11:05:51.864Z",
+      "finished": "2026-10-26T11:05:57.341Z",
+      "args": [
+        "packages/contracts/dist/check-examples.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    }
+  ],
+  "api": {
+    "name": "api-test-1.json",
+    "started": "2026-10-26T11:19:05.960Z",
+    "finished": "2026-10-26T11:20:01.692Z",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "apps/api/dist/run-execution-input.test.js",
+      "apps/api/dist/run-supplement-input.test.js",
+      "apps/api/dist/run-supplement-draft.pg.test.js",
+      "apps/api/dist/run-execution.pg.integration.test.js",
+      "apps/api/dist/run-origin-immutability.pg.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 80,
+      "passed": 80,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "worker": {
+    "name": "worker-test-1.json",
+    "started": "2026-10-26T11:19:07.069Z",
+    "finished": "2026-10-26T11:20:34.287Z",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "apps/worker/dist/review-input-execution.test.js",
+      "apps/worker/dist/unified-execution-input.test.js",
+      "apps/worker/dist/m4-input.test.js",
+      "apps/worker/dist/unified-input.test.js",
+      "apps/worker/dist/review-assistant-linked.test.js",
+      "apps/worker/dist/review-rule-context.test.js",
+      "apps/worker/dist/run-execution-consumers.pg.test.js",
+      "apps/worker/dist/execution-input-loaders.pg.test.js",
+      "apps/worker/dist/review-file-stage.test.js",
+      "apps/worker/dist/unified-authoring.pg.test.js",
+      "apps/worker/dist/authoring-pause.pg.test.js",
+      "apps/worker/dist/m4-pipeline.pg.test.js",
+      "apps/worker/dist/worker-runtime-pipeline-seams.pg.integration.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 67,
+      "passed": 64,
+      "failed": 0,
+      "skipped": 3
+    }
+  },
+  "real_claimed_loaders": {
+    "name": "loader-pg-test.json",
+    "started": "2026-10-26T11:18:38.058Z",
+    "finished": "2026-10-26T11:18:46.533Z",
+    "args": [
+      "--test",
+      "apps/worker/dist/execution-input-loaders.pg.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "full_main": {
+    "name": "browser-real-1.json",
+    "started": "2026-10-26T11:19:08.280Z",
+    "finished": "2026-10-26T11:20:02.197Z",
+    "args": [
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-real-main.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-input\\browser-real-results-1",
+      "--reporter=line,json"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+    "status": 0,
+    "report": "browser-real-report-1.json",
+    "stats": {
+      "startTime": "2026-10-26T11:19:09.176Z",
+      "duration": 52984.653,
+      "expected": 7,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "synthetic_ui": {
+    "name": "browser-ui-2.json",
+    "started": "2026-10-26T11:19:11.290Z",
+    "finished": "2026-10-26T11:19:54.557Z",
+    "args": [
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-draft.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-input\\browser-ui-results-2",
+      "--reporter=line,json"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+    "status": 0,
+    "report": "browser-ui-report-2.json",
+    "stats": {
+      "startTime": "2026-10-26T11:19:12.338Z",
+      "duration": 42184.104,
+      "expected": 17,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "inflight_original_input": {
+    "name": "inflight-test-1.json",
+    "started": "2026-10-26T11:20:31.264Z",
+    "finished": "2026-10-26T11:20:51.987Z",
+    "args": [
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-inflight-main.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-input\\inflight-test-results-1",
+      "--reporter=line,json"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+    "status": 0,
+    "report": "inflight-test-report-1.json",
+    "stats": {
+      "startTime": "2026-10-26T11:20:32.085Z",
+      "duration": 19869.468,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "historical_failures_retained": [
+    "api-build.log",
+    "web-tsc.log",
+    "worker-build.log",
+    "browser-ui.log"
+  ],
+  "limits": [
+    "V1 only",
+    "Candidates are not persisted or adopted",
+    "No new provider/business generation, Azure or final new-input Word acceptance",
+    "Two existing Azurite-dependent worker suites and one Linux-only symlink case remain skipped"
+  ]
+}

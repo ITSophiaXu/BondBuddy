@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { runDocumentParser } from './document-parser.js';
 import { processOcrV2 } from './ocr-v2.js';
 import { readOcrV2Checkpoint } from '@bondbuddy/api/ocr-v2';
+import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
 
 export type UnifiedManifest = Record<string, unknown> & { issuer_name: string; market: Market; offering: Offering;
   update_details: UpdateDetails; authoring: UnifiedAuthoringInput;
@@ -123,7 +124,14 @@ async function previousArtifact(pool: Pool, run: RunRow, pin: NonNullable<Unifie
 }
 
 export async function loadUnifiedInput(ctx: StageContext, options: { originalFiles?: boolean } = {}): Promise<UnifiedInput> {
-  const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
+  if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
+    throw new Error('INPUT_REVISION_CONFLICT');
+  const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);
+  if (resolved.run.project_id !== ctx.run.project_id || resolved.run.task_kind !== ctx.run.task_kind
+    || resolved.run.input_revision !== ctx.run.input_revision || resolved.run.input_hash.trim() !== ctx.run.input_hash.trim())
+    throw new Error('INPUT_REVISION_CONFLICT');
+  const row = resolved.input;
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
   const revision = manifest.authoring.review_revision;

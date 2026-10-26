@@ -100,7 +100,8 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
       const content='解释当前成果的主要信息',context={document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:pin};
       const quote=await ok('POST',path('quote'),{kind:'qa',content,context});
       const reading=(await ok('POST',path('messages'),{submission_request_id:randomUUID(),content,context,quote_id:quote.quote.quote_id})).run;
-      const readRun=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[reading.run_id])).rows[0],ctx={pool,run:readRun} as StageContext;
+      const readRun=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[reading.run_id])).rows[0],ctx={pool,run:readRun,
+        lease:{owner,runId:readRun.id,executionVersion:1,inputRevision:readRun.input_revision,inputHash:readRun.input_hash.trim()}} as StageContext;
       const loaded=await loadM4WorkerInput(ctx);assert.equal(loaded.artifacts.length,1);assert.deepEqual(loaded.artifacts[0].pin,pin);
       if(artifact.kind==='qa_text')assert.match(loaded.artifacts[0].bodyContent!,/SYNTHETIC M4 answer/);
       await assert.rejects(loadM4WorkerInput({...ctx,run:{...readRun,owner_user_id:randomUUID()}}),/INPUT_REVISION_CONFLICT/);

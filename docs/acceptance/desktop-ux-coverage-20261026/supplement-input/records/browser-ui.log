@@ -1,0 +1,51 @@
+
+Running 17 tests using 1 worker
+
+
+
+[1/17] tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[2/17] tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[3/17] tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[4/17] tests\run-supplement-draft.spec.ts:55:1 › saved material issues remain distinct from adoption, and local edits hide stale check results
+[5/17] tests\run-supplement-draft.spec.ts:69:1 › replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving
+[6/17] tests\run-supplement-draft.spec.ts:84:1 › unsaved completed upload and add intent survive reload without silently creating a draft revision
+[7/17] tests\run-supplement-draft.spec.ts:90:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+[8/17] tests\run-supplement-draft.spec.ts:100:1 › CAS use-latest choice discards local choices only after explicit selection
+[9/17] tests\run-supplement-draft.spec.ts:107:1 › accepted PUT with a lost response is recovered by its exact receipt without a second save
+[10/17] tests\run-supplement-draft.spec.ts:114:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found
+  1) tests\run-supplement-draft.spec.ts:114:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found 
+
+    Error: expect(received).toHaveLength(expected)
+
+    Expected length: 1
+    Received length: 0
+    Received array:  []
+
+      114 | test('unaccepted PUT with a lost response retries the identical request only after receipt says not found',async({page})=>{
+      115 |   const s=supplementFixture();s.dropUnacceptedSaveOnce=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+    > 116 |   await action(host,'save').click();await expect(action(host,'retry-save')).toBeVisible();expect(s.revision).toBe(0);expect(s.saves).toHaveLength(1);
+          |                                                                                                                                      ^
+      117 |   const original=structuredClone(s.saves[0]);await expect.poll(()=>s.reads.includes(original.request_id)).toBe(true);await expect(action(host,'retry-save')).toBeEnabled();
+      118 |   await action(host,'retry-save').click();await expect.poll(()=>s.revision).toBe(1);expect(s.saves).toEqual([original,original]);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);
+      119 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-draft.spec.ts:116:134
+
+    Error Context: ..\..\.local\supplement-input\browser-ui-results\run-supplement-draft-unacc-dda12-fter-receipt-says-not-found\error-context.md
+
+
+
+
+[11/17] tests\run-supplement-draft.spec.ts:121:1 › unknown save persists through refresh and reads the original receipt even when a newer revision exists
+[12/17] tests\run-supplement-draft.spec.ts:129:1 › server can_save prevents a save while still showing the exact frozen base and explicit blocked reason
+[13/17] tests\run-supplement-draft.spec.ts:135:1 › a lost upload completion receipt is recovered before saving the preparation without resending bytes
+[14/17] tests\run-supplement-draft.spec.ts:143:1 › an upload completion after leaving its owner/run surface cannot attach or save to the new view
+[15/17] tests\run-supplement-draft.spec.ts:152:1 › mismatched exact receipt keeps the original request pending and prevents original-material resume until verified
+[16/17] tests\run-supplement-draft.spec.ts:162:1 › a delayed availability GET from V0 cannot offer an older draft after save confirms V1
+[17/17] tests\run-supplement-draft.spec.ts:173:1 › failure reading a newer draft does not turn an already verified original save receipt back into unknown
+  1 failed
+    tests\run-supplement-draft.spec.ts:114:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found 
+  16 passed (41.0s)
+(node:38892) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:9764) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

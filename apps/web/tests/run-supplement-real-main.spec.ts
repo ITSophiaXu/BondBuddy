@@ -87,16 +87,20 @@ test('real main M3 review-updates: actual creation shape saves preparation and r
 });
 
 for(const surface of ['m1','m3','m4'] as RealSurface[])test(`real main ${surface}: browser pause, private-byte upload, save, reload and same-run original-material resume`,async({page,context})=>{
-  test.setTimeout(60000);await page.setViewportSize({width:1440,height:960});await auth(context);const f=await real.fixture(surface);
+  test.setTimeout(60000);await page.setViewportSize({width:1440,height:960});await auth(context);const f=await real.fixture(surface,false,true);
   await openPaused(page,f);await real.verifyBytes({projectId:f.sourceProject},f.basePin,f.sourceBytes);
   const {panel,material}=await add(page,f,`synthetic-${surface}-supplement.txt`,`Synthetic supplemental evidence ${surface}`);
   const before=await real.evidence(f);expect((before as any).creditEvents.length).toBeGreaterThan(0);expect((before as any).balance).toEqual({available:10000,frozen:0});
   const saved=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname===`/api/v1/runs/${f.runId}/supplement-draft`);
   await action(panel,'save').click();const response=await saved;expect(response.status()).toBe(200);expect(response.request().headers()['x-bb-csrf']).toBe(real.csrf);const receipt=await response.json();
   expect(receipt).toMatchObject({revision:1,adopted:false,base_input_revision:1,base_input_hash:f.hash,changes:[{replaces:null,material:{material_id:material.material_id,material_version:material.material_version,sha256:material.sha256}}]});
+  expect(receipt.input_preview).toMatchObject({compiler_version:'run-supplement-input-v1',status:'prepared',issues:[]});
+  expect(receipt.input_preview.candidate_input_hash).toMatch(/^[a-f0-9]{64}$/);expect(receipt.input_preview.candidate_input_hash).not.toBe(f.hash);
+  await expect(panel.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
   await expect(panel).toContainText('草稿已保存');preparationOnly(f,before,await real.evidence(f),[receipt]);
   expect((await real.pool.query("SELECT payload FROM bb_outbox WHERE aggregate_id=$1 AND event_type='run.supplement_draft_saved'",[f.runId])).rows).toHaveLength(1);
   await page.reload();const restored=await ready(page,f);await expect(restored).toContainText(material.filename);await expect(restored).toContainText('尚未采用');await expect(action(restored,'save')).toBeDisabled();
+  await expect(restored.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
   await capture(page,f);await control(page,f,'resume').click();const dialog=page.locator('.run-supplement-resume-dialog');await expect(dialog).toBeVisible();await expect(dialog).toContainText('原材料');
   expect((await real.pool.query('SELECT state FROM bb_runs WHERE id=$1',[f.runId])).rows[0].state).toBe('paused');
   await dialog.locator('[data-supplement-resume-cancel]').click();await control(page,f,'resume').click();
@@ -107,6 +111,28 @@ for(const surface of ['m1','m3','m4'] as RealSurface[])test(`real main ${surface
   for(const key of ['input','reviewDraft','review','m4Draft','m4','attempts','creditEvents','reservations','lots','creditAccount','balance'])expect(after[key],key).toEqual((before as any)[key]);
   expect(await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft?request_id=${receipt.request_id}`)).toMatchObject({revision:1,adopted:false,can_save:false});
   await writeFile(join(real.artifactRoot,`${surface}-assertions.json`),JSON.stringify({synthetic:true,full_main:true,manual_pause:'real browser POST from seeded queued run; no model-save pause claimed',run_id:f.runId,input_hash:f.hash,receipt,before,after},null,2));
+});
+
+test('real main: a new prospectus is saved while its missing source declaration stays explicit',async({page,context})=>{
+  test.setTimeout(60000);await page.setViewportSize({width:1440,height:960});await auth(context);
+  const f=await real.fixture('m1',false,true),panel=await openPaused(page,f);
+  await panel.locator('[data-supplement-role]').selectOption('historical');
+  const completed=page.waitForResponse(r=>r.request().method()==='POST'&&/\/materials\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname));
+  await panel.locator('[data-supplement-file]').setInputFiles({name:'synthetic-new-prospectus.docx',
+    mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:f.sourceBytes});
+  const uploaded=await completed;expect(uploaded.status()).toBe(200);const material=await uploaded.json();
+  await expect(action(panel,'save')).toBeEnabled();await real.verifyBytes({projectId:f.projectId},material,f.sourceBytes);
+  const before=await real.evidence(f);await action(panel,'save').click();
+  await expect(panel.locator('[data-supplement-input-preview]')).toContainText('需要重新填写这份原稿的信息');
+  await expect(panel.locator('[data-supplement-input-preview]')).not.toContainText('材料关联已核对');
+  const receipt=await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft`);
+  expect(receipt.input_preview).toMatchObject({status:'needs_information',candidate_input_hash:null,
+    issues:[{code:'source_information_required',material_id:material.material_id}]});
+  preparationOnly(f,before,await real.evidence(f),[receipt]);
+  await page.reload();await expect((await ready(page,f)).locator('[data-supplement-input-preview]')).toContainText('需要重新填写这份原稿的信息');
+  await expect(host(page,f).getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
+  await capture(page,f,'source-information-required');
+  await writeFile(join(real.artifactRoot,'source-information-required-assertions.json'),JSON.stringify({synthetic:true,full_main:true,receipt,before,after:await real.evidence(f)},null,2));
 });
 
 test('real main M3: accepted save response loss recovers the exact PostgreSQL receipt without a second PUT',async({page,context})=>{
