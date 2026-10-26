@@ -1,0 +1,22 @@
+{
+  "started": "2026-10-26T11:45:12.876Z",
+  "finished": "2026-10-26T11:47:19.681Z",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/run-supplement-work-retention.pg.test.js",
+    "apps/api/dist/model-call-execution.test.js",
+    "apps/api/dist/model-call-execution.pg.integration.test.js",
+    "apps/api/dist/run-supplement-work.pg.test.js",
+    "apps/api/dist/provider-result-validation.test.js",
+    "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+    "apps/api/dist/queue.test.js",
+    "apps/api/dist/run-execution-input.test.js",
+    "apps/api/dist/run-supplement-input.test.js",
+    "apps/api/dist/run-supplement-draft.pg.test.js",
+    "apps/api/dist/run-execution.pg.integration.test.js",
+    "apps/api/dist/run-origin-immutability.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

@@ -1,0 +1,13 @@
+▶ captured-result locks cover the async validator while real prompt and provider-result retention wait
+  ✔ prompt_snapshot (1029.9775ms)
+  ✔ provider_result (928.074ms)
+✔ captured-result locks cover the async validator while real prompt and provider-result retention wait (1959.8497ms)
+✔ a real purge holding the prompt lock makes the captured-result reader wait, then reject without reading result bytes (856.1616ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9299.9094

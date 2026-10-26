@@ -13,6 +13,7 @@ export function emptySupplementPreparation(run:Pick<Dto<'RunResponse'>,'run_id'|
   request_id:null,saved_at:null,base_input_revision:run.input_revision,base_input_hash:run.input_hash,
   base_materials:base,changes:[],result_materials:structuredClone(base),can_save:canSave,
   input_preview:{compiler_version:'run-supplement-input-v1',status:'unchanged',candidate_input_hash:null,issues:[]},
+  saved_work:{status:'not_captured',stage_count:0,result_count:0},
   blocked_reason:canSave?null:'请先手动暂停任务，等待已有工作保存完毕后再准备补充材料。',adopted:false};
  if(!Value.Check(schemas.RunSupplementDraftResponse,response))throw new Error('Invalid synthetic empty supplement preparation');
  return response;

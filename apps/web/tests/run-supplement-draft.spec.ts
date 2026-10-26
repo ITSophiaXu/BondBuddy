@@ -30,6 +30,7 @@ for(const surface of ['m1','m3','m4'] as const)test(`desktop ${surface}: paused 
   const host=await add(page);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);expect(s.completions).toHaveLength(1);
   expect(s.saves).toEqual([]);expect(s.controls).toEqual([]);await expect(host).toContainText('尚未采用');
   await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);await expect(host).toContainText('草稿已保存');
+  await expect(host.locator('[data-supplement-saved-work]')).toContainText('已记录暂停位置。继续时核对已有进度。');
   await expect(host.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
   await host.locator('[data-supplement-result] summary').click();
   await expect(host.locator('[data-supplement-result]')).toContainText('原冻结募集书.docx');
@@ -50,6 +51,48 @@ for(const surface of ['m1','m3','m4'] as const)test(`desktop ${surface}: paused 
   await continueButton.click();await confirm.locator('[data-supplement-resume-confirm]').click();
   await expect.poll(()=>s.controls).toEqual(['resume']);expect(s.saves).toHaveLength(1);expect(s.unexpectedMutations).toEqual([]);
   expect(s.run).toMatchObject({run_id:frozen.run.run_id,input_revision:7,input_hash:frozen.run.input_hash,execution_request_id:frozen.run.execution_request_id});
+});
+
+test('captured work discloses result references and hides old confirmation during local edits and unknown saves',async({page})=>{
+  const s=supplementFixture();s.workStageCount=3;s.workResultCount=2;
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await ready(page);
+  await expect(host.locator('[data-supplement-saved-work]')).toHaveCount(0);
+  await add(page);await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);
+  const work=host.locator('[data-supplement-saved-work]');
+  await expect(work).toContainText('已关联 2 项已保存处理结果。继续前核对可复用文件。');
+  await expect(host.getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
+  expect(s.receipts.get(s.saves[0].request_id)!.saved_work).toEqual({status:'captured',stage_count:3,result_count:2});
+  await add(page,'新的待确认材料.txt','new synthetic evidence');
+  await expect(work).toContainText('确认本次保存回执后再查看');await expect(work).not.toContainText('已关联 2 项');
+  s.dropUnacceptedSaveOnce=true;await action(host,'save').click();await expect(action(host,'receipt')).toBeEnabled();
+  await expect(work).toContainText('确认本次保存回执后再查看');await expect(work).not.toContainText('已关联 2 项');
+  expect(s.revision).toBe(1);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+});
+
+test('a changed pause boundary requires a new explicit save even when the material choices are unchanged',async({page})=>{
+  const s=supplementFixture();s.workStageCount=2;s.workResultCount=1;
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);const first=structuredClone(s.saves[0]);
+  s.savedWork={status:'stale_boundary',stage_count:2,result_count:1};
+  await action(host,'reload').click();const work=host.locator('[data-supplement-saved-work]');
+  await expect(work).toContainText('暂停进度已有变化');await expect(work).toContainText('重新保存补料草稿，更新进度关联');
+  await expect(work).not.toContainText('已关联 1 项');await expect(action(host,'save')).toBeEnabled();
+  s.workStageCount=4;s.workResultCount=3;await action(host,'save').click();await expect.poll(()=>s.revision).toBe(2);
+  await expect(work).toContainText('已关联 3 项已保存处理结果');await expect(work).not.toContainText('暂停进度已有变化');
+  expect(s.saves).toHaveLength(2);expect(s.saves[1].request_id).not.toBe(first.request_id);
+  expect(s.saves[1].expected_revision).toBe(1);expect(s.saves[1].changes).toEqual(first.changes);
+  expect(s.uploads).toHaveLength(1);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+});
+
+test('an old saved draft can capture work on a new save without changing its empty material selection',async({page})=>{
+  const s=supplementFixture();s.revision=1;s.savedWork={status:'not_captured',stage_count:0,result_count:0};s.workStageCount=2;
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await ready(page),work=host.locator('[data-supplement-saved-work]');
+  await expect(work).toContainText('旧补料草稿尚未记录进度');await expect(work).toContainText('请再次保存补料草稿');
+  await expect(action(host,'save')).toBeEnabled();await action(host,'save').click();await expect.poll(()=>s.revision).toBe(2);
+  await expect(work).toContainText('已记录暂停位置。继续时核对已有进度。');await expect(work).not.toContainText('尚未记录进度');
+  expect(s.saves[0]).toMatchObject({expected_revision:1,changes:[]});
+  expect(s.receipts.get(s.saves[0].request_id)!.saved_work).toEqual({status:'captured',stage_count:2,result_count:0});
+  expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
 });
 
 test('saved material issues remain distinct from adoption, and local edits hide stale check results',async({page})=>{

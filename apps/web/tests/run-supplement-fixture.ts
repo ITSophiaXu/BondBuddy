@@ -5,7 +5,7 @@ import {
   emptyUpdateDetails, M4_DOCUMENT_TYPES, schemas,
   type M4Draft, type M4Workspace, type ReviewWorkspace, type Run,
   type RunSupplementChange, type RunSupplementDraftRequest, type RunSupplementDraftResponse,
-  type RunSupplementMaterial, type RunSupplementInputPreview,
+  type RunSupplementMaterial, type RunSupplementInputPreview, type RunSupplementSavedWork,
 } from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {taskPage} from './collection-fixtures';
@@ -65,6 +65,7 @@ export function supplementFixture(){
     holdDraftRead:false,releaseDraftRead:undefined as (()=>void)|undefined,holdSave:false,releaseSave:undefined as (()=>void)|undefined,
     holdComplete:false,releaseComplete:undefined as (()=>void)|undefined,dropCompleteOnce:false,canSave:true,blockedReason:null as string|null,
     inputPreview:null as RunSupplementInputPreview|null,
+    savedWork:null as RunSupplementSavedWork|null,workStageCount:0,workResultCount:0,
   };
 }
 export type SupplementFixture=ReturnType<typeof supplementFixture>;
@@ -75,7 +76,7 @@ export function supplementResponse(s:SupplementFixture,requestId:string|null=nul
   for(const change of s.changes){const m=s.materials.find(m=>samePin(supplementPin(m),change.material));if(m)result.push({...supplementPin(m),source_project_id:supplementIds.project,filename:m.filename,role:m.role,media_type:m.media_type,available:true});}
   return {run_id:s.run.run_id,project_id:s.project.project_id,revision:s.revision,latest_revision:s.revision,request_id:requestId,
     saved_at:s.revision?supplementNow:null,base_input_revision:s.run.input_revision,base_input_hash:s.run.input_hash,base_materials:structuredClone(s.base),changes:structuredClone(s.changes),
-    result_materials:structuredClone(result),input_preview:s.inputPreview??(s.changes.length?{
+    result_materials:structuredClone(result),saved_work:structuredClone(s.savedWork??{status:'not_captured',stage_count:0,result_count:0}),input_preview:s.inputPreview??(s.changes.length?{
       compiler_version:'run-supplement-input-v1',status:'prepared',candidate_input_hash:supplementHash(JSON.stringify(s.changes)),issues:[],
     }:{compiler_version:'run-supplement-input-v1',status:'unchanged',candidate_input_hash:null,issues:[]}),
     can_save:s.canSave&&s.run.state==='paused',blocked_reason:s.canSave&&s.run.state==='paused'?null:s.blockedReason??'本次任务尚未安全暂停，请先核对任务状态。',adopted:false};
@@ -87,18 +88,18 @@ export async function installSupplementHttp(page:Page,s:SupplementFixture){
     if(path===`/runs/${s.run.run_id}/supplement-draft`){
       if(method==='GET'){
         const id=url.searchParams.get('request_id');s.reads.push(id);
-        if(id){if(s.failReceiptReads)return json(route,{code:'DATA_UNAVAILABLE'},503);const receipt=s.receipts.get(id);if(receipt&&s.receiptMismatchOnce){s.receiptMismatchOnce=false;return json(route,{...receipt,request_id:'unrelated-request-id',latest_revision:s.revision});}return receipt?json(route,{...receipt,latest_revision:s.revision,can_save:s.canSave&&s.run.state==='paused'}):json(route,{code:'NOT_FOUND'},404);}
+        if(id){if(s.failReceiptReads)return json(route,{code:'DATA_UNAVAILABLE'},503);const receipt=s.receipts.get(id);if(receipt&&s.receiptMismatchOnce){s.receiptMismatchOnce=false;return json(route,{...receipt,request_id:'unrelated-request-id',latest_revision:s.revision});}return receipt?json(route,{...receipt,saved_work:s.savedWork??receipt.saved_work,latest_revision:s.revision,can_save:s.canSave&&s.run.state==='paused'}):json(route,{code:'NOT_FOUND'},404);}
         if(s.failLatestReads)return json(route,{code:'DATA_UNAVAILABLE'},503);
         const response=supplementResponse(s);if(s.holdDraftRead){s.holdDraftRead=false;await new Promise<void>(resolve=>{s.releaseDraftRead=resolve;});}return json(route,response);
       }
       const body=request.postDataJSON() as RunSupplementDraftRequest;
       expect(Value.Check(schemas.RunSupplementDraftRequest,body)).toBe(true);s.saves.push(structuredClone(body));
       const prior=s.requestBodies.get(body.request_id);
-      if(prior)return JSON.stringify(prior)===JSON.stringify(body)?json(route,{...s.receipts.get(body.request_id)!,latest_revision:s.revision}):json(route,{code:'INPUT_REVISION_CONFLICT'},409);
+      if(prior)return JSON.stringify(prior)===JSON.stringify(body)?json(route,{...s.receipts.get(body.request_id)!,saved_work:s.savedWork??s.receipts.get(body.request_id)!.saved_work,latest_revision:s.revision}):json(route,{code:'INPUT_REVISION_CONFLICT'},409);
       if(s.holdSave){s.holdSave=false;await new Promise<void>(resolve=>{s.releaseSave=resolve;});}
       if(s.dropUnacceptedSaveOnce){s.dropUnacceptedSaveOnce=false;return route.abort('connectionreset');}
       if(body.expected_revision!==s.revision||!s.canSave)return json(route,{code:'INPUT_REVISION_CONFLICT'},409);
-      s.revision++;s.changes=structuredClone(body.changes);s.requestBodies.set(body.request_id,structuredClone(body));
+      s.revision++;s.changes=structuredClone(body.changes);s.savedWork={status:'captured',stage_count:s.workStageCount,result_count:s.workResultCount};s.requestBodies.set(body.request_id,structuredClone(body));
       const response=supplementResponse(s,body.request_id);s.receipts.set(body.request_id,response);
       if(s.dropSaveOnce){s.dropSaveOnce=false;return route.abort('connectionreset');}return json(route,response);
     }

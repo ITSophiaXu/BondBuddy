@@ -1,0 +1,29 @@
+✔ safe HTTP supplement capture freezes exact work independently for each receipt and replays without charges (2195.8371ms)
+▶ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history
+  ✔ missing completed result (108.0242ms)
+  ✔ duplicate result (51.7139ms)
+  ✔ wrong result id (49.5524ms)
+  ✔ wrong result hash (51.1652ms)
+  ✔ wrong attempt (52.2642ms)
+  ✔ wrong schema (51.4364ms)
+  ✔ unmatched extra reference (50.9734ms)
+  ✔ malformed stages (45.3575ms)
+✔ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history (1764.9004ms)
+▶ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes
+  ✔ an async exact schema validator reads the original value (68.4766ms)
+  ✔ a schema rejection cannot trigger another call (36.4516ms)
+  ✔ a different expected schema never reaches Blob reads (34.3559ms)
+  ✔ foreign owner and uncaptured result references never reach Blob reads (107.1159ms)
+  ✔ same-size corruption, oversized bytes and missing Blob remain read-only failures (149.0511ms)
+  ✔ provider_result purge receipt denies existing bytes (37.6645ms)
+  ✔ prompt_snapshot purge receipt denies existing bytes (34.8757ms)
+✔ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes (1761.5376ms)
+✔ legacy supplement receipts report not_captured and grant no access to later durable work (1252.6745ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14428.2952

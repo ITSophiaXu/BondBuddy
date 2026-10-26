@@ -14,6 +14,7 @@ import { providerCallNeedsReconciliation } from './queue.js';
 import { assertRunExecution } from './run-execution.js';
 import { readRunExecutionInput } from './run-execution-input.js';
 import { compileRunSupplementInput } from './run-supplement-input.js';
+import { captureRunSupplementWork, runSupplementWorkSummary } from './run-supplement-work.js';
 
 type BasePin = ReviewMaterialPin & { source_project_id: string; role?: string };
 type Base = { pins: BasePin[]; supported: boolean; manifest: Record<string, any>; reviewSnapshot: unknown | null };
@@ -160,7 +161,9 @@ async function response(db: PoolClient, owner: string, r: any, job: any, base: B
   return { run_id: r.id, project_id: r.project_id, revision: receipt?.revision ?? 0, latest_revision: latest,
     request_id: receipt?.request_id ?? null, saved_at: receipt ? date(receipt.saved_at) : null,
     base_input_revision: r.input_revision, base_input_hash: r.input_hash.trim(), base_materials: baseMaterials,
-    changes, result_materials: result, input_preview: preview, can_save: blocked === null, blocked_reason: blocked, adopted: false };
+    changes, result_materials: result, input_preview: preview,
+    saved_work: await runSupplementWorkSummary(db, r, job, receipt?.revision ?? 0),
+    can_save: blocked === null, blocked_reason: blocked, adopted: false };
 }
 
 export function registerRunSupplementDraftRoutes(app: FastifyInstance, pool: () => Pool, owner: (r: FastifyRequest) => Promise<string>) {
@@ -209,6 +212,7 @@ export function registerRunSupplementDraftRoutes(app: FastifyInstance, pool: () 
       const receipt = (await db.query(`INSERT INTO bb_run_supplement_drafts(owner_user_id,project_id,run_id,revision,request_id,request_hash,base_input_revision,base_input_hash,changes)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [user, r.project_id, id, (latest?.revision ?? 0) + 1, b.request_id, hash, r.input_revision, r.input_hash.trim(), JSON.stringify(b.changes)])).rows[0];
+      await captureRunSupplementWork(db, r, job, receipt.revision);
       await db.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
         VALUES($1,$2,'run_supplement_draft',$3,'run.supplement_draft_saved',$4)`,
       [uid(), user, id, { run_id: id, project_id: r.project_id, revision: receipt.revision, request_id: b.request_id,

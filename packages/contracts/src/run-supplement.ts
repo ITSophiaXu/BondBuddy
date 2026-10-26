@@ -22,6 +22,12 @@ export const RunSupplementDraftRequestSchema=strict({
  changes:Type.Array(RunSupplementChangeSchema,{maxItems:60}),
 });
 export const RunSupplementDraftQuerySchema=strict({request_id:Type.Optional(id)});
+/** Private paused-work reference metadata; counts do not guarantee reusable files or execution authority. */
+export const RunSupplementSavedWorkSchema=Type.Union([
+ strict({status:Type.Literal('not_captured'),stage_count:Type.Literal(0),result_count:Type.Literal(0)}),
+ strict({status:Type.Union([Type.Literal('captured'),Type.Literal('stale_boundary')]),
+  stage_count:Type.Integer({minimum:0,maximum:10000}),result_count:Type.Integer({minimum:0,maximum:10000})}),
+]);
 /** A deterministic preparation preview; it never grants adoption or execution. */
 export const RunSupplementInputIssueSchema=strict({
  code:Type.Union((['material_unavailable','source_information_required','review_scope_bound','m4_source_bound','m4_template_bound','input_unsupported','material_limit'] as const).map(code=>Type.Literal(code))),
@@ -43,6 +49,7 @@ export const RunSupplementDraftResponseSchema=strict({
  changes:Type.Array(RunSupplementChangeSchema,{maxItems:60}),
  result_materials:Type.Array(RunSupplementMaterialSchema,{maxItems:300}),
  input_preview:RunSupplementInputPreviewSchema,
+ saved_work:RunSupplementSavedWorkSchema,
  can_save:Type.Boolean(),blocked_reason:Type.Union([Type.String({minLength:1,maxLength:1200}),Type.Null()]),
  adopted:Type.Literal(false),
 });
@@ -52,9 +59,11 @@ export type RunSupplementDraftRequest=Static<typeof RunSupplementDraftRequestSch
 export type RunSupplementDraftResponse=Static<typeof RunSupplementDraftResponseSchema>;
 export type RunSupplementInputIssue=Static<typeof RunSupplementInputIssueSchema>;
 export type RunSupplementInputPreview=Static<typeof RunSupplementInputPreviewSchema>;
+export type RunSupplementSavedWork=Static<typeof RunSupplementSavedWorkSchema>;
 export const runSupplementSchemas={
  RunSupplementMaterial:RunSupplementMaterialSchema,RunSupplementChange:RunSupplementChangeSchema,
  RunSupplementDraftRequest:RunSupplementDraftRequestSchema,RunSupplementDraftQuery:RunSupplementDraftQuerySchema,
  RunSupplementDraftResponse:RunSupplementDraftResponseSchema,
  RunSupplementInputIssue:RunSupplementInputIssueSchema,RunSupplementInputPreview:RunSupplementInputPreviewSchema,
+ RunSupplementSavedWork:RunSupplementSavedWorkSchema,
 };

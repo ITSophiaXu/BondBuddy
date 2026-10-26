@@ -1,0 +1,300 @@
+2026-10-26 19:35:00.314 CST [47756] LOG:  starting PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit
+2026-10-26 19:35:00.317 CST [47756] LOG:  listening on IPv4 address "127.0.0.1", port 15526
+2026-10-26 19:35:00.449 CST [46776] LOG:  database system was shut down at 2026-10-26 19:22:08 CST
+2026-10-26 19:35:00.523 CST [47756] LOG:  database system is ready to accept connections
+2026-10-26 19:38:15.383 CST [19416] ERROR:  immutable input revision
+2026-10-26 19:38:15.383 CST [19416] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:38:15.383 CST [19416] STATEMENT:  UPDATE bb_model_call_execution_bindings SET input_revision=2 WHERE attempt_id=$1
+2026-10-26 19:38:15.493 CST [43996] ERROR:  immutable input revision
+2026-10-26 19:38:15.493 CST [43996] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:38:15.493 CST [43996] STATEMENT:  DELETE FROM bb_model_call_execution_bindings WHERE attempt_id=$1
+2026-10-26 19:38:15.635 CST [43460] ERROR:  bound model call identity is immutable
+2026-10-26 19:38:15.635 CST [43460] CONTEXT:  PL/pgSQL function bb_guard_bound_model_call_identity() line 6 at RAISE
+2026-10-26 19:38:15.635 CST [43460] STATEMENT:  UPDATE bb_model_call_attempts SET prompt_snapshot_id=$2 WHERE id=$1
+2026-10-26 19:38:16.028 CST [46556] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:38:16.028 CST [46556] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:38:16.028 CST [46556] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:38:16.030 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:16.087 CST [46556] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:38:16.087 CST [46556] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:38:16.087 CST [46556] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:38:16.149 CST [46556] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:38:16.149 CST [46556] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:38:16.149 CST [46556] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:38:16.217 CST [46556] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:38:16.217 CST [46556] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:38:16.217 CST [46556] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:38:16.861 CST [41352] LOG:  checkpoint complete: wrote 2145 buffers (13.1%); 0 WAL file(s) added, 0 removed, 2 recycled; write=0.747 s, sync=0.057 s, total=0.832 s; sync files=72, longest=0.003 s, average=0.001 s; distance=21220 kB, estimate=21220 kB; lsn=0/3A0B6CF0, redo lsn=0/3A08C0E0
+2026-10-26 19:38:16.984 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:17.024 CST [41352] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.020 s, sync=0.005 s, total=0.041 s; sync files=2, longest=0.004 s, average=0.003 s; distance=171 kB, estimate=19115 kB; lsn=0/3A0B6DA8, redo lsn=0/3A0B6D68
+2026-10-26 19:38:28.412 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:32.544 CST [26812] WARNING:  there is no transaction in progress
+2026-10-26 19:38:32.615 CST [26812] WARNING:  there is no transaction in progress
+2026-10-26 19:38:34.648 CST [41352] LOG:  checkpoint complete: wrote 4591 buffers (28.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=2.989 s, sync=3.221 s, total=6.236 s; sync files=1990, longest=0.030 s, average=0.002 s; distance=30502 kB, estimate=30502 kB; lsn=0/3BED3738, redo lsn=0/3BE80868
+2026-10-26 19:38:34.720 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:35.252 CST [41352] LOG:  checkpoint complete: wrote 112 buffers (0.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.434 s, sync=0.062 s, total=0.533 s; sync files=88, longest=0.011 s, average=0.001 s; distance=332 kB, estimate=27485 kB; lsn=0/3BEDEDB8, redo lsn=0/3BED3B78
+2026-10-26 19:38:48.713 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:55.808 CST [41352] LOG:  checkpoint complete: wrote 4920 buffers (30.0%); 0 WAL file(s) added, 0 removed, 2 recycled; write=3.304 s, sync=3.743 s, total=7.096 s; sync files=1962, longest=0.039 s, average=0.002 s; distance=30535 kB, estimate=30535 kB; lsn=0/3DD15978, redo lsn=0/3DCA57D0
+2026-10-26 19:38:55.874 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:57.409 CST [41352] LOG:  checkpoint complete: wrote 629 buffers (3.8%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.146 s, sync=0.356 s, total=1.535 s; sync files=557, longest=0.019 s, average=0.001 s; distance=448 kB, estimate=27526 kB; lsn=0/3DD47B20, redo lsn=0/3DD159F0
+2026-10-26 19:38:58.351 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:38:58.563 CST [41352] LOG:  checkpoint complete: wrote 84 buffers (0.5%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.130 s, sync=0.069 s, total=0.213 s; sync files=78, longest=0.025 s, average=0.001 s; distance=207 kB, estimate=24794 kB; lsn=0/3DD49768, redo lsn=0/3DD49730
+2026-10-26 19:39:07.167 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:08.480 CST [44244] ERROR:  initial execution must match the original run input
+2026-10-26 19:39:08.480 CST [44244] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:39:08.480 CST [44244] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:39:08.751 CST [34096] ERROR:  initial execution must match the original run input
+2026-10-26 19:39:08.751 CST [34096] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:39:08.751 CST [34096] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:39:09.009 CST [37784] ERROR:  initial execution must match the original run input
+2026-10-26 19:39:09.009 CST [37784] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:39:09.009 CST [37784] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:39:09.287 CST [39624] ERROR:  initial execution must match the original run input
+2026-10-26 19:39:09.287 CST [39624] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:39:09.287 CST [39624] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:39:09.566 CST [8480] ERROR:  new row for relation "bb_run_execution_versions" violates check constraint "bb_run_execution_versions_execution_version_check"
+2026-10-26 19:39:09.566 CST [8480] DETAIL:  Failing row contains (execution-owner-bd9b0bbb-9ed2-47d3-970a-067d24da4c5c, 967c4fa3-9d52-44ae-a75d-9d8f1956faba, 874db163-b4e0-4e31-a16e-b056bb73c2d3, 2, 2, b4e6aa1d9fc09c7c78d5a7e1790b503f1df64c410c728c1c4eb40426836a63b8, 2026-10-26 19:39:09.562727+08).
+2026-10-26 19:39:09.566 CST [8480] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:39:09.664 CST [23632] ERROR:  duplicate key value violates unique constraint "bb_run_execution_versions_pkey"
+2026-10-26 19:39:09.664 CST [23632] DETAIL:  Key (run_id, execution_version)=(874db163-b4e0-4e31-a16e-b056bb73c2d3, 1) already exists.
+2026-10-26 19:39:09.664 CST [23632] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:39:09.744 CST [41352] LOG:  checkpoint complete: wrote 2366 buffers (14.4%); 0 WAL file(s) added, 0 removed, 1 recycled; write=1.259 s, sync=1.295 s, total=2.577 s; sync files=1526, longest=0.016 s, average=0.001 s; distance=10557 kB, estimate=23370 kB; lsn=0/3E7AD790, redo lsn=0/3E798D88
+2026-10-26 19:39:09.791 CST [44116] ERROR:  run execution identity is immutable
+2026-10-26 19:39:09.791 CST [44116] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:39:09.791 CST [44116] STATEMENT:  UPDATE bb_run_execution_versions SET input_hash=input_hash WHERE run_id=$1
+2026-10-26 19:39:10.246 CST [2888] ERROR:  run execution identity is immutable
+2026-10-26 19:39:10.246 CST [2888] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:39:10.246 CST [2888] STATEMENT:  UPDATE bb_run_execution_versions SET input_revision=3 WHERE run_id=$1
+2026-10-26 19:39:10.534 CST [50372] ERROR:  run execution identity is immutable
+2026-10-26 19:39:10.534 CST [50372] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:39:10.534 CST [50372] STATEMENT:  DELETE FROM bb_run_execution_versions WHERE run_id=$1
+2026-10-26 19:39:11.972 CST [45772] ERROR:  run execution identity is immutable
+2026-10-26 19:39:11.972 CST [45772] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:39:11.972 CST [45772] STATEMENT:  DELETE FROM bb_run_execution_versions WHERE run_id=$1
+2026-10-26 19:39:12.059 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:12.081 CST [41352] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.004 s, total=0.023 s; sync files=2, longest=0.003 s, average=0.002 s; distance=222 kB, estimate=21055 kB; lsn=0/3E7D06E8, redo lsn=0/3E7D06B0
+2026-10-26 19:39:19.769 CST [23896] ERROR:  new row for relation "bb_run_execution_versions" violates check constraint "bb_run_execution_versions_execution_version_check"
+2026-10-26 19:39:19.769 CST [23896] DETAIL:  Failing row contains (ac75871e-c8e1-444e-8f26-016b475b3a0b, ed527cff-739b-43e6-aafb-ec499761aaeb, b00123fe-977b-47fb-811c-b88832a8d4aa, 2, 1, f384ac4e52a3d6e2f74a641ca7c25f1eb34cc27cf8af94556859e7b8e7cf93ec, 2026-10-26 19:39:19.768876+08).
+2026-10-26 19:39:19.769 CST [23896] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,2,1,$4)
+2026-10-26 19:39:19.856 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:21.692 CST [29904] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:21.692 CST [29904] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:21.692 CST [29904] STATEMENT:  UPDATE bb_runs SET id=$2 WHERE id=$1
+2026-10-26 19:39:21.853 CST [34412] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:21.853 CST [34412] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:21.853 CST [34412] STATEMENT:  UPDATE bb_runs SET owner_user_id=$2 WHERE id=$1
+2026-10-26 19:39:21.995 CST [44456] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:21.995 CST [44456] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:21.995 CST [44456] STATEMENT:  UPDATE bb_runs SET project_id=$2 WHERE id=$1
+2026-10-26 19:39:22.145 CST [47520] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:22.145 CST [47520] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:22.145 CST [47520] STATEMENT:  UPDATE bb_runs SET input_revision=$2 WHERE id=$1
+2026-10-26 19:39:22.291 CST [48124] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:22.291 CST [48124] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:22.291 CST [48124] STATEMENT:  UPDATE bb_runs SET input_hash=$2 WHERE id=$1
+2026-10-26 19:39:22.459 CST [51112] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:22.459 CST [51112] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:22.459 CST [51112] STATEMENT:  UPDATE bb_runs SET execution_request_id=$2 WHERE id=$1
+2026-10-26 19:39:22.500 CST [41352] LOG:  checkpoint complete: wrote 2517 buffers (15.4%); 0 WAL file(s) added, 0 removed, 1 recycled; write=1.533 s, sync=1.088 s, total=2.644 s; sync files=1526, longest=0.007 s, average=0.001 s; distance=20103 kB, estimate=20960 kB; lsn=0/3FB882D0, redo lsn=0/3FB72470
+2026-10-26 19:39:22.929 CST [49924] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:22.929 CST [49924] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:22.929 CST [49924] STATEMENT:  UPDATE bb_runs SET request_hash=$2 WHERE id=$1
+2026-10-26 19:39:23.096 CST [47808] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:39:23.096 CST [47808] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:39:23.096 CST [47808] STATEMENT:  UPDATE bb_runs SET input_revision=$2,input_hash=$3 WHERE id=$1
+2026-10-26 19:39:23.508 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:23.526 CST [41352] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.003 s, total=0.019 s; sync files=2, longest=0.002 s, average=0.002 s; distance=122 kB, estimate=18876 kB; lsn=0/3FB91078, redo lsn=0/3FB91040
+2026-10-26 19:39:30.807 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:33.282 CST [41352] LOG:  checkpoint complete: wrote 2507 buffers (15.3%); 0 WAL file(s) added, 0 removed, 1 recycled; write=1.409 s, sync=1.045 s, total=2.475 s; sync files=1526, longest=0.018 s, average=0.001 s; distance=20037 kB, estimate=20037 kB; lsn=0/40F48C70, redo lsn=0/40F22818
+2026-10-26 19:39:38.247 CST [50688] WARNING:  you don't own a lock of type ExclusiveLock
+2026-10-26 19:39:42.834 CST [42868] ERROR:  synthetic outbox failure
+2026-10-26 19:39:42.834 CST [42868] CONTEXT:  PL/pgSQL function bb_test_supplement_outbox_fail() line 2 at RAISE
+2026-10-26 19:39:42.834 CST [42868] STATEMENT:  INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+	        VALUES($1,$2,'run_supplement_draft',$3,'run.supplement_draft_saved',$4)
+2026-10-26 19:39:42.880 CST [42868] ERROR:  immutable input revision
+2026-10-26 19:39:42.880 CST [42868] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:39:42.880 CST [42868] STATEMENT:  UPDATE bb_run_supplement_drafts SET changes='[]' WHERE run_id=$1
+2026-10-26 19:39:42.967 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:44.923 CST [41352] LOG:  checkpoint complete: wrote 2144 buffers (13.1%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.867 s, sync=1.069 s, total=1.957 s; sync files=1185, longest=0.019 s, average=0.001 s; distance=11215 kB, estimate=19155 kB; lsn=0/41A2DB88, redo lsn=0/41A16678
+2026-10-26 19:39:46.093 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:46.113 CST [41352] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.003 s, total=0.021 s; sync files=2, longest=0.002 s, average=0.002 s; distance=203 kB, estimate=17260 kB; lsn=0/41A49398, redo lsn=0/41A49360
+2026-10-26 19:39:58.752 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:39:58.792 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.016 s, sync=0.005 s, total=0.041 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10089 kB, estimate=16543 kB; lsn=0/42423948, redo lsn=0/42423910
+2026-10-26 19:42:02.215 CST [34260] ERROR:  immutable input revision
+2026-10-26 19:42:02.215 CST [34260] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:42:02.215 CST [34260] STATEMENT:  UPDATE bb_run_supplement_saved_work SET checkpoint_hash=$2 WHERE run_id=$1
+2026-10-26 19:42:02.309 CST [43880] ERROR:  immutable input revision
+2026-10-26 19:42:02.309 CST [43880] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:42:02.309 CST [43880] STATEMENT:  DELETE FROM bb_run_supplement_saved_results WHERE run_id=$1
+2026-10-26 19:42:07.175 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:42:07.203 CST [41352] LOG:  checkpoint complete: wrote 8 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.010 s, sync=0.006 s, total=0.029 s; sync files=7, longest=0.002 s, average=0.001 s; distance=10414 kB, estimate=15930 kB; lsn=0/42E4F440, redo lsn=0/42E4F408
+2026-10-26 19:44:13.110 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:44:13.142 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.010 s, sync=0.004 s, total=0.033 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10245 kB, estimate=15362 kB; lsn=0/43850AC0, redo lsn=0/43850A88
+2026-10-26 19:44:35.184 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:44:35.219 CST [41352] LOG:  checkpoint complete: wrote 9 buffers (0.1%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.011 s, sync=0.005 s, total=0.036 s; sync files=7, longest=0.002 s, average=0.001 s; distance=10202 kB, estimate=14846 kB; lsn=0/442473C8, redo lsn=0/44247390
+2026-10-26 19:45:00.462 CST [44848] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:45:00.462 CST [44848] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:45:00.462 CST [44848] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id)
+	      VALUES($1,$2,$3,$4,1,'pending_reconcile','synthetic-model',$5)
+2026-10-26 19:45:00.466 CST [44848] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:45:00.466 CST [44848] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:45:00.466 CST [44848] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id)
+	      VALUES($1,$2,$3,$4,1,'pending_reconcile','synthetic-model',$5)
+2026-10-26 19:45:00.468 CST [44848] ERROR:  new row for relation "bb_run_execution_versions" violates check constraint "bb_run_execution_versions_execution_version_check"
+2026-10-26 19:45:00.468 CST [44848] DETAIL:  Failing row contains (upgrade-0aa7b69b-bed3-423f-8bd1-3913b40ac9bc, 9b4fb7ad-0a51-48c0-9be0-5e1991ce849c, 99840b53-c953-4d98-85a8-a1290d1b482e, 2, 1, d76b139a12bb060b4637bc9effec624ae0b38f51e218d360ac39d114700292aa, 2026-10-26 19:45:00.467868+08).
+2026-10-26 19:45:00.468 CST [44848] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	    VALUES($1,$2,$3,2,1,$4)
+2026-10-26 19:45:00.470 CST [44848] ERROR:  bound model call identity is immutable
+2026-10-26 19:45:00.470 CST [44848] CONTEXT:  PL/pgSQL function bb_guard_bound_model_call_identity() line 6 at RAISE
+2026-10-26 19:45:00.470 CST [44848] STATEMENT:  UPDATE bb_model_call_attempts SET prompt_snapshot_id=$2 WHERE id=$1
+2026-10-26 19:45:00.592 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:45:00.621 CST [41352] LOG:  checkpoint complete: wrote 8 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.009 s, sync=0.007 s, total=0.030 s; sync files=6, longest=0.004 s, average=0.002 s; distance=10258 kB, estimate=14387 kB; lsn=0/44C4BC20, redo lsn=0/44C4BBE8
+2026-10-26 19:45:19.762 CST [39560] ERROR:  immutable input revision
+2026-10-26 19:45:19.762 CST [39560] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:45:19.762 CST [39560] STATEMENT:  UPDATE bb_model_call_execution_bindings SET input_revision=2 WHERE attempt_id=$1
+2026-10-26 19:45:19.858 CST [41016] ERROR:  immutable input revision
+2026-10-26 19:45:19.858 CST [41016] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:45:19.858 CST [41016] STATEMENT:  DELETE FROM bb_model_call_execution_bindings WHERE attempt_id=$1
+2026-10-26 19:45:19.995 CST [31004] ERROR:  bound model call identity is immutable
+2026-10-26 19:45:19.995 CST [31004] CONTEXT:  PL/pgSQL function bb_guard_bound_model_call_identity() line 6 at RAISE
+2026-10-26 19:45:19.995 CST [31004] STATEMENT:  UPDATE bb_model_call_attempts SET prompt_snapshot_id=$2 WHERE id=$1
+2026-10-26 19:45:20.331 CST [41220] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:45:20.331 CST [41220] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:45:20.331 CST [41220] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:45:20.381 CST [41220] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:45:20.381 CST [41220] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:45:20.381 CST [41220] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:45:20.428 CST [41220] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:45:20.428 CST [41220] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:45:20.428 CST [41220] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:45:20.478 CST [41220] ERROR:  model call must match its exact execution input and prompt
+2026-10-26 19:45:20.478 CST [41220] CONTEXT:  PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE
+2026-10-26 19:45:20.478 CST [41220] STATEMENT:  INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)
+2026-10-26 19:45:20.901 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:45:20.942 CST [41352] LOG:  checkpoint complete: wrote 5 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.012 s, sync=0.004 s, total=0.041 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10170 kB, estimate=13965 kB; lsn=0/4563A608, redo lsn=0/4563A5D0
+2026-10-26 19:45:31.631 CST [45852] WARNING:  there is no transaction in progress
+2026-10-26 19:45:31.694 CST [45852] WARNING:  there is no transaction in progress
+2026-10-26 19:45:31.907 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:45:31.941 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.009 s, sync=0.004 s, total=0.034 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10068 kB, estimate=13575 kB; lsn=0/4600F7E8, redo lsn=0/4600F7B0
+2026-10-26 19:45:45.259 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:45:48.123 CST [41352] LOG:  checkpoint complete: wrote 2631 buffers (16.1%); 0 WAL file(s) added, 0 removed, 1 recycled; write=1.533 s, sync=1.312 s, total=2.865 s; sync files=1528, longest=0.029 s, average=0.001 s; distance=20131 kB, estimate=20131 kB; lsn=0/473B8448, redo lsn=0/473B8410
+2026-10-26 19:45:48.772 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:45:48.792 CST [41352] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.003 s, total=0.021 s; sync files=2, longest=0.003 s, average=0.002 s; distance=1 kB, estimate=18118 kB; lsn=0/473B8C38, redo lsn=0/473B8C00
+2026-10-26 19:45:57.405 CST [24080] ERROR:  initial execution must match the original run input
+2026-10-26 19:45:57.405 CST [24080] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:45:57.405 CST [24080] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:45:57.658 CST [47248] ERROR:  initial execution must match the original run input
+2026-10-26 19:45:57.658 CST [47248] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:45:57.658 CST [47248] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:45:57.907 CST [18372] ERROR:  initial execution must match the original run input
+2026-10-26 19:45:57.907 CST [18372] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:45:57.907 CST [18372] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:45:58.143 CST [45528] ERROR:  initial execution must match the original run input
+2026-10-26 19:45:58.143 CST [45528] CONTEXT:  PL/pgSQL function bb_check_initial_execution() line 8 at RAISE
+2026-10-26 19:45:58.143 CST [45528] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:45:58.393 CST [16832] ERROR:  new row for relation "bb_run_execution_versions" violates check constraint "bb_run_execution_versions_execution_version_check"
+2026-10-26 19:45:58.393 CST [16832] DETAIL:  Failing row contains (execution-owner-cc708a33-ffad-403b-a91a-3c4e1d9fd254, ba9344b4-792d-4950-8280-f4e46215b2c5, 1ea95ddc-15f5-438e-b37d-cb3b0d9b5976, 2, 2, b171935578b9c46308302d660fbc15fe635220e440982fd2fefedf524f7728c2, 2026-10-26 19:45:58.389132+08).
+2026-10-26 19:45:58.393 CST [16832] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:45:58.482 CST [45884] ERROR:  duplicate key value violates unique constraint "bb_run_execution_versions_pkey"
+2026-10-26 19:45:58.482 CST [45884] DETAIL:  Key (run_id, execution_version)=(1ea95ddc-15f5-438e-b37d-cb3b0d9b5976, 1) already exists.
+2026-10-26 19:45:58.482 CST [45884] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-26 19:45:58.561 CST [42136] ERROR:  run execution identity is immutable
+2026-10-26 19:45:58.561 CST [42136] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:45:58.561 CST [42136] STATEMENT:  UPDATE bb_run_execution_versions SET input_hash=input_hash WHERE run_id=$1
+2026-10-26 19:45:58.802 CST [20840] ERROR:  run execution identity is immutable
+2026-10-26 19:45:58.802 CST [20840] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:45:58.802 CST [20840] STATEMENT:  UPDATE bb_run_execution_versions SET input_revision=3 WHERE run_id=$1
+2026-10-26 19:45:59.044 CST [24884] ERROR:  run execution identity is immutable
+2026-10-26 19:45:59.044 CST [24884] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:45:59.044 CST [24884] STATEMENT:  DELETE FROM bb_run_execution_versions WHERE run_id=$1
+2026-10-26 19:46:00.383 CST [50448] ERROR:  run execution identity is immutable
+2026-10-26 19:46:00.383 CST [50448] CONTEXT:  PL/pgSQL function bb_guard_run_execution_immutable() line 3 at RAISE
+2026-10-26 19:46:00.383 CST [50448] STATEMENT:  DELETE FROM bb_run_execution_versions WHERE run_id=$1
+2026-10-26 19:46:00.468 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:46:00.500 CST [41352] LOG:  checkpoint complete: wrote 5 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.010 s, sync=0.004 s, total=0.032 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10144 kB, estimate=17320 kB; lsn=0/47DA0DC8, redo lsn=0/47DA0D90
+2026-10-26 19:46:09.305 CST [29200] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:09.305 CST [29200] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:09.305 CST [29200] STATEMENT:  UPDATE bb_runs SET id=$2 WHERE id=$1
+2026-10-26 19:46:09.474 CST [40152] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:09.474 CST [40152] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:09.474 CST [40152] STATEMENT:  UPDATE bb_runs SET owner_user_id=$2 WHERE id=$1
+2026-10-26 19:46:09.622 CST [1564] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:09.622 CST [1564] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:09.622 CST [1564] STATEMENT:  UPDATE bb_runs SET project_id=$2 WHERE id=$1
+2026-10-26 19:46:09.800 CST [31452] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:09.800 CST [31452] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:09.800 CST [31452] STATEMENT:  UPDATE bb_runs SET input_revision=$2 WHERE id=$1
+2026-10-26 19:46:09.955 CST [40792] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:09.955 CST [40792] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:09.955 CST [40792] STATEMENT:  UPDATE bb_runs SET input_hash=$2 WHERE id=$1
+2026-10-26 19:46:10.103 CST [36936] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:10.103 CST [36936] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:10.103 CST [36936] STATEMENT:  UPDATE bb_runs SET execution_request_id=$2 WHERE id=$1
+2026-10-26 19:46:10.254 CST [16044] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:10.254 CST [16044] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:10.254 CST [16044] STATEMENT:  UPDATE bb_runs SET request_hash=$2 WHERE id=$1
+2026-10-26 19:46:10.425 CST [45976] ERROR:  run origin input and execution identity are immutable
+2026-10-26 19:46:10.425 CST [45976] CONTEXT:  PL/pgSQL function bb_guard_run_origin() line 8 at RAISE
+2026-10-26 19:46:10.425 CST [45976] STATEMENT:  UPDATE bb_runs SET input_revision=$2,input_hash=$3 WHERE id=$1
+2026-10-26 19:46:10.868 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:46:10.903 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.009 s, sync=0.004 s, total=0.035 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10108 kB, estimate=16599 kB; lsn=0/48780058, redo lsn=0/48780020
+2026-10-26 19:46:25.908 CST [4600] WARNING:  you don't own a lock of type ExclusiveLock
+2026-10-26 19:46:30.517 CST [13324] ERROR:  synthetic outbox failure
+2026-10-26 19:46:30.517 CST [13324] CONTEXT:  PL/pgSQL function bb_test_supplement_outbox_fail() line 2 at RAISE
+2026-10-26 19:46:30.517 CST [13324] STATEMENT:  INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+	        VALUES($1,$2,'run_supplement_draft',$3,'run.supplement_draft_saved',$4)
+2026-10-26 19:46:30.563 CST [13324] ERROR:  immutable input revision
+2026-10-26 19:46:30.563 CST [13324] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:46:30.563 CST [13324] STATEMENT:  UPDATE bb_run_supplement_drafts SET changes='[]' WHERE run_id=$1
+2026-10-26 19:46:30.658 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:46:30.718 CST [41352] LOG:  checkpoint complete: wrote 5 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.013 s, sync=0.005 s, total=0.061 s; sync files=4, longest=0.003 s, average=0.001 s; distance=11169 kB, estimate=16056 kB; lsn=0/49268800, redo lsn=0/492687C8
+2026-10-26 19:46:56.478 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:46:56.505 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.009 s, sync=0.004 s, total=0.028 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10242 kB, estimate=15475 kB; lsn=0/49C69398, redo lsn=0/49C69360
+2026-10-26 19:47:14.478 CST [46272] ERROR:  immutable input revision
+2026-10-26 19:47:14.478 CST [46272] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:47:14.478 CST [46272] STATEMENT:  UPDATE bb_run_supplement_saved_work SET checkpoint_hash=$2 WHERE run_id=$1
+2026-10-26 19:47:14.567 CST [34056] ERROR:  immutable input revision
+2026-10-26 19:47:14.567 CST [34056] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-26 19:47:14.567 CST [34056] STATEMENT:  DELETE FROM bb_run_supplement_saved_results WHERE run_id=$1
+2026-10-26 19:47:19.155 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:47:19.190 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.010 s, sync=0.006 s, total=0.036 s; sync files=4, longest=0.002 s, average=0.002 s; distance=10389 kB, estimate=14966 kB; lsn=0/4A68E850, redo lsn=0/4A68E818
+2026-10-26 19:47:28.280 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:47:28.314 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.011 s, sync=0.004 s, total=0.035 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10082 kB, estimate=14478 kB; lsn=0/4B067328, redo lsn=0/4B0672F0
+2026-10-26 19:47:37.009 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:47:37.039 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.009 s, total=0.031 s; sync files=4, longest=0.007 s, average=0.003 s; distance=10484 kB, estimate=14078 kB; lsn=0/4BAA43D0, redo lsn=0/4BAA4398
+2026-10-26 19:47:49.556 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:47:49.593 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.010 s, sync=0.005 s, total=0.037 s; sync files=4, longest=0.003 s, average=0.002 s; distance=10025 kB, estimate=13673 kB; lsn=0/4C46EA60, redo lsn=0/4C46EA28
+2026-10-26 19:48:11.170 CST [10116] ERROR:  new row for relation "bb_run_execution_versions" violates check constraint "bb_run_execution_versions_execution_version_check"
+2026-10-26 19:48:11.170 CST [10116] DETAIL:  Failing row contains (ab195df6-3ec0-4b56-87dd-f463ed058b21, f9b1eaf6-9e97-48ad-9f38-ac8722c20e16, 1ea59c3f-1380-4f8f-b24c-4958f85e82c2, 2, 1, c6460a1d93f60e6fa52ad4b734ea93f9b6ce3802264b7354b587d8170ca6c0ca, 2026-10-26 19:48:11.170277+08).
+2026-10-26 19:48:11.170 CST [10116] STATEMENT:  INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash)
+	        VALUES($1,$2,$3,2,1,$4)
+2026-10-26 19:48:11.253 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:48:11.277 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.004 s, total=0.024 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10089 kB, estimate=13315 kB; lsn=0/4CE490B0, redo lsn=0/4CE49078
+2026-10-26 19:48:18.922 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:48:18.956 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.009 s, sync=0.004 s, total=0.034 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10026 kB, estimate=12986 kB; lsn=0/4D8138C0, redo lsn=0/4D813888
+2026-10-26 19:48:30.660 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:48:30.694 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.009 s, sync=0.004 s, total=0.035 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10117 kB, estimate=12699 kB; lsn=0/4E1F4DB0, redo lsn=0/4E1F4D78
+2026-10-26 19:49:16.565 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:49:16.590 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.004 s, total=0.025 s; sync files=4, longest=0.002 s, average=0.001 s; distance=11209 kB, estimate=12550 kB; lsn=0/4ECE7238, redo lsn=0/4ECE7200
+2026-10-26 19:49:39.285 CST [41352] LOG:  checkpoint starting: immediate force wait
+2026-10-26 19:49:39.320 CST [41352] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.009 s, sync=0.004 s, total=0.035 s; sync files=4, longest=0.002 s, average=0.001 s; distance=10189 kB, estimate=12314 kB; lsn=0/4F6DA878, redo lsn=0/4F6DA840
+2026-10-26 19:53:16.511 CST [47756] LOG:  received fast shutdown request
+2026-10-26 19:53:16.513 CST [47756] LOG:  aborting any active transactions
+2026-10-26 19:53:16.523 CST [47756] LOG:  background worker "logical replication launcher" (PID 45524) exited with exit code 1
+2026-10-26 19:53:16.525 CST [41352] LOG:  shutting down
+2026-10-26 19:53:16.529 CST [41352] LOG:  checkpoint starting: shutdown immediate
+2026-10-26 19:53:16.562 CST [41352] LOG:  checkpoint complete: wrote 8 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.004 s, total=0.037 s; sync files=5, longest=0.002 s, average=0.001 s; distance=0 kB, estimate=11082 kB; lsn=0/4F6DA9B8, redo lsn=0/4F6DA9B8
+2026-10-26 19:53:16.594 CST [47756] LOG:  database system is shut down

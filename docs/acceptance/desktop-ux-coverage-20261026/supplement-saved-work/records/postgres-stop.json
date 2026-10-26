@@ -1,0 +1,16 @@
+{
+  "cluster": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data",
+  "port": 15526,
+  "status_before": {
+    "status": 0,
+    "output": "pg_ctl: server is running (PID: 47756)\r\nC:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe \"-D\" \"C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data\" \"-h\" \"127.0.0.1\" \"-p\" \"15526\"\r\n"
+  },
+  "stop": {
+    "status": 0,
+    "output": "waiting for server to shut down.... done\r\nserver stopped\r\n"
+  },
+  "status_after": {
+    "status": 3,
+    "output": "pg_ctl: no server running\r\n"
+  }
+}

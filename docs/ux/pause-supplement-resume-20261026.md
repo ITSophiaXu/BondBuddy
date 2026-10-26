@@ -41,6 +41,8 @@
 
 后续迁移 `0119_initial_run_execution_identity.sql` 已追加不可变初始 V1，真实 queue、Lease、prompt、provider、OCR 和独立 worker 写入核对准确身份；数据库仍明确禁止 V2。当前又通过 `readRunExecutionInput()` 将补料准备与 M1/M3/M4 实际 loader 接到同一准确输入读取，M3/M4 gate 消费该读取返回的归属一致快照。它没有版本化原业务表或开放后继执行；[候选输入专项](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)记录当前边界。
 
+本地追加 `0120`、`0121` 后，带准确 prompt 的模型调用还会自动保存不可变 execution/input 绑定，真实 provider latest、结果恢复、runtime 和 observation 读取实际核验该绑定。补料保存事务在同一安全人工暂停边界冻结 checkpoint 及准确已完成结果引用，旧回执不会冒充已有捕获；进度变化会提示重新保存。内服读取旧结果时核验原输入、schema、字节及清理记录，并与 prompt/provider 内容清理串行。它只冻结私有来源，尚未把旧 Word 文件交给后继业务处理，也不延长原清理或账号/项目删除规则。详见[保存工作引用验收](../acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)，G03 仍开放。
+
 - 保留 `bb_runs` 的原始执行请求和原始输入关联；每份 `bb_input_revisions` 继续不可变。追加“run 的执行版本”关系，记录业务 run、序号、前一版本、本次完整输入 revision/hash、补料采用请求及旧工作引用。活动版本以 CAS 推进；不得原地修改旧输入或执行请求哈希。
 - 补料草稿从该任务的已采用输入构建，不从项目最新草稿猜测。原始募集书、目标企业/期间、文种、规则、模板及授权保持明确。可新增或明确替换证据材料；修改任务目标、文种或范围须先按现有业务规则确认，不能借补料隐式改变任务类别。
 - 拟新增 owner-scoped 的续做准备/读取和明确采用操作，唯一 schema 放在 `packages/contracts/`。采用请求携带幂等请求 ID、预期活动执行版本、预期暂停边界、完整新输入引用及费用确认引用。旧 `resume {reason}` 继续表示原输入恢复。

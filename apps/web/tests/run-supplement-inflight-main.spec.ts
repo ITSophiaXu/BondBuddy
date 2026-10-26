@@ -151,7 +151,16 @@ test('real main: an in-flight contained adapter finishes durably before manual p
     expect(beforeSave.creditEvents.length).toBeGreaterThan(0);expect(beforeSave.outbox.length).toBeGreaterThan(0);expect(beforeSave.ownerJobs.length).toBeGreaterThan(0);
     const savedResponse=page.waitForResponse(response=>response.request().method()==='PUT'&&new URL(response.url()).pathname===`/api/v1/runs/${f.runId}/supplement-draft`);
     await action(panel,'save').click();const saved=await savedResponse;expect(saved.status()).toBe(200);expect(saved.request().headers()['x-bb-csrf']).toBe(real.csrf);
-    const receipt=await saved.json() as RunSupplementDraftResponse;expect(receipt).toMatchObject({run_id:f.runId,revision:1,adopted:false,changes:[{replaces:null,material:{material_id:material.material_id,material_version:material.material_version,sha256:material.sha256}}]});
+    const receipt=await saved.json() as RunSupplementDraftResponse;expect(receipt).toMatchObject({run_id:f.runId,revision:1,adopted:false,
+      saved_work:{status:'captured',result_count:1},changes:[{replaces:null,material:{material_id:material.material_id,material_version:material.material_version,sha256:material.sha256}}]});
+    expect(receipt.saved_work.stage_count).toBeGreaterThanOrEqual(1);
+    const frozenWork=(await real.pool.query(`SELECT w.*,c.attempt_id,c.result_id FROM bb_run_supplement_saved_work w
+      JOIN bb_run_supplement_saved_results c ON c.run_id=w.run_id AND c.supplement_revision=w.supplement_revision
+      WHERE w.run_id=$1 AND w.supplement_revision=1`,[f.runId])).rows;
+    expect(frozenWork).toHaveLength(1);expect(frozenWork[0]).toMatchObject({execution_version:1,input_revision:1,input_hash:f.hash,
+      job_id:f.jobId,source_checkpoint:paused.checkpoint,attempt_id:savedCall.attempts![0]!.id,result_id:result.id});
+    expect(JSON.stringify(receipt)).not.toContain(String(result.result_ref));expect(JSON.stringify(receipt)).not.toContain(String(result.id));
+    await expect(panel).toContainText('已保存工作记录');
     await expect(panel).toContainText('草稿已保存');const afterSave=await evidence(f);samePreparationOnly(f,beforeSave,afterSave,receipt);expect(await durable(f)).toEqual(savedCall);
     await page.reload();const restored=await ready(page,f);await expect(restored).toContainText('synthetic-after-inflight.txt');await expect(restored).toContainText('尚未采用');await expect(action(restored,'save')).toBeDisabled();
     await restored.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -170,10 +179,14 @@ test('real main: an in-flight contained adapter finishes durably before manual p
     const finalEvidence=await evidence(f);expect(identities(finalEvidence.ownerJobs)).toEqual(identities(afterSave.ownerJobs));
     for(const key of ['input','creditEvents','reservations','lots','creditAccount','balance'])expect(finalEvidence[key],key).toEqual(initial[key]);
     expect(await real.blobs.get(String(result.result_ref))).toEqual(resultBytes);
-    const exactReceipt=await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft?request_id=${receipt.request_id}`);expect(exactReceipt).toMatchObject({request_id:receipt.request_id,revision:1,adopted:false});
+    const exactReceipt=await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft?request_id=${receipt.request_id}`);expect(exactReceipt).toMatchObject({request_id:receipt.request_id,revision:1,adopted:false,
+      saved_work:{status:'captured',result_count:1}});
+    // The following stage paused without saving new work. Replaying the same
+    // original result therefore preserves the captured work boundary exactly.
+    expect(replayed.checkpoint).toEqual(paused.checkpoint);
     await writeFile(join(real.artifactRoot,'m1-inflight-assertions.json'),JSON.stringify({synthetic:true,full_main:true,
       scope:'Generic worker mechanics with a controlled local Codex subprocess, real durable journal and private disk bytes. Seeded original run; no business execution, supplier, Azure, adoption, surcharge or Word acceptance.',
-      started,requested,blocked,paused,savedCall,receipt,beforeSave,afterSave,resumed,replayed,finalEvidence,adapterStarts:await starts()},null,2));
+      started,requested,blocked,paused,savedCall,receipt,frozenWork,beforeSave,afterSave,resumed,replayed,finalEvidence,adapterStarts:await starts()},null,2));
   }finally{
     stop.abort();await writeFile(releasePath,'release-synthetic-result',{mode:0o600}).catch(()=>{});await active?.catch(()=>{});
   }

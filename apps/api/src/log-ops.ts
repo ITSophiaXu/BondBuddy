@@ -896,9 +896,9 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
   for (const row of due) {
     try {
       const deleted = await transaction(pool, async client => {
-        // The prompt view holds this same lock through response completion. Deletion and
-        // tombstoning must be one serialized operation, including the Blob I/O window.
-        if (row.kind === 'prompt_snapshot') await client.query("SELECT pg_advisory_xact_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [row.id]);
+        // Prompt views and internal saved-work reads hold the matching content
+        // locks through validation. Serialize deletion plus its tombstone with both.
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text),hashtext($2::text))', [row.kind,row.id]);
         const existing = await client.query('SELECT 1 FROM bb_log_content_tombstones WHERE content_kind=$1 AND content_id=$2', [row.kind, row.id]);
         if (existing.rowCount) return false;
         try { await blobs.delete(row.object_key); }

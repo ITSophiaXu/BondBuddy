@@ -1,0 +1,42 @@
+
+Running 1 test using 1 worker
+
+
+
+[1/1] tests\run-supplement-inflight-main.spec.ts:71:1 › real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result
+  1) tests\run-supplement-inflight-main.spec.ts:71:1 › real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result 
+
+    Error: expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -2,8 +2,8 @@
+        "adopted": false,
+        "request_id": "cf5320a2-d3e7-4c53-b41d-9357892a2d98",
+        "revision": 1,
+        "saved_work": Object {
+          "result_count": 1,
+    -     "status": "stale_boundary",
+    +     "status": "captured",
+        },
+      }
+
+      180 |     for(const key of ['input','creditEvents','reservations','lots','creditAccount','balance'])expect(finalEvidence[key],key).toEqual(initial[key]);
+      181 |     expect(await real.blobs.get(String(result.result_ref))).toEqual(resultBytes);
+    > 182 |     const exactReceipt=await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft?request_id=${receipt.request_id}`);expect(exactReceipt).toMatchObject({request_id:receipt.request_id,revision:1,adopted:false,
+          |                                                                                                                                                   ^
+      183 |       saved_work:{status:'stale_boundary',result_count:1}});
+      184 |     await writeFile(join(real.artifactRoot,'m1-inflight-assertions.json'),JSON.stringify({synthetic:true,full_main:true,
+      185 |       scope:'Generic worker mechanics with a controlled local Codex subprocess, real durable journal and private disk bytes. Seeded original run; no business execution, supplier, Azure, adoption, surcharge or Word acceptance.',
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-inflight-main.spec.ts:182:147
+
+    Error Context: ..\..\.local\supplement-work\inflight-test-results\run-supplement-inflight-ma-5fe58-al-resume-reuses-its-result\error-context.md
+
+    Error Context: ..\..\.local\supplement-work\inflight-test-results\run-supplement-inflight-ma-5fe58-al-resume-reuses-its-result\error-context.md
+
+
+  1 failed
+    tests\run-supplement-inflight-main.spec.ts:71:1 › real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result 
+(node:46480) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

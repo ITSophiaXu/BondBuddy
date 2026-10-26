@@ -853,3 +853,9 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 `@bondbuddy/api/run-execution-input` 提供 `readRunExecutionInput(db, owner, runId, expectedIdentity)`，先经不可变初始 V1 resolver 验证 Lease 绑定，再按准确 revision/hash 读取不可变输入和同 owner/project/run 的复核、M4 业务快照。补料准备与 M1/M3/M4 实际 loader 共用此入口；M3/M4 loader 将已读取快照交给原 gate，显式缺失不回退旧查询，独立 gate 调用保留原数据库校验。当前仍只允许 V1，未增加活动版本或后继快照表。
 
 补料 `GET/PUT` 在原准备回执上确定性编译候选，公共 `input_preview` schema 仅在 contracts 定义。候选 hash 来自完整冻结 manifest 加显式材料变更；不读取后来项目草稿，不覆盖原执行输入、来源声明、已确认复核计划或旧模板绑定。复杂来源、证据关联或导出语义当前不能完整表达时，保存仍成功，预览明确阻断，绝不把候选 hash 当采用/费用授权。候选不持久化、不创建任务、不计费，不改变材料保留策略；当前无新增迁移。前后端须使用相同新增响应契约。用户已选必要重做另行报价且确认后继续，具体计价公式仍未确定。实现、独立回归与剩余 G03 缺口见 [候选输入验收](acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)。
+
+### 2026-10-26：补料草稿的私有保存工作来源（本地未发布）
+
+追加迁移 `0120_model_call_execution_bindings.sql` 将真实 prompted attempt 与准确 V1/input/prompt 绑定，旧记录只回填已有准确元数据，不伪造缺失来源。真实 provider latest/重放/runtime/observation 先选原调用再验证绑定；缺绑定不能当成没有旧调用而重新发送。`0121_run_supplement_saved_work.sql` 在补料保存的 run→job 锁和安全人工暂停事务内冻结 checkpoint 与准确已完成 result refs；并发、幂等、旧回执和变更边界沿原准备协议。公共 `saved_work` 仅返回状态和计数，不返回对象地址或正文，不授予下载或后继执行。
+
+内服 `readCapturedSupplementResult()` 使用独立只读事务，按 prompt_snapshot→provider_result 获得与 `purgeLogContent()` 相同的内容锁，在 Blob I/O 和异步 schema 校验期间保持，并在等待后重查清理、归属及原输入。结果文件仍按原清理和删除规则处理；没有采用后继输入、长期保留新材料、创建额外任务或新增收费。具体证据及尚缺的旧 Word 绑定、增量处理和账务闭环见 [保存工作引用验收](acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)。

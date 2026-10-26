@@ -7,6 +7,7 @@ import { MODEL_ADAPTER_ERROR_CODES, type ModelAdapterErrorCode, type RunEvent } 
 import { runEventPayloadDto } from './run-event-dto.js';
 import type { Lease } from './queue.js';
 import { assertRunExecution } from './run-execution.js';
+import { assertModelCallExecution } from './model-call-execution.js';
 export type { PrivateBlobs } from './data.js';
 
 // This adapter exposes only immutable, run-local material reads; no side-effecting tools.
@@ -171,8 +172,8 @@ async function lockIdentity(client: PoolClient, observation: ProviderCallObserva
   } else if (r.state !== 'paused' || job.state !== 'paused') {
     throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting provider reconciliation');
   }
-  await assertRunExecution(client,r,lease);
-  return {r,job};
+  const identity=await assertRunExecution(client,r,lease);
+  return {r,job,identity};
 }
 
 async function assertObservationScope(pool: Pool, observation: ProviderCallObservation, lease?: Lease) {
@@ -187,7 +188,10 @@ async function assertObservationScope(pool: Pool, observation: ProviderCallObser
   if(lease){
     if(lease.owner!==observation.owner_user_id || lease.runId!==observation.run_id || lease.jobId!==observation.job_id || row.job_state!=='running' || row.lease_token!==lease.token || !row.lease_until || new Date(row.lease_until).getTime()<=Date.now())throw new Problem(409,'CAPABILITY_NOT_READY','Provider observation lease is no longer active');
   }else if(row.state!=='paused' || row.job_state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting provider reconciliation');
-  await assertRunExecution(pool,row,lease);
+  const identity=await assertRunExecution(pool,row,lease);
+  const binding=await assertModelCallExecution(pool,{owner:observation.owner_user_id,projectId:observation.project_id,
+    runId:observation.run_id,jobId:observation.job_id,attemptId:observation.call_id,...identity});
+  if(binding.promptSnapshotRef!==observation.prompt_snapshot_ref)throw missing();
 }
 
 /** Retain only public codes; supplier text and unknown runtime fields never enter task events. */
@@ -257,9 +261,12 @@ export async function recordProviderCallObservation(
   await verifyObservationResult(blobs,observation,validateResult);
   const hash=observationHash(observation);
   return transaction(pool,async client=>{
-    const {r,job}=await lockIdentity(client,observation,options.lease);
+    const {r,job,identity}=await lockIdentity(client,observation,options.lease);
     const a=(await client.query('SELECT * FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.logical_call_id,observation.attempt_no])).rows[0];
     if (!a || a.id!==observation.call_id || a.model_id!==observation.model_id || a.prompt_snapshot_id!==observation.prompt_snapshot_ref || observation.trace_id!==r.id) throw missing();
+    const binding=await assertModelCallExecution(client,{owner:observation.owner_user_id,projectId:observation.project_id,
+      runId:observation.run_id,jobId:observation.job_id,attemptId:a.id,...identity});
+    if(binding.promptSnapshotRef!==observation.prompt_snapshot_ref)throw missing();
     if (a.provider_request_id && observation.provider_request_id && a.provider_request_id!==observation.provider_request_id) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider request identity conflicts with the recorded attempt');
     const oldMeta=await client.query('SELECT model_config_version,provider_request_id FROM bb_provider_call_observations WHERE attempt_id=$1 ORDER BY observed_at,id LIMIT 1',[a.id]);
     if (oldMeta.rows[0] && oldMeta.rows[0].model_config_version!==observation.model_config_version) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider model configuration conflicts with the recorded attempt');
@@ -389,7 +396,7 @@ export async function readCheckpointedProviderResult(input: {
   if (!safeId(input.logicalCallId) || !Number.isSafeInteger(input.attemptNo) || input.attemptNo<1) throw new Error('Invalid replay identity');
   const activeLease=await input.pool.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1 AND j.id=$2 AND j.run_id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now()",[input.lease.owner,input.lease.jobId,input.lease.runId,input.lease.token]);
   if (!activeLease.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result reuse requires the active worker lease');
-  await assertRunExecution(input.pool,activeLease.rows[0],input.lease);
+  const identity=await assertRunExecution(input.pool,activeLease.rows[0],input.lease);
   const q=await input.pool.query(`SELECT a.id,a.status,a.logical_call_id,a.attempt_no,j.checkpoint,j.subtype,u.usage_status,u.conflicting_measurements,r.billing_mode
     FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_runs r ON r.id=j.run_id JOIN bb_call_usage u ON u.attempt_id=a.id
     WHERE a.owner_user_id=$1 AND a.job_id=$2 AND j.run_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5`,[input.lease.owner,input.lease.jobId,input.lease.runId,input.logicalCallId,input.attemptNo]);
@@ -399,6 +406,8 @@ export async function readCheckpointedProviderResult(input: {
     if (input.attemptNo!==Number(later.rows[0].max_attempt)+1) throw new Problem(409,'CAPABILITY_NOT_READY','Provider attempt sequence changed; never reuse an earlier attempt number');
     return null;
   }
+  const binding=await assertModelCallExecution(input.pool,{owner:input.lease.owner,projectId:activeLease.rows[0].project_id,
+    runId:input.lease.runId,jobId:input.lease.jobId,attemptId:attempt.id,...identity});
   const checkpoint=attempt.checkpoint as Record<string,unknown>;
   const refs=Array.isArray(checkpoint.provider_results)?checkpoint.provider_results as Record<string,unknown>[]:[];
   const matches=refs.filter(entry=>entry.logical_call_id===input.logicalCallId&&entry.attempt_no===input.attemptNo);
@@ -409,7 +418,7 @@ export async function readCheckpointedProviderResult(input: {
       AND rr.job_id=$3 AND rr.run_id=$2 AND rr.logical_call_id=$4 AND rr.attempt_no=$5 AND rr.attempt_id=$6 AND rr.id=$7 AND rr.result_sha256=$8
       AND (SELECT count(*) FROM bb_provider_result_refs candidate WHERE candidate.attempt_id=rr.attempt_id)=1`,[input.lease.owner,input.lease.runId,input.lease.jobId,input.logicalCallId,input.attemptNo,replay.call_id,replay.result_id,replay.result_sha256])).rows[0];
   const fixedPrice=attempt.billing_mode==='fixed_credits' || attempt.billing_mode==='metered_credits' && ['m4_document_v1','m4_qa_v1'].includes(attempt.subtype);
-  if (!result || attempt.status!=='completed' || !fixedPrice && (attempt.usage_status!=='measured' || Number(attempt.conflicting_measurements)>0) || result.result_ref!==replay.result_ref || result.result_schema_version!==replay.result_schema_version || Number(result.byte_size)<1 || result.trace_id!==input.lease.runId) {
+  if (!result || attempt.status!=='completed' || !fixedPrice && (attempt.usage_status!=='measured' || Number(attempt.conflicting_measurements)>0) || result.prompt_snapshot_ref!==binding.promptSnapshotRef || result.result_ref!==replay.result_ref || result.result_schema_version!==replay.result_schema_version || Number(result.byte_size)<1 || result.trace_id!==input.lease.runId) {
     throw new Problem(409,'CAPABILITY_NOT_READY','Provider result or usage is not reconciled; call remains pending');
   }
   const observation=(await input.pool.query("SELECT 1 FROM bb_provider_call_observations WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND run_id=$4 AND attempt_id=$5 AND result_id=$6 AND ((outcome='completed' AND (usage_status='measured' OR $7)) OR ($7 AND outcome='pending_reconcile' AND finish_reason='stop' AND error_code IN ('MODEL_USAGE_PENDING','USAGE_PENDING'))) LIMIT 1",[input.lease.owner,result.project_id,input.lease.jobId,input.lease.runId,result.attempt_id,result.id,fixedPrice])).rowCount;
@@ -468,7 +477,10 @@ export async function recordModelAttemptRuntime(pool: Pool, lease: Lease, intent
     if (!job || !a || a.id!==intent.call_id) throw missing();
     // Written before the observation, which may pause the job and release the lease.
     if (job.state!=='running' || job.lease_token!==lease.token || !job.lease_until || new Date(job.lease_until).getTime()<=Date.now()) throw new Problem(409,'CAPABILITY_NOT_READY','Model attempt runtime lease is no longer active');
-    await assertRunExecution(client,r,lease);
+    const identity=await assertRunExecution(client,r,lease);
+    const binding=await assertModelCallExecution(client,{owner:intent.owner_user_id,projectId:intent.project_id,
+      runId:intent.run_id,jobId:intent.job_id,attemptId:a.id,...identity});
+    if(binding.promptSnapshotRef!==intent.prompt_snapshot_ref)throw missing();
     const existing=(await client.query('SELECT * FROM bb_model_call_attempt_runtime WHERE attempt_id=$1',[a.id])).rows[0];
     if (existing) {
       const same=existing.adapter_version===runtime.adapter_version && existing.duration_ms===runtime.duration_ms && existing.error_code===runtime.error_code && existing.framework_thread_id===runtime.framework_thread_id && existing.tool_attempts===runtime.tool_attempts;
@@ -487,8 +499,8 @@ export async function latestProviderAttempt(pool: Pool, lease: Lease, logicalCal
   if (!safeId(logicalCallId)) throw new Error('Invalid provider call identity');
   const active=await pool.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1 AND j.id=$2 AND j.run_id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now()",[lease.owner,lease.jobId,lease.runId,lease.token]);
   if (!active.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider attempt lookup requires the active worker lease');
-  await assertRunExecution(pool,active.rows[0],lease);
-  const q=await pool.query(`SELECT a.id,a.attempt_no,a.status,a.usage_status,
+  const identity=await assertRunExecution(pool,active.rows[0],lease);
+  const q=await pool.query(`SELECT a.id,a.attempt_no,a.status,a.usage_status,a.prompt_snapshot_id,
       COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id AS operator_retry,
       EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id) AS observed
     FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
@@ -496,5 +508,9 @@ export async function latestProviderAttempt(pool: Pool, lease: Lease, logicalCal
     ORDER BY a.attempt_no DESC LIMIT 1`,[lease.owner,lease.jobId,lease.runId,logicalCallId]);
   const row=q.rows[0];
   if (!row) return null;
+  // Select the existing attempt first: a broken binding must never look like a
+  // missing call and permit the adapter to send the same logical work again.
+  if(row.prompt_snapshot_id!==null)await assertModelCallExecution(pool,{owner:lease.owner,projectId:active.rows[0].project_id,
+    runId:lease.runId,jobId:lease.jobId,attemptId:row.id,...identity});
   return {call_id:row.id as string,attempt_no:Number(row.attempt_no),status:row.status as 'pending_reconcile'|'confirmed_not_sent'|'completed'|'failed',usage_status:row.usage_status as string,observed:row.observed===true,operator_retry:row.operator_retry===true};
 }
