@@ -51,6 +51,21 @@ test('MOA resources share provider assets but cannot access another tenant',()=>
  }
  assert.equal(integrityBrowserUrlAllowed(moa,'https://p.so-gov.cn/custom/BM19000004/css/search.css'),false);
 });
+test('observed MOT/MOA search initialization dependencies stay restricted to exact paths and tenants',()=>{
+ const mot=INTEGRITY_SITES.find(s=>s.id==='transport')!,moa=INTEGRITY_SITES.find(s=>s.id==='agriculture')!;
+ for(const current of [mot,moa])for(const url of ['https://p.so-gov.cn/web/i18n/zh/lang.json','https://api.so-gov.cn/query/site']){
+  assert.equal(integrityBrowserUrlAllowed(current,url),true,url);assert.equal(integrityBrowserUrlAllowed(site,url),false,url);
+ }
+ const motImage='https://file.so-gov.cn/cps/pro/bm19000004new/css/2c9331a3121145c3af0b29915ca26ff0/2c9331a3121145c3af0b29915ca26ff0.png';
+ const moaImage='https://file.so-gov.cn/cps/pro/zwbm21000007/css/51e0660b41134dfb86bab00e0be42184/51e0660b41134dfb86bab00e0be42184.png';
+ assert.equal(integrityBrowserUrlAllowed(mot,motImage),true);assert.equal(integrityBrowserUrlAllowed(moa,motImage),false);
+ assert.equal(integrityBrowserUrlAllowed(moa,moaImage),true);assert.equal(integrityBrowserUrlAllowed(mot,moaImage),false);
+ const md5='https://cdn.bootcss.com/blueimp-md5/2.10.0/js/md5.js';
+ assert.equal(integrityBrowserUrlAllowed(moa,md5),true);assert.equal(integrityBrowserUrlAllowed({...site,id:'official-directory'},md5),true);
+ assert.equal(integrityBrowserUrlAllowed(mot,md5),false);assert.equal(integrityBrowserUrlAllowed(site,md5),false);
+ for(const url of ['https://p.so-gov.cn/web/private.json','https://api.so-gov.cn/query/site/other','http://api.so-gov.cn/query/site','https://api.so-gov.cn.evil.test/query/site','https://cdn.bootcss.com/other.js','http://cdn.bootcss.com/blueimp-md5/2.10.0/js/md5.js','https://chatapi.so-gov.cn/ask/v4/token'])assert.equal(integrityBrowserUrlAllowed(moa,url),false,url);
+});
+
 test('private-network worker uses dedicated upstream but cannot widen the selected website',async()=>{
  let upstreamCalls=0;
  const server=createServer((req,res)=>{upstreamCalls++;res.end('official fixture');});
@@ -86,6 +101,28 @@ test('real Chromium on synthetic official-site fixtures: query, screenshot, zero
     await context.close();
    });
   }
+ }finally{await browser.close();}
+});
+
+test('observed MOT list without totals requires fresh visible structured results and survives capture recheck',{timeout:90000,skip:!process.env.BB_TEST_INTEGRITY_BROWSER},async t=>{
+ const browser=await chromium.launch({headless:true});
+ try{
+  for(const mode of ['hits','stale','shell','wrong-host','hidden','missing-href','capture-cleared'])await t.test(mode,async()=>{
+   const context=await browser.newContext();
+   const current={...INTEGRITY_SITES.find(s=>s.id==='transport')!,links:[{label:'synthetic MOT fixture',url:mode==='wrong-host'?'https://www.chinatax.gov.cn/mot/s':'https://zs.mot.gov.cn/mot/s'}]};
+   const item=`<div class="search-result-header" ${mode==='hidden'?'style="display:none"':''}><div class="search-result-left"><div class="result-header-title"><a ${mode==='missing-href'?'':'href="https://www.mot.gov.cn/synthetic-article.html"'}>合成公告：道路维护招标</a></div></div></div>`;
+   await context.route('**/*',route=>{
+    if(new URL(route.request().url()).pathname==='/search')return route.fulfill({body:'synthetic query response'});
+    return route.fulfill({contentType:'text/html; charset=utf-8',body:`<input type="search"><button>搜索</button><main>${mode==='stale'?item:'请输入查询词'}</main><script>
+     document.querySelector('button').onclick=async()=>{await fetch('/search?q='+encodeURIComponent(document.querySelector('input').value));document.querySelector('main').innerHTML=${JSON.stringify(mode==='shell'?'结果排序：按相关度 搜索位置：全文':item)};};
+    </script>`});
+   });
+   const result=await collectInContext(context,current,{name:'合成测试企业',kind:'company',province:'北京',city:''},new AbortController().signal,{waitMs:4200,maxPages:1,attempts:1,...(mode==='capture-cleared'?{screenCapture:async(page:import('playwright').Page)=>{const png=await page.screenshot();await page.locator('main').evaluate(e=>e.textContent='结果排序：按相关度');return png;}}:{})});
+   assert.equal(result.search_performed,true);
+   assert.equal(result.outcome,mode==='hits'?'results':mode==='capture-cleared'?'failed':'unverified');
+   assert.equal(result.captures.some(c=>c.kind==='result'),mode==='hits');
+   await context.close();
+  });
  }finally{await browser.close();}
 });
 
