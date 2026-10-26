@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T12:56:56.936Z",
+  "finished": "2026-10-26T12:57:03.632Z",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+    "-p",
+    "packages/contracts/tsconfig.json"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

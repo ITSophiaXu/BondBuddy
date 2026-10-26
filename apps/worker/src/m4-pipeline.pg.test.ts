@@ -29,6 +29,10 @@ import { m4QaStage } from './m4-qa-stage.js';
 import { loadM4WorkerInput } from './m4-input.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
+import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
+
+// Synthetic collector IO only; this seam makes no working-file DB claim.
+const syntheticWriter:typeof writeRunWorkingFile=async input=>input.blobs.put(input.key,input.bytes,input.mediaType);
 
 const database=await isolatedTestDatabase(undefined,'m4-pipeline'),connection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const python=process.env.BONDBUDDY_TEST_PYTHON??'python3',root=resolve(fileURLToPath(import.meta.url),'../../../..');
@@ -72,7 +76,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
     return {kind:'done',value,checkpoint:{logical_call_id:options.logicalCallId,synthetic_model:true}};
   }});
   const pipeline=(afterStage?:RunPipelineDependencies['afterStage'])=>runPipelineOnce({pool,blobs,leaseSeconds:60,
-    runKinds:['generation','qa'],stages:defaultRunStages({model_generation:modelGenerationRouter({m4Document:m4DocumentStage({config,model:syntheticModel}),m4Qa:m4QaStage({config,model:syntheticModel})}),word_delivery:historicalWordDeliveryStage()}),
+    runKinds:['generation','qa'],stages:defaultRunStages({model_generation:modelGenerationRouter({m4Document:m4DocumentStage({config,model:syntheticModel,writer:syntheticWriter}),m4Qa:m4QaStage({config,model:syntheticModel})}),word_delivery:historicalWordDeliveryStage()}),
     afterStage,onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`synthetic_m4pg_${randomUUID().slice(0,8)}`]);

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./run-working-files": {"types":"./dist/run-working-files.d.ts","default":"./dist/run-working-files.js"},
     "./run-execution-input": {"types":"./dist/run-execution-input.d.ts","default":"./dist/run-execution-input.js"},
     "./run-execution": {"types":"./dist/run-execution.d.ts","default":"./dist/run-execution.js"},
     "./project-qa": {"types":"./dist/project-qa.d.ts","default":"./dist/project-qa.js"},

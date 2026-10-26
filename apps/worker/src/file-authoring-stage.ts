@@ -2,6 +2,7 @@ import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promis
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
+import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
@@ -93,7 +94,9 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         let bytes:Buffer;
         try{bytes=await checkedFile(join(cwd,'output'),name,name==='delivery.md'?256*1024:MAX);}catch{continue;}
         const sha256=digest(bytes),key=`${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-        await ctx.blobs.put(key,bytes,name.endsWith('.docx')?DOCX:'text/markdown');
+        await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+          source:{kind:'provider',attemptId:intent.call_id,resultSchemaVersion:'codex-file-word-v1'},name,key,bytes,
+          mediaType:name.endsWith('.docx')?DOCX:'text/markdown'});
         const stored=await ctx.blobs.getIfExistsBounded(key,MAX);
         if(!stored||digest(stored)!==sha256)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
         files[name]={key,sha256,byte_size:bytes.length};

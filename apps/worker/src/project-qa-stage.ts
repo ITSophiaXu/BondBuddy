@@ -6,6 +6,7 @@ import {promisify} from 'node:util';
 import {Value} from '@sinclair/typebox/value';
 import {QaAnswerSchema,QaResultSchema,qaSearchTerms,type QaAnswer,type QaInput,type QaResult,type QaQuestion} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
+import {writeRunWorkingFile} from '@bondbuddy/api/run-working-files';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
 import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js';
@@ -16,7 +17,7 @@ import {lockStageRunExecution} from './run-execution-lease.js';
 const prefix=(ctx:StageContext)=>`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/qa/`;
 const max=100*1024*1024;
 async function python(ctx:StageContext,args:string[]){await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_qa',...args],{cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:180000,maxBuffer:2*1024*1024});}
-async function store(ctx:StageContext,path:string){const bytes=await readFile(path);if(!bytes.length||bytes.length>max)throw Error('FILE_OUTPUT_STORE_FAILED');const sha256=digest(bytes),key=prefix(ctx)+sha256+'/document.docx';await ctx.blobs.put(key,bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');const readback=await ctx.blobs.getIfExistsBounded(key,max);if(!readback||digest(readback)!==sha256)throw Error('FILE_OUTPUT_STORE_FAILED');return {key,sha256,byte_size:bytes.length};}
+async function store(ctx:StageContext,path:string){const bytes=await readFile(path);if(!bytes.length||bytes.length>max)throw Error('FILE_OUTPUT_STORE_FAILED');const sha256=digest(bytes),key=prefix(ctx)+sha256+'/document.docx';await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,source:{kind:'local_qa'},name:'document.docx',key,bytes,mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});const readback=await ctx.blobs.getIfExistsBounded(key,max);if(!readback||digest(readback)!==sha256)throw Error('FILE_OUTPUT_STORE_FAILED');return {key,sha256,byte_size:bytes.length};}
 async function sourceBytes(ctx:StageContext,asset:QaInput['source']['asset']){const row=await readProjectFileAsset(ctx.pool,ctx.run.owner_user_id,asset),bytes=await ctx.blobs.getIfExistsBounded(row.object_key,max);if(!bytes||digest(bytes)!==asset.pin.sha256)throw Error('INPUT_REVISION_CONFLICT');return {bytes,media:row.media_type};}
 async function lock(ctx:StageContext,c:import('pg').PoolClient){if(!await lockStageRunExecution(c,ctx))throw Error('LEASE_LOST');}
 export function groundedQaAnswer(proposal:QaAnswer,q:QaQuestion,input:QaInput,evidence:QaResult['evidence']):QaAnswer{

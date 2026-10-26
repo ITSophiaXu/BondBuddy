@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T13:29:32.503Z",
+  "finished": "2026-10-26T13:29:44.336Z",
+  "args": [
+    "--test",
+    "apps/api/dist/review-readable-retention.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

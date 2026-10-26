@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Value } from '@sinclair/typebox/value';
 import { digest } from '@bondbuddy/api/data';
+import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import { executableRevisionFinding, isReviewRevisionPin, ReviewRevisionHandlingSchema, type ReviewRevisionPin, type ReviewRevisionHandling } from '@bondbuddy/contracts';
@@ -94,6 +95,8 @@ The tool validates scope, writes real tracked.docx, clean.docx, baseline.docx, h
 export function reviewRevisionCliStage(options: {
   model?: typeof codexModelStage; load?: typeof loadUnifiedInput; config?: ReturnType<typeof loadCodexAdapterConfig>;
   checkpoint?: typeof checkpointStage;
+  /** Internal test seam; production always uses the durable working-file writer. */
+  writer?: typeof writeRunWorkingFile;
 } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
     try {
@@ -208,7 +211,9 @@ export function reviewRevisionCliStage(options: {
           validationComplete = true;
           for (const [name, content] of bytes) {
             const sha256 = digest(content), key = `${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-            await ctx.blobs.put(key, content, name.endsWith('.docx') ? DOCX : 'application/json');
+            await (options.writer??writeRunWorkingFile)({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+              source:{kind:'provider',attemptId:intent.call_id,resultSchemaVersion:REVIEW_REVISION_CLI_METHOD},name,key,bytes:content,
+              mediaType:name.endsWith('.docx') ? DOCX : 'application/json'});
             const saved = await ctx.blobs.getIfExistsBounded(key, MAX_FILE);
             if (!saved || digest(saved) !== sha256) throw Error('REVISION_OUTPUT_STORE_FAILED');
             files[name] = { key, sha256, byte_size: content.length };

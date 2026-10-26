@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
 import {IntegrityBrowserInterpretationSchema,IntegrityBrowserAssessmentSchema,IntegrityBrowserSchema,type IntegrityBrowserAssessment,type IntegrityBrowserInterpretation,type IntegrityCapture,type IntegrityRecord,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
+import {writeRunWorkingFile} from '@bondbuddy/api/run-working-files';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {codexModelStage,type StageContext,type StageOutcome} from './run-pipeline.js';
 import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
@@ -37,7 +38,8 @@ async function saveBatch(ctx:StageContext,subject:IntegritySubject,site:Integrit
   const screenshotHash=digest(c.screenshot),textBytes=Buffer.from(c.text),textHash=digest(textBytes);
   const root=`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/integrity/browser/`;
   const screenshot_key=root+screenshotHash+'.png',text_key=root+textHash+'.txt';
-  await ctx.blobs.put(screenshot_key,c.screenshot,'image/png');await ctx.blobs.put(text_key,textBytes,'text/plain; charset=utf-8');
+  await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,source:{kind:'local_integrity_browser'},name:'capture.png',key:screenshot_key,bytes:c.screenshot,mediaType:'image/png'});
+  await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,source:{kind:'local_integrity_browser'},name:'capture.txt',key:text_key,bytes:textBytes,mediaType:'text/plain; charset=utf-8'});
   for(const [key,hash,max] of [[screenshot_key,screenshotHash,15000000],[text_key,textHash,500000]] as const){const bytes=await ctx.blobs.getIfExistsBounded(key,max);if(!bytes||digest(bytes)!==hash)throw Error('FILE_OUTPUT_STORE_FAILED');}
   captures.push({metadata:{id:randomUUID(),kind:c.kind,url:c.url,title:c.title,captured_at:c.captured_at,page:c.page,screenshot_sha256:screenshotHash,text_sha256:textHash,byte_size:c.screenshot.length},screenshot_key,text_key});
  }

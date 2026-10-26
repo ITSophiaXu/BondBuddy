@@ -17,7 +17,7 @@ test('M3 revision uses real native Codex sandbox + Python tool, saves actual fil
     const config = { ...loadCodexAdapterConfig({BB_CODEX_PATH:process.env.BB_CODEX_PATH}), work_root: join(f.root, 'attempts'), timeout_ms: 5000, authoring_timeout_ms: 60000,
       command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/fake-review-revision-cli.mjs', import.meta.url))] };
     try {
-      const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: async () => {}, model: options => ({
+      const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: async () => {}, writer:f.writer, model: options => ({
         name: options.name, run: async ctx => {
           const result = await runContainedModelCall({ owner_user_id: ctx.run.owner_user_id, project_id: ctx.run.project_id,
             job_id: 'synthetic-job', run_id: ctx.run.id, trace_id: ctx.run.id, logical_call_id: options.logicalCallId,

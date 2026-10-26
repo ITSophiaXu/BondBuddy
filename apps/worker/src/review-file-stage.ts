@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isReviewReport } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
+import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
@@ -75,11 +76,13 @@ async function checkedFile(directory: string, name: string, max = MAX): Promise<
   return readFile(path);
 }
 
-export function reviewFileStage(options: { model?: typeof codexModelStage; load?: typeof loadReviewFileInput; config?: ReturnType<typeof loadCodexAdapterConfig> } = {}): RunStage {
+export function reviewFileStage(options: { model?: typeof codexModelStage; load?: typeof loadReviewFileInput; config?: ReturnType<typeof loadCodexAdapterConfig>;
+  /** Internal test seam; production always uses the durable working-file writer. */
+  writer?: typeof writeRunWorkingFile } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadReviewFileInput)(ctx), { manifest } = input;
     const correction=manifest.review.file_delivery?.version==='review-correction-v2';
-    if(correction&&manifest.review.file_delivery?.export)return correctionExport(ctx,input);
+    if(correction&&manifest.review.file_delivery?.export)return correctionExport(ctx,input,options.writer);
     const originals = new Map<string, string>();
     const prepare = async (cwd: string) => {
       for (const dir of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, dir), { mode: 0o700 });
@@ -123,7 +126,9 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       const retain = async (name: string, bytes: Buffer) => {
         if (!bytes.length || bytes.length > (/\.(docx|pdf)$/.test(name) ? MAX : TEXT_MAX)) return;
         const sha256 = digest(bytes), key = `${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-        await ctx.blobs.put(key, bytes, name.endsWith('.docx') ? DOCX : name.endsWith('.pdf') ? 'application/pdf' : name.endsWith('.json') ? 'application/json' : 'text/markdown');
+        await (options.writer??writeRunWorkingFile)({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+          source:{kind:'provider',attemptId:intent.call_id,resultSchemaVersion:'codex-review-file-v1'},name,key,bytes,
+          mediaType:name.endsWith('.docx') ? DOCX : name.endsWith('.pdf') ? 'application/pdf' : name.endsWith('.json') ? 'application/json' : 'text/markdown'});
         const stored = await ctx.blobs.getIfExistsBounded(key, MAX);
         if (!stored || digest(stored) !== sha256) throw Error('REVIEW_OUTPUT_STORE_FAILED');
         files[name] = { key, sha256, byte_size: bytes.length };
@@ -153,7 +158,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           }finally{await rm(exportDir,{recursive:true,force:true});}
         }
         if(!hasReviewReportText(reportText))return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
-        const result=await correctionFiles(ctx,input,reportText);
+        const result=await correctionFiles(ctx,input,reportText,intent.call_id,options.writer);
         return {...result,files:{...files,...result.files}};
       }
       try { word = await checkedFile(output, 'report.docx'); } catch { /* Plain CLI responses can still be exported. */ }

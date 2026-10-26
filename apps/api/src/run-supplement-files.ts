@@ -138,6 +138,11 @@ export async function readCapturedSupplementFile(input: Input & { pin: CapturedS
     await db.query("SELECT pg_advisory_xact_lock(hashtext('run_file_object'),hashtext($1::text))", [pin.key]);
     // Account/project visibility can change while waiting for a content lock.
     await workScope(db, input);
+    const registered=(await db.query(`SELECT o.*,s.stored_at,s.purge_started_at FROM bb_run_working_objects o
+      LEFT JOIN bb_run_working_object_state s ON s.object_key=o.object_key WHERE o.object_key=$1`,[pin.key])).rows[0];
+    if(registered&&(!registered.stored_at||registered.purge_started_at||registered.owner_user_id!==input.owner
+      ||registered.project_id!==input.projectId||registered.run_id!==input.runId||registered.filename!==pin.name
+      ||registered.sha256.trim()!==pin.sha256||Number(registered.byte_size)!==pin.byteSize||registered.media_type!==pin.mediaType))throw unavailable();
     let bytes: Buffer | null;
     try { bytes = await input.blobs.getIfExistsBounded(pin.key, pin.byteSize); } catch { throw unavailable(); }
     if (!bytes || bytes.length !== pin.byteSize || digest(bytes) !== pin.sha256) throw unavailable();

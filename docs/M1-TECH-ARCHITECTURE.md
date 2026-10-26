@@ -866,4 +866,20 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 `run-file-reference.ts` 为五种真实 collector 定义内部准确路径和文件引用校验，逐项检查所有成功、可选及 error 输出，不用宽泛 prefix 校验授权文件；M3 provider 的 `correction` 保留目录不能冒充普通 attempt。`run-supplement-files.ts` 从准确准备回执派生包含 execution/input、checkpoint/source hash 的私有 pin，读取重算完整 pin 并 bounded 校验原字节。provider 来源持续持有 prompt/result 内容锁；本地 correction 还须匹配准确 review execution/input/origin 和合法 export-only 快照。项目文件分支须有合法业务 manifest 和准确 operation；当前该任务没有 HTTP 补料准备，底层识别不构成用户流程交付。
 
-这些 pin 不创建公开 artifact、下载 grant、账本或后继调用，也不承诺所有字节可用。原始 `owners/...` 工作文件还缺完整写入 intent、inventory 和清理 tombstone，不能凭 JSON/source metadata 声称其生命周期已解决；下一步须覆盖 Blob 写入成功而结果保存失败的孤儿窗口、附件先于 JSON 的清理和账号/项目删除。具体实现、失败记录与当前边界见[来源与文件读取验收](acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)，G03 仍未完成。
+这些 pin 不创建公开 artifact、下载 grant、账本或后继调用，也不承诺所有字节可用。该轮审计仍确认原始 `owners/...` 工作文件缺完整写入 intent、inventory 和清理 tombstone，不能凭 JSON/source metadata 声称其生命周期已解决；[来源与文件读取验收](acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)保留当时实现、失败和通过范围。后续生命周期追加实现见下节，G03 仍未完成。
+
+### 2026-10-26：原始工作文件的登记与清理（本地未发布）
+
+基于 `a35034b3` 追加 `0122_run_working_file_lifecycle.sql` 及 `0123_run_working_file_result_claims.sql`，后者不改写已经应用的 `0122`。`@bondbuddy/api/run-working-files` 将九个实际 writer 模块的原十处 Blob put 收敛到共同写入边界。`bb_run_working_objects` 按准确 object key 保存不可变 owner/project/run、filename、SHA-256、大小、MIME 与创建时间；`bb_run_working_sources` 保存多个不可变的准确 job/execution/input/producer/schema 声明，provider 声明还绑定真实 attempt。相同物理对象可有多个来源，收集器内先写后被替换的 report hash 也逐一保留地址。关系登记事务在 Blob IO 前提交；随后在 run/file 内容锁下重验范围、写字节、bounded 读回，再记录存储完成。未产生 result 的部分写入同样可以清理，不伪造 provider 成功或用量。
+
+`bb_run_working_object_state` 只保存单调存储/清理回执：`stored_at`、先于 Blob 删除持久化的 `purge_started_at` 及完成后的 `purged_at`。开始标记永久拒绝新写入/来源声明，读取也不能以残留字节越过它；Blob 或数据库回执失败按准确对象重试，不修改物理身份和旧来源。年龄清理沿现有 `BB_LOG_CONTENT_RETENTION_DAYS`（默认 180），仅终态 run 到期适用，并检查所有来源声明的时间；活跃/暂停工作继续保留。账号关闭沿既有规则，删除项目沿 `deletedProjectPurgeDays` 所承接的 storage 删除窗口，未增加产品留存时长。
+
+`purgeLogContent()` 在删除已知 collector 的父 result/prompt 前，核验尚存旧 JSON 的准确 execution/input、schema、路径及 hash 并补登记真实发现关系，完成到期工作文件清理；已有登记但无 result 的 provider 写入通过真实 attempt/prompt 关系纳入。发现不是历史预写入意图，缺失/损坏的已知父 JSON 不当作零附件。独立原始工作清理也覆盖本地 correction、project-file、QA、诚信文书/浏览器证据，以及最终 JSON 未选择的已登记对象。独立 retention CLI 与用户删除 lifecycle 共用此边界。
+
+复核修正旧父内容清理遗漏同 run 较新 legacy 共享 correction 引用的窗口：尚未标记的年龄候选先在 W/F 锁外核验该 run 全部已知 provider collector 结果，分别遵守关系→P/R→W/F；随后 mark 事务持 run `NO KEY UPDATE` 锁重比准确结果 ID 集合，变化即保守失败，未变才取 W/F 并重判到期。持久化标记重试和账号/项目删除不依赖年龄发现。`0123` 将 `COALESCE(discovered_result_id,'')` 纳入 source 唯一性，使预写 claim 和同 attempt 多个不可变结果候选各保留准确来源时间，不把冲突候选合并或改作成功结果。
+
+legacy 登记后只有 bounded raw 长度/hash 核验正确才设置 `stored_at=now()`，记录当下观察而非历史生产事实；raw 缺失/损坏仍保留准确地址和来源，`stored_at` 为空，实际 reader 拒绝。观察不会延长以对象/来源时间计算的留存、覆盖原回执或复活已清理对象，也不构成新的模型调用/用量。这样准确保留的 legacy 文件不会因首次登记产生空存储状态而被错误拒读。
+
+关系锁先于内容锁；需组合内容锁时保持 prompt_snapshot→provider_result→run_work_files→run_file_object 的相对顺序，路径可以省略无需取得的锁，多个文件按准确 key 排序。物理清理完成回执不新增 run/project/attempt FK，避免内容锁之后反向取得范围锁。内服 captured-file 与公开 readable-review 在 Blob 读取及校验期间保持内容锁，等待后重查账号/项目可见性、父 tombstone 和登记文件状态；有效 legacy 缺 registry 仍由准确旧来源校验，已开始/完成清理的登记即使有字节也拒绝。
+
+`storage-inventory.ts` 新增 `owners/` 和明确的原始文件布局，已登记存储为 `referenced`、未完成写入为 `intent_pending`，未知或清理中/完成后残留为 `unregistered_working_file`；诊断只显示计数、大小和 key hash，未知 owners 对象绝不走旧 snapshot 的自动删除路径。已丢失父内容且未登记的历史 raw 可能仍只有诊断；不可变数据库 editor snapshot 正文生命周期、provider JSON 自身的一般预写入意图窗口不由本次补齐。实现与证据见[工作文件生命周期记录](acceptance/desktop-ux-coverage-20261026/working-file-lifecycle/README.md)。隔离模板已分别应用 `0122`、`0123`，最终构建/类型/契约检查通过。工作文件专项 31 pass、worker 108 pass/12 skip；API 完整集合 264 pass/1 fail/30 skip 的唯一失败来自缺必要 raw Word 的合成测试 fixture，仅修正该测试后单组 9/9，完整集合未重跑，不合计成一次完整通过。五个 Windows sink 标题按名排除，不计入 30 skip、未验收。保留旧冻结和失败日志，两次冻结只该测试 src/编译 JS 变化；最终 before/after 2052 项与实际文件一致，数据库模板为空且无 clones，专用 PG 本轮按准确 PID 停止，详见 summary。本地未创建 PR、推送或部署，没有新材料采用、后继执行、追加计价或补料新版 Word 验收，G03 / 整体 UX goal 保持 active、未完成。

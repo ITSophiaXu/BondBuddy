@@ -100,7 +100,21 @@ M1 新历史/参考原稿当前可在补料中填写准确原稿声明，复用�
 
 实际文件来源包括 provider-backed M1/M3/M4、M3 本地 `correction_result`，以及项目文件操作的本地结果。最后一类目前没有开放 HTTP 补料准备，不能以底层文件格式识别宣称其已支持补料。旧版纯本地 Word writer 的 JSON 可能只有 plan/report，只有已提升 artifact 或准确 pair checkpoint 才能证明存在对应 Word，不能推造文件。
 
-审计还发现 `owners/...` 原始工作文件没有完整 inventory/intent/tombstone：现行内容清理删 provider JSON，项目清理删已提升 artifact 的复制品，均不足以证明所有原始工作文件已清除。后续必须在写 Blob 前登记准确对象意图，处理写文件成功而结果保存失败的孤儿窗口；附件清理完成后再清理其 JSON，保留暂停中工作并遵守账号/项目删除。当前精确读取没有补齐这一生命周期，也没有将文件交给后继生成执行。
+来源与文件读取专项曾确认 `owners/...` 原始工作文件没有完整 inventory/intent/tombstone：当时内容清理删 provider JSON，项目清理删已提升 artifact 的复制品，均不足以证明所有原始工作文件已清除。该轮记录保留原来的缺口和验证范围；后续生命周期增量见下节，不能将后来的实现倒记为此前已经通过。
+
+### 后续独立增量：原始工作文件生命周期
+
+基于 `a35034b3` 的本地增量追加 `0122_run_working_file_lifecycle.sql` 与 `0123_run_working_file_result_claims.sql`，不改写已经应用的 `0122`。九个实际 writer 模块的原十处 Blob put 接到共同 writer：先提交准确物理对象及 execution/input/producer 来源声明，再取得 run/file 内容锁，重新核验后写入、读回并记录 `stored_at`。物理对象和多个准确来源分表保存；同一文件可由不同 producer 或本地 correction 共同引用，一次收集器内曾写入但后来被替换的 report hash 也保留清理地址，不依赖最终 JSON 是否选中它。
+
+清理沿既有日志内容窗口，默认 180 天，仅对终态工作执行年龄清理；活跃及人工暂停任务继续保留。账号关闭沿既有关闭规则，项目删除沿现有 storage 删除窗口，不新增产品时长。清理先持久化单调 `purge_started_at`，使迟到写入和读取立即失去权限，再删除准确对象并记录 `purged_at`；删除或回执失败可从同一地址重试。prompt/provider 父内容删除前须登记仍可准确核验的已知 legacy 文件并完成到期附件清理；已登记 raw 文件但尚无 result 的失败窗口也会通过准确来源关联处理。
+
+复核发现旧父内容清理可能漏掉同 run 较新 legacy 结果对同一 correction 文件的引用；原 source 唯一键也可能合并同一 attempt 的多个不可变结果，丢失较新的准确留存时间。现行年龄清理在 W/F 锁外先逐个核验该 run 全部已知 collector 结果，再持 run 行锁核对准确 result ID 集合未变，随后取得 W/F 并重判到期；集合变化则保守失败，下一轮重新发现。`0123` 把准确 `discovered_result_id` 纳入来源唯一性，预写 claim 与每个真实结果候选各保留原时间，不由清理选择成功结果或消解调用冲突。已持久化的清理标记重试及账号/项目删除不依赖这次年龄发现。
+
+legacy 登记后只有准确 raw 字节经 bounded 长度/hash 核验才记录当下的 `stored_at` 观察，避免新登记反而阻断仍应保留的有效旧文件；缺失/损坏 raw 保留清理地址与来源、`stored_at` 仍为空，实际 reader 继续拒绝。观察不是历史写入意图或历史存储时间，也不重置按对象/来源时间计算的留存窗口；不能复活已经开始清理的文件。
+
+组合内容锁遵守 prompt/result → run 工作 → 准确文件的相对顺序（同时需要两个父锁时为 prompt→result），关系范围锁在内容锁前取得。内服 captured-file 与公开 readable-report 均在等待后重验归属和父/文件清理状态，已清理登记即使仍有残留字节也拒绝；有效旧来源缺 registry 时不伪造历史写入事实。存储扫描新增 `owners/`，已登记存储、未完成写入、未知/清理中/已清理残留分开报告，未知文件绝不按目录前缀自动删除。
+
+详细范围、复现与所选轮次见[工作文件生命周期验收](../acceptance/desktop-ux-coverage-20261026/working-file-lifecycle/README.md)。`0122`、`0123` 已分别实际应用，最终构建/类型/契约检查通过。工作文件专项 31 pass、worker 108 pass/12 skip；API 完整集合为 264 pass、1 fail、30 skip，唯一失败是合成 readable-retention fixture 缺必要 raw Word，补齐该测试后准确组 9/9。完整 API 未重跑，不相加冒充一次全通过；五个 Windows sink 标题是额外按名排除，不计入 30 skip，也不构成验收。两次冻结间自动核对仅该测试 src/编译 JS 变化，生产源码无变动；最终 before/after 2052 项一致，数据库空模板无测试 clones，本轮专用 PostgreSQL 已按准确 PID 停止，证据均列入专项 summary。本次没有接通后继采用/生成、追加计价或新版 Word。历史上父内容已先清理且未登记的 raw 文件仍可能只能诊断；不可变数据库 editor 正文生命周期和 provider JSON 自身的一般写入意图窗口也不在本次修复范围。G03 / 完整 UX goal 继续 active、未完成。
 
 ## 需要确定的一项产品规则：补料重做费用
 

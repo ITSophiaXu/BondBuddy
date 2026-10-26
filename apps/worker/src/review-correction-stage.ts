@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve,join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
+import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { reviewEditor } from '@bondbuddy/api/review-editor';
 import type { StageContext, StageOutcome } from './run-pipeline.js';
@@ -12,7 +13,8 @@ import type { ReviewFileInput,ReviewFileResult } from './review-file-stage.js';
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile),MAX=100*1024*1024;
 /** Same queue and input gate, deterministic file conversion only. Never invokes an adapter. */
-export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,markdown?:Buffer):Promise<ReviewFileResult>{
+export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,markdown?:Buffer,providerAttemptId?:string,
+  writer:typeof writeRunWorkingFile=writeRunWorkingFile):Promise<ReviewFileResult>{
   const pin=input.manifest.review.input.source_material_ref!,source=input.materials.find(m=>m.pin.material_id===pin.material_id&&m.pin.material_version===pin.material_version&&m.pin.sha256===pin.sha256);
   if(!source)throw Error('INPUT_REVISION_CONFLICT');
   const original=await ctx.blobs.getIfExistsBounded(source.object_key,MAX);
@@ -37,7 +39,9 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
     for(const name of ['revision.docx','clean.docx','baseline.docx','report.docx','report.md','editor.json']){
       const bytes=await readFile(join(directory,name));if(bytes.length>MAX)throw Error('REVIEW_OUTPUT_UNSAFE');
       const sha256=digest(bytes),key=`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/review-files/correction/${sha256}/${name}`;
-      await ctx.blobs.put(key,bytes,name.endsWith('.docx')?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':name.endsWith('.json')?'application/json':'text/markdown');
+      await writer({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+        source:providerAttemptId===undefined?{kind:'local_correction'}:{kind:'provider',attemptId:providerAttemptId,resultSchemaVersion:'codex-review-file-v1'},
+        name,key,bytes,mediaType:name.endsWith('.docx')?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':name.endsWith('.json')?'application/json':'text/markdown'});
       const check=await ctx.blobs.getIfExistsBounded(key,MAX);if(!check||digest(check)!==sha256)throw Error('REVIEW_OUTPUT_STORE_FAILED');
       result.files[name]={key,sha256,byte_size:bytes.length};
     }
@@ -48,8 +52,8 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
   }finally{await rm(directory,{recursive:true,force:true});}
 }
 
-export async function correctionExport(ctx:StageContext,input:ReviewFileInput):Promise<StageOutcome>{
+export async function correctionExport(ctx:StageContext,input:ReviewFileInput,writer:typeof writeRunWorkingFile=writeRunWorkingFile):Promise<StageOutcome>{
   const saved=ctx.checkpoint.model_generation?.correction_result as ReviewFileResult|undefined;
-  const result=saved??await correctionFiles(ctx,input);
+  const result=saved??await correctionFiles(ctx,input,undefined,undefined,writer);
   return {kind:'done',checkpoint:{correction_result:result},value:result};
 }

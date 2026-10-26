@@ -1,0 +1,46 @@
+▶ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result
+  ✔ put (6183.5113ms)
+  ✔ readback (6051.5715ms)
+✔ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result (12237.5184ms)
+✔ working-file authority rejects wrong source, execution, owner, path and local lease before put (11180.8348ms)
+✔ shared correction objects keep both real attempt claims and every report hash is inventoried (5185.6586ms)
+✔ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (9292.8575ms)
+✔ a newer exact attempt claim extends retention of a shared correction physical object (5516.3888ms)
+▶ old paused work is retained, terminal work is purged, and account/project deletion uses its own window
+  ✔ paused and terminal (6787.018ms)
+  ✔ closed (5149.0438ms)
+  ✔ deleted (5084.4956ms)
+✔ old paused work is retained, terminal work is purged, and account/project deletion uses its own window (17022.4283ms)
+▶ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes
+  ✔ delete (5322.5443ms)
+  ✔ receipt (5119.1452ms)
+✔ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes (10442.6999ms)
+▶ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed
+  ✔ delete (5478.1589ms)
+  ✔ unknown-envelope (5571.3079ms)
+  ✔ wrong-hash (6863.3284ms)
+✔ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed (17914.0826ms)
+▶ legacy shared correction files retain every newer exact result claim across prompts, attempts and conflicting candidates
+  ✔ separate-attempt-and-prompt: working-file (7088.4272ms)
+  ✔ separate-attempt-and-prompt: parent-content (6206.2054ms)
+  ✔ same-attempt-candidates: working-file (5727.403ms)
+  ✔ same-attempt-candidates: parent-content (5831.7807ms)
+✔ legacy shared correction files retain every newer exact result claim across prompts, attempts and conflicting candidates (24855.4474ms)
+▶ legacy observation records only verified bytes and keeps missing or corrupt raw addresses unavailable for cleanup
+  ✔ missing (6355.2596ms)
+  ✔ corrupt (5611.5647ms)
+✔ legacy observation records only verified bytes and keeps missing or corrupt raw addresses unavailable for cleanup (11967.8724ms)
+✔ age purge fails closed when a different recent known result has corrupt provenance (5110.696ms)
+▶ real PG writer/purger serialization preserves intent then denies writes after purge starts
+  ✔ writer (5467.4897ms)
+  ✔ purger (6323.511ms)
+✔ real PG writer/purger serialization preserves intent then denies writes after purge starts (11791.9893ms)
+✔ captured-file read holds its parent and file locks through readback while real PG purge waits (6113.3115ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 200311.8824

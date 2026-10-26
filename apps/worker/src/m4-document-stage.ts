@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { digest } from '@bondbuddy/api/data';
+import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadM4WorkerInput } from './m4-input.js';
@@ -27,7 +28,9 @@ export function validM4DocumentResult(value: unknown, ctx: StageContext): value 
       && v.files['document.docx']!.sha256!==v.files['preparation-note.docx']!.sha256);
 }
 
-export function m4DocumentStage(options: {model?: typeof codexModelStage; load?: typeof loadM4WorkerInput; config?: ReturnType<typeof loadCodexAdapterConfig>} = {}): RunStage {
+export function m4DocumentStage(options: {model?: typeof codexModelStage; load?: typeof loadM4WorkerInput; config?: ReturnType<typeof loadCodexAdapterConfig>;
+  /** Internal test seam; production always uses the durable working-file writer. */
+  writer?: typeof writeRunWorkingFile} = {}): RunStage {
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
@@ -50,7 +53,8 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         let bytes: Buffer;
         try { bytes = await checkedM4File(join(cwd, 'output'), name); } catch { continue; }
         const sha256 = digest(bytes), key = `${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-        await ctx.blobs.put(key, bytes, DOCX);
+        await (options.writer??writeRunWorkingFile)({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+          source:{kind:'provider',attemptId:intent.call_id,resultSchemaVersion:'codex-m4-document-v1'},name,key,bytes,mediaType:DOCX});
         const stored = await ctx.blobs.getIfExistsBounded(key, M4_FILE_MAX);
         if (!stored || digest(stored) !== sha256) throw Error('M4_OUTPUT_STORE_FAILED');
         files[name] = {key, sha256, byte_size: bytes.length};

@@ -67,8 +67,14 @@ function paths(scope: RunFileReferenceScope, schema: FileSchema, name: string, s
     keys.push(`${base}review-files/correction/${sha256}/${name}`);
   return keys;
 }
-function limit(schema: FileSchema, name: string): number {
+function limit(scope: RunFileReferenceScope, schema: FileSchema, name: string, key: string, sha256: string): number {
   if (/\.(docx|pdf)$/.test(name)) return WORD_MAX;
+  // The deterministic correction collector retains all six outputs up to
+  // 100 MiB. Its report/editor bound belongs only to the exact correction key;
+  // an explicitly enabled provider can still retain ordinary 4 MiB companions.
+  if (schema === 'codex-review-file-v1' && ['report.md', 'editor.json'].includes(name)
+    && (scope.source === 'local_correction' || scope.source === 'provider' && scope.reviewCorrection === true)
+    && key === `owners/${scope.owner}/projects/${scope.projectId}/runs/${scope.runId}/review-files/correction/${sha256}/${name}`) return WORD_MAX;
   return schema === 'codex-file-word-v1' ? DELIVERY_MAX : schema === 'review-revision-cli-v1' ? REVISION_JSON_MAX : REVIEW_TEXT_MAX;
 }
 function mediaType(name: string): string {
@@ -83,7 +89,8 @@ export function validateRunFileReference(input: {
   exact(input.value, ['key', 'sha256', 'byte_size']);
   const file = input.value;
   if (typeof input.name !== 'string' || !hash(file.sha256) || typeof file.key !== 'string'
-    || !Number.isSafeInteger(file.byte_size) || (file.byte_size as number) < 1 || (file.byte_size as number) > limit(schema, input.name)
+    || !Number.isSafeInteger(file.byte_size) || (file.byte_size as number) < 1
+    || (file.byte_size as number) > limit(input.scope, schema, input.name, file.key, file.sha256)
     || !paths(input.scope, schema, input.name, file.sha256).includes(file.key)) invalid();
   return { name: input.name, key: file.key as string, sha256: file.sha256 as string, byteSize: file.byte_size as number, mediaType: mediaType(input.name) };
 }

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
+import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { emptyUpdateDetails, type ReviewFinding, type ReviewRevisionPin } from '@bondbuddy/contracts';
 import type { UnifiedInput } from './unified-input.js';
@@ -51,5 +52,7 @@ export async function revisionCliFixture() {
   const proposal = { version: 'review-revision-cli-v1', input_hash: ctx.run.input_hash, reviewed: ['r0'],
     edits: [{ record_id: 'r0', after: 'Net assets 120.', evidence: ['audit/r0'], finding_ids: ['F-1'] }], additions: [],
     handling: [{ finding_id: 'F-1', status: 'modified', reason: 'Corrected from the accepted evidence.', evidence: ['audit/r0'] }], summary: ['Synthetic revision.'] };
-  return { root, input, pin, ctx, blobs, proposal };
+  const writes:Parameters<typeof writeRunWorkingFile>[0][]=[];
+  const writer:typeof writeRunWorkingFile=async value=>{writes.push({...value,bytes:Buffer.from(value.bytes)});await value.blobs.put(value.key,value.bytes,value.mediaType);};
+  return { root, input, pin, ctx, blobs, proposal, writes, writer };
 }

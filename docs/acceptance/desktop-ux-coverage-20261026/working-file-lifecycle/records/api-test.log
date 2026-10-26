@@ -1,0 +1,594 @@
+✔ data policy is derived from the purge configuration; unset windows are null, not zero (4.4625ms)
+✔ GET /api/v1/data-policy is public and renders the server configuration (2611.0795ms)
+✔ PostgreSQL deletion receipts purge v2 page and checkpoint bytes without removing audit rows (317.8471ms)
+﹣ PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and derived content idempotently (0.318ms) # SKIP
+▶ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions
+  ✔ the real intent INSERT atomically binds V1, runtime and completed-result reuse retain their exact source (1069.6797ms)
+  ✔ new attempts reject wrong revision with identical hash, wrong hash, missing input metadata and non-model prompts (605.6539ms)
+  ✔ missing or corrupted binding blocks real latest, reuse, runtime and observation paths without writes or Blob reads (302.8913ms)
+  ✔ historical unprompted attempts retain identity but never gain an invented provider input binding (44.8677ms)
+✔ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions (2026.2838ms)
+✔ model work binding returns the exact immutable input and prompt without selecting latest (2.4569ms)
+✔ missing, duplicate, foreign, altered input and incomplete prompt bindings fail closed (2.4222ms)
+✔ actual provider lookups never turn an existing unbound prompted attempt into a new call (1.2291ms)
+✔ an asynchronous false verdict cannot persist a private result (7.9728ms)
+✔ private persistence waits for an asynchronous verdict and binds checked bytes (1.6353ms)
+✔ a rejected asynchronous validator never stores a result (1.0624ms)
+✔ synchronous validators remain compatible and malformed JSON is rejected first (0.7161ms)
+▶ runtime evidence shares run -> job lock order with renewal and cancellation
+  ✔ renewal keeps the job lock available while runtime waits for the run (615.9722ms)
+  ✔ cancellation wins before evidence locks and prevents a late runtime insert (59.8591ms)
+  ✔ owner, project, token and expired lease remain enforced (37.0394ms)
+  ✔ every independent provider boundary rejects a different execution version or input under the same live token (94.3009ms)
+✔ runtime evidence shares run -> job lock order with renewal and cancellation (811.0365ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (6201.8197ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.3471ms) # SKIP
+✔ readable report keeps valid legacy files readable and accepts exact live registry metadata (632.5159ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✔ prompt_snapshot (750.4577ms)
+  ✔ provider_result (791.1955ms)
+✔ readable report rechecks parent tombstones after waiting, before any private Blob read (1542.8452ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✔ purged_file (799.1537ms)
+  ✔ closed_account (781.6795ms)
+  ✔ deleted_project (750.3223ms)
+✔ readable report rechecks file state and account/project visibility after the file lock wait (2332.6909ms)
+✔ real working-file purge waits for readable report validation and denies the next raw read (867.5172ms)
+✔ readable view loads the exact private Markdown, no prompts or final chatter (4.7273ms)
+✔ cross-run references, mismatched input/hash, unavailable or invalid UTF8 safely disable only the optional view (1.1618ms)
+✔ purged parents and visibility lost while waiting for the file deny further private reads (0.764ms)
+✔ registered unavailable, purging, purged or mismatched files deny reads even while their bytes remain (2.1814ms)
+✔ execution input reader returns exact immutable input and scoped business snapshots without changing origin (3.5176ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (2.0155ms)
+✔ business snapshots may be absent but never come from a different run, owner or project (1.3663ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (2908.5477ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (139.1606ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (661.8455ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (318.0296ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (4031.0932ms)
+✔ real collector envelopes extract exact provider, local correction and project-file references (5.5442ms)
+✔ explicit review correction provider output can mix its exact attempt and local correction files (1.1616ms)
+✔ single-reference validator supports storing before an output envelope exists (0.4871ms)
+✔ a review provider attempt named correction cannot collide with the local correction namespace (0.5589ms)
+✔ foreign scope, different attempt and path mutations are rejected by complete key equality (1.186ms)
+✔ all schemas reject unknown files, extra ref/envelope fields and invalid ref structures (1.9526ms)
+✔ input binding, schema, provenance and hash validation fail closed even for empty error results (2.2434ms)
+✔ file-specific size limits accept boundaries and reject nonpositive, fractional and oversized bytes (1.9286ms)
+✔ correction report and editor use the actual collector maximum only at their exact authorized correction keys (1.457ms)
+✔ partial errors inventory every valid retained file and never excuse malformed optional files (1.2969ms)
+✔ revision no-change JSON output and completion metadata remain strict (1.2975ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (219.761ms)
+  ✔ owner (222.0209ms)
+  ✔ project (198.3121ms)
+  ✔ input revision (211.6598ms)
+  ✔ input hash (225.6705ms)
+  ✔ execution request id (225.3868ms)
+  ✔ request hash (225.2636ms)
+  ✔ valid successor input pair (227.6197ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (3573.2361ms)
+✔ real review-result update can prepare supplements and resume its original input (2241.3267ms)
+▶ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them
+  ✔ m1 (1741.4031ms)
+  ✔ m3 (206.0273ms)
+  ✔ m4 (267.7567ms)
+  ✔ new source declarations and bound M4 source replacements remain explicit (276.219ms)
+✔ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them (2744.8643ms)
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (69.0369ms)
+  ✔ old request receipt survives a later save and explicit resume (120.57ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1568.7189ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (132.7506ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (400.2558ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1730.1881ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (612.7199ms)
+  ✔ wrong hash (110.0082ms)
+  ✔ wrong owner (16.4702ms)
+  ✔ wrong project (15.4487ms)
+  ✔ duplicate additions (16.0039ms)
+  ✔ unknown replacement (17.7566ms)
+  ✔ duplicate replacements (18.21ms)
+  ✔ different role (16.0455ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (1143.9565ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (807.0266ms)
+  ✔ saving (55.199ms)
+  ✔ paused_lease (52.89ms)
+  ✔ automatic_pause (67.8381ms)
+  ✔ pending_provider (104.2733ms)
+  ✔ completed_unknown (69.7153ms)
+  ✔ failed_unknown (58.4198ms)
+  ✔ terminal (55.1914ms)
+  ✔ archived (47.7913ms)
+  ✔ unsupported (49.5248ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (119.529ms)
+  ✔ deleted project is owner-safe 404 (15.011ms)
+  ✔ test-channel metadata obeys the deployment read gate (19.6736ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1719.4086ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (904.708ms)
+  ✔ m3 (85.288ms)
+  ✔ m4 (85.2495ms)
+  ✔ inconsistent M3 version is unavailable (42.6847ms)
+  ✔ inconsistent M3 operation is unavailable (42.7943ms)
+  ✔ inconsistent M3 origin is unavailable (61.6986ms)
+  ✔ inconsistent M3 missing_review is unavailable (44.028ms)
+  ✔ inconsistent review-result update source_run is unavailable (43.213ms)
+  ✔ inconsistent review-result update source_pin is unavailable (49.9285ms)
+  ✔ inconsistent review-result update materials is unavailable (41.4282ms)
+  ✔ inconsistent review-result update requirements is unavailable (44.1441ms)
+  ✔ inconsistent review-result update operation is unavailable (43.7339ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (98.1841ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1780.9634ms)
+✔ source-only supplement edits preserve exact idempotent receipts and require a fresh revision and CAS (1309.2925ms)
+▶ HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit
+  ✔ wrong material (19.8177ms)
+  ✔ wrong revision (16.8069ms)
+  ✔ wrong content (18.6838ms)
+  ✔ incompatible market (16.947ms)
+  ✔ m3 cannot accept M1 source authority (52.3184ms)
+  ✔ m4 cannot accept M1 source authority (124.2918ms)
+✔ HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit (1566.1331ms)
+✔ HTTP capture exposes only counts while internal pins bind the exact provider output and read original private bytes (2143.1738ms)
+▶ captured private file authority rejects changed scopes, sources and every modified pin field
+  ✔ wrong owner (147.05ms)
+  ✔ wrong project (91.9985ms)
+  ✔ wrong run (86.083ms)
+  ✔ wrong revision (83.4911ms)
+  ✔ wrong source result (85.4643ms)
+  ✔ wrong source schema (97.0507ms)
+  ✔ wrong unrelated checkpoint (395.0784ms)
+  ✔ modified pin version (57.5782ms)
+  ✔ modified pin owner (55.8313ms)
+  ✔ modified pin projectId (57.3405ms)
+  ✔ modified pin runId (54.9335ms)
+  ✔ modified pin revision (54.6894ms)
+  ✔ modified pin executionVersion (52.4857ms)
+  ✔ modified pin inputRevision (56.937ms)
+  ✔ modified pin inputHash (53.125ms)
+  ✔ modified pin checkpointHash (49.8622ms)
+  ✔ modified pin sourceHash (57.1101ms)
+  ✔ modified pin name (49.4575ms)
+  ✔ modified pin hash (62.5104ms)
+  ✔ modified pin size (57.3974ms)
+  ✔ modified pin media (54.8069ms)
+  ✔ modified pin key (54.0195ms)
+  ✔ modified pin attempt path (54.2692ms)
+  ✔ modified pin source binding (51.2871ms)
+✔ captured private file authority rejects changed scopes, sources and every modified pin field (3681.8988ms)
+▶ missing or damaged nested files do not block saving materials and cannot cause retries or mutations
+  ✔ missing nested Blob (106.2301ms)
+  ✔ same-size hash corruption (56.6209ms)
+  ✔ oversized nested Blob (56.3228ms)
+  ✔ short nested Blob (51.2219ms)
+  ✔ provider_result tombstone denies retained nested bytes (60.694ms)
+  ✔ prompt_snapshot tombstone denies retained nested bytes (251.1142ms)
+✔ missing or damaged nested files do not block saving materials and cannot cause retries or mutations (2085.4016ms)
+▶ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version
+  ✔ wrong attempt directory (1180.8205ms)
+  ✔ wrong nested version (209.9285ms)
+✔ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version (1594.5688ms)
+✔ a real paused local correction captures six exact checkpoint files with zero provider results and no charges (1424.395ms)
+▶ checkpoint correction bytes require the exact review execution, export-only source and frozen source material
+  ✔ missing_execution (965.0712ms)
+  ✔ execution_version (158.558ms)
+  ✔ execution_operation (130.0851ms)
+  ✔ snapshot_input (130.717ms)
+  ✔ snapshot_origin (134.7432ms)
+  ✔ missing_export_only (256.9135ms)
+  ✔ false_export_only (158.9641ms)
+  ✔ snapshot_source_run (172.5248ms)
+  ✔ missing_export (171.0839ms)
+  ✔ invalid_export_hash (161.4947ms)
+  ✔ self_source_run (171.4402ms)
+  ✔ source_not_in_manifest (178.2094ms)
+✔ checkpoint correction bytes require the exact review execution, export-only source and frozen source material (3003.7776ms)
+✔ ordinary authoring supplements preserve every frozen context and return independent candidate bytes (5.5266ms)
+✔ no changes do not produce an adoptable input; unavailable bytes do not produce a candidate hash (0.6024ms)
+✔ new historical/reference bytes never inherit a declaration from another version or current project data (3.1462ms)
+✔ explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate (13.8954ms)
+✔ complete source information still requires an explicit choice for every changed source bound to an old output (2.0786ms)
+✔ same-content different source revisions require their own exact declaration and incomplete fields remain saveable information gaps (1.6627ms)
+✔ new source declarations without an old output prepare normally and do not accept a meaningless discard flag (1.1259ms)
+✔ source metadata rejects wrong exact pins, ordinary evidence roles and non-M1 contexts without changing input (1.974ms)
+✔ M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot (0.9669ms)
+✔ M3 unchanged evidence links preserve the exact original report, finding and material identity (0.861ms)
+✔ M3 replacing linked source or evidence requires explicit new evidence mapping without rewriting old links (1.1113ms)
+✔ M3 source replacements preserve the DOCX/PDF boundary while ordinary text evidence stays usable (1.3638ms)
+✔ M3 correction exports retain the original editor decisions and cannot be converted into new material processing (0.6537ms)
+✔ accepted M3 origin, finding revisions and report follow-ups retain their original authority and cannot be rewritten (1.6406ms)
+✔ M4 preserves cross-project source, duplicated source/template pins, edit base and all business context (1.577ms)
+✔ material limits and malformed shared-schema inputs fail without partially changing any input (2.3978ms)
+✔ M4 source/template-only pins remain outside evidence, while its evidence limit is enforced independently (1.76ms)
+✔ legacy M3 origin may remain absent and malformed or mismatched review snapshots cannot be guessed (0.9688ms)
+✔ a result material list cannot silently inject, omit or retarget materials outside the saved changes (0.5748ms)
+▶ captured-result locks cover the async validator while real prompt and provider-result retention wait
+  ✔ prompt_snapshot (1396.9771ms)
+  ✔ provider_result (1248.226ms)
+✔ captured-result locks cover the async validator while real prompt and provider-result retention wait (2646.9362ms)
+✔ a real purge holding the prompt lock makes the captured-result reader wait, then reject without reading result bytes (1100.3789ms)
+✔ safe HTTP supplement capture freezes exact work independently for each receipt and replays without charges (2358.6071ms)
+▶ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history
+  ✔ missing completed result (113.3044ms)
+  ✔ duplicate result (52.5371ms)
+  ✔ wrong result id (53.2819ms)
+  ✔ wrong result hash (51.3125ms)
+  ✔ wrong attempt (47.9076ms)
+  ✔ wrong schema (50.9588ms)
+  ✔ unmatched extra reference (45.3101ms)
+  ✔ malformed stages (46.6203ms)
+✔ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history (1865.254ms)
+▶ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes
+  ✔ an async exact schema validator reads the original value (66.7907ms)
+  ✔ a schema rejection cannot trigger another call (35.6468ms)
+  ✔ a different expected schema never reaches Blob reads (34.744ms)
+  ✔ foreign owner and uncaptured result references never reach Blob reads (118.6002ms)
+  ✔ same-size corruption, oversized bytes and missing Blob remain read-only failures (154.763ms)
+  ✔ provider_result purge receipt denies existing bytes (38.0838ms)
+  ✔ prompt_snapshot purge receipt denies existing bytes (36.3962ms)
+✔ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes (1934.3154ms)
+✔ legacy supplement receipts report not_captured and grant no access to later durable work (1364.1268ms)
+▶ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result
+  ✖ put (371.7677ms)
+  ✖ readback (343.5843ms)
+✖ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result (717.8882ms)
+✖ working-file authority rejects wrong source, execution, owner, path and local lease before put (329.2652ms)
+✖ shared correction objects keep both real attempt claims and every report hash is inventoried (342.6817ms)
+✖ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (351.3644ms)
+✖ a newer exact attempt claim extends retention of a shared correction physical object (338.3989ms)
+▶ old paused work is retained, terminal work is purged, and account/project deletion uses its own window
+  ✖ paused and terminal (352.7753ms)
+  ✖ closed (333.9888ms)
+  ✖ deleted (341.8681ms)
+✖ old paused work is retained, terminal work is purged, and account/project deletion uses its own window (1030.243ms)
+▶ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes
+  ✖ delete (342.9222ms)
+  ✖ receipt (333.685ms)
+✖ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes (677.5577ms)
+▶ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed
+  ✖ delete (325.6129ms)
+  ✖ unknown-envelope (334.3819ms)
+  ✖ wrong-hash (340.1809ms)
+✖ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed (1001.6182ms)
+▶ real PG writer/purger serialization preserves intent then denies writes after purge starts
+  ✖ writer (359.6113ms)
+  ✖ purger (328.6603ms)
+✖ real PG writer/purger serialization preserves intent then denies writes after purge starts (689.4097ms)
+✖ captured-file read holds its exact file lock through readback while real PG purge waits (348.0429ms)
+✔ inventory keys accept only known private object layouts (3.6474ms)
+✔ owners inventory reports registered, pending and unregistered working bytes without enabling their deletion (3.6074ms)
+﹣ PostgreSQL/Azurite inventory is read-only by default and deletes only old unreferenced snapshots (0.4717ms) # SKIP
+✔ #79 scrubber removes secrets, captcha codes and cookies (6.2358ms)
+✔ #79 normalized loose keys never leave synthetic values in diagnostics (3.2904ms)
+✔ #79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject (3.1949ms)
+﹣ #79 entire prose values and nested fields are safe in real Blob readback (0.176ms) # SKIP
+﹣ #79 ambiguous diagnostic rejection leaves structured run error evidence writable (0.1225ms) # SKIP
+✔ #79 fixed-seed decoded field matrix does not retain synthetic values (202.306ms)
+✔ #79 scrubber handles nested, embedded and escaped JSON without losing surrounding text (1.0137ms)
+✔ #79 escaped JSON with quoted prose and Chinese business placeholders stays usable (0.5712ms)
+✔ #79 scrubber bounds JSON depth, body length and malformed brace work (3087.6722ms)
+✔ #79 large legal JSON and prompt-shaped text retain the full body (594.1452ms)
+﹣ #79 structured secrets are absent from the private diagnostic Blob readback (0.1349ms) # SKIP
+﹣ #79 fixed-seed field matrix stays safe through real Blob and reference writes (0.0833ms) # SKIP
+﹣ #79 escaped quotes and business placeholders survive private Blob readback (0.0603ms) # SKIP
+﹣ #79 full-size synthetic model diagnostics survive private Blob readback (0.0651ms) # SKIP
+﹣ #79 rejected diagnostics never call Blob put or register a partial snapshot (0.0658ms) # SKIP
+✔ #79 wide JSON arrays stay bounded in 128/256 MiB child heaps (12940.0824ms)
+ℹ 128 MiB heap / 4 MiB wide input: 766 CPU ms, RSS +22 MiB
+ℹ 128 MiB heap / 9 MiB wide input: 1640 CPU ms, RSS +53 MiB
+ℹ 256 MiB heap / 4 MiB wide input: 813 CPU ms, RSS +21 MiB
+ℹ 256 MiB heap / 9 MiB wide input: 1688 CPU ms, RSS +54 MiB
+✔ #79 prose rules scale linearly on long ordinary whitespace in bounded child heaps (20482.1588ms)
+ℹ 128 MiB heap / 2000 spaces: 0.0 CPU ms, peak RSS 93 MiB
+ℹ 128 MiB heap / 4000 spaces: 0.0 CPU ms, peak RSS 91 MiB
+ℹ 128 MiB heap / 8000 spaces: 15.0 CPU ms, peak RSS 90 MiB
+ℹ 128 MiB heap / 16000 spaces: 0.0 CPU ms, peak RSS 93 MiB
+ℹ 128 MiB heap / 32000 spaces: 0.0 CPU ms, peak RSS 92 MiB
+ℹ 256 MiB heap / 2000 spaces: 0.0 CPU ms, peak RSS 93 MiB
+ℹ 256 MiB heap / 4000 spaces: 16.0 CPU ms, peak RSS 93 MiB
+ℹ 256 MiB heap / 8000 spaces: 0.0 CPU ms, peak RSS 92 MiB
+ℹ 256 MiB heap / 16000 spaces: 0.0 CPU ms, peak RSS 93 MiB
+ℹ 256 MiB heap / 32000 spaces: 0.0 CPU ms, peak RSS 92 MiB
+✔ #79 repeated non-delimiting escaped quotes have linear bounded work (5140.0213ms)
+ℹ 128 MiB heap / 4 MiB quote runs: 502 ms, peak RSS 115 MiB
+ℹ 256 MiB heap / 4 MiB quote runs: 464 ms, peak RSS 114 MiB
+✔ #79 dense short strings and long escaped quotes share bounded scan work (12345.1519ms)
+ℹ 128 MiB heap / dense 3600001 B: 1998 ms, peak RSS 119 MiB
+ℹ 128 MiB heap / long_key 9437222 B: 213 ms, peak RSS 119 MiB
+ℹ 256 MiB heap / dense 3600001 B: 1924 ms, peak RSS 119 MiB
+ℹ 256 MiB heap / long_key 9437222 B: 216 ms, peak RSS 119 MiB
+✔ #79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB (4294.9984ms)
+ℹ 128 MiB heap / 9 MiB dense sensitive input: 178 ms, peak RSS 138 MiB
+ℹ 256 MiB heap / 9 MiB dense sensitive input: 167 ms, peak RSS 138 MiB
+✔ #79 densely redacted valid 10 MiB arrays fit bounded child heaps (5072.1771ms)
+ℹ 128 MiB heap / 10485749 B dense valid input: 474 ms, peak RSS 224 MiB
+ℹ 256 MiB heap / 10485749 B dense valid input: 526 ms, peak RSS 222 MiB
+✔ #79 dense ordinary colon strings stay bounded when every value is scanned (7194.3625ms)
+ℹ 128 MiB heap / 10485751 B dense colon input: 1560 ms, peak RSS 134 MiB
+ℹ 256 MiB heap / 10485751 B dense colon input: 1542 ms, peak RSS 166 MiB
+✔ #79 near-limit multibyte ordinary JSON remains complete in bounded heaps (7505.61ms)
+ℹ 128 MiB heap / 10485689 B multibyte: 1138 ms (5 MiB baseline 609 ms), peak RSS 226 MiB
+ℹ 256 MiB heap / 10485689 B multibyte: 1148 ms (5 MiB baseline 606 ms), peak RSS 226 MiB
+✖ #79 NDJSON sink cannot be split by log injection (8.6141ms)
+✖ #79 file sink repeat and concurrent processes retain one durable line per key (7.8455ms)
+✔ #79 file sink fails closed on torn/corrupt lines and unsafe permissions (25.5991ms)
+✖ #79 replay of a complete pre-existing line still acknowledges only after file sync (7.4903ms)
+✖ #79 size cap fails closed for new keys but permits replay of a full segment (4.8903ms)
+✖ #79 replay also detects a key in a legacy rotated segment (5.227ms)
+﹣ #79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections (0.3445ms) # SKIP
+﹣ #79 forwarding drills: sink outage, process crash and replay never lose or double count (0.0643ms) # SKIP
+﹣ #79 production file sink survives two independent processes with crash before PG ack (0.0482ms) # SKIP
+✔ #79 a missing source event blocks the whole claimed batch before sink or PG ACK (279.891ms)
+✔ #79 malformed outbox envelope or source event blocks the entire PG batch (351.3271ms)
+✔ #79 a conflicting existing receipt cannot ACK a different outbox event (269.4234ms)
+✔ #79 PG event lookup outage cannot call the sink or acknowledge the outbox (265.7538ms)
+﹣ #79 evidence gate: DB transaction failure pauses new external calls and raises an alert (0.2288ms) # SKIP
+﹣ #79 retention purge and user-deletion reclamation keep accounting metadata (0.0794ms) # SKIP
+﹣ #79 orphan prompt Blob intent survives failed compensation, restart and delete retry (0.0902ms) # SKIP
+﹣ #79 prompt response and purge serialize through delivery, with audit and owner boundary (0.0552ms) # SKIP
+﹣ #79 in-flight Blob purge blocks prompt read and failed delete remains replayable (0.049ms) # SKIP
+﹣ #79 TCP abort releases prompt lock during pending Blob read (resolve late) (0.0547ms) # SKIP
+﹣ #79 TCP abort releases prompt lock during pending Blob read (reject late) (0.066ms) # SKIP
+﹣ #79 real TCP slow response and onSend failure release the prompt lock (0.0503ms) # SKIP
+﹣ #79 disconnected lock waiter frees a two-connection PG pool (success first read) (0.0439ms) # SKIP
+﹣ #79 disconnected lock waiter frees a two-connection PG pool (failure first read) (0.1243ms) # SKIP
+﹣ #79 prompt deadline ends a live TCP Blob read and permits purge (0.091ms) # SKIP
+﹣ #79 prompt deadline stops a connected lock waiter without retaining its PG connection (0.0981ms) # SKIP
+﹣ #79 prompt deadline closes a unread live TCP response and releases purge (0.0636ms) # SKIP
+﹣ #79 prompt deadline closes a trickle live TCP response and releases purge (0.0458ms) # SKIP
+﹣ #79 prompt deadline allows a normal TCP response and ends a stuck onSend (0.0426ms) # SKIP
+﹣ #79 PG statement deadline cancels a 3-second snapshot query holding the prompt lock (0.049ms) # SKIP
+﹣ #79 PG statement deadline cancels a 3-second audit query holding the prompt lock (0.0486ms) # SKIP
+ℹ tests 291
+ℹ suites 0
+ℹ pass 234
+ℹ fail 27
+ℹ cancelled 0
+ℹ skipped 30
+ℹ todo 0
+ℹ duration_ms 297247.3815
+
+✖ failing tests:
+
+test at apps\api\dist\run-working-files.pg.test.js:155:17
+✖ put (371.7677ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:156:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:155:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at apps\api\dist\run-working-files.pg.test.js:155:17
+✖ readback (343.5843ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:156:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:155:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at apps\api\dist\run-working-files.pg.test.js:202:1
+✖ working-file authority rejects wrong source, execution, owner, path and local lease before put (329.2652ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:203:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:245:1
+✖ shared correction objects keep both real attempt claims and every report hash is inventoried (342.6817ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:246:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:268:1
+✖ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (351.3644ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:269:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:313:1
+✖ a newer exact attempt claim extends retention of a shared correction physical object (338.3989ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:314:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:335:13
+✖ paused and terminal (352.7753ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:336:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:335:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:356:17
+✖ closed (333.9888ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:357:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:356:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:356:17
+✖ deleted (341.8681ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:357:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:356:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:381:17
+✖ delete (342.9222ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:382:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:381:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:381:17
+✖ receipt (333.685ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:382:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:381:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:416:17
+✖ delete (325.6129ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:417:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:416:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:416:17
+✖ unknown-envelope (334.3819ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:417:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:416:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:416:17
+✖ wrong-hash (340.1809ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:417:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:416:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:463:17
+✖ writer (359.6113ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:464:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:463:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:463:17
+✖ purger (328.6603ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:464:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:463:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-working-files.pg.test.js:513:1
+✖ captured-file read holds its exact file lock through readback while real PG purge waits (348.0429ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:514:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\zz_log_ops.test.js:1005:1
+✖ #79 NDJSON sink cannot be split by log injection (8.6141ms)
+  Error: Unsafe NDJSON lock permissions
+      at lockedNdjsonWrite (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:980:19)
+      at async Object.deliver (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:1003:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/zz_log_ops.test.js:1009:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\zz_log_ops.test.js:1018:1
+✖ #79 file sink repeat and concurrent processes retain one durable line per key (7.8455ms)
+  Error: Unsafe NDJSON lock permissions
+      at lockedNdjsonWrite (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:980:19)
+      at async Object.deliver (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:1003:13)
+      at async Promise.all (index 0)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/zz_log_ops.test.js:1024:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\zz_log_ops.test.js:1061:1
+✖ #79 replay of a complete pre-existing line still acknowledges only after file sync (7.4903ms)
+  Error: Unsafe NDJSON lock permissions
+      at lockedNdjsonWrite (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:980:19)
+      at async Object.deliver (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:1003:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/zz_log_ops.test.js:1068:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\zz_log_ops.test.js:1075:1
+✖ #79 size cap fails closed for new keys but permits replay of a full segment (4.8903ms)
+  Error: Unsafe NDJSON lock permissions
+      at lockedNdjsonWrite (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:980:19)
+      at async Object.deliver (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:1003:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/zz_log_ops.test.js:1084:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\zz_log_ops.test.js:1096:1
+✖ #79 replay also detects a key in a legacy rotated segment (5.227ms)
+  Error: Unsafe NDJSON lock permissions
+      at lockedNdjsonWrite (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:980:19)
+      at async Object.deliver (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/log-ops.js:1003:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/zz_log_ops.test.js:1102:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

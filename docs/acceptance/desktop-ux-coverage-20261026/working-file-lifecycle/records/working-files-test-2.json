@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T13:15:32.780Z",
+  "finished": "2026-10-26T13:18:53.265Z",
+  "args": [
+    "--test",
+    "apps/api/dist/run-working-files.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

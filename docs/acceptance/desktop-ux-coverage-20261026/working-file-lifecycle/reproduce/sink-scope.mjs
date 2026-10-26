@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {readFileSync,writeFileSync} from 'node:fs';
+const baseline='a35034b3',path='apps/api/src/log-ops.ts';
+const old=spawnSync('git',['show',`${baseline}:${path}`],{encoding:'utf8',windowsHide:true});
+assert.equal(old.status,0);
+const normalize=value=>value.replaceAll('\r\n','\n');
+const extract=value=>{const text=normalize(value),start=text.indexOf('async function lockedNdjsonWrite('),end=text.indexOf('export function logArchiveOptionsFromEnv(',start);assert(start>=0&&end>start);return text.slice(start,end);};
+const before=extract(old.stdout),after=extract(readFileSync(path,'utf8'));
+assert.equal(after,before,'NDJSON locking, permissions and file-sink body changed');
+const tests='apps/api/src/zz_log_ops.test.ts',oldTests=spawnSync('git',['show',`${baseline}:${tests}`],{encoding:'utf8',windowsHide:true});
+assert.equal(oldTests.status,0);assert.equal(normalize(readFileSync(tests,'utf8')),normalize(oldTests.stdout));
+const hash=value=>createHash('sha256').update(value).digest('hex');
+const result={baseline,checked_at:new Date().toISOString(),path,scope:'lockedNdjsonWrite through ndjsonFileSink; normalized line endings',unchanged:true,sha256:hash(after),tests_unchanged:true,tests_sha256:hash(normalize(oldTests.stdout)),acceptance:false,reason:'Five existing POSIX file-mode tests failed on Windows; final selected run skips those exact titles without changing sink or tests.'};
+writeFileSync('.local/working-file-lifecycle/sink-scope.json',JSON.stringify(result,null,2)+'\n');
+console.log(JSON.stringify(result,null,2));

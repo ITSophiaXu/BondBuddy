@@ -130,7 +130,9 @@ test('file-specific size limits accept boundaries and reject nonpositive, fracti
   const cases: [string, string, number, RunFileReferenceScope][] = [
     ['codex-file-word-v1', 'tracked.docx', 100 * 1024 * 1024, provider], ['codex-file-word-v1', 'delivery.md', 256 * 1024, provider],
     ['codex-m4-document-v1', 'document.docx', 100 * 1024 * 1024, provider], ['codex-review-file-v1', 'comments.pdf', 100 * 1024 * 1024, provider],
-    ['codex-review-file-v1', 'report.md', 4 * 1024 * 1024, provider], ['codex-review-file-v1', 'editor.json', 4 * 1024 * 1024, correction],
+    ['codex-review-file-v1', 'report.md', 4 * 1024 * 1024, provider], ['codex-review-file-v1', 'final-response.md', 4 * 1024 * 1024, provider],
+    ['codex-review-file-v1', 'annotations.json', 4 * 1024 * 1024, provider], ['codex-review-file-v1', 'report.md', 100 * 1024 * 1024, correction],
+    ['codex-review-file-v1', 'editor.json', 100 * 1024 * 1024, correction],
     ['review-revision-cli-v1', 'proposal.json', 32 * 1024 * 1024, provider], ['project-file-output-v1', 'report.docx', 100 * 1024 * 1024, project],
   ];
   for (const [schema, name, max, scope] of cases) {
@@ -138,6 +140,36 @@ test('file-specific size limits accept boundaries and reject nonpositive, fracti
     assert.equal(validateRunFileReference({ scope, resultSchemaVersion: schema, name, value: { ...file, byte_size: max } }).byteSize, max);
     for (const size of [0, -1, 1.5, max + 1, Number.MAX_SAFE_INTEGER + 1, '12', null]) rejects(() => validateRunFileReference({ scope, resultSchemaVersion: schema, name, value: { ...file, byte_size: size } }));
   }
+});
+
+test('correction report and editor use the actual collector maximum only at their exact authorized correction keys', () => {
+  const schema = 'codex-review-file-v1', max = 100 * 1024 * 1024, textMax = 4 * 1024 * 1024;
+  const value = envelope(schema, ['revision.docx', 'clean.docx', 'baseline.docx', 'report.docx', 'report.md', 'editor.json'], correction);
+  for (const name of ['report.md', 'editor.json']) value.files[name].byte_size = max;
+  const providerCorrection = { ...provider, reviewCorrection: true };
+  for (const scope of [correction, providerCorrection]) {
+    assert.equal(extract(value, scope).length, 6);
+    for (const name of ['report.md', 'editor.json']) {
+      assert.equal(validateRunFileReference({ scope, resultSchemaVersion: schema, name, value: value.files[name] }).byteSize, max);
+      const oversized = structuredClone(value); oversized.files[name].byte_size = max + 1;
+      rejects(() => extract(oversized, scope));
+      for (const key of [value.files[name].key.replace('/correction/', '/correction/nested/'),
+        value.files[name].key.replace(`/runs/${common.runId}/`, '/runs/foreign-run/')])
+        rejects(() => validateRunFileReference({ scope, resultSchemaVersion: schema, name, value: { ...value.files[name], key } }));
+    }
+  }
+  rejects(() => extract(value, provider), 'ordinary provider has no authority for correction files at any size');
+  for (const name of ['report.md', 'final-response.md', 'annotations.json']) {
+    const file = ref(schema, name);
+    for (const scope of [provider, providerCorrection]) {
+      assert.equal(validateRunFileReference({ scope, resultSchemaVersion: schema, name, value: { ...file, byte_size: textMax } }).byteSize, textMax);
+      for (const byte_size of [textMax + 1, max])
+        rejects(() => validateRunFileReference({ scope, resultSchemaVersion: schema, name, value: { ...file, byte_size } }),
+          'ordinary attempt companions retain the 4 MiB bound even for an authorized correction provider');
+    }
+  }
+  rejects(() => validateRunFileReference({ scope: providerCorrection, resultSchemaVersion: schema, name: 'editor.json',
+    value: ref(schema, 'editor.json') }), 'correction authorization does not permit editor.json in the attempt namespace');
 });
 
 test('partial errors inventory every valid retained file and never excuse malformed optional files', () => {

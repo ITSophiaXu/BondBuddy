@@ -4,15 +4,17 @@ import { Pool, type PoolClient } from 'pg';
 import { azureBlobs, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
 
-export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/'] as const;
-export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'unrecognized';
-export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'post_0042_unregistered' | 'snapshot_provenance_unknown' | 'unrecognized';
+export const INVENTORY_PREFIXES = ['users/', 'owners/', 'parse-cache/', 'log-archive/'] as const;
+export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'run_working_file' | 'unrecognized';
+export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'post_0042_unregistered' | 'snapshot_provenance_unknown' | 'unregistered_working_file' | 'unrecognized';
 type Item = { key: string; bytes: number; lastModified?: Date; etag: string };
 type Db = Pool | PoolClient;
 const digest = (key: string) => createHash('sha256').update(key).digest('hex');
 const id = '[A-Za-z0-9_-]{1,128}';
 const hex = '[a-f0-9]{64}';
 const uuid = '[a-f0-9-]{36}';
+const workingId = '(?![^/]*\\.\\.)[A-Za-z0-9][A-Za-z0-9._:-]{0,159}';
+const workingRoot = `owners/${workingId}/projects/${workingId}/runs/${workingId}/`;
 const patterns: [InventoryKind, RegExp][] = [
   ['snapshot', new RegExp(`^users/${id}/projects/${id}/snapshots/${id}$`)],
   ['upload', new RegExp(`^users/${id}/projects/${id}/uploads/${id}$`)],
@@ -23,15 +25,33 @@ const patterns: [InventoryKind, RegExp][] = [
   ['ocr_v2_page', new RegExp(`^users/${id}/projects/${id}/ocr-v2/${id}/[1-9][0-9]{0,8}/${hex}/${hex}\\.png$`)],
   ['artifact', new RegExp(`^users/${id}/runs/${id}/artifacts/${id}/v[1-9][0-9]*\\.docx$`)],
   ['parse_cache', new RegExp(`^parse-cache/${hex}/${uuid}$`)],
-  ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)]
+  ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}file-authoring/${workingId}/${hex}/(?:tracked\\.docx|clean\\.docx|baseline\\.docx|delivery\\.md)$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}m4-documents/${workingId}/${hex}/(?:document\\.docx|preparation-note\\.docx)$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}review-files/(?!correction/)${workingId}/${hex}/(?:report\\.docx|model-report\\.docx|report\\.md|final-response\\.md|comments\\.docx|comments\\.pdf|annotations\\.json)$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}review-files/correction/${hex}/(?:revision\\.docx|clean\\.docx|baseline\\.docx|report\\.docx|report\\.md|editor\\.json)$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}review-revision-cli/${workingId}/${hex}/(?:tracked\\.docx|clean\\.docx|baseline\\.docx|handling\\.json|summary\\.json|proposal\\.json)$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}project-files/${hex}/(?:report\\.docx|revision\\.docx|clean\\.docx|baseline\\.docx)$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}qa/${hex}/document\\.docx$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}integrity/${hex}/(?:company|person)\\.docx$`)],
+  ['run_working_file', new RegExp(`^${workingRoot}integrity/browser/${hex}\\.(?:png|txt)$`)]
 ];
 export function parseInventoryKey(key: string): InventoryKind {
   return patterns.find(([, pattern]) => pattern.test(key))?.[0] ?? 'unrecognized';
 }
 
 async function classify(db: Db, kind: InventoryKind, key: string): Promise<InventoryClass> {
-  if (kind === 'unrecognized') return 'unrecognized';
-  const sql: Record<Exclude<InventoryKind,'unrecognized'>, string> = {
+  if (kind === 'unrecognized') return key.startsWith('owners/') ? 'unregistered_working_file' : 'unrecognized';
+  if (kind === 'run_working_file') {
+    const row = (await db.query(`SELECT s.stored_at,s.purge_started_at,s.purged_at
+      FROM bb_run_working_objects o LEFT JOIN bb_run_working_object_state s ON s.object_key=o.object_key
+      WHERE o.object_key=$1`, [key])).rows[0];
+    // A listing is diagnostic only. Unknown or already-cleared working bytes
+    // are never candidates for the legacy snapshot deletion path below.
+    if (!row || row.purge_started_at || row.purged_at) return 'unregistered_working_file';
+    return row.stored_at ? 'referenced' : 'intent_pending';
+  }
+  const sql: Record<Exclude<InventoryKind,'unrecognized' | 'run_working_file'>, string> = {
     snapshot: `SELECT 1 FROM bb_snapshot_refs s WHERE s.object_key=$1 AND NOT EXISTS
       (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind='prompt_snapshot' AND t.content_id=s.id)`,
     upload: 'SELECT 1 FROM bb_uploads WHERE object_key=$1 UNION ALL SELECT 1 FROM bb_material_versions WHERE object_key=$1',
@@ -77,7 +97,7 @@ export function inventoryPolicyFromEnv(env = process.env): InventoryPolicy {
 type Bucket = { count: number; bytes: number; oldest: string | null };
 export type InventoryReport = { scanned: number; byPrefix: Record<string, Record<InventoryClass, Bucket>>; byKind: Record<string, Record<InventoryClass, Bucket>>;
   candidateKeyHashes: string[]; deleted: number; deleteSkipped: number; continuation: Record<string, boolean> };
-const classes: InventoryClass[] = ['referenced','intent_pending','orphan_candidate','post_0042_unregistered','snapshot_provenance_unknown','unrecognized'];
+const classes: InventoryClass[] = ['referenced','intent_pending','orphan_candidate','post_0042_unregistered','snapshot_provenance_unknown','unregistered_working_file','unrecognized'];
 const empty = () => Object.fromEntries(classes.map(c => [c,{ count: 0, bytes: 0, oldest: null }])) as Record<InventoryClass,Bucket>;
 const validTime = (time: Date | undefined): time is Date => time instanceof Date && !Number.isNaN(time.getTime());
 async function intentBoundary(db: Db, lock = false): Promise<Date | undefined> {
@@ -123,7 +143,7 @@ export async function runStorageInventory(pool: Pool, blobs: PrivateBlobs, polic
         report.byKind[kind] ??= empty();
         record(report.byPrefix[prefix][category], item); record(report.byKind[kind][category], item);
         report.scanned++;
-        if (category === 'orphan_candidate' || category === 'post_0042_unregistered' || category === 'snapshot_provenance_unknown') {
+        if (category === 'orphan_candidate' || category === 'post_0042_unregistered' || category === 'snapshot_provenance_unknown' || category === 'unregistered_working_file') {
           if (report.candidateKeyHashes.length < sampleLimit) report.candidateKeyHashes.push(digest(item.key));
           if (category === 'orphan_candidate' && policy.deleteEnabled && deleteAttempted < maxDeletes && kind === 'snapshot' && validTime(item.lastModified) && item.lastModified.getTime() <= now.getTime() - graceHours * 3600000 && item.etag) {
             deleteAttempted++;
@@ -142,7 +162,7 @@ export async function runStorageInventory(pool: Pool, blobs: PrivateBlobs, polic
     }
     report.continuation[prefix] = !!cursor;
   }
-  const candidates = Object.values(report.byPrefix).reduce((n, counts) => n + counts.orphan_candidate.count + counts.post_0042_unregistered.count + counts.snapshot_provenance_unknown.count, 0);
+  const candidates = Object.values(report.byPrefix).reduce((n, counts) => n + counts.orphan_candidate.count + counts.post_0042_unregistered.count + counts.snapshot_provenance_unknown.count + counts.unregistered_working_file.count, 0);
   if (candidates) await raiseAlert(pool, { kind: 'storage_orphan_candidates', severity: 'warning', scope: 'private_blob', detail: { candidates, scanned: report.scanned } });
   return report;
 }

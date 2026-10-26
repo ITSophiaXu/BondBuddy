@@ -43,6 +43,7 @@ import { m4ActionReason } from './m4-action-progress.js';
 import { m4InputGate } from './m4-input.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { StageContext,InputRevisionRow } from './run-pipeline.js';
+import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import type { M4WorkerInput } from './m4-input.js';
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile);
@@ -75,7 +76,9 @@ async function fixture(kind:'document'|'qa'='document') {
   const client={query,release:()=>{}};ctx.pool={query,connect:async()=>client} as unknown as StageContext['pool'];
   const input:M4WorkerInput={manifest,materials:[{pin,filename:'synthetic.txt',mediaType:'text/plain',objectKey:'source'}],artifacts:[]};
   const clean=async()=>{assert.ok(directory.startsWith(base+(process.platform==='win32'?'\\':'/')));await rm(directory,{recursive:true,force:true});};
-  return {directory,pin,source,ctx,input,store,persisted,clean};
+  const writes:Parameters<typeof writeRunWorkingFile>[0][]=[];
+  const writer:typeof writeRunWorkingFile=async value=>{writes.push({...value,bytes:Buffer.from(value.bytes)});await value.blobs.put(value.key,value.bytes,value.mediaType);};
+  return {directory,pin,source,ctx,input,store,persisted,clean,writes,writer};
 }
 async function outputWords(directory:string) {
   await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(directory)})/'output'\nfor name,text in [('document.docx','Synthetic summary'),('preparation-note.docx','Synthetic preparation note')]:\n d=Document();d.add_paragraph(text);t=d.add_table(rows=2,cols=2);t.cell(0,0).text='项目';t.cell(1,0).text='资产';t.cell(1,1).text='100';d.save(p/name)\n`],{cwd:root,timeout:30000});
@@ -91,7 +94,7 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
     manifest.knowledge=loadM4Knowledge(market,documentType);manifest.input.requirements=[{requirement_id:'r',text:'不要生成签署页',message_id:'m',message_version:1}];manifest.input.supplemental_requirements='重点说明偿债安排，保留财务表格';
     f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;
     let calls=0;
-    const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+    const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),writer:f.writer,model:options=>({name:options.name,run:async()=>{
       calls++;assert.ok(options.fileWorkspace);assert.equal(options.materialTools,undefined);assert.equal(options.reviewTools,undefined);
       await options.fileWorkspace.prepare(f.directory);
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
@@ -106,6 +109,8 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error();
     assert.ok(validM4DocumentResult(result.value,f.ctx));assert.equal(calls,1);
+    assert.deepEqual(f.writes.map(write=>write.name),['document.docx','preparation-note.docx']);
+    for(const write of f.writes){assert.deepEqual(write.source,{kind:'provider',attemptId:'synthetic-call',resultSchemaVersion:'codex-m4-document-v1'});assert.equal(write.lease,f.ctx.lease);assert.equal(digest(write.bytes),result.value.files[write.name]!.sha256);}
     assert.equal(Object.keys(result.value.files).length,2);f.ctx.values.set('model_generation',result.value);
     const delivered=await m4DocumentDeliveryStage().run(f.ctx);assert.equal(delivered.kind,'deliver');if(delivered.kind!=='deliver')throw Error();
     assert.equal(delivered.namedArtifacts?.length,1);assert.notEqual(digest(delivered.bytes),digest(delivered.namedArtifacts![0].bytes));
@@ -120,7 +125,7 @@ test('M4 missing output is honest, readonly input tampering fails and changed pi
   for(const action of ['missing','tamper','method'] as const){const f=await fixture();let calls=0;
     try{
       if(action==='method')f.ctx.checkpoint.m4_document_method={version:'older-method'};
-      const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+      const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),writer:f.writer,model:options=>({name:options.name,run:async()=>{
         calls++;await options.fileWorkspace!.prepare(f.directory);
         if(action==='tamper'){await chmod(join(f.directory,'materials/m0.txt'),0o600);await writeFile(join(f.directory,'materials/m0.txt'),'changed');}
         return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-call'} as never,{text:''})};

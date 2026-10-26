@@ -10,9 +10,13 @@
 
 随后完成[真实主页面与后端联通验收](../acceptance/desktop-ux-coverage-20261026/supplement-preparation-real/README.md)：真实 main、HTTP/session/CSRF、隔离 PG 和私有本地字节连续运行 **6/6**，后端完整准备专项 **44/44**。同时修复复核成果续改使用 `authoring.review_result` 时被补料读取误判 503、阻断原材料恢复的回归；保留普通复核与错误快照的严格拒绝。此轮证明准备保存、准确回执/CAS 及同原 job 的原输入恢复，不含 Azure、模型、采用/追加账务或新 Word；G03 仍开放。已检查的最新范围中未确认其他新的主要功能缺口，不能据此推导完整目标比例。
 
-后续[初始执行身份专项](../acceptance/desktop-ux-coverage-20261026/initial-execution-identity/README.md)已保护不可变 V1，并验证受控本地 adapter 在途结果保存、手动暂停和原结果复用。当前[候选输入专项](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)进一步接通 M1/M3/M4 实际 loader 的准确输入读取，以及补料保存后的完整候选和材料核对。本地[来源与私有文件读取增量](../acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)补充新原稿声明、明确放弃候选的旧成果关联，以及准确回执下旧工作文件的内部字节校验；原始工作文件的清理索引仍有缺口。候选没有被采用或执行，V2、追加报价/确认、后继模型调用和新成果验收仍未完成；这些独立回归不能累计为新的用户旅程覆盖率，G03 继续为主要功能缺口。
+后续[初始执行身份专项](../acceptance/desktop-ux-coverage-20261026/initial-execution-identity/README.md)已保护不可变 V1，并验证受控本地 adapter 在途结果保存、手动暂停和原结果复用。当前[候选输入专项](../acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)进一步接通 M1/M3/M4 实际 loader 的准确输入读取，以及补料保存后的完整候选和材料核对。本地[来源与私有文件读取增量](../acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)补充新原稿声明、明确放弃候选的旧成果关联，以及准确回执下旧工作文件的内部字节校验；该轮仍记录原始工作文件的清理索引缺口。候选没有被采用或执行，V2、追加报价/确认、后继模型调用和新成果验收仍未完成；这些独立回归不能累计为新的用户旅程覆盖率，G03 继续为主要功能缺口。
 
 [保存工作引用专项](../acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)再将草稿与安全暂停的准确已保存结果关联，页面区分已有记录、尚未捕获及进度变化。模型工作绑定、私有结果读取和清理竞争形成独立验证；它们没有完成后继业务执行、追加收费或新版成果交付，整体覆盖率仍不据测试数量上调。
+
+随后基于 `a35034b3` 的[工作文件生命周期增量](../acceptance/desktop-ux-coverage-20261026/working-file-lifecycle/README.md)追加迁移 `0122`、`0123`，九个 writer 模块的原十处 put 改为写字节前登记物理对象和多个准确来源，覆盖被替换的 report hash、共享 correction 和文件已写但结果未保存的窗口。单调清理开始标记先于删除提交，完成回执可重试；父 prompt/JSON 清理前登记可核验旧来源并完成到期附件清理。沿现有默认 180 天终态日志窗口、活跃/暂停保留、账号关闭及项目删除窗口，组合内容锁保持 prompt/result→run 工作→文件顺序。内服读取、公开可读报告与 `owners/` 清单遵守登记/清理状态；未知 legacy 只诊断，不按目录前缀删除，也不伪造历史写入意图。
+
+后续复核修正同 run 较新 legacy 共享引用被旧父清理遗漏、同 attempt 多个不可变结果被来源唯一键合并的生产缺陷：年龄清理先发现全部已知结果，在 run 行锁内重验准确 ID 集合，再取得内容锁重新判断；`0123` 将 `discovered_result_id` 纳入唯一性，各真实候选保留自己的来源时间。legacy raw 只有 bounded 长度/hash 核验正确才记录当下存储观察，缺损仍保留地址并拒读，不让新登记破坏有效旧文件读取，也不恢复已清理文件。两条迁移及最终构建/类型/契约检查通过。工作文件专项 31 pass、worker 108 pass/12 skip；API 完整集合保留 264 pass/1 fail/30 skip，缺 raw Word 的测试 fixture 修正后仅该组复验 9/9，未完整重跑或合算为一轮全通过。五个 Windows sink 标题按名排除，不计入 30 skip。两次冻结只该测试 src/编译 JS 变化，未改生产，最终 before/after 2052 项一致；空模板/无 clones 与本轮专用 PG 准确 PID 停止已列专项 summary，未借用旧轮结论。此前验收和失败历史保持原样；父来源已丢失的未登记历史 raw、不可变 editor 数据库正文和 provider JSON 一般写入意图仍有独立边界。本轮未采用新材料、未新增报价或新版 Word，不改变 G03 及完整 goal 未完成的结论。
 
 ## 来源与范围
 
