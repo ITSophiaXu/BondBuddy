@@ -39,7 +39,7 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       const logical=options.logical??'unified-v3-read_0_10_part_0';
       const objectKey=`users/${owner}/projects/${project}/snapshots/${uid()}`;
       const content=Buffer.from('synthetic timeout prompt');await blobs.put(objectKey,content,'text/plain');
-      const prompt=await saveSnapshotRef(pool,{owner,projectId:project,runId:lease.runId,kind:'model_request',version:n,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',blobs});
+      const prompt=await saveSnapshotRef(pool,{owner,projectId:project,runId:lease.runId,kind:'model_request',version:n,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',inputRevision:lease.inputRevision,inputHash:lease.inputHash,blobs});
       const attempt=await recordPotentialCall(pool,lease,logical,n,{modelId:'synthetic',promptSnapshotId:prompt});
       if(options.runtime!==false)await recordModelAttemptRuntime(pool,lease,{owner_user_id:owner,project_id:project,run_id:lease.runId,trace_id:lease.runId,job_id:lease.jobId,
         logical_call_id:logical,attempt_no:n,call_id:attempt,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:prompt},

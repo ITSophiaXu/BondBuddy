@@ -161,9 +161,8 @@ async function recordDueMaterialDeadlines(
 
 async function isPinned(client: Pool | PoolClient, tombstone: Pick<Tombstone, 'owner_user_id' | 'project_id' | 'material_id' | 'material_version'>) {
   if (!tombstone.material_id || tombstone.material_version === null) return false;
-  // input_revision is the canonical immutable material snapshot. Runs, artifacts and bound observability
-  // snapshots point back to it, so retaining the revision also retains every material byte it names.
-  // 0026 bb_material_bytes_pinned: a live project with a non-terminal run on a revision naming this version.
+  // The database checks the exact accepted V1 input and canonical M4 snapshot.
+  // A saved candidate or processing plan does not retain original material bytes.
   const result = await client.query('SELECT bb_material_bytes_pinned($1,$2,$3,$4) AS pinned',
     [tombstone.owner_user_id, tombstone.project_id, tombstone.material_id, tombstone.material_version]);
   return result.rows[0]?.pinned === true;
@@ -226,8 +225,8 @@ async function claimReadyTombstones(
   });
 }
 
-async function releasePinnedClaim(pool: Pool, tombstone: Tombstone) {
-  await pool.query(`UPDATE bb_storage_tombstones
+async function releasePinnedClaim(db: Pool | PoolClient, tombstone: Tombstone) {
+  await db.query(`UPDATE bb_storage_tombstones
     SET state='pending',claim_token=NULL,lease_until=NULL,retry_after=NULL,last_error_code=NULL
     WHERE id=$1 AND state='claimed' AND claim_token=$2`, [tombstone.id, tombstone.claim_token]);
 }
@@ -280,6 +279,40 @@ function safeFailure(name: string) {
   return error;
 }
 
+/** Publish an irreversible deletion boundary before touching private bytes.
+ * Producers hold the same material lock until their run/snapshot/job commits.
+ * Only this short database transaction holds locks; Blob I/O follows its commit.
+ */
+async function startPurge(pool: Pool, tombstone: Tombstone): Promise<'started' | 'pinned' | 'lease_lost'> {
+  return transaction(pool, async client => {
+    if (tombstone.object_kind === 'material') {
+      // Keep the lock and the following reads in separate SQL statements so a
+      // producer that committed while we waited is visible at READ COMMITTED.
+      await client.query('SELECT pg_advisory_xact_lock(bb_material_lifecycle_lock_key($1,$2,$3,$4))',
+        [tombstone.owner_user_id, tombstone.project_id, tombstone.material_id, tombstone.material_version]);
+    }
+    const current = (await client.query(`SELECT *,lease_until>clock_timestamp() AS lease_live
+      FROM bb_storage_tombstones WHERE id=$1 AND state='claimed' AND claim_token=$2 FOR UPDATE`,
+      [tombstone.id, tombstone.claim_token])).rows[0];
+    if (!current || !current.lease_live || current.attempts !== tombstone.attempts) return 'lease_lost';
+    if (current.owner_user_id !== tombstone.owner_user_id || current.project_id !== tombstone.project_id
+      || current.object_kind !== tombstone.object_kind || current.object_key !== tombstone.object_key
+      || current.sha256.trim() !== tombstone.sha256.trim() || current.material_id !== tombstone.material_id
+      || current.material_version !== tombstone.material_version || current.upload_id !== tombstone.upload_id)
+      throw safeFailure('StoragePinCheckFailed');
+    if (await isPinned(client, tombstone)) {
+      await releasePinnedClaim(client, tombstone);
+      return 'pinned';
+    }
+    if (tombstone.object_kind === 'material') {
+      await client.query(`INSERT INTO bb_storage_purge_starts(tombstone_id,claim_token,claim_attempt,origin,created_at)
+        VALUES($1,$2,$3,'verified_delete',clock_timestamp()) ON CONFLICT (tombstone_id) DO NOTHING`,
+        [tombstone.id, tombstone.claim_token, current.attempts]);
+    }
+    return 'started';
+  });
+}
+
 async function processTombstone(
   pool: Pool,
   blobs: PrivateBlobs,
@@ -289,13 +322,10 @@ async function processTombstone(
   now: () => Date
 ): Promise<'purged' | 'pinned' | 'failed' | 'lease_lost'> {
   try {
-    let pinned: boolean;
-    try { pinned = await isPinned(pool, tombstone); }
+    let start: Awaited<ReturnType<typeof startPurge>>;
+    try { start = await startPurge(pool, tombstone); }
     catch { throw safeFailure('StoragePinCheckFailed'); }
-    if (pinned) {
-      await releasePinnedClaim(pool, tombstone);
-      return 'pinned';
-    }
+    if (start !== 'started') return start;
     let bytes: Buffer | null;
     try { bytes = await blobs.getIfExists(tombstone.object_key); }
     catch { throw safeFailure('StorageBlobReadFailed'); }
@@ -318,8 +348,9 @@ async function processTombstone(
 }
 
 /**
- * Processes a bounded batch. Tombstone claim commits before any Blob request; the owner/project/key/hash
- * are immutable in PostgreSQL, and any crash after Blob deletion is recovered by observing absence on retry.
+ * Processes a bounded batch. Both the claim and material deletion boundary commit before Blob I/O.
+ * New pins cannot cross that boundary, including after an uncertain delete or process crash.
+ * The immutable target and delete-if-absent replay preserve recovery of the exact private object.
  */
 export async function runStorageLifecycle(
   pool: Pool,
