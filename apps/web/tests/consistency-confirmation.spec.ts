@@ -150,6 +150,7 @@ for(const missing of [false,true])test('consistency confirmation: unknown receip
   const {s,original,confirmation}=await startUnknown(page);completeReceipt(s,original.body.request_id);changeLive(s);
   s.rootProject.name='合成后来变更的项目名称';if(missing)forgetOriginalCheck(s);
   await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();
+  if(missing)expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/checks/'+checkId)).toHaveLength(1);
   expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
   expect((await cached(page))?.pendingUpdate.confirmation).toEqual(confirmation);
   await page.locator('#fc-pending-action').click();await assertBusinessScope(page,s);await assertFullScope(page,s);
@@ -169,7 +170,9 @@ for(const mode of ['legacy','foreign-binding','partial-files'] as const)test('co
     else value.pendingUpdate.confirmation.files.pop();
     sessionStorage.setItem(key,JSON.stringify(value));
   },{key:cacheKey,mode});
-  await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();await page.locator('#fc-pending-action').click();
+  await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();
+  expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/checks/'+checkId)).toHaveLength(1);
+  await page.locator('#fc-pending-action').click();
   await expect(modal(page)).toContainText('原确认的版本与修改明细无法完整恢复');
   await expect(modal(page).locator('.fc-confirm-source,.fc-confirm-counts,.fc-confirm-version,.fc-confirm-type')).toHaveCount(0);
   await expect(modal(page).locator('.fc-confirm-filename')).toHaveText([sharedFilename,sharedFilename]);

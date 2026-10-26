@@ -9,6 +9,7 @@ import {esc,date} from './ui';
 import {runStateLabel} from './review-state';
 import {prototypeIcon as ico} from './prototype-design';
 import {createConfirmationSnapshot,restoreConfirmationSnapshot,type ConfirmationBinding,type ConfirmationSnapshot} from './consistency-confirmation';
+import {linkedConsistencyCheck,linkedConsistencyUpdateCheck} from './consistency-history';
 import './file-workspace.css';
 import './consistency-selection.css';
 import './consistency-originals.css';
@@ -32,6 +33,8 @@ const active=new Set(['queued','preparing','running','validating','delivering','
 export class FileConsistency {
   private abort=new AbortController();private timer?:ReturnType<typeof setTimeout>;private busy=false;private downloads=new ArtifactDownloads();
   private checks:ProjectFileCheck[]=[];private files:ProjectFileVersion[]=[];private updates:Updates['batches']=[];private source:ProjectFileSource|null=null;
+  private linkedHistory?:string;private historyReadError='';
+  private linkedUpdateHistory?:string;
   private chosen=new Set<string>();private selectionCheck?:string;private filter='all';private name='';private message='';private needsCredits=false;
   private prospectus?:ProspectusPanel;private prospectusHost?:HTMLElement;
   private checkRequest?:Dto<'ProjectFileCheckRequest'>;
@@ -97,10 +100,46 @@ export class FileConsistency {
   private async reload(readOnly=false){
     const revision=++this.reloadRevision;clearTimeout(this.timer);
     try{
+      const query=new URLSearchParams(location.hash.split('?')[1]),runs=query.getAll('run'),updateRuns=query.getAll('update_run');
+      const linkedRun=runs.length===1&&runs[0].trim()&&runs[0].length<=128?runs[0]:undefined;
+      const linkedUpdate=updateRuns.length===1&&updateRuns[0].trim()&&updateRuns[0].length<=128?updateRuns[0]:undefined;
       const [checks,files,state,updates]=await Promise.all([this.request<{checks:ProjectFileCheck[]}>('GET','/checks'),this.request<{files:ProjectFileVersion[]}>('GET',''),
-        this.workspace(!readOnly),this.request<Updates>('GET','/updates')]);
+        this.workspace(!readOnly&&!query.has('run')&&!query.has('update_run')),this.request<Updates>('GET','/updates')]);
+      if(!this.live()||revision!==this.reloadRevision)return;
+      let linkedHistory:string|undefined,linkedUpdateHistory:string|undefined,historyReadError='';
+      if(linkedRun&&!checks.checks.some(c=>c.run_id===linkedRun)){
+        try{
+          const check=await linkedConsistencyCheck(this.api,this.id,linkedRun,checks.checks,AbortSignal.any([this.abort.signal,AbortSignal.timeout(15000)]));
+          checks.checks=[...checks.checks,check];linkedHistory=linkedRun;
+        }catch(error){
+          historyReadError=error instanceof ApiError&&[403,404].includes(error.status)?'原检查不存在或当前账号无权读取，请核对原链接。':friendlyError(error,'read');
+          const previous=this.checks.filter(c=>c.run_id===linkedRun);
+          // A transient read failure must not discard the active historical
+          // run and thereby stop its polling. Keep the last exact snapshot.
+          const transient=!(error instanceof UserFacingError)&&(!(error instanceof ApiError)||error.status>=500||[408,429].includes(error.status));
+          if(transient&&this.linkedHistory===linkedRun&&previous.length===1){checks.checks=[...checks.checks,previous[0]];linkedHistory=linkedRun;}
+        }
+      }
+      else if(!query.has('run')&&linkedUpdate&&!checks.checks.some(c=>c.updates.some(update=>update.run_id===linkedUpdate))){
+        try{
+          const check=await linkedConsistencyUpdateCheck(this.api,this.id,linkedUpdate,checks.checks,AbortSignal.any([this.abort.signal,AbortSignal.timeout(15000)]));
+          // An existing check without this acceptance is an inconsistent
+          // projection, not permission to replace its contents silently.
+          if(checks.checks.some(c=>c.run_id===check.run_id))throw new UserFacingError('原检查中的更新记录尚未一致，请重新读取。');
+          checks.checks=[...checks.checks,check];linkedHistory=check.run_id;linkedUpdateHistory=linkedUpdate;
+        }catch(error){
+          historyReadError=error instanceof ApiError&&[403,404].includes(error.status)?'原更新任务不存在或当前账号无权读取，请核对原链接。':friendlyError(error,'read');
+          const previous=this.checks.filter(c=>c.updates.some(update=>update.run_id===linkedUpdate));
+          const transient=!(error instanceof UserFacingError)&&(!(error instanceof ApiError)||error.status>=500||[408,429].includes(error.status));
+          if(transient&&this.linkedUpdateHistory===linkedUpdate&&previous.length===1&&!checks.checks.some(c=>c.run_id===previous[0].run_id)){
+            checks.checks=[...checks.checks,previous[0]];linkedHistory=previous[0].run_id;linkedUpdateHistory=linkedUpdate;
+          }
+        }
+      }
       if(!this.live()||revision!==this.reloadRevision)return;
       this.checks=checks.checks;this.files=files.files;this.source=state.source;this.updates=updates.batches;
+      this.linkedHistory=linkedHistory;this.historyReadError=historyReadError;
+      this.linkedUpdateHistory=linkedUpdateHistory;
       // Explicit actions repaint in finally, after busy is cleared. A first
       // disabled repaint would remove the focused node before it can be read.
       if(!this.busy)this.paint();
@@ -340,7 +379,7 @@ export class FileConsistency {
   }
   private updateTaskHtml(target:UpdateTarget|null){
     const refresh=`<button class="btn secondary" data-fc-refresh ${this.busy?'disabled':''}>重新读取记录</button>`;
-    if(!target)return `<section class="panel fc-update" id="fc-update-task"><h2 id="fc-update-task-heading" tabindex="-1">指定的文件更新任务暂时无法读取</h2><p>当前记录无法唯一对应原任务、原检查与原文件版本。检查列表仅提供最近 30 轮记录，没有自动切换到其他任务或最近一轮。</p>${refresh} <button class="btn secondary" data-fc-latest>查看最近检查记录</button></section>`;
+    if(!target)return `<section class="panel fc-update" id="fc-update-task"><h2 id="fc-update-task-heading" tabindex="-1">指定的文件更新任务暂时无法读取</h2><p>${esc(this.historyReadError||'当前记录无法唯一对应原任务、原检查与原文件版本。')} 没有自动切换到其他任务或最近一轮。</p>${refresh} <button class="btn secondary" data-fc-latest>查看最近检查记录</button></section>`;
     const {run,update,file}=target,output=this.updateOutput(target),resumable=['paused','awaiting_input'].includes(update.state),running=active.has(update.state),disabled=this.busy||!!this.checkRequest||!!this.pendingUpdate?.attempted;
     const state=update.state==='failed'?'本次未完成':update.state==='rejected'?'本次未启动':runStateLabel[update.state as keyof typeof runStateLabel]??'任务状态待同步';
     const description=update.state==='failed'?'本次更新未完成；当前记录未提供失败原因。已保存的原文件与此前成果保留。':update.state==='rejected'?'本次更新未启动；当前记录未提供未启动原因。已保存的原文件与此前成果保留。':update.state==='succeeded'?output?'本次交付 V'+output.sequence+'；以下双稿仅来自这次更新任务。':'任务已完成，原任务的交付文件尚待同步；暂不提供其他更新或重试的成果。':resumable?'本次更新尚未完成，已保存的输入和进度保留，可继续原任务。':'此处仅显示这次更新任务的状态；下方文件行汇总整轮检查中的更新与重试。';
@@ -373,9 +412,10 @@ export class FileConsistency {
       <p id="fc-status" role="status">${esc(this.message)}</p>${this.pendingUpdate?.attempted?'<section class="fc-warning"><p>上次更新提交结果尚未确认。请沿用原范围确认，避免重复创建批次。</p><button class="btn secondary" id="fc-pending-action" data-fc-confirm-pending>重试确认上次更新</button></section>':''}${this.needsCredits?`<p><a class="text-button" href="${esc(rechargeHref(this.id))}">查看积分与充值</a> · 检查结果和选择保留，充值后需重新确认更新。</p>`:''}
       ${!this.source?'<div id="fc-prospectus"></div>':''}
       ${target!==undefined?this.updateTaskHtml(target):''}
-      ${this.checks.length?`<div class="pf-section-head"><label>检查记录 <select id="fc-history">${!c?'<option value="" selected disabled>指定的检查记录不可读</option>':''}${this.checks.map((x,i)=>`<option value="${x.run_id}" ${x.run_id===c?.run_id?'selected':''}>第 ${this.checks.length-i} 轮 · ${esc(date(x.created_at))} · ${esc(runStateLabel[x.state as keyof typeof runStateLabel]??x.state)}</option>`).join('')}</select></label>${start}</div>`:''}
+      ${this.checks.length?`<div class="pf-section-head"><label>检查记录 <select id="fc-history">${!c?'<option value="" selected disabled>指定的检查记录不可读</option>':''}${this.checks.map(x=>`<option value="${esc(x.run_id)}" ${x.run_id===c?.run_id?'selected':''}>${x.run_id===this.linkedHistory?'链接指定记录 · ':''}${esc(date(x.created_at))} · ${esc(runStateLabel[x.state as keyof typeof runStateLabel]??x.state)}</option>`).join('')}</select></label>${start}</div>${this.linkedHistory?'<p class="fc-history-scope">已读取链接指定的历史检查；下拉列表另含最近 30 轮，不代表全部历史记录。</p>':''}`:''}
       ${c&&scope?this.freshnessHtml(c,scope):''}
-      ${target===null?'':!c&&new URLSearchParams(location.hash.split('?')[1]).has('run')?`<section class="panel fc-empty"><h2>指定的检查记录暂时无法读取</h2><p>当前列表仅提供最近 30 轮记录，没有自动切换到其他一轮。</p><button class="btn secondary" data-fc-latest>查看最近检查记录</button>${start}</section>`:!c?`<section class="panel fc-empty"><h2>${!this.source?'请先添加募集说明书':!latest.length?'还没有可检查的关联文件':'准备检查项目文件'}</h2><p>${!this.source?'先回到项目文件保存募集书，并明确采用为当前依据；已有项目文件保留。':!latest.length?'已有 Word 或 PDF 可以直接上传到项目文件，无需重新生成。':'扫描项目每份关联文件的当前版本；历史版本保留。'}</p><p>本次范围：${latest.length} 份文件</p>${emptyAction} ${!latest.length&&this.source?'<a class="btn secondary" href="#generate?project='+this.id+'">生成关联文件</a>':''}</section>`:
+      ${c&&this.historyReadError?'<p class="fc-warning" role="status">原检查读取未成功，当前显示上次读取的记录。'+esc(this.historyReadError)+'</p>':''}
+      ${target===null?'':!c&&new URLSearchParams(location.hash.split('?')[1]).has('run')?`<section class="panel fc-empty"><h2>指定的检查记录暂时无法读取</h2><p>${esc(this.historyReadError||'检查链接不完整、无效或无法唯一对应记录。')} 没有自动切换到其他一轮。</p><button class="btn secondary" data-fc-refresh>重新读取原检查</button> <button class="btn secondary" data-fc-latest>查看最近检查记录</button>${start}</section>`:!c?`<section class="panel fc-empty"><h2>${!this.source?'请先添加募集说明书':!latest.length?'还没有可检查的关联文件':'准备检查项目文件'}</h2><p>${!this.source?'先回到项目文件保存募集书，并明确采用为当前依据；已有项目文件保留。':!latest.length?'已有 Word 或 PDF 可以直接上传到项目文件，无需重新生成。':'扫描项目每份关联文件的当前版本；历史版本保留。'}</p><p>本次范围：${latest.length} 份文件</p>${emptyAction} ${!latest.length&&this.source?'<a class="btn secondary" href="#generate?project='+this.id+'">生成关联文件</a>':''}</section>`:
         checking?`<section class="panel fc-progress"><span class="fc-spinner" aria-hidden="true"></span><h2>${c.stage==='queued'?'等待检查':c.stage?.includes('word')?'正在整理检查报告':'正在核对文件内容'}</h2><p>本轮已固定 ${c.files.length} 份关联文件，核对数据、期间、单位、发行安排和披露内容。</p><ol><li>固定募集书与文件版本</li><li>比对内容与原文依据</li><li>整理冲突位置和修改建议</li></ol><p>关闭页面后任务继续处理，完成后可返回查看。</p><button class="btn secondary" data-fc-control="pause" data-run="${c.run_id}">暂停检查</button></section>`:
         c.result?this.results(c,open):`<section class="panel fc-empty"><h2>${esc(runStateLabel[c.state as keyof typeof runStateLabel]??c.state)}</h2><p>本次检查尚未完成，已保存的输入与历史文件保留。</p>${['paused','awaiting_input'].includes(c.state)?`<button class="btn primary" data-fc-control="resume" data-run="${c.run_id}">继续检查</button> <button class="btn secondary" data-fc-control="cancel" data-run="${c.run_id}">结束检查</button>`:start}</section>`}
       ${this.updates.filter(b=>['queued','running','paused'].includes(b.state)).map(b=>`<section class="panel fc-update"><h2>${b.state==='paused'?'文件更新需要处理':'正在生成新版本'}</h2>${b.items.map(i=>this.batchItem(i)).join('')}${b.state==='paused'?`<button class="btn primary" data-fc-retry="${b.batch_id}">重试未完成文件 · 4,500 积分/份</button>`:''}<button class="btn secondary" data-fc-stop="${b.batch_id}">停止后续文件更新</button><p class="muted">已经启动的任务不会被批次停止按钮取消；可按任务当前状态单独处理，已生成版本保留。</p></section>`).join('')}`;
@@ -395,7 +435,7 @@ export class FileConsistency {
     document.querySelector('#fc-history')?.addEventListener('change',e=>{if(!this.checkRequest&&!this.pendingUpdate?.attempted)this.chosen.clear();this.locatedUpdate=undefined;this.query='';history.replaceState(null,'',location.pathname+location.search+'#consistency?'+withProjectContext(new URLSearchParams({project:this.id,run:(e.target as HTMLSelectElement).value})));this.paint(false);document.querySelector<HTMLElement>('#fc-history')?.focus({preventScroll:true});this.schedule();});
     document.querySelector('[data-fc-refresh]')?.addEventListener('click',()=>void (async()=>{
       if(this.busy)return;this.busy=true;this.message='正在重新读取记录…';this.status();
-      try{await this.reload(true);this.message='已重新读取任务与文件记录。';}catch(e){if(this.live())this.message='重新读取未成功，当前显示上次记录。'+friendlyError(e,'read');}finally{this.busy=false;if(this.live())this.paint();}
+      try{await this.reload(true);this.message=this.historyReadError?'原检查读取未成功，请重试。':'已重新读取任务与文件记录。';}catch(e){if(this.live())this.message='重新读取未成功，当前显示上次记录。'+friendlyError(e,'read');}finally{this.busy=false;if(this.live())this.paint();}
     })());
     document.querySelector('[data-fc-locate-update]')?.addEventListener('click',()=>{const target=this.updateTarget();if(!target||this.busy)return;this.filter='all';this.query='';this.locatedUpdate=this.updateKey(target);this.paint(false);this.locateUpdate(target);});
     document.querySelector('[data-fc-confirm-pending]')?.addEventListener('click',()=>this.confirmUpdate());

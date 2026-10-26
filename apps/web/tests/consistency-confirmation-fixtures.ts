@@ -127,6 +127,13 @@ export async function install(page:Page,s=fixture()){
     try{
       const request=route.request(),url=new URL(request.url()),p=url.pathname.slice('/api/v1'.length);
       if(request.method()==='GET')assertData(s);
+      if(request.method()==='GET'&&p===base+'/checks/'+checkId&&!s.checks.some(check=>check.run_id===checkId)){
+        // This synthetic read projection does not expose an individually
+        // readable old check. Its original receipt and immutable confirmation
+        // remain available; do not recreate a check from that cached snapshot.
+        s.calls.push({method:'GET',path:p,search:url.search,body:null});
+        return route.fulfill({status:404,json:{code:'NOT_FOUND',message:'Synthetic original check is not individually readable',retryable:false,correlation_id:'consistency-confirmation',field_errors:[]}});
+      }
       if(request.method()==='POST'&&p===base+'/checks/'+checkId+'/updates'){
         const body=request.postDataJSON() as Dto<'ProjectFileUpdateRequest'>;
         const prior=s.receipts.get(body.request_id);
