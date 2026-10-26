@@ -23,7 +23,7 @@ import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@
 import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
-import { assertTestGrant } from '@bondbuddy/api/non-production-test';
+import { assertRunExecutionTestGrant } from '@bondbuddy/api/run-execution-test-grant';
 import { checkpointStage, claim, finish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
@@ -144,7 +144,8 @@ async function verifyTestRuleCapability(pool: Pool, run: StageContext['run'], in
   if (typeof input.manifest.test_rule_applicability_block_reason === 'string')
     return {kind:'pause',stage:'capability_not_ready',reason:safePauseReason(input.manifest.test_rule_applicability_block_reason)};
   let grant: any;
-  try { grant=await assertTestGrant(pool,{grantId:run.test_grant_id!,userId:run.owner_user_id,projectId:run.project_id,inputRevision:run.input_revision,inputHash:run.input_hash}); }
+  try { ({grant}=await assertRunExecutionTestGrant(pool,{owner:run.owner_user_id,projectId:run.project_id,runId:run.id,
+    executionVersion:run.executionVersion,inputRevision:run.inputRevision,inputHash:run.inputHash})); }
   catch(error){ return {kind:'pause',stage:'capability_not_ready',reason:error instanceof Problem?error.code.toLowerCase():'test_grant_invalid'}; }
   const capability=await loader(run,input);
   if(capability.status==='not_ready')return {kind:'pause',stage:'capability_not_ready',reason:capability.reason};

@@ -49,7 +49,7 @@ function body(basis:RunSupplementProcessingBasis,requestId:string):RunSupplement
 /** Scope locks never span Blob I/O or the independent content-purge transactions.
  * Under project -> run -> job locks, check the live identity, captured receipt,
  * candidate and byte metadata again before persisting or consuming a plan. */
-async function recheck(db:PoolClient,input:RunSupplementProcessingBasisInput,basis:RunSupplementProcessingBasis){
+export async function recheckRunSupplementProcessingBasis(db:PoolClient,input:RunSupplementProcessingBasisInput,basis:RunSupplementProcessingBasis){
   const project=(await db.query(`SELECT p.* FROM bb_projects p JOIN bb_users u ON u.id=p.owner_user_id
     WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL AND p.archived_at IS NULL
       AND u.closed_at IS NULL AND u.status<>'closed' FOR UPDATE OF p`,[input.owner,input.projectId])).rows[0];
@@ -150,7 +150,7 @@ export async function createRunSupplementProcessingPlan(raw:CreateRunSupplementP
   if(basis.basisHash!==input.expectedBasisHash)throw unavailable();
   const planned=body(basis,input.requestId),planHash=inputManifestHash(planned);
   return transaction(input.db,async db=>{
-    const jobId=await recheck(db,input,basis);
+    const jobId=await recheckRunSupplementProcessingBasis(db,input,basis);
     const existing=(await db.query(`SELECT * FROM bb_run_supplement_processing_plans
       WHERE owner_user_id=$1 AND run_id=$2 AND request_id=$3`,[input.owner,input.runId,input.requestId])).rows[0];
     if(existing){
@@ -182,7 +182,7 @@ export async function readRunSupplementProcessingPlan(raw:ReadRunSupplementProce
   const basis=await loadRunSupplementProcessingBasis(input,input.kind);
   if(plan.basisHash!==basis.basisHash||!same(plan.body,body(basis,row.request_id)))throw unavailable();
   return transaction(input.db,async db=>{
-    await recheck(db,input,basis);
+    await recheckRunSupplementProcessingBasis(db,input,basis);
     const fresh=result((await db.query(select,args)).rows[0]);
     if(!same(fresh,plan))throw unavailable();
     return {plan:fresh,basis};

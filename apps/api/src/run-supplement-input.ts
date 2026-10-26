@@ -10,15 +10,22 @@ import {
 } from '@bondbuddy/contracts';
 import { digest } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
+import type { RunExecutionIdentity } from './run-execution.js';
 
 type RecordValue = Record<string, any>;
 type BaseMaterial = ReviewMaterialPin & { source_project_id: string; role?: string };
 type Issue = RunSupplementInputPreview['issues'][number];
 type Candidate = { manifest: Record<string, unknown>; reviewSnapshot: unknown | null };
 type Result = { preview: RunSupplementInputPreview; candidate: Candidate | null };
+/** Exact saved receipt and resolved source execution; no project-wide report lookup or random identity. */
+export type RunSupplementReviewIdentityContext = {
+  owner: string; runId: string; baseExecution: RunExecutionIdentity;
+  supplement: { revision: number; requestId: string; requestHash: string };
+};
 type Args = {
   projectId: string; manifest: unknown; reviewSnapshot: unknown | null;
   resultMaterials: RunSupplementMaterial[]; changes: RunSupplementChange[];
+  reviewIdentityContext?: RunSupplementReviewIdentityContext;
 };
 
 const record = (v: unknown): v is RecordValue => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -38,6 +45,31 @@ function output(status: RunSupplementInputPreview['status'], issues: Issue[] = [
   return { preview: { compiler_version, status: 'unsupported', issues, candidate_input_hash: null }, candidate: null };
 }
 const unsupported = () => output('unsupported', [issue('input_unsupported', '当前任务的材料关联尚不能完整核对，草稿可以保存；暂不能采用。')]);
+
+function successorReviewIdentity(args: Args, review: RecordValue): { report_id: string; version_number: number } | null {
+  const context = args.reviewIdentityContext;
+  const id = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 128 && /\S/.test(value);
+  const integer = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 2147483647;
+  const hash = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  if (!record(context) || !id(context.owner) || !id(context.runId) || !record(context.baseExecution)
+    || !integer(context.baseExecution.executionVersion) || !integer(context.baseExecution.inputRevision)
+    || !hash(context.baseExecution.inputHash) || context.baseExecution.inputHash !== inputManifestHash(args.manifest)
+    || !record(context.supplement) || !integer(context.supplement.revision) || !id(context.supplement.requestId)
+    || !hash(context.supplement.requestHash) || !id(review.report_id) || !integer(review.version_number)
+    || review.version_number === 2147483647) return null;
+  // The receipt hash binds these changes to this exact frozen input. A context
+  // borrowed from another draft must never produce an adoptable report identity.
+  const { baseExecution, supplement } = context;
+  if (supplement.requestHash !== inputManifestHash({ request_id: supplement.requestId,
+    expected_revision: supplement.revision - 1, base_input_revision: baseExecution.inputRevision,
+    base_input_hash: baseExecution.inputHash, changes: args.changes })) return null;
+  const report_id = `supplement-review-${inputManifestHash({ version: 'run-supplement-review-report-v1',
+    owner: context.owner, project_id: args.projectId, run_id: context.runId,
+    base_execution: { execution_version: baseExecution.executionVersion, input_revision: baseExecution.inputRevision, input_hash: baseExecution.inputHash },
+    supplement: { revision: supplement.revision, request_id: supplement.requestId, request_hash: supplement.requestHash },
+    source_report: { report_id: review.report_id, version_number: review.version_number } })}`;
+  return report_id === review.report_id ? null : { report_id, version_number: review.version_number + 1 };
+}
 
 /** Frozen-input context only; current project declarations and automatic output selection are never consulted. */
 export function runSupplementSourceContext(manifest: unknown): RunSupplementDraftResponse['source_context'] {
@@ -63,7 +95,8 @@ export function validRunSupplementSourceChanges(manifest: unknown, changes: RunS
   });
 }
 
-/** A candidate is preparation only. This compiler neither adopts inputs nor grants execution authority. */
+/** A candidate is preparation only. M3 needs a saved identity context before it
+ * can be prepared; M1/M4 pure callers do not. This grants no execution authority. */
 export function compileRunSupplementInput(args: Args): Result {
   const { projectId, manifest, reviewSnapshot, changes, resultMaterials } = args;
   if (!changes.length) return output('unchanged');
@@ -175,6 +208,11 @@ export function compileRunSupplementInput(args: Args): Result {
     if (sourceReplacement) review.input.source_material_ref = pin(sourceReplacement);
     snapshot.input = structuredClone(review.input);
     if (!Value.Check(ReviewDraftInputSchema, review.input)) return unsupported();
+    const identity = successorReviewIdentity(args, review);
+    if (!identity) return unsupported();
+    // Freeze the successor identity before output computes candidate_input_hash.
+    // Source report references and evidence links retain their original meaning.
+    Object.assign(review, identity);
     return output('prepared', [], { manifest: m, reviewSnapshot: snapshot });
   }
 

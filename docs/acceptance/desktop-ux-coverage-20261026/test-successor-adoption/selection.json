@@ -1,0 +1,68 @@
+{
+  "baseline": "d3325da8f32ea06985040a3c7026a37703b9399e",
+  "suites": [
+    {
+      "mode": "api-successor",
+      "id": "2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6",
+      "pass": 15,
+      "skip": 0,
+      "fail": 0,
+      "finished": "2026-10-26T23:38:48.879Z"
+    },
+    {
+      "mode": "successor-regression",
+      "id": "2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204",
+      "pass": 151,
+      "skip": 0,
+      "fail": 0,
+      "finished": "2026-10-26T23:34:40.074Z"
+    },
+    {
+      "mode": "worker-grant",
+      "id": "2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1",
+      "pass": 83,
+      "skip": 2,
+      "fail": 0,
+      "finished": "2026-10-26T23:30:04.615Z"
+    }
+  ],
+  "total": {
+    "pass": 249,
+    "skip": 2,
+    "fail": 0
+  },
+  "snapshotPairs": [
+    {
+      "before": "2026-10-26T23-28-33-263Z-source-before-33556-c9cbe36b",
+      "after": "2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f",
+      "scope": [
+        "successor-regression",
+        "worker-grant",
+        "failed api-successor"
+      ]
+    },
+    {
+      "before": "2026-10-26T23-37-28-240Z-source-before-3980-015ee43b",
+      "after": "2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6",
+      "scope": [
+        "api-successor"
+      ]
+    }
+  ],
+  "betweenPairsChangedOnly": [
+    "apps/api/src/run-supplement-test-adoption.ts",
+    "apps/api/dist/run-supplement-test-adoption.js"
+  ],
+  "stop": "2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec",
+  "limits": [
+    "No V2 Word delivery or actual successor model call",
+    "No production/paid adoption",
+    "No full G03 or coverage completion claim"
+  ],
+  "environment": {
+    "ssePgOptIn": "1",
+    "externalModels": false,
+    "port": 15542,
+    "postmasterPid": 32636
+  }
+}

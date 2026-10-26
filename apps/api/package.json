@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./run-execution-test-grant": {"types":"./dist/run-execution-test-grant.d.ts","default":"./dist/run-execution-test-grant.js"},
+    "./run-supplement-test-adoption": {"types":"./dist/run-supplement-test-adoption.d.ts","default":"./dist/run-supplement-test-adoption.js"},
     "./run-supplement-processing-plan": {"types":"./dist/run-supplement-processing-plan.d.ts","default":"./dist/run-supplement-processing-plan.js"},
     "./run-supplement-preparation": {"types":"./dist/run-supplement-preparation.d.ts","default":"./dist/run-supplement-preparation.js"},
     "./run-supplement-files": {"types":"./dist/run-supplement-files.d.ts","default":"./dist/run-supplement-files.js"},

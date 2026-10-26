@@ -79,6 +79,9 @@ function fixture(testChannel = false) {
     sample_manifest_sha256: 'a'.repeat(64), taxonomy_hash: candidatePin.taxonomy.contentSha256,
     rule_pack_hash: candidatePin.rulePack.contentSha256, expires_at: new Date(Date.now() + 3600000), revoked_at: null as Date | null };
   const pool = { async query(sql: string, values: unknown[]) {
+    if (sql.includes('SELECT r.* FROM bb_runs r')) return { rows: [rawRun] };
+    if (sql.includes('FROM bb_run_execution_versions e')) return { rows: [{ execution_version: 1,
+      input_revision: rawRun.input_revision, input_hash: rawRun.input_hash }] };
     if (sql.includes('FROM bb_non_production_test_grants')) { assert.equal(testChannel, true); return { rows: [grant] }; }
     if (sql.includes('FROM bb_input_revisions')) { assert.deepEqual(values, ['owner-1','project-1',1]); return { rows: [row] }; }
     if (sql.includes('FROM bb_jobs')) { assert.equal(values[1], 'owner-1'); return { rows: [{ checkpoint: { stages: { parse_evidence: { snapshot_id: snapshot.snapshotId } } } }] }; }

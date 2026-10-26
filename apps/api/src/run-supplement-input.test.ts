@@ -3,11 +3,11 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   emptyUpdateDetails, M4DocumentManifestSchema, ReviewExecutionOriginSchema, RunSupplementInputPreviewSchema,
-  type ReviewMaterialPin, type RunSupplementMaterial, type SourceProspectus,
+  type ReviewMaterialPin, type RunSupplementChange, type RunSupplementMaterial, type SourceProspectus,
 } from '@bondbuddy/contracts';
 import { digest } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import { compileRunSupplementInput } from './run-supplement-input.js';
+import { compileRunSupplementInput, type RunSupplementReviewIdentityContext } from './run-supplement-input.js';
 
 const projectId = 'task-project';
 const material = (id: string, role: RunSupplementMaterial['role'] = 'other', version = 1, source = projectId): RunSupplementMaterial => ({
@@ -45,6 +45,15 @@ function m3(source = material('source', 'historical'), evidence = material('evid
       input, source_report_id: null, source_report_sha256: null, finding_ids: [], origin,
       file_delivery: { version: 'frozen-file-delivery', knowledge: ['Frozen review policy'] } } };
   return { manifest, reviewSnapshot: { input: structuredClone(input), origin: structuredClone(origin), finding_ids: [], plan: null } };
+}
+function savedReviewContext(manifest: unknown, changes: RunSupplementChange[], options: {
+  owner?: string; runId?: string; executionVersion?: number; inputRevision?: number; revision?: number; requestId?: string;
+} = {}): RunSupplementReviewIdentityContext {
+  const baseExecution = { executionVersion: options.executionVersion ?? 1, inputRevision: options.inputRevision ?? 4, inputHash: inputManifestHash(manifest) };
+  const revision = options.revision ?? 1, requestId = options.requestId ?? 'saved-review-supplement';
+  return { owner: options.owner ?? 'review-owner', runId: options.runId ?? 'frozen-review-run', baseExecution,
+    supplement: { revision, requestId, requestHash: inputManifestHash({ request_id: requestId, expected_revision: revision - 1,
+      base_input_revision: baseExecution.inputRevision, base_input_hash: baseExecution.inputHash, changes }) } };
 }
 function m4() {
   const source = material('source', 'other', 1, 'source-project'), evidence = material('evidence', 'audit');
@@ -198,21 +207,120 @@ test('source metadata rejects wrong exact pins, ordinary evidence roles and non-
   assert.deepEqual(manifest, before);
 });
 
-test('M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot', () => {
+test('M3 replacements synchronize material paths and the candidate snapshot with a new frozen report identity', () => {
   const source = material('source', 'historical'), evidence = material('evidence', 'audit'), replacement = material('source', 'historical', 2), added = material('new-evidence');
   const fixture = m3(source, evidence), before = structuredClone(fixture);
-  const result = compileRunSupplementInput({ projectId, ...fixture, resultMaterials: [replacement, evidence, added],
-    changes: [{ material: pin(replacement), replaces: pin(source) }, { material: pin(added), replaces: null }] });
+  const changes = [{ material: pin(replacement), replaces: pin(source) }, { material: pin(added), replaces: null }];
+  const result = compileRunSupplementInput({ projectId, ...fixture, resultMaterials: [replacement, evidence, added], changes,
+    reviewIdentityContext: savedReviewContext(fixture.manifest, changes) });
   check(result, 'prepared');
   const expected = structuredClone(before);
   expected.manifest.materials = [replacement, evidence, added].map(ordinaryPin);
   expected.manifest.review.input.material_versions = [replacement, evidence, added].map(pin);
   expected.manifest.review.input.source_material_ref = pin(replacement);
+  expected.manifest.review.report_id = (result.candidate!.manifest.review as any).report_id;
+  expected.manifest.review.version_number = 3;
   expected.reviewSnapshot.input = structuredClone(expected.manifest.review.input);
   assert.deepEqual(result.candidate, expected);
   assert.deepEqual(fixture, before);
   (result.candidate!.reviewSnapshot as any).input.requirements.push('Returned candidate edit');
   assert.deepEqual(fixture, before);
+});
+
+test('M3 freezes a deterministic distinct report identity before hashing, even when the V1 report already exists', () => {
+  const fixture = m3(), added = material('added'), changes = [{ material: pin(added), replaces: null }];
+  const reviewIdentityContext = savedReviewContext(fixture.manifest, changes), before = structuredClone({ fixture, reviewIdentityContext });
+  const args = { projectId, ...fixture, resultMaterials: [material('source', 'historical'), material('evidence', 'audit'), added], changes, reviewIdentityContext };
+  const first = compileRunSupplementInput(args), repeated = compileRunSupplementInput(structuredClone(args));
+  check(first, 'prepared'); assert.deepEqual(first, repeated);
+  const review = first.candidate!.manifest.review as any;
+  const existingCanonicalReports = new Set([fixture.manifest.review.report_id]);
+  assert.equal(existingCanonicalReports.has(review.report_id), false);
+  assert.match(review.report_id, /^supplement-review-[a-f0-9]{64}$/);
+  assert.ok(review.report_id.length <= 128);
+  assert.equal(review.version_number, fixture.manifest.review.version_number + 1);
+  const reusedIdentity = structuredClone(first.candidate!.manifest) as any;
+  reusedIdentity.review.report_id = fixture.manifest.review.report_id;
+  reusedIdentity.review.version_number = fixture.manifest.review.version_number;
+  assert.notEqual(first.preview.candidate_input_hash, inputManifestHash(reusedIdentity));
+  assert.deepEqual({ fixture, reviewIdentityContext }, before);
+
+  const contexts = [{ owner: 'another-owner' }, { runId: 'another-run' }, { executionVersion: 2 },
+    { inputRevision: 5 }, { revision: 2 }, { requestId: 'another-save' }];
+  const reportIds = new Set([review.report_id]);
+  for (const context of contexts) {
+    const result = compileRunSupplementInput({ ...args, reviewIdentityContext: savedReviewContext(fixture.manifest, changes, context) });
+    check(result, 'prepared');
+    const candidateReview = result.candidate!.manifest.review as any;
+    assert.equal(candidateReview.version_number, review.version_number);
+    assert.equal(reportIds.has(candidateReview.report_id), false); reportIds.add(candidateReview.report_id);
+    assert.notEqual(result.preview.candidate_input_hash, first.preview.candidate_input_hash);
+  }
+  const otherManifest = { ...fixture.manifest, issuer_name: 'Another frozen issuer' };
+  const otherInput = compileRunSupplementInput({ ...args, manifest: otherManifest,
+    reviewIdentityContext: savedReviewContext(otherManifest, changes) });
+  check(otherInput, 'prepared');
+  assert.equal(reportIds.has((otherInput.candidate!.manifest.review as any).report_id), false);
+});
+
+test('M3 cannot prepare without its exact saved receipt and resolved base execution identity', () => {
+  const fixture = m3(), added = material('added'), changes = [{ material: pin(added), replaces: null }];
+  const args = { projectId, ...fixture, resultMaterials: [material('source', 'historical'), material('evidence', 'audit'), added], changes };
+  const context = savedReviewContext(fixture.manifest, changes);
+  const invalidContexts = [undefined, { ...context, owner: '' }, { ...context, runId: '' },
+    { ...context, baseExecution: { ...context.baseExecution, executionVersion: 0 } },
+    { ...context, baseExecution: { ...context.baseExecution, inputRevision: 2147483648 } },
+    { ...context, baseExecution: { ...context.baseExecution, inputHash: digest('another frozen input') } },
+    { ...context, supplement: { ...context.supplement, revision: 2 } },
+    { ...context, supplement: { ...context.supplement, requestHash: digest('another saved request') } },
+    { ...context, supplement: { ...context.supplement, requestId: 'another-save' } }];
+  for (const reviewIdentityContext of invalidContexts) {
+    const result = compileRunSupplementInput({ ...args, reviewIdentityContext });
+    check(result, 'unsupported'); assert.equal(result.preview.issues[0].code, 'input_unsupported');
+  }
+  const otherAdded = material('other-added'), otherChanges = [{ material: pin(otherAdded), replaces: null }];
+  check(compileRunSupplementInput({ ...args, reviewIdentityContext: context, changes: otherChanges,
+    resultMaterials: [material('source', 'historical'), material('evidence', 'audit'), otherAdded] }), 'unsupported');
+  check(compileRunSupplementInput({ ...args, changes: [] }), 'unchanged');
+});
+
+test('M3 validates the source report identity and successor version without guessing a replacement', () => {
+  const added = material('added'), changes = [{ material: pin(added), replaces: null }];
+  for (const sourceIdentity of [{ report_id: '' }, { report_id: 'x'.repeat(129) }, { version_number: 0 },
+    { version_number: 1.5 }, { version_number: 2147483647 }, { version_number: 2147483648 }]) {
+    const fixture = m3(); Object.assign(fixture.manifest.review, sourceIdentity);
+    const before = structuredClone(fixture);
+    const result = compileRunSupplementInput({ projectId, ...fixture, changes,
+      resultMaterials: [material('source', 'historical'), material('evidence', 'audit'), added],
+      reviewIdentityContext: savedReviewContext(fixture.manifest, changes) });
+    check(result, 'unsupported'); assert.deepEqual(fixture, before);
+  }
+});
+
+test('M3 differential successors preserve the source report, operation, finding scope and frozen snapshot context', () => {
+  const fixture: any = m3(), added = material('added'), changes = [{ material: pin(added), replaces: null }];
+  fixture.manifest.review.operation = 'differential_review';
+  fixture.manifest.review.source_report_id = 'original-source-report';
+  fixture.manifest.review.source_report_sha256 = digest('Frozen source report');
+  fixture.manifest.review.finding_ids = ['original-finding'];
+  fixture.manifest.review.input.evidence_links = [{ report_id: 'original-source-report', finding_id: 'original-finding', material_ref: pin(material('evidence', 'audit')) }];
+  fixture.reviewSnapshot.input = structuredClone(fixture.manifest.review.input);
+  fixture.reviewSnapshot.finding_ids = ['original-finding'];
+  fixture.reviewSnapshot.context_messages = [{ content: 'Frozen discussion' }];
+  const before = structuredClone(fixture);
+  const result = compileRunSupplementInput({ projectId, ...fixture, changes,
+    resultMaterials: [material('source', 'historical'), material('evidence', 'audit'), added],
+    reviewIdentityContext: savedReviewContext(fixture.manifest, changes) });
+  check(result, 'prepared');
+  const candidate = result.candidate as any, expected = structuredClone(before);
+  expected.manifest.materials.push(ordinaryPin(added));
+  expected.manifest.review.input.material_versions.push(pin(added));
+  expected.reviewSnapshot.input = structuredClone(expected.manifest.review.input);
+  expected.manifest.review.report_id = candidate.manifest.review.report_id;
+  expected.manifest.review.version_number = 3;
+  assert.notEqual(candidate.manifest.review.report_id, before.manifest.review.report_id);
+  assert.notEqual(candidate.manifest.review.report_id, before.manifest.review.source_report_id);
+  assert.deepEqual(candidate, expected); assert.deepEqual(fixture, before);
 });
 
 test('M3 unchanged evidence links preserve the exact original report, finding and material identity', () => {
@@ -222,8 +330,9 @@ test('M3 unchanged evidence links preserve the exact original report, finding an
   fixture.manifest.review.input.evidence_links = links;
   fixture.reviewSnapshot.input.evidence_links = structuredClone(links);
   const before = structuredClone(fixture);
-  const result = compileRunSupplementInput({ projectId, ...fixture, resultMaterials: [replacement, evidence],
-    changes: [{ material: pin(replacement), replaces: pin(source) }] });
+  const changes = [{ material: pin(replacement), replaces: pin(source) }];
+  const result = compileRunSupplementInput({ projectId, ...fixture, resultMaterials: [replacement, evidence], changes,
+    reviewIdentityContext: savedReviewContext(fixture.manifest, changes) });
   check(result, 'prepared');
   assert.deepEqual((result.candidate!.manifest.review as any).input.evidence_links, links);
   assert.deepEqual((result.candidate!.reviewSnapshot as any).input.evidence_links, links);
@@ -256,8 +365,9 @@ test('M3 source replacements preserve the DOCX/PDF boundary while ordinary text 
   check(rejected, 'needs_information'); assert.equal(rejected.preview.issues[0].code, 'review_scope_bound');
   assert.equal(rejected.preview.issues[0].material_id, source.material_id); assert.deepEqual(fixture, before);
   const textEvidence = { ...material('text-evidence'), media_type: 'text/plain', filename: 'evidence.txt' };
-  const prepared = compileRunSupplementInput({ projectId, ...fixture, resultMaterials: [source, evidence, textEvidence],
-    changes: [{ material: pin(textEvidence), replaces: null }] });
+  const changes = [{ material: pin(textEvidence), replaces: null }];
+  const prepared = compileRunSupplementInput({ projectId, ...fixture, resultMaterials: [source, evidence, textEvidence], changes,
+    reviewIdentityContext: savedReviewContext(fixture.manifest, changes) });
   check(prepared, 'prepared');
   assert.deepEqual((prepared.candidate!.manifest.review as any).input.source_material_ref, pin(source));
   assert.deepEqual(fixture, before);
@@ -357,7 +467,8 @@ test('legacy M3 origin may remain absent and malformed or mismatched review snap
   delete fixture.manifest.review.origin; delete fixture.reviewSnapshot.origin;
   const resultMaterials = [material('source', 'historical'), material('evidence', 'audit'), added];
   const changes = [{ material: pin(added), replaces: null }];
-  check(compileRunSupplementInput({ projectId, ...fixture, resultMaterials, changes }), 'prepared');
+  check(compileRunSupplementInput({ projectId, ...fixture, resultMaterials, changes,
+    reviewIdentityContext: savedReviewContext(fixture.manifest, changes) }), 'prepared');
   for (const reviewSnapshot of [null, {}, { input: fixture.manifest.review.input, origin: { entrypoint: 'invented' } }])
     check(compileRunSupplementInput({ projectId, manifest: fixture.manifest, reviewSnapshot, resultMaterials, changes }), 'unsupported');
 });

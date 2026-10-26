@@ -1,4 +1,4 @@
-import { assertTestGrant } from '@bondbuddy/api/non-production-test';
+import { assertRunExecutionTestGrant } from '@bondbuddy/api/run-execution-test-grant';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { Problem } from '@bondbuddy/api/data';
 import { updateContentHash } from '@bondbuddy/domain/historical-update';
@@ -21,10 +21,11 @@ export async function loadAuthorizedHistoricalTestRuleGuidance(ctx: StageContext
   if (gate) throw new Error('UPDATE_TEST_RULE_AUTHORIZATION_REJECTED');
   const capability = await ctx.testRuleCapabilityLoader(ctx.run, input);
   if (capability.status !== 'ready') throw new HistoricalRulesUnavailable(capability.reason);
-  let grant;
+  let grant, grantId: string;
   try {
-    grant = await assertTestGrant(ctx.pool, { grantId: ctx.run.test_grant_id, userId: ctx.run.owner_user_id,
-      projectId: ctx.run.project_id, inputRevision: ctx.run.input_revision, inputHash: ctx.run.input_hash.trim() });
+    ({grant, grantId} = await assertRunExecutionTestGrant(ctx.pool, { owner: ctx.run.owner_user_id,
+      projectId: ctx.run.project_id, runId: ctx.run.id, executionVersion: ctx.run.executionVersion,
+      inputRevision: ctx.run.inputRevision, inputHash: ctx.run.inputHash }));
   } catch (error) {
     if (error instanceof Problem) throw new HistoricalRulesUnavailable(error.code.toLowerCase());
     throw error;
@@ -39,7 +40,7 @@ export async function loadAuthorizedHistoricalTestRuleGuidance(ctx: StageContext
     documentStage: t.document_purpose, asOf: t.as_of },
   { taxonomyHash: grant.taxonomy_hash.trim(), rulePackHash: grant.rule_pack_hash.trim() });
   const { content_hash: _, ...reference } = guidance;
-  const content = { ...reference, authorization: { grant_id: ctx.run.test_grant_id, input_revision: ctx.run.input_revision,
+  const content = { ...reference, authorization: { grant_id: grantId, input_revision: ctx.run.input_revision,
     input_hash: ctx.run.input_hash.trim(), sample_manifest_sha256: grant.sample_manifest_sha256.trim(),
     target_status:t.status } };
   return { ...content, content_hash: updateContentHash(content) };

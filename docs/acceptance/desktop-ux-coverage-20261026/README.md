@@ -85,3 +85,5 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 - [已删除项目的四份复核正文（0134）](review-body-deletion/README.md)：按实际项目删除窗口清理 legacy/canonical editor/report，回访旧成果清理回执、防止重放和桥接复活；活动项目业务正文保留。只关闭这四表副本，其他项目正文和 G03 后继执行仍待完成。
 
 - [Worker 的原任务输入与本次执行输入](execution-input-projection/README.md)：真实 pipeline、三类 loader 和独立 writer 使用明确执行投影，原输入单独保留，完整执行身份漂移拒绝；V1 门和原账务语义保留，没有补料采用或新版 Word，不增加 G03 旅程通过数。
+
+- [内部测试的同任务补料采用（0135）](test-successor-adoption/README.md)：三类任务真实 PG 验证准确新授权、不可变采用回执、V1→V2 head CAS、canonical snapshot、材料 pin 及 V2 claim；249 pass/2 skip 分选集采用，原账务不变。只开放内部测试，V2 Word、付费追加报价和完整 G03 仍未完成，不增加用户旅程通过数。

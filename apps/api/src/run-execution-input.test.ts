@@ -42,7 +42,7 @@ function fixture(kind: 'm1' | 'review' | 'review_result' | 'm4' = 'm1') {
       assert.deepEqual(args, ['owner', 'run']); return { rows: [state.run] };
     }
     if (sql.includes('FROM bb_run_execution_versions')) {
-      assert.deepEqual(args, ['owner', 'project', 'run']); return { rows: state.versions };
+      assert.deepEqual(args, ['owner', 'project', 'run', run.input_revision, run.input_hash]); return { rows: state.versions };
     }
     if (sql.includes('FROM bb_input_revisions')) {
       assert.deepEqual(args, ['owner', 'project', 3]);

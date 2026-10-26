@@ -7,7 +7,7 @@ import { AuthoringActivitySchema, type AuthoringActivity, ERROR_CODES, RUN_PAUSE
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
-import { assertTestGrant } from './non-production-test.js';
+import { assertRunExecutionTestGrant } from './run-execution-test-grant.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
 import { inputManifestHash } from './production-rule-pin.js';
@@ -92,7 +92,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     const execution=await assertRunExecution(client,r);
     readExecutionStages(j.checkpoint,execution);
     if(r.channel==='non_production_test'){
-      try { await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash}); }
+      try { await assertRunExecutionTestGrant(client,{owner:r.owner_user_id,projectId:r.project_id,runId:r.id,...execution}); }
       catch(error){
         const code=error instanceof Problem?error.code:'TEST_GRANT_INVALID';
         await client.query("UPDATE bb_jobs SET state='paused',stage='test_grant_invalid',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
@@ -227,7 +227,7 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     // check uses the locked database checkpoint, never a caller's stale lease copy.
     if(j.checkpoint?.review_assembly_recovery)
       throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
-    if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
+    if(r.channel==='non_production_test')await assertRunExecutionTestGrant(client,{...lease,projectId:r.project_id});
     // #35: kill switch, deny override and the daily token quota are re-checked before every call.
     await assertModelCallAllowed(client,trialGuardConfig(),lease.owner);
     if(metadata.promptSnapshotId){
@@ -623,7 +623,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await event(client,r,'paused','user_paused','user_paused');
       return runDto({...r,updated_at:new Date()});
     }
-    if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
+    if(r.channel==='non_production_test')await assertRunExecutionTestGrant(client,{...lease,projectId:r.project_id});
     if((r.channel==='non_production_test' && outcome==='succeeded') || (r.channel==='production' && outcome==='test_completed'))throw new Problem(409,'TEST_GRANT_MISMATCH','Run channel cannot enter this terminal state');
     if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
     if(outcome==='succeeded' || outcome==='test_completed'){

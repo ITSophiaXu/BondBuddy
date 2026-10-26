@@ -11,7 +11,7 @@ import { saveSnapshotRef } from './observability.js';
 import { checkpointStage, claim, finish, pauseAtCheckpoint, promoteWordArtifact, recordPotentialCall, type Lease } from './queue.js';
 import { persistProviderResultObject, recordProviderCallObservation, type ProviderCallIntent } from './provider-results.js';
 import { writeRunWorkingFile } from './run-working-files.js';
-import { createRunSupplementPreparationTestContext, type RunSupplementEarlyPause,
+import { createRunSupplementPreparationTestContext, grantSyntheticSupplementInput, type RunSupplementEarlyPause,
   type RunSupplementFixtureBeforeCall, type RunSupplementFixtureWithSavedWork } from './run-supplement-preparation-test-fixture.js';
 
 const origin='http://bondbuddy.test',docx='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -21,7 +21,7 @@ const ok=(response:{statusCode:number;body:string;json():any})=>{
 };
 export type RunSupplementFilePreparationFixtureOptions={
   operation?:'full_review'|'differential_review';partial?:boolean;wrongCheckpointPrompt?:boolean;
-  wordBytes?:Buffer;method?:Record<string,unknown>;earlyPause?:RunSupplementEarlyPause;
+  wordBytes?:Buffer;method?:Record<string,unknown>;earlyPause?:RunSupplementEarlyPause;nonProduction?:boolean;
 };
 
 /** Importing this helper never starts a service or creates a database. Worker
@@ -73,8 +73,14 @@ async function buildRunSupplementFilePreparationFixture(connectionString:string,
         VALUES($1,$2,$3,1,$4,$5,$6,'[]','frozen-rules','frozen-template','frozen-reference')`,[projectId,revision,owner,hash,manifest,JSON.stringify(pins)]);
       return hash;
     };
-    const persistRun=async(id:string,hash:string,revision:number)=>pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued','queued')`,[id,owner,projectId,revision,hash,uid(),task,digest(uid())]);
+    const channel=options.nonProduction?'non_production_test':'production';
+    let testGrant:string|null=null;
+    const persistRun=async(id:string,hash:string,revision:number)=>{
+      const runChannel=options.nonProduction&&id===runId?channel:'production';
+      testGrant=runChannel==='non_production_test'?await grantSyntheticSupplementInput(pool,owner,projectId,revision,hash):null;
+      return pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage,channel,test_grant_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued','queued',$9,$10)`,[id,owner,projectId,revision,hash,uid(),task,digest(uid()),runChannel,testGrant]);
+    };
     const persistReview=async(id:string,manifest:any)=>pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot)
       VALUES($1,$2,$3,$4,$5,$6,$7)`,[id,owner,projectId,manifest.review.version_number,manifest.review.operation,manifest.review.source_report_id,
       {input:manifest.review.input,origin:manifest.review.origin,finding_ids:manifest.review.finding_ids,plan:null}]);
@@ -130,8 +136,8 @@ async function buildRunSupplementFilePreparationFixture(connectionString:string,
     await persistRun(runId,hash,inputRevision);
     if(kind==='review')await persistReview(runId,manifest);
     else await pool.query(`INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)`,[runId,owner,topic,manifest,hash]);
-    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage)
-      VALUES($1,$2,$3,$4,$5,'queued','queued')`,[jobId,owner,runId,task,kind==='m4'?M4_DOCUMENT_SUBTYPE:'default']);
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id)
+      VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)`,[jobId,owner,runId,task,kind==='m4'?M4_DOCUMENT_SUBTYPE:'default',channel,testGrant]);
     const claimed=await claim(pool,300,{runKinds:[task]});assert.ok(claimed);const lease:Lease=claimed;assert.equal(lease.runId,runId);
     const schema=kind==='review'?'codex-review-file-v1':'codex-m4-document-v1',logical=kind==='review'?'review-file-v1':'m4-document-v1';
     const method=structuredClone(options.method??{version:'m4-document-method-v1',skill_id:'m4-underwriter',skill_version:'synthetic-v1',

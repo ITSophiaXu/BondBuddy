@@ -35,7 +35,15 @@ async function word(text:string):Promise<Buffer>{
 
 export type RunSupplementEarlyPause='before_prompt'|'after_prompt';
 export type RunSupplementPreparationFixtureOptions={partial?:boolean;wrongCheckpointPrompt?:boolean;wordBytes?:Buffer;requirementBody?:string;
-  earlyPause?:RunSupplementEarlyPause};
+  earlyPause?:RunSupplementEarlyPause;nonProduction?:boolean};
+export async function grantSyntheticSupplementInput(pool:Pool,owner:string,projectId:string,revision:number,hash:string){
+  const id=uid();
+  await pool.query(`INSERT INTO bb_non_production_test_grants(grant_id,user_id,project_id,input_revision,input_hash,
+    sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+    VALUES($1,$2,$3,$4,$5,$6,$6,$6,'synthetic_fixture','Exact synthetic supplement input only',now()+interval '1 hour')`,
+    [id,owner,projectId,revision,hash,digest('synthetic-supplement-fixture')]);
+  return id;
+}
 export type RunSupplementFixtureWithSavedWork<T extends {selected:unknown;unrelated:unknown}>=Omit<T,'selected'|'unrelated'|'earlyPause'> & {
   selected:NonNullable<T['selected']>;unrelated:NonNullable<T['unrelated']>;earlyPause:null};
 export type RunSupplementFixtureBeforeCall<T>=Omit<T,'selected'|'unrelated'|'earlyPause'> & {
@@ -103,10 +111,12 @@ export async function createRunSupplementPreparationTestContext(connectionString
       VALUES($1,1,$2,1,$3,$4,$5,$6,'frozen-rules','frozen-template','frozen-reference')`,
     [projectId,owner,hash,manifest,JSON.stringify(manifest.materials),JSON.stringify(requirement?[requirement.messageId]:[])]);
     await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[projectId]);
-    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage)
-      VALUES($1,$2,$3,1,$4,$5,'update',$6,'queued','queued')`,[runId,owner,projectId,hash,uid(),digest(uid())]);
-    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage)
-      VALUES($1,$2,$3,'update','default','queued','queued')`,[jobId,owner,runId]);
+    const channel=options.nonProduction?'non_production_test':'production';
+    const testGrant=options.nonProduction?await grantSyntheticSupplementInput(pool,owner,projectId,1,hash):null;
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage,channel,test_grant_id)
+      VALUES($1,$2,$3,1,$4,$5,'update',$6,'queued','queued',$7,$8)`,[runId,owner,projectId,hash,uid(),digest(uid()),channel,testGrant]);
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id)
+      VALUES($1,$2,$3,'update','default','queued','queued',$4,$5)`,[jobId,owner,runId,channel,testGrant]);
     const claimed=await claim(pool,300,{runKinds:['update']});assert.ok(claimed);
     const lease:Lease=claimed;assert.equal(lease.runId,runId);
     let promptVersion=0;

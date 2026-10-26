@@ -11,13 +11,14 @@ import { conflict, date, missing, Problem, run, transaction, uid } from './data.
 import { assertTestChannelReadable } from './non-production-test.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { providerCallNeedsReconciliation } from './queue.js';
-import { assertRunExecution } from './run-execution.js';
+import { assertRunExecution, type RunExecutionIdentity } from './run-execution.js';
 import { readRunExecutionInput } from './run-execution-input.js';
 import { compileRunSupplementInput, runSupplementSourceContext, validRunSupplementSourceChanges } from './run-supplement-input.js';
 import { captureRunSupplementWork, runSupplementWorkSummary } from './run-supplement-work.js';
 
 type BasePin = ReviewMaterialPin & { source_project_id: string; role?: string };
-type Base = { pins: BasePin[]; supported: boolean; manifest: Record<string, any>; reviewSnapshot: unknown | null };
+type Base = { pins: BasePin[]; supported: boolean; manifest: Record<string, any>; reviewSnapshot: unknown | null;
+  execution: RunExecutionIdentity };
 function invalid(message: string): never { throw new Problem(422, 'VALIDATION_FAILED', message); }
 function corrupt(): never { throw new Problem(503, 'DATA_UNAVAILABLE', '原任务的固定输入暂时无法读取，请稍后重试。'); }
 function stale(): never { throw conflict('INPUT_REVISION_CONFLICT', '补料草稿或原任务版本已变化，请刷新后重试。'); }
@@ -94,7 +95,8 @@ async function frozenBase(db: Pool | PoolClient, owner: string, r: any, job: any
     seen.add(key); pins.push({ ...pin, source_project_id: source, ...(value.role ? { role: value.role } : {}) });
   }
   if (pins.length > 240) corrupt();
-  return { pins, supported, manifest, reviewSnapshot: reviewExecution?.snapshot ?? null };
+  return { pins, supported, manifest, reviewSnapshot: reviewExecution?.snapshot ?? null,
+    execution: { executionVersion: frozen.run.executionVersion, inputRevision: frozen.run.inputRevision, inputHash: frozen.run.inputHash } };
 }
 
 async function materialDetails(db: Pool | PoolClient, owner: string, pin: BasePin): Promise<RunSupplementMaterial> {
@@ -161,7 +163,9 @@ export async function readRunSupplementCandidate(db: Pool | PoolClient, owner: s
   const result = baseMaterials.map(pin => replacements.get(pinKey(pin)) ?? pin);
   changes.forEach((change, index) => { if (!change.replaces) result.push(additions[index]); });
   const compiled = compileRunSupplementInput({ projectId: r.project_id, manifest: base.manifest,
-    reviewSnapshot: base.reviewSnapshot, resultMaterials: result, changes });
+    reviewSnapshot: base.reviewSnapshot, resultMaterials: result, changes,
+    ...(receipt ? { reviewIdentityContext: { owner, runId: r.id, baseExecution: base.execution,
+      supplement: { revision: receipt.revision, requestId: receipt.request_id, requestHash: receipt.request_hash?.trim() } } } : {}) });
   return {base,baseMaterials,changes,resultMaterials:result,...compiled};
 }
 

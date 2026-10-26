@@ -933,3 +933,15 @@ SQL 验证基础 envelope、固定身份/来源和 hash 格式，旧摘要精确
 [本地登记专项](acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)记录真实 PG、合成 DOCX、两方向并发、严格回填、旧/新 writer 与既有回归；失败与完整重跑分别保留。重放旧迁移的 test-only helper 同时恢复当时的 0110/0126 函数，仅在对应交付表仍存在时恢复其 builder。
 
 本切片仍只接受 V1；共享 current-input gate 未放宽。M4 文件登记、后继采用/处理、检查点/调用身份、真正复用与增量、B 追加报价和跨版本账务、材料与正文留存、桌面完整补料续做仍待完成。未增加用户旅程通过数，G03/整体 goal 继续 active，未推送、PR 或部署。
+
+## 2026-10-27：内部测试的同任务补料采用（0135）
+
+0135 新增不可变 `bb_run_test_successor_authorizations`，仅允许 `non_production_test` 原 V1 采用为 V2。内部服务先冻结 byte-verified 候选输入，独立授权者为该准确 revision/hash 建立新 grant；采用在 project→run→job 锁内重查保存回执/处理计划/候选、暂停且无 lease/待对账调用、材料与旧工作，原子写授权回执、V2、canonical review/M4 snapshot、head CAS、空活动 stages、准确 stage_execution、queued 事件/outbox。原 run/job 的请求、输入、grant 与账务身份保留；provider/operator 历史继续 job-wide，旧阶段只经保存回执读取。receipt 的创建时间在 SQL 内直接引用，避免丢失 PostgreSQL 微秒。
+
+`assertRunExecution` 保持结构性校验，V1 要求唯一原执行，V2 要求准确不可变 receipt 与非生产 channel。`assertRunExecutionTestGrant` 从 DB 原 run、活动 head 和 receipt 解析本执行 grant，用于 claim、新调用、finish、规则能力与 fact producer；不信任调用者传入或 projection 中保留的旧 grant，不以实时 grant 阻断已经发出调用的准确结果证据。复核候选在 hash 冻结前按原执行/补料回执确定新 report ID 和原版本+1，保留原报告及复核范围。
+
+接受目标输入与 plan 的完整材料集合先共同取得有序 lifecycle advisory 锁，再按稳定顺序以 FOR SHARE NOWAIT 锁定来源 project/material，复核删除状态、角色/hash，并保留 purge-start 屏障。已接受 V1/V2 的引用参与非终态材料 pin；未接受 plan 不参与。提交时 deferred 检查 receipt、精确 target/head、canonical snapshot、完整新 checkpoint 和 queued 状态，禁止只提交半次采用。迁移表锁 NOWAIT；0133 停旧 storage worker、阻止 claim 并排空已认领 tombstone 的部署前提继续适用。
+
+没有公开采用路由或自动新 grant。生产、付费 reservation/meter/accrued-points 路径和 V3 仍拒绝；V2 artifact 的旧自动绑定也明确拒绝。后继 working/artifact、receipt 授权的历史工作读取、三类实际生成 stage 和 Word delivery 尚待接通。逻辑调用名保持稳定，既有 execution binding 区分调用历史。用户选定 B 另行报价，具体追加计价公式/确认与账务尚未完成。
+
+真实 PG 的同 run 采用/claim、并发、撤销、材料保留、直接 SQL 拒绝及跨项目删除竞态见[专项验收](acceptance/desktop-ux-coverage-20261026/test-successor-adoption/README.md)：本轮分选集 249 pass/2 skip，源码两对冻结各 2,471 项，原始失败保留，独立 PG 已停止。没有 V2 模型/Word 或完整浏览器 G03 验收，不增加用户旅程通过数，完整 UX goal 继续 active。

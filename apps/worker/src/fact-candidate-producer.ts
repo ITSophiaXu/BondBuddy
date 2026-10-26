@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { loadVerifiedIssuerIdentitySourceRecord, type VerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
 import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
-import { assertTestGrant } from '@bondbuddy/api/non-production-test';
+import { assertRunExecutionTestGrant } from '@bondbuddy/api/run-execution-test-grant';
 import type { FactCandidate, FactIdentity } from '@bondbuddy/domain/facts';
 import type { Pool } from 'pg';
 import { SEMANTIC_FACT_EXTRACTION_REQUEST_VERSION, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION } from './semantic-fact-extraction-constants.js';
@@ -264,14 +264,16 @@ export async function produceParsedFactCandidates(
   const testCandidate=isTestIssuerCandidate(manifest.test_issuer_candidate)?manifest.test_issuer_candidate:null;
   if(!verifiedBinding && (!testCandidate || !context.testRunId))throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_NOT_VERIFIED');
   const validateTestRun=async(db:Pool)=>{
-    const row=(await db.query(`SELECT channel,test_grant_id FROM bb_runs WHERE id=$1 AND owner_user_id=$2
-      AND project_id=$3 AND input_revision=$4 AND input_hash=$5 AND task_kind='update'`,
-    [context.testRunId,context.ownerUserId,context.projectId,context.inputRevision,context.inputHash])).rows[0];
-    if(!row || row.channel!=='non_production_test' || !row.test_grant_id || !testCandidate ||
+    const active=(await db.query(`SELECT h.execution_version FROM bb_runs r JOIN bb_run_execution_heads h
+      ON h.owner_user_id=r.owner_user_id AND h.project_id=r.project_id AND h.run_id=r.id
+      WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.task_kind='update'
+        AND h.input_revision=$4 AND h.input_hash=$5`,
+    [context.testRunId,context.ownerUserId,context.projectId,context.inputRevision,context.inputHash])).rows;
+    if(active.length!==1 || !testCandidate ||
         !await testIssuerCandidateMatches(db,{ownerUserId:context.ownerUserId,projectId:context.projectId},testCandidate))
       throw fail('FACT_EXTRACTION_TEST_ISSUER_CANDIDATE_STALE');
-    await assertTestGrant(db,{grantId:row.test_grant_id,userId:context.ownerUserId,projectId:context.projectId,
-      inputRevision:context.inputRevision,inputHash:context.inputHash});
+    await assertRunExecutionTestGrant(db,{owner:context.ownerUserId,projectId:context.projectId,runId:context.testRunId!,
+      executionVersion:active[0].execution_version,inputRevision:context.inputRevision,inputHash:context.inputHash});
   };
   if(testCandidate && !verifiedBinding)await validateTestRun(dependencies.pool as Pool);
   const binding=verifiedBinding ?? testCandidate!;

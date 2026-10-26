@@ -7,6 +7,7 @@ import { isolatedTestDatabase } from './test-database.js';
 import { digest, transaction, uid, type PrivateBlobs } from './data.js';
 import { creditBalance, grantCredits } from './billing.js';
 import { inputManifestHash } from './production-rule-pin.js';
+import { compileRunSupplementInput } from './run-supplement-input.js';
 import { emptyM4Draft } from './m4-workspace.js';
 import { claim, finish } from './queue.js';
 import { syntheticReviewPair } from './review-delivery-test-fixture.js';
@@ -234,6 +235,19 @@ test('real supplement HTTP compiles exact frozen M1/M3/M4 candidates without ado
         if (flow === 'm3') expected.review.input.material_versions.push(added);
       }
       const before = await c.evidence(f), saved = ok(await c.send('PUT', f.url, body));
+      if (flow === 'm3') {
+        // Check the route supplies the same exact saved context as a pure caller;
+        // its report identity is already part of the preview's frozen hash.
+        const compiled = compileRunSupplementInput({ projectId: f.projectId, manifest: f.manifest,
+          reviewSnapshot: before.reviewSnapshots[0].snapshot, resultMaterials: saved.result_materials, changes: body.changes,
+          reviewIdentityContext: { owner: c.owner, runId: f.runId,
+            baseExecution: { executionVersion: 1, inputRevision: 1, inputHash: f.hash },
+            supplement: { revision: saved.revision, requestId: body.request_id, requestHash: inputManifestHash(body) } } });
+        assert.equal(compiled.preview.status, 'prepared');
+        expected.review.report_id = (compiled.candidate!.manifest.review as any).report_id;
+        expected.review.version_number = f.manifest.review.version_number + 1;
+        assert.notEqual(expected.review.report_id, f.manifest.review.report_id);
+      }
       assert.deepEqual(saved.input_preview, { compiler_version: 'run-supplement-input-v1', status: 'prepared',
         candidate_input_hash: inputManifestHash(expected), issues: [] });
       assert.notEqual(saved.input_preview.candidate_input_hash, f.hash);
