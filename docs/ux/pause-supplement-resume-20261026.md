@@ -64,7 +64,7 @@
 | `durable-probe-journal.ts:81` 按逻辑调用查最后 attempt；file authoring 使用常量 `file-authoring-v1` | 每个执行版本使用稳定的工作单元身份及依赖指纹；崩溃恢复重用同一调用，补料的新处理使用新身份。不能靠盲目增加 attempt 重放旧工作 |
 | stage 检查点仍只按 stage 名索引；共享输入 reader 与三个实际 loader 目前只接受 V1 | 后继执行统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
 | `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；0124 已追加完整身份的业务快照，实际 loader/gate 消费准确 V1 | 仍须追加每执行版本的报告关联，并开放受控的后继业务快照创建；模型、成果登记及历史也须解析准确版本，旧记录继续不可变。当前只有 V1 不能支持后继执行 |
-| 既有 artifact 不直接记录 input revision，部分来源通过 run 反查；多个成果登记按 `(run_id, kind)` 唯一 | 增加不可变的 artifact→执行版本/输入关系；已有唯一结果索引仅作为“当前结果”投影，历史关联另行追加。项目募集书、文件族、previous_output、复核来源和助手准确成果续改均使用准确关联 |
+| `0125` 已追加不可变 artifact→准确 V1 执行/输入关系，实际 API/Worker 成果消费者读取严格来源 view；多个成果登记仍按 `(run_id, kind)` 唯一 | 后继采用时仍须版本化成果 ID、报告及业务登记，并保留历史关联与当前结果投影；不能只放开 V2 约束。项目募集书、文件族、previous_output、复核来源和助手续改继续读取准确版本 |
 | `server.ts` 的成果/下载校验主要依赖整个 run 已成功；`unified-input.ts` 的 previous_output 只允许已成功来源任务 | 下载授权进一步绑定具体成果/执行版本和该版本交付状态，避免新版本成功后把旧暂存 Word 一并变为正式交付。新增私有的前序工作 pin，按 owner、同 run、执行版本、Blob 和 hash 核对暂停时已保存文件；不放宽公开成功成果门，也不伪造旧版本成功 |
 | `0097_m4_cross_project_material_retention.sql` 的材料 pin 判定沿原 run 输入/M4 快照读取 | 保留所有已采用执行版本、旧模型结果及历史成果所引用的材料字节，不能只 pin 原输入或当前输入。清理/归档/账号删除继续遵守既有生命周期政策 |
 | run 的 `test_grant_id` 绑定原不可变输入；规则/模板、source metadata 和跨项目材料也有准确授权范围 | 每个新执行版本重新核验所用输入的授权，必要时记录版本级 grant；不改写或借用原 grant 授权不同输入，不绕过原有测试/生产隔离 |
@@ -121,6 +121,12 @@ legacy 登记后只有准确 raw 字节经 bounded 长度/hash 核验才记录�
 追加 `0124_run_execution_business_snapshots.sql`，将完整 M3/M4 业务快照固定到 owner/project/run/execution_version/input_revision/input_hash，保留旧业务行、业务版本和原创建时间。已有 V1 精确回填；现有业务创建入口在同一事务自动桥接，缺失/不符拒绝整笔创建。迁移按 M4 的 topic→input 顺序排空行锁；材料版本的 JSONB `1.0` 沿现有整数契约处理。
 
 共同 reader 和真实 M1/M3/M4 loader 读取准确输入及新表；M3/M4 独立 gate、input_lock 和模型调用前复核同样接入。缺少必需快照不得借用旧表，传入快照不能绕过持久执行身份。普通 M1 不凭空要求业务快照。此基础仍保留 V1 限制，尚未提供采用、新报告/成果身份、后继调用或追加计价；G03 继续开放。
+
+### 成果执行来源基础
+
+`0125_artifact_execution_bindings.sql` 已为全部 artifact 状态及业务版本保存完整执行/输入身份和原创建时间，真实 Word、PDF、M4 文本 INSERT 同事务桥接。绑定与文件核心身份不可变，交付状态/证据仍可推进或撤销；缺失或不符不能通过旧 artifact/run 行推断来源。严格 V1 view 及共享读取已接入历史、下载、项目文件/募集书、复核、助手、M4 与 Worker 原成果 pin。结算保留原行锁，不经 view 锁住输入表。用户上传和离线回存的独立 runless 文件版本不受此来源桥接影响。
+
+验证范围与失败/复验记录见[成果来源验收](../acceptance/desktop-ux-coverage-20261026/artifact-execution-bindings/README.md)。该基础没有开放 V2 或后继调用；stage/pair 检查点、按 run 唯一的报告/业务成果登记和输出 ID 仍须追加版本关系。也没有采用新材料、追加报价确认或新 Word 全旅程证据，G03 保持开放。
 
 ## 需要确定的一项产品规则：补料重做费用
 

@@ -16,7 +16,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
   const pool=new Pool({connectionString:connection}),owner='review-dynamic-'+uid();let actor=owner;
   const files=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
-  const app=createServer({pool,blobs,enablePaidReview:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  const app=createServer({pool,blobs,enablePaidReview:true,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
   const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
   const fund=(points:number)=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points,expiresAt:null,actor:'synthetic',reason:'isolated test'}));

@@ -84,7 +84,7 @@ export function reviewReplyMetadataDto(r: { reply_metadata?: unknown; context?: 
 const messageDto = (r: any): ReviewMessage => ({ message_id: r.id, role: r.role, content: r.content, context: r.context, created_at: date(r.created_at), reply_status: r.reply_status, reply_to: r.reply_to, proposal: r.proposal, error: r.error, reply_metadata: reviewReplyMetadataDto(r) });
 async function artifacts(db: Db, user: string, id: string, runId: string) {
   return (await db.query(`SELECT a.artifact_id,a.artifact_version,a.kind,v.media_type,${artifactNameColumns('v')} FROM bb_review_artifacts a
-    JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
+    JOIN bb_execution_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')}
     WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3 AND v.quality_status='passed' AND v.delivery_status='available' ORDER BY a.kind`, [user, id, runId])).rows.map(a=>({artifact_id:a.artifact_id,artifact_version:a.artifact_version,kind:a.kind,filename:artifactDownloadName(a).filename}));
 }
@@ -445,7 +445,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
         FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
         JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
         JOIN bb_review_artifacts a ON a.run_id=r.id AND a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.kind='report'
-        JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=r.id
+        JOIN bb_execution_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=r.id
         WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state='succeeded' AND r.channel='production'
         AND e.operation IN ('full_review','differential_review') AND v.quality_status='passed' AND v.delivery_status='available'`,[user,id,b.source_run_id])).rows[0];
       if(!source)throw missing();

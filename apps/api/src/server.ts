@@ -1,3 +1,4 @@
+import { assertArtifactExecution } from './artifact-execution.js';
 import { registerProjectQa } from './project-qa.js';
 import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
@@ -269,6 +270,7 @@ export function createServer(settings: Settings = {}) {
   }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
+    await assertArtifactExecution(db(),artifact);
     let bytes:Buffer|null;
     if(artifact.media_type===WORD_MEDIA_TYPE){
       const expectedSize=Number(artifact.delivery_evidence_byte_size);
@@ -842,7 +844,7 @@ export function createServer(settings: Settings = {}) {
         const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(p, resolved, currentMessageSet);
         const previous = (await client.query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.input_revision,i.manifest
           FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
-          JOIN bb_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
+          JOIN bb_execution_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
           JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
           WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND r.channel='production'
             AND a.quality_status='passed' AND a.delivery_status='available'
@@ -1542,7 +1544,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_execution_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
@@ -1575,7 +1577,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_execution_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id

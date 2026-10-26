@@ -14,12 +14,22 @@ test('checked revision metadata exposes clean and baseline downloads with pendin
   let owner = 'owner-a';
   const query = async (sql: string, values: unknown[] = []) => {
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes('FROM bb_artifact_versions a')) {
+    if (sql.includes('FROM bb_execution_artifact_versions a')) {
       if (owner !== 'owner-a' || !['word-revision', 'word-clean', 'word-baseline'].includes(String(values[1]))) return { rows: [] };
       return { rows: [{ id: values[1], owner_user_id: owner, project_id: 'project-a', run_id: 'run-1', version: 1,
         media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         sha256: digest(bytes), quality_status: 'passed', delivery_status: 'available', object_key: `private/${values[1]}`,
         naming_created_at:'2026-10-09T02:00:00Z',naming_manifest:{name:'冻结项目'},naming_input_revision:3,naming_pair:summary,delivery_evidence_byte_size: bytes.length }] };
+    }
+    if (sql.includes('FROM bb_artifact_execution_bindings b')) {
+      const [requestedOwner,runId,artifactId,version] = values;
+      if (requestedOwner !== 'owner-a' || runId !== 'run-1' || version !== 1
+        || !['word-revision','word-clean','word-baseline'].includes(String(artifactId))) return { rows: [] };
+      return { rows: [{ owner_user_id: requestedOwner,project_id:'project-a',run_id:runId,
+        artifact_id:artifactId,artifact_version:version,execution_version:1,input_revision:3,input_hash:'a'.repeat(64),
+        run_input_revision:3,run_input_hash:'a'.repeat(64),
+        artifact_media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        artifact_sha256:digest(bytes),artifact_object_key:'private/'+artifactId }] };
     }
     if (sql.includes('FROM bb_jobs')) return { rows: [{ pair: summary }] };
     if (sql.includes('SELECT channel FROM bb_runs')) return { rows: [{ channel: 'production' }], rowCount: 1 };

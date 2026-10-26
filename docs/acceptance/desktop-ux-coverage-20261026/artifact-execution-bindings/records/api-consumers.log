@@ -1,0 +1,121 @@
+✖ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (3810.5119ms)
+✔ eleven distinct case layouts select by type, market, offering and explicit variant; bytes are pinned (363.752ms)
+✔ new material validation is actionable without changing existing initiation requirements (1.8262ms)
+✔ missing material generation input returns all actionable fields without tasks, quotes or charges (1498.9471ms)
+✔ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (2878.4083ms)
+✔ synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes (1977.0991ms)
+✔ synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage (2156.804ms)
+✔ M4 free task preparation and unavailable capabilities do not turn basic QA into free help (0.8312ms)
+✔ product help remains free with selected sources while mixed professional questions remain paid (2.0265ms)
+✔ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (14823.7817ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.6767ms)
+✔ global assistant persistence, owner isolation, no implicit execution and create retries (3686.6601ms)
+﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (1.1072ms) # SKIP
+✔ batch recovery code is part of the public error contract (2.007ms)
+✔ an accepted receipt is returned before inspecting a changed current source or draft (387.0593ms)
+✔ a missing receipt and advanced source selection return a trusted expired rejection (39.6896ms)
+✔ re-adopting the same source still expires the old selection revision without a receipt (22.3281ms)
+✔ an early archived-project conflict never becomes proof that an old receipt is missing (22.2449ms)
+✔ a missing receipt and advanced persisted draft return the trusted expired code (19.8485ms)
+✔ idempotency and active-batch conflicts retain their original public codes (47.4392ms)
+✔ unavailable sources and future input versions do not claim irreversible expiry (67.7273ms)
+✔ authorization failure never becomes an expired-input receipt (16.8998ms)
+✔ old exact check is readable outside the unchanged recent 30 and retains original pins and all updates (414.0035ms)
+✔ old check marks a changed source adoption as stale without replacing its fixed source (35.164ms)
+✔ old running check does not expose a stored result as completed (24.2299ms)
+✔ exact check returns the same safe 404 for missing (20.9233ms)
+✔ exact check returns the same safe 404 for other owner (18.2211ms)
+✔ exact check returns the same safe 404 for other project (26.0805ms)
+✔ exact check returns the same safe 404 for mismatched project (42.3747ms)
+✔ exact check returns the same safe 404 for patch operation (21.0543ms)
+✔ exact check returns the same safe 404 for foreign project (17.4877ms)
+✔ deleted project is rejected before reading any source or operation (21.8128ms)
+✔ unauthenticated exact read never queries the database (17.5303ms)
+✔ accepted old update reads its exact original check outside the unchanged recent thirty and retains V2 separately from a later V3 retry (371.7612ms)
+✔ an original running update remains distinct from its successful retry and has no invented delivery (28.9195ms)
+✔ an original paused update remains distinct from its successful retry and has no invented delivery (25.3051ms)
+✔ an original failed update remains distinct from its successful retry and has no invented delivery (22.1975ms)
+✔ an original cancelled update remains distinct from its successful retry and has no invented delivery (15.462ms)
+✔ accepted-update history rejects no-acceptance with the same safe 404 (16.3474ms)
+✔ accepted-update history rejects other-owner with the same safe 404 (20.4096ms)
+✔ accepted-update history rejects other-project with the same safe 404 (19.6436ms)
+✔ accepted-update history rejects run-project with the same safe 404 (18.5084ms)
+✔ accepted-update history rejects not-patch with the same safe 404 (20.8464ms)
+✔ accepted-update history rejects duplicate-acceptance with the same safe 404 (14.1717ms)
+✔ accepted-update history rejects manifest-check with the same safe 404 (13.0995ms)
+✔ accepted-update history rejects manifest-file with the same safe 404 (12.5759ms)
+✔ accepted-update history rejects manifest-family with the same safe 404 (14.7742ms)
+✔ accepted-update history rejects manifest-sha with the same safe 404 (16.0247ms)
+✔ accepted-update history rejects manifest-source with the same safe 404 (16.9409ms)
+✔ accepted-update history rejects malformed-manifest with the same safe 404 (11.5938ms)
+✔ accepted-update history rejects missing-check with the same safe 404 (11.9583ms)
+✔ accepted-update history rejects duplicate-update with the same safe 404 (13.5381ms)
+✔ accepted-update history rejects wrong-projected-file with the same safe 404 (15.1649ms)
+✔ accepted-update history rejects duplicate-file with the same safe 404 (14.589ms)
+✔ accepted-update history refuses missing patch (15.9469ms)
+✔ accepted-update history refuses check used as patch (14.0741ms)
+✔ accepted-update history refuses different owned project (11.8827ms)
+✔ accepted-update history refuses foreign project (12.1251ms)
+✔ deleted project and unauthenticated session are rejected before reading update or check records (24.3382ms)
+✔ accepted-update history OpenAPI reuses the public check DTO and owned GET path parameters (0.9209ms)
+✔ owner conversion preserves the old input and refuses its preflight and execute; replay is durable (1556.4973ms)
+✔ conversion rejects historical material and terminal run, and serializes against a new input lock (2225.645ms)
+✔ conversion rejects a completed historical upload without a material version, but permits a deleted material (923.7144ms)
+✔ #10 PostgreSQL global search, literal names, tied cursor pages, archive isolation and transaction rollback (2171.0018ms)
+﹣ #10 actual run status and previous successful Word remain available after a newer failure and archive (0.3853ms) # SKIP
+✔ reply citations require the actual immutable report, never finding text (2.8034ms)
+✔ legacy origin is explicitly unknown and nested internal fields never reach a task card (0.9373ms)
+✔ M3 proposals explicitly adopt, lock executable requirements and project one durable task timeline (2328.845ms)
+✔ an adopted typed revision can become a new quick-action scope without losing requirements or rewriting its prior execution (1393.258ms)
+✔ readable report keeps valid legacy files readable and accepts exact live registry metadata (661.8729ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✔ prompt_snapshot (769.9451ms)
+  ✔ provider_result (745.9879ms)
+✔ readable report rechecks parent tombstones after waiting, before any private Blob read (1517.0888ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✔ purged_file (734.6166ms)
+  ✔ closed_account (719.8746ms)
+  ✔ deleted_project (746.8678ms)
+✔ readable report rechecks file state and account/project visibility after the file lock wait (2202.9401ms)
+✔ real working-file purge waits for readable report validation and denies the next raw read (1054.9924ms)
+✔ readable view loads the exact private Markdown, no prompts or final chatter (4.0054ms)
+✔ cross-run references, mismatched input/hash, unavailable or invalid UTF8 safely disable only the optional view (1.0186ms)
+✔ purged parents and visibility lost while waiting for the file deny further private reads (0.7304ms)
+✔ registered unavailable, purging, purged or mismatched files deny reads even while their bytes remain (2.2334ms)
+✔ M3 ownership, independent drafts, idempotency, immutable input, mutex and failed version history (2436.0718ms)
+✔ existing knowledge snapshots are selected by target type, including all eleven scopes (88.9613ms)
+✔ source declarations never select target knowledge and stale material replacements fail (19.5533ms)
+✔ PPN locks the complete 20261013 writing framework without leaking it to other target products (73.0847ms)
+✔ PPN review retains its prior rule sources without treating the update template as review policy (19.0584ms)
+✔ source metadata uses public enums and validates dates without converting user declarations into evidence (1.7241ms)
+✔ source-name-free declarations pass the same API gate used by input locking, quote and execute (1.0089ms)
+✔ project HTTP schema rejects malformed target periods, invented fields, string booleans and extra DFI questionnaire (1014.3779ms)
+✔ saved details round-trip, old clients preserve them, snapshots are immutable, conflicts and owners are enforced (1406.5554ms)
+ℹ tests 91
+ℹ suites 0
+ℹ pass 88
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 210440.2199
+
+✖ failing tests:
+
+test at apps\api\dist\artifact-history.test.js:13:1
+✖ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (3810.5119ms)
+  AssertionError [ERR_ASSERTION]: {"code":"DATA_UNAVAILABLE","message":"Artifact execution identity is unavailable","retryable":true,"field_errors":[],"correlation_id":"225bd889-4aa2-47b3-8b3f-48e4c333be57"}
+  
+  503 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/artifact-history.test.js:100:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

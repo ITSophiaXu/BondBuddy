@@ -1,10 +1,11 @@
+import type { ArtifactExecutionRef } from './artifact-execution.js';
 import type { Static } from '@sinclair/typebox';
 import type { schemas } from '@bondbuddy/contracts';
 import type { Pool } from 'pg';
 import { date, digest, Problem, project } from './data.js';
 
 type Query = Static<typeof schemas.ArtifactHistoryQuery>;
-type Artifact = {
+type Artifact = ArtifactExecutionRef & {
   id: string; version: number; media_type: string; sha256: string;
   object_key: string; delivery_evidence_byte_size: string;
 };
@@ -57,7 +58,7 @@ export async function listArtifactHistory(
       b.object_key AS baseline_object_key,b.byte_size AS baseline_size
     FROM bb_projects p
     JOIN bb_runs r ON r.owner_user_id=p.owner_user_id AND r.project_id=p.id AND r.task_kind='update'
-    JOIN bb_artifact_versions a ON a.owner_user_id=r.owner_user_id AND a.run_id=r.id
+    JOIN bb_execution_artifact_versions a ON a.owner_user_id=r.owner_user_id AND a.run_id=r.id
       AND a.id=r.artifact_id AND a.version=r.artifact_version AND a.media_type=$4
       AND a.quality_status='passed'
       AND a.delivery_status=CASE WHEN r.channel='non_production_test' THEN 'test_only' ELSE 'available' END
@@ -73,7 +74,7 @@ export async function listArtifactHistory(
     ) pair ON true
     LEFT JOIN LATERAL (
       SELECT variant.id,variant.version,variant.sha256,variant.object_key,e.byte_size
-      FROM bb_artifact_versions variant
+      FROM bb_execution_artifact_versions variant
       JOIN bb_word_delivery_evidence e ON e.owner_user_id=variant.owner_user_id AND e.run_id=variant.run_id
         AND e.id=variant.word_delivery_evidence_id AND e.artifact_id=variant.id AND e.artifact_version=variant.version
         AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
@@ -85,7 +86,7 @@ export async function listArtifactHistory(
     ) c ON true
     LEFT JOIN LATERAL (
       SELECT variant.id,variant.version,variant.sha256,variant.object_key,e.byte_size
-      FROM bb_artifact_versions variant
+      FROM bb_execution_artifact_versions variant
       JOIN bb_word_delivery_evidence e ON e.owner_user_id=variant.owner_user_id AND e.run_id=variant.run_id
         AND e.id=variant.word_delivery_evidence_id AND e.artifact_id=variant.id AND e.artifact_version=variant.version
         AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
@@ -111,15 +112,16 @@ export async function listArtifactHistory(
   const page = rows.rows.slice(0, limit);
   const items = [];
   for (const row of page) {
-    const primary: Artifact = { id: row.primary_id, version: row.primary_version, media_type: WORD,
+    const scope = { owner_user_id: owner, project_id: projectId, run_id: row.run_id };
+    const primary: Artifact = { ...scope, id: row.primary_id, version: row.primary_version, media_type: WORD,
       sha256: row.primary_sha256, object_key: row.primary_object_key, delivery_evidence_byte_size: row.primary_size };
     await verify(primary);
     let wordDelivery: { revision: { artifact_id: string; version: number };
       clean: { artifact_id: string; version: number }; baseline: { artifact_id: string; version: number } } | null = null;
     if (row.has_pair) {
-      const clean: Artifact = { id: row.clean_id!, version: row.clean_version!, media_type: WORD,
+      const clean: Artifact = { ...scope, id: row.clean_id!, version: row.clean_version!, media_type: WORD,
         sha256: row.clean_sha256!, object_key: row.clean_object_key!, delivery_evidence_byte_size: row.clean_size! };
-      const baseline: Artifact = { id: row.baseline_id!, version: row.baseline_version!, media_type: WORD,
+      const baseline: Artifact = { ...scope, id: row.baseline_id!, version: row.baseline_version!, media_type: WORD,
         sha256: row.baseline_sha256!, object_key: row.baseline_object_key!, delivery_evidence_byte_size: row.baseline_size! };
       await verify(clean);
       await verify(baseline);

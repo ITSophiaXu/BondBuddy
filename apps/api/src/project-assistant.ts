@@ -75,7 +75,7 @@ export function registerProjectAssistant(app:FastifyInstance,db:()=>Pool,owner:(
     const materials=(await db().query('SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC',[user,id])).rows.map(materialDto);
     const rows=(await db().query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.created_at,r.input_revision,
       COALESCE(m.filename,'清洁版募集说明书.docx') AS filename
-      FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
+      FROM bb_execution_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
       JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
       LEFT JOIN bb_m4_artifacts m ON m.artifact_id=a.id AND m.artifact_version=a.version AND m.owner_user_id=a.owner_user_id
       WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND a.delivery_status='available' AND a.quality_status='passed'

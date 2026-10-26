@@ -1,0 +1,35 @@
+✔ artifact inserts bind all statuses, media and artifact versions to the original V1 input rather than the newest draft (365.5972ms)
+✔ real Word rejection/pending/readback transitions, review PDF and M4 text writers retain their first exact binding (931.4501ms)
+✔ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (4607.155ms)
+✔ a missing initial execution aborts artifact insertion; a missing binding is invisible to provenance readers (305.1166ms)
+✔ actual migration backfills every legacy artifact without changing files and fails on missing or mismatched execution evidence (5476.8879ms)
+✔ migration drains run/job promoters before artifact locks and does not invert a topic/input creator (5787.7938ms)
+✔ artifact execution returns the exact V1 identity without confusing artifact and execution versions (3.1924ms)
+✔ artifact execution checks optional project and registered content metadata when supplied (1.6729ms)
+✔ missing and duplicate artifact bindings fail without registry or latest fallback (0.3835ms)
+✔ every artifact binding scope component must match the requested owned artifact version (1.1238ms)
+✔ artifact execution refuses successors and incomplete or changed original run inputs (1.8855ms)
+✔ a supplied worker execution must match version, revision and hash independently (0.5897ms)
+✔ registered metadata corruption cannot satisfy a caller carrying the exact content pin (0.4356ms)
+✔ execution input reader consumes exact versioned business snapshots without changing origin or business versions (9.617ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (2.7929ms)
+✔ ordinary M1 has no business snapshots; every component of a business snapshot identity is checked (4.1112ms)
+✔ required snapshots reject absence and duplicates without legacy or latest fallback (1.9622ms)
+✔ review snapshots reject invalid shapes and changed input, business version, operation, source, origin or findings (3.6329ms)
+✔ review result revisions keep exact source, materials and saved requirements (2.2386ms)
+✔ M4 snapshots require shared manifest schema, exact topic/content and task kind (2.0473ms)
+✔ an ordinary M1 manifest cannot consume an unrelated business snapshot (0.5664ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (3583.3388ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (151.2474ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (719.1501ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (366.5348ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (4823.5411ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 74116.9519

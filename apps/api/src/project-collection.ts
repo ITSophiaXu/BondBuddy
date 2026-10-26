@@ -64,7 +64,7 @@ export const collectionFilesSql = `
  EXISTS(SELECT 1 FROM bb_prospectus_selection s JOIN bb_prospectus_versions v ON v.id=s.version_id AND v.owner_user_id=s.owner_user_id
    WHERE s.owner_user_id=a.owner_user_id AND v.artifact_id=a.id AND v.artifact_version=a.version),
  (SELECT to_jsonb(names) FROM (SELECT a.id,a.version,a.media_type,${artifactNameColumns('a')}) names)
- FROM bb_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
+ FROM bb_execution_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
  ${artifactNameJoins('a')}
  WHERE a.owner_user_id=$1 AND r.project_id IN(SELECT id FROM members) AND r.state='succeeded'
  AND a.quality_status='passed' AND a.delivery_status='available' AND NOT coalesce(n_input.manifest->>'version'='project-qa-v1' AND n_input.manifest->>'operation'='prepare',false)

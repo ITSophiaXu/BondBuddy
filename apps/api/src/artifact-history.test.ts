@@ -17,11 +17,12 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
     const pool = new Pool({ connectionString: connection });
     const bytes = makeSyntheticDocxFixture();
     const contents = new Map<string, Buffer>();
+    let blobReads = 0;
     const blobs: PrivateBlobs = {
       put: async (key, data) => { contents.set(key, data); },
       get: async key => { const data = contents.get(key); if (!data) throw new Error('Blob missing'); return data; },
       getIfExists: async key => contents.get(key) ?? null,
-      getIfExistsBounded: async (key, max) => { const data = contents.get(key); return data && data.length <= max ? data : null; },
+      getIfExistsBounded: async (key, max) => { blobReads++; const data = contents.get(key); return data && data.length <= max ? data : null; },
       exists: async key => contents.has(key),
       delete: async key => { contents.delete(key); },
     };
@@ -196,6 +197,31 @@ test('#34 PG16 project Word history: complete pairs, stable pages, isolation and
       await pool.query(`UPDATE bb_non_production_test_grants SET revoked_at=now(),revoked_by='synthetic-operator',revoked_reason='synthetic-revoke'
         WHERE grant_id=$1`, [grantId]);
       assert.ok(!(await read(url())).json().items.some((item: { run_id: string }) => item.run_id === testRun.id));
+
+      const checked = await read('/api/v1/artifacts/'+newSuccess.primary);
+      assert.equal(checked.statusCode,200,checked.body);
+      const downloadUrl = checked.json().download_url;
+      const downloaded = await read(downloadUrl);
+      assert.equal(downloaded.statusCode,200,downloaded.body);
+      assert.deepEqual(downloaded.rawPayload,bytes);
+      const grantCount = await countGrants(), readsBefore = blobReads;
+      await assert.rejects(pool.query('DELETE FROM bb_artifact_execution_bindings WHERE artifact_id=$1',[newSuccess.primary]),{code:'23514'});
+      // Explicitly simulate missing provenance only in this disposable clone.
+      const corrupt = await pool.connect();
+      try {
+        await corrupt.query('BEGIN');
+        await corrupt.query('ALTER TABLE bb_artifact_execution_bindings DISABLE TRIGGER bb_artifact_execution_immutable');
+        await corrupt.query('DELETE FROM bb_artifact_execution_bindings WHERE artifact_id=$1',[newSuccess.primary]);
+        await corrupt.query('ALTER TABLE bb_artifact_execution_bindings ENABLE TRIGGER bb_artifact_execution_immutable');
+        await corrupt.query('COMMIT');
+      } catch(error) { await corrupt.query('ROLLBACK'); throw error; }
+      finally { corrupt.release(); }
+      assert.equal((await read('/api/v1/artifacts/'+newSuccess.primary)).statusCode,404,'no grant from an unbound artifact');
+      assert.equal((await read(downloadUrl)).statusCode,404,'an existing grant cannot bypass missing provenance');
+      assert.ok(!(await read(url())).json().items.some((item:{run_id:string})=>item.run_id===newSuccess.id),'history cannot borrow an unbound primary');
+      assert.equal(blobReads,readsBefore,'missing provenance fails before private bytes are read');
+      assert.equal(await countGrants(),grantCount,'no new grants are minted');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_artifact_versions WHERE id=$1',[newSuccess.primary])).rows[0].n,1,'the legacy artifact remains, without fallback');
     } finally {
       await app.close();
       await pool.end();

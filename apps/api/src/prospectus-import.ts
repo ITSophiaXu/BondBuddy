@@ -14,7 +14,7 @@ export async function importProspectusMaterial(c:PoolClient,blobs:PrivateBlobs,u
         if(v.material_id)throw missing();
         await c.query('DELETE FROM bb_review_source_imports WHERE owner_user_id=$1 AND project_id=$2 AND version_id=$3',[user,id,v.id]);
       }
-      const a=(await c.query(`SELECT a.* FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
+      const a=(await c.query(`SELECT a.* FROM bb_execution_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
         WHERE a.owner_user_id=$1 AND r.project_id=$2 AND a.id=$3 AND a.version=$4 AND a.quality_status='passed' AND a.delivery_status='available'`,[user,id,v.artifact_id,v.artifact_version])).rows[0];
       if(!a||a.sha256.trim()!==v.sha256.trim())throw missing();
       const bytes=await blobs.getIfExistsBounded(a.object_key,M1_UPLOAD_LIMITS.fileBytes);

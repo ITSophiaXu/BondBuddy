@@ -211,3 +211,7 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 | 专业内容、数字/法规与目标用户可理解性 | 专业/目标用户判断独立，尚未测得学习成本、完成率或留存改善 |
 | 手机优化 | N/A，本轮不新增手机适配或专项验收 |
 | 全历史分页、长期监控、人工事项持久解决状态、逐字段三方合并 | 独立后续需求，只有本轮实际主链被其阻断时才登记具体功能缺口 |
+
+### 后续成果执行来源增量
+
+新增[成果绑定准确执行来源](../acceptance/desktop-ux-coverage-20261026/artifact-execution-bindings/README.md)：0125 对全部 artifact 状态/业务版本绑定不可变执行/输入身份，实际 API/Worker 消费者读取准确 V1 来源，缺失不能回退旧 artifact/run。真实 PG、HTTP 授权下载和 Worker previous_output 门验证有效来源可用、缺失来源拒绝且旧历史保留。最终各独立组为 API 26/26、消费者 89 pass/2 skip、交付 13 pass/1 skip、Worker 62 pass/2 skip、Worker PG 38 pass/4 skip；新 Worker 测试随后仅顺序化单连接证据查询，最终 1/1，不与前组累计。首次失败及修正、1,670 项源码冻结和本轮数据库停机证据独立保留。没有浏览器或新输入续做全旅程，V2/采用、版本化报告/成果、重做增量和 B 追加价格仍未完成，G03 与完整 goal 保持 active。

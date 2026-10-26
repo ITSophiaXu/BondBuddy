@@ -1,0 +1,21 @@
+{
+  "started": "2026-10-26T15:21:22.439Z",
+  "finished": "2026-10-26T15:21:23.058Z",
+  "exe": "C:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/initdb.exe",
+  "args": [
+    "-D",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\artifact-origin-postgres\\data",
+    "--username=bb_artifact_test",
+    "--auth=trust",
+    "--encoding=UTF8",
+    "--locale=C"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "environment": {
+    "BB_RUN_RUNTIME_ENABLED": null,
+    "BB_TEST_DATABASE_URL": "postgresql://bb_artifact_test@127.0.0.1:15527/bb_artifact_origin_template_20261026"
+  },
+  "status": 1,
+  "signal": null,
+  "pid": 38484
+}

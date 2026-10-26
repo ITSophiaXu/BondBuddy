@@ -854,6 +854,10 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 补料准备与 M1/M3/M4 实际 loader 共用此入口。必需的业务快照缺失、完整身份或内容不符均拒绝，普通 M1 无业务快照仍可读取；不回退 legacy 或最新草稿。M3/M4 独立 gate、input_lock 及模型调用前复核也验证持久执行身份并使用共同 reader；即使同时传入快照和伪造 V2 身份也不能绕过。当前只允许 V1，未增加活动版本、采用回执、版本化报告/成果、报价或后继执行授权。范围与独立回归见 [业务快照验收](acceptance/desktop-ux-coverage-20261026/execution-business-snapshots/README.md)。
 
+新增迁移 `0125_artifact_execution_bindings.sql`，把每个生成 artifact 的业务版本准确绑定 owner/project/run/execution_version/input_revision/input_hash，保留原创建时间；pending、failed、revoked、test_only 与正式交付均有来源，artifact version 不等于 execution version。全量 V1 回填不静默漏行，真实 INSERT 同事务桥接，缺失来源会使原写入回滚。绑定和文件核心身份不可变；交付状态、质量状态及证据推进继续沿用原规则。迁移按 run→job/artifact→execution 排空行锁，不取得 topic/input 锁。
+
+`bb_execution_artifact_versions` 只返回完整准确 V1 来源；API 历史、直接下载、项目文件/募集书来源、复核、助手、M4 及 Worker previous_output/edit_base 消费者接入。共享字节读取及 Word/PDF promoter 再核对准确身份，结算保留原 artifact 行锁并用 EXISTS 验证来源，避免展开 view 后扩大行锁到 input。上传材料/离线 Word 回存使用各自合法的 runless 版本表，不伪造执行来源。当前仍是 V1 基础，没有受控 V2、采用回执、版本化报告/当前成果投影、旧工作增量处理或追加计价；范围及最终所选回归见[成果执行来源验收](acceptance/desktop-ux-coverage-20261026/artifact-execution-bindings/README.md)。
+
 补料 `GET/PUT` 在原准备回执上确定性编译候选，公共 `input_preview` schema 仅在 contracts 定义。候选 hash 来自完整冻结 manifest 加显式材料变更；不读取后来项目草稿，不覆盖原执行输入、来源声明、已确认复核计划或旧模板绑定。复杂来源、证据关联或导出语义当前不能完整表达时，保存仍成功，预览明确阻断，绝不把候选 hash 当采用/费用授权。候选不持久化、不创建任务、不计费，不改变材料保留策略；该候选编译切片本身没有新增迁移。前后端须使用相同新增响应契约。用户已选必要重做另行报价且确认后继续，具体计价公式仍未确定。实现、独立回归与剩余 G03 缺口见 [候选输入验收](acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)。
 
 ### 2026-10-26：补料草稿的私有保存工作来源（本地未发布）

@@ -1,3 +1,4 @@
+import { assertArtifactExecution } from './artifact-execution.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -362,6 +363,7 @@ async function ensureWordArtifact(client:PoolClient,lease:Lease,inspection:DocxI
   const artifact=q.rows[0];
   if(!artifact || artifact.owner_user_id!==lease.owner || artifact.run_id!==lease.runId || artifact.media_type!==WORD_MEDIA_TYPE || artifact.sha256.trim()!==inspection.sha256 || artifact.object_key!==identity.objectKey)
     throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact identity changed');
+  await assertArtifactExecution(client,artifact,lease);
   return artifact;
 }
 
@@ -483,6 +485,7 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
     const a=(await client.query('SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=1 FOR UPDATE',[artifactId])).rows[0];
     if(a.owner_user_id!==lease.owner || a.run_id!==lease.runId || a.sha256.trim()!==sha || a.object_key!==key || a.media_type!=='application/pdf' || a.quality_status!=='passed' || a.delivery_status!==status || a.review_pdf_delivery_evidence_id!==evidenceId)
       throw new Problem(409,'IDEMPOTENCY_CONFLICT','PDF annotation identity changed');
+    await assertArtifactExecution(client,a,lease);
   });
   return {status:'available',artifactId,artifactVersion:1};
 }
@@ -517,7 +520,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   if(outcome==='succeeded' || outcome==='test_completed'){
     if(!options.artifactId || !options.artifactVersion || !options.blobs)throw new Problem(422,'DELIVERY_FAILED','Verified Word artifact required');
     const q=await pool.query(`SELECT a.*,e.validator_version,e.byte_size AS evidence_byte_size,e.quality_evidence
-      FROM bb_artifact_versions a JOIN bb_word_delivery_evidence e
+      FROM bb_execution_artifact_versions a JOIN bb_word_delivery_evidence e
         ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       WHERE a.owner_user_id=$1 AND a.run_id=$2 AND a.id=$3 AND a.version=$4
         AND a.media_type=$5 AND a.quality_status='passed' AND a.delivery_status=$6
@@ -555,6 +558,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   }
   return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
+    if(artifact)await assertArtifactExecution(client,artifact,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
       if(j.subtype==='m4_document_v1'){
@@ -564,7 +568,8 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
           WHERE a.run_id=$1 AND a.owner_user_id=$2 AND a.kind IN ('document','preparation_note')
             AND v.delivery_status='available' AND e.artifact_id=v.id AND e.artifact_version=v.version
             AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=v.sha256 AND e.candidate_sha256=v.sha256
-          FOR UPDATE OF v`,[r.id,r.owner_user_id]);
+          AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=v.owner_user_id AND bound.run_id=v.run_id AND bound.id=v.id AND bound.version=v.version)
+        FOR UPDATE OF v`,[r.id,r.owner_user_id]);
         if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id))
           throw new Problem(422,'DELIVERY_FAILED','Material document and preparation note required for settlement');
       }else if(j.subtype==='project_qa_v1'){
@@ -584,7 +589,8 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
             WHERE a.id=$1 AND a.owner_user_id=$2 AND a.run_id=$3 AND a.delivery_status='available'
               AND e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.artifact_id=a.id AND e.artifact_version=a.version
               AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=a.sha256 AND e.candidate_sha256=a.sha256
-            FOR UPDATE OF a`,[id,r.owner_user_id,r.id]);
+            AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=a.owner_user_id AND bound.run_id=a.run_id AND bound.id=a.id AND bound.version=a.version)
+        FOR UPDATE OF a`,[id,r.owner_user_id,r.id]);
           if(!ready.rowCount)throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
         }
       }
@@ -614,6 +620,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
           AND e.artifact_id=a.id AND e.artifact_version=a.version AND e.candidate_sha256=a.sha256
           AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
           AND e.readback_sha256=e.candidate_sha256 AND e.readback_byte_size=e.byte_size
+        AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=a.owner_user_id AND bound.run_id=a.run_id AND bound.id=a.id AND bound.version=a.version)
         FOR UPDATE OF a`,[lease.owner,lease.runId,artifact.id,artifact.version,artifact.object_key,artifact.sha256,WORD_MEDIA_TYPE,outcome==='test_completed'?'test_only':'available']);
       if(!q.rowCount)throw new Problem(422,'DELIVERY_FAILED','Word artifact changed');
       await client.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[r.id,artifact.id,artifact.version]);

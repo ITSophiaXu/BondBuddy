@@ -51,7 +51,7 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
     ) r ON true
     LEFT JOIN LATERAL (
       SELECT a.id,a.version,a.run_id,a.created_at FROM bb_runs completed
-      JOIN bb_artifact_versions a ON a.owner_user_id=completed.owner_user_id
+      JOIN bb_execution_artifact_versions a ON a.owner_user_id=completed.owner_user_id
         AND a.id=completed.artifact_id AND a.version=completed.artifact_version AND a.run_id=completed.id
       WHERE completed.owner_user_id=p.owner_user_id AND completed.project_id IN(p.id,w.update_project_id) AND completed.state='succeeded'
         AND a.quality_status='passed' AND a.delivery_status='available'

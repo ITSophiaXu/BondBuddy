@@ -22,7 +22,7 @@ async function readableSource(db: PoolClient, row: ReviewMarkdownSource): Promis
       AND NOT EXISTS (SELECT 1 FROM bb_log_content_tombstones t
         WHERE (t.content_kind='prompt_snapshot' AND t.content_id=p.prompt_snapshot_ref)
           OR (t.content_kind='provider_result' AND t.content_id=p.id))
-      AND EXISTS (SELECT 1 FROM bb_review_artifacts a JOIN bb_artifact_versions v ON v.id=a.artifact_id
+      AND EXISTS (SELECT 1 FROM bb_review_artifacts a JOIN bb_execution_artifact_versions v ON v.id=a.artifact_id
         AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
         WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id
           AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')`,
@@ -82,7 +82,7 @@ export function registerReadableReview(app: FastifyInstance, db: () => Pool,
       ON e.run_id=r.id AND e.project_id=r.project_id AND e.owner_user_id=r.owner_user_id
       WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state IN ('succeeded','test_completed')
       AND e.operation IN ('full_review','differential_review') AND EXISTS (
-        SELECT 1 FROM bb_review_artifacts a JOIN bb_artifact_versions v ON v.id=a.artifact_id
+        SELECT 1 FROM bb_review_artifacts a JOIN bb_execution_artifact_versions v ON v.id=a.artifact_id
           AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
         WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id
           AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')`, [user, project_id, run_id])).rows[0];

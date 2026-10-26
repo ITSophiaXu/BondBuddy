@@ -1,0 +1,55 @@
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (657.272ms)
+▶ real claimed M1, legacy/file M3 and M4 loaders read exact immutable execution inputs without changing history or credits
+  ✔ m1 (1579.802ms)
+  ▶ m3
+    ✔ m3: missing exact business snapshot never falls back to legacy (67.1691ms)
+  ✔ m3 (640.4119ms)
+  ▶ m4
+    ✔ m4: missing exact business snapshot never falls back to legacy (79.7907ms)
+  ✔ m4 (497.7434ms)
+✔ real claimed M1, legacy/file M3 and M4 loaders read exact immutable execution inputs without changing history or credits (2954.1571ms)
+﹣ M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history (1.0359ms) # SKIP
+﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.1507ms) # SKIP
+﹣ project review: real dual Word delivery, explicit promotion, manual export, idempotency and owner isolation (1.0621ms) # SKIP
+✔ review reassembly requires Blob evidence and an explicit exact identity (2.1206ms)
+✔ private review reassembly preserves original evidence, rolls back, is idempotent and reuses CLI result without a new call (1972.4036ms)
+▶ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation
+  ✔ result Blob tamper (1526.9549ms)
+  ✔ missing result Blob (804.1413ms)
+  ✔ prompt Blob tamper (750.0713ms)
+  ✔ missing prompt Blob (1144.4451ms)
+  ✔ wrong run input hash (622.873ms)
+  ✔ missing prompt checkpoint (842.0235ms)
+  ✔ duplicate result checkpoint (752.6779ms)
+  ✔ live lease (728.1447ms)
+  ✔ wrong task kind (750.2629ms)
+  ✔ deleted project (744.5532ms)
+  ✔ existing report (760.7634ms)
+  ✔ conflicting usage (902.1291ms)
+  ✔ later unresolved attempt (718.0552ms)
+  ✔ active run in same project (695.8687ms)
+  ✔ foreign attempt and wrong expected hash (1463.8655ms)
+  ✔ failure in another stage (794.3156ms)
+✔ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation (14007.2078ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (304.8454ms)
+  ✔ live lease registers once and only exact report bytes replay (31.9154ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (79.5934ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (246.391ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (665.8648ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (437.3323ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (40.2224ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (42.5672ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (30.5733ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (60.9785ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (615.1421ms)
+﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.2708ms) # SKIP
+ℹ tests 41
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 4
+ℹ todo 0
+ℹ duration_ms 163408.4864
