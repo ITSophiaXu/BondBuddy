@@ -1,0 +1,89 @@
+✔ 0127 fresh replay installs six-field editor FKs and a versioned key while preserving the legacy key and V1 gate (597.8529ms)
+✔ 0127 actual replay backfills exact legacy bodies, hashes and PostgreSQL microsecond creation time (707.9388ms)
+✔ 0127 legacy-first bridge matches JavaScript canonical Unicode/control hashes and rejects all immutable editor writes (551.9054ms)
+✔ 0127 canonical-first V1 mirror accepts exact SQL timestamp copying and rejects changed body, hash or microsecond time atomically (896.8419ms)
+✔ 0127 invalid legacy inserts roll back both tables instead of skipping missing or foreign exact source evidence (1040.8986ms)
+✔ 0127 actual legacy backfill fails the whole transaction for wrong project, missing snapshot/source, bad hash, source hash or format (1265.1045ms)
+✔ 0127 NOWAIT conflicts release parent locks on rollback and retry succeeds after a real legacy writer commits (6779.396ms)
+✔ 0127 a late legacy-table lock fails NOWAIT after parent locks without trapping the writer behind those parents (8533.7993ms)
+✔ trusted registration is immutable, exact replay preserves its V1 mirror, and only final delivery exposes the editor (4666.9008ms)
+✔ expired, cancelled, wrong-token and wrong-identity writers cannot create either editor table row (23308.0947ms)
+✖ HTTP query, ownership and live delivery gates preserve history while retaining the current V1 input-integrity gate (1812.1493ms)
+✔ missing canonical storage never falls back to legacy and damaged storage fails closed (2297.3995ms)
+✖ old and pinned export requests freeze the source edition without changing old idempotency bodies or creating model charges (1931.1226ms)
+✖ an explicit mismatched export source pin is rejected without falling back to the default edition (1778.7984ms)
+✔ test-only editors require the enabled channel and a live exact-input test grant (1868.5707ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 12
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 96733.8295
+
+✖ failing tests:
+
+test at apps\api\dist\review-editor-execution.pg.test.js:151:1
+✖ HTTP query, ownership and live delivery gates preserve history while retaining the current V1 input-integrity gate (1812.1493ms)
+  error: run origin input and execution identity are immutable
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-editor-execution.pg.test.js:172:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 197,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_guard_run_origin() line 8 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_run_origin_immutable',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-editor-execution.pg.test.js:205:1
+✖ old and pinned export requests freeze the source edition without changing old idempotency bodies or creating model charges (1931.1226ms)
+  AssertionError [ERR_ASSERTION]: {"code":"CSRF_DENIED","message":"CSRF or Origin check failed","retryable":false,"field_errors":[],"correlation_id":"32cd0520-abcc-443a-9267-317ce78a1364"}
+  
+  403 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-editor-execution.pg.test.js:215:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 403,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\review-editor-execution.pg.test.js:238:1
+✖ an explicit mismatched export source pin is rejected without falling back to the default edition (1778.7984ms)
+  AssertionError [ERR_ASSERTION]: {"code":"CSRF_DENIED","message":"CSRF or Origin check failed","retryable":false,"field_errors":[],"correlation_id":"839392e4-da16-49fa-96aa-a2f6f7d4d487"}
+  
+  403 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-editor-execution.pg.test.js:247:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 403,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-editors-20261027\\runs\\2026-10-26T17-26-59-041Z-api-editor-46900-fa2c7b36\\run.log\n\n1 !== 0\n"}

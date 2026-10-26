@@ -1,0 +1,507 @@
+[WebServer] (node:41828) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] 
+[WebServer]   VITE v8.3.0  ready in 1233 ms
+[WebServer] 
+[WebServer]   ➜  Local:   http://127.0.0.1:15531/
+
+Running 19 tests using 1 worker
+
+(node:12272) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   1 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:52:1 › unknown export receipt freezes decisions and explicitly retries the identical envelope after reopen (3ms)
+(node:22908) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   2 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:71:1 › unavailable recovery storage prevents submitting a fresh export (3ms)
+(node:14680) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   3 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:78:1 › legacy complete pending receipt keeps its request id and cannot auto submit on mount (3ms)
+(node:47956) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   4 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:92:1 › a legacy server response still submits the original request shape without inventing an execution pin (2ms)
+(node:33276) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   5 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different execution_version wrapper refuses recovery and preserves the original cache (2ms)
+(node:17672) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   6 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different input_revision wrapper refuses recovery and preserves the original cache (3ms)
+(node:38060) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   7 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different input_hash wrapper refuses recovery and preserves the original cache (3ms)
+(node:16024) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   8 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:116:1 › default mount rejects an explicit non V1 response without POST or changing its recovery record (3ms)
+(node:49120) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   9 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:126:1 › explicit history callback follows successful exact load only (2ms)
+(node:49464) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  10 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:132:1 › dirty preview retains downloads of the pinned saved Word (2ms)
+(node:41816) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  11 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:138:1 › late 401 after export cannot restore private editor or submitted callback (3ms)
+(node:28956) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  12 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:143:1 › malformed pending receipt is preserved and blocks fresh export instead of replacing its key (3ms)
+(node:46228) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  13 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:151:1 › busy receipt blocks leaving and acknowledged cached dirty preview can leave (2ms)
+(node:47760) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  14 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:160:1 › download metadata with a substituted artifact id never requests bytes (3ms)
+(node:37944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  15 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:165:1 › another tab pending envelope cannot overwrite or replace this page uncertain request (3ms)
+(node:40092) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  16 [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:178:1 › another tab with the same SHA and request id but a different pin cannot replace this page pending envelope (2ms)
+(node:44716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  17 [desktop-chromium] › apps\web\tests\review-editor.spec.ts:30:1 › review editor downloads all variants and exposes progress and recoverable failures (3ms)
+(node:17728) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  18 [desktop-chromium] › apps\web\tests\review-editor.spec.ts:51:1 › unmodified historical output is downloadable without claiming it contains revisions (3ms)
+(node:37740) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  19 [desktop-chromium] › apps\web\tests\review-editor.spec.ts:60:1 › corrupt download fails visibly and retry reauthorizes and downloads verified bytes (3ms)
+
+
+  1) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:52:1 › unknown export receipt freezes decisions and explicitly retries the identical envelope after reopen 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-unk-bcbcf-tical-envelope-after-reopen-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-unk-bcbcf-tical-envelope-after-reopen-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-unk-bcbcf-tical-envelope-after-reopen-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:71:1 › unavailable recovery storage prevents submitting a fresh export 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-una-d73f8-s-submitting-a-fresh-export-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-una-d73f8-s-submitting-a-fresh-export-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-una-d73f8-s-submitting-a-fresh-export-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:78:1 › legacy complete pending receipt keeps its request id and cannot auto submit on mount 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-leg-9f6b0-cannot-auto-submit-on-mount-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-leg-9f6b0-cannot-auto-submit-on-mount-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-leg-9f6b0-cannot-auto-submit-on-mount-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:92:1 › a legacy server response still submits the original request shape without inventing an execution pin 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-a-l-02ca7--inventing-an-execution-pin-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-a-l-02ca7--inventing-an-execution-pin-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-a-l-02ca7--inventing-an-execution-pin-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different execution_version wrapper refuses recovery and preserves the original cache 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-9b915-reserves-the-original-cache-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-9b915-reserves-the-original-cache-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-9b915-reserves-the-original-cache-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different input_revision wrapper refuses recovery and preserves the original cache 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-25f21-reserves-the-original-cache-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-25f21-reserves-the-original-cache-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-25f21-reserves-the-original-cache-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different input_hash wrapper refuses recovery and preserves the original cache 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-c1c17-reserves-the-original-cache-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-c1c17-reserves-the-original-cache-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-sam-c1c17-reserves-the-original-cache-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:116:1 › default mount rejects an explicit non V1 response without POST or changing its recovery record 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-def-d3c06-hanging-its-recovery-record-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-def-d3c06-hanging-its-recovery-record-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-def-d3c06-hanging-its-recovery-record-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:126:1 › explicit history callback follows successful exact load only 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-exp-396b4--successful-exact-load-only-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-exp-396b4--successful-exact-load-only-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-exp-396b4--successful-exact-load-only-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:132:1 › dirty preview retains downloads of the pinned saved Word 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-dir-a0612-ds-of-the-pinned-saved-Word-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-dir-a0612-ds-of-the-pinned-saved-Word-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-dir-a0612-ds-of-the-pinned-saved-Word-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:138:1 › late 401 after export cannot restore private editor or submitted callback 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-lat-c408d-ditor-or-submitted-callback-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-lat-c408d-ditor-or-submitted-callback-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-lat-c408d-ditor-or-submitted-callback-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:143:1 › malformed pending receipt is preserved and blocks fresh export instead of replacing its key 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-mal-7f265-nstead-of-replacing-its-key-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-mal-7f265-nstead-of-replacing-its-key-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-mal-7f265-nstead-of-replacing-its-key-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:151:1 › busy receipt blocks leaving and acknowledged cached dirty preview can leave 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-bus-3c810-hed-dirty-preview-can-leave-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-bus-3c810-hed-dirty-preview-can-leave-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-bus-3c810-hed-dirty-preview-can-leave-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  14) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:160:1 › download metadata with a substituted artifact id never requests bytes 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-dow-fe8ee-act-id-never-requests-bytes-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-dow-fe8ee-act-id-never-requests-bytes-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-dow-fe8ee-act-id-never-requests-bytes-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  15) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:165:1 › another tab pending envelope cannot overwrite or replace this page uncertain request 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-ano-823cc-this-page-uncertain-request-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-ano-823cc-this-page-uncertain-request-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-ano-823cc-this-page-uncertain-request-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16) [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:178:1 › another tab with the same SHA and request id but a different pin cannot replace this page pending envelope 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-ano-e1f87--this-page-pending-envelope-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-ano-e1f87--this-page-pending-envelope-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-recovery-ano-e1f87--this-page-pending-envelope-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  17) [desktop-chromium] › apps\web\tests\review-editor.spec.ts:30:1 › review editor downloads all variants and exposes progress and recoverable failures 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-review-edito-5a727-ss-and-recoverable-failures-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-review-edito-5a727-ss-and-recoverable-failures-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-review-edito-5a727-ss-and-recoverable-failures-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  18) [desktop-chromium] › apps\web\tests\review-editor.spec.ts:51:1 › unmodified historical output is downloadable without claiming it contains revisions 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-unmodified-h-9bcfe-iming-it-contains-revisions-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-unmodified-h-9bcfe-iming-it-contains-revisions-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-unmodified-h-9bcfe-iming-it-contains-revisions-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  19) [desktop-chromium] › apps\web\tests\review-editor.spec.ts:60:1 › corrupt download fails visibly and retry reauthorizes and downloads verified bytes 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-corrupt-down-32da0-nd-downloads-verified-bytes-desktop-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-corrupt-down-32da0-nd-downloads-verified-bytes-desktop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\execution-editors-20261027\runs\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\browser-editor\test-results\review-editor-corrupt-down-32da0-nd-downloads-verified-bytes-desktop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  19 failed
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:52:1 › unknown export receipt freezes decisions and explicitly retries the identical envelope after reopen 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:71:1 › unavailable recovery storage prevents submitting a fresh export 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:78:1 › legacy complete pending receipt keeps its request id and cannot auto submit on mount 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:92:1 › a legacy server response still submits the original request shape without inventing an execution pin 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different execution_version wrapper refuses recovery and preserves the original cache 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different input_revision wrapper refuses recovery and preserves the original cache 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:104:12 › same SHA with a different input_hash wrapper refuses recovery and preserves the original cache 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:116:1 › default mount rejects an explicit non V1 response without POST or changing its recovery record 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:126:1 › explicit history callback follows successful exact load only 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:132:1 › dirty preview retains downloads of the pinned saved Word 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:138:1 › late 401 after export cannot restore private editor or submitted callback 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:143:1 › malformed pending receipt is preserved and blocks fresh export instead of replacing its key 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:151:1 › busy receipt blocks leaving and acknowledged cached dirty preview can leave 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:160:1 › download metadata with a substituted artifact id never requests bytes 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:165:1 › another tab pending envelope cannot overwrite or replace this page uncertain request 
+    [desktop-chromium] › apps\web\tests\review-editor-recovery.spec.ts:178:1 › another tab with the same SHA and request id but a different pin cannot replace this page pending envelope 
+    [desktop-chromium] › apps\web\tests\review-editor.spec.ts:30:1 › review editor downloads all variants and exposes progress and recoverable failures 
+    [desktop-chromium] › apps\web\tests\review-editor.spec.ts:51:1 › unmodified historical output is downloadable without claiming it contains revisions 
+    [desktop-chromium] › apps\web\tests\review-editor.spec.ts:60:1 › corrupt download fails visibly and retry reauthorizes and downloads verified bytes 
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-editors-20261027\\runs\\2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178\\run.log\n\n1 !== 0\n"}

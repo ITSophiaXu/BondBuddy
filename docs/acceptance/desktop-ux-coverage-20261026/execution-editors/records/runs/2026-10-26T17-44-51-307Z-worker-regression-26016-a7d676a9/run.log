@@ -1,0 +1,54 @@
+✔ malformed saved export pins cannot fall through to a model call or reuse a correction checkpoint (14.1242ms)
+✔ CLI Word is delivered without a structured report, JSON response, or second call (57.0846ms)
+✔ missing output is recorded without inventing a report; immutable input tampering fails (64.4874ms)
+﹣ report symlinks cannot publish outside files (0.4876ms) # SKIP
+✔ pinned DOCX produces source comments and the same canonical report; missing comment bytes block delivery (1790.7185ms)
+✔ correction delivery rejects absent and retains diagnostics without publishing an unchanged pair (39.7867ms)
+✔ correction delivery rejects progress-markdown and retains diagnostics without publishing an unchanged pair (41.8332ms)
+✔ correction delivery rejects invalid-word and retains diagnostics without publishing an unchanged pair (676.2951ms)
+✔ correction delivery reads actual Word report fields when Markdown is absent and preserves final response (2361.5027ms)
+✔ review loader consumes the resolved V1 input and keeps the original run creation time (6.2299ms)
+✔ another revision with identical bytes cannot fall back to the original run input (1.1678ms)
+▶ review context and lease identity must agree before loading evidence
+  ✔ context run (0.5223ms)
+  ✔ context owner (0.3853ms)
+  ✔ context project (0.6418ms)
+  ✔ context revision (0.3228ms)
+  ✔ context hash (0.4463ms)
+  ✔ lease run (0.5554ms)
+  ✔ lease owner (0.572ms)
+  ✔ lease revision (0.6661ms)
+  ✔ lease hash (0.3823ms)
+  ✔ successor execution (0.3225ms)
+✔ review context and lease identity must agree before loading evidence (6.7963ms)
+✔ missing execution identity never falls back to an otherwise valid origin snapshot (0.6669ms)
+✔ missing exact input never selects another revision with the same hash (0.3583ms)
+✔ tampered fixed manifest is rejected before material evidence is read (0.3109ms)
+✔ resolved input still passes the existing immutable review snapshot gate (0.6346ms)
+✔ an explicitly missing or differently scoped resolved review snapshot cannot reload the origin (0.4283ms)
+✔ direct review gate callers resolve the exact versioned database snapshot (0.8157ms)
+✔ malformed review snapshot objects fail explicitly for resolved and direct database gates (2.2218ms)
+✔ review loader and standalone gate reject missing or mismatched execution snapshots without a legacy fallback (3.8543ms)
+✔ supplied review snapshots must match every field of the expected execution identity (0.6766ms)
+✔ supplied review snapshots and a forged successor identity cannot bypass the persisted V1 execution (0.2843ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (1020.3701ms)
+  ✔ live lease registers once and only exact report bytes replay (32.2723ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (83.9808ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (697.773ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (1838.4312ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (858.5952ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (47.7624ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (46.0567ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (37.8648ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (72.0198ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (1066.614ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 33451.6917

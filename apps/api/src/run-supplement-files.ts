@@ -55,11 +55,13 @@ function correctionSource(scope: WorkScope, local: boolean): boolean {
       && typeof item.path === 'string' && typeof item.markdown === 'string' && digest(item.markdown) === item.sha256)) throw unavailable();
   if (local) {
     const pin = delivery.export;
-    if (!record(pin) || Object.keys(pin).some(key => !['source_run_id','editor_sha256','decisions'].includes(key))
+    if (!record(pin) || Object.keys(pin).some(key => !['source_run_id','source_execution','editor_sha256','decisions'].includes(key))
       || !Value.Check(ReviewExportRequestSchema, {request_id:'saved-file-scope',source_run_id:pin.source_run_id,
+        ...(Object.hasOwn(pin,'source_execution')?{source_execution:pin.source_execution}:{}),
         expected_editor_sha256:pin.editor_sha256,decisions:pin.decisions})
       || pin.source_run_id === scope.frozen.run.id || execution.snapshot.export_only !== true
-      || execution.snapshot.source_run_id !== pin.source_run_id) throw unavailable();
+      || execution.snapshot.source_run_id !== pin.source_run_id
+      || !same(execution.snapshot.source_execution??null,pin.source_execution??null)) throw unavailable();
   }
   return true;
 }

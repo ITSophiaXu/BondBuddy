@@ -4,6 +4,8 @@ import { mkdtemp, readFile, writeFile, rm, symlink, chmod } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest } from '@bondbuddy/api/data';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import type { ReviewEditorSnapshot } from '@bondbuddy/contracts';
 import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { reviewFileStage, reviewFileDeliveryStage, validReviewFileResult, type ReviewFileInput } from './review-file-stage.js';
@@ -28,6 +30,23 @@ async function fixture() {
   const writer:typeof writeRunWorkingFile=async value=>{writes.push({...value,bytes:Buffer.from(value.bytes)});await value.blobs.put(value.key,value.bytes,value.mediaType);};
   return { directory, source, store, input, ctx, writes, writer };
 }
+
+test('malformed saved export pins cannot fall through to a model call or reuse a correction checkpoint',async()=>{
+  const f=await fixture();
+  try{
+    const base={source_run_id:'synthetic-source-run',editor_sha256:'a'.repeat(64),decisions:[]};
+    const invalid=[null,false,0,'',{...base,source_execution:null},{...base,source_execution:false},
+      {...base,source_execution:{}},{...base,unknown:true}];
+    for(const saved of invalid){
+      f.input.manifest.review.file_delivery={version:'review-correction-v2',knowledge:[],export:saved as never};
+      f.ctx.checkpoint={model_generation:{correction_result:{version:'codex-review-file-v1',input_hash:f.ctx.run.input_hash,files:{}}}};
+      const stage=reviewFileStage({load:async()=>f.input,writer:async()=>assert.fail('Malformed export reached output IO'),
+        model:()=>assert.fail('Malformed export constructed a model call')});
+      await assert.rejects(stage.run(f.ctx),{message:'INPUT_REVISION_CONFLICT'});
+      assert.deepEqual(f.writes,[]);assert.equal(f.store.size,1);
+    }
+  }finally{await rm(f.directory,{recursive:true,force:true});}
+});
 
 test('CLI Word is delivered without a structured report, JSON response, or second call', async () => {
   const f = await fixture();
@@ -147,8 +166,15 @@ test('correction delivery reads actual Word report fields when Markdown is absen
     f.input.manifest.review.file_delivery!.version='review-correction-v2';
     const original=makeWorkerDocxFixture({externalLink:false});f.store.set('source',original);f.input.materials[0].pin.sha256=digest(original);
     f.input.materials[0].media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document';f.input.materials[0].filename='synthetic.docx';
-    let savedHash='';f.ctx.pool={query:async(_sql:string,args:unknown[])=>{if(_sql.startsWith('INSERT'))savedHash=args[4] as string;return {rows:[{sha256:savedHash}]};}} as never;
-    const stage=reviewFileStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),writer:f.writer,model:options=>({name:options.name,run:async()=>{
+    // This unit exercises the actual Word conversion; real database and lease
+    // authorization are covered by the execution-editor PostgreSQL tests.
+    const registeredSnapshots:ReviewEditorSnapshot[]=[];
+    const stage=reviewFileStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),writer:f.writer,
+      registerEditor:async(pool,lease,projectId,snapshot)=>{
+        assert.equal(pool,f.ctx.pool);assert.equal(lease,f.ctx.lease);assert.equal(projectId,f.ctx.run.project_id);
+        assert.equal(snapshot.source_sha256,digest(original));assert.equal(snapshot.source_format,'docx');
+        registeredSnapshots.push(structuredClone(snapshot));
+      },model:options=>({name:options.name,run:async()=>{
       await options.fileWorkspace!.prepare(f.directory);
       const code="import sys;from docx import Document;d=Document();d.add_heading('Synthetic review',0);d.add_heading('Confirmed correction',2);fields=[('复核类别','文字一致性'),('问题说明','合成修订验证'),('原文披露','Synthetic worker upload fixture'),('核对依据','合成依据'),('处理方式','直接修改'),('替换文本','Synthetic reviewed fixture'),('缺少材料','无')];t=d.add_table(rows=0,cols=2);[(setattr(r.cells[0],'text',k),setattr(r.cells[1],'text',v)) for k,v in fields for r in [t.add_row()]];d.save(sys.argv[1])";
       await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-c',code,join(f.directory,'output/report.docx')]);
@@ -161,6 +187,9 @@ test('correction delivery reads actual Word report fields when Markdown is absen
     for(const write of f.writes)assert.deepEqual(write.source,{kind:'provider',attemptId:'word-only',resultSchemaVersion:'codex-review-file-v1'});
     const editor=JSON.parse(f.store.get(result.value.files['editor.json'].key)!.toString());assert.equal(editor.issues.length,1);assert.equal(editor.issues[0].applied,true);
     assert.equal(editor.issues[0].replacement,'Synthetic reviewed fixture');
+    assert.equal(registeredSnapshots.length,1);assert.deepEqual(registeredSnapshots[0],editor);
+    assert.equal(inputManifestHash(registeredSnapshots[0]),inputManifestHash(editor));
+    assert.equal(f.store.get(result.value.files['final-response.md'].key)!.toString(),'报告已保存');
     f.ctx.values.set('model_generation',result.value);assert.equal((await reviewFileDeliveryStage().run(f.ctx)).kind,'deliver');
   }finally{await rm(f.directory,{recursive:true,force:true});}
 });

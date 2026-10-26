@@ -6,21 +6,35 @@ import { resolve,join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
 import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
-import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import { reviewEditor } from '@bondbuddy/api/review-editor';
+import { reviewEditor, resolveReviewEditorExecution, reviewEditorExecution, registerReviewEditorSnapshot } from '@bondbuddy/api/review-editor';
+import { Value } from '@sinclair/typebox/value';
+import { ReviewExportRequestSchema,type ReviewExportPin } from '@bondbuddy/contracts';
 import type { StageContext, StageOutcome } from './run-pipeline.js';
 import type { ReviewFileInput,ReviewFileResult } from './review-file-stage.js';
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile),MAX=100*1024*1024;
+export function validCorrectionExportPin(saved:unknown):saved is ReviewExportPin{
+  if(!saved||typeof saved!=='object'||Array.isArray(saved))return false;
+  const pin=saved as Record<string,unknown>;
+  return Object.keys(pin).every(key=>['source_run_id','source_execution','editor_sha256','decisions'].includes(key))
+    &&Value.Check(ReviewExportRequestSchema,{request_id:'saved-correction-export',source_run_id:pin.source_run_id,
+      ...(Object.hasOwn(pin,'source_execution')?{source_execution:pin.source_execution}:{}),
+      expected_editor_sha256:pin.editor_sha256,decisions:pin.decisions});
+}
 /** Same queue and input gate, deterministic file conversion only. Never invokes an adapter. */
 export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,markdown?:Buffer,providerAttemptId?:string,
-  writer:typeof writeRunWorkingFile=writeRunWorkingFile):Promise<ReviewFileResult>{
+  writer:typeof writeRunWorkingFile=writeRunWorkingFile,
+  registerEditor:typeof registerReviewEditorSnapshot=registerReviewEditorSnapshot):Promise<ReviewFileResult>{
   const pin=input.manifest.review.input.source_material_ref!,source=input.materials.find(m=>m.pin.material_id===pin.material_id&&m.pin.material_version===pin.material_version&&m.pin.sha256===pin.sha256);
   if(!source)throw Error('INPUT_REVISION_CONFLICT');
   const original=await ctx.blobs.getIfExistsBounded(source.object_key,MAX);
   if(!original||digest(original)!==pin.sha256)throw Error('INPUT_REVISION_CONFLICT');
   const saved=input.manifest.review.file_delivery!.export;
-  const editor=saved?await reviewEditor(ctx.pool,ctx.run.owner_user_id,ctx.run.project_id,saved.source_run_id):undefined;
+  if(Object.hasOwn(input.manifest.review.file_delivery!,'export')&&!validCorrectionExportPin(saved))throw Error('INPUT_REVISION_CONFLICT');
+  const sourceExecution=saved?await resolveReviewEditorExecution(ctx.pool,ctx.run.owner_user_id,ctx.run.project_id,
+    saved.source_run_id,saved.source_execution?.execution_version??1):undefined;
+  if(saved?.source_execution&&!Value.Equal(saved.source_execution,reviewEditorExecution(sourceExecution!)))throw Error('INPUT_REVISION_CONFLICT');
+  const editor=saved?await reviewEditor(ctx.pool,ctx.run.owner_user_id,ctx.run.project_id,saved.source_run_id,sourceExecution!):undefined;
   if(saved&&editor?.sha256!==saved.editor_sha256)throw Error('INPUT_REVISION_CONFLICT');
   const directory=await mkdtemp(join(tmpdir(),'bb-review-export-'));
   try{
@@ -30,7 +44,7 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
     const options={cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')},timeout:300000,signal:ctx.signal,maxBuffer:1024*1024};
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
     await runFile(python,['-m','bondbuddy_file_authoring.review_corrections',path,join(directory,'request.json'),directory],options);
-    const snapshot=JSON.parse(await readFile(join(directory,'editor.json'),'utf8')),hash=inputManifestHash(snapshot);
+    const snapshot=JSON.parse(await readFile(join(directory,'editor.json'),'utf8'));
     if(snapshot.version!=='review-editor-v1'||snapshot.source_sha256!==pin.sha256)throw Error('INPUT_REVISION_CONFLICT');
     const report=markdown??Buffer.from(`# 复核成果处理清单\n\n${snapshot.issues.map((i:any)=>`### ${i.id} ${i.title}\n${i.reason}\n\n依据：${i.evidence}\n\n处理：${i.applied?'已修改':i.decision==='original'?'保留原文':'待人工确认'}\n${i.missing}\n${i.limitation}`).join('\n\n')}`);
     await writeFile(join(directory,'report.md'),report);
@@ -45,15 +59,14 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
       const check=await ctx.blobs.getIfExistsBounded(key,MAX);if(!check||digest(check)!==sha256)throw Error('REVIEW_OUTPUT_STORE_FAILED');
       result.files[name]={key,sha256,byte_size:bytes.length};
     }
-    await ctx.pool.query(`INSERT INTO bb_review_editors(owner_user_id,project_id,run_id,snapshot,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT(run_id) DO NOTHING`,[ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id,snapshot,hash]);
-    const stored=(await ctx.pool.query('SELECT sha256 FROM bb_review_editors WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id])).rows[0];
-    if(stored.sha256.trim()!==hash)throw Error('INPUT_REVISION_CONFLICT');
+    await registerEditor(ctx.pool,ctx.lease,ctx.run.project_id,snapshot);
     return result;
   }finally{await rm(directory,{recursive:true,force:true});}
 }
 
-export async function correctionExport(ctx:StageContext,input:ReviewFileInput,writer:typeof writeRunWorkingFile=writeRunWorkingFile):Promise<StageOutcome>{
+export async function correctionExport(ctx:StageContext,input:ReviewFileInput,writer:typeof writeRunWorkingFile=writeRunWorkingFile,
+  registerEditor:typeof registerReviewEditorSnapshot=registerReviewEditorSnapshot):Promise<StageOutcome>{
   const saved=ctx.checkpoint.model_generation?.correction_result as ReviewFileResult|undefined;
-  const result=saved??await correctionFiles(ctx,input,undefined,undefined,writer);
+  const result=saved??await correctionFiles(ctx,input,undefined,undefined,writer,registerEditor);
   return {kind:'done',checkpoint:{correction_result:result},value:result};
 }

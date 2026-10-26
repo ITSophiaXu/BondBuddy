@@ -1,0 +1,12 @@
+{
+  "origin": "http://127.0.0.1:15531",
+  "project": "desktop-chromium",
+  "config": ".local/execution-editors-20261027/playwright.config.mjs",
+  "config_sha256": "380a85dd0d02257bbdcaee4e4ceae5783100107b61cbf2c1d364cc91aa37cdcf",
+  "config_version": "versions/380a85dd0d02257bbdcaee4e4ceae5783100107b61cbf2c1d364cc91aa37cdcf.playwright.config.mjs",
+  "evidence": "runs/2026-10-26T17-35-10-368Z-browser-editor-23196-cdc3c178/browser-editor",
+  "specs": [
+    "apps/web/tests/review-editor.spec.ts",
+    "apps/web/tests/review-editor-recovery.spec.ts"
+  ]
+}

@@ -91,8 +91,12 @@ function memoryBlobs(): PrivateBlobs {
 }
 async function removeScaffold(db: Db) {
   // Recreate 0125 on its real predecessor schema, only inside private clones.
-  // Later delivery FKs and triggers must leave together, not as a half-schema.
-  await db.query(`DROP VIEW IF EXISTS bb_run_execution_delivery_artifact_details CASCADE;
+  // Later delivery/editor FKs and triggers must leave together, not as a half-schema.
+  await db.query(`DROP TABLE IF EXISTS bb_review_execution_editors CASCADE;
+    DROP FUNCTION IF EXISTS bb_bridge_review_execution_editor(),bb_check_review_execution_editor() CASCADE;
+    DROP FUNCTION IF EXISTS bb_review_editor_snapshot_shape(jsonb),bb_review_editor_canonical_json(jsonb) CASCADE;
+    ALTER TABLE bb_review_execution_snapshots DROP CONSTRAINT IF EXISTS bb_review_execution_snapshot_editor_key;
+    DROP VIEW IF EXISTS bb_run_execution_delivery_artifact_details CASCADE;
     DROP TABLE IF EXISTS bb_run_execution_delivery_artifacts,bb_run_execution_deliveries,bb_run_execution_delivery_gaps CASCADE;
     DROP FUNCTION IF EXISTS bb_capture_terminal_execution_delivery() CASCADE;
     DROP FUNCTION IF EXISTS bb_capture_run_execution_delivery(text,text,text,text) CASCADE;

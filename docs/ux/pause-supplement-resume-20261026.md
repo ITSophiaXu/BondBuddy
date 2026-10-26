@@ -64,6 +64,7 @@
 | `durable-probe-journal.ts:81` 按逻辑调用查最后 attempt；file authoring 使用常量 `file-authoring-v1` | 每个执行版本使用稳定的工作单元身份及依赖指纹；崩溃恢复重用同一调用，补料的新处理使用新身份。不能靠盲目增加 attempt 重放旧工作 |
 | stage 检查点仍只按 stage 名索引；共享输入 reader 与三个实际 loader 目前只接受 V1 | 后继执行统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
 | `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；0124 已追加完整身份的业务快照，实际 loader/gate 消费准确 V1 | 仍须追加每执行版本的报告关联，并开放受控的后继业务快照创建；模型、成果登记及历史也须解析准确版本，旧记录继续不可变。当前只有 V1 不能支持后继执行 |
+| 本地 `0127` 已将复核 editor 正文追加到 `(run_id, execution_version)` canonical 表，V1 保留旧表镜像；API、writer、导出 pin 和本机恢复记录带准确执行身份，[专项验收已封存](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md) | editor 拆分不等于报告、M4 或成果登记已全部版本化；全局 V1 gate 和 current-input integrity 共享 view 未改，仍不能采用后继输入 |
 | `0125` 已追加不可变 artifact→准确 V1 执行/输入关系，实际 API/Worker 成果消费者读取严格来源 view；多个成果登记仍按 `(run_id, kind)` 唯一 | 后继采用时仍须版本化成果 ID、报告及业务登记，并保留历史关联与当前结果投影；不能只放开 V2 约束。项目募集书、文件族、previous_output、复核来源和助手续改继续读取准确版本 |
 | `0126` 已冻结准确 V1 实际交付成员、命名、配对和时间，下载/历史/命名/previous_output 使用交付记录；旧非动态 M4 的耐久读取独立记录 | 仍须把后继执行的业务报告/成果登记版本化，并以采用回执与增量处理实际消费前序工作；不能把候选可用状态或另一阶段的 durable 权限当作新版成功交付 |
 | `0097_m4_cross_project_material_retention.sql` 的材料 pin 判定沿原 run 输入/M4 快照读取 | 保留所有已采用执行版本、旧模型结果及历史成果所引用的材料字节，不能只 pin 原输入或当前输入。清理/归档/账号删除继续遵守既有生命周期政策 |
@@ -135,6 +136,20 @@ legacy 登记后只有准确 raw 字节经 bounded 长度/hash 核验才记录�
 旧非动态 M4 的已登记耐久文件/文本保留单独 `m4_durable` 阶段，没有终态或终态事件，也不开放动态未付结果。任一成员/来源不完整会使对应阶段拒读；历史无法准确还原时保留 gap，无旧 run 成功兜底。该轮发现两成员首稿被旧历史契约的 baseline 必需条件漏列；独立验证、失败原文和冻结范围见[执行交付记录验收](../acceptance/desktop-ux-coverage-20261026/execution-deliveries/README.md)，不改写为当时已修复。
 
 后续[双稿历史修复](../acceptance/desktop-ux-coverage-20261026/history-pairs/README.md)仅将 history baseline 改为实际交付时可选：修订版/清洁版仍逐份验证，已声明的基线缺失或失效不得降格，旧三成员、single/null、分页与权限保留。没有新增基线文件、迁移、模型调用或费用。本基础与该修复仍不支持后继采用、增量重做、B 追加费用或完整 G03。
+
+### 准确执行版本的复核编辑正文（2026-10-27，本地专项已封存）
+
+新增迁移 `0127_review_execution_editors.sql` 追加 canonical 表 `bb_review_execution_editors`，主键为 `(run_id, execution_version)`，不另设 `UNIQUE(run_id)`；owner/project/run/version/input revision/hash 六字段同时外键关联不可变执行身份和准确复核快照。正文按严格 `review-editor-v1` schema 校验，并核对 canonical JSON hash、冻结原稿 pin、DOCX/PDF 格式及创建时间。身份、正文、hash 和时间禁止 UPDATE/DELETE。旧 `bb_review_editors` 及其 run 主键保持，严格回填和 AFTER INSERT bridge 保留 V1 兼容；canonical-first 镜像也须逐项相等，包含 PostgreSQL 原始精度的创建时间。缺失或不符使整笔回填/写入回滚。迁移按 project→run→execution→snapshot→editor 取得所需表锁，全部 NOWAIT，冲突须整体重试，不在持有父锁时等待旧 writer。
+
+真实 trusted writer 使用共同 registration：按 project→run→job 行锁检查可见项目、running 状态、准确 token、未过期 lease 及 execution/input/source pin，写 canonical 后精确镜像 V1。仅数据库死锁 `40P01` 最多重试三次完整幂等登记，每次重新核验 lease，不重跑模型或 Word。editor reader 从持久执行身份解析来源，只读取 canonical 正文及准确输入/复核快照，并要求完整有效的 final delivery receipt、正确终态与 channel、实时有效测试授权和全部可用交付成员；无旧表或当前 run 成功状态兜底。
+
+公共 GET 可选 `execution_version`，省略仍选 V1；响应增加可选执行三字段。免费人工导出可选 `source_execution`，必须精确匹配来源 run 的持久身份，新 export pin 和 export-only 复核快照都保存该身份，Worker 不借目标任务 lease 推断来源。旧请求省略字段仍按 V1 处理，沿原 request/body 幂等规则；导出继续创建既有确定性 export 新 run，不构成同一任务补料采用。内部 correction-file pin 同时核对两处来源身份，不新增材料或下载权限。
+
+浏览器恢复 wrapper 与待确认导出保存执行三字段，沿原 owner/project/run、正文 hash 和完整 issue set 隔离；即使正文 hash 相同，也不能跨执行版本复用。旧无执行身份的 wrapper/raw cache 仅按原 V1 兼容。待确认请求完整保留来源身份、深拷贝并冻结，刷新后仍须明确重试，不自动提交。
+
+**全局 V1 gate 与 current-input integrity 共享 view 均未修改。** `bb_execution_artifact_versions` 仍要求绑定输入等于当前 run input，receipt 的共享校验也沿此来源边界。仅 state/primary 等投影变化不改写冻结交付身份；不能据此宣称 current input 切换后旧版仍可读。M3/M4 报告和其他按 run 唯一的成果登记仍有后继版本化缺口。新表没有 raw-material FK，原材料只在插入时核验，source 材料 retention 及数据库 editor 正文的旧 cleanup 均未解决。
+
+本切片的[本地专项验收](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md)已封存：API editor/迁移/并发 17 pass，相关 API 92 pass，真实 PG/Python Worker 8 pass，Worker 回归 42 pass/1 Windows skip，缓存 20 pass，桌面 Edge 19 pass，契约/构建通过。各集合分轮采用且不相加，两轮各 2,217 文件前后冻结一致，Python 源码/外部运行时不在冻结范围。原始失败及专用 PG 按准确 PID 停止记录均保留。不计入既有 15/15 或 662 pass。没有新输入采用、后继处理、追加账务或补料新版 Word 证据，**G03 / UX-A03 与整体 goal 保持 active**。费用已选 B，B1/B2 均未确定；本轮未推送、创建 PR 或部署。
 
 ## 需要确定的一项产品规则：补料重做费用
 

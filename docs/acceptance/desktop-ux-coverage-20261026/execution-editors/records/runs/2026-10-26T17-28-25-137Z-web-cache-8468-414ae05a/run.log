@@ -1,0 +1,28 @@
+✔ review editor cache restores the complete export envelope as deeply frozen independent copies (3.8662ms)
+✔ review editor cache reads legacy values and migrates the identical pending request id on explicit save (0.6014ms)
+✔ review editor cache isolates owner, API project and source run identities (0.406ms)
+✔ review editor cache refuses ambiguous legacy key identities but verifies wrapped colon IDs (0.3873ms)
+✔ review editor cache accepts complete empty issue sets and optional pending omission (0.4688ms)
+✔ review editor cache requires the exact complete unique issue set (0.4273ms)
+✔ review editor cache rejects malformed schema or mismatched frozen envelopes without clearing storage (1.2253ms)
+✔ review editor cache rejects unknown wrapper fields, versions and namespace attribution (0.3898ms)
+✔ review editor cache verifies writes even when storage silently loses or changes data (1.2241ms)
+✔ review editor cache returns unavailable for storage exceptions and refuses invalid namespace ids (0.7851ms)
+✔ review editor cache tolerates malformed JSON and verifies successful clearing (0.3837ms)
+✔ review editor cache supports contract text and issue count boundaries (19.9448ms)
+✔ review editor cache uses local storage and handles a blocked storage getter (0.7168ms)
+✔ same editor bytes do not share ordinary choices across any execution identity field (3.7587ms)
+✔ complete source execution pins survive serialization as independent deeply frozen copies (1.0942ms)
+✔ legacy raw and wrapped choices and pending envelopes recover only under original V1 semantics (0.9371ms)
+✔ explicitly saving a recovered old pending envelope pins only its wrapper and preserves its retry body (0.8258ms)
+✔ a matching wrapper cannot make an unpinned old pending envelope valid for a later execution (0.3439ms)
+✔ source execution must be complete, strict and equal to the current execution even inside a matching wrapper (1.2528ms)
+✔ malformed wrapper execution and invalid expected identities never authorize recovery or a write (0.5607ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1121.5834

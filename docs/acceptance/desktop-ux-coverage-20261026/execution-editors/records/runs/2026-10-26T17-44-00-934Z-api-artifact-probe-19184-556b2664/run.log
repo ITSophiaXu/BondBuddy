@@ -1,0 +1,9 @@
+✔ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (17438.1304ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24725.357

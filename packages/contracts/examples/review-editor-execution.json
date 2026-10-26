@@ -1,0 +1,536 @@
+{
+  "synthetic": true,
+  "scope": "Schema shape and backwards compatibility only. A positive V2 or larger version being schema-valid does not authorize execution; current GET and UI boundaries accept only original V1.",
+  "cases": [
+    {
+      "name": "review-editor-query-omitted-v1-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": true,
+      "value": {}
+    },
+    {
+      "name": "review-editor-query-explicit-v1-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": true,
+      "value": {
+        "execution_version": 1
+      }
+    },
+    {
+      "name": "review-editor-query-pgint-maximum-shape-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": true,
+      "value": {
+        "execution_version": 2147483647
+      }
+    },
+    {
+      "name": "review-editor-query-v2-shape-only-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": true,
+      "value": {
+        "execution_version": 2
+      }
+    },
+    {
+      "name": "review-editor-query-zero-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": 0
+      }
+    },
+    {
+      "name": "review-editor-query-negative-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": -1
+      }
+    },
+    {
+      "name": "review-editor-query-fractional-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": 1.5
+      }
+    },
+    {
+      "name": "review-editor-query-overflow-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": 2147483648
+      }
+    },
+    {
+      "name": "review-editor-query-string-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": "1"
+      }
+    },
+    {
+      "name": "review-editor-query-array-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "review-editor-query-null-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": null
+      }
+    },
+    {
+      "name": "review-editor-query-extra-key-synthetic",
+      "schema": "ReviewEditorQuery",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "active": true
+      }
+    },
+    {
+      "name": "review-editor-execution-complete-v1-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": true,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 7,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-pgint-maxima-shape-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": true,
+      "value": {
+        "execution_version": 2147483647,
+        "input_revision": 2147483647,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-v2-shape-only-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": true,
+      "value": {
+        "execution_version": 2,
+        "input_revision": 7,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-missing-execution_version-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "input_revision": 7,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-missing-input_revision-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-missing-input_hash-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 7
+      }
+    },
+    {
+      "name": "review-editor-execution-revision-zero-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 0,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-revision-negative-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": -1,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-revision-fractional-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 1.5,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-revision-overflow-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 2147483648,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-revision-string-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": "7",
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-version-overflow-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 2147483648,
+        "input_revision": 7,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-hash-uppercase-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 7,
+        "input_hash": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      }
+    },
+    {
+      "name": "review-editor-execution-hash-short-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 7,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "review-editor-execution-extra-key-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {
+        "execution_version": 1,
+        "input_revision": 7,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "active": true
+      }
+    },
+    {
+      "name": "review-editor-execution-empty-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": {}
+    },
+    {
+      "name": "review-editor-execution-null-synthetic",
+      "schema": "ReviewEditorExecution",
+      "valid": false,
+      "value": null
+    },
+    {
+      "name": "review-editor-request-legacy-omission-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": []
+      }
+    },
+    {
+      "name": "review-editor-request-complete-source-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": {
+          "execution_version": 1,
+          "input_revision": 7,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    },
+    {
+      "name": "review-editor-request-v2-source-shape-only-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": {
+          "execution_version": 2,
+          "input_revision": 7,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    },
+    {
+      "name": "review-editor-request-source-partial-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": {
+          "execution_version": 1,
+          "input_revision": 7
+        }
+      }
+    },
+    {
+      "name": "review-editor-request-source-bare-version-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": {
+          "execution_version": 1
+        }
+      }
+    },
+    {
+      "name": "review-editor-request-source-extra-key-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": {
+          "execution_version": 1,
+          "input_revision": 7,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "source_run_id": "synthetic-other-run"
+        }
+      }
+    },
+    {
+      "name": "review-editor-request-source-empty-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": {}
+      }
+    },
+    {
+      "name": "review-editor-request-source-null-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution": null
+      }
+    },
+    {
+      "name": "review-editor-request-unknown-version-shortcut-synthetic",
+      "schema": "ReviewExportRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-export-request",
+        "source_run_id": "synthetic-source-run",
+        "expected_editor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decisions": [],
+        "source_execution_version": 1
+      }
+    },
+    {
+      "name": "review-editor-response-legacy-omission-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": true,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "review-editor-response-complete-execution-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": true,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        },
+        "execution": {
+          "execution_version": 1,
+          "input_revision": 7,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    },
+    {
+      "name": "review-editor-response-v2-execution-shape-only-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": true,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        },
+        "execution": {
+          "execution_version": 2,
+          "input_revision": 7,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    },
+    {
+      "name": "review-editor-response-execution-partial-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": false,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        },
+        "execution": {
+          "execution_version": 1,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    },
+    {
+      "name": "review-editor-response-execution-extra-key-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": false,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        },
+        "execution": {
+          "execution_version": 1,
+          "input_revision": 7,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "active": true
+        }
+      }
+    },
+    {
+      "name": "review-editor-response-execution-null-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": false,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        },
+        "execution": null
+      }
+    },
+    {
+      "name": "review-editor-response-unrecognized-top-level-key-synthetic",
+      "schema": "ReviewEditorResponse",
+      "valid": false,
+      "value": {
+        "run_id": "synthetic-source-run",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": {
+          "version": "review-editor-v1",
+          "source_filename": "synthetic.docx",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "source_format": "docx",
+          "warnings": [],
+          "paragraphs": [],
+          "issues": []
+        },
+        "execution_version": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "2026-10-26T17-45-12-071Z-browser-editor-40944-31aebc07",
+  "mode": "browser-editor",
+  "status": 0,
+  "finished": "2026-10-26T17:45:42.421Z",
+  "commands": 1,
+  "browser": {
+    "origin": "http://127.0.0.1:15531",
+    "project": "desktop-chromium",
+    "config": ".local/execution-editors-20261027/playwright.config.mjs",
+    "config_sha256": "a681fbe7e9c9d12a2d6c2d41b54f4fa418ffc9a5c3b535006c3268b95ba71fd8",
+    "config_version": "versions/a681fbe7e9c9d12a2d6c2d41b54f4fa418ffc9a5c3b535006c3268b95ba71fd8.playwright.config.mjs",
+    "evidence": "runs/2026-10-26T17-45-12-071Z-browser-editor-40944-31aebc07/browser-editor",
+    "specs": [
+      "apps/web/tests/review-editor.spec.ts",
+      "apps/web/tests/review-editor-recovery.spec.ts"
+    ]
+  }
+}

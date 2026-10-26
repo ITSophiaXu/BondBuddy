@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T17:28:59.519Z",
+  "finished": "2026-10-26T17:29:01.948Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "packages/contracts/dist/check-examples.js"
+  ],
+  "status": 0,
+  "signal": null,
+  "pid": 23648
+}

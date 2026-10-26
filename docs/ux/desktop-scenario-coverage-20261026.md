@@ -18,6 +18,8 @@
 
 后续复核修正同 run 较新 legacy 共享引用被旧父清理遗漏、同 attempt 多个不可变结果被来源唯一键合并的生产缺陷：年龄清理先发现全部已知结果，在 run 行锁内重验准确 ID 集合，再取得内容锁重新判断；`0123` 将 `discovered_result_id` 纳入唯一性，各真实候选保留自己的来源时间。legacy raw 只有 bounded 长度/hash 核验正确才记录当下存储观察，缺损仍保留地址并拒读，不让新登记破坏有效旧文件读取，也不恢复已清理文件。两条迁移及最终构建/类型/契约检查通过。工作文件专项 31 pass、worker 108 pass/12 skip；API 完整集合保留 264 pass/1 fail/30 skip，缺 raw Word 的测试 fixture 修正后仅该组复验 9/9，未完整重跑或合算为一轮全通过。五个 Windows sink 标题按名排除，不计入 30 skip。两次冻结只该测试 src/编译 JS 变化，未改生产，最终 before/after 2052 项一致；空模板/无 clones 与本轮专用 PG 准确 PID 停止已列专项 summary，未借用旧轮结论。此前验收和失败历史保持原样；父来源已丢失的未登记历史 raw、不可变 editor 数据库正文和 provider JSON 一般写入意图仍有独立边界。本轮未采用新材料、未新增报价或新版 Word，不改变 G03 及完整 goal 未完成的结论。
 
+2026-10-27 本地追加 `0127` 复核 editor 切片，其[专项验收](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md)已封存：API editor/迁移/并发 17 pass、相关 API 92 pass、真实 PG/Python Worker 8 pass、Worker 回归 42 pass/1 Windows skip、缓存 20 pass、桌面 Edge 19 pass，契约/构建通过；分轮采用、不相加。canonical 正文以 `(run_id, execution_version)` 为主键，六字段 FK 同时关联执行身份和准确复核快照；保留严格 V1 legacy bridge，writer 按准确 lease 登记，reader 要求完整 final receipt。导出来源 pin 与本机恢复记录增加执行身份，旧省略字段仅兼容 V1，确定性导出仍创建既有 export 新 run。详见[补料提案中的实现边界](pause-supplement-resume-20261026.md)和[架构增量](../M1-TECH-ARCHITECTURE.md)。两轮各 2,217 文件冻结一致，Python 源码/外部运行时不在冻结范围；原始失败和专用 PG 停止记录保留。全局 V1 gate 及 current-input integrity 共享 view 未改，`bb_execution_artifact_versions` 仍依赖当前 run input；state/primary 投影不改写交付身份，不能推导 input 切换后旧版可读。未新增 raw-material FK，source retention 与数据库 editor 正文旧 cleanup 仍未解决。此轮不更改 15/15、662 或整体覆盖比例，G03 / 整体 goal 保持 active；B 已选，B1/B2 未定，未推送、创建 PR 或部署。
+
 ## 来源与范围
 
 - 既有十五类业务目录来自本机历史档案 `ux-implementation-20261025/ux-evidence/all-scenarios-coverage-matrix.md:208–224`。原档案 R1–R44 的分段合成证据用于定位已有能力，不能把其中“尚未远程集成”继续套在已经合并的当前版本上。

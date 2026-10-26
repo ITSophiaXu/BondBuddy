@@ -6,12 +6,13 @@ import { promisify } from 'node:util';
 import { isReviewReport } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
 import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
+import type { registerReviewEditorSnapshot } from '@bondbuddy/api/review-editor';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
-import { correctionFiles, correctionExport } from './review-correction-stage.js';
+import { correctionFiles, correctionExport, validCorrectionExportPin } from './review-correction-stage.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
 const helpers = join(root, 'python/bondbuddy_file_authoring');
@@ -51,6 +52,8 @@ export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFile
   if (!['review-file-v1','review-correction-v2'].includes(manifest.review.file_delivery?.version ?? '') || manifest.review.operation === 'revision'
     || !Array.isArray(manifest.review.file_delivery?.knowledge)
     || manifest.review.file_delivery!.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) throw Error('INPUT_REVISION_CONFLICT');
+  if(Object.hasOwn(manifest.review.file_delivery!,'export')&&!validCorrectionExportPin(manifest.review.file_delivery!.export))
+    throw Error('INPUT_REVISION_CONFLICT');
   const materials: Material[] = [];
   for (const pin of manifest.materials) {
     const material = (await ctx.pool.query('SELECT object_key,media_type,filename,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',
@@ -78,11 +81,16 @@ async function checkedFile(directory: string, name: string, max = MAX): Promise<
 
 export function reviewFileStage(options: { model?: typeof codexModelStage; load?: typeof loadReviewFileInput; config?: ReturnType<typeof loadCodexAdapterConfig>;
   /** Internal test seam; production always uses the durable working-file writer. */
-  writer?: typeof writeRunWorkingFile } = {}): RunStage {
+  writer?: typeof writeRunWorkingFile;
+  /** Internal conversion-test seam; production always uses the trusted registrar. */
+  registerEditor?:typeof registerReviewEditorSnapshot } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadReviewFileInput)(ctx), { manifest } = input;
     const correction=manifest.review.file_delivery?.version==='review-correction-v2';
-    if(correction&&manifest.review.file_delivery?.export)return correctionExport(ctx,input,options.writer);
+    if(correction&&Object.hasOwn(manifest.review.file_delivery!,'export')){
+      if(!validCorrectionExportPin(manifest.review.file_delivery!.export))throw Error('INPUT_REVISION_CONFLICT');
+      return correctionExport(ctx,input,options.writer,options.registerEditor);
+    }
     const originals = new Map<string, string>();
     const prepare = async (cwd: string) => {
       for (const dir of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, dir), { mode: 0o700 });
@@ -158,7 +166,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           }finally{await rm(exportDir,{recursive:true,force:true});}
         }
         if(!hasReviewReportText(reportText))return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
-        const result=await correctionFiles(ctx,input,reportText,intent.call_id,options.writer);
+        const result=await correctionFiles(ctx,input,reportText,intent.call_id,options.writer,options.registerEditor);
         return {...result,files:{...files,...result.files}};
       }
       try { word = await checkedFile(output, 'report.docx'); } catch { /* Plain CLI responses can still be exported. */ }

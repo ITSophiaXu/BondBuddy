@@ -1,0 +1,14 @@
+{
+  "kind": "supplementary_cleanup_record",
+  "reason": "All 19 test workers failed before browser launch because the expected Playwright Chromium executable was absent. Windows WebServer teardown then remained pending; the original CLI did not produce its final reports until its exact owned Vite process stopped.",
+  "verified_process_tree": [23196, 34732, 45584, 41828],
+  "verified_vite_parent_pid": 45584,
+  "verified_vite_pid": 41828,
+  "verified_port": 15531,
+  "pre_stop_checks": "Get-CimInstance exact PID; parent 45584; CommandLine contained --port 15531 --strictPort and Bondbuddy/node_modules/vite. Refuse any mismatch.",
+  "action": "Stop-Process -Id 41828 -Force",
+  "elevated": true,
+  "command_exit_code": 0,
+  "original_verifier_final_status": 1,
+  "note": "This supplementary record does not replace or modify the original log, test failures, command records or failed result. No other process was stopped."
+}

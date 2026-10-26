@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { ReviewEditorExecutionSchema, ReviewEditorQuerySchema, ReviewEditorResponseSchema, ReviewExportRequestSchema } from './review-editor.js';
 import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, projectMessageSetSchemas, validProjectMessageSetPin, validProjectMessageSetRef, canonicalProjectMessageSetContent, projectMessageSetRef, projectMessageSetRefMatches, validProductionReviewManifestContent, validProductionReviewAttestationBinding, validGenerationIssuerBindingApproval, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProjectMessageSetPin, type ProjectMessageSetRef, type ProductionReviewManifest, type ProductionReviewAttestationRequest, type GenerationIssuerBindingResponse } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
@@ -107,6 +108,22 @@ assert.equal(libraryExamples.synthetic, true);
   assert.ok(!Object.keys(schemas).some(name => name.startsWith('Library')), 'library schemas are not public schemas');
 }
 const ajv = new Ajv({ allErrors: true, strict: true });
+// Exact editor execution pins are additive; omission keeps the original V1 request body.
+const reviewEditorExecutionSchemas = { ReviewEditorExecution: ReviewEditorExecutionSchema, ReviewEditorQuery: ReviewEditorQuerySchema, ReviewEditorResponse: ReviewEditorResponseSchema, ReviewExportRequest: ReviewExportRequestSchema };
+const reviewEditorExecutionExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/review-editor-execution.json', import.meta.url)), 'utf8')) as {
+  synthetic: boolean; cases: Array<{ name: string; schema: keyof typeof reviewEditorExecutionSchemas; valid: boolean; value: unknown }>;
+};
+assert.equal(reviewEditorExecutionExamples.synthetic, true);
+for (const example of reviewEditorExecutionExamples.cases) {
+  const validate = ajv.compile(reviewEditorExecutionSchemas[example.schema]);
+  assert.equal(validate(example.value), example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
+}
+const reviewEditorOperation = openApiDocument().paths['/api/v1/projects/{project_id}/review-executions/{run_id}/editor']?.get as { parameters: Array<{ name: string; in: string; required: boolean; schema: unknown }> };
+const reviewEditorExecutionQuery = reviewEditorOperation.parameters.find(parameter => parameter.name === 'execution_version' && parameter.in === 'query');
+assert.ok(reviewEditorExecutionQuery, 'editor execution query is documented');
+assert.equal(reviewEditorExecutionQuery.required, false, 'legacy GET requests retain the original V1 default');
+assert.deepEqual(reviewEditorExecutionQuery.schema, ReviewEditorQuerySchema.properties.execution_version, 'editor OpenAPI and runtime query share one schema');
+console.log(`validated ${reviewEditorExecutionExamples.cases.length} review editor execution synthetic examples`);
 // Internal #76 platform-paid OCR/parse processing contract is validated separately and
 // stays out of the public OpenAPI/schema namespace.
 const processingCostExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/platform-processing-cost.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };

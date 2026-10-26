@@ -1,0 +1,15 @@
+{
+  "id": "2026-10-26T17-24-25-503Z-pg-recover-direct-24908-064128ce",
+  "mode": "pg-recover-direct",
+  "status": 0,
+  "finished": "2026-10-26T17:24:25.877Z",
+  "server": {
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/editor-postgres/data",
+    "port": 15530,
+    "server_version": "16.14",
+    "server_user": "bb_editor_test",
+    "server_started_at": "2026-10-26T17:24:13.262Z",
+    "pid": 31256
+  },
+  "recovered_from": "2026-10-26T17-24-12-241Z-pg-start-direct-5888-97da5907"
+}

@@ -66,7 +66,11 @@ const rejectedWrite = (error: unknown) => ['23502', '23503', '23514', 'P0002'].i
 // Only the disposable clone is altered, so replay tests can exercise the actual
 // migration against pre-0124 legacy records without changing migration history.
 async function removeScaffold(db: Pool | PoolClient) {
-  await db.query(`DROP TABLE bb_review_execution_snapshots,bb_m4_execution_snapshots CASCADE;
+  await db.query(`DROP TABLE IF EXISTS bb_review_execution_editors CASCADE;
+    DROP FUNCTION IF EXISTS bb_bridge_review_execution_editor(),bb_check_review_execution_editor() CASCADE;
+    DROP FUNCTION IF EXISTS bb_review_editor_snapshot_shape(jsonb),bb_review_editor_canonical_json(jsonb) CASCADE;
+    ALTER TABLE bb_review_execution_snapshots DROP CONSTRAINT IF EXISTS bb_review_execution_snapshot_editor_key;
+    DROP TABLE bb_review_execution_snapshots,bb_m4_execution_snapshots CASCADE;
     DROP FUNCTION bb_bridge_review_execution_snapshot(),bb_bridge_m4_execution_snapshot() CASCADE;
     DROP FUNCTION bb_check_review_execution_snapshot(),bb_check_m4_execution_snapshot() CASCADE;
     DROP FUNCTION bb_execution_review_input_shape(jsonb),bb_execution_id_array_shape(jsonb),

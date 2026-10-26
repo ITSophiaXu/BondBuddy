@@ -1,0 +1,14 @@
+{
+  "started": "2026-10-26T17:35:10.379Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+    "test",
+    "--config",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-editors-20261027\\playwright.config.mjs",
+    "review-editor.spec.ts",
+    "review-editor-recovery.spec.ts",
+    "--project=desktop-chromium"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}
