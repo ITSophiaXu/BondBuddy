@@ -1,0 +1,21 @@
+✔ old-writer bridge preserves exact V1 report bytes and an explicit report remains readable before Word final delivery (751.5917ms)
+✔ canonical report reads work without a legacy mirror and never fall back when canonical storage is absent (1083.9844ms)
+✔ report IDs remain owner/project scoped and do not select another source edition (3025.5462ms)
+✔ report source identity comes from its persisted tuple despite newer input or a damaged current run projection (2860.2897ms)
+✔ valid hashes cannot disguise a report body with the wrong source, identity, business version or scope (1650.2733ms)
+✔ the persisted tuple must resolve an immutable origin and cannot be replaced with the run projection (2102.94ms)
+✔ matching corruption of a report source and its business snapshot still fails against the original frozen input manifest (2869.1983ms)
+✔ a differential report follow-up must retain the exact source-report digest frozen in its execution input (2151.1286ms)
+✔ 0128 applies to an empty report registry without adding a run-only unique constraint or opening V2 (2763.3878ms)
+✔ 0128 backfills pre-existing V1 reports with the original canonical hash, JSON and PostgreSQL microsecond timestamp (2382.3045ms)
+✔ 0128 rejects incompatible pre-existing report origins atomically instead of skipping or rewriting the legacy row (8984.7028ms)
+✔ 0128 preserves a valid-format legacy digest unchanged and the trusted reader still rejects an incorrect body digest (3039.4239ms)
+✔ 0128 NOWAIT fails atomically behind an in-flight legacy report lock, then applies after that writer releases it (4196.0801ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51961.1792

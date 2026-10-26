@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
-import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
+import { RUN_PIPELINE_SUBTYPE,type ReviewReport } from '@bondbuddy/contracts';
 import { createServer } from '@bondbuddy/api';
 import { digest, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
@@ -175,7 +175,16 @@ test('review reassembly rejects mismatched scope, non-replayable evidence and co
     {name:'live lease',change:f=>pool.query("UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval '1 minute' WHERE id=$1",[f.lease.jobId,uid()])},
     {name:'wrong task kind',change:f=>pool.query("UPDATE bb_runs SET task_kind='update' WHERE id=$1",[f.runId])},
     {name:'deleted project',change:f=>pool.query('UPDATE bb_projects SET deleted_at=now() WHERE id=$1',[f.project])},
-    {name:'existing report',change:f=>pool.query("INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,'{}')",[uid(),f.owner,f.project,f.runId,digest('{}')])},
+    {name:'existing report',change:async f=>{
+      const frozen=(await pool.query(`SELECT i.manifest,r.input_revision FROM bb_runs r JOIN bb_input_revisions i
+        ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision AND i.input_hash=r.input_hash
+        WHERE r.owner_user_id=$1 AND r.id=$2`,[f.owner,f.runId])).rows[0],review=frozen.manifest.review;
+      const report:ReviewReport={report_id:review.report_id,project_id:f.project,run_id:f.runId,input_revision:frozen.input_revision,
+        version:review.version_number,source_material:review.input.source_material_ref,
+        scope:{mode:'full_review',finding_ids:[]},findings:[],coverage:[],limitations:['Synthetic persisted report blocks reassembly'],created_at:new Date().toISOString()};
+      return pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,$5,$6,$7)',
+        [report.report_id,f.owner,f.project,f.runId,report.version,inputManifestHash(report),report]);
+    }},
     {name:'conflicting usage',change:f=>pool.query("INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens,evidence_ref) VALUES($1,$2,$3,'reconciliation',$4,'measured',999,17,$3)",[uid(),f.owner,f.intent.call_id,uid()])},
     {name:'later unresolved attempt',change:f=>pool.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status) VALUES($1,$2,$3,$4,2,'pending_reconcile')",[uid(),f.owner,f.lease.jobId,f.intent.logical_call_id])},
     {name:'active run in same project',change:f=>pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)

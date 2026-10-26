@@ -1,0 +1,118 @@
+✔ assistant snapshot fixes source report, material versions, request content and ordered history (6.0078ms)
+✔ assistant reply cannot invent report findings, mutate accepted plans or execute runs (0.5916ms)
+▶ assistant real PG journal, real contained synthetic process, replay and owner boundaries
+  ✔ closed evidence gate, operator kill switch and account deny prevent new sends without fabricated usage (890.6432ms)
+  ✔ runtime evidence outage preserves unknown usage and pauses subsequent model sends (279.4192ms)
+  ✔ assistant observations share the platform token guard while unknown usage remains unknown and no billing occurs (539.3292ms)
+  ✔ closed new-call gates still permit exact completed-result recovery without another send (210.2881ms)
+  ✖ v2 replies preserve typed host pins and citation metadata through completed-result recovery with one send (276.3021ms)
+  ✔ a pinned v2 message with recorded v1 identity refuses before any new model send (23.5133ms)
+  ✔ v2 unknown usage stays pending and never starts a replacement reply (185.4692ms)
+  ✔ concurrent workers claim once with same-millisecond history; prompt snapshot, measured usage and proposal are durable without plan/task/billing writes (2401.8323ms)
+  ✔ existing assistant prompt snapshots replay byte-for-byte without injecting a newer skill (277.2749ms)
+  ✔ same-millisecond history created after Send remains invalid before any model call (16.7257ms)
+  ✔ large attachment bodies reserve every report reference before optional text and disclose omissions (629.9154ms)
+  ✔ crash after durable intent is unknown after lease recovery and never resends (69.1589ms)
+  ✔ crash after completed result reuses exact stored response once and cannot silently accept a conflicting reply (382.3015ms)
+  ✔ missing and partial usage keep observed response but remain unknown without fabricated zero or automatic retry (566.7616ms)
+  ✔ foreign report, history, source material and altered report hash fail before model send (51.1038ms)
+  ✔ invalid provider proposal is audited with actual usage and never changes plan (202.3428ms)
+  ✔ stale lease and foreign identity cannot write journal; archived/deleted projects are not claimed (21.3216ms)
+✖ assistant real PG journal, real contained synthetic process, replay and owner boundaries (7045.5876ms)
+✔ malformed saved export pins cannot fall through to a model call or reuse a correction checkpoint (14.4647ms)
+✔ CLI Word is delivered without a structured report, JSON response, or second call (58.2345ms)
+✔ missing output is recorded without inventing a report; immutable input tampering fails (65.9468ms)
+﹣ report symlinks cannot publish outside files (0.3573ms) # SKIP
+✔ pinned DOCX produces source comments and the same canonical report; missing comment bytes block delivery (1378.2084ms)
+✔ correction delivery rejects absent and retains diagnostics without publishing an unchanged pair (43.0576ms)
+✔ correction delivery rejects progress-markdown and retains diagnostics without publishing an unchanged pair (41.3071ms)
+✔ correction delivery rejects invalid-word and retains diagnostics without publishing an unchanged pair (574.8738ms)
+✔ correction delivery reads actual Word report fields when Markdown is absent and preserves final response (2299.4163ms)
+✔ review loader consumes the resolved V1 input and keeps the original run creation time (6.1136ms)
+✔ another revision with identical bytes cannot fall back to the original run input (1.0882ms)
+▶ review context and lease identity must agree before loading evidence
+  ✔ context run (0.5062ms)
+  ✔ context owner (0.3877ms)
+  ✔ context project (0.6733ms)
+  ✔ context revision (0.3861ms)
+  ✔ context hash (0.3506ms)
+  ✔ lease run (0.4743ms)
+  ✔ lease owner (0.4609ms)
+  ✔ lease revision (0.4488ms)
+  ✔ lease hash (0.4019ms)
+  ✔ successor execution (0.3666ms)
+✔ review context and lease identity must agree before loading evidence (6.0997ms)
+✔ missing execution identity never falls back to an otherwise valid origin snapshot (0.513ms)
+✔ missing exact input never selects another revision with the same hash (0.4938ms)
+✔ tampered fixed manifest is rejected before material evidence is read (0.3114ms)
+✔ resolved input still passes the existing immutable review snapshot gate (0.4915ms)
+✔ an explicitly missing or differently scoped resolved review snapshot cannot reload the origin (0.4885ms)
+✔ direct review gate callers resolve the exact versioned database snapshot (0.8825ms)
+✔ malformed review snapshot objects fail explicitly for resolved and direct database gates (1.7849ms)
+✔ review loader and standalone gate reject missing or mismatched execution snapshots without a legacy fallback (3.1939ms)
+✔ supplied review snapshots must match every field of the expected execution identity (0.5141ms)
+✔ supplied review snapshots and a forged successor identity cannot bypass the persisted V1 execution (0.2649ms)
+✔ review reassembly requires Blob evidence and an explicit exact identity (3.3221ms)
+✔ private review reassembly preserves original evidence, rolls back, is idempotent and reuses CLI result without a new call (2118.9232ms)
+▶ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation
+  ✔ result Blob tamper (2560.3959ms)
+  ✔ missing result Blob (753.5089ms)
+  ✔ prompt Blob tamper (741.0807ms)
+  ✔ missing prompt Blob (739.3106ms)
+  ✔ wrong run input hash (593.4014ms)
+  ✔ missing prompt checkpoint (788.9495ms)
+  ✔ duplicate result checkpoint (691.3893ms)
+  ✔ live lease (703.4353ms)
+  ✔ wrong task kind (736.551ms)
+  ✔ deleted project (694.1223ms)
+  ✔ existing report (707.3088ms)
+  ✔ conflicting usage (724.8082ms)
+  ✔ later unresolved attempt (768.2517ms)
+  ✔ active run in same project (714.9013ms)
+  ✔ foreign attempt and wrong expected hash (1437.6407ms)
+  ✔ failure in another stage (770.3546ms)
+✔ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation (14130.9071ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (856.8762ms)
+  ✔ live lease registers once and only exact report bytes replay (70.3754ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (116.5148ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (933.7854ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (1981.3332ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (1104.5969ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (37.0309ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (40.0359ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (31.5567ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (64.71ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (1281.543ms)
+ℹ tests 82
+ℹ suites 0
+ℹ pass 79
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 76471.024
+
+✖ failing tests:
+
+test at apps\worker\dist\review-assistant.test.js:289:17
+✖ v2 replies preserve typed host pins and citation metadata through completed-result recovery with one send (276.3021ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-assistant.test.js:311:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-assistant.test.js:289:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-reports-20261027\\runs\\2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7\\run.log\n\n1 !== 0\n"}

@@ -392,7 +392,9 @@ async function removeDeliverySchema(db: Db) {
   // CASCADE drops helpers whose arguments use either table's composite type,
   // including bb_execution_delivery_member_json and bb_execution_delivery_phase_valid.
   // Do not reference those now-removed row types in a later DROP FUNCTION.
-  await db.query(`DROP TABLE IF EXISTS bb_review_execution_editors CASCADE;
+  await db.query(`DROP TABLE IF EXISTS bb_review_execution_reports CASCADE;
+    DROP FUNCTION IF EXISTS bb_bridge_review_execution_report(),bb_check_review_execution_report(),bb_review_report_storage_shape(jsonb) CASCADE;
+    DROP TABLE IF EXISTS bb_review_execution_editors CASCADE;
     DROP FUNCTION IF EXISTS bb_bridge_review_execution_editor(),bb_check_review_execution_editor() CASCADE;
     DROP FUNCTION IF EXISTS bb_review_editor_snapshot_shape(jsonb),bb_review_editor_canonical_json(jsonb) CASCADE;
     ALTER TABLE bb_review_execution_snapshots DROP CONSTRAINT IF EXISTS bb_review_execution_snapshot_editor_key;

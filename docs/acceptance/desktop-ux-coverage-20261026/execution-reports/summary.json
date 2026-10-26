@@ -1,0 +1,2858 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-27",
+  "base_commit": "05f5b235fe104bcefd9d4c6e8674d21f56bd6352",
+  "branch": "codex/desktop-ux-coverage-20261026",
+  "git_at_collection": {
+    "commit": "05f5b235fe104bcefd9d4c6e8674d21f56bd6352",
+    "ref": "refs/heads/codex/desktop-ux-coverage-20261026"
+  },
+  "goal_status": "active",
+  "g03_status": "incomplete",
+  "ux_a03_status": "incomplete",
+  "synthetic": true,
+  "collector_node_version": "v24.22.1",
+  "python_freeze_scope": "Python source is included; only directories named __pycache__ are excluded. External Python/Node/PostgreSQL runtime binaries are not frozen.",
+  "invocations": [
+    {
+      "id": "2026-10-26T18-03-41-603Z-initdb-40600-1729b46b",
+      "mode": "initdb",
+      "status": 1,
+      "started": "2026-10-26T18:03:41.610Z",
+      "finished": "2026-10-26T18:03:42.023Z",
+      "start": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/start.json",
+      "receipt": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/result.json",
+      "log": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/run.log",
+      "script_sha256": "2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66",
+      "script_version": "reproduction/versions/2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/command-1-result.json",
+          "started": "2026-10-26T18:03:41.613Z",
+          "finished": "2026-10-26T18:03:42.021Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\initdb.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "--username=bb_report_test",
+            "--auth=trust",
+            "--encoding=UTF8",
+            "--locale=C"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 14880
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-04-18-542Z-initdb-21344-20348834",
+      "mode": "initdb",
+      "status": 0,
+      "started": "2026-10-26T18:04:18.548Z",
+      "finished": "2026-10-26T18:04:30.389Z",
+      "start": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/start.json",
+      "receipt": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/result.json",
+      "log": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/run.log",
+      "script_sha256": "2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66",
+      "script_version": "reproduction/versions/2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/command-1-result.json",
+          "started": "2026-10-26T18:04:18.550Z",
+          "finished": "2026-10-26T18:04:30.388Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\initdb.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "--username=bb_report_test",
+            "--auth=trust",
+            "--encoding=UTF8",
+            "--locale=C"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 31680
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e",
+      "mode": "pg-start-direct",
+      "status": 0,
+      "started": "2026-10-26T18:05:01.987Z",
+      "finished": "2026-10-26T18:05:05.252Z",
+      "start": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/start.json",
+      "receipt": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/result.json",
+      "log": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/run.log",
+      "script_sha256": "2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66",
+      "script_version": "reproduction/versions/2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/command-1-result.json",
+          "started": "2026-10-26T18:05:01.990Z",
+          "finished": "2026-10-26T18:05:02.045Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "status"
+          ],
+          "status": 3,
+          "signal": null,
+          "pid": 34236
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d",
+      "mode": "database-create",
+      "status": 0,
+      "started": "2026-10-26T18:05:13.280Z",
+      "finished": "2026-10-26T18:05:14.197Z",
+      "start": "records/runs/2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d/start.json",
+      "receipt": "records/runs/2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d/result.json",
+      "log": "records/runs/2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d/run.log",
+      "script_sha256": "2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66",
+      "script_version": "reproduction/versions/2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b",
+      "mode": "migrate",
+      "status": 0,
+      "started": "2026-10-26T18:05:33.818Z",
+      "finished": "2026-10-26T18:05:39.825Z",
+      "start": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/start.json",
+      "receipt": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/result.json",
+      "log": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/run.log",
+      "script_sha256": "2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66",
+      "script_version": "reproduction/versions/2a78f5fd5c4cb826e7b61de9e26370963c75a79d691afe678385b19ccc546c66.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/command-1-result.json",
+          "started": "2026-10-26T18:05:34.143Z",
+          "finished": "2026-10-26T18:05:39.824Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "db/migrate.mjs"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 50492
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b",
+      "mode": "database-reset",
+      "status": 0,
+      "started": "2026-10-26T18:06:52.007Z",
+      "finished": "2026-10-26T18:06:54.240Z",
+      "start": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/start.json",
+      "receipt": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/result.json",
+      "log": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-07-40-378Z-migrate-51032-86cfe515",
+      "mode": "migrate",
+      "status": 0,
+      "started": "2026-10-26T18:07:40.384Z",
+      "finished": "2026-10-26T18:07:46.341Z",
+      "start": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/start.json",
+      "receipt": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/result.json",
+      "log": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/command-1-result.json",
+          "started": "2026-10-26T18:07:40.723Z",
+          "finished": "2026-10-26T18:07:46.340Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "db/migrate.mjs"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 50864
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-08-26-340Z-build-33380-32c1b408",
+      "mode": "build",
+      "status": 0,
+      "started": "2026-10-26T18:08:26.346Z",
+      "finished": "2026-10-26T18:09:22.680Z",
+      "start": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/start.json",
+      "receipt": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/result.json",
+      "log": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-1-result.json",
+          "started": "2026-10-26T18:08:26.348Z",
+          "finished": "2026-10-26T18:08:32.600Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "packages/contracts/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 45876
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-2-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-2-result.json",
+          "started": "2026-10-26T18:08:32.601Z",
+          "finished": "2026-10-26T18:08:48.452Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 48012
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-3-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-3-result.json",
+          "started": "2026-10-26T18:08:48.454Z",
+          "finished": "2026-10-26T18:09:03.654Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 43296
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-4-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-4-result.json",
+          "started": "2026-10-26T18:09:03.656Z",
+          "finished": "2026-10-26T18:09:22.678Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/web/tsconfig.json",
+            "--noEmit"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 42356
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-10-49-734Z-api-build-39572-cce216fd",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T18:10:49.740Z",
+      "finished": "2026-10-26T18:11:05.140Z",
+      "start": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/start.json",
+      "receipt": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/result.json",
+      "log": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/command-1-result.json",
+          "started": "2026-10-26T18:10:49.743Z",
+          "finished": "2026-10-26T18:11:05.138Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 8204
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-11-33-745Z-worker-build-50112-72098af1",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T18:11:33.751Z",
+      "finished": "2026-10-26T18:11:49.074Z",
+      "start": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/start.json",
+      "receipt": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/result.json",
+      "log": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/command-1-result.json",
+          "started": "2026-10-26T18:11:33.753Z",
+          "finished": "2026-10-26T18:11:49.073Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 37320
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T18:12:27.413Z",
+      "finished": "2026-10-26T18:12:30.141Z",
+      "start": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/start.json",
+      "receipt": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/result.json",
+      "log": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-12-32-425Z-api-report-1756-c1198595",
+      "mode": "api-report",
+      "status": 1,
+      "started": "2026-10-26T18:12:32.432Z",
+      "finished": "2026-10-26T18:13:26.185Z",
+      "start": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/start.json",
+      "receipt": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/result.json",
+      "log": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/command-1-result.json",
+          "started": "2026-10-26T18:12:32.788Z",
+          "finished": "2026-10-26T18:13:26.183Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/review-report-execution.pg.test.js"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 50716
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 13,
+          "suites": 0,
+          "pass": 12,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 53280.9482
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 13,
+        "suites": 0,
+        "pass": 12,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 53280.9482
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-12-33-406Z-worker-report-30936-14629e12",
+      "mode": "worker-report",
+      "status": 1,
+      "started": "2026-10-26T18:12:33.412Z",
+      "finished": "2026-10-26T18:13:34.670Z",
+      "start": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/start.json",
+      "receipt": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/result.json",
+      "log": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/command-1-result.json",
+          "started": "2026-10-26T18:12:33.765Z",
+          "finished": "2026-10-26T18:13:34.668Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/review-report-execution.pg.test.js",
+            "apps/worker/dist/review-word-registration.pg.integration.test.js"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 8572
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 12,
+          "suites": 0,
+          "pass": 11,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 60785.9561
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 12,
+        "suites": 0,
+        "pass": 11,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 60785.9561
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-14-19-051Z-source-after-16540-621547b6",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T18:14:19.057Z",
+      "finished": "2026-10-26T18:14:21.846Z",
+      "start": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/start.json",
+      "receipt": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/result.json",
+      "log": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-14-39-206Z-api-build-21276-2670643c",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T18:14:39.212Z",
+      "finished": "2026-10-26T18:14:56.022Z",
+      "start": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/start.json",
+      "receipt": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/result.json",
+      "log": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/command-1-result.json",
+          "started": "2026-10-26T18:14:39.213Z",
+          "finished": "2026-10-26T18:14:56.020Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 34672
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T18:14:40.167Z",
+      "finished": "2026-10-26T18:14:55.812Z",
+      "start": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/start.json",
+      "receipt": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/result.json",
+      "log": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/command-1-result.json",
+          "started": "2026-10-26T18:14:40.170Z",
+          "finished": "2026-10-26T18:14:55.810Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 19516
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T18:15:26.713Z",
+      "finished": "2026-10-26T18:15:29.393Z",
+      "start": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/start.json",
+      "receipt": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/result.json",
+      "log": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c",
+      "mode": "api-report",
+      "status": 0,
+      "started": "2026-10-26T18:15:31.669Z",
+      "finished": "2026-10-26T18:16:24.114Z",
+      "start": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/start.json",
+      "receipt": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/result.json",
+      "log": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/command-1-result.json",
+          "started": "2026-10-26T18:15:32.032Z",
+          "finished": "2026-10-26T18:16:24.113Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/review-report-execution.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 11204
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 13,
+          "suites": 0,
+          "pass": 13,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 51961.1792
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 13,
+        "suites": 0,
+        "pass": 13,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 51961.1792
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-15-32-595Z-worker-report-29832-693657c6",
+      "mode": "worker-report",
+      "status": 0,
+      "started": "2026-10-26T18:15:32.601Z",
+      "finished": "2026-10-26T18:16:30.727Z",
+      "start": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/start.json",
+      "receipt": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/result.json",
+      "log": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/command-1-result.json",
+          "started": "2026-10-26T18:15:32.960Z",
+          "finished": "2026-10-26T18:16:30.726Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/review-report-execution.pg.test.js",
+            "apps/worker/dist/review-word-registration.pg.integration.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 14188
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 12,
+          "suites": 0,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 57653.8304
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 12,
+        "suites": 0,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 57653.8304
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-16-37-048Z-api-regression-23772-234643a0",
+      "mode": "api-regression",
+      "status": 0,
+      "started": "2026-10-26T18:16:37.054Z",
+      "finished": "2026-10-26T18:20:43.232Z",
+      "start": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/start.json",
+      "receipt": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/result.json",
+      "log": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/command-1-result.json",
+          "started": "2026-10-26T18:16:37.410Z",
+          "finished": "2026-10-26T18:20:43.230Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/run-supplement-files.pg.test.js",
+            "apps/api/dist/review-workspace.test.js",
+            "apps/api/dist/review-linked-workspace.test.js",
+            "apps/api/dist/review-price-activation.pg.test.js",
+            "apps/api/dist/review-readable-retention.pg.test.js",
+            "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+            "apps/api/dist/artifact-execution.pg.test.js",
+            "apps/api/dist/run-execution-delivery.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 45556
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 94,
+          "suites": 0,
+          "pass": 94,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 245700.1531
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 94,
+        "suites": 0,
+        "pass": 94,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 245700.1531
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7",
+      "mode": "worker-regression",
+      "status": 1,
+      "started": "2026-10-26T18:17:25.113Z",
+      "finished": "2026-10-26T18:18:42.374Z",
+      "start": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/start.json",
+      "receipt": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/result.json",
+      "log": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/command-1-result.json",
+          "started": "2026-10-26T18:17:25.783Z",
+          "finished": "2026-10-26T18:18:42.372Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/review-word-registration.pg.integration.test.js",
+            "apps/worker/dist/review-input-execution.test.js",
+            "apps/worker/dist/review-file-stage.test.js",
+            "apps/worker/dist/run-execution-consumers.pg.test.js",
+            "apps/worker/dist/review-assistant.test.js",
+            "apps/worker/dist/review-reassembly.test.js"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 17368
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 82,
+          "suites": 0,
+          "pass": 79,
+          "fail": 2,
+          "cancelled": 0,
+          "skipped": 1,
+          "todo": 0,
+          "duration_ms": 76471.024
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 82,
+        "suites": 0,
+        "pass": 79,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0,
+        "duration_ms": 76471.024
+      },
+      "example_lines": [],
+      "skipped_titles": [
+        "﹣ report symlinks cannot publish outside files (0.3573ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T18:21:18.542Z",
+      "finished": "2026-10-26T18:21:21.189Z",
+      "start": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/start.json",
+      "receipt": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/result.json",
+      "log": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T18:21:24.914Z",
+      "finished": "2026-10-26T18:21:39.701Z",
+      "start": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/start.json",
+      "receipt": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/result.json",
+      "log": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/command-1-result.json",
+          "started": "2026-10-26T18:21:24.916Z",
+          "finished": "2026-10-26T18:21:39.699Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 19008
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T18:22:15.343Z",
+      "finished": "2026-10-26T18:22:17.960Z",
+      "start": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/start.json",
+      "receipt": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/result.json",
+      "log": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5",
+      "mode": "worker-regression",
+      "status": 0,
+      "started": "2026-10-26T18:22:20.132Z",
+      "finished": "2026-10-26T18:23:23.224Z",
+      "start": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/start.json",
+      "receipt": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/result.json",
+      "log": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/command-1-result.json",
+          "started": "2026-10-26T18:22:20.546Z",
+          "finished": "2026-10-26T18:23:23.222Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/review-word-registration.pg.integration.test.js",
+            "apps/worker/dist/review-input-execution.test.js",
+            "apps/worker/dist/review-file-stage.test.js",
+            "apps/worker/dist/run-execution-consumers.pg.test.js",
+            "apps/worker/dist/review-assistant.test.js",
+            "apps/worker/dist/review-reassembly.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 6596
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 82,
+          "suites": 0,
+          "pass": 81,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 1,
+          "todo": 0,
+          "duration_ms": 62560.4648
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 82,
+        "suites": 0,
+        "pass": 81,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0,
+        "duration_ms": 62560.4648
+      },
+      "example_lines": [],
+      "skipped_titles": [
+        "﹣ report symlinks cannot publish outside files (0.3151ms) # SKIP"
+      ],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T18:23:35.698Z",
+      "finished": "2026-10-26T18:23:38.251Z",
+      "start": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/start.json",
+      "receipt": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/result.json",
+      "log": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b",
+      "mode": "database-audit",
+      "status": 0,
+      "started": "2026-10-26T18:23:40.451Z",
+      "finished": "2026-10-26T18:23:41.019Z",
+      "start": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/start.json",
+      "receipt": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/result.json",
+      "log": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    },
+    {
+      "id": "2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016",
+      "mode": "pg-stop",
+      "status": 0,
+      "started": "2026-10-26T18:23:52.016Z",
+      "finished": "2026-10-26T18:23:53.649Z",
+      "start": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/start.json",
+      "receipt": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/result.json",
+      "log": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-1-result.json",
+          "started": "2026-10-26T18:23:53.399Z",
+          "finished": "2026-10-26T18:23:53.596Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "-w",
+            "stop",
+            "-m",
+            "fast"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 10584
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-2-start.json",
+          "record": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-2-result.json",
+          "started": "2026-10-26T18:23:53.598Z",
+          "finished": "2026-10-26T18:23:53.648Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "status"
+          ],
+          "status": 3,
+          "signal": null,
+          "pid": 17992
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null
+    }
+  ],
+  "adopted_results": [
+    {
+      "id": "2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c",
+      "mode": "api-report",
+      "status": 0,
+      "started": "2026-10-26T18:15:31.669Z",
+      "finished": "2026-10-26T18:16:24.114Z",
+      "start": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/start.json",
+      "receipt": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/result.json",
+      "log": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/command-1-result.json",
+          "started": "2026-10-26T18:15:32.032Z",
+          "finished": "2026-10-26T18:16:24.113Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/review-report-execution.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 11204
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 13,
+          "suites": 0,
+          "pass": 13,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 51961.1792
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 13,
+        "suites": 0,
+        "pass": 13,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 51961.1792
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null,
+      "source_round": 2,
+      "later_same_mode_failures": []
+    },
+    {
+      "id": "2026-10-26T18-15-32-595Z-worker-report-29832-693657c6",
+      "mode": "worker-report",
+      "status": 0,
+      "started": "2026-10-26T18:15:32.601Z",
+      "finished": "2026-10-26T18:16:30.727Z",
+      "start": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/start.json",
+      "receipt": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/result.json",
+      "log": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/command-1-result.json",
+          "started": "2026-10-26T18:15:32.960Z",
+          "finished": "2026-10-26T18:16:30.726Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/review-report-execution.pg.test.js",
+            "apps/worker/dist/review-word-registration.pg.integration.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 14188
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 12,
+          "suites": 0,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 57653.8304
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 12,
+        "suites": 0,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 57653.8304
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null,
+      "source_round": 2,
+      "later_same_mode_failures": []
+    },
+    {
+      "id": "2026-10-26T18-16-37-048Z-api-regression-23772-234643a0",
+      "mode": "api-regression",
+      "status": 0,
+      "started": "2026-10-26T18:16:37.054Z",
+      "finished": "2026-10-26T18:20:43.232Z",
+      "start": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/start.json",
+      "receipt": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/result.json",
+      "log": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/command-1-result.json",
+          "started": "2026-10-26T18:16:37.410Z",
+          "finished": "2026-10-26T18:20:43.230Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/run-supplement-files.pg.test.js",
+            "apps/api/dist/review-workspace.test.js",
+            "apps/api/dist/review-linked-workspace.test.js",
+            "apps/api/dist/review-price-activation.pg.test.js",
+            "apps/api/dist/review-readable-retention.pg.test.js",
+            "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+            "apps/api/dist/artifact-execution.pg.test.js",
+            "apps/api/dist/run-execution-delivery.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 45556
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 94,
+          "suites": 0,
+          "pass": 94,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 245700.1531
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 94,
+        "suites": 0,
+        "pass": 94,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 245700.1531
+      },
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null,
+      "source_round": 2,
+      "later_same_mode_failures": []
+    },
+    {
+      "id": "2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5",
+      "mode": "worker-regression",
+      "status": 0,
+      "started": "2026-10-26T18:22:20.132Z",
+      "finished": "2026-10-26T18:23:23.224Z",
+      "start": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/start.json",
+      "receipt": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/result.json",
+      "log": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/command-1-result.json",
+          "started": "2026-10-26T18:22:20.546Z",
+          "finished": "2026-10-26T18:23:23.222Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/review-word-registration.pg.integration.test.js",
+            "apps/worker/dist/review-input-execution.test.js",
+            "apps/worker/dist/review-file-stage.test.js",
+            "apps/worker/dist/run-execution-consumers.pg.test.js",
+            "apps/worker/dist/review-assistant.test.js",
+            "apps/worker/dist/review-reassembly.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 6596
+        }
+      ],
+      "node_summaries": [
+        {
+          "tests": 82,
+          "suites": 0,
+          "pass": 81,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 1,
+          "todo": 0,
+          "duration_ms": 62560.4648
+        }
+      ],
+      "node_summary_errors": [],
+      "counts": {
+        "tests": 82,
+        "suites": 0,
+        "pass": 81,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0,
+        "duration_ms": 62560.4648
+      },
+      "example_lines": [],
+      "skipped_titles": [
+        "﹣ report symlinks cannot publish outside files (0.3151ms) # SKIP"
+      ],
+      "aggregate": null,
+      "source_round": 3,
+      "later_same_mode_failures": []
+    }
+  ],
+  "build_results": [
+    {
+      "id": "2026-10-26T18-08-26-340Z-build-33380-32c1b408",
+      "mode": "build",
+      "status": 0,
+      "started": "2026-10-26T18:08:26.346Z",
+      "finished": "2026-10-26T18:09:22.680Z",
+      "start": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/start.json",
+      "receipt": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/result.json",
+      "log": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-1-result.json",
+          "started": "2026-10-26T18:08:26.348Z",
+          "finished": "2026-10-26T18:08:32.600Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "packages/contracts/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 45876
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-2-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-2-result.json",
+          "started": "2026-10-26T18:08:32.601Z",
+          "finished": "2026-10-26T18:08:48.452Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 48012
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-3-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-3-result.json",
+          "started": "2026-10-26T18:08:48.454Z",
+          "finished": "2026-10-26T18:09:03.654Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 43296
+        },
+        {
+          "start_record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-4-start.json",
+          "record": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-4-result.json",
+          "started": "2026-10-26T18:09:03.656Z",
+          "finished": "2026-10-26T18:09:22.678Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/web/tsconfig.json",
+            "--noEmit"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 42356
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null,
+      "later_same_mode_failures": []
+    },
+    {
+      "id": "2026-10-26T18-14-39-206Z-api-build-21276-2670643c",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T18:14:39.212Z",
+      "finished": "2026-10-26T18:14:56.022Z",
+      "start": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/start.json",
+      "receipt": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/result.json",
+      "log": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/command-1-result.json",
+          "started": "2026-10-26T18:14:39.213Z",
+          "finished": "2026-10-26T18:14:56.020Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 34672
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null,
+      "later_same_mode_failures": []
+    },
+    {
+      "id": "2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T18:21:24.914Z",
+      "finished": "2026-10-26T18:21:39.701Z",
+      "start": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/start.json",
+      "receipt": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/result.json",
+      "log": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/run.log",
+      "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+      "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+      "commands": [
+        {
+          "start_record": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/command-1-start.json",
+          "record": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/command-1-result.json",
+          "started": "2026-10-26T18:21:24.916Z",
+          "finished": "2026-10-26T18:21:39.699Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 19008
+        }
+      ],
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "counts": null,
+      "example_lines": [],
+      "skipped_titles": [],
+      "aggregate": null,
+      "later_same_mode_failures": []
+    }
+  ],
+  "migration_result": {
+    "id": "2026-10-26T18-07-40-378Z-migrate-51032-86cfe515",
+    "mode": "migrate",
+    "status": 0,
+    "started": "2026-10-26T18:07:40.384Z",
+    "finished": "2026-10-26T18:07:46.341Z",
+    "start": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/start.json",
+    "receipt": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/result.json",
+    "log": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/run.log",
+    "script_sha256": "3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc",
+    "script_version": "reproduction/versions/3844dbaf4072fdb568798ba5bab6eec70104ee806de1f50a4864e8c01bd2c6bc.mjs",
+    "commands": [
+      {
+        "start_record": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/command-1-start.json",
+        "record": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/command-1-result.json",
+        "started": "2026-10-26T18:07:40.723Z",
+        "finished": "2026-10-26T18:07:46.340Z",
+        "exe": "C:\\Program Files\\nodejs\\node.exe",
+        "args": [
+          "db/migrate.mjs"
+        ],
+        "status": 0,
+        "signal": null,
+        "pid": 50864
+      }
+    ],
+    "node_summaries": [],
+    "node_summary_errors": [],
+    "counts": null,
+    "example_lines": [],
+    "skipped_titles": [],
+    "aggregate": null,
+    "after_reset": "2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b",
+    "applied_migrations": [
+      "0001_m1_owner_data.sql",
+      "0002_artifact_download_grants.sql",
+      "0003_m1_auth_sessions.sql",
+      "0004_m1_durable_jobs.sql",
+      "0005_m1_observability.sql",
+      "0006_m1_storage_lifecycle.sql",
+      "0007_m1_provider_result_reconciliation.sql",
+      "0008_m1_username_password.sql",
+      "0009_m1_account_lifecycle.sql",
+      "0010_m1_facts_parse_cache.sql",
+      "0010_m1_word_delivery_evidence.sql",
+      "0011_m1_project_material_events.sql",
+      "0012_m1_fact_decisions.sql",
+      "0013_m1_historical_profiles.sql",
+      "0013_m1_update_project_details.sql",
+      "0014_m1_parse_evidence_snapshots.sql",
+      "0015_m1_credit_facility_supplements.sql",
+      "0016_m1_update_difficulty_snapshots.sql",
+      "0017_m1_ocr_review.sql",
+      "0018_m1_rule_pack_release_ledger.sql",
+      "0018_m1_upload_reuse.sql",
+      "0019_m1_model_adapter_attempt_runtime.sql",
+      "0020_m1_material_parse_jobs.sql",
+      "0021_m1_log_operations.sql",
+      "0023_m1_reference_library.sql",
+      "0024_m1_worker_runtime.sql",
+      "0025_m1_trial_guard.sql",
+      "0026_m1_user_deletion_lifecycle.sql",
+      "0027_m1_platform_probe.sql",
+      "0028_m1_ops_scheduler.sql",
+      "0030_m1_library_comparability.sql",
+      "0031_m1_ops_last_success.sql",
+      "0032_m1_library_scheduled_sync.sql",
+      "0033_m1_issuer_business_profiles.sql",
+      "0034_m1_v11_reference_selection_locks.sql",
+      "0035_m1_issuer_identity_source.sql",
+      "0036_m1_production_rule_pack_registry.sql",
+      "0037_m1_rule_pack_sample_expectation_binding.sql",
+      "0038_m1_fact_extraction_runs.sql",
+      "0039_m1_rule_applicability_context.sql",
+      "0040_m1_preflight_logical_jobs.sql",
+      "0041_m1_log_blob_archive.sql",
+      "0042_m1_orphan_prompt_blobs.sql",
+      "0043_m1_project_archive.sql",
+      "0044_m1_account_recovery.sql",
+      "0045_m1_issuer_reviewer_grant_audit.sql",
+      "0046_m1_user_reference_pins.sql",
+      "0047_m1_user_reference_review_evidence.sql",
+      "0048_m1_issuer_reviewer_read_scope.sql",
+      "0049_m1_issuer_reviewer_project_grants.sql",
+      "0050_m1_credit_facility_supplement_versions.sql",
+      "0051_m1_rule_applicability_reviewer_grants.sql",
+      "0052_m1_rule_applicability_field_reviews.sql",
+      "0053_m1_input_revision_target_confirmations.sql",
+      "0054_m1_rule_applicability_overall_reviews.sql",
+      "0055_m1_rule_applicability_feature_evidence_v2.sql",
+      "0056_m1_non_production_test_grants.sql",
+      "0057_m1_target_period_evidence_decisions.sql",
+      "0058_m1_update_difficulty_evidence_identity.sql",
+      "0059_m1_issuer_annual_profile_reviews.sql",
+      "0060_m1_fact_evidence_context_sets.sql",
+      "0061_m1_model_cost_attribution.sql",
+      "0062_m1_user_submission_versions.sql",
+      "0063_m1_reference_revenue_rank_proof.sql",
+      "0064_m1_rule_source_legal_date_evidence.sql",
+      "0065_m1_fact_evidence_reviews.sql",
+      "0066_m1_target_period_candidate_snapshots.sql",
+      "0068_m1_browser_error_reports.sql",
+      "0069_m1_log_archive_retention.sql",
+      "0070_m1_error_diagnosis.sql",
+      "0071_m1_production_review_attestation_ledger.sql",
+      "0072_m1_production_component_snapshots.sql",
+      "0073_m1_production_release_attestation_binding.sql",
+      "0074_m1_storage_inventory.sql",
+      "0075_m1_generation_issuer_bindings.sql",
+      "0076_m1_signed_pdf_assessment.sql",
+      "0077_m1_project_message_revisions.sql",
+      "0080_m1_ocr_v2_checkpoints.sql",
+      "0081_m1_project_kind_conversion.sql",
+      "0082_m1_material_role_copy.sql",
+      "0083_m1_test_execute_rejection_without_grant.sql",
+      "0084_m3_review_workspace.sql",
+      "0085_m3_review_assistant.sql",
+      "0086_m3_project_run_mutex.sql",
+      "0087_m2_fixed_credits.sql",
+      "0088_m3_linked_assistant.sql",
+      "0089_paid_review_credits.sql",
+      "0090_multipage_signed_pdf_assessment.sql",
+      "0091_m4_workspace.sql",
+      "0092_m4_pending_requirements.sql",
+      "0093_m4_qa_text_delivery.sql",
+      "0094_m4_settlement_allocation_variable.sql",
+      "0095_m4_artifact_revision_number.sql",
+      "0096_m4_message_template_identity.sql",
+      "0097_m4_cross_project_material_retention.sql",
+      "0098_m4_material_knowledge.sql",
+      "0099_m4_fixed_document_credits.sql",
+      "0100_global_project_assistant.sql",
+      "0101_m4_fixed_qa_prices.sql",
+      "0102_credit_history_indexes.sql",
+      "0103_authoring_progress.sql",
+      "0103_review_pdf_delivery_evidence.sql",
+      "0104_authoring_dynamic_balance.sql",
+      "0105_m4_dynamic_balance.sql",
+      "0106_m4_case_templates.sql",
+      "0107_update_project_prospectus_versions.sql",
+      "0108_backfill_prospectus_versions.sql",
+      "0109_review_editor.sql",
+      "0110_review_dual_word_settlement.sql",
+      "0111_project_file_workspace.sql",
+      "0112_project_file_update_credits.sql",
+      "0113_integrity_rounds.sql",
+      "0114_integrity_workpapers.sql",
+      "0115_project_qa.sql",
+      "0116_integrity_browser_evidence.sql",
+      "0117_run_origin_input_immutable.sql",
+      "0118_run_supplement_drafts.sql",
+      "0119_initial_run_execution_identity.sql",
+      "0120_model_call_execution_bindings.sql",
+      "0121_run_supplement_saved_work.sql",
+      "0122_run_working_file_lifecycle.sql",
+      "0123_run_working_file_result_claims.sql",
+      "0124_run_execution_business_snapshots.sql",
+      "0125_artifact_execution_bindings.sql",
+      "0126_run_execution_deliveries.sql",
+      "0127_review_execution_editors.sql",
+      "0128_review_execution_reports.sql"
+    ],
+    "final_frozen_migration": {
+      "path": "db/migrations/0128_review_execution_reports.sql",
+      "bytes": 14699,
+      "sha256": "1fb8e0ed7580e435c02735b30f70240b51c282c3a3fb03b3beedb3a3746a3e3d",
+      "finite_created_at_check": true
+    },
+    "provenance_limit": "Migration receipt has no migration-time source-byte hash. This archive retains the complete fresh Applied log and the final SQL path/size/hash freeze record; SQL body remains in repository db/migrations/0128_review_execution_reports.sql, not in this archive."
+  },
+  "source_pairs": [
+    {
+      "round": 1,
+      "before": "2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79",
+      "after": "2026-10-26T18-14-19-051Z-source-after-16540-621547b6",
+      "files": 2290,
+      "equal": true,
+      "sha256": "d738b906dda44b989bd64ebe7cda04e91c03ead2927549a801f849af05d4b993",
+      "before_snapshot": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/snapshot.json",
+      "after_snapshot": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/snapshot.json",
+      "comparison": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/comparison.json",
+      "aggregate": null
+    },
+    {
+      "round": 2,
+      "before": "2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd",
+      "after": "2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156",
+      "files": 2290,
+      "equal": true,
+      "sha256": "896365d28b24e6978dab5aedd5991545d9dda71b577d337ecf7d47d668db819e",
+      "before_snapshot": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/snapshot.json",
+      "after_snapshot": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/snapshot.json",
+      "comparison": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/comparison.json",
+      "aggregate": null
+    },
+    {
+      "round": 3,
+      "before": "2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37",
+      "after": "2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f",
+      "files": 2290,
+      "equal": true,
+      "sha256": "552d8cffba2c5bd7b5c57736b9d57e4c7a5f5d2d3b061a1b41f15ac3919926fb",
+      "before_snapshot": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/snapshot.json",
+      "after_snapshot": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/snapshot.json",
+      "comparison": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/comparison.json",
+      "aggregate": null
+    }
+  ],
+  "source_transitions": [
+    {
+      "from_round": 1,
+      "to_round": 2,
+      "changes": [
+        {
+          "path": "apps/api/dist/review-report-execution.pg.test.js",
+          "before": {
+            "path": "apps/api/dist/review-report-execution.pg.test.js",
+            "bytes": 28645,
+            "sha256": "bea3c4fd6ad77d5340c17e54426523f9935e3e97429de5bc8db73a1668522baa"
+          },
+          "after": {
+            "path": "apps/api/dist/review-report-execution.pg.test.js",
+            "bytes": 28888,
+            "sha256": "ded817104c408e8c48484ba17bf0a9b271e58b3dc2b73a433f1c919b24125872"
+          }
+        },
+        {
+          "path": "apps/api/src/review-report-execution.pg.test.ts",
+          "before": {
+            "path": "apps/api/src/review-report-execution.pg.test.ts",
+            "bytes": 26939,
+            "sha256": "7c472ff9933c00f5990c4afb556c5e08420107dbdee13bc6e96ffb6369dc94a0"
+          },
+          "after": {
+            "path": "apps/api/src/review-report-execution.pg.test.ts",
+            "bytes": 27175,
+            "sha256": "0e1b547061859b18dab3f71449eae6dcbdd1d7a8f0af26eda121e0719e828a34"
+          }
+        },
+        {
+          "path": "apps/worker/dist/review-report-execution.pg.test.js",
+          "before": {
+            "path": "apps/worker/dist/review-report-execution.pg.test.js",
+            "bytes": 18762,
+            "sha256": "ac75fd6757aa14e1b4abff4cb487d429bf549ad875894051694064352518b81d"
+          },
+          "after": {
+            "path": "apps/worker/dist/review-report-execution.pg.test.js",
+            "bytes": 18972,
+            "sha256": "05f5aaefb7d963d43f3770490120f279d9ffe2a4b73cd9503697b7a0cf18db56"
+          }
+        },
+        {
+          "path": "apps/worker/src/review-report-execution.pg.test.ts",
+          "before": {
+            "path": "apps/worker/src/review-report-execution.pg.test.ts",
+            "bytes": 17751,
+            "sha256": "f9e2066b8a80425acc7cb4ea9ebac57a2bfaf853233ce15d405ac336724902c0"
+          },
+          "after": {
+            "path": "apps/worker/src/review-report-execution.pg.test.ts",
+            "bytes": 17959,
+            "sha256": "891b8700ba30afd2038ef2ac59686253668c9ac557a673a024745cd73f3aa373"
+          }
+        }
+      ]
+    },
+    {
+      "from_round": 2,
+      "to_round": 3,
+      "changes": [
+        {
+          "path": "apps/worker/dist/review-assistant.test.js",
+          "before": {
+            "path": "apps/worker/dist/review-assistant.test.js",
+            "bytes": 47241,
+            "sha256": "45e43c6def73f05051aa0ba41e23d3490c30396a9ab6d93d493733a7ddee97cb"
+          },
+          "after": {
+            "path": "apps/worker/dist/review-assistant.test.js",
+            "bytes": 47282,
+            "sha256": "f99cc1443cd90af8673ce7ffba7834dc13327d3f4d5d04cf28e9d892157c31cc"
+          }
+        },
+        {
+          "path": "apps/worker/src/review-assistant.test.ts",
+          "before": {
+            "path": "apps/worker/src/review-assistant.test.ts",
+            "bytes": 41908,
+            "sha256": "43fb05004b5d5bba78ddde257362814d4a3de4ac744588d290bd51c9144c782b"
+          },
+          "after": {
+            "path": "apps/worker/src/review-assistant.test.ts",
+            "bytes": 41948,
+            "sha256": "dfe1238e26c03a6a8f7ebd1e13616b1b2cf93dc6f8b4f9108c79aad5c463636e"
+          }
+        }
+      ]
+    }
+  ],
+  "unpaired_source_before": [],
+  "failed_invocations": [
+    {
+      "id": "2026-10-26T18-03-41-603Z-initdb-40600-1729b46b",
+      "mode": "initdb",
+      "counts": null,
+      "node_summaries": [],
+      "node_summary_errors": [],
+      "log": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/run.log",
+      "receipt": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/result.json"
+    },
+    {
+      "id": "2026-10-26T18-12-32-425Z-api-report-1756-c1198595",
+      "mode": "api-report",
+      "counts": {
+        "tests": 13,
+        "suites": 0,
+        "pass": 12,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 53280.9482
+      },
+      "node_summaries": [
+        {
+          "tests": 13,
+          "suites": 0,
+          "pass": 12,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 53280.9482
+        }
+      ],
+      "node_summary_errors": [],
+      "log": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/run.log",
+      "receipt": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/result.json"
+    },
+    {
+      "id": "2026-10-26T18-12-33-406Z-worker-report-30936-14629e12",
+      "mode": "worker-report",
+      "counts": {
+        "tests": 12,
+        "suites": 0,
+        "pass": 11,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 60785.9561
+      },
+      "node_summaries": [
+        {
+          "tests": 12,
+          "suites": 0,
+          "pass": 11,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 60785.9561
+        }
+      ],
+      "node_summary_errors": [],
+      "log": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/run.log",
+      "receipt": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/result.json"
+    },
+    {
+      "id": "2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7",
+      "mode": "worker-regression",
+      "counts": {
+        "tests": 82,
+        "suites": 0,
+        "pass": 79,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0,
+        "duration_ms": 76471.024
+      },
+      "node_summaries": [
+        {
+          "tests": 82,
+          "suites": 0,
+          "pass": 79,
+          "fail": 2,
+          "cancelled": 0,
+          "skipped": 1,
+          "todo": 0,
+          "duration_ms": 76471.024
+        }
+      ],
+      "node_summary_errors": [],
+      "log": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/run.log",
+      "receipt": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/result.json"
+    }
+  ],
+  "raw_record_files": 145,
+  "raw_record_inventory": [
+    {
+      "path": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/command-1-result.json",
+      "bytes": 495,
+      "sha256": "3ae1799d00e29152f230d4e385f13d6919faf581baef229ba9ab5d18645d7a7f"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/command-1-start.json",
+      "bytes": 478,
+      "sha256": "5c2c6525945ad414dba82fdf6205e0a1cd8a54c8f11133ab2b60136d3537dd58"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/result.json",
+      "bytes": 519,
+      "sha256": "b0241002237acd459338ab57333bfa1d18a19ca4f2eb494e4c38fa51597c697c"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/run.log",
+      "bytes": 974,
+      "sha256": "46d38e85f210445e82cf9a209fb71e16910570c76a95bfa5cdfddea6eec5d0c8"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-03-41-603Z-initdb-40600-1729b46b/start.json",
+      "bytes": 1034,
+      "sha256": "63ec826d4bf60ffadfd8b5ca7bc513500240592598691eda6ad215086372b87b"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/command-1-result.json",
+      "bytes": 495,
+      "sha256": "36301e91c3889573081b86883b7a87ec4ad68ab68f5cf58d0f2a43a6393e7cdc"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/command-1-start.json",
+      "bytes": 478,
+      "sha256": "04fa84fadce4846eae87f0837069cc5b1afb5a0db98bd56c64dd5e3d394325e9"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/result.json",
+      "bytes": 247,
+      "sha256": "f5ff500bf1e2a8e5eecbfee3fdddf761ab4f0f67b0e87b29c2c0d8db698ab944"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/run.log",
+      "bytes": 1098,
+      "sha256": "318d3de0f2c007e61fef3ebe7be1ca74c55e96a9105fef89b46bade38a8000ea"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-04-18-542Z-initdb-21344-20348834/start.json",
+      "bytes": 1034,
+      "sha256": "b27f3e3cec2b1e88c8e8a2f06eae682dc341cfa0fa88aebbdd52d51378876e36"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/command-1-result.json",
+      "bytes": 415,
+      "sha256": "427fe064412950961545e7798abba8c82eb97467d9e3197f46ced707b913aaac"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/command-1-start.json",
+      "bytes": 398,
+      "sha256": "04325e672ace2d4da35fcb6d8efaf920c17c1b09b5457ea2fbb4574bc79a9f47"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/direct-child.json",
+      "bytes": 189,
+      "sha256": "a30cd84c77fcd3310b5d1f82c760cb121a4c5e1bc3819adde1422e1afd0cb399"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/postgres-stderr.log",
+      "bytes": 645,
+      "sha256": "9aa6dbbe8841dd65677d91593c926f8fe8ac4f348f7451365c55ad16eb7de62c"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/postgres-stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/result.json",
+      "bytes": 442,
+      "sha256": "54be1c37a61b73ece65086e2d567ce4ddb0b8023570c6d7e2270927f71968eb3"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/run.log",
+      "bytes": 261,
+      "sha256": "04064690853d18ab9dffa147ff80876c555774c783244dc33ce2232e5d07eb57"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/start.json",
+      "bytes": 1052,
+      "sha256": "32972b118d48c77883663c241e3a82b3cad9aeb7fda148f77b326961e70722d1"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d/result.json",
+      "bytes": 230,
+      "sha256": "386f058c4e30eb71be245d7814b2b8686a4d4c30974a3d99bf3a55f9110397ea"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-13-274Z-database-create-45792-6d097e6d/start.json",
+      "bytes": 1052,
+      "sha256": "a2722d621969ee8c6154cc5d51656cf8b734aec4a7a9755c2e5d90c0acb91ce2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/command-1-result.json",
+      "bytes": 221,
+      "sha256": "fc6f42cb367ee7bdd2025c582453af7c49047619b973fda47158b8eb902eabe2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/command-1-start.json",
+      "bytes": 204,
+      "sha256": "a30fe296cc21c7b0dd3c00d06b64b3d59b6b6ba2217bdf53e4c89c1039c36683"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/result.json",
+      "bytes": 195,
+      "sha256": "ffa52ac41da6c2410c19da5256d124cdb5e46983c1f406b18a836c7792540797"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/run.log",
+      "bytes": 5476,
+      "sha256": "b9894a2927ca90821f4a24311efe2081751a7868d46cac4cc28781e73f354699"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-05-33-812Z-migrate-10040-6f7c3c5b/start.json",
+      "bytes": 1036,
+      "sha256": "bc0fcb859dab1f15d067baa0d7f07aabce840fc12cfcf9eb123199f6bde6ad6e"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/database-audit.json",
+      "bytes": 8581,
+      "sha256": "033bd210991749191fe98e8cbafc5e892e3079db02cda99e969e9f61df8a9beb"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/result.json",
+      "bytes": 9368,
+      "sha256": "aeeca8f08f3110c76826bf2bec38715693c41558a31417246b10eefe6b0a619d"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-06-52-002Z-database-reset-21964-486c0f3b/start.json",
+      "bytes": 1050,
+      "sha256": "9f1924ed591d4cb50d88aaa5b6f04aeffc40865d2b6c524498b00a25729503ac"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/command-1-result.json",
+      "bytes": 221,
+      "sha256": "b7a9992318b5c957417c51776729006e6347e0a0516a24a0d59710459dde5a4d"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/command-1-start.json",
+      "bytes": 204,
+      "sha256": "7e13e13e5f5afea306c1c59732ff3f51f6d3f5c23da7a9116db61577540aad38"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/result.json",
+      "bytes": 195,
+      "sha256": "803ccf0b891a4ba46befd2e25bd412b1c28e145cbd0753776bc3c296afe88f6a"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/run.log",
+      "bytes": 5476,
+      "sha256": "b9894a2927ca90821f4a24311efe2081751a7868d46cac4cc28781e73f354699"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-07-40-378Z-migrate-51032-86cfe515/start.json",
+      "bytes": 1036,
+      "sha256": "ddde13c0a7d581aff0ea99448238f2b52cfc3a8c7aeae8e849f57e4a8c36a381"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-1-result.json",
+      "bytes": 354,
+      "sha256": "19a0a197052c539f56416abe905920cd23150da0260d076ef181b111bccb85d0"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-1-start.json",
+      "bytes": 337,
+      "sha256": "c0c17ea35fc4483457bb0da1b5bacaa606008765c434783e4003153bccf7423e"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-2-result.json",
+      "bytes": 344,
+      "sha256": "4177dc143150f7848524e6fe4cdd7211f2cdf2ef296dd67c13624cc49b984093"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-2-start.json",
+      "bytes": 327,
+      "sha256": "7522a0c51b3f65074732ef265f19f4c8977bb358193d1056f392f5a9f56e2458"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-3-result.json",
+      "bytes": 347,
+      "sha256": "39855e345b80f1a2276f96e40a00de0100da6f5b019f1915ca6788aba292b1c5"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-3-start.json",
+      "bytes": 330,
+      "sha256": "0af6915701d233642671707b356604d5402b84b1540de0abe291db3fbe2e87a9"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-4-result.json",
+      "bytes": 360,
+      "sha256": "37ffe3860632f89caa115f27f02d845499ddf0b7c1141e0dec70bb39d5b606d7"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/command-4-start.json",
+      "bytes": 343,
+      "sha256": "0c6ba557bac92f5ade79a885e59a91e23904f2efcc1f95dab8114e97b009a987"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/result.json",
+      "bytes": 153,
+      "sha256": "31e2f4beed0469fabec2a4bf9da3d817a188f7b2f974a2a1862bbb1b073dfaea"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-08-26-340Z-build-33380-32c1b408/start.json",
+      "bytes": 1032,
+      "sha256": "b6202eeceff92ca2b94f38c891235464c50ee4ac91dab7c3e52873c3472223cf"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/command-1-result.json",
+      "bytes": 343,
+      "sha256": "5a95d4c7ccc71099b0ad1801f5466b4c53a30e20ee3a2aa4ee1822ccfffa0fa8"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/command-1-start.json",
+      "bytes": 327,
+      "sha256": "a320567f44a03fa2a80bad16802c5aa0bdbc195af02ca1ba87e3cfe4c2c1afc7"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/result.json",
+      "bytes": 161,
+      "sha256": "ddc8d27b5d7ad7854bdde97bd379a173766ffdf955e95e4dcaec79c80d80e005"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-10-49-734Z-api-build-39572-cce216fd/start.json",
+      "bytes": 1040,
+      "sha256": "76eea6aafc7613035da83f02ff4fcd31c380cdf72e63eca610e7a745b0ba5eb4"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/command-1-result.json",
+      "bytes": 347,
+      "sha256": "a17589e6994aaddc4a6425a8525ab23f781bea212a2018ecaa6ae67aff136a7f"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/command-1-start.json",
+      "bytes": 330,
+      "sha256": "2c3d50c7c0a12f54192317c97669fc1fe21a9dd72e34eb8d31ed1327097375c4"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/result.json",
+      "bytes": 167,
+      "sha256": "d10d2c9c43cc1ac3b885a3b7e345964d0ec86d0471c0759fed2757930e44efc2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-11-33-745Z-worker-build-50112-72098af1/start.json",
+      "bytes": 1046,
+      "sha256": "8079d9c8a863e4bfd07eaf48188deec09f711def499012196d5dd85675078122"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/result.json",
+      "bytes": 605,
+      "sha256": "4718c90b719bbd7e489781fa1db282fb4a225b109e008f81d6f8a61118043582"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/run.log",
+      "bytes": 328,
+      "sha256": "926719140d3dbebb53e0ffa6cbbf509b752ec9fcfd0e4225dbc3179c84352d66"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/snapshot.json",
+      "bytes": 383977,
+      "sha256": "d738b906dda44b989bd64ebe7cda04e91c03ead2927549a801f849af05d4b993"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-27-406Z-source-before-15812-4c3dcd79/start.json",
+      "bytes": 1048,
+      "sha256": "3f3a374b9a7c175f36b14edd147c2ea2b29d933380754b09d7caff70d3af923b"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/command-1-result.json",
+      "bytes": 297,
+      "sha256": "a20add992f95de17d9529b56fe5208f688600cb71bd7b63b5b21a8ce73fc4686"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/command-1-start.json",
+      "bytes": 280,
+      "sha256": "d5d20074f6f583316e7bba0b8a860dfcadc71a7cfc6c0a598060e078f3937a12"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/result.json",
+      "bytes": 437,
+      "sha256": "f6c1d81abb66db414a26038b24f2a868afd9b20941c9d7139b10f2b6e90a6853"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/run.log",
+      "bytes": 3522,
+      "sha256": "02dd35470857baca03ee672334692f01ce12f74c50ceee2a003f3d190017cb6f"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-32-425Z-api-report-1756-c1198595/start.json",
+      "bytes": 1041,
+      "sha256": "d393deb6d4f15e27c60b1c264e1859a4cc7cf22c1003146787bf91209ace9ff7"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/command-1-result.json",
+      "bytes": 371,
+      "sha256": "6e8c1f15ab59a1883f26b6877ca2a940a16c22d31fdbda03ac9d29172e7f7988"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/command-1-start.json",
+      "bytes": 355,
+      "sha256": "e0f52f054459c555d553f46876859bce26a2448ee207419f169e5da7bd032f04"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/result.json",
+      "bytes": 448,
+      "sha256": "b74dbfcf4d2a0979ec2dd63e96ec5d3cd3b5109d6a4ee3a1578b4aaf7cc2c974"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/run.log",
+      "bytes": 3080,
+      "sha256": "bcc446d07535f356a34420d29c319a5a2f77c9fb2de9bb28e80c90ae0ddeb2f2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-12-33-406Z-worker-report-30936-14629e12/start.json",
+      "bytes": 1048,
+      "sha256": "2864dcc33df89b93e32530ba6a51d4a89677726cc76369ce7da4f0da9a239d93"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/comparison.json",
+      "bytes": 312,
+      "sha256": "87cf7fafb59923110d4a86a20523f297b61314cb80b482ee1c18286707df2c94"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/result.json",
+      "bytes": 674,
+      "sha256": "af85852a1b5691da4e1655f4186041797cfbe72c6e6e220366ea73448543e528"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/run.log",
+      "bytes": 393,
+      "sha256": "53ee6a22ace7b77dda2f4baa723d8beb38ce373fbd12fc52364aecf37308c6f2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/snapshot.json",
+      "bytes": 383977,
+      "sha256": "d738b906dda44b989bd64ebe7cda04e91c03ead2927549a801f849af05d4b993"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-19-051Z-source-after-16540-621547b6/start.json",
+      "bytes": 1046,
+      "sha256": "f749240581eb62b6eabef563a1f168f85d14095b6ea11590acfcbb975f3b7a51"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/command-1-result.json",
+      "bytes": 344,
+      "sha256": "2765959f84c92492f6770a40802f019d5bc24f177f1af3195ba2797407883501"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/command-1-start.json",
+      "bytes": 327,
+      "sha256": "9b80c07375a9a99523490a86640245df383c59fbd7fad1a06eb0a43afdb4ce7f"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/result.json",
+      "bytes": 161,
+      "sha256": "22ca09a95da3c8e5dc843b8b9b15bafad030dbca72cb5f824c699b98b232290f"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-39-206Z-api-build-21276-2670643c/start.json",
+      "bytes": 1040,
+      "sha256": "08bf0c0eb07503edc50d7aa0bff47ed04b2a3601b483b8857344f2c34693ec2e"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/command-1-result.json",
+      "bytes": 347,
+      "sha256": "17669c6b12a115409442b4d57d4725665677e88e7c5631f671f07f73fdb60dc4"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/command-1-start.json",
+      "bytes": 330,
+      "sha256": "352dbaab5064a359eec83739c673eafd363a25b9ac97490ad21601e6410ff565"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/result.json",
+      "bytes": 167,
+      "sha256": "618553d7108ab9b2a6347505b37a07371a0538c9b238e67d6b506561ac88bc86"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-14-40-161Z-worker-build-37656-f708d74b/start.json",
+      "bytes": 1046,
+      "sha256": "1b24182c9edba07c5901409f181b30f7da76209177ae73714b868c31dbd87bcc"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/result.json",
+      "bytes": 605,
+      "sha256": "c0078e0bdcf8df6b79e61109cbdb33d3cbdd8cc10fcb58d9e79cc83238842c10"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/run.log",
+      "bytes": 328,
+      "sha256": "0cab1735046c02e89289b81a7ba2f9eb4576c7001ea44f21b104be19742311f8"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/snapshot.json",
+      "bytes": 383977,
+      "sha256": "896365d28b24e6978dab5aedd5991545d9dda71b577d337ecf7d47d668db819e"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-26-707Z-source-before-45932-cd85bdbd/start.json",
+      "bytes": 1048,
+      "sha256": "11fbde67e6f6a19f87bfbde2625fb3d75a95c1333dd9dbfcc46587a9db3b0978"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/command-1-result.json",
+      "bytes": 297,
+      "sha256": "34620e006b65368a269b1da27c55b76322ee7c2295685e0ba3076a6b5bde9071"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/command-1-start.json",
+      "bytes": 280,
+      "sha256": "09a1cea013b58ffece5a05293a4566abf1e21063ba774432197ff8e655bdbfc0"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/result.json",
+      "bytes": 163,
+      "sha256": "38c647b8fffd4ca841ad93938fd7ed4b6d1b385dadec81cad02d6d8fe84bb379"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/run.log",
+      "bytes": 1742,
+      "sha256": "bd252ed8ec9c19bb022536d19291b231ac71d356fd4b6e7aafbe74b3d290ad80"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-31-663Z-api-report-50884-2361cf4c/start.json",
+      "bytes": 1042,
+      "sha256": "0a69356c54f06f9db35b264745adceb56cdc236d619effa15a87d0312967e575"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/command-1-result.json",
+      "bytes": 372,
+      "sha256": "967e94390e3b62b84792e9706f067fb1d24c17d0f25c44e245448c6a42c90303"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/command-1-start.json",
+      "bytes": 355,
+      "sha256": "7008a6071b80fc1abf3f36c6453d58cb2c952a92d028753438bc5a4225e6b31c"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/result.json",
+      "bytes": 169,
+      "sha256": "3b31f0c79eabe3afa7e4bbbc3c08dc579ff94cf50c4748f0dba6018506f75c06"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/run.log",
+      "bytes": 1565,
+      "sha256": "369dbd4d0296ac72a142198b7007ddee1a4fb9a120bda113059022704bab1375"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-15-32-595Z-worker-report-29832-693657c6/start.json",
+      "bytes": 1048,
+      "sha256": "fc92de9cdaf080520dc0593c7c39c755e8ef4c6b25229e968fd76f99db888ebc"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/command-1-result.json",
+      "bytes": 678,
+      "sha256": "5768d07f1f3777fbe76f3d0a164d1be1a5c6c42d37d374c7d94bd338214bece9"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/command-1-start.json",
+      "bytes": 661,
+      "sha256": "3cf886b3c4cc83030a43374438de97fa5976d42edbd3f2ffaf510d1198ab5904"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/result.json",
+      "bytes": 171,
+      "sha256": "a48d4f35c5382335c1ce0955d86c8c4bacdd6b88ead1cb00733d854dd52ec1ea"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/run.log",
+      "bytes": 8082,
+      "sha256": "d61eb6dd2c7239960f761ce87e67d5bb3cd6515f0fec17b49500cb6ce8851547"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-16-37-048Z-api-regression-23772-234643a0/start.json",
+      "bytes": 1050,
+      "sha256": "d13b647178cc8ac61409f96d5fff89a76395631b54e2cecc3464286af2cc7587"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/command-1-result.json",
+      "bytes": 576,
+      "sha256": "09c2b55c8f40e63d9e45abf7ee685d67fae8a5075bc07be915371ac3ec46b375"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/command-1-start.json",
+      "bytes": 559,
+      "sha256": "21ab86aeaec4fb50c036459767bd61f21e68479d023c3783828a750e3501de94"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/result.json",
+      "bytes": 460,
+      "sha256": "dad29823d74b6b07e63827d816528c11119cabff7ade0b3586cb47bbdf0683fb"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/run.log",
+      "bytes": 8785,
+      "sha256": "1d2676a0279070a09e76ac8bab7e26f45fbca8cf33ffebe75bf843b3e2a249af"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-17-25-108Z-worker-regression-42108-66aac2e7/start.json",
+      "bytes": 1056,
+      "sha256": "5c0accce8b58e0dc18744d335629ed8de29ef88e71e593d41b6fe2c73b1332f1"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/comparison.json",
+      "bytes": 312,
+      "sha256": "85c038622619f24abceb45ee8848f417aab103647629ac4cd4837a863938256d"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/result.json",
+      "bytes": 674,
+      "sha256": "bba2d34debf4282b9c6bac715a944bd5aed23297985fdfcae2c9fe0f96cd72fa"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/run.log",
+      "bytes": 393,
+      "sha256": "07fe6e1b9fd60d990d8ef9c4cf84ab84a85f564a0c036a5465cb9bbcd88cebbd"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/snapshot.json",
+      "bytes": 383977,
+      "sha256": "896365d28b24e6978dab5aedd5991545d9dda71b577d337ecf7d47d668db819e"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-18-535Z-source-after-38296-f1d7c156/start.json",
+      "bytes": 1046,
+      "sha256": "fcdc947a57876ca9ef10bdcfb0f9ab02eba16d9f38f99cf0ac82851def805205"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/command-1-result.json",
+      "bytes": 347,
+      "sha256": "9999f9072a54105f750ffcb559a430c72db604d117ed6005de94950d4794b96a"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/command-1-start.json",
+      "bytes": 330,
+      "sha256": "3978f9256cee5bde8adc5679a1eba303eb0009d68932c4345f0378fe2a119300"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/result.json",
+      "bytes": 167,
+      "sha256": "a0941968c097955ba6aca51ed83af6f6f0099ba91a3e526c10c564ad0d21b69d"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-21-24-907Z-worker-build-47816-f90aa449/start.json",
+      "bytes": 1046,
+      "sha256": "fcdc3e02189c806c15fa9b4e59d801042f6339166b881ae5fb17ac63d8862fb2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/result.json",
+      "bytes": 605,
+      "sha256": "53c9bf37beae33fbec4621e955fafc4b1a8ab5fec3f9439e2393a556f0dcd33d"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/run.log",
+      "bytes": 328,
+      "sha256": "b237ca9f7eda80167d4a21c6356d31d405236139843e8cee4fae917d53e36cd4"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/snapshot.json",
+      "bytes": 383977,
+      "sha256": "552d8cffba2c5bd7b5c57736b9d57e4c7a5f5d2d3b061a1b41f15ac3919926fb"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-15-337Z-source-before-45396-bf4c4e37/start.json",
+      "bytes": 1048,
+      "sha256": "e9df55bef1c68ea7726d915e9e76066bad2ad5a60df59b1ebf587b87748267e5"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/command-1-result.json",
+      "bytes": 575,
+      "sha256": "fe09996e8959d5108e78e39d99664578a3c778028d0e477a93f909a635ddf4d3"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/command-1-start.json",
+      "bytes": 559,
+      "sha256": "9ea3575d3eb36adcd5726452d55519013e675d25c5ee7fa96cfcf71ff4b0f33f"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/result.json",
+      "bytes": 177,
+      "sha256": "426e9d5015a621739d83a3b87c839783a9c403b24675bbdbd0db7e34dc0b9006"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/run.log",
+      "bytes": 7477,
+      "sha256": "01eaaf3624a152a184d8b21b4dc5e5d2f361926c00c80f995e96d643c17daf52"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-22-20-126Z-worker-regression-21640-50f8f7f5/start.json",
+      "bytes": 1056,
+      "sha256": "bb8f71be95b3b2a377f4573ae4b44f50f5e15a20a7e8ca50d1154d34b7e5f7f2"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/comparison.json",
+      "bytes": 312,
+      "sha256": "5f3cc2175908f68e64cdf7739bb6a86ebac9c97a3948517d6067f76346f58e58"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/result.json",
+      "bytes": 674,
+      "sha256": "b69970d8e3bbd4f1f7a5f3517fb3c7b266bda9132b4e48e03820f99514dbc246"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/run.log",
+      "bytes": 393,
+      "sha256": "ace5ab563b7d457eadb0f59fb0a1a390568c94c7df024e5eea09adcc60964a35"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/snapshot.json",
+      "bytes": 383977,
+      "sha256": "552d8cffba2c5bd7b5c57736b9d57e4c7a5f5d2d3b061a1b41f15ac3919926fb"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-35-693Z-source-after-34964-a6f0291f/start.json",
+      "bytes": 1046,
+      "sha256": "9fd65eb3846e9f801799e2b30de34cdd29d9812a3acbd8c31691ec18d658b1fa"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/database-audit.json",
+      "bytes": 8581,
+      "sha256": "5ebd7c7263fd97e7cf143ae9a0b07141d7e7d73b3592c4df689855908528f0cc"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/result.json",
+      "bytes": 9234,
+      "sha256": "3042988eb674a76bf26a909e12b1dfd04142923bf3f3839fe6619a4228c79121"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/run.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/start.json",
+      "bytes": 1050,
+      "sha256": "f7c5bf7a21434d0b799f63cf77f13251966ab77e6ed0a71c62255359ea907859"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-1-result.json",
+      "bytes": 445,
+      "sha256": "580556b8ca6a4858f769bbe63d315c477343e7cdb560b98e6bc31b864ab303e7"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-1-start.json",
+      "bytes": 428,
+      "sha256": "b95a495e7e76bc0c2165fb5fd694fa0a82db4b8b2214f80ddb07128d7e11f988"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-2-result.json",
+      "bytes": 415,
+      "sha256": "debd87d93cf0e51e183e00ed691e41ecb7ceacfa44fdd752a3a964d1f61b6d75"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/command-2-start.json",
+      "bytes": 398,
+      "sha256": "b3dbf0b79744b2365d8e3da6e09acd712ee8a50473d11c65a7efa9a9fc69247c"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/database-audit.json",
+      "bytes": 8581,
+      "sha256": "5ebd7c7263fd97e7cf143ae9a0b07141d7e7d73b3592c4df689855908528f0cc"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/result.json",
+      "bytes": 9219,
+      "sha256": "b6da7396f64a13e34b1b86c896e2d3559899aac5d09dc27064ce983886af68fa"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/run.log",
+      "bytes": 85,
+      "sha256": "0f90bb33683e8ab2198c8aae13b4b7ea9782ab21bd267ba389ae862502b7db53"
+    },
+    {
+      "path": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/start.json",
+      "bytes": 1036,
+      "sha256": "954b3d6c440274392858d852959274835b763ac4b7c93f2cd1262e85a20430f9"
+    }
+  ],
+  "database_audit": {
+    "server": {
+      "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/report-postgres/data",
+      "port": 15540,
+      "server_version": "16.14",
+      "server_user": "bb_report_test",
+      "server_started_at": "2026-10-26T18:05:02.908Z",
+      "pid": 22604
+    },
+    "database": "bb_execution_report_template_20261027",
+    "counts": {
+      "bb_users": 1,
+      "bb_projects": 1,
+      "bb_input_revisions": 1,
+      "bb_platform_principals": 1,
+      "bb_runs": 0,
+      "bb_jobs": 0,
+      "bb_run_events": 0,
+      "bb_run_execution_versions": 0,
+      "bb_review_execution_snapshots": 0,
+      "bb_m4_execution_snapshots": 0,
+      "bb_artifact_versions": 0,
+      "bb_artifact_execution_bindings": 0,
+      "bb_word_delivery_evidence": 0,
+      "bb_run_execution_deliveries": 0,
+      "bb_run_execution_delivery_artifacts": 0,
+      "bb_review_executions": 0,
+      "bb_review_editors": 0,
+      "bb_review_execution_editors": 0,
+      "bb_review_reports": 0,
+      "bb_review_execution_reports": 0
+    },
+    "migrations": [
+      "0001_m1_owner_data.sql",
+      "0002_artifact_download_grants.sql",
+      "0003_m1_auth_sessions.sql",
+      "0004_m1_durable_jobs.sql",
+      "0005_m1_observability.sql",
+      "0006_m1_storage_lifecycle.sql",
+      "0007_m1_provider_result_reconciliation.sql",
+      "0008_m1_username_password.sql",
+      "0009_m1_account_lifecycle.sql",
+      "0010_m1_facts_parse_cache.sql",
+      "0010_m1_word_delivery_evidence.sql",
+      "0011_m1_project_material_events.sql",
+      "0012_m1_fact_decisions.sql",
+      "0013_m1_historical_profiles.sql",
+      "0013_m1_update_project_details.sql",
+      "0014_m1_parse_evidence_snapshots.sql",
+      "0015_m1_credit_facility_supplements.sql",
+      "0016_m1_update_difficulty_snapshots.sql",
+      "0017_m1_ocr_review.sql",
+      "0018_m1_rule_pack_release_ledger.sql",
+      "0018_m1_upload_reuse.sql",
+      "0019_m1_model_adapter_attempt_runtime.sql",
+      "0020_m1_material_parse_jobs.sql",
+      "0021_m1_log_operations.sql",
+      "0023_m1_reference_library.sql",
+      "0024_m1_worker_runtime.sql",
+      "0025_m1_trial_guard.sql",
+      "0026_m1_user_deletion_lifecycle.sql",
+      "0027_m1_platform_probe.sql",
+      "0028_m1_ops_scheduler.sql",
+      "0030_m1_library_comparability.sql",
+      "0031_m1_ops_last_success.sql",
+      "0032_m1_library_scheduled_sync.sql",
+      "0033_m1_issuer_business_profiles.sql",
+      "0034_m1_v11_reference_selection_locks.sql",
+      "0035_m1_issuer_identity_source.sql",
+      "0036_m1_production_rule_pack_registry.sql",
+      "0037_m1_rule_pack_sample_expectation_binding.sql",
+      "0038_m1_fact_extraction_runs.sql",
+      "0039_m1_rule_applicability_context.sql",
+      "0040_m1_preflight_logical_jobs.sql",
+      "0041_m1_log_blob_archive.sql",
+      "0042_m1_orphan_prompt_blobs.sql",
+      "0043_m1_project_archive.sql",
+      "0044_m1_account_recovery.sql",
+      "0045_m1_issuer_reviewer_grant_audit.sql",
+      "0046_m1_user_reference_pins.sql",
+      "0047_m1_user_reference_review_evidence.sql",
+      "0048_m1_issuer_reviewer_read_scope.sql",
+      "0049_m1_issuer_reviewer_project_grants.sql",
+      "0050_m1_credit_facility_supplement_versions.sql",
+      "0051_m1_rule_applicability_reviewer_grants.sql",
+      "0052_m1_rule_applicability_field_reviews.sql",
+      "0053_m1_input_revision_target_confirmations.sql",
+      "0054_m1_rule_applicability_overall_reviews.sql",
+      "0055_m1_rule_applicability_feature_evidence_v2.sql",
+      "0056_m1_non_production_test_grants.sql",
+      "0057_m1_target_period_evidence_decisions.sql",
+      "0058_m1_update_difficulty_evidence_identity.sql",
+      "0059_m1_issuer_annual_profile_reviews.sql",
+      "0060_m1_fact_evidence_context_sets.sql",
+      "0061_m1_model_cost_attribution.sql",
+      "0062_m1_user_submission_versions.sql",
+      "0063_m1_reference_revenue_rank_proof.sql",
+      "0064_m1_rule_source_legal_date_evidence.sql",
+      "0065_m1_fact_evidence_reviews.sql",
+      "0066_m1_target_period_candidate_snapshots.sql",
+      "0068_m1_browser_error_reports.sql",
+      "0069_m1_log_archive_retention.sql",
+      "0070_m1_error_diagnosis.sql",
+      "0071_m1_production_review_attestation_ledger.sql",
+      "0072_m1_production_component_snapshots.sql",
+      "0073_m1_production_release_attestation_binding.sql",
+      "0074_m1_storage_inventory.sql",
+      "0075_m1_generation_issuer_bindings.sql",
+      "0076_m1_signed_pdf_assessment.sql",
+      "0077_m1_project_message_revisions.sql",
+      "0080_m1_ocr_v2_checkpoints.sql",
+      "0081_m1_project_kind_conversion.sql",
+      "0082_m1_material_role_copy.sql",
+      "0083_m1_test_execute_rejection_without_grant.sql",
+      "0084_m3_review_workspace.sql",
+      "0085_m3_review_assistant.sql",
+      "0086_m3_project_run_mutex.sql",
+      "0087_m2_fixed_credits.sql",
+      "0088_m3_linked_assistant.sql",
+      "0089_paid_review_credits.sql",
+      "0090_multipage_signed_pdf_assessment.sql",
+      "0091_m4_workspace.sql",
+      "0092_m4_pending_requirements.sql",
+      "0093_m4_qa_text_delivery.sql",
+      "0094_m4_settlement_allocation_variable.sql",
+      "0095_m4_artifact_revision_number.sql",
+      "0096_m4_message_template_identity.sql",
+      "0097_m4_cross_project_material_retention.sql",
+      "0098_m4_material_knowledge.sql",
+      "0099_m4_fixed_document_credits.sql",
+      "0100_global_project_assistant.sql",
+      "0101_m4_fixed_qa_prices.sql",
+      "0102_credit_history_indexes.sql",
+      "0103_authoring_progress.sql",
+      "0103_review_pdf_delivery_evidence.sql",
+      "0104_authoring_dynamic_balance.sql",
+      "0105_m4_dynamic_balance.sql",
+      "0106_m4_case_templates.sql",
+      "0107_update_project_prospectus_versions.sql",
+      "0108_backfill_prospectus_versions.sql",
+      "0109_review_editor.sql",
+      "0110_review_dual_word_settlement.sql",
+      "0111_project_file_workspace.sql",
+      "0112_project_file_update_credits.sql",
+      "0113_integrity_rounds.sql",
+      "0114_integrity_workpapers.sql",
+      "0115_project_qa.sql",
+      "0116_integrity_browser_evidence.sql",
+      "0117_run_origin_input_immutable.sql",
+      "0118_run_supplement_drafts.sql",
+      "0119_initial_run_execution_identity.sql",
+      "0120_model_call_execution_bindings.sql",
+      "0121_run_supplement_saved_work.sql",
+      "0122_run_working_file_lifecycle.sql",
+      "0123_run_working_file_result_claims.sql",
+      "0124_run_execution_business_snapshots.sql",
+      "0125_artifact_execution_bindings.sql",
+      "0126_run_execution_deliveries.sql",
+      "0127_review_execution_editors.sql",
+      "0128_review_execution_reports.sql"
+    ],
+    "clones": [],
+    "other_clients": [],
+    "platform_seed": {
+      "migration": "db/migrations/0027_m1_platform_probe.sql",
+      "migration_sha256": "1cfd11c047e3dbee3328ba9caabd5fca7e55f208cb278c6ce85f8d1126e772d0",
+      "applied_at": "2026-10-26T18:07:43.049Z",
+      "rows": {
+        "bb_users": [
+          {
+            "id": "bb-platform-probe",
+            "status": "disabled",
+            "username": "bb_platform_probe",
+            "closed_at": null,
+            "created_at": "2026-10-27T02:07:43.049835+08:00",
+            "phone_e164": null
+          }
+        ],
+        "bb_projects": [
+          {
+            "id": "bb-platform-probe-project",
+            "kind": "platform_probe",
+            "name": "Platform model probe (synthetic)",
+            "market": null,
+            "offering": null,
+            "created_at": "2026-10-27T02:07:43.049835+08:00",
+            "deleted_at": null,
+            "updated_at": "2026-10-27T02:07:43.049835+08:00",
+            "archived_at": null,
+            "issuer_name": null,
+            "event_cursor": 0,
+            "owner_user_id": "bb-platform-probe",
+            "draft_revision": 1,
+            "update_details": {},
+            "latest_input_revision": 1,
+            "execution_scope_project_id": null
+          }
+        ],
+        "bb_input_revisions": [
+          {
+            "manifest": {
+              "purpose": "platform_probe",
+              "synthetic": true,
+              "user_data": false
+            },
+            "revision": 1,
+            "created_at": "2026-10-27T02:07:43.049835+08:00",
+            "input_hash": "b25e3c7c3362dd95e7d063b8d7ad0a53ab00d3452de0127d06a0422761ab8cab",
+            "project_id": "bb-platform-probe-project",
+            "owner_user_id": "bb-platform-probe",
+            "draft_revision": 1,
+            "template_version": null,
+            "material_versions": [],
+            "reference_release": null,
+            "rule_pack_version": null,
+            "requirement_message_ids": []
+          }
+        ],
+        "bb_platform_principals": [
+          {
+            "purpose": "platform_probe",
+            "user_id": "bb-platform-probe",
+            "created_at": "2026-10-27T02:07:43.049835+08:00",
+            "project_id": "bb-platform-probe-project",
+            "input_revision": 1
+          }
+        ]
+      }
+    }
+  },
+  "database_audit_receipt": "records/runs/2026-10-26T18-23-40-444Z-database-audit-39640-5ad6140b/result.json",
+  "stop_receipt": "records/runs/2026-10-26T18-23-52-011Z-pg-stop-14196-4a2d4016/result.json",
+  "pg_launch_receipt": "records/runs/2026-10-26T18-05-01-982Z-pg-start-direct-16476-7d143a6e/result.json",
+  "excluded_new_acceptance": [
+    "Word content/delivery",
+    "real model/provider",
+    "browser"
+  ],
+  "scope_limits": [
+    "V2 remains disabled",
+    "No supplement adoption or new-input successor execution",
+    "No price decision or new ledger authority",
+    "B selected; B1/B2 calculation remains undecided",
+    "Full UX goal/G03/UX-A03 remain active and incomplete",
+    "SQL does not recompute the JavaScript canonical report digest"
+  ],
+  "aggregate": null
+}

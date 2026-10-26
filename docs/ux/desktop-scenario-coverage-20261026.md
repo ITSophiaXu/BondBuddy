@@ -20,6 +20,8 @@
 
 2026-10-27 本地追加 `0127` 复核 editor 切片，其[专项验收](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md)已封存：API editor/迁移/并发 17 pass、相关 API 92 pass、真实 PG/Python Worker 8 pass、Worker 回归 42 pass/1 Windows skip、缓存 20 pass、桌面 Edge 19 pass，契约/构建通过；分轮采用、不相加。canonical 正文以 `(run_id, execution_version)` 为主键，六字段 FK 同时关联执行身份和准确复核快照；保留严格 V1 legacy bridge，writer 按准确 lease 登记，reader 要求完整 final receipt。导出来源 pin 与本机恢复记录增加执行身份，旧省略字段仅兼容 V1，确定性导出仍创建既有 export 新 run。详见[补料提案中的实现边界](pause-supplement-resume-20261026.md)和[架构增量](../M1-TECH-ARCHITECTURE.md)。两轮各 2,217 文件冻结一致，Python 源码/外部运行时不在冻结范围；原始失败和专用 PG 停止记录保留。全局 V1 gate 及 current-input integrity 共享 view 未改，`bb_execution_artifact_versions` 仍依赖当前 run input；state/primary 投影不改写交付身份，不能推导 input 切换后旧版可读。未新增 raw-material FK，source retention 与数据库 editor 正文旧 cleanup 仍未解决。此轮不更改 15/15、662 或整体覆盖比例，G03 / 整体 goal 保持 active；B 已选，B1/B2 未定，未推送、创建 PR 或部署。
 
+2026-10-27 本地继续完成 `0128` 结构化报告切片，[专项验收](../acceptance/desktop-ux-coverage-20261026/execution-reports/README.md)单独封存：API 报告/迁移 13 pass、相关 API 94 pass、Worker 报告/租约 12 pass、相关 Worker 81 pass/1 Windows skip；构建与类型检查通过。报告按准确执行身份存储，V1 精确镜像保留原正文/hash/时间；API 和 Worker 正文消费者只读 canonical 来源，严格验证冻结 manifest/source/scope/follow-up，保留 Word final 前显式可读行为。三轮各 2,290 文件冻结一致，含 Python 源码，原始失败与专用 PG 停止记录完整保留。SQL 只验证摘要格式和原值复制，JavaScript hash/完整 schema 由应用校验；迁移时 SQL 字节 hash 未单独登记的证据限制已说明。未新增模型、Word 内容或桌面旅程验收，不改变既有覆盖比例；M3/M4 文件成果登记、后继采用、增量处理、B 具体计价及完整 G03 仍未完成，goal 保持 active。
+
 ## 来源与范围
 
 - 既有十五类业务目录来自本机历史档案 `ux-implementation-20261025/ux-evidence/all-scenarios-coverage-matrix.md:208–224`。原档案 R1–R44 的分段合成证据用于定位已有能力，不能把其中“尚未远程集成”继续套在已经合并的当前版本上。

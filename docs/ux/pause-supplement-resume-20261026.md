@@ -63,7 +63,7 @@
 | prompt snapshot 已锁住原任务并验证准确 V1 输入，保留原身份约束 | 后继输入须有准确执行关联与授权；不能直接去掉检查。Run DTO、执行回执和历史明确区分初始输入与当前采用输入，保留原执行请求的幂等身份 |
 | `durable-probe-journal.ts:81` 按逻辑调用查最后 attempt；file authoring 使用常量 `file-authoring-v1` | 每个执行版本使用稳定的工作单元身份及依赖指纹；崩溃恢复重用同一调用，补料的新处理使用新身份。不能靠盲目增加 attempt 重放旧工作 |
 | stage 检查点仍只按 stage 名索引；共享输入 reader 与三个实际 loader 目前只接受 V1 | 后继执行统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
-| `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；0124 已追加完整身份的业务快照，实际 loader/gate 消费准确 V1 | 仍须追加每执行版本的报告关联，并开放受控的后继业务快照创建；模型、成果登记及历史也须解析准确版本，旧记录继续不可变。当前只有 V1 不能支持后继执行 |
+| 旧 `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 保留 run 唯一约束；0124 已追加完整身份的业务快照，0128 已追加准确执行版本的 canonical 结构化报告，实际正文读写消费该记录 | 仍须开放受控的后继业务快照创建并版本化 M3/M4 成果登记；模型、交付及历史继续核验准确版本，旧记录保持不可变。当前只有 V1 不能支持后继执行 |
 | 本地 `0127` 已将复核 editor 正文追加到 `(run_id, execution_version)` canonical 表，V1 保留旧表镜像；API、writer、导出 pin 和本机恢复记录带准确执行身份，[专项验收已封存](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md) | editor 拆分不等于报告、M4 或成果登记已全部版本化；全局 V1 gate 和 current-input integrity 共享 view 未改，仍不能采用后继输入 |
 | `0125` 已追加不可变 artifact→准确 V1 执行/输入关系，实际 API/Worker 成果消费者读取严格来源 view；多个成果登记仍按 `(run_id, kind)` 唯一 | 后继采用时仍须版本化成果 ID、报告及业务登记，并保留历史关联与当前结果投影；不能只放开 V2 约束。项目募集书、文件族、previous_output、复核来源和助手续改继续读取准确版本 |
 | `0126` 已冻结准确 V1 实际交付成员、命名、配对和时间，下载/历史/命名/previous_output 使用交付记录；旧非动态 M4 的耐久读取独立记录 | 仍须把后继执行的业务报告/成果登记版本化，并以采用回执与增量处理实际消费前序工作；不能把候选可用状态或另一阶段的 durable 权限当作新版成功交付 |
@@ -150,6 +150,18 @@ legacy 登记后只有准确 raw 字节经 bounded 长度/hash 核验才记录�
 **全局 V1 gate 与 current-input integrity 共享 view 均未修改。** `bb_execution_artifact_versions` 仍要求绑定输入等于当前 run input，receipt 的共享校验也沿此来源边界。仅 state/primary 等投影变化不改写冻结交付身份；不能据此宣称 current input 切换后旧版仍可读。M3/M4 报告和其他按 run 唯一的成果登记仍有后继版本化缺口。新表没有 raw-material FK，原材料只在插入时核验，source 材料 retention 及数据库 editor 正文的旧 cleanup 均未解决。
 
 本切片的[本地专项验收](../acceptance/desktop-ux-coverage-20261026/execution-editors/README.md)已封存：API editor/迁移/并发 17 pass，相关 API 92 pass，真实 PG/Python Worker 8 pass，Worker 回归 42 pass/1 Windows skip，缓存 20 pass，桌面 Edge 19 pass，契约/构建通过。各集合分轮采用且不相加，两轮各 2,217 文件前后冻结一致，Python 源码/外部运行时不在冻结范围。原始失败及专用 PG 按准确 PID 停止记录均保留。不计入既有 15/15 或 662 pass。没有新输入采用、后继处理、追加账务或补料新版 Word 证据，**G03 / UX-A03 与整体 goal 保持 active**。费用已选 B，B1/B2 均未确定；本轮未推送、创建 PR 或部署。
+
+### 后续独立增量：准确执行版本的结构化复核报告
+
+`0128_review_execution_reports.sql` 追加 canonical `bb_review_execution_reports`，以 `(run_id, execution_version)` 为主键、报告 ID 全局唯一，完整六字段分别 FK 到不可变执行和复核快照。旧 run 唯一表保留，严格回填与 V1 bridge/mirror 原子保留原正文、摘要和 PostgreSQL 微秒时间。迁移采用父表顺序的 NOWAIT 锁，源材料不新增永久 retention FK。
+
+SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制旧摘要；报告 evidence locator 允许任意 JSON 数字及 Unicode key，不能套用 editor 的 SQL canonicalizer。正文 writer 与所有 reader 使用唯一 contracts `isReviewReport` 和 `inputManifestHash`，独立核对冻结 manifest 的输入、源稿、scope、业务版本和 follow-up 来源 ID/hash。格式正确的错误历史摘要仍在应用边界拒绝，不将 SQL copy 当作 JavaScript hash 的重新验证。
+
+真实 writer 按 project→run→job 锁核验准确 live lease 和输入，登记 canonical 后精确镜像 V1；40P01 只重试完整幂等登记，插入后复验失败整笔回滚。API 工作区、目录、项目集合、恢复存在检查，以及 Worker 复核、文件处理、准确修订和助手上下文均从 canonical 来源读取，不借消费任务 lease、不回退 legacy。显式读取已登记报告保留既有 Word final 交付前可读行为。专项及原始失败见[报告执行身份验收](../acceptance/desktop-ux-coverage-20261026/execution-reports/README.md)。
+
+专项独立采用 API 报告/迁移 13 pass、相关 API 94 pass、Worker 报告/租约 12 pass、相关 Worker 81 pass/1 Windows skip；构建与类型检查通过。三轮各 2,290 文件前后冻结一致，含 Python 源码；155 个归档文件保留 28 次调用和全部原始失败。首轮差异任务夹具被既有项目互斥拒绝，以及旧助手计数未包含新增来源执行的断言，均仅修正夹具后完整复验；生产边界未因此放宽。专用 PG 按准确 PID 停止。档案保存迁移日志与最终 SQL 的路径/字节数/hash 冻结记录，SQL 正文在本仓库迁移文件中；未单独记录迁移当时 SQL 字节 hash 的限制明确列明，不把它冒称独立字节证明。
+
+本切片没有开放 V2、采用补料或追加账务。M3/M4 文件成果登记、检查点与逻辑调用、旧工作复用和增量处理、source retention/正文 cleanup，以及同 run 补料后新 Word 桌面旅程仍待完成。G03 / UX-A03 与整体 goal 保持 active；B 已选，B1/B2 公式未定。没有 push、PR 或部署。
 
 ## 需要确定的一项产品规则：补料重做费用
 

@@ -65,7 +65,7 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
     for (const route of ['review-workspace', 'review-history', 'review-draft']) assert.equal((await send('GET', `${base}/${route}`)).statusCode, 404);
     assert.equal((await send('POST', `${base}/review-executions`, execute)).statusCode, 404);
     active = 'synthetic-m3-owner';
-    const report: ReviewReport = { report_id: uid(), project_id: id, run_id: run.run_id, input_revision: 1, version: 1, source_material: pin,
+    const report: ReviewReport = { report_id: old.manifest.review.report_id, project_id: id, run_id: run.run_id, input_revision: run.input_revision, version: old.manifest.review.version_number, source_material: pin,
       scope: { mode: 'full_review', finding_ids: [] }, findings: [], coverage: [], limitations: ['synthetic empty report'], created_at: new Date().toISOString() };
     const ref: ReviewEvidenceRef = { material_id: mat, material_version: 1, material_sha256: sha, parse_snapshot_id: 'synthetic-parse',
       parse_response_sha256: digest('synthetic-parse'), record_id: 'synthetic-record', record_sha256: digest('synthetic-record'),
@@ -75,7 +75,7 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
       target_refs: [ref], evidence_refs: finding_id === 'F3' ? [] : [ref], suggested_change: 'Synthetic supported change', limitations: [],
       repairability: { can_revise: finding_id !== 'F3', reason: finding_id === 'F3' ? '缺少证据，保留原文' : 'Synthetic evidence', allowed_record_ids: finding_id === 'F3' ? [] : [ref.record_id] },
       origin_report_id: report.report_id, check_status: 'rechecked' }));
-    await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)', [report.report_id, active, id, run.run_id, inputManifestHash(report), report]);
+    await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,$5,$6,$7)', [report.report_id, active, id, run.run_id, report.version, inputManifestHash(report), report]);
     assert.equal((await send('GET', `${base}/review-workspace`)).json().selected_report, null,
       'a persisted report from a cancelled/failed delivery is not the default completed result');
     assert.equal((await send('GET', `${base}/review-workspace?report_id=${report.report_id}`)).json().selected_report.report_id, report.report_id,

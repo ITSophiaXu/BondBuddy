@@ -1,0 +1,7 @@
+2026-10-27 02:05:02.900 CST [22604] LOG:  starting PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit
+2026-10-27 02:05:02.902 CST [22604] LOG:  listening on IPv4 address "127.0.0.1", port 15540
+2026-10-27 02:05:03.903 CST [22604] LOG:  database system is ready to accept connections
+2026-10-27 02:23:53.461 CST [22604] LOG:  received fast shutdown request
+2026-10-27 02:23:53.463 CST [22604] LOG:  aborting any active transactions
+2026-10-27 02:23:53.485 CST [22604] LOG:  background worker "logical replication launcher" (PID 44640) exited with exit code 1
+2026-10-27 02:23:53.544 CST [22604] LOG:  database system is shut down

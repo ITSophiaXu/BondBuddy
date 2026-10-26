@@ -9,6 +9,7 @@ import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import type { registerReviewEditorSnapshot } from '@bondbuddy/api/review-editor';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
+import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -63,8 +64,7 @@ export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFile
   }
   let selected_findings: unknown[] = [];
   if (manifest.review.source_report_id) {
-    const source = (await ctx.pool.query('SELECT report,content_sha256 FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',
-      [ctx.run.owner_user_id, ctx.run.project_id, manifest.review.source_report_id])).rows[0];
+    const source = await findReviewExecutionReport(ctx.pool, ctx.run.owner_user_id, ctx.run.project_id, manifest.review.source_report_id);
     if (!source || !isReviewReport(source.report) || source.content_sha256.trim() !== manifest.review.source_report_sha256
       || inputManifestHash(source.report) !== manifest.review.source_report_sha256
       || manifest.review.finding_ids.some(id => !source.report.findings.some((f: { finding_id: string }) => f.finding_id === id))) throw Error('INPUT_REVISION_CONFLICT');

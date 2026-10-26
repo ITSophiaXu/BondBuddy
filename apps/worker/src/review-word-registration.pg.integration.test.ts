@@ -1,6 +1,6 @@
 // Synthetic reports; real PostgreSQL locks and immutable registration. No CLI or customer data.
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash,randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
 import type { ReviewReport } from '@bondbuddy/contracts';
@@ -13,18 +13,35 @@ const database=await isolatedTestDatabase(undefined,'review-word-registration');
 test('report registration locks the project catalog and rejects expired or cancelled writers',{skip:!database,timeout:30000},async t=>{
   const pool=new Pool({connectionString:database});
   async function fixture(){
-    const owner=randomUUID(),project=randomUUID(),runId=randomUUID(),jobId=randomUUID(),token=randomUUID(),hash='a'.repeat(64);
+    const owner=randomUUID(),project=randomUUID(),runId=randomUUID(),jobId=randomUUID(),token=randomUUID(),reportId=randomUUID();
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`word_${owner.replaceAll('-','').slice(0,16)}`]);
     await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic report registration','review')",[project,owner]);
+    const materialId=randomUUID(),uploadId=randomUUID(),bytes=Buffer.from('Synthetic immutable report source');
+    const sourceHash=createHash('sha256').update(bytes).digest('hex');
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic-report.pdf','application/pdf',$4,$5,'other',$6,now()+interval '1 hour','completed')`,
+      [uploadId,owner,project,bytes.length,sourceHash,`users/${owner}/uploads/${uploadId}`]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'other','synthetic-report.pdf','application/pdf',$5,$6,$7,'persisted')`,
+      [materialId,owner,project,uploadId,bytes.length,sourceHash,`users/${owner}/projects/${project}/materials/${materialId}`]);
+    const pin={material_id:materialId,material_version:1,sha256:sourceHash};
+    const input={source_material_ref:pin,material_versions:[pin],requirements:['Synthetic registration only'],as_of:null};
+    const origin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
+    const manifest={draft_revision:1,project_kind:'review',materials:[{...pin,role:'other'}],review:{version:'review_v1',
+      operation:'full_review',version_number:1,report_id:reportId,source_report_id:null,source_report_sha256:null,finding_ids:[],input,origin}};
+    const hash=inputManifestHash(manifest);
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
-      VALUES($1,1,$2,1,$3,'{}','[]','[]')`,[project,owner,hash]);
+      VALUES($1,1,$2,1,$3,$4,$5,'[]')`,[project,owner,hash,manifest,JSON.stringify(manifest.materials)]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[project]);
     await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
       VALUES($1,$2,$3,1,$4,$5,'review',$4,'running')`,[runId,owner,project,hash,randomUUID()]);
+    await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+      VALUES($1,$2,$3,1,'full_review',$4)`,[runId,owner,project,{input,origin,finding_ids:[],input_version:1}]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,lease_token,lease_until)
       VALUES($1,$2,$3,'run','review','running',$4,now()+interval '60 seconds')`,[jobId,owner,runId,token]);
-    const report:ReviewReport={report_id:randomUUID(),project_id:project,run_id:runId,input_revision:1,version:1,
-      source_material:{material_id:'synthetic-source',material_version:1,sha256:hash},scope:{mode:'full_review',finding_ids:[]},
-      findings:[],coverage:[],limitations:['Synthetic registration only'],created_at:'2026-10-04T00:00:00Z'};
+    const report:ReviewReport={report_id:reportId,project_id:project,run_id:runId,input_revision:1,version:1,
+      source_material:pin,scope:{mode:'full_review',finding_ids:[]},
+      findings:[],coverage:[],limitations:['Synthetic registration only'],created_at:new Date().toISOString()};
     const ctx={pool,run:{id:runId,owner_user_id:owner,project_id:project,input_revision:1,input_hash:hash},
       lease:{jobId,runId,owner,token,attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:hash}} as Pick<StageContext,'pool'|'run'|'lease'>;
     const rows=async()=>(await pool.query('SELECT id,report,content_sha256 FROM bb_review_reports WHERE run_id=$1',[runId])).rows;

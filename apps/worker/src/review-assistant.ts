@@ -6,6 +6,7 @@ import { ReviewContextSchema, ReviewDraftInputSchema, isReviewReport, type Revie
   type ReviewMaterialPin, type ReviewProposal, type ReviewReport, type ReviewEvidenceRef } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { emitInternal, internalEvent } from '@bondbuddy/api/observability';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
@@ -206,8 +207,7 @@ async function materialEvidence(pool:Pool,lease:ReviewAssistantLease,snapshot:As
 
 async function verifyContext(pool:Pool,lease:ReviewAssistantLease,snapshot:AssistantSnapshot) {
   if (snapshot.report) {
-    const stored=(await pool.query('SELECT content_sha256,report FROM bb_review_reports WHERE id=$1 AND owner_user_id=$2 AND project_id=$3',
-      [snapshot.report.report_id,lease.owner_user_id,lease.project_id])).rows[0];
+    const stored=await findReviewExecutionReport(pool,lease.owner_user_id,lease.project_id,snapshot.report.report_id);
     if (!stored || String(stored.content_sha256).trim()!==snapshot.report_sha256
       || inputManifestHash(stored.report)!==snapshot.report_sha256) fail('ASSISTANT_CONTEXT_INVALID');
   }

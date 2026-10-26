@@ -1,0 +1,53 @@
+✔ old-writer bridge preserves exact V1 report bytes and an explicit report remains readable before Word final delivery (1105.2818ms)
+✔ canonical report reads work without a legacy mirror and never fall back when canonical storage is absent (1205.5435ms)
+✔ report IDs remain owner/project scoped and do not select another source edition (3267.9753ms)
+✔ report source identity comes from its persisted tuple despite newer input or a damaged current run projection (2850.2752ms)
+✔ valid hashes cannot disguise a report body with the wrong source, identity, business version or scope (2026.472ms)
+✔ the persisted tuple must resolve an immutable origin and cannot be replaced with the run projection (3672.6561ms)
+✔ matching corruption of a report source and its business snapshot still fails against the original frozen input manifest (2944.9886ms)
+✖ a differential report follow-up must retain the exact source-report digest frozen in its execution input (2936.9608ms)
+✔ 0128 applies to an empty report registry without adding a run-only unique constraint or opening V2 (1620.9631ms)
+✔ 0128 backfills pre-existing V1 reports with the original canonical hash, JSON and PostgreSQL microsecond timestamp (1695.91ms)
+✔ 0128 rejects incompatible pre-existing report origins atomically instead of skipping or rewriting the legacy row (8572.9447ms)
+✔ 0128 preserves a valid-format legacy digest unchanged and the trusted reader still rejects an incorrect body digest (1808.5871ms)
+✔ 0128 NOWAIT fails atomically behind an in-flight legacy report lock, then applies after that writer releases it (3775.6889ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 12
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53280.9482
+
+✖ failing tests:
+
+test at apps\api\dist\review-report-execution.pg.test.js:227:1
+✖ a differential report follow-up must retain the exact source-report digest frozen in its execution input (2936.9608ms)
+  error: Project already has an active business run
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-report-execution.pg.test.js:238:9
+      at async rolledBack (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-report-execution.pg.test.js:65:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-report-execution.pg.test.js:231:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 166,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_m3_project_run_mutex() line 13 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-reports-20261027\\runs\\2026-10-26T18-12-32-425Z-api-report-1756-c1198595\\run.log\n\n1 !== 0\n"}

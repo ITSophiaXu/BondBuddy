@@ -18,6 +18,7 @@ import { runDocumentParser } from './document-parser.js';
 import { processOcrV2 } from './ocr-v2.js';
 import { readOcrV2Checkpoint } from '@bondbuddy/api/ocr-v2';
 import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
+import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
 
 export type UnifiedManifest = Record<string, unknown> & { issuer_name: string; market: Market; offering: Offering;
   update_details: UpdateDetails; authoring: UnifiedAuthoringInput;
@@ -34,14 +35,12 @@ export function revisionEvidenceRefs(pin: ReviewRevisionPin): ReviewEvidenceRef[
 /** A revision can only consume the immutable report and explicitly accepted plan from its owner/project. */
 export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: ReviewRevisionPin): Promise<boolean> {
   if (!isReviewRevisionPin(pin) || pin.owner_user_id !== run.owner_user_id || pin.project_id !== run.project_id) return false;
-  const reportRow = (await pool.query(`SELECT run_id,version,content_sha256,report FROM bb_review_reports
-    WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND version=$4`,
-  [pin.source_report.report_id, run.owner_user_id, run.project_id, pin.source_report.version])).rows[0];
+  const reportRow = await findReviewExecutionReport(pool, run.owner_user_id, run.project_id, pin.source_report.report_id);
   const report = reportRow?.report;
   if (!reportRow || !isReviewReport(report) || String(reportRow.content_sha256).trim() !== pin.source_report.sha256
       || inputManifestHash(report) !== pin.source_report.sha256 || reportRow.run_id !== pin.source_report.run_id
       || report.run_id !== pin.source_report.run_id || report.report_id !== pin.source_report.report_id
-      || report.version !== pin.source_report.version || report.input_revision !== pin.source_report.input_revision
+      || reportRow.version !== pin.source_report.version || report.version !== pin.source_report.version || report.input_revision !== pin.source_report.input_revision
       || report.project_id !== run.project_id || inputManifestHash(report.source_material) !== inputManifestHash(pin.source_material)
       || pin.selected_findings.some(finding => inputManifestHash(finding) !== inputManifestHash(report.findings.find(item => item.finding_id === finding.finding_id) ?? null))
       || pin.excluded_findings.some(finding => !report.findings.some(item => item.finding_id === finding.finding_id))) return false;

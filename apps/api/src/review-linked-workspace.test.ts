@@ -52,13 +52,15 @@ test('M3 proposals explicitly adopt, lock executable requirements and project on
     const initial = await send('POST', `${base}/review-executions`, firstRequest); ok(initial);
     const firstRunId = initial.json().run_id;
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [firstRunId]);
-    const report: ReviewReport = { report_id: uid(), project_id: projectId, run_id: firstRunId, input_revision: initial.json().input_revision, version: 1,
+    const frozenReview = (await pool.query('SELECT manifest->\'review\' AS review FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+      [owner, projectId, initial.json().input_revision])).rows[0].review;
+    const report: ReviewReport = { report_id: frozenReview.report_id, project_id: projectId, run_id: firstRunId, input_revision: initial.json().input_revision, version: frozenReview.version_number,
       source_material: pin, scope: { mode: 'full_review', finding_ids: [] }, findings: [], coverage: [], limitations: ['synthetic unverified fixture'], created_at: new Date().toISOString() };
     report.findings = ['F-001', 'F-002'].map(finding_id => ({ finding_id, report_id: report.report_id, dimension: 'financial', conclusion: 'needs_evidence',
       severity: 'P2', title: finding_id, description: 'Synthetic unresolved finding', target_refs: [], evidence_refs: [], limitations: ['未提供证据'],
       repairability: { can_revise: false, reason: 'No evidence', allowed_record_ids: [] }, origin_report_id: report.report_id, check_status: 'rechecked' }));
-    await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)',
-      [report.report_id, owner, projectId, firstRunId, inputManifestHash(report), report]);
+    await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,$5,$6,$7)',
+      [report.report_id, owner, projectId, firstRunId, report.version, inputManifestHash(report), report]);
     const context: ReviewContext = { project_id: projectId, report_id: report.report_id, finding_ids: ['F-001'], material_refs: [pin] };
     const proposal = async (operation: ReviewProposalV2['operation']): Promise<ReviewProposalV2> => {
       const savedInput = (await send('GET', `${base}/review-draft`)).json().draft;
@@ -171,7 +173,9 @@ test('an adopted typed revision can become a new quick-action scope without losi
       source_report_id: null, expected_plan_version: null, finding_ids: [] }); ok(initial);
     const firstRunId = initial.json().run_id;
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [firstRunId]);
-    const report: ReviewReport = { report_id: uid(), project_id: projectId, run_id: firstRunId, input_revision: initial.json().input_revision, version: 1,
+    const frozenReview = (await pool.query('SELECT manifest->\'review\' AS review FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+      [owner, projectId, initial.json().input_revision])).rows[0].review;
+    const report: ReviewReport = { report_id: frozenReview.report_id, project_id: projectId, run_id: firstRunId, input_revision: initial.json().input_revision, version: frozenReview.version_number,
       source_material: pin, scope: { mode: 'full_review', finding_ids: [] }, findings: [], coverage: [], limitations: ['Synthetic fixture; no supplier response'], created_at: new Date().toISOString() };
     const ref: ReviewEvidenceRef = { material_id: materialId, material_version: 1, material_sha256: sha256, parse_snapshot_id: 'synthetic-revision-parse',
       parse_response_sha256: digest('synthetic-revision-parse'), record_id: 'synthetic-revision-record', record_sha256: digest('synthetic-revision-record'),
@@ -180,8 +184,8 @@ test('an adopted typed revision can become a new quick-action scope without losi
       severity: 'P2', title: finding_id, description: 'Synthetic supported revision', target_refs: [ref], evidence_refs: [ref], suggested_change: 'Synthetic supported change', limitations: [],
       repairability: { can_revise: true, reason: 'Synthetic native evidence', allowed_record_ids: [ref.record_id] }, origin_report_id: report.report_id, check_status: 'rechecked' }));
     const reportSha256 = inputManifestHash(report);
-    await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)',
-      [report.report_id, owner, projectId, firstRunId, reportSha256, report]);
+    await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,$5,$6,$7)',
+      [report.report_id, owner, projectId, firstRunId, report.version, reportSha256, report]);
     const context = { project_id: projectId, report_id: report.report_id, finding_ids: ['F-001'], material_refs: [pin] };
     const sent = await send('POST', `${base}/review-messages`, { submission_request_id: uid(), content: 'Synthetic revision proposal awaiting explicit adoption', context }); ok(sent);
     const snapshot = (await pool.query('SELECT context_snapshot FROM bb_review_messages WHERE id=$1', [sent.json().message.message_id])).rows[0].context_snapshot;

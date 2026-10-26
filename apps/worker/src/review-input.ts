@@ -4,6 +4,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import { readRunExecutionInput, type ReviewExecutionInputSnapshot } from '@bondbuddy/api/run-execution-input';
+import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
 import { assertRunExecution, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
 import { getParseSnapshot } from './parse-evidence-repository.js';
 import type { StageContext, StageOutcome, RunRow, InputRevisionRow } from './run-pipeline.js';
@@ -143,7 +144,7 @@ export async function loadReviewInput(ctx: StageContext): Promise<ReviewAnalysis
   }
   let previous: ReviewReport | undefined;
   if (review.source_report_id) {
-    const source = (await ctx.pool.query('SELECT report,content_sha256 FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND id=$3', [ctx.run.owner_user_id, ctx.run.project_id, review.source_report_id])).rows[0];
+    const source = await findReviewExecutionReport(ctx.pool, ctx.run.owner_user_id, ctx.run.project_id, review.source_report_id);
     if (!source || !isReviewReport(source.report) || source.content_sha256.trim() !== review.source_report_sha256 || inputManifestHash(source.report) !== review.source_report_sha256) throw new Error('INPUT_REVISION_CONFLICT');
     previous = source.report;
   }

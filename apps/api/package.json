@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./review-report-execution": {"types":"./dist/review-report-execution.d.ts","default":"./dist/review-report-execution.js"},
     "./artifact-execution": {"types":"./dist/artifact-execution.d.ts","default":"./dist/artifact-execution.js"},
     "./run-working-files": {"types":"./dist/run-working-files.d.ts","default":"./dist/run-working-files.js"},
     "./run-execution-input": {"types":"./dist/run-execution-input.d.ts","default":"./dist/run-execution-input.js"},

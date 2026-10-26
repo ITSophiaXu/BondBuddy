@@ -18,7 +18,7 @@ export const memberProjectsSql = (alias:string) => `
 export const collectionTasksSql = `
  SELECT r.*, CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END AS display_kind,
    coalesce('qa_'||pqa.operation,CASE WHEN ir.operation='check' THEN 'integrity_check' WHEN ir.operation='export' THEN 'integrity_export' END,e.operation,CASE WHEN pf.operation='check' THEN 'file_check' WHEN pf.operation='patch' THEN 'file_patch' END) AS operation, t.id AS topic_id, me.manifest#>>'{input,document_type}' AS document_type,
-   (SELECT id FROM bb_review_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.run_id=r.id LIMIT 1) AS report_id,
+   (SELECT id FROM bb_review_execution_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.project_id=r.project_id AND rep.run_id=r.id AND rep.execution_version=1) AS report_id,
    row_number() OVER(PARTITION BY r.project_id,CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END,
      coalesce(me.manifest#>>'{input,document_type}',pf.operation,'qa_'||pqa.operation,'integrity_'||ir.operation,'') ORDER BY r.created_at DESC,r.id DESC) AS lane_rank
  FROM bb_runs r

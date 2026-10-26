@@ -96,20 +96,29 @@ out({type:'item.completed',item:{id:'reply',type:'agent_message',text:reply}});
 out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})});
 `);
   const measured={input_tokens:83,cached_input_tokens:41,output_tokens:17,reasoning_output_tokens:3};
+  async function persistReport(owner:string,project:string,source:ReviewReport,materialVersions=[source.source_material]) {
+    const input={source_material_ref:source.source_material,material_versions:materialVersions,requirements:[],as_of:null};
+    const origin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
+    const manifest={draft_revision:1,project_kind:'review',materials:materialVersions.map(pin=>({...pin,role:'other'})),review:{version:'review_v1',
+      operation:'full_review',version_number:source.version,report_id:source.report_id,source_report_id:null,source_report_sha256:null,finding_ids:[],input,origin}};
+    const hash=inputManifestHash(manifest);
+    await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,$4,$5,'[]')`,[project,owner,hash,manifest,JSON.stringify(manifest.materials)]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[project]);
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
+      VALUES($1,$2,$3,1,$4,$5,'review',$4,'paused')`,[source.run_id,owner,project,hash,randomUUID()]);
+    await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+      VALUES($1,$2,$3,$4,'full_review',$5)`,[source.run_id,owner,project,source.version,{input,origin,finding_ids:[],input_version:1}]);
+    await pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+      [source.report_id,owner,project,source.run_id,source.version,inputManifestHash(source),source]);
+  }
   async function fixture(ctx:TestContext,withReport=false) {
     const owner=randomUUID(),project=randomUUID(),marker=join(root,`${project}.sent`),{blobs,values}=memoryBlobs();
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`assistant_${owner.replaceAll('-','').slice(0,16)}`]);
     await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering) VALUES($1,$2,'Synthetic assistant','review','合成发行人','sse','private')",[project,owner]);
     ctx.after(()=>pool.query('UPDATE bb_projects SET archived_at=now() WHERE id=$1',[project]).then(()=>{}));
     const source=withReport?report(project):null;
-    if(source) {
-      await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
-        VALUES($1,1,$2,1,$3,'{}','[]','[]')`,[project,owner,sha]);
-      await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
-        VALUES($1,$2,$3,1,$4,$5,'review',$4,'paused')`,[source.run_id,owner,project,sha,randomUUID()]);
-      await pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)`,
-        [source.report_id,owner,project,source.run_id,inputManifestHash(source),source]);
-    }
+    if(source)await persistReport(owner,project,source);
     const queue=async(options:{source?:ReviewReport|null;prior?:string[];mutate?:(m:ReturnType<typeof message>)=>void;status?:'queued'|'completed';createdAt?:string}={})=>{
       const m=message(project,options.source===undefined?source:options.source,options.prior);options.mutate?.(m);
       await pool.query(`INSERT INTO bb_review_messages(id,owner_user_id,project_id,submission_request_id,request_hash,role,content,context,context_snapshot,reply_status,created_at)
@@ -225,7 +234,7 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       assert.equal(stored.proposal.source_report_id,f.source!.report_id);assert.equal(stored.proposal.source_report_sha256,inputManifestHash(f.source));
       const {version:_version,...input}=draft;assert.equal(stored.proposal.input_sha256,inputManifestHash(input));
       assert.deepEqual(stored.reply_metadata,{version:'review-reply-metadata-v1',context_report_ref:{report_id:f.source!.report_id,sha256:inputManifestHash(f.source)},cited_finding_ids:['F1']});
-      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_executions WHERE owner_user_id=$1',[f.owner])).rows[0].n),0);
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_executions WHERE owner_user_id=$1',[f.owner])).rows[0].n),1,'only the preexisting source execution');
       assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_revision_plans WHERE owner_user_id=$1',[f.owner])).rows[0].n),0);
     });
 
@@ -278,7 +287,8 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       assert.deepEqual(events.map(row=>row.event.kind).sort(),['model.call_finished','model.call_started','model.usage_observed']);
       for(const row of events){assert.equal(row.event.message_id,m.id);assert.equal(row.event.run_id,null);assert.equal(row.event.job_id,null);}
       assert.equal((await pool.query('SELECT report FROM bb_review_reports WHERE id=$1',[f.source!.report_id])).rows[0].report.findings[0].conclusion,'needs_evidence');
-      for(const table of ['bb_review_revision_plans','bb_review_executions','bb_jobs'])assert.equal(Number((await pool.query(`SELECT count(*) n FROM ${table} WHERE owner_user_id=$1`,[f.owner])).rows[0].n),0);
+      for(const table of ['bb_review_revision_plans','bb_jobs'])assert.equal(Number((await pool.query(`SELECT count(*) n FROM ${table} WHERE owner_user_id=$1`,[f.owner])).rows[0].n),0);
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_review_executions WHERE owner_user_id=$1',[f.owner])).rows[0].n),1,'only the preexisting source execution');
       assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_runs WHERE owner_user_id=$1',[f.owner])).rows[0].n),1,'only the preexisting report run');
       assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_outbox WHERE owner_user_id=$1 AND event_type ~ '(billing|charge|settlement|reservation)'",[f.owner])).rows[0].n),0);
       await assert.rejects(pool.query("UPDATE bb_review_messages SET content='changed' WHERE id=$1",[m.id]),/immutable/);
@@ -332,12 +342,7 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       const main=await parsed(['synthetic main report evidence',...Array.from({length:40},()=> 'synthetic appendix '.repeat(550))]);
       const audit=await parsed(Array.from({length:12},()=> 'synthetic audit evidence '.repeat(600)));
       const source=report(f.project);source.source_material=main.pin;source.findings[0]!.target_refs=[main.refs[0]!];source.findings[0]!.evidence_refs=audit.refs;
-      await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
-        VALUES($1,1,$2,1,$3,'{}','[]','[]')`,[f.project,f.owner,sha]);
-      await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
-        VALUES($1,$2,$3,1,$4,$5,'review',$4,'paused')`,[source.run_id,f.owner,f.project,sha,randomUUID()]);
-      await pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)`,
-        [source.report_id,f.owner,f.project,source.run_id,inputManifestHash(source),source]);
+      await persistReport(f.owner,f.project,source,[main.pin,audit.pin]);
       const m=await f.queue({source,mutate:m=>{
         m.context.material_refs=[main.pin];Object.assign(m.context_snapshot,{material_refs:[main.pin]});
         m.request_hash=inputManifestHash({project_id:f.project,content:m.content,context:m.context});

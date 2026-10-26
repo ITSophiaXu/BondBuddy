@@ -911,3 +911,15 @@ Web 的恢复 wrapper 和 pending export 保存准确执行身份，原 owner/pr
 **全局 V1 gate 与 current-input integrity 共享 view 未改。** `bb_execution_artifact_versions` 仍要求当前 run input 等于绑定输入，final receipt 的共享可用性校验仍依赖该 view。仅 run state、primary 等投影变化不会改写冻结交付身份，不能宣称 current input 切换后旧版仍可读。按 run 唯一的 M3/M4 报告、业务成果登记及后继处理仍需另行版本化。新表没有 raw-material FK；原材料登记只在插入时核验，source retention 和数据库 editor 正文旧 cleanup 均未解决。
 
 本地专项已封存到[复核编辑结果验收](acceptance/desktop-ux-coverage-20261026/execution-editors/README.md)：API editor/迁移/并发 17 pass，相关 API 回归 92 pass，真实 PG/Python Worker 8 pass，Worker 回归 42 pass/1 Windows skip，缓存 20 pass，桌面 Edge 19 pass；契约/构建通过。不同集合和轮次不相加，两轮各 2,217 文件冻结一致；Python 源码/外部运行时不在冻结范围。314 个归档文件保留 37 次调用、原始失败与重试，专用 PG 已按准确 PID 停止。不累加既有 15/15 或 662 pass。没有新输入采用、后继模型处理、追加账务或补料新版 Word 证据，G03 / 整体 UX goal 保持 active。费用已选 B，B1/B2 仍未定；未推送、创建 PR 或部署。产品范围见[暂停补料提案](ux/pause-supplement-resume-20261026.md)。
+
+## 2026-10-27：结构化复核报告绑定准确执行（G03 前置切片）
+
+0128 追加 canonical `bb_review_execution_reports`，主键 `(run_id,execution_version)`、报告 ID 全局唯一、完整六字段双 FK 到不可变执行与复核快照；旧 run 唯一表保留。严格回填、V1 bridge 和 trusted writer mirror 原子保存原正文、摘要、业务版本及 PostgreSQL 微秒时间。父表顺序 NOWAIT 锁避免迁移等待旧 writer 时的锁反转，没有放宽全局 V1 gate 或新增 raw-material retention FK。
+
+SQL 验证基础 envelope、固定身份/来源和 hash 格式，旧摘要精确复制。报告 locator 含任意 JSON 数字和 Unicode key，SQL 不复用 editor canonicalizer，也不声称重新验证 JavaScript canonical hash。应用唯一 `isReviewReport` / `inputManifestHash` 同时校验正文、冻结 manifest/source/scope/version/operation 与 follow-up 来源 ID/hash；合法格式的错误旧摘要仍拒绝。
+
+真实 writer 保留 project→run→job 和 live lease，canonical 登记后精确镜像 V1；40P01 最多三次完整事务，每次重验租约。新插入后校验失败整笔回滚，不留下部分报告；未插入的冲突保持旧正文。API 工作区/目录/项目集合、恢复存在检查和 Worker 复核/文件处理/修订/助手消费者读取 canonical 来源，按报告持久执行身份解析，不借消费任务 lease，不回退 legacy。已登记报告在 Word final 前的显式可读行为保持。
+
+[本地报告专项验收](acceptance/desktop-ux-coverage-20261026/execution-reports/README.md)保留真实 PG 的读写、迁移、租约和原子性证据及原始失败；没有新增模型、Word 内容或浏览器旅程验收。报告 registry 的拆分没有开放后继输入；M3/M4 文件成果登记、检查点/逻辑调用、实际复用与增量处理、B 追加报价/账务及完整同 run 新 Word 仍待完成。G03 和整体 goal 保持 active，B1/B2 未定；未推送、创建 PR 或部署。
+
+该报告切片独立采用 API 13/94 pass、Worker 12/81 pass（后者另 1 Windows skip）；不同集合及轮次不相加。构建/类型检查通过，三轮各 2,290 文件冻结一致并包含 Python 源码；155 个归档文件保留 28 次完整调用、原始失败与专用 PG PID 22604 的停止记录。迁移 receipt 未独立记录当时 SQL 字节 hash，日志与最终 SQL 的证据边界分别列明。旧 sealed archives 与既有用户旅程统计不变。
