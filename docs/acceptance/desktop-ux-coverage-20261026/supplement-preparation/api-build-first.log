@@ -1,0 +1,22 @@
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+src/run-supplement-draft.pg.test.ts(188,77): error TS2322: Type '""' is not assignable to type '`${string}-${string}-${string}-${string}-${string}`'.
+src/run-supplement-draft.ts(52,32): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(52,69): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(52,101): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(54,20): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(55,50): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(56,68): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(60,71): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(60,92): error TS18046: 'value' is of type 'unknown'.
+src/run-supplement-draft.ts(109,11): error TS18048: 'original' is possibly 'undefined'.
+src/run-supplement-draft.ts(110,99): error TS18048: 'original' is possibly 'undefined'.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\api
+npm error workspace @bondbuddy/api@0.1.0
+npm error location C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\api
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c tsc -p tsconfig.json

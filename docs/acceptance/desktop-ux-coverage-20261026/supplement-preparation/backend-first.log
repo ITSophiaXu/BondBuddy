@@ -1,0 +1,79 @@
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (41.2593ms)
+  ✔ old request receipt survives a later save and explicit resume (90.4829ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (3181.2277ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (75.8161ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (269.3535ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1373.3911ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (567.9514ms)
+  ✔ wrong hash (94.3787ms)
+  ✔ wrong owner (16.9517ms)
+  ✔ wrong project (14.7079ms)
+  ✔ duplicate additions (16.0212ms)
+  ✔ unknown replacement (16.1639ms)
+  ✔ duplicate replacements (17.9379ms)
+  ✔ different role (15.348ms)
+✖ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (955.4923ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (813.3065ms)
+  ✔ saving (49.41ms)
+  ✔ paused_lease (48.7784ms)
+  ✔ automatic_pause (65.7235ms)
+  ✔ pending_provider (100.0853ms)
+  ✔ completed_unknown (52.6961ms)
+  ✔ failed_unknown (54.4404ms)
+  ✔ terminal (54.6277ms)
+  ✔ archived (42.5673ms)
+  ✔ unsupported (45.6554ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (85.3753ms)
+  ✔ deleted project is owner-safe 404 (21.6213ms)
+  ✔ test-channel metadata obeys the deployment read gate (25.6081ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1569.5079ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (953.8963ms)
+  ✔ m3 (80.5528ms)
+  ✔ m4 (87.4638ms)
+  ✔ inconsistent M3 version is unavailable (44.55ms)
+  ✔ inconsistent M3 operation is unavailable (42.2303ms)
+  ✔ inconsistent M3 origin is unavailable (58.3203ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (108.1475ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1495.1866ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 36
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 30185.4067
+
+✖ failing tests:
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:202:1
+✖ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (955.4923ms)
+  error: new row for relation "bb_storage_tombstones" violates check constraint "bb_storage_tombstones_check4"
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:227:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 1145,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (material-210003009eb90a563ac79e1d9d2bf298, supplement-34bbe9fe-9101-43f1-a586-0bb99a99d6de, fbeec146-1f5e-4edb-a572-45305e076c8f, material, 0d5d50c0-eb10-47ea-8314-048e895d241c, 1, null, synthetic/material/6f62e7cf-20f3-4f25-80c8-52f09484d9ad, 57b3df466987de52eb55a8578977625f3330beb8b91a9e190a5dfa325afcf89d, pending, 2026-10-26 17:39:54.126673+08, null, 0, null, null, null, null, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: `SQL statement "INSERT INTO bb_storage_tombstones\r\n     (id,owner_user_id,project_id,object_kind,material_id,material_version,object_key,sha256,requested_at)\r\n   VALUES ('material-' || md5(NEW.owner_user_id || ':' || NEW.id || ':' || NEW.version::text),\r\n     NEW.owner_user_id,NEW.project_id,'material',NEW.id,NEW.version,NEW.object_key,lower(btrim(NEW.sha256::text)),NEW.deleted_at)\r\n   ON CONFLICT (object_key) DO NOTHING"\nPL/pgSQL function bb_record_material_storage_tombstone() line 4 at SQL statement`,
+    schema: 'public',
+    table: 'bb_storage_tombstones',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_storage_tombstones_check4',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }

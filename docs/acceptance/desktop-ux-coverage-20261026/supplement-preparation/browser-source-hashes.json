@@ -1,0 +1,38 @@
+[
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\run-supplement-draft.ts",
+    "Hash": "7560C6ACCEA5B736642537D0BE1EFAD8D9207D22059DDC9FE0AC5EFF0BC5072B"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\run-supplement-draft.css",
+    "Hash": "E425FC31F1E1FC43CA1FCDAAFB3FF7DD0512D2C387952944DFA1D9C821F40909"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\api.ts",
+    "Hash": "D46303F930E2533FB1A17254B218B3EEA4856D6AFF63D34C76857E92A1759B54"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\project-execution.ts",
+    "Hash": "17C5DC6086D4BF8B0C6BEC2ABB738F6604D5A60460CFECC2423FFC9F2AC67936"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\review-workspace.ts",
+    "Hash": "F1E5C8BC33FB1C70EF0B25098E364B206AAF6C1A56CB8B28DAF7C90BD48955A9"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\material-workspace.ts",
+    "Hash": "F3D94A338F16F1A795642321B0DFC84587B35CE35F1B4EE1437CC625AC8D3EA4"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-draft.spec.ts",
+    "Hash": "4EB52586023BD3C3E37EF870165E6162AB3E80B3711336CD773605F9BFD1720E"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-fixture.ts",
+    "Hash": "517A8BB532553E712B111C62613CB64D2402503406BC543AFA25FD1A560D9F19"
+  },
+  {
+    "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-browser-harness.ts",
+    "Hash": "BEBDD27656654184C992987C17465575E92985D8424DD61979365A7A93005847"
+  }
+]

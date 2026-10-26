@@ -17,6 +17,7 @@ import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contr
 import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
 import { registerM4Routes } from './m4-workspace.js';
+import { registerRunSupplementDraftRoutes } from './run-supplement-draft.js';
 import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
@@ -184,6 +185,7 @@ export function createServer(settings: Settings = {}) {
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   registerReviewRoutes(app, db, owner, paidReview);
   registerM4Routes(app, db, owner, blob, queueEnabled);
+  registerRunSupplementDraftRoutes(app, db, owner);
   registerProjectAssistant(app, db, owner);
   registerProjectQa(app, db, owner);
   registerQaKnowledge(app, db, owner);

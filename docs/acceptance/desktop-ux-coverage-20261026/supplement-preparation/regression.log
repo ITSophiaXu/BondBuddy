@@ -1,0 +1,20 @@
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (5418.1752ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.41ms) # SKIP
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (137.7907ms)
+  ✔ owner (149.7618ms)
+  ✔ project (142.287ms)
+  ✔ input revision (151.6541ms)
+  ✔ input hash (138.4901ms)
+  ✔ execution request id (140.9843ms)
+  ✔ request hash (138.1128ms)
+  ✔ valid successor input pair (133.526ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (2775.2907ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 26226.8485

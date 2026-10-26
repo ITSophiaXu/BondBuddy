@@ -1,0 +1,11 @@
+{
+  "synthetic": true,
+  "scope": "Existing standalone proposal only; no API, worker, storage, billing or adoption acceptance",
+  "viewport": {
+    "width": 1440,
+    "height": 960
+  },
+  "fee": "B selected; formula pending",
+  "adoptionEnabled": false,
+  "errors": []
+}

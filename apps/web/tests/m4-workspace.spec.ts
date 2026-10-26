@@ -1,4 +1,4 @@
-import { taskPage } from './collection-fixtures';
+import { emptySupplementPreparation, taskPage } from './collection-fixtures';
 import { test,expect,type Page,type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
@@ -100,6 +100,16 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
       state.workspace.drafts[saved.document_type as M4DocumentType]=saved;state.workspace.pending_requirements=[];return reply(route,{draft:saved});
     }
     if(path.endsWith('/view')){const body=req.postDataJSON();expect(Value.Check(M4ViewRequestSchema,body)).toBe(true);if(body.expected_version!==state.workspace.view.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);state.workspace.view={...body.view,version:body.expected_version+1};return reply(route,{view:state.workspace.view});}
+    if(path.endsWith('/supplement-draft')){
+      const url=new URL(req.url()),task=state.workspace.tasks.find(t=>path===`/api/v1/runs/${t.run.run_id}/supplement-draft`);
+      if(!task||task.manifest.kind!=='document'||req.method()!=='GET'||url.searchParams.has('request_id'))return reply(route,{code:'NOT_FOUND'},404);
+      const pins=[...task.manifest.input.materials,...(task.manifest.input.source_material?[task.manifest.input.source_material]:[]),...(task.manifest.template_material?[task.manifest.template_material]:[])];
+      const base=[...new Map(pins.map(pin=>[`${pin.source_project_id}:${pin.material_id}:${pin.material_version}:${pin.sha256}`,pin])).values()].map(pin=>{
+        const material=state.workspace.material_details.find(m=>m.source_project_id===pin.source_project_id&&m.material_id===pin.material_id&&m.material_version===pin.material_version&&m.sha256===pin.sha256);
+        return {...pin,filename:material?.filename??'合成模板.docx',role:(task.manifest.kind==='document'&&task.manifest.input.source_material?.material_id===pin.material_id?'historical':'other') as 'historical'|'other',media_type:material?.media_type??mime,available:true};
+      });
+      return reply(route,emptySupplementPreparation(task.run,base,task.run.state==='paused'&&(task.run.stage==='user_paused'||task.credit_charge?.progress?.pause_requested===true)));
+    }
     if(state.dynamic&&/\/runs\/[^/]+\/(pause|resume|cancel)$/.test(path)){
       const action=path.split('/').at(-1)!,task=state.workspace.tasks.find(t=>path.includes(t.run.run_id))!;
       state.controls.push(action);const p=task.credit_charge!.progress!;

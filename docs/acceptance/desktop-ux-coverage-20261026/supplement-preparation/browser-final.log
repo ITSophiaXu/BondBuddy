@@ -1,0 +1,24 @@
+
+Running 16 tests using 1 worker
+
+
+
+(node:48608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/16] tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[2/16] tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[3/16] tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[4/16] tests\run-supplement-draft.spec.ts:51:1 › replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving
+[5/16] tests\run-supplement-draft.spec.ts:66:1 › unsaved completed upload and add intent survive reload without silently creating a draft revision
+[6/16] tests\run-supplement-draft.spec.ts:72:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+[7/16] tests\run-supplement-draft.spec.ts:82:1 › CAS use-latest choice discards local choices only after explicit selection
+[8/16] tests\run-supplement-draft.spec.ts:89:1 › accepted PUT with a lost response is recovered by its exact receipt without a second save
+[9/16] tests\run-supplement-draft.spec.ts:96:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found
+[10/16] tests\run-supplement-draft.spec.ts:103:1 › unknown save persists through refresh and reads the original receipt even when a newer revision exists
+[11/16] tests\run-supplement-draft.spec.ts:111:1 › server can_save prevents a save while still showing the exact frozen base and explicit blocked reason
+[12/16] tests\run-supplement-draft.spec.ts:117:1 › a lost upload completion receipt is recovered before saving the preparation without resending bytes
+[13/16] tests\run-supplement-draft.spec.ts:125:1 › an upload completion after leaving its owner/run surface cannot attach or save to the new view
+[14/16] tests\run-supplement-draft.spec.ts:134:1 › mismatched exact receipt keeps the original request pending and prevents original-material resume until verified
+[15/16] tests\run-supplement-draft.spec.ts:144:1 › a delayed availability GET from V0 cannot offer an older draft after save confirms V1
+[16/16] tests\run-supplement-draft.spec.ts:155:1 › failure reading a newer draft does not turn an already verified original save receipt back into unknown
+  16 passed (32.1s)

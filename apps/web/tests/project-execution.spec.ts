@@ -1,4 +1,4 @@
-import { taskPage } from './collection-fixtures';
+import { emptySupplementPreparation, taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
@@ -187,6 +187,13 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
+      if(path.endsWith('/supplement-draft')){
+        if(method!=='GET'||url.searchParams.has('request_id'))return json(route,404,{code:'NOT_FOUND'});
+        const frozen=state.snapshots.get(run.input_revision)?.material_versions??[];
+        const base=frozen.map(pin=>state.materials.find(m=>m.material_id===pin.material_id&&m.material_version===pin.material_version)).filter((m):m is Dto<'MaterialResponse'>=>!!m)
+          .map(m=>({material_id:m.material_id,material_version:m.material_version,sha256:m.sha256,source_project_id:run.project_id,filename:m.filename,role:m.role,media_type:m.media_type,available:true}));
+        return json(route,200,emptySupplementPreparation(run,base,run.state==='paused'&&(run.stage==='user_paused'||state.liveProgress?.pause_requested===true)));
+      }
       if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState,...(state.liveProgress?{progress:state.liveProgress}:{})});
       if (path.endsWith('/stream'))return route.fulfill({status:200,contentType:'text/event-stream',body:': synthetic stream; polling exercises refresh\n\n'});
       if (method === 'POST' && ['/cancel','/resume','/pause'].some(a=>path.endsWith(a))) {

@@ -90,6 +90,12 @@ export class ApiClient {
     return this.request<Dto<'FixedQuoteResponse'>>('POST',`/projects/${encodeURIComponent(id)}/credit-quote`,input,{},signal);
   }
   runCharge(id: string, signal?: AbortSignal) { return this.request<Dto<'RunCreditChargeResponse'>>('GET',`/runs/${encodeURIComponent(id)}/credit-charge`,undefined,{},signal); }
+  runSupplementDraft(id: string, requestId?: string, signal?: AbortSignal) {
+    return this.request<Dto<'RunSupplementDraftResponse'>>('GET',`/runs/${encodeURIComponent(id)}/supplement-draft${requestId ? '?request_id='+encodeURIComponent(requestId) : ''}`,undefined,{},signal);
+  }
+  saveRunSupplementDraft(id: string, input: Dto<'RunSupplementDraftRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'RunSupplementDraftResponse'>>('PUT',`/runs/${encodeURIComponent(id)}/supplement-draft`,input,{},signal);
+  }
   rechargeConfig(signal?: AbortSignal) { return this.request<Dto<'RechargeConfigResponse'>>('GET','/credits/recharge-config',undefined,{},signal); }
   createRecharge(input: Dto<'RechargeOrderRequest'>, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST','/credits/recharge-orders',input,{},signal); }
   rechargeOrder(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('GET',`/credits/recharge-orders/${encodeURIComponent(id)}`,undefined,{},signal); }

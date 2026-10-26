@@ -1,0 +1,162 @@
+import {expect,test,type Locator,type Page} from '@playwright/test';
+import {mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
+import {
+  installSupplementHttp,mountSupplementSurface,supplementFixture,supplementIds,
+  supplementPin,supplementHash,type SupplementSurface,
+} from './run-supplement-fixture';
+
+const panel=(page:Page)=>page.locator(`[data-run-supplement="${supplementIds.run}"]`);
+const file=(name='补充审计证据.txt',text='synthetic supplement evidence')=>({name,mimeType:'text/plain',buffer:Buffer.from(text)});
+const action=(host:Locator,name:string)=>host.locator(`[data-supplement-action="${name}"]`);
+async function ready(page:Page){
+  const host=panel(page);await expect(host).toBeVisible();
+  // A paused flow may initially keep preparation in its native expandable section.
+  const summary=host.locator('summary').first();if(await summary.count()&&!await summary.isVisible())await host.scrollIntoViewIfNeeded();
+  if(await summary.count()){const details=summary.locator('..');if(await details.evaluate(e=>e.tagName==='DETAILS'&&!(e as HTMLDetailsElement).open))await summary.click();}
+  await expect(host.locator('[data-supplement-file]')).toBeVisible();return host;
+}
+async function add(page:Page,name='补充审计证据.txt',text='synthetic supplement evidence'){
+  const host=await ready(page);await host.locator('[data-supplement-intent]').selectOption('');
+  await host.locator('[data-supplement-role]').selectOption('audit');
+  await host.locator('[data-supplement-file]').setInputFiles(file(name,text));
+  await expect(host).toContainText(name);await expect(action(host,'save')).toBeEnabled();return host;
+}
+async function remount(page:Page,s:ReturnType<typeof supplementFixture>,surface:SupplementSurface){await page.reload();await mountSupplementSurface(page,s,surface);return ready(page);}
+
+for(const surface of ['m1','m3','m4'] as const)test(`desktop ${surface}: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume`,async({page})=>{
+  const s=supplementFixture(),frozen=structuredClone({run:s.run,input:s.input,project:s.project,reviewDraft:s.review.draft,m4Drafts:s.m4.drafts});
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s,surface);
+  const host=await add(page);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);expect(s.completions).toHaveLength(1);
+  expect(s.saves).toEqual([]);expect(s.controls).toEqual([]);await expect(host).toContainText('尚未采用');
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);await expect(host).toContainText('草稿已保存');
+  expect(s.saves[0]).toMatchObject({expected_revision:0,base_input_revision:7,base_input_hash:frozen.run.input_hash,changes:[{replaces:null}]});
+  expect(s.saves[0].changes[0].material.sha256).toBe(supplementHash('synthetic supplement evidence'));
+  expect({run:s.run,input:s.input,project:s.project,reviewDraft:s.review.draft,m4Drafts:s.m4.drafts}).toEqual(frozen);
+  const restored=await remount(page,s,surface);await expect(restored).toContainText('补充审计证据.txt');await expect(restored).toContainText('尚未采用');
+  expect(s.saves).toHaveLength(1);expect(s.controls).toEqual([]);
+  await expect(restored.locator('[data-supplement-file]')).toBeEnabled();await expect(action(restored,'save')).toBeDisabled();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if(process.env.BB_SUPPLEMENT_EVIDENCE_DIR){await mkdir(process.env.BB_SUPPLEMENT_EVIDENCE_DIR,{recursive:true});await restored.scrollIntoViewIfNeeded();await page.screenshot({path:join(process.env.BB_SUPPLEMENT_EVIDENCE_DIR,`${surface}-saved-preparation.png`),fullPage:true});await page.screenshot({path:join(process.env.BB_SUPPLEMENT_EVIDENCE_DIR,`${surface}-saved-preparation-viewport.png`)});}
+  const continueButton=surface==='m1'?page.locator('#resume-run'):surface==='m3'?page.locator('#review-making-panel [data-review-action="resume"]'):page.locator(`[data-m4-action="resume"][data-run="${s.run.run_id}"]`);
+  await expect(continueButton).toContainText('按原材料继续');
+  await continueButton.click();const confirm=page.locator('.run-supplement-resume-dialog');await expect(confirm).toBeVisible();
+  await expect(confirm).toContainText('原材料');await expect(confirm).toContainText('补料');expect(s.controls).toEqual([]);
+  await confirm.locator('[data-supplement-resume-cancel]').click();expect(s.controls).toEqual([]);
+  await continueButton.click();await confirm.locator('[data-supplement-resume-confirm]').click();
+  await expect.poll(()=>s.controls).toEqual(['resume']);expect(s.saves).toHaveLength(1);expect(s.unexpectedMutations).toEqual([]);
+  expect(s.run).toMatchObject({run_id:frozen.run.run_id,input_revision:7,input_hash:frozen.run.input_hash,execution_request_id:frozen.run.execution_request_id});
+});
+
+test('replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving',async({page})=>{
+  const s=supplementFixture();s.holdComplete=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);
+  const host=await ready(page),audit=s.base[1],intent=host.locator('[data-supplement-intent]');
+  const replacement=await intent.locator('option').filter({hasText:audit.filename}).getAttribute('value');expect(replacement).toBeTruthy();await intent.selectOption(replacement!);
+  await expect(host.locator('[data-supplement-role]')).toHaveValue('audit');await expect(host.locator('[data-supplement-role]')).toBeDisabled();
+  await host.locator('[data-supplement-file]').setInputFiles(file('替换审计报告.txt','synthetic replacement bytes'));
+  await expect.poll(()=>s.byteWrites).toBe(1);await expect.poll(()=>s.completions.length).toBe(1);expect(s.materials).toHaveLength(2);expect(s.saves).toEqual([]);
+  await expect(action(host,'save')).toBeDisabled();s.releaseComplete!();await expect(action(host,'save')).toBeEnabled();
+  expect(s.uploads[0].role).toBe('audit');expect(s.controls).toEqual([]);expect(s.saves).toEqual([]);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);
+  expect(s.saves[0].changes).toEqual([{material:supplementPin(s.materials[2]),replaces:supplementPin(audit)}]);
+  expect(s.receipts.get(s.saves[0].request_id)!.result_materials.map(m=>m.material_id)).toEqual([s.base[0].material_id,s.materials[2].material_id]);
+  expect(s.input.material_versions).toEqual(s.base.map(supplementPin));expect(s.run.state).toBe('paused');expect(s.unexpectedMutations).toEqual([]);
+});
+
+test('unsaved completed upload and add intent survive reload without silently creating a draft revision',async({page})=>{
+  const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);await add(page);
+  const host=await remount(page,s,'panel');await expect(host).toContainText('补充审计证据.txt');expect(s.revision).toBe(0);expect(s.uploads).toHaveLength(1);expect(s.saves).toEqual([]);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);expect(s.saves[0].changes[0].replaces).toBeNull();expect(s.byteWrites).toBe(1);
+});
+
+test('CAS conflict preserves the local selection until the user chooses how to resolve it',async({page})=>{
+  const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  s.revision=1;s.changes=[];await action(host,'save').click();await expect(action(host,'keep-local')).toBeVisible();
+  await expect(host).toContainText('补充审计证据.txt');expect(s.saves).toHaveLength(1);expect(s.saves[0].expected_revision).toBe(0);expect(s.revision).toBe(1);
+  await action(host,'keep-local').click();expect(s.saves).toHaveLength(1);await expect(host).toContainText('补充审计证据.txt');
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(2);expect(s.saves).toHaveLength(2);
+  expect(s.saves[1].expected_revision).toBe(1);expect(s.saves[1].request_id).not.toBe(s.saves[0].request_id);expect(s.saves[1].changes).toEqual(s.saves[0].changes);
+  expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+});
+
+test('CAS use-latest choice discards local choices only after explicit selection',async({page})=>{
+  const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  s.revision=1;s.changes=[];await action(host,'save').click();await expect(action(host,'use-latest')).toBeVisible();await expect(host).toContainText('补充审计证据.txt');
+  await action(host,'use-latest').click();await expect(host).not.toContainText('补充审计证据.txt');expect(s.saves).toHaveLength(1);expect(s.revision).toBe(1);expect(s.materials).toHaveLength(3);
+  const restored=await remount(page,s,'panel');await expect(restored).not.toContainText('补充审计证据.txt');expect(s.saves).toHaveLength(1);
+});
+
+test('accepted PUT with a lost response is recovered by its exact receipt without a second save',async({page})=>{
+  const s=supplementFixture();s.dropSaveOnce=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);const id=s.saves[0].request_id;
+  await expect.poll(()=>s.reads.includes(id)).toBe(true);await expect(host).toContainText('草稿已保存');expect(s.saves).toHaveLength(1);
+  expect(s.receipts.get(id)!.changes).toEqual(s.saves[0].changes);expect(s.run.state).toBe('paused');expect(s.controls).toEqual([]);
+});
+
+test('unaccepted PUT with a lost response retries the identical request only after receipt says not found',async({page})=>{
+  const s=supplementFixture();s.dropUnacceptedSaveOnce=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  await action(host,'save').click();await expect(action(host,'retry-save')).toBeVisible();expect(s.revision).toBe(0);expect(s.saves).toHaveLength(1);
+  const original=structuredClone(s.saves[0]);await expect.poll(()=>s.reads.includes(original.request_id)).toBe(true);await expect(action(host,'retry-save')).toBeEnabled();
+  await action(host,'retry-save').click();await expect.poll(()=>s.revision).toBe(1);expect(s.saves).toEqual([original,original]);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);
+});
+
+test('unknown save persists through refresh and reads the original receipt even when a newer revision exists',async({page})=>{
+  const s=supplementFixture();s.dropSaveOnce=true;s.failReceiptReads=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);const sent=structuredClone(s.saves[0]);await expect.poll(()=>s.reads.includes(sent.request_id)).toBe(true);
+  s.revision=2;s.changes=[];s.failReceiptReads=false;const restored=await remount(page,s,'panel');
+  await expect.poll(()=>s.reads.filter(id=>id===sent.request_id).length).toBeGreaterThan(1);expect(s.saves).toEqual([sent]);expect(s.revision).toBe(2);
+  await expect(restored).toContainText('补充审计证据.txt');expect(s.receipts.get(sent.request_id)!.revision).toBe(1);expect(s.controls).toEqual([]);
+});
+
+test('server can_save prevents a save while still showing the exact frozen base and explicit blocked reason',async({page})=>{
+  const s=supplementFixture();s.canSave=false;s.blockedReason='正在核对上次模型调用，暂停完成后才能保存补料。';
+  await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=panel(page);await expect(host).toBeVisible();await expect(host).toContainText(s.blockedReason);
+  await expect(action(host,'save')).toBeDisabled();expect(s.saves).toEqual([]);expect(s.controls).toEqual([]);
+});
+
+test('a lost upload completion receipt is recovered before saving the preparation without resending bytes',async({page})=>{
+  const s=supplementFixture();s.dropCompleteOnce=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);
+  const host=await ready(page);await host.locator('[data-supplement-role]').selectOption('audit');await host.locator('[data-supplement-file]').setInputFiles(file());
+  await expect.poll(()=>s.completions.length).toBe(1);await expect(action(host,'upload-resume')).toBeEnabled();expect(s.saves).toEqual([]);await expect(action(host,'save')).toBeDisabled();
+  await action(host,'upload-resume').click();await expect(action(host,'save')).toBeEnabled();expect(s.completions).toHaveLength(2);expect(s.uploads).toHaveLength(1);expect(s.byteWrites).toBe(1);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);expect(s.saves).toHaveLength(1);expect(s.controls).toEqual([]);
+});
+
+test('an upload completion after leaving its owner/run surface cannot attach or save to the new view',async({page})=>{
+  const s=supplementFixture();s.holdComplete=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);
+  const host=await ready(page);await host.locator('[data-supplement-role]').selectOption('audit');await host.locator('[data-supplement-file]').setInputFiles(file());
+  await expect.poll(()=>typeof s.releaseComplete).toBe('function');
+  await page.evaluate(()=>{const holder=window as unknown as {supplementActive:boolean;supplementComponent:{dispose():void}};holder.supplementActive=false;holder.supplementComponent.dispose();document.querySelector('.shell')!.innerHTML='<h1>另一账号的任务</h1>';});
+  s.releaseComplete!();await expect(page.getByRole('heading',{name:'另一账号的任务'})).toBeVisible();await expect(panel(page)).toHaveCount(0);
+  expect(s.saves).toEqual([]);expect(s.controls).toEqual([]);expect(s.revision).toBe(0);
+});
+
+test('mismatched exact receipt keeps the original request pending and prevents original-material resume until verified',async({page})=>{
+  const s=supplementFixture();s.dropSaveOnce=true;s.receiptMismatchOnce=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s,'m1');
+  const host=await add(page);await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);const sent=structuredClone(s.saves[0]);
+  await expect(host).toContainText('回执与本轮原始输入或原保存请求不一致');await expect(host.locator('[data-supplement-saved]')).not.toContainText('草稿已保存');
+  await expect(action(host,'receipt')).toBeEnabled();expect(s.saves).toEqual([sent]);expect(s.reads).toContain(sent.request_id);
+  await page.locator('#resume-run').click();await expect(host).toContainText('请先核对原补料保存回执');expect(s.controls).toEqual([]);await expect(page.locator('.run-supplement-resume-dialog')).toHaveCount(0);
+  await action(host,'receipt').click();await expect(host.locator('[data-supplement-saved]')).toContainText('草稿已保存');await expect(action(host,'receipt')).toHaveCount(0);
+  expect(s.saves).toEqual([sent]);expect(s.reads.filter(id=>id===sent.request_id)).toHaveLength(2);expect(s.controls).toEqual([]);
+});
+
+test('a delayed availability GET from V0 cannot offer an older draft after save confirms V1',async({page})=>{
+  const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);s.holdDraftRead=true;
+  await page.evaluate(run=>{const component=(window as unknown as {supplementComponent:{updateRun(run:unknown):void}}).supplementComponent;component.updateRun({...run,state:'running'});component.updateRun(run);},s.run);
+  await expect.poll(()=>typeof s.releaseDraftRead).toBe('function');await action(host,'save').click();await expect(host.locator('[data-supplement-saved]')).toContainText('V1');
+  const delayed=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/supplement-draft')&&!new URL(response.url()).search&&response.request().method()==='GET');
+  s.releaseDraftRead!();await (await delayed).finished();await page.evaluate(async()=>{await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));});
+  await expect(host.locator('[data-supplement-saved]')).toContainText('V1');await expect(host.locator('.run-supplement-conflict')).toHaveCount(0);
+  expect(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!).expected_revision,`bondbuddy:run-supplement:v1:${supplementIds.owner}:${supplementIds.project}:${supplementIds.run}`)).toBe(1);
+  expect(s.saves).toHaveLength(1);expect(s.controls).toEqual([]);
+});
+
+test('failure reading a newer draft does not turn an already verified original save receipt back into unknown',async({page})=>{
+  const s=supplementFixture();s.dropSaveOnce=true;s.failReceiptReads=true;await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+  await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);const sent=s.saves[0];await expect.poll(()=>s.reads.includes(sent.request_id)).toBe(true);await expect(action(host,'receipt')).toBeEnabled();
+  s.revision=2;s.changes=[];s.failReceiptReads=false;s.failLatestReads=true;await action(host,'receipt').click();
+  await expect(host.locator('[data-supplement-saved]')).toContainText('V1');await expect(host.locator('[data-supplement-saved]')).toContainText('草稿已保存');
+  await expect(action(host,'receipt')).toHaveCount(0);await expect(action(host,'retry-save')).toHaveCount(0);await expect(host).not.toContainText('原保存结果尚未确认');
+  expect(s.saves).toEqual([sent]);expect(s.controls).toEqual([]);
+});

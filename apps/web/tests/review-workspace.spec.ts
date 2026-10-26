@@ -1,4 +1,4 @@
-import { taskPage } from './collection-fixtures';
+import { emptySupplementPreparation, taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -116,6 +116,15 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       return reply(route,202,run);
     }
     if(path.startsWith('/runs/')){
+      if(path.endsWith('/supplement-draft')){
+        const run=[state.workspace.active_run,...state.runs.values()].find(r=>r&&path===`/runs/${r.run_id}/supplement-draft`);
+        if(!run||method!=='GET'||url.searchParams.has('request_id'))return reply(route,404,{code:'NOT_FOUND'});
+        const frozen=state.history.find(h=>h.run.run_id===run.run_id)?.input??state.workspace.draft;
+        const pins=[...(frozen.source_material_ref?[frozen.source_material_ref]:[]),...frozen.material_versions];
+        const base=state.workspace.materials.filter(m=>pins.some(pin=>pin.material_id===m.material_id&&pin.material_version===m.material_version&&pin.sha256===m.sha256))
+          .map(m=>({material_id:m.material_id,material_version:m.material_version,sha256:m.sha256,source_project_id:run.project_id,filename:m.filename,role:m.role,media_type:m.media_type,available:true}));
+        return reply(route,200,emptySupplementPreparation(run,base,run.state==='paused'&&run.stage==='user_paused'));
+      }
       const run=[...state.runs.values()].find(r=>path.includes(`/${r.run_id}`));if(!run)return reply(route,404,{code:'NOT_FOUND'});
       if(path.endsWith('/cancel')){
         if(state.deferCancellation){run.event_cursor=(run.event_cursor??0)+1;state.events.set(run.run_id,[...(state.events.get(run.run_id)??[]),{event_id:`stop-request-${run.event_cursor}`,schema_version:1,trace_id:'trace',run_id:run.run_id,seq:run.event_cursor,occurred_at:now,stage:run.stage,type:'run.progress',state:run.state,payload:{reason:'user_cancel_requested'}}]);}

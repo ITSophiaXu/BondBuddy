@@ -62,7 +62,7 @@ const needsProviderReconciliation = `(
   ))
 )`;
 
-async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+export async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
     JOIN bb_jobs j ON j.id=a.job_id

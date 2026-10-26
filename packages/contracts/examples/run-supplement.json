@@ -1,0 +1,59 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "supplement preparation uses frozen origin with explicit replacement and CAS",
+      "schema": "RunSupplementDraftRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-save-1",
+        "expected_revision": 0,
+        "base_input_revision": 3,
+        "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "changes": [{
+          "material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+          "replaces": {"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+        }]
+      }
+    },
+    {
+      "name": "supplement receipt lookup accepts original save identity",
+      "schema": "RunSupplementDraftQuery",
+      "valid": true,
+      "value": {"request_id": "synthetic-save-1"}
+    },
+    {
+      "name": "supplement saved receipt is explicitly unadopted",
+      "schema": "RunSupplementDraftResponse",
+      "valid": true,
+      "value": {
+        "run_id": "synthetic-run", "project_id": "synthetic-project",
+        "revision": 1, "latest_revision": 2, "request_id": "synthetic-save-1",
+        "saved_at": "2026-10-26T00:00:00.000Z", "base_input_revision": 3,
+        "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "base_materials": [{"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_project_id": "synthetic-project", "filename": "原材料.pdf", "role": "other", "media_type": "application/pdf", "available": true}],
+        "changes": [{"material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "replaces": null}],
+        "result_materials": [{"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_project_id": "synthetic-project", "filename": "原材料.pdf", "role": "other", "media_type": "application/pdf", "available": true}, {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "source_project_id": "synthetic-project", "filename": "补充材料.pdf", "role": "other", "media_type": "application/pdf", "available": false}],
+        "can_save": false, "blocked_reason": "本次任务已继续，已保存的准备记录仍可查看。", "adopted": false
+      }
+    },
+    {
+      "name": "preparation cannot authorise adoption or surcharge",
+      "schema": "RunSupplementDraftRequest",
+      "valid": false,
+      "value": {"request_id": "synthetic-save", "expected_revision": 0, "base_input_revision": 1, "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "changes": [], "adopt": true, "confirmed_additional_credits": 900}
+    },
+    {
+      "name": "a supplement cannot replace an unpinned material",
+      "schema": "RunSupplementDraftRequest",
+      "valid": false,
+      "value": {"request_id": "synthetic-save", "expected_revision": 0, "base_input_revision": 1, "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "changes": [{"material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "replaces": {"material_id": "synthetic-original", "material_version": 0}}]}
+    },
+    {
+      "name": "supplement receipt cannot select execution through query parameters",
+      "schema": "RunSupplementDraftQuery",
+      "valid": false,
+      "value": {"request_id": "synthetic-save", "resume": true}
+    }
+  ]
+}

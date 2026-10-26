@@ -1,0 +1,50 @@
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (54.5553ms)
+  ✔ old request receipt survives a later save and explicit resume (94.3367ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1703.3058ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (94.4632ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (296.7735ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1500.8123ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (557.1136ms)
+  ✔ wrong hash (95.4098ms)
+  ✔ wrong owner (13.8257ms)
+  ✔ wrong project (14.4881ms)
+  ✔ duplicate additions (13.4313ms)
+  ✔ unknown replacement (13.5595ms)
+  ✔ duplicate replacements (14.9024ms)
+  ✔ different role (13.7363ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (973.4285ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (808.6379ms)
+  ✔ saving (54.1173ms)
+  ✔ paused_lease (45.9292ms)
+  ✔ automatic_pause (58.8157ms)
+  ✔ pending_provider (96.8273ms)
+  ✔ completed_unknown (53.0835ms)
+  ✔ failed_unknown (52.3365ms)
+  ✔ terminal (56.2269ms)
+  ✔ archived (47.1864ms)
+  ✔ unsupported (53.3238ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (84.7641ms)
+  ✔ deleted project is owner-safe 404 (16.5368ms)
+  ✔ test-channel metadata obeys the deployment read gate (24.2182ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1587.927ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (918.5328ms)
+  ✔ m3 (72.8959ms)
+  ✔ m4 (85.2423ms)
+  ✔ inconsistent M3 version is unavailable (51.6608ms)
+  ✔ inconsistent M3 operation is unavailable (59.9316ms)
+  ✔ inconsistent M3 origin is unavailable (54.7064ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (78.3626ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1451.4341ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14429.8341

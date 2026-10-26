@@ -11,6 +11,14 @@ const data = JSON.parse(readFileSync(file, 'utf8')) as { synthetic: boolean; cas
 const updateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/update-project.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(updateExamples.synthetic, true);
 data.cases.push(...updateExamples.cases);
+const supplementExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/run-supplement.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(supplementExamples.synthetic, true);
+data.cases.push(...supplementExamples.cases);
+const supplementOperations = openApiDocument().paths['/api/v1/runs/{run_id}/supplement-draft'] as Record<string, { parameters: { name: string; in: string; required: boolean }[]; security: unknown[]; 'x-implementation-status': string }>;
+assert.ok(supplementOperations.get.parameters.some(p => p.name === 'request_id' && p.in === 'query' && !p.required));
+assert.ok(!supplementOperations.get.parameters.some(p => p.name === 'X-BB-CSRF'));
+assert.ok(['Origin', 'X-BB-CSRF'].every(name => supplementOperations.put.parameters.some(p => p.name === name && p.in === 'header' && p.required)));
+assert.ok(Object.values(supplementOperations).every(operation => operation.security.length === 1 && operation['x-implementation-status'].includes('preparation-only')));
 const billingExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/billing.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(billingExamples.synthetic, true);
 data.cases.push(...billingExamples.cases);

@@ -14,6 +14,7 @@ import { authoringStatus, authoringEventLabel, authoringCreditReceipt, authoring
 import { taskProgress } from './task-progress';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { resolveContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
+import { RunSupplementDraftPanel } from './run-supplement-draft';
 
 type Input = Dto<'InputRevisionResponse'>;
 type Material = Dto<'MaterialResponse'>;
@@ -108,6 +109,8 @@ export function readinessMessage(reason: string): string {
 
 /** Stable across tabs/reloads; a new input revision is required for an intentional new run. */
 export class ProjectExecution {
+  private supplements=new Map<string,RunSupplementDraftPanel>();
+  private supplementOwner?:Promise<string>;
   private controller = new AbortController();
   private host!: HTMLElement;
   private actions!: HTMLElement;
@@ -182,7 +185,7 @@ export class ProjectExecution {
     private refreshPreparation?:()=>Promise<boolean>) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
-  get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
+  get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain)||[...this.supplements.values()].some(panel=>panel.blocksLeave); }
   get materialsEditable() {
     return this.active && !this.restoring && !this.inputReadUncertain && !this.pendingExecution && !this.starting && !this.busy && (!this.run || this.nextRequested);
   }
@@ -190,7 +193,7 @@ export class ProjectExecution {
   private get taskKind(): ExecutionTaskKind { return executionTaskKind(this.draft.project.kind); }
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
-    host.innerHTML = '<p id="execution-read-message" class="muted" role="status" hidden></p><details id="previous-execution" class="previous-execution" open><summary id="previous-execution-summary" hidden><span>上一轮任务与成果</span><small data-previous-execution-state></small></summary><section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div></details>';
+    host.innerHTML = '<p id="execution-read-message" class="muted" role="status" hidden></p><details id="previous-execution" class="previous-execution" open><summary id="previous-execution-summary" hidden><span>上一轮任务与成果</span><small data-previous-execution-state></small></summary><section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div><div id="execution-supplement"></div></section><div id="execution-delivery" class="embedded-artifact"></div></details>';
     actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="text-button" type="button" id="complete-source-information" aria-describedby="start-disabled-reason" hidden>补齐这份原稿信息</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('complete-source-information').addEventListener('click', () => { this.focusMissingSourceInformation(); });
@@ -495,6 +498,8 @@ export class ProjectExecution {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
       if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
     }
+    if(run&&(run.state==='paused'||this.supplements.has(run.run_id)))void this.showSupplement(run);
+    else this.host.querySelector<HTMLElement>('#execution-supplement')!.hidden=true;
     const recheckPaused = this.host.querySelector<HTMLButtonElement>('#recheck-paused');
     if (recheckPaused) { recheckPaused.disabled = this.busy; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
     const prepare=this.host.querySelector<HTMLButtonElement>('#prepare-next-version');
@@ -599,6 +604,10 @@ export class ProjectExecution {
     if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     if (action === 'resume' && this.charge?.progress?.credit_exhausted && (this.run.state !== 'paused' || (this.charge.progress.available_points ?? 0) < 1)) return;
     const runId = this.run.run_id;
+    if(action==='resume'){
+      try{const panel=await this.supplementFor(this.run);if(!this.active||!await panel.confirmOriginalResume()||this.run?.run_id!==runId)return;}
+      catch(error){if(this.active){this.message=friendlyError(error,'read');this.render();}return;}
+    }
     const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
     await this.action(async () => {
@@ -608,6 +617,24 @@ export class ProjectExecution {
       if (action === 'resume') this.resumedPause = pause;
       this.acceptRun(run); void this.poll();
     });
+  }
+
+  private async supplementFor(run:Dto<'RunResponse'>){
+    const existing=this.supplements.get(run.run_id);if(existing)return existing;
+    this.supplementOwner??=this.api.me().then(me=>me.user_id).catch(error=>{this.supplementOwner=undefined;throw error;});
+    const owner=await this.supplementOwner;if(!this.active)throw new DOMException('页面已关闭','AbortError');
+    const found=this.supplements.get(run.run_id);if(found)return found;
+    const panel=new RunSupplementDraftPanel(this.api,owner,this.id,run.run_id,()=>this.active,()=>this.labelSupplementResume());
+    this.supplements.set(run.run_id,panel);panel.updateRun(run);return panel;
+  }
+  private labelSupplementResume(){
+    const panel=this.run&&this.supplements.get(this.run.run_id),button=this.host?.querySelector<HTMLButtonElement>('#resume-run');
+    if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮任务';
+  }
+  private async showSupplement(run:Dto<'RunResponse'>){
+    try{const panel=await this.supplementFor(run);if(!this.active||this.run?.run_id!==run.run_id)return;
+      const host=this.host.querySelector<HTMLElement>('#execution-supplement')!;host.hidden=false;if(host.firstElementChild!==panel.element)host.replaceChildren(panel.element);panel.updateRun(run);this.labelSupplementResume();
+    }catch(error){if(this.active){const host=this.host.querySelector<HTMLElement>('#execution-supplement');if(host){host.hidden=false;host.textContent=`补料准备暂不可读取。${friendlyError(error,'read')}`;}}}
   }
 
   private async action(work: () => Promise<void>, operation: 'preflight' | 'execute' | 'other' = 'other', feedback: 'read'|'save'|'download'|'submit'|'action' = operation === 'other' ? 'action' : 'submit') {
@@ -1023,5 +1050,5 @@ export class ProjectExecution {
       }
     }
   }
-  dispose() { this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
+  dispose() { this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose();for(const panel of this.supplements.values())panel.dispose(); }
 }
