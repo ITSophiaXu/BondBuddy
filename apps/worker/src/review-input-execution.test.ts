@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool } from 'pg';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { loadReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import type { StageContext } from './run-pipeline.js';
 
@@ -56,7 +57,7 @@ function fixture() {
     return { rows, rowCount: rows.length };
   } } as unknown as Pool;
   const ctx: StageContext = {
-    pool, run: { ...persistedRun },
+    pool, run: projectRunExecution(persistedRun, { executionVersion: 1, inputRevision: persistedRun.input_revision, inputHash: persistedRun.input_hash }),
     lease: { runId, owner, jobId: 'synthetic-job', token: 'synthetic-lease', attempts: 1, checkpoint: {},
       executionVersion: 1, inputRevision: 7, inputHash: hash },
     checkpoint: { review_sources: { snapshots: [{ ...source, snapshot_id: null, response_sha256: null, gap: 'Synthetic unavailable evidence' }] } },
@@ -99,7 +100,7 @@ test('review loader consumes the resolved V1 input and keeps the original run cr
 test('another revision with identical bytes cannot fall back to the original run input', async () => {
   const f = fixture();
   f.inputs.push({ ...f.originInput, revision: 8 });
-  f.ctx.run.input_revision = 8;
+  f.ctx.run = { ...f.ctx.run, input_revision: 8 };
   f.ctx.lease.inputRevision = 8;
   await rejectsWithoutResult(f);
   assert.equal(f.calls.some(call => call.sql.includes('FROM bb_input_revisions')), false);
@@ -107,11 +108,14 @@ test('another revision with identical bytes cannot fall back to the original run
 
 test('review context and lease identity must agree before loading evidence', async t => {
   const changes: [string, (ctx: StageContext) => void][] = [
-    ['context run', ctx => { ctx.run.id = 'other-run'; }],
-    ['context owner', ctx => { ctx.run.owner_user_id = 'other-owner'; }],
-    ['context project', ctx => { ctx.run.project_id = 'other-project'; }],
-    ['context revision', ctx => { ctx.run.input_revision = 8; }],
-    ['context hash', ctx => { ctx.run.input_hash = 'b'.repeat(64); }],
+    ['context run', ctx => { ctx.run = { ...ctx.run, id: 'other-run' }; }],
+    ['context owner', ctx => { ctx.run = { ...ctx.run, owner_user_id: 'other-owner' }; }],
+    ['context project', ctx => { ctx.run = { ...ctx.run, project_id: 'other-project' }; }],
+    ['context revision', ctx => { ctx.run = { ...ctx.run, input_revision: 8 }; }],
+    ['context hash', ctx => { ctx.run = { ...ctx.run, input_hash: 'b'.repeat(64) }; }],
+    ['projected execution version', ctx => { ctx.run = { ...ctx.run, executionVersion: 2 }; }],
+    ['projected input revision', ctx => { ctx.run = { ...ctx.run, inputRevision: 8 }; }],
+    ['projected input hash', ctx => { ctx.run = { ...ctx.run, inputHash: 'b'.repeat(64) }; }],
     ['lease run', ctx => { ctx.lease.runId = 'other-run'; }],
     ['lease owner', ctx => { ctx.lease.owner = 'other-owner'; }],
     ['lease revision', ctx => { ctx.lease.inputRevision = 8; }],
@@ -121,6 +125,7 @@ test('review context and lease identity must agree before loading evidence', asy
   for (const [name, change] of changes) await t.test(name, async () => {
     const f = fixture(); change(f.ctx);
     await rejectsWithoutResult(f);
+    if (name.startsWith('projected ')) assert.deepEqual(f.calls, []);
     assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
   });
 });
@@ -165,12 +170,25 @@ test('an explicitly missing or differently scoped resolved review snapshot canno
 
 test('direct review gate callers resolve the exact versioned database snapshot', async () => {
   const f = fixture();
-  assert.equal(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput), null);
+  assert.equal(await reviewInputGate(f.ctx.pool, f.persistedRun, f.originInput), null);
   assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_execution_snapshots')).length, 1);
   assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_executions')), false);
   f.reviewExecution.snapshot.input = { ...f.manifest.review.input, requirements: ['Changed persisted snapshot'] };
   assert.deepEqual(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput),
     { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+});
+
+test('review gates reject a projected successor version even when the expected V1 input bytes agree', async () => {
+  for (const supplied of [false, true]) {
+    const f = fixture();
+    const projected = { ...f.ctx.run, executionVersion: 2 };
+    assert.deepEqual(await reviewInputGate(f.ctx.pool, projected, f.originInput,
+      supplied ? f.reviewExecution : undefined, f.ctx.lease), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_run_execution_versions')).length, 1);
+    assert.equal(f.calls.some(call => call.sql.includes('FROM bb_input_revisions')), false);
+    assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_execution_snapshots')), false);
+    assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
+  }
 });
 
 test('malformed review snapshot objects fail explicitly for resolved and direct database gates', async () => {

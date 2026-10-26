@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import {
   appendIssuerIdentitySourceRecord,
   authorizeIssuerIdentityReviewer,
@@ -163,7 +164,8 @@ test('authorized rq-202509 DOCX persists 16 fail-closed annual candidates throug
     const producer = createControlledNativeFactCandidateProducer({ pool });
     const stage = createMaterialsReadyStage(producer);
     const stageContext = (checkpoint: Record<string, Record<string, unknown>>) => ({
-      pool, blobs: {} as never, lease: {} as never, signal: new AbortController().signal, run, checkpoint, values: new Map(),
+      pool, blobs: {} as never, lease: {} as never, signal: new AbortController().signal,
+      run: projectRunExecution(run, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }), checkpoint, values: new Map(),
     });
     const first = await stage.run(stageContext({}));
     assert.equal(first.kind, 'done');
@@ -271,9 +273,10 @@ test('authorized rq-202509 DOCX persists 16 fail-closed annual candidates throug
       const pinned = await addPinnedVariant({ ...variant, revision });
       await assert.rejects(producer({ ownerUserId: owner, projectId, inputRevision: revision, inputHash: pinned.variantInputHash,
         materialId: pinned.variantId, materialVersion: 1, snapshotId: String(snapshotId) }), variant.expected);
+      const variantRun = { ...run, input_revision: revision, input_hash: pinned.variantInputHash };
       const variantStage = await createMaterialsReadyStage(producer).run({
         pool, blobs: {} as never, lease: {} as never, signal: new AbortController().signal,
-        run: { ...run, input_revision: revision, input_hash: pinned.variantInputHash }, checkpoint: {}, values: new Map(),
+        run: projectRunExecution(variantRun, { executionVersion: 1, inputRevision: variantRun.input_revision, inputHash: variantRun.input_hash }), checkpoint: {}, values: new Map(),
       });
       assert.equal(variantStage.kind, 'done', 'nonallowlisted historical/reference variants must not be selected for fact extraction');
       if (variantStage.kind === 'done') assert.deepEqual(variantStage.checkpoint?.extractions, []);

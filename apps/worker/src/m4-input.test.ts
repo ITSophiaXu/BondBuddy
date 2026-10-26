@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import type { M4DocumentManifest, M4Requirement } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { loadM4WorkerInput, loadM4SupplementInput, m4InputGate } from './m4-input.js';
 import type { StageContext } from './run-pipeline.js';
 
@@ -59,10 +60,10 @@ function fixture(withArtifact = false) {
     }
     throw Error(`Unexpected SQL: ${sql}`);
   } } as unknown as Pool;
-  const ctx = { pool, run: { ...run }, lease: { owner: 'owner', runId: 'run', jobId: 'job', token: 'lease',
+  const ctx = { pool, run: projectRunExecution(run, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }), lease: { owner: 'owner', runId: 'run', jobId: 'job', token: 'lease',
     attempts: 1, checkpoint: {}, executionVersion: 1, inputRevision: 3, inputHash: hash },
     checkpoint: {}, values: new Map(), signal: new AbortController().signal } as unknown as StageContext;
-  return { ctx, reads, input, execution, manifest, scope, state };
+  return { ctx, reads, input, run, execution, manifest, scope, state };
 }
 
 test('M4 loader resolves the exact execution input and retains scoped source-material checks', async () => {
@@ -80,10 +81,13 @@ test('M4 loader resolves the exact execution input and retains scoped source-mat
 test('M4 loader rejects stale run/lease identity before reading inputs', async () => {
   for (const mismatch of [
     (ctx: StageContext) => { delete (ctx as Partial<StageContext>).lease; },
-    (ctx: StageContext) => { ctx.run.id = 'other'; },
-    (ctx: StageContext) => { ctx.run.owner_user_id = 'other'; },
-    (ctx: StageContext) => { ctx.run.input_revision = 4; },
-    (ctx: StageContext) => { ctx.run.input_hash = '0'.repeat(64); },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, id: 'other' }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, owner_user_id: 'other' }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, input_revision: 4 }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, input_hash: '0'.repeat(64) }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, executionVersion: 2 }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, inputRevision: 4 }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, inputHash: '0'.repeat(64) }; },
   ]) {
     const f = fixture(); mismatch(f.ctx);
     await assert.rejects(loadM4WorkerInput(f.ctx), /INPUT_REVISION_CONFLICT/); assert.deepEqual(f.reads, []);
@@ -93,8 +97,8 @@ test('M4 loader rejects stale run/lease identity before reading inputs', async (
 test('M4 loader retains V1-only, persisted project/task and immutable M4 snapshot checks', async () => {
   for (const corrupt of [
     (f: ReturnType<typeof fixture>) => { f.ctx.lease.executionVersion = 2; },
-    (f: ReturnType<typeof fixture>) => { f.ctx.run.project_id = 'other'; },
-    (f: ReturnType<typeof fixture>) => { f.ctx.run.task_kind = 'update'; },
+    (f: ReturnType<typeof fixture>) => { f.ctx.run = { ...f.ctx.run, project_id: 'other' }; },
+    (f: ReturnType<typeof fixture>) => { f.ctx.run = { ...f.ctx.run, task_kind: 'update' }; },
     (f: ReturnType<typeof fixture>) => { f.state.snapshotAvailable = false; },
     (f: ReturnType<typeof fixture>) => { f.execution.topic_id = 'other-topic'; },
     (f: ReturnType<typeof fixture>) => { f.execution.input_hash = '0'.repeat(64); },
@@ -127,7 +131,7 @@ test('M4 supplied snapshots are checked directly and explicit absence never fall
 
 test('M4 standalone gate keeps its execution database check and supplied snapshots retain live scope/subtype checks', async () => {
   const standalone = fixture();
-  assert.equal(await m4InputGate(standalone.ctx.pool, standalone.ctx.run, standalone.input), null);
+  assert.equal(await m4InputGate(standalone.ctx.pool, standalone.run, standalone.input), null);
   assert.ok(standalone.reads.some(sql => sql.includes('FROM bb_m4_execution_snapshots')));
   assert.equal(standalone.reads.some(sql => sql.includes('FROM bb_m4_executions')), false);
   for (const corrupt of [
@@ -136,6 +140,20 @@ test('M4 standalone gate keeps its execution database check and supplied snapsho
   ]) {
     const f = fixture(); corrupt(f);
     assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution, f.ctx.lease), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
+  }
+});
+
+test('M4 gates reject a projected successor version even when the expected V1 input bytes agree', async () => {
+  for (const supplied of [false, true]) {
+    const f = fixture();
+    const projected = { ...f.ctx.run, executionVersion: 2 };
+    assert.deepEqual(await m4InputGate(f.ctx.pool, projected, f.input, supplied ? f.execution : undefined, f.ctx.lease),
+      { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.equal(f.reads.filter(sql => sql.includes('FROM bb_run_execution_versions')).length, 1);
+    assert.equal(f.reads.some(sql => sql.includes('FROM bb_input_revisions')), false);
+    assert.equal(f.reads.some(sql => sql.includes('FROM bb_m4_execution_snapshots')), false);
+    assert.equal(f.reads.some(sql => sql.startsWith('SELECT t.source_project_id')), false);
     assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
   }
 });

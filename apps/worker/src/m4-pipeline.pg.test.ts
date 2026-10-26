@@ -27,6 +27,7 @@ import { defaultRunStages,runPipelineOnce,type RunPipelineDependencies,type Stag
 import { m4DocumentStage } from './m4-document-stage.js';
 import { m4QaStage } from './m4-qa-stage.js';
 import { loadM4WorkerInput } from './m4-input.js';
+import { resolveRunExecution } from '@bondbuddy/api/run-execution';
 import { modelGenerationRouter } from './model-generation-router.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
@@ -104,11 +105,16 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
       const content='解释当前成果的主要信息',context={document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:pin};
       const quote=await ok('POST',path('quote'),{kind:'qa',content,context});
       const reading=(await ok('POST',path('messages'),{submission_request_id:randomUUID(),content,context,quote_id:quote.quote.quote_id})).run;
-      const readRun=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[reading.run_id])).rows[0],ctx={pool,run:readRun,
-        lease:{owner,runId:readRun.id,executionVersion:1,inputRevision:readRun.input_revision,inputHash:readRun.input_hash.trim()}} as StageContext;
+      const readRun=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[reading.run_id])).rows[0];
+      const identity={executionVersion:1,inputRevision:readRun.input_revision,inputHash:readRun.input_hash.trim()};
+      const run=await resolveRunExecution(pool,owner,readRun.id,identity);
+      // This only reads a queued input: no lease is claimed or invented. The
+      // loader consumes the exact identity fields, not a writing token.
+      const ctx:StageContext={pool,blobs,run,lease:{owner,runId:readRun.id,...identity} as StageContext['lease'],
+        signal:new AbortController().signal,checkpoint:{},values:new Map()};
       const loaded=await loadM4WorkerInput(ctx);assert.equal(loaded.artifacts.length,1);assert.deepEqual(loaded.artifacts[0].pin,pin);
       if(artifact.kind==='qa_text')assert.match(loaded.artifacts[0].bodyContent!,/SYNTHETIC M4 answer/);
-      await assert.rejects(loadM4WorkerInput({...ctx,run:{...readRun,owner_user_id:randomUUID()}}),/INPUT_REVISION_CONFLICT/);
+      await assert.rejects(loadM4WorkerInput({...ctx,run:{...ctx.run,owner_user_id:randomUUID()}}),/INPUT_REVISION_CONFLICT/);
       if(artifact.kind==='qa_text'){
         await assert.rejects(pool.query("UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1 AND version=$2",[pin.artifact_id,pin.artifact_version]),
           error=>(error as {code?:string}).code==='23514','text cannot bypass its exact available delivery-evidence guard');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Pool } from 'pg';
 import { inputManifestHash, loadExactReviewedContext } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { rulePackContentHash } from '@bondbuddy/domain';
 import type { ProductionRulePackSelection } from '@bondbuddy/rule-pack-registry';
 import { loadReviewRuleContext, type ReviewRuleManifest } from './review-rule-context.js';
@@ -14,14 +15,19 @@ function fixture(){
   const row=()=>({id:selected.pin.releaseEventId,pack_id:selected.pack.pack_id,pack_version:selected.pack.version,content_hash:rulePackContentHash(selected.pack),
     action:'production_release',market:selected.pin.market,offering:selected.pin.offering,pack_snapshot:structuredClone(selected.pack)});
   const calls:{sql:string;params:unknown[]}[]=[];let contexts:unknown[]=[];let releases:unknown[]=[row()];let saves=0;
-  const ctx={run:{id:'synthetic-run',owner_user_id:'synthetic-owner',project_id:'synthetic-project',input_revision:2,input_hash:inputManifestHash(manifest)},checkpoint:{},
+  const rawRun={id:'synthetic-run',owner_user_id:'synthetic-owner',project_id:'synthetic-project',input_revision:2,input_hash:inputManifestHash(manifest),task_kind:'review'};
+  const ctx={run:projectRunExecution(rawRun,{executionVersion:1,inputRevision:rawRun.input_revision,inputHash:rawRun.input_hash}),checkpoint:{},
     pool:{query:async(sql:string,params:unknown[]=[])=>{calls.push({sql,params});return {rows:sql.includes('bb_rule_applicability_context_drafts')?contexts:releases};}} as unknown as Pool} as unknown as StageContext;
   const save=async()=>{saves++;};
-  return {manifest,ctx,selected,calls,row,save,getSaves:()=>saves,setContexts:(value:unknown[])=>{contexts=value;},setReleases:(value:unknown[])=>{releases=value;}};
+  const setRunInputHash=(inputHash:string)=>{
+    rawRun.input_hash=inputHash;
+    ctx.run=projectRunExecution(rawRun,{executionVersion:1,inputRevision:rawRun.input_revision,inputHash:rawRun.input_hash});
+  };
+  return {manifest,ctx,selected,calls,row,save,setRunInputHash,getSaves:()=>saves,setContexts:(value:unknown[])=>{contexts=value;},setReleases:(value:unknown[])=>{releases=value;}};
 }
 test('missing market, offering or date remains uncovered and never supplies fabricated defaults',async()=>{
   for(const change of [{market:null},{market:'unsupported'},{offering:null},{offering:'unsupported'},{review:{input:{as_of:null}}},{review:{input:{as_of:'2026-02-30'}}}]){
-    const f=fixture();Object.assign(f.manifest,change);f.ctx.run.input_hash=inputManifestHash(f.manifest);const result=await loadReviewRuleContext(f.ctx,f.manifest,[],{save:f.save});
+    const f=fixture();Object.assign(f.manifest,change);f.setRunInputHash(inputManifestHash(f.manifest));const result=await loadReviewRuleContext(f.ctx,f.manifest,[],{save:f.save});
     assert.equal(result.rule_context,null);assert.equal(result.rules.length,0);assert.equal(f.calls.length,0);
   }
 });
@@ -68,11 +74,11 @@ test('withdrawn approved pin does not fall back to a reference or another rule r
 });
 test('public-all and DFI lookups retain exact offering without substituting private/public',async()=>{
   for(const [market,offering] of [['sse','public_all'],['nafmii','dfi']]){
-    const f=fixture();f.manifest.market=market!;f.manifest.offering=offering!;f.ctx.run.input_hash=inputManifestHash(f.manifest);f.setReleases([]);
+    const f=fixture();f.manifest.market=market!;f.manifest.offering=offering!;f.setRunInputHash(inputManifestHash(f.manifest));f.setReleases([]);
     const result=await loadReviewRuleContext(f.ctx,f.manifest,[],{save:f.save});assert.equal(result.rules.length,0);
     const query=f.calls.find(c=>c.sql.includes('WITH latest'))!;assert.deepEqual(query.params,[market,offering]);
   }
 });
 test('hash/owner/material mismatches fail before rule queries',async()=>{
-  const f=fixture();f.ctx.run.input_hash='a'.repeat(64);await assert.rejects(()=>loadReviewRuleContext(f.ctx,f.manifest,[],{save:f.save}),/INPUT_HASH_MISMATCH/);assert.equal(f.calls.length,0);
+  const f=fixture();f.setRunInputHash('a'.repeat(64));await assert.rejects(()=>loadReviewRuleContext(f.ctx,f.manifest,[],{save:f.save}),/INPUT_HASH_MISMATCH/);assert.equal(f.calls.length,0);
 });

@@ -1,0 +1,69 @@
+{
+  "before": "2026-10-26T22-56-17-333Z-source-before-3048-75077538",
+  "after": "2026-10-26T22-58-10-205Z-source-after-49084-0ee09267",
+  "pg_stop": "2026-10-26T22-58-20-482Z-pg-stop-33276-718261a3",
+  "adopted_test_modes": {
+    "api-projection": {
+      "tests": 40,
+      "skipped": 0,
+      "pass": 40
+    },
+    "worker-projection": {
+      "tests": 28,
+      "skipped": 0,
+      "pass": 28
+    },
+    "worker-projection-regression": {
+      "tests": 70,
+      "skipped": 2,
+      "pass": 68
+    },
+    "worker-projection-fixtures": {
+      "tests": 136,
+      "skipped": 4,
+      "pass": 132
+    },
+    "contracts-check": {
+      "tests": 40,
+      "skipped": 0,
+      "pass": 40
+    }
+  },
+  "adopted_build_modes": [
+    "api-build",
+    "worker-build"
+  ],
+  "staged_sources": [
+    "apps/api/src/run-execution-projection.test.ts",
+    "apps/api/src/run-execution.ts",
+    "apps/worker/src/execution-input-loaders.pg.test.ts",
+    "apps/worker/src/historical-model-stage.test.ts",
+    "apps/worker/src/historical-test-rule-authorization.test.ts",
+    "apps/worker/src/issuer-identity-input-lock.test.ts",
+    "apps/worker/src/m2-paid-worker.test.ts",
+    "apps/worker/src/m4-input.test.ts",
+    "apps/worker/src/m4-input.ts",
+    "apps/worker/src/m4-pipeline.pg.test.ts",
+    "apps/worker/src/m4-stages.test.ts",
+    "apps/worker/src/model-generation-router.test.ts",
+    "apps/worker/src/no-history-generation-issuer-binding.test.ts",
+    "apps/worker/src/no-history-model-stage.test.ts",
+    "apps/worker/src/review-file-stage.ts",
+    "apps/worker/src/review-input-execution.test.ts",
+    "apps/worker/src/review-input.ts",
+    "apps/worker/src/review-report-execution.pg.test.ts",
+    "apps/worker/src/review-revision-cli-stage.test.ts",
+    "apps/worker/src/review-revision-cli-test-fixture.ts",
+    "apps/worker/src/review-rule-context.test.ts",
+    "apps/worker/src/review-word-registration.pg.integration.test.ts",
+    "apps/worker/src/rq-prospectus-annual-fact-pg.integration.test.ts",
+    "apps/worker/src/rule-pack-production-selector.test.ts",
+    "apps/worker/src/rule-pack-selection.test.ts",
+    "apps/worker/src/run-execution-consumers.pg.test.ts",
+    "apps/worker/src/run-execution-lease.test.ts",
+    "apps/worker/src/run-execution-lease.ts",
+    "apps/worker/src/run-pipeline.ts",
+    "apps/worker/src/unified-execution-input.test.ts",
+    "apps/worker/src/unified-input.ts"
+  ]
+}

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool, type PoolClient } from 'pg';
 import { createServer } from '@bondbuddy/api';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import type { IssuerIdentitySourcePool } from '@bondbuddy/api/issuer-identity-source';
 import {
   appendIssuerIdentitySourceRecord,
@@ -239,7 +240,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       assert.ok(preflight.json().missing_inputs.includes('rule_pack:rule_applicability_reference_missing'));
       const run = { id: `run-${suffix}`, owner_user_id: owner, project_id: projectId, input_revision: input.input_revision,
         input_hash: input.input_hash, task_kind: 'update' };
-      const ctx = { pool: scopedPool, blobs: {} as never, lease: {} as never, run, signal: new AbortController().signal,
+      const ctx = { pool: scopedPool, blobs: {} as never, lease: {} as never,
+        run: projectRunExecution(run, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }), signal: new AbortController().signal,
         checkpoint: {}, values: new Map() } as StageContext;
       const trusted = await inputLockStage.run(ctx);
       assert.deepEqual(trusted, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
@@ -255,7 +257,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       const deleted = await inputLockStage.run(ctx);
       assert.deepEqual(deleted, { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' }, 'a deleted historical version cannot reach model generation');
 
-      const otherTask = await inputLockStage.run({ ...ctx, run: { ...run, task_kind: 'review' } });
+      const otherTask = await inputLockStage.run({ ...ctx,
+        run: projectRunExecution({ ...run, task_kind: 'review' }, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }) });
       assert.deepEqual(otherTask, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
         'non-update task kinds retain their existing input-lock path');
     } finally {

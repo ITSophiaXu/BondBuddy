@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-10-26T23:00:17.9808665Z",
+  "reason": "README verification results were completed after the initial archive inventory; raw run receipts and compressed originals are unchanged.",
+  "initial_manifest": "manifest.initial.json",
+  "before": {
+    "path": "README.md",
+    "bytes": 2486,
+    "sha256": "aedf5f98cda5bc37e55ab3f4930b15f55c50bbbfcd31b3b979cb5df7ff1b8e6b"
+  },
+  "after": {
+    "path": "README.md",
+    "bytes": 5841,
+    "sha256": "d3f46389cc085c6d8170e02dfaa0916881031cbbd70fb714748facae4ce3f2c3"
+  },
+  "failed_finalization_attempts": [
+    "git add refused LF to CRLF conversion under core.safecrlf; retry will use command-local core.safecrlf=false without changing working bytes",
+    "source-proof stopped before writing a proof because the completed README no longer matched its initial placeholder inventory"
+  ],
+  "controlled_verifier_failure_count_unchanged": 4
+}

@@ -38,6 +38,8 @@ export function validReviewFileResult(value: unknown, ctx: StageContext): value 
 
 export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFileInput> {
   if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.executionVersion !== ctx.lease.executionVersion || ctx.run.inputRevision !== ctx.lease.inputRevision
+    || ctx.run.inputHash !== ctx.lease.inputHash
     || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
     throw Error('INPUT_REVISION_CONFLICT');
   const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);

@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { loadUnifiedInput, type UnifiedManifest } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
 
@@ -37,7 +38,7 @@ function fixture() {
     }
     throw Error(`Unexpected SQL: ${sql}`);
   } } as unknown as Pool;
-  const ctx = { pool, run: { ...run }, lease: { owner: 'owner', runId: 'run', jobId: 'job', token: 'lease',
+  const ctx = { pool, run: projectRunExecution(run, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }), lease: { owner: 'owner', runId: 'run', jobId: 'job', token: 'lease',
     attempts: 1, checkpoint: {}, executionVersion: 1, inputRevision: 3, inputHash: hash },
     checkpoint: {}, values: new Map(), signal: new AbortController().signal } as unknown as StageContext;
   return { ctx, reads, input, run, manifest };
@@ -58,10 +59,13 @@ test('unified original-file loader uses the resolved exact input before reading 
 test('unified loader rejects stale run/lease identity before any material or input read', async () => {
   for (const mismatch of [
     (ctx: StageContext) => { delete (ctx as Partial<StageContext>).lease; },
-    (ctx: StageContext) => { ctx.run.id = 'other'; },
-    (ctx: StageContext) => { ctx.run.owner_user_id = 'other'; },
-    (ctx: StageContext) => { ctx.run.input_revision = 4; },
-    (ctx: StageContext) => { ctx.run.input_hash = '0'.repeat(64); },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, id: 'other' }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, owner_user_id: 'other' }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, input_revision: 4 }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, input_hash: '0'.repeat(64) }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, executionVersion: 2 }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, inputRevision: 4 }; },
+    (ctx: StageContext) => { ctx.run = { ...ctx.run, inputHash: '0'.repeat(64) }; },
   ]) {
     const f = fixture(); mismatch(f.ctx);
     await assert.rejects(loadUnifiedInput(f.ctx, { originalFiles: true }), /INPUT_REVISION_CONFLICT/);
@@ -71,8 +75,8 @@ test('unified loader rejects stale run/lease identity before any material or inp
 
 test('unified loader rejects another persisted project or task and corrupted frozen input before material access', async () => {
   for (const corrupt of [
-    (f: ReturnType<typeof fixture>) => { f.ctx.run.project_id = 'other'; },
-    (f: ReturnType<typeof fixture>) => { f.ctx.run.task_kind = 'generation'; },
+    (f: ReturnType<typeof fixture>) => { f.ctx.run = { ...f.ctx.run, project_id: 'other' }; },
+    (f: ReturnType<typeof fixture>) => { f.ctx.run = { ...f.ctx.run, task_kind: 'generation' }; },
     (f: ReturnType<typeof fixture>) => { f.input.manifest.issuer_name = 'Changed after locking'; },
     (f: ReturnType<typeof fixture>) => { f.ctx.lease.executionVersion = 2; },
   ]) {

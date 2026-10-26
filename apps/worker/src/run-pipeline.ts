@@ -39,7 +39,7 @@ import { markTestWord } from './test-word-marking.js';
 import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
 import type { ApprovedGenerationIssuerBinding } from './no-history-model-stage.js';
 import type { ProduceTargetPeriodCandidateSnapshotRequest } from './target-period-candidate-snapshot-producer.js';
-import {resolveRunExecution,readExecutionStages} from '@bondbuddy/api/run-execution';
+import {resolveRunExecution,readExecutionStages,type RunExecutionProjection} from '@bondbuddy/api/run-execution';
 import {lockStageRunExecution} from './run-execution-lease.js';
 
 /**
@@ -55,7 +55,7 @@ export type TargetPeriodCandidateProducer = (request: ProduceTargetPeriodCandida
 
 export type RunRow = { billing_mode?: (typeof import('@bondbuddy/contracts').RUN_BILLING_MODES)[number]; id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
-  pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunRow; signal: AbortSignal;
+  pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunExecutionProjection<RunRow>; signal: AbortSignal;
   /** Checkpoint of completed stages, then values produced by stages in this attempt. */
   checkpoint: Record<string, Record<string, unknown>>; values: Map<string, unknown>;
   /** Revalidate update issuer identity immediately before constructing a prompt and before each provider intent. */
@@ -131,7 +131,7 @@ export const unavailableTestRuleCapability: TestRuleCapabilityLoader = async () 
 export type InputRevisionRow = { input_hash: string; draft_revision: number; material_versions: unknown;
   manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
 
-async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRevisionRow,lease:Lease,
+async function verifyTestRuleCapability(pool: Pool, run: StageContext['run'], input: InputRevisionRow,lease:Lease,
   loader: TestRuleCapabilityLoader = unavailableTestRuleCapability): Promise<InputBindingGate | null> {
   if (!input.manifest || inputManifestHash(input.manifest) !== String(input.input_hash).trim() ||
       String(input.input_hash).trim() !== run.input_hash.trim())
@@ -595,7 +595,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
   let currentStage: string | undefined;
   try {
-    const run=await resolveRunExecution(pool,lease.owner,lease.runId,lease) as RunRow;
+    const run=await resolveRunExecution(pool,lease.owner,lease.runId,lease);
     const checkpoint = { ...readExecutionStages(lease.checkpoint,lease) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,

@@ -6,6 +6,7 @@ import {Pool} from 'pg';
 import {isReviewReport,type ReviewEvidenceRef,type ReviewReport} from '@bondbuddy/contracts';
 import {digest,uid} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
+import { resolveRunExecution } from '@bondbuddy/api/run-execution';
 import {registerReviewReport} from './review-word-stage.js';
 import type {StageContext} from './run-pipeline.js';
 import {isolatedTestDatabase} from './test-database.js';
@@ -43,8 +44,8 @@ async function fixture(){
   const report:ReviewReport={report_id:reportId,project_id:projectId,run_id:runId,input_revision:1,version:1,
     source_material:pin,scope:{mode:'full_review',finding_ids:[]},findings:[],coverage:[],
     limitations:['Synthetic registration only'],created_at:new Date().toISOString()};
-  const ctx={pool,run:{id:runId,owner_user_id:owner,project_id:projectId,input_revision:1,input_hash:hash},
-    lease:{owner,runId,jobId,token,checkpoint:{},attempts:1,executionVersion:1,inputRevision:1,inputHash:hash}} as Pick<StageContext,'pool'|'run'|'lease'>;
+  const lease={owner,runId,jobId,token,checkpoint:{},attempts:1,executionVersion:1,inputRevision:1,inputHash:hash};
+  const ctx:Pick<StageContext,'pool'|'run'|'lease'>={pool,run:await resolveRunExecution(pool,owner,runId,lease),lease};
   const legacy=async(body:ReviewReport=report)=>pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report)
     VALUES($1,$2,$3,$4,$5,$6,$7)`,[body.report_id,owner,projectId,runId,body.version,inputManifestHash(body),body]);
   return {pool,owner,projectId,runId,jobId,reportId,hash,manifest,ctx,report,legacy,applicationName};
@@ -193,8 +194,8 @@ test('a differential report writer rejects a schema-valid wrong follow-up source
     await f.pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot)
       VALUES($1,$2,$3,2,'differential_review',$4,$5)`,[runId,f.owner,f.projectId,f.reportId,
       {input:review.input,origin:review.origin,finding_ids:[findingId],input_version:1}]);
-    const ctx={pool:f.pool,run:{id:runId,owner_user_id:f.owner,project_id:f.projectId,input_revision:2,input_hash:hash},
-      lease:{owner:f.owner,runId,jobId,token,checkpoint:{},attempts:1,executionVersion:1,inputRevision:2,inputHash:hash}} as Pick<StageContext,'pool'|'run'|'lease'>;
+    const lease={owner:f.owner,runId,jobId,token,checkpoint:{},attempts:1,executionVersion:1,inputRevision:2,inputHash:hash};
+    const ctx:Pick<StageContext,'pool'|'run'|'lease'>={pool:f.pool,run:await resolveRunExecution(f.pool,f.owner,runId,lease),lease};
     const report:ReviewReport={...f.report,report_id:reportId,run_id:runId,input_revision:2,version:2,
       scope:{mode:'differential_review',finding_ids:[findingId]},findings:[],coverage:[],
       follow_up:{version:'review-follow-up-v1',source_report_id:f.reportId,source_report_sha256:digest('wrong synthetic follow-up source'),

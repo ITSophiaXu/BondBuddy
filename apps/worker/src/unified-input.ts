@@ -126,6 +126,8 @@ async function previousArtifact(pool: Pool, run: RunRow, pin: NonNullable<Unifie
 
 export async function loadUnifiedInput(ctx: StageContext, options: { originalFiles?: boolean } = {}): Promise<UnifiedInput> {
   if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.executionVersion !== ctx.lease.executionVersion || ctx.run.inputRevision !== ctx.lease.inputRevision
+    || ctx.run.inputHash !== ctx.lease.inputHash
     || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
     throw new Error('INPUT_REVISION_CONFLICT');
   const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);

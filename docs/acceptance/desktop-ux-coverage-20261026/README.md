@@ -83,3 +83,5 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 - [材料删除屏障（0133）](material-retention-barrier/README.md)：材料 pin 与耐久删除起点共用锁协议，修复最后核对至 Blob 删除之间的竞态；保留旧费用和执行限制，不代表补料续做已完成。
 
 - [已删除项目的四份复核正文（0134）](review-body-deletion/README.md)：按实际项目删除窗口清理 legacy/canonical editor/report，回访旧成果清理回执、防止重放和桥接复活；活动项目业务正文保留。只关闭这四表副本，其他项目正文和 G03 后继执行仍待完成。
+
+- [Worker 的原任务输入与本次执行输入](execution-input-projection/README.md)：真实 pipeline、三类 loader 和独立 writer 使用明确执行投影，原输入单独保留，完整执行身份漂移拒绝；V1 门和原账务语义保留，没有补料采用或新版 Word，不增加 G03 旅程通过数。

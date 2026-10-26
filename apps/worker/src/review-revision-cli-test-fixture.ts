@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { emptyUpdateDetails, type ReviewFinding, type ReviewRevisionPin } from '@bondbuddy/contracts';
 import type { UnifiedInput } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
@@ -44,7 +45,9 @@ export async function revisionCliFixture() {
     materials: [source.pin, audit.pin], authoring: { version: 'unified_v1', source_prospectuses: [], requirements: [], knowledge: [],
       knowledge_status: 'authoring_reference_not_compliance_approval', review_revision: pin } }, materials: [source, audit], requirements: [] };
   const blobs = new Map<string, Buffer>([['private/source', sourceBytes], ['private/audit', auditBytes]]);
-  const ctx = { run: { id: 'run', owner_user_id: 'owner', project_id: 'project', input_hash: inputManifestHash(input.manifest) },
+  const rawRun = { id: 'run', owner_user_id: 'owner', project_id: 'project', input_revision: 1,
+    input_hash: inputManifestHash(input.manifest), task_kind: 'update' };
+  const ctx = { run: projectRunExecution(rawRun, { executionVersion: 1, inputRevision: 1, inputHash: rawRun.input_hash }),
     lease: { checkpoint: {} }, checkpoint: {}, signal: new AbortController().signal, values: new Map(),
     pool: { query: async () => ({ rows: [{ created_at: '2026-10-03T00:00:00.000Z' }] }) },
     blobs: { getIfExistsBounded: async (key: string) => blobs.get(key) ?? null, put: async (key: string, bytes: Buffer) => { blobs.set(key, bytes); } },

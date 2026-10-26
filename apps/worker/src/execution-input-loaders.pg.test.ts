@@ -8,6 +8,7 @@ import { emptyUpdateDetails, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_SUBTYPE,
 import { digest, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { claim } from '@bondbuddy/api/queue';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { resolveRunExecution } from '@bondbuddy/api/run-execution';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadM4Knowledge } from '@bondbuddy/api/m4-knowledge';
 import { lockM4ArtifactTopic } from '@bondbuddy/api/m4-workspace';
@@ -132,7 +133,7 @@ test('real claimed M1, legacy/file M3 and M4 loaders read exact immutable execut
       assert.ok(lease); assert.equal(lease.runId, runId);
       assert.deepEqual({ version: lease.executionVersion, revision: lease.inputRevision, hash: lease.inputHash },
         { version: 1, revision: 1, hash });
-      const run = (await pool.query('SELECT * FROM bb_runs WHERE id=$1', [runId])).rows[0];
+      const run = await resolveRunExecution(pool, owner, runId, lease);
       const ctx: StageContext = { pool, blobs, run, lease, signal: new AbortController().signal,
         checkpoint: structuredClone(lease.checkpoint.stages ?? {}) as StageContext['checkpoint'], values: new Map() };
       assert.equal((await inputLockStage.run(ctx)).kind, 'done', 'persisted fixture must pass its normal production input gate');

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import type { ReviewReport } from '@bondbuddy/contracts';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { resolveRunExecution } from '@bondbuddy/api/run-execution';
 import { registerReviewReport } from './review-word-stage.js';
 import type { StageContext } from './run-pipeline.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -42,8 +43,8 @@ test('report registration locks the project catalog and rejects expired or cance
     const report:ReviewReport={report_id:reportId,project_id:project,run_id:runId,input_revision:1,version:1,
       source_material:pin,scope:{mode:'full_review',finding_ids:[]},
       findings:[],coverage:[],limitations:['Synthetic registration only'],created_at:new Date().toISOString()};
-    const ctx={pool,run:{id:runId,owner_user_id:owner,project_id:project,input_revision:1,input_hash:hash},
-      lease:{jobId,runId,owner,token,attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:hash}} as Pick<StageContext,'pool'|'run'|'lease'>;
+    const lease={jobId,runId,owner,token,attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:hash};
+    const ctx:Pick<StageContext,'pool'|'run'|'lease'>={pool,run:await resolveRunExecution(pool,owner,runId,lease),lease};
     const rows=async()=>(await pool.query('SELECT id,report,content_sha256 FROM bb_review_reports WHERE run_id=$1',[runId])).rows;
     return {ctx,report,rows};
   }
@@ -68,7 +69,7 @@ test('report registration locks the project catalog and rejects expired or cance
         const f=await fixture();
         if(mode==='expired')await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",[f.ctx.lease.jobId]);
         else if(mode==='cancelled'||mode==='paused')await pool.query('UPDATE bb_runs SET state=$2 WHERE id=$1',[f.ctx.run.id,mode]);
-        else if(mode==='wrong-token')f.ctx.lease.token=randomUUID();else f.ctx.run.project_id=randomUUID();
+        else if(mode==='wrong-token')f.ctx.lease.token=randomUUID();else f.ctx.run={...f.ctx.run,project_id:randomUUID()};
         assert.equal(await registerReviewReport(f.ctx,f.report),false,mode);assert.deepEqual(await f.rows(),[]);
       }
     });

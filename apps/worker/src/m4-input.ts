@@ -4,7 +4,7 @@ import {validM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { StageContext, RunRow, InputRevisionRow, StageOutcome } from './run-pipeline.js';
 import { readRunExecutionInput, type M4ExecutionInputSnapshot } from '@bondbuddy/api/run-execution-input';
-import { assertRunExecution, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
+import { assertRunExecution, runExecutionOrigin, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
 
 export type M4WorkerMaterial = {pin: M4MaterialPin; filename: string; mediaType: string; objectKey: string};
 export type M4WorkerArtifact = {pin: M4ArtifactPin; filename: string; mediaType: string; objectKey: string; bodyContent?: string};
@@ -62,7 +62,9 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
   if (expected && (expected.inputRevision !== run.input_revision || expected.inputHash !== run.input_hash.trim())) return fail;
   let identity: RunExecutionIdentity;
   try {
-    identity = await assertRunExecution(pool, run, expected);
+    identity = await assertRunExecution(pool, runExecutionOrigin(run), expected);
+    if (identity.inputRevision !== run.input_revision || identity.inputHash !== run.input_hash.trim()
+      || 'executionVersion' in run && identity.executionVersion !== run.executionVersion) return fail;
     if (execution === undefined) execution = (await readRunExecutionInput(pool, run.owner_user_id, run.id, identity)).m4Execution;
   } catch (error) {
     if ((error as { code?: string }).code === 'INPUT_REVISION_CONFLICT') return fail;
@@ -125,6 +127,8 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
 /** Always reload exact persisted inputs; an open tab or latest draft never chooses the run's source. */
 export async function loadM4WorkerInput(ctx: StageContext): Promise<M4WorkerInput> {
   if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.executionVersion !== ctx.lease.executionVersion || ctx.run.inputRevision !== ctx.lease.inputRevision
+    || ctx.run.inputHash !== ctx.lease.inputHash
     || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
     throw Error('INPUT_REVISION_CONFLICT');
   const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);

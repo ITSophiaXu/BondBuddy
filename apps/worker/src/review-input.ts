@@ -5,7 +5,7 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import { readRunExecutionInput, type ReviewExecutionInputSnapshot } from '@bondbuddy/api/run-execution-input';
 import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
-import { assertRunExecution, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
+import { assertRunExecution, runExecutionOrigin, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
 import { getParseSnapshot } from './parse-evidence-repository.js';
 import type { StageContext, StageOutcome, RunRow, InputRevisionRow } from './run-pipeline.js';
 import type { Pool } from 'pg';
@@ -67,7 +67,9 @@ export async function reviewInputGate(pool: Pool, run: RunRow, input: InputRevis
   let execution: ReviewExecutionInputSnapshot | null | undefined = fixedExecution;
   let identity: RunExecutionIdentity;
   try {
-    identity = await assertRunExecution(pool, run, expected);
+    identity = await assertRunExecution(pool, runExecutionOrigin(run), expected);
+    if (identity.inputRevision !== run.input_revision || identity.inputHash !== run.input_hash.trim()
+      || 'executionVersion' in run && identity.executionVersion !== run.executionVersion) return invalid;
     if (execution === undefined) execution = (await readRunExecutionInput(pool, run.owner_user_id, run.id, identity)).reviewExecution;
   } catch (error) {
     if ((error as { code?: string }).code === 'INPUT_REVISION_CONFLICT') return invalid;
@@ -103,6 +105,8 @@ export async function reviewMaterialsReady(ctx: Pick<StageContext, 'pool' | 'run
 
 export async function loadReviewInput(ctx: StageContext): Promise<ReviewAnalysisInput> {
   if (ctx.lease.runId !== ctx.run.id || ctx.lease.owner !== ctx.run.owner_user_id
+    || ctx.run.executionVersion !== ctx.lease.executionVersion || ctx.run.inputRevision !== ctx.lease.inputRevision
+    || ctx.run.inputHash !== ctx.lease.inputHash
     || ctx.lease.inputRevision !== ctx.run.input_revision || ctx.lease.inputHash !== ctx.run.input_hash.trim())
     throw new Error('INPUT_REVISION_CONFLICT');
   const { run, input: row, reviewExecution } = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);

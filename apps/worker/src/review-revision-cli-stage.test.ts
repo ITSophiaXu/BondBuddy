@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution, runExecutionOrigin } from '@bondbuddy/api/run-execution';
 import type { ReviewExecutionOrigin, ReviewProposalV2 } from '@bondbuddy/contracts';
 import type { ReviewManifest } from './review-input.js';
 import { reviewRevisionCliStage, reviewRevisionCliDeliveryStage, REVIEW_REVISION_CLI_CHECKPOINT,
@@ -34,7 +35,9 @@ test('revision consumes the explicitly adopted input and refuses lineage or unco
         input_version:2,input_sha256:inputManifestHash(draft),report_catalog_version:1,finding_ids:proposal.finding_ids,excluded_findings:proposal.excluded_findings,requirements:proposal.requirements}};
     const review:ReviewManifest['review']={version:'review_v1',operation:'revision',report_id:'next-report',version_number:2,input:draft,
       source_report_id:proposal.source_report_id,source_report_sha256:proposal.source_report_sha256,finding_ids:proposal.finding_ids,draft_version:2,origin};
-    f.input.manifest.review=review;f.input.requirements.push(adoptedRequirement);f.ctx.run.input_hash=inputManifestHash(f.input.manifest);
+    f.input.manifest.review=review;f.input.requirements.push(adoptedRequirement);
+    const rawRun={...runExecutionOrigin(f.ctx.run),task_kind:f.ctx.run.task_kind,input_hash:inputManifestHash(f.input.manifest)};
+    f.ctx.run=projectRunExecution(rawRun,{executionVersion:1,inputRevision:rawRun.input_revision,inputHash:rawRun.input_hash});
     const stage=reviewRevisionCliStage({load:async()=>f.input,config,checkpoint:persist,writer:f.writer,model:options=>({name:options.name,run:async()=>{
       calls++;const cwd=join(f.root,'accepted-model');await mkdir(cwd);await options.fileWorkspace!.prepare(cwd);
       const locked=JSON.parse(await readFile(join(cwd,'input.json'),'utf8'));assert.ok(locked.requirements.includes(adoptedRequirement));

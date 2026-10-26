@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { GenerationIssuerBindingResponse } from '@bondbuddy/contracts';
 import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
@@ -45,9 +46,10 @@ function adapters(overrides: Partial<NoHistoryStageAdapters> = {}): NoHistorySta
   };
 }
 
-function context(): StageContext {
+function context(inputHash = scope.inputHash): StageContext {
+  const rawRun = { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: inputHash, task_kind: 'generation' };
   return { pool: {} as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
-    run: { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: scope.inputHash, task_kind: 'generation' },
+    run: projectRunExecution(rawRun, { executionVersion: 1, inputRevision: rawRun.input_revision, inputHash: rawRun.input_hash }),
     signal: new AbortController().signal, checkpoint: {}, values: new Map() };
 }
 
@@ -123,8 +125,7 @@ function lockedAdapters(hash: string, verify?: VerifyPinnedBinding, overrides: P
 }
 
 function lockedContext(hash: string, manifest: unknown, rows?: Record<string, unknown>[]): StageContext {
-  const ctx = context();
-  ctx.run.input_hash = hash;
+  const ctx = context(hash);
   ctx.pool = { query: async () => ({ rows: rows ?? [{ manifest, input_hash: hash }] }) } as unknown as StageContext['pool'];
   return ctx;
 }
