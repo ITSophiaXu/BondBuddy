@@ -1,0 +1,30 @@
+✔ all legacy business inserts bridge complete exact snapshots; actual reader preserves fields and original timestamps (396.1539ms)
+✔ a bad bridge aborts the legacy insert instead of dropping or fabricating a snapshot (2093.6116ms)
+✔ versioned snapshots are immutable and cannot borrow another owner, input, timestamp or executable V2 (1744.7176ms)
+✔ missing canonical snapshots fail closed even when valid legacy records still exist (300.77ms)
+✔ a legacy insert without its exact initial execution fails rather than silently skipping the bridge (431.7755ms)
+✔ actual migration backfills exact legacy V1 content and rejects mismatched or missing historical identity (5256.2109ms)
+✔ storage pin checks accept integral JSONB numbers regardless of scale and reject nonpositive or fractional values (172.8684ms)
+✔ migration drains topic row lockers before locking inputs, so an in-flight M4 creator can finish (5103.8921ms)
+✔ execution input reader consumes exact versioned business snapshots without changing origin or business versions (6.9667ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (2.6791ms)
+✔ ordinary M1 has no business snapshots; every component of a business snapshot identity is checked (5.3964ms)
+✔ required snapshots reject absence and duplicates without legacy or latest fallback (1.7252ms)
+✔ review snapshots reject invalid shapes and changed input, business version, operation, source, origin or findings (3.481ms)
+✔ review result revisions keep exact source, materials and saved requirements (1.8235ms)
+✔ M4 snapshots require shared manifest schema, exact topic/content and task kind (1.4901ms)
+✔ an ordinary M1 manifest cannot consume an unrelated business snapshot (0.3844ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (3544.6367ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (159.6617ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (687.6946ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (314.1724ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (4709.9074ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41929.4118

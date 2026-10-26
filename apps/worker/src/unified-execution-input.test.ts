@@ -28,7 +28,9 @@ function fixture() {
     if (sql.includes('FROM bb_input_revisions')) {
       assert.deepEqual(args, ['owner', 'project', 3]); return { rows: [input] };
     }
-    if (sql.includes('FROM bb_review_executions') || sql.includes('FROM bb_m4_executions')) return { rows: [] };
+    if (sql.includes('FROM bb_review_execution_snapshots') || sql.includes('FROM bb_m4_execution_snapshots')) {
+      assert.deepEqual(args, ['owner', 'project', 'run', 1, 3, hash]); return { rows: [] };
+    }
     if (sql.includes('FROM bb_material_versions m')) {
       assert.deepEqual(args.slice(0, 4), ['owner', 'project', 'source', 2]);
       return { rows: [{ filename: 'synthetic.docx', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', object_key: 'exact-source' }] };

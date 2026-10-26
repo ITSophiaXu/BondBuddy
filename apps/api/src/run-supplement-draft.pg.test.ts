@@ -1,7 +1,7 @@
 // Synthetic documents and sessions; real PostgreSQL, HTTP auth/CSRF and transactions.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { digest, transaction, uid, type PrivateBlobs } from './data.js';
@@ -11,7 +11,7 @@ import { emptyM4Draft } from './m4-workspace.js';
 import { claim, finish } from './queue.js';
 import { syntheticReviewPair } from './review-delivery-test-fixture.js';
 import { loadM4Knowledge } from './m4-knowledge.js';
-import { emptyUpdateDetails, type ReviewMaterialPin, type RunSupplementChange, type SourceProspectus } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, M4_DOCUMENT_BILLING_TASKS, type ReviewMaterialPin, type RunSupplementChange, type SourceProspectus } from '@bondbuddy/contracts';
 
 const connection = await isolatedTestDatabase(undefined, 'run-supplement-draft');
 const origin = 'http://bondbuddy.test';
@@ -57,8 +57,9 @@ async function context(blobs?: PrivateBlobs) {
     const sourceProject = flow === 'm4' ? await project() : projectId;
     const basePin = await material(sourceProject, sourceContext?.role ?? 'other'), runId = uid(), jobId = uid();
     const normalPin = { ...basePin, role: sourceContext?.role ?? 'other' };
-    const reviewInput = { source_material_ref: basePin, material_versions: [basePin], requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : canonical ? ['Frozen review requirement'] : [{ text: 'Frozen review requirement' }], as_of: '2026-09-30' };
-    const reviewOrigin = canonical ? { version: 'review-execution-origin-v1', entrypoint: 'quick_action', accepted_proposal: null, context_report_ref: null } : { entrypoint: 'synthetic' }, sourceRunId = uid();
+    const reviewInput = { source_material_ref: basePin, material_versions: [basePin],
+      requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : ['Frozen review requirement'], as_of: '2026-09-30' };
+    const reviewOrigin = { version: 'review-execution-origin-v1', entrypoint: 'quick_action', accepted_proposal: null, context_report_ref: null }, sourceRunId = uid();
     let manifest: any = { draft_revision: 1, issuer_name: 'Frozen issuer', market: 'sse', offering: 'private',
       update_details: { reporting_cutoff: '2026-09-30' }, goals: ['Frozen original goal'], requirements: ['Frozen original requirement'],
       materials: [normalPin], rule_pack_version: 'frozen-rules', template_version: 'frozen-template', reference_release: 'frozen-reference' };
@@ -77,7 +78,9 @@ async function context(blobs?: PrivateBlobs) {
       }
     }
     let topic: string | undefined;
-    if (flow === 'm3' && reviewDrift !== 'missing_review') manifest.review = { version: 'review_v1', version_number: 1, operation: 'full_review', input: reviewInput, finding_ids: [], origin: reviewOrigin };
+    if (flow === 'm3' && reviewDrift !== 'missing_review') manifest.review = { version: 'review_v1', version_number: 1,
+      operation: 'full_review', report_id: uid(), source_report_id: null, source_report_sha256: null,
+      input: reviewInput, finding_ids: [], origin: reviewOrigin };
     if (flow === 'm3_result') { manifest.project_kind = 'review'; manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [], knowledge: [],
       knowledge_status: 'authoring_reference_not_compliance_approval', review_result: {
         version: 'review-result-v1', run_id: sourceRunId, input_revision: 1, input_hash: digest('Synthetic source input'),
@@ -92,7 +95,8 @@ async function context(blobs?: PrivateBlobs) {
       manifest = { version: 'm4-document-input-v1', kind: 'document', project_name: 'Frozen source', topic_id: topic,
         execution_scope_project_id: sourceProject, draft_version: 1, input: { ...emptyM4Draft('underwriter'), source_material: pin,
           materials: [pin], fields: { issuer_name: 'Frozen issuer', market: 'sse' }, requirements: [{ requirement_id: 'frozen', text: 'Frozen requirement', message_id: uid(), message_version: 1 }] },
-        template_material: null, market: 'sse', offering: 'private', knowledge: canonical ? loadM4Knowledge('sse', 'underwriter', 'private') : [{ version: 'frozen-knowledge' }], billing_task: 'm4_G01' };
+        template_material: null, market: 'sse', offering: 'private', knowledge: loadM4Knowledge('sse', 'underwriter', 'private'),
+        billing_task: M4_DOCUMENT_BILLING_TASKS.underwriter };
     }
     const hash = inputManifestHash(manifest), pins = flow === 'm4' ? [...manifest.input.materials, manifest.input.source_material] : manifest.materials;
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version,reference_release)
@@ -102,16 +106,42 @@ async function context(blobs?: PrivateBlobs) {
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'paused','user_paused')`, [runId, owner, projectId, hash, uid(), task, digest(uid())]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,user_pause_requested,checkpoint)
       VALUES($1,$2,$3,$4,$5,'paused','user_paused',true,$6)`, [jobId, owner, runId, task, flow === 'm4' ? 'm4_document_v1' : 'default', { saved_work: 'original checkpoint' }]);
-    if (flow === 'm3' || flow === 'm3_result') await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
-      VALUES($1,$2,$3,$4,$5,$6)`, [runId, owner, projectId, reviewDrift === 'version' ? 2 : 1,
-      reviewDrift === 'operation' ? 'differential_review' : flow === 'm3_result' ? 'revision' : 'full_review',
-      { input: { ...reviewInput,
+    if (flow === 'm3' || flow === 'm3_result') {
+      const snapshot = { input: { ...reviewInput,
           ...(reviewDrift === 'source_pin' ? { source_material_ref: { ...basePin, sha256: digest('Different source') } } : {}),
           ...(reviewDrift === 'materials' ? { material_versions: [] } : {}),
           ...(reviewDrift === 'requirements' ? { requirements: ['Different requirement'] } : {}),
         }, finding_ids: [], plan: null, origin: reviewDrift === 'origin' ? { entrypoint: 'different' } : reviewOrigin,
         ...(flow === 'm3_result' ? { source_run_id: reviewDrift === 'source_run' ? uid() : sourceRunId } : {}),
-      }]);
+      };
+      const insertReview = (db: Pool | PoolClient) => db.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+        VALUES($1,$2,$3,$4,$5,$6)`, [runId, owner, projectId, reviewDrift === 'version' ? 2 : 1,
+        reviewDrift === 'operation' ? 'differential_review' : flow === 'm3_result' ? 'revision' : 'full_review', snapshot]);
+      if (!reviewDrift) await insertReview(pool);
+      else {
+        await assert.rejects(insertReview(pool), (error: unknown) => (error as { code?: string }).code === '23514',
+          'the normal bridge rejects the deliberately inconsistent business snapshot');
+        // Explicit fault injection only in this disposable test database. Copy
+        // the defective legacy content unchanged, so a correct canonical row
+        // cannot conceal the defect from the real HTTP reader. Existing input,
+        // legacy and canonical rows are never updated to create the failure.
+        await transaction(pool, async db => {
+          await db.query('ALTER TABLE bb_review_executions DISABLE TRIGGER bb_review_execution_snapshot_bridge');
+          await db.query('ALTER TABLE bb_review_execution_snapshots DISABLE TRIGGER bb_review_execution_snapshot_exact');
+          await insertReview(db);
+          const injected = await db.query(`INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+            version,operation,source_report_id,snapshot,created_at)
+            SELECT b.owner_user_id,b.project_id,b.run_id,e.execution_version,e.input_revision,e.input_hash,
+              b.version,b.operation,b.source_report_id,b.snapshot,b.created_at
+            FROM bb_review_executions b JOIN bb_run_execution_versions e ON e.owner_user_id=b.owner_user_id
+              AND e.project_id=b.project_id AND e.run_id=b.run_id AND e.execution_version=1
+            WHERE b.run_id=$1 RETURNING snapshot`, [runId]);
+          assert.equal(injected.rowCount, 1); assert.deepEqual(injected.rows[0].snapshot, snapshot);
+          await db.query('ALTER TABLE bb_review_execution_snapshots ENABLE TRIGGER bb_review_execution_snapshot_exact');
+          await db.query('ALTER TABLE bb_review_executions ENABLE TRIGGER bb_review_execution_snapshot_bridge');
+        });
+      }
+    }
     if (flow === 'm4') await pool.query('INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)', [runId, owner, topic, manifest, hash]);
     const url = `/api/v1/runs/${runId}/supplement-draft`;
     const request = (changes: RunSupplementChange[] = [], expected_revision = 0) => ({ request_id: uid(), expected_revision, base_input_revision: 1, base_input_hash: hash, changes });
@@ -125,8 +155,10 @@ async function context(blobs?: PrivateBlobs) {
     project: (await pool.query('SELECT * FROM bb_projects WHERE id=$1', [f.projectId])).rows,
     reviewDraft: (await pool.query('SELECT * FROM bb_review_drafts WHERE project_id=$1', [f.projectId])).rows,
     review: (await pool.query('SELECT * FROM bb_review_executions WHERE run_id=$1', [f.runId])).rows,
+    reviewSnapshots: (await pool.query('SELECT * FROM bb_review_execution_snapshots WHERE run_id=$1 ORDER BY execution_version', [f.runId])).rows,
     m4Draft: (await pool.query('SELECT * FROM bb_m4_drafts WHERE topic_id=$1', [f.topic ?? ''])).rows,
     m4: (await pool.query('SELECT * FROM bb_m4_executions WHERE run_id=$1', [f.runId])).rows,
+    m4Snapshots: (await pool.query('SELECT * FROM bb_m4_execution_snapshots WHERE run_id=$1 ORDER BY execution_version', [f.runId])).rows,
     attempts: (await pool.query('SELECT * FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY id', [f.jobId])).rows,
     events: (await pool.query('SELECT * FROM bb_run_events WHERE run_id=$1 ORDER BY seq', [f.runId])).rows,
     creditEvents: (await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY id', [owner])).rows,

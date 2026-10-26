@@ -48,9 +48,8 @@ async function fixture(pool:Pool,failedStage='model_generation',initialRunHash?:
     good(await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:0,input:{source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null,evidence_links:[]}}));
     let runId:string;
     if(initialRunHash){
-      // A corrupt origin that predates the guard remains recoverable only if
-      // its input evidence agrees. Seed that legacy row at INSERT; never turn
-      // off the guard or mutate a run after model evidence has been recorded.
+      // Seed a mismatched origin at INSERT. The exact business bridge must now
+      // reject it before model evidence can be recorded; never mutate a run.
       const input=(await pool.query('SELECT input FROM bb_review_drafts WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].input;
       const manifest={project_kind:'review',materials:[{...pin,role:'historical'}],review:{version:'review_v1',operation:'full_review',version_number:1,input}};
       runId=uid();
@@ -184,6 +183,11 @@ test('review reassembly rejects mismatched scope, non-replayable evidence and co
   ];
   try{
     for(const scenario of cases)await t.test(scenario.name,async()=>{
+      if (scenario.initialRunHash) {
+        await assert.rejects(fixture(pool,'model_generation',scenario.initialRunHash),
+          error => (error as { constraint?: string }).constraint === 'bb_review_execution_snapshot_exact');
+        return;
+      }
       const f=await fixture(pool,'model_generation',scenario.initialRunHash);await scenario.change(f);
       const before=await evidence(pool,f),job=(await pool.query('SELECT * FROM bb_jobs WHERE id=$1',[f.lease.jobId])).rows[0];
       const cursor=(await pool.query('SELECT event_cursor FROM bb_runs WHERE id=$1',[f.runId])).rows[0].event_cursor;

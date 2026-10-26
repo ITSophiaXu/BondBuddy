@@ -318,10 +318,10 @@ export const inputLockStage: RunStage = {
     if(isProjectQaInput(manifest))return (await projectQaInputGate(pool,run,input))??{kind:'done',value:{project_qa_mode:manifest.operation}};
     if(isIntegrityInput(manifest))return (await integrityInputGate(pool,run,input))??{kind:'done',value:{integrity_mode:manifest.operation}};
     if(isProjectFileInput(manifest))return (await projectFileInputGate(pool,run,input))??{kind:'done',value:{project_file_mode:manifest.operation}};
-    if (hasM4Manifest(manifest)) return (await m4InputGate(pool,run,input)) ?? {kind:'done',value:{m4_mode:manifest?.kind}};
+    if (hasM4Manifest(manifest)) return (await m4InputGate(pool,run,input,undefined,lease)) ?? {kind:'done',value:{m4_mode:manifest?.kind}};
     if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: {
       authoring_mode: 'unified_v1', review_revision: !!(manifest as {authoring?:{review_revision?:unknown}}).authoring?.review_revision } };
-    if (isReviewInput(manifest)) return (await reviewInputGate(pool, run, input)) ?? { kind: 'done', value: { review_mode: 'review_v1', ...(manifest.review.file_delivery ? { file_delivery: manifest.review.file_delivery.version } : {}) } };
+    if (isReviewInput(manifest)) return (await reviewInputGate(pool, run, input, undefined, lease)) ?? { kind: 'done', value: { review_mode: 'review_v1', ...(manifest.review.file_delivery ? { file_delivery: manifest.review.file_delivery.version } : {}) } };
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
     const issuerBindingGate = await verifyGenerationIssuerBinding(run, manifest, loadGenerationIssuerBinding);
@@ -606,9 +606,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if(isProjectQaInput(input.manifest))return projectQaInputGate(pool,run,input);
       if(isIntegrityInput(input.manifest))return integrityInputGate(pool,run,input);
       if(isProjectFileInput(input.manifest))return projectFileInputGate(pool,run,input);
-      if (hasM4Manifest(input.manifest)) return m4InputGate(pool,run,input);
+      if (hasM4Manifest(input.manifest)) return m4InputGate(pool,run,input,undefined,lease);
       if (isUnifiedInput(input.manifest)) return unifiedInputGate(pool, run, input);
-      if (isReviewInput(input.manifest)) return reviewInputGate(pool, run, input);
+      if (isReviewInput(input.manifest)) return reviewInputGate(pool, run, input,undefined,lease);
       const generationGate = await verifyGenerationIssuerBinding(run, input.manifest, deps.loadGenerationIssuerBinding);
       if (generationGate) return generationGate;
       if(run.channel==='non_production_test')

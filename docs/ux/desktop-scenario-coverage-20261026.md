@@ -202,6 +202,8 @@ node ../../node_modules/@playwright/test/cli.js test --config playwright.desktop
 
 后续已补充[原任务输入数据库保护](../acceptance/desktop-ux-coverage-20261026/run-origin/README.md)，作为 G03 版本化续做的前提。隔离 PG 回归 34 pass / 0 fail / 1 skip，未新增用户旅程或活动执行版本，不改变 G03 的未完成结论。
 
+后续新增[准确执行的完整业务快照](../acceptance/desktop-ux-coverage-20261026/execution-business-snapshots/README.md)：M3/M4 快照、实际 loader、独立 gate 和模型调用前复核改为准确执行身份读取，保留 V1、旧内容和账务。此项是必要执行基础，未开放新材料采用或增加 G03 用户旅程通过数；具体追加价格仍待确定。
+
 | 后续事项 | 本轮记录方式 |
 | --- | --- |
 | 真实服务、worker/模型、PG/Blob 与真实账务 | 未执行或引用独立报告；合成 HTTP/SQL pool 不代表通过 |

@@ -1,0 +1,14 @@
+✔ standalone exchange guides cover four document types with eight distinct immutable snapshots (86.5615ms)
+✔ readable SSE opinion replaces missing case layout while historical guide evidence remains unchanged (15.8664ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.4814ms)
+✔ global assistant persistence, owner isolation, no implicit execution and create retries (3376.4546ms)
+✔ contract-valid revision beyond PostgreSQL integer range has owned atomic rejection evidence (3359.9282ms)
+✔ locked materials enter the draft queue before parsing and business review; security pins and channel isolation remain enforced (3869.7193ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56486.4243

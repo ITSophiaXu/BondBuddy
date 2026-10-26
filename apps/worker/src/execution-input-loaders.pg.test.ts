@@ -120,7 +120,7 @@ test('real claimed M1, legacy/file M3 and M4 loaders read exact immutable execut
       if (kind === 'm3') {
         const review = (manifest as ReviewManifest).review;
         await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
-          VALUES($1,$2,$3,1,'full_review',$4)`, [runId, owner, projectId, { input: review.input, origin: review.origin }]);
+          VALUES($1,$2,$3,1,'full_review',$4)`, [runId, owner, projectId, { input: review.input, origin: review.origin, finding_ids: review.finding_ids }]);
       }
       if (kind === 'm4') await pool.query(`INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash)
         VALUES($1,$2,$3,$4,$5)`, [runId, owner, topic, manifest, hash]);
@@ -137,7 +137,7 @@ test('real claimed M1, legacy/file M3 and M4 loaders read exact immutable execut
       return { ctx, manifest, source, projectId, sourceId, hash };
     };
     const historyTables = ['bb_projects', 'bb_uploads', 'bb_material_versions', 'bb_input_revisions', 'bb_run_execution_versions',
-      'bb_runs', 'bb_jobs', 'bb_review_executions', 'bb_m4_executions', 'bb_snapshot_refs', 'bb_user_submission_versions',
+      'bb_runs', 'bb_jobs', 'bb_review_executions', 'bb_m4_executions', 'bb_review_execution_snapshots', 'bb_m4_execution_snapshots', 'bb_snapshot_refs', 'bb_user_submission_versions',
       'bb_model_call_attempts', 'bb_artifact_versions', 'bb_run_events', 'bb_outbox', 'bb_authoring_progress',
       'bb_credit_accounts', 'bb_credit_lots', 'bb_credit_events', 'bb_credit_reservations', 'bb_m4_metering'] as const;
     const evidence = async (includeAccessAudit = false) => Object.fromEntries(await Promise.all(
@@ -148,7 +148,7 @@ test('real claimed M1, legacy/file M3 and M4 loaders read exact immutable execut
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `loader_${uid().replaceAll('-', '').slice(0, 20)}`]);
       await transaction(pool, client => grantCredits(client, { owner, source: 'existing_grant', key: uid(), points: 10000,
         expiresAt: null, actor: 'synthetic-test', reason: 'Nonempty ledger for read-only execution loader regression' }));
-      for (const kind of ['m1', 'm3', 'm4'] as const) await t.test(kind, async () => {
+      for (const kind of ['m1', 'm3', 'm4'] as const) await t.test(kind, async current => {
         const f = await fixture(kind), before = await evidence(), storedBytes = blobEvidence();
         if (kind === 'm1') {
           const loaded = await loadUnifiedInput(f.ctx, { originalFiles: true }), expected = f.manifest as UnifiedManifest;
@@ -203,6 +203,23 @@ test('real claimed M1, legacy/file M3 and M4 loaders read exact immutable execut
           assert.deepEqual(await evidence(true), beforeRejections, `${loaderName}: ${name} must not change durable state or access audit`);
         }
         assert.deepEqual(blobEvidence(), storedBytes);
+        if (kind !== 'm1') await current.test(`${kind}: missing exact business snapshot never falls back to legacy`, async () => {
+          const client = await pool.connect();
+          const table = kind === 'm3' ? 'bb_review_execution_snapshots' : 'bb_m4_execution_snapshots';
+          const legacy = kind === 'm3' ? 'bb_review_executions' : 'bb_m4_executions';
+          try {
+            await client.query('BEGIN');
+            // Deliberate corruption exists only inside this private clone transaction.
+            await client.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+            await client.query(`DELETE FROM ${table} WHERE owner_user_id=$1 AND run_id=$2`, [owner, f.ctx.run.id]);
+            assert.equal((await client.query(`SELECT 1 FROM ${legacy} WHERE owner_user_id=$1 AND run_id=$2`, [owner, f.ctx.run.id])).rowCount, 1);
+            const context = { ...f.ctx, pool: client as unknown as Pool };
+            assert.deepEqual(await inputLockStage.run(context), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+            for (const [name, load] of loaders) await assert.rejects(load(context), conflict, `${name} must require its exact snapshot`);
+          } finally { await client.query('ROLLBACK'); client.release(); }
+          assert.deepEqual(await evidence(true), beforeRejections);
+          assert.deepEqual(blobEvidence(), storedBytes);
+        });
       });
     } finally { await pool.end(); }
   });

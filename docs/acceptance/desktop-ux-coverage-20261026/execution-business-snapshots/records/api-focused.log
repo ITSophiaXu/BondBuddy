@@ -1,0 +1,29 @@
+✔ all legacy business inserts bridge complete exact snapshots; actual reader preserves fields and original timestamps (340.3218ms)
+✔ a bad bridge aborts the legacy insert instead of dropping or fabricating a snapshot (1995.4928ms)
+✔ versioned snapshots are immutable and cannot borrow another owner, input, timestamp or executable V2 (1657.4595ms)
+✔ missing canonical snapshots fail closed even when valid legacy records still exist (291.2025ms)
+✔ a legacy insert without its exact initial execution fails rather than silently skipping the bridge (304.5644ms)
+✔ actual migration backfills exact legacy V1 content and rejects mismatched or missing historical identity (4747.4546ms)
+✔ migration drains topic row lockers before locking inputs, so an in-flight M4 creator can finish (4998.4873ms)
+✔ execution input reader consumes exact versioned business snapshots without changing origin or business versions (6.9922ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (2.0026ms)
+✔ ordinary M1 has no business snapshots; every component of a business snapshot identity is checked (5.7602ms)
+✔ required snapshots reject absence and duplicates without legacy or latest fallback (1.5001ms)
+✔ review snapshots reject invalid shapes and changed input, business version, operation, source, origin or findings (2.8708ms)
+✔ review result revisions keep exact source, materials and saved requirements (1.453ms)
+✔ M4 snapshots require shared manifest schema, exact topic/content and task kind (1.4079ms)
+✔ an ordinary M1 manifest cannot consume an unrelated business snapshot (0.3993ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (3067.9441ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (130.3288ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (604.006ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (311.0857ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (4116.8472ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 50938.2041

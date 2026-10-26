@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T14:01:42.277Z",
+  "stopped": "2026-10-26T14:09:08.695Z",
+  "owned_dispatch_pid": 51120,
+  "reason": "Buffered full collection remained unobservable; restart with incremental log and bounded per-test timeout. No pass/fail aggregate is adopted.",
+  "result": {
+    "status": 1,
+    "output": "ERROR: Access denied\r\r\n"
+  }
+}

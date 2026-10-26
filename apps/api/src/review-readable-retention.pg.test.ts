@@ -38,7 +38,11 @@ async function context(){
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`readable_${uid().replaceAll('-','').slice(0,16)}`]);
     await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic readable lifecycle','review')",[projectId,owner]);
-    const manifest={synthetic:true,requirements:['Read only the exact delivered report']},inputHash=inputManifestHash(manifest);
+    const reviewInput={source_material_ref:null,material_versions:[],requirements:['Read only the exact delivered report'],as_of:null};
+    const reviewOrigin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
+    const manifest={synthetic:true,project_kind:'review',materials:[],review:{version:'review_v1',operation:'full_review',
+      report_id:uid(),version_number:1,source_report_id:null,source_report_sha256:null,input:reviewInput,origin:reviewOrigin,finding_ids:[]}},
+      inputHash=inputManifestHash(manifest);
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,1,$2,1,$3,$4,'[]','[]')`,[projectId,owner,inputHash,manifest]);
     await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage)
@@ -46,7 +50,7 @@ async function context(){
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage)
       VALUES($1,$2,$3,'review','synthetic-readable','running','model_generation')`,[jobId,owner,runId]);
     await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
-      VALUES($1,$2,$3,1,'full_review','{}')`,[runId,owner,projectId]);
+      VALUES($1,$2,$3,1,'full_review',$4)`,[runId,owner,projectId,{input:reviewInput,origin:reviewOrigin,finding_ids:[]}]);
     const promptKey=`users/${owner}/projects/${projectId}/snapshots/${promptId}`,prompt=Buffer.from('Synthetic exact review prompt');
     objects.set(promptKey,prompt);
     await pool.query(`INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash)

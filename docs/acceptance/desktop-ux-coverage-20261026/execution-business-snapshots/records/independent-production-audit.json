@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-10-26T14:40:37.471Z",
+  "method": "Read-only independent subagent review; no execution claim",
+  "scope": [
+    "0124_run_execution_business_snapshots.sql",
+    "readRunExecutionInput",
+    "review-workspace/editor and M4 newRun creation sites"
+  ],
+  "findings": [
+    "No known valid V1 creation entry point has an added incompatible snapshot shape in current implementation",
+    "Review-result selected pin order is preserved in both manifest and business snapshot",
+    "Review editor export reuses exact input/origin/finding IDs and updates only intended business version",
+    "M4 knowledge remains optional in shared manifest schema",
+    "Positive integral JSONB numbers preserve numeric semantics for 1.0 and 1e2",
+    "Topic EXCLUSIVE first drains topic-to-input creator row locks before input/run SHARE ROW EXCLUSIVE"
+  ],
+  "outcome": "No additional production change recommended",
+  "limits": "Static review complements real PG tests; no successor execution, model, pricing or UX acceptance established."
+}

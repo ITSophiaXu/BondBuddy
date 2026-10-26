@@ -1,0 +1,71 @@
+{
+  "recorded_at": "2026-10-26T14:48:57.989Z",
+  "command": "api-all-stream.json",
+  "counts": {
+    "tests": 610,
+    "passed": 484,
+    "failed": 50,
+    "cancelled": 3,
+    "skipped": 73,
+    "todo": 0
+  },
+  "independent_review": "48 leaf failure stacks plus five failed parent tests explain 53 non-passing results; no additional files beyond the thirteen below.",
+  "groups": [
+    {
+      "reason": "Runtime default assertions affected by the session-recorded global runtime override; original process environment was not captured",
+      "files": [
+        "execution-key.test.js",
+        "logical-job.test.js",
+        "non-production-test.test.js",
+        "preflight-difficulty.test.js",
+        "revision-range.test.js",
+        "working-draft-parse-admission.test.js"
+      ],
+      "corrections": [
+        "api-config-regression.json",
+        "api-corrective.json"
+      ]
+    },
+    {
+      "reason": "Preexisting standalone knowledge catalog test iterated expanded business enum, and preexisting assistant wallet assertion expected superseded upfront freezing",
+      "files": [
+        "m4-knowledge.test.js",
+        "project-assistant.pg.test.js"
+      ],
+      "corrections": [
+        "api-corrective.json"
+      ]
+    },
+    {
+      "reason": "Incomplete legacy synthetic business snapshots now rejected by exact transactional bridge; negative tests must assert the earlier rejection or explicitly inject matching corrupt legacy/canonical snapshots for read refusal tests",
+      "files": [
+        "review-readable-retention.pg.test.js",
+        "run-supplement-draft.pg.test.js",
+        "run-supplement-files.pg.test.js",
+        "run-working-files.pg.test.js"
+      ],
+      "corrections": [
+        "api-regression.json"
+      ]
+    },
+    {
+      "reason": "Three explicit60000ms timeouts and a following inspection queue timeout; all four exact titles passed in isolation with240000ms budget. Original queue contamination is inferred, not independently proven; production and test source unchanged.",
+      "files": [
+        "upload-safety.test.js"
+      ],
+      "corrections": [
+        "api-upload-timeout.json"
+      ]
+    }
+  ],
+  "all_corrections_pending_final_selection": false,
+  "aggregate": null,
+  "full_default_green_run": false,
+  "corrective_results": {
+    "api_focused": "21/21",
+    "api_regression": "186/186",
+    "api_corrective": "6/6",
+    "api_default_config": "6/6",
+    "isolated_upload_titles": "4/4"
+  }
+}

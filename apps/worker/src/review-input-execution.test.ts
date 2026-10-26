@@ -24,7 +24,9 @@ function fixture() {
   const inputs = [originInput];
   const identities = [{ owner_user_id: owner, project_id: project, run_id: runId, execution_version: 1, input_revision: 7, input_hash: hash }];
   const reviewExecution = { owner_user_id: owner, project_id: project, run_id: runId, report_id: manifest.review.report_id,
-    version: 2, operation: 'full_review', snapshot: { input: manifest.review.input } };
+    execution_version: 1, input_revision: 7, input_hash: hash, source_report_id: null,
+    version: 2, operation: 'full_review', snapshot: { input: manifest.review.input, finding_ids: [] } };
+  const state = { snapshotAvailable: true };
   const calls: { sql: string; params: unknown[] }[] = [];
   const pool = { query: async (sql: string, params: unknown[] = []) => {
     calls.push({ sql, params });
@@ -39,9 +41,11 @@ function fixture() {
       rows = identities.filter(row => row.owner_user_id === params[0] && row.project_id === params[1] && row.run_id === params[2]);
     } else if (sql.includes('FROM bb_input_revisions')) {
       rows = inputs.filter(row => row.owner_user_id === params[0] && row.project_id === params[1] && row.revision === params[2]);
-    } else if (sql.includes('FROM bb_review_executions')) {
-      rows = params[0] === owner && params[1] === project && params[2] === runId ? [reviewExecution] : [];
-    } else if (sql.includes('FROM bb_m4_executions')) {
+    } else if (sql.includes('FROM bb_review_execution_snapshots')) {
+      assert.deepEqual(params, [owner, project, runId, 1, 7, hash]);
+      rows = state.snapshotAvailable ? [reviewExecution] : [];
+    } else if (sql.includes('FROM bb_m4_execution_snapshots')) {
+      assert.deepEqual(params, [owner, project, runId, 1, 7, hash]);
       rows = [];
     } else if (sql.includes('FROM bb_material_versions')) {
       rows = params[0] === owner && params[1] === project && params[2] === source.material_id && params[3] === source.material_version
@@ -58,7 +62,7 @@ function fixture() {
     checkpoint: { review_sources: { snapshots: [{ ...source, snapshot_id: null, response_sha256: null, gap: 'Synthetic unavailable evidence' }] } },
     blobs: {} as StageContext['blobs'], signal: new AbortController().signal, values: new Map(),
   };
-  return { ctx, calls, persistedRun, originInput, inputs, identities, manifest, reviewExecution };
+  return { ctx, calls, persistedRun, originInput, inputs, identities, manifest, reviewExecution, state };
 }
 
 async function rejectsWithoutResult(f: ReturnType<typeof fixture>) {
@@ -88,7 +92,8 @@ test('review loader consumes the resolved V1 input and keeps the original run cr
   assert.deepEqual(reads[0].params, [f.ctx.run.owner_user_id, f.ctx.run.project_id, 7]);
   assert.equal(reads[0].sql.includes('JOIN bb_runs'), false);
   assert(f.calls.some(call => call.sql.includes('FROM bb_run_execution_versions')));
-  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_executions')).length, 1);
+  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_execution_snapshots')).length, 1);
+  assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_executions')), false);
 });
 
 test('another revision with identical bytes cannot fall back to the original run input', async () => {
@@ -145,7 +150,7 @@ test('resolved input still passes the existing immutable review snapshot gate', 
   f.reviewExecution.snapshot.input = { ...f.manifest.review.input, requirements: ['Different execution requirement'] };
   await rejectsWithoutResult(f);
   assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
-  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_executions')).length, 1);
+  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_execution_snapshots')).length, 1);
 });
 
 test('an explicitly missing or differently scoped resolved review snapshot cannot reload the origin', async () => {
@@ -158,10 +163,11 @@ test('an explicitly missing or differently scoped resolved review snapshot canno
   }
 });
 
-test('direct review gate callers retain the original exact database snapshot check', async () => {
+test('direct review gate callers resolve the exact versioned database snapshot', async () => {
   const f = fixture();
   assert.equal(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput), null);
-  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_executions')).length, 1);
+  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_execution_snapshots')).length, 1);
+  assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_executions')), false);
   f.reviewExecution.snapshot.input = { ...f.manifest.review.input, requirements: ['Changed persisted snapshot'] };
   assert.deepEqual(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput),
     { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
@@ -173,9 +179,55 @@ test('malformed review snapshot objects fail explicitly for resolved and direct 
       const f = fixture();
       Object.assign(f.reviewExecution, { snapshot });
       assert.deepEqual(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput,
-        resolved ? f.reviewExecution : undefined), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
-      assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_executions')).length, resolved ? 0 : 1);
+        resolved ? f.reviewExecution : undefined, f.ctx.lease), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+      assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_review_execution_snapshots')).length, resolved ? 0 : 1);
       assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
     }
   }
+});
+
+test('review loader and standalone gate reject missing or mismatched execution snapshots without a legacy fallback', async () => {
+  const changes: ((f: ReturnType<typeof fixture>) => void)[] = [
+    f => { f.state.snapshotAvailable = false; },
+    f => { f.reviewExecution.execution_version = 2; },
+    f => { f.reviewExecution.input_revision = 8; },
+    f => { f.reviewExecution.input_hash = 'b'.repeat(64); },
+    f => { f.reviewExecution.owner_user_id = 'other-owner'; },
+    f => { f.reviewExecution.project_id = 'other-project'; },
+    f => { f.reviewExecution.run_id = 'other-run'; },
+  ];
+  for (const change of changes) {
+    const loader = fixture(); change(loader); await rejectsWithoutResult(loader);
+    const direct = fixture(); change(direct);
+    assert.deepEqual(await reviewInputGate(direct.ctx.pool, direct.ctx.run, direct.originInput),
+      { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    for (const f of [loader, direct]) {
+      assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_executions')), false);
+      assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
+    }
+  }
+});
+
+test('supplied review snapshots must match every field of the expected execution identity', async () => {
+  for (const change of [
+    (f: ReturnType<typeof fixture>) => { f.reviewExecution.execution_version = 2; },
+    (f: ReturnType<typeof fixture>) => { f.reviewExecution.input_revision = 8; },
+    (f: ReturnType<typeof fixture>) => { f.reviewExecution.input_hash = 'b'.repeat(64); },
+  ]) {
+    const f = fixture(); change(f);
+    assert.deepEqual(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput, f.reviewExecution, f.ctx.lease),
+      { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_execution_snapshots')), false);
+    assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
+  }
+});
+
+test('supplied review snapshots and a forged successor identity cannot bypass the persisted V1 execution', async () => {
+  const f = fixture(); f.reviewExecution.execution_version = 2;
+  const forged = { ...f.ctx.lease, executionVersion: 2 };
+  assert.deepEqual(await reviewInputGate(f.ctx.pool, f.ctx.run, f.originInput, f.reviewExecution, forged),
+    { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+  assert.equal(f.calls.filter(call => call.sql.includes('FROM bb_run_execution_versions')).length, 1);
+  assert.equal(f.calls.some(call => call.sql.includes('FROM bb_review_execution_snapshots')), false);
+  assert.equal(f.calls.some(call => call.sql.includes('FROM bb_material_versions')), false);
 });

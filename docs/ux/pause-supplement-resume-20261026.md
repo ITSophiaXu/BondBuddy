@@ -63,7 +63,7 @@
 | prompt snapshot 已锁住原任务并验证准确 V1 输入，保留原身份约束 | 后继输入须有准确执行关联与授权；不能直接去掉检查。Run DTO、执行回执和历史明确区分初始输入与当前采用输入，保留原执行请求的幂等身份 |
 | `durable-probe-journal.ts:81` 按逻辑调用查最后 attempt；file authoring 使用常量 `file-authoring-v1` | 每个执行版本使用稳定的工作单元身份及依赖指纹；崩溃恢复重用同一调用，补料的新处理使用新身份。不能靠盲目增加 attempt 重放旧工作 |
 | stage 检查点仍只按 stage 名索引；共享输入 reader 与三个实际 loader 目前只接受 V1 | 后继执行统一解析活动版本；按阶段依赖判断复用/新处理，保留旧检查点。不能复用依赖已变的 stage，也不能把所有 stage 一律清空重跑 |
-| `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；实际 loader/gate 已消费准确 V1 快照 | 仍须追加每执行版本的业务快照/报告关联，并保持旧记录不可变；模型、成果登记及历史也须解析准确版本。只接通共享读取不足以支持后继执行 |
+| `bb_review_executions` / `bb_review_reports` 和 `bb_m4_executions` 按 run 唯一且不可变；0124 已追加完整身份的业务快照，实际 loader/gate 消费准确 V1 | 仍须追加每执行版本的报告关联，并开放受控的后继业务快照创建；模型、成果登记及历史也须解析准确版本，旧记录继续不可变。当前只有 V1 不能支持后继执行 |
 | 既有 artifact 不直接记录 input revision，部分来源通过 run 反查；多个成果登记按 `(run_id, kind)` 唯一 | 增加不可变的 artifact→执行版本/输入关系；已有唯一结果索引仅作为“当前结果”投影，历史关联另行追加。项目募集书、文件族、previous_output、复核来源和助手准确成果续改均使用准确关联 |
 | `server.ts` 的成果/下载校验主要依赖整个 run 已成功；`unified-input.ts` 的 previous_output 只允许已成功来源任务 | 下载授权进一步绑定具体成果/执行版本和该版本交付状态，避免新版本成功后把旧暂存 Word 一并变为正式交付。新增私有的前序工作 pin，按 owner、同 run、执行版本、Blob 和 hash 核对暂停时已保存文件；不放宽公开成功成果门，也不伪造旧版本成功 |
 | `0097_m4_cross_project_material_retention.sql` 的材料 pin 判定沿原 run 输入/M4 快照读取 | 保留所有已采用执行版本、旧模型结果及历史成果所引用的材料字节，不能只 pin 原输入或当前输入。清理/归档/账号删除继续遵守既有生命周期政策 |
@@ -115,6 +115,12 @@ legacy 登记后只有准确 raw 字节经 bounded 长度/hash 核验才记录�
 组合内容锁遵守 prompt/result → run 工作 → 准确文件的相对顺序（同时需要两个父锁时为 prompt→result），关系范围锁在内容锁前取得。内服 captured-file 与公开 readable-report 均在等待后重验归属和父/文件清理状态，已清理登记即使仍有残留字节也拒绝；有效旧来源缺 registry 时不伪造历史写入事实。存储扫描新增 `owners/`，已登记存储、未完成写入、未知/清理中/已清理残留分开报告，未知文件绝不按目录前缀自动删除。
 
 详细范围、复现与所选轮次见[工作文件生命周期验收](../acceptance/desktop-ux-coverage-20261026/working-file-lifecycle/README.md)。`0122`、`0123` 已分别实际应用，最终构建/类型/契约检查通过。工作文件专项 31 pass、worker 108 pass/12 skip；API 完整集合为 264 pass、1 fail、30 skip，唯一失败是合成 readable-retention fixture 缺必要 raw Word，补齐该测试后准确组 9/9。完整 API 未重跑，不相加冒充一次全通过；五个 Windows sink 标题是额外按名排除，不计入 30 skip，也不构成验收。两次冻结间自动核对仅该测试 src/编译 JS 变化，生产源码无变动；最终 before/after 2052 项一致，数据库空模板无测试 clones，本轮专用 PostgreSQL 已按准确 PID 停止，证据均列入专项 summary。本次没有接通后继采用/生成、追加计价或新版 Word。历史上父内容已先清理且未登记的 raw 文件仍可能只能诊断；不可变数据库 editor 正文生命周期和 provider JSON 自身的一般写入意图窗口也不在本次修复范围。G03 / 完整 UX goal 继续 active、未完成。
+
+### 执行版本业务快照基础
+
+追加 `0124_run_execution_business_snapshots.sql`，将完整 M3/M4 业务快照固定到 owner/project/run/execution_version/input_revision/input_hash，保留旧业务行、业务版本和原创建时间。已有 V1 精确回填；现有业务创建入口在同一事务自动桥接，缺失/不符拒绝整笔创建。迁移按 M4 的 topic→input 顺序排空行锁；材料版本的 JSONB `1.0` 沿现有整数契约处理。
+
+共同 reader 和真实 M1/M3/M4 loader 读取准确输入及新表；M3/M4 独立 gate、input_lock 和模型调用前复核同样接入。缺少必需快照不得借用旧表，传入快照不能绕过持久执行身份。普通 M1 不凭空要求业务快照。此基础仍保留 V1 限制，尚未提供采用、新报告/成果身份、后继调用或追加计价；G03 继续开放。
 
 ## 需要确定的一项产品规则：补料重做费用
 

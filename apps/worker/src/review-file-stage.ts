@@ -46,7 +46,7 @@ export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFile
     || resolved.run.input_revision !== ctx.run.input_revision || resolved.run.input_hash.trim() !== ctx.run.input_hash.trim())
     throw Error('INPUT_REVISION_CONFLICT');
   const row = resolved.input;
-  if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row, resolved.reviewExecution)) throw Error('INPUT_REVISION_CONFLICT');
+  if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row, resolved.reviewExecution, ctx.lease)) throw Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as ReviewManifest;
   if (!['review-file-v1','review-correction-v2'].includes(manifest.review.file_delivery?.version ?? '') || manifest.review.operation === 'revision'
     || !Array.isArray(manifest.review.file_delivery?.knowledge)

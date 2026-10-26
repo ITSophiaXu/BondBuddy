@@ -4,6 +4,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import { readRunExecutionInput, type ReviewExecutionInputSnapshot } from '@bondbuddy/api/run-execution-input';
+import { assertRunExecution, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
 import { getParseSnapshot } from './parse-evidence-repository.js';
 import type { StageContext, StageOutcome, RunRow, InputRevisionRow } from './run-pipeline.js';
 import type { Pool } from 'pg';
@@ -52,7 +53,7 @@ export function validReviewExecutionOrigin(review:ReviewManifest['review'],proje
   }catch{return false;}
 }
 export async function reviewInputGate(pool: Pool, run: RunRow, input: InputRevisionRow,
-  fixedExecution?: ReviewExecutionInputSnapshot | null): Promise<Extract<StageOutcome, { kind: 'fail' }> | null> {
+  fixedExecution?: ReviewExecutionInputSnapshot | null, expected?: RunExecutionIdentity): Promise<Extract<StageOutcome, { kind: 'fail' }> | null> {
   const invalid = { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' } as const;
   if (!isReviewInput(input.manifest) || inputManifestHash(input.manifest) !== run.input_hash.trim() || input.input_hash.trim() !== run.input_hash.trim()) return invalid;
   const m = input.manifest;
@@ -61,10 +62,21 @@ export async function reviewInputGate(pool: Pool, run: RunRow, input: InputRevis
   // Only internal execution readers supply this snapshot. Explicit absence must never reload the origin.
   if (fixedExecution !== undefined && (!fixedExecution || fixedExecution.owner_user_id !== run.owner_user_id
     || fixedExecution.project_id !== run.project_id || fixedExecution.run_id !== run.id)) return invalid;
-  const execution = fixedExecution === undefined
-    ? (await pool.query('SELECT version,operation,snapshot FROM bb_review_executions WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3', [run.owner_user_id, run.project_id, run.id])).rows[0]
-    : fixedExecution;
-  if (!execution || execution.version !== m.review.version_number || execution.operation !== m.review.operation
+  if (expected && (expected.inputRevision !== run.input_revision || expected.inputHash !== run.input_hash.trim())) return invalid;
+  let execution: ReviewExecutionInputSnapshot | null | undefined = fixedExecution;
+  let identity: RunExecutionIdentity;
+  try {
+    identity = await assertRunExecution(pool, run, expected);
+    if (execution === undefined) execution = (await readRunExecutionInput(pool, run.owner_user_id, run.id, identity)).reviewExecution;
+  } catch (error) {
+    if ((error as { code?: string }).code === 'INPUT_REVISION_CONFLICT') return invalid;
+    throw error;
+  }
+  if (!execution || execution.owner_user_id !== run.owner_user_id || execution.project_id !== run.project_id
+    || execution.run_id !== run.id || execution.execution_version !== identity.executionVersion
+    || execution.input_revision !== identity.inputRevision || typeof execution.input_hash !== 'string'
+    || execution.input_hash.trim() !== identity.inputHash
+    || execution.version !== m.review.version_number || execution.operation !== m.review.operation
     || !execution.snapshot || typeof execution.snapshot !== 'object' || Array.isArray(execution.snapshot)
     || !execution.snapshot.input || typeof execution.snapshot.input !== 'object' || Array.isArray(execution.snapshot.input)
     || inputManifestHash(execution.snapshot.input) !== inputManifestHash(m.review.input)
@@ -95,7 +107,7 @@ export async function loadReviewInput(ctx: StageContext): Promise<ReviewAnalysis
   const { run, input: row, reviewExecution } = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);
   if (run.project_id !== ctx.run.project_id || run.input_revision !== ctx.run.input_revision
     || run.input_hash.trim() !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
-  if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row, reviewExecution)) throw new Error('INPUT_REVISION_CONFLICT');
+  if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row, reviewExecution, ctx.lease)) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as ReviewManifest, review = manifest.review;
   const records: ReviewAnalysisRecord[] = [], limitations: string[] = [];
   type SnapshotPin = { material_id: string; material_version: number; snapshot_id: string | null; response_sha256: string | null; gap: string | null };

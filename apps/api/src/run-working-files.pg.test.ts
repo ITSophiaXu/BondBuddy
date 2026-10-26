@@ -19,6 +19,10 @@ const connection=await isolatedTestDatabase(undefined,'run-working-files');
 const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const schema='codex-file-word-v1',future=new Date('2126-10-26T00:00:00Z');
 const conflict=(error:unknown)=>error instanceof Problem&&error.status===409&&error.code==='INPUT_REVISION_CONFLICT';
+const correctionManifest=()=>({draft_revision:1,project_kind:'review',materials:[],review:{version:'review_v1',
+  report_id:uid(),version_number:1,operation:'full_review',source_report_id:null,source_report_sha256:null,
+  input:{source_material_ref:null,material_versions:[],requirements:[],as_of:null},origin:null,finding_ids:[],
+  file_delivery:{version:'review-correction-v2',knowledge:[]}}});
 type Write=Parameters<typeof writeRunWorkingFile>[0];
 type Tracked<T>=Promise<{ok:true;value:T}|{ok:false;error:unknown}>;
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(yes=>{resolve=yes;});return {promise,resolve};}
@@ -68,7 +72,8 @@ async function context(manifestOverride?:Record<string,unknown>){
     const inputHash=inputManifestHash(manifest);
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,
       material_versions,requirement_message_ids,rule_pack_version,template_version,reference_release)
-      VALUES($1,1,$2,1,$3,$4,'[]','[]','frozen-rules','frozen-template','frozen-reference')`,[projectId,owner,inputHash,manifest]);
+      VALUES($1,1,$2,1,$3,$4,$5,'[]','frozen-rules','frozen-template','frozen-reference')`,
+    [projectId,owner,inputHash,manifest,JSON.stringify(manifest.materials??[])]);
     await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[projectId]);
     await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage)
       VALUES($1,$2,$3,1,$4,$5,$7,$6,'queued','queued')`,[runId,owner,projectId,inputHash,uid(),digest(uid()),taskKind]);
@@ -77,7 +82,8 @@ async function context(manifestOverride?:Record<string,unknown>){
     if(taskKind==='review'){
       const review=manifest.review as any;
       await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
-        VALUES($1,$2,$3,$4,$5,$6)`,[runId,owner,projectId,review.version_number,review.operation,{input:review.input,origin:review.origin}]);
+        VALUES($1,$2,$3,$4,$5,$6)`,[runId,owner,projectId,review.version_number,review.operation,
+          {input:review.input,origin:review.origin,finding_ids:review.finding_ids}]);
     }
     const lease=await claim(pool,300,{runKinds:[taskKind]});assert.ok(lease);assert.equal(lease.runId,runId);assert.equal(lease.jobId,jobId);
     const promptBytes=Buffer.from(JSON.stringify({version:'synthetic-working-file-prompt-v1',input_hash:inputHash}));
@@ -132,6 +138,7 @@ async function context(manifestOverride?:Record<string,unknown>){
     const history=async()=>{
       const result:Record<string,any[]>={};
       for(const table of ['bb_runs','bb_jobs','bb_run_events','bb_input_revisions','bb_run_execution_versions','bb_snapshot_refs',
+        'bb_review_executions','bb_review_execution_snapshots','bb_m4_execution_snapshots',
         'bb_model_call_attempts','bb_model_call_execution_bindings','bb_provider_result_refs','bb_provider_call_observations',
         'bb_usage_observations','bb_run_supplement_drafts','bb_run_supplement_saved_work','bb_run_supplement_saved_results',
         'bb_credit_accounts','bb_credit_lots','bb_credit_reservations','bb_credit_events','bb_run_working_objects','bb_run_working_sources'])
@@ -249,7 +256,7 @@ test('working-file authority rejects wrong source, execution, owner, path and lo
 
 test('shared correction objects keep both real attempt claims and every report hash is inventoried',
   {skip:!connection,timeout:30000},async()=>{
-  const c=await context({review:{file_delivery:{version:'review-correction-v2'}}});
+  const c=await context(correctionManifest());
   try{
     const second=await c.addAttempt(),bytes=Buffer.from('Synthetic stable correction');
     const source=(attemptId:string):RunWorkingFileSource=>({kind:'provider',attemptId,resultSchemaVersion:'codex-review-file-v1'});
@@ -308,7 +315,7 @@ test('database guards preserve exact source identity, immutable inventory and mo
 
 test('a newer exact attempt claim extends retention of a shared correction physical object',
   {skip:!connection,timeout:30000},async()=>{
-  const c=await context({review:{file_delivery:{version:'review-correction-v2'}}});
+  const c=await context(correctionManifest());
   try{
     const second=await c.addAttempt(),file=c.file('clean.docx',Buffer.from('Synthetic correction shared across attempts'),
       {kind:'provider',attemptId:c.intent.call_id,resultSchemaVersion:'codex-review-file-v1'},'review-files/correction');
@@ -423,7 +430,8 @@ test('legacy shared correction files retain every newer exact result claim acros
     const pin={material_id:uid(),material_version:1,sha256:digest('Synthetic fixed source material')};
     const input={source_material_ref:pin,material_versions:[pin],requirements:['Synthetic immutable review requirement'],as_of:'2026-09-30'};
     const c=await context({draft_revision:1,project_kind:'review',materials:[{...pin,role:'other'}],
-      review:{version:'review_v1',operation:'full_review',version_number:1,input,origin:null,finding_ids:[],
+      review:{version:'review_v1',operation:'full_review',report_id:uid(),version_number:1,input,origin:null,finding_ids:[],
+        source_report_id:null,source_report_sha256:null,
         file_delivery:{version:'review-correction-v2',knowledge:[]}}});
     try{
       const start=new Date(),recent=new Date(+start+2*86400000),expired=new Date(+start+4*86400000);

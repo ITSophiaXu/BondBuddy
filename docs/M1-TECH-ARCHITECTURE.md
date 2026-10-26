@@ -850,9 +850,11 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 ### 2026-10-26：补料候选与准确执行输入读取（本地未发布）
 
-`@bondbuddy/api/run-execution-input` 提供 `readRunExecutionInput(db, owner, runId, expectedIdentity)`，先经不可变初始 V1 resolver 验证 Lease 绑定，再按准确 revision/hash 读取不可变输入和同 owner/project/run 的复核、M4 业务快照。补料准备与 M1/M3/M4 实际 loader 共用此入口；M3/M4 loader 将已读取快照交给原 gate，显式缺失不回退旧查询，独立 gate 调用保留原数据库校验。当前仍只允许 V1，未增加活动版本或后继快照表。
+`@bondbuddy/api/run-execution-input` 提供 `readRunExecutionInput(db, owner, runId, expectedIdentity)`，先经不可变初始 V1 resolver 验证 Lease 绑定，再按准确 revision/hash 读取不可变输入。追加迁移 `0124_run_execution_business_snapshots.sql` 将复核和 M4 完整业务内容分别保存到 `bb_review_execution_snapshots`、`bb_m4_execution_snapshots`；两表均用 owner/project/run/execution_version/input_revision/input_hash 完整外键，保留业务 version、原内容及原 created_at，不修改旧业务表。迁移准确回填已有 V1；现有业务 INSERT 自动桥接，缺失/不符使原 INSERT 一并回滚。迁移先排空 M4 topic 行锁，再锁 input/run，避免与现有 topic→input 创建顺序反转。JSONB 版本号按正整数数值核验，兼容合法的 `1.0` 表示。
 
-补料 `GET/PUT` 在原准备回执上确定性编译候选，公共 `input_preview` schema 仅在 contracts 定义。候选 hash 来自完整冻结 manifest 加显式材料变更；不读取后来项目草稿，不覆盖原执行输入、来源声明、已确认复核计划或旧模板绑定。复杂来源、证据关联或导出语义当前不能完整表达时，保存仍成功，预览明确阻断，绝不把候选 hash 当采用/费用授权。候选不持久化、不创建任务、不计费，不改变材料保留策略；当前无新增迁移。前后端须使用相同新增响应契约。用户已选必要重做另行报价且确认后继续，具体计价公式仍未确定。实现、独立回归与剩余 G03 缺口见 [候选输入验收](acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)。
+补料准备与 M1/M3/M4 实际 loader 共用此入口。必需的业务快照缺失、完整身份或内容不符均拒绝，普通 M1 无业务快照仍可读取；不回退 legacy 或最新草稿。M3/M4 独立 gate、input_lock 及模型调用前复核也验证持久执行身份并使用共同 reader；即使同时传入快照和伪造 V2 身份也不能绕过。当前只允许 V1，未增加活动版本、采用回执、版本化报告/成果、报价或后继执行授权。范围与独立回归见 [业务快照验收](acceptance/desktop-ux-coverage-20261026/execution-business-snapshots/README.md)。
+
+补料 `GET/PUT` 在原准备回执上确定性编译候选，公共 `input_preview` schema 仅在 contracts 定义。候选 hash 来自完整冻结 manifest 加显式材料变更；不读取后来项目草稿，不覆盖原执行输入、来源声明、已确认复核计划或旧模板绑定。复杂来源、证据关联或导出语义当前不能完整表达时，保存仍成功，预览明确阻断，绝不把候选 hash 当采用/费用授权。候选不持久化、不创建任务、不计费，不改变材料保留策略；该候选编译切片本身没有新增迁移。前后端须使用相同新增响应契约。用户已选必要重做另行报价且确认后继续，具体计价公式仍未确定。实现、独立回归与剩余 G03 缺口见 [候选输入验收](acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)。
 
 ### 2026-10-26：补料草稿的私有保存工作来源（本地未发布）
 

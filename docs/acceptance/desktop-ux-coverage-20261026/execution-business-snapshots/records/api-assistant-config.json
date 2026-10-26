@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T14:25:04.352Z",
+  "finished": "2026-10-26T14:25:18.369Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "apps/api/dist/project-assistant.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 1,
+  "signal": null,
+  "pid": 44800
+}

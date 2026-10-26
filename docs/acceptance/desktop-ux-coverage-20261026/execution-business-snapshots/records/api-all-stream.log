@@ -1,0 +1,1907 @@
+✔ #9 real sessions: binding, manual grant and single-use reset preserve data/tasks and revoke all old sessions (1925.5828ms)
+✔ #9 unknown/unbound users share a generic replayable ticket; staff and foreign users cannot bypass prior binding (1377.4126ms)
+✔ #9 expiry, reissue, purpose binding and brute-force budgets fail without locking normal login (1161.2826ms)
+✔ #9 password change invalidates grants; closure erases recovery contacts (1291.23ms)
+✔ #9 reset outbox failure rolls back password, grant and session revocation (1287.6847ms)
+✔ #9 concurrent reset and an old-password login waiting on the same owner cannot leave a valid old session (1748.1931ms)
+✔ #9 configured support and the exact active operator role are required; revocation also voids issued links (2019.5456ms)
+✔ #9 replacing a verified channel invalidates its old ticket and clears abandoned contact/code data (1187.0591ms)
+✔ account routes require a session and appear as implemented in OpenAPI (1105.975ms)
+✔ password change, session revocation and closure keep accounts isolated (2789.0043ms)
+✔ authoring names use pinned input and variant, not mutable project fields or artifact version 1 (21.115ms)
+✔ review and material names agree across metadata and list row shapes (1.1282ms)
+✔ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (1752.2762ms)
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.2278ms)
+✔ dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement (3138.8881ms)
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.3074ms)
+✔ authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved (3409.1901ms)
+✔ authoring snapshots cannot bypass project mutex by claiming to be QA when billing is disabled or enabled (2491.5041ms)
+✔ all eight fixed tiers and user-approved boundaries use one package (2.295ms)
+✔ annual update includes interim, de-duplicates statements, and only charges newly covered annual periods (0.2794ms)
+✔ non-issuer references never reduce target periods; missing metadata never silently selects highest price (0.2434ms)
+✔ price configuration requires exactly eight bounded integer prices (0.5431ms)
+✔ paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes (7555.6667ms)
+✔ browser diagnostic messages truncate at UTF-8 boundaries before storage (1388.3303ms)
+✔ browser diagnostics are owned, bounded, redacted, deduplicated, audited and expired (1921.8165ms)
+✔ no session receives 401 and committed account/project actions are searchable (1021.0932ms)
+✔ input revisions lock exact owner/project credit supplement versions without promoting user assertions (1843.2898ms)
+✔ structured credit supplement API persists owner-scoped immutable user assertions and exact revisions on PostgreSQL 16 (1805.6878ms)
+✔ history whitelist, ledger totals, microsecond pagination and owner-scoped cursors (1111.669ms)
+✔ data policy is derived from the purge configuration; unset windows are null, not zero (3.3253ms)
+✔ GET /api/v1/data-policy is public and renders the server configuration (1017.7253ms)
+✔ PostgreSQL deletion receipts purge v2 page and checkpoint bytes without removing audit rows (336.1072ms)
+﹣ PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and derived content idempotently (0.3456ms) # SKIP
+﹣ expired service window and incomplete business evidence admit one durable owner-scoped run (1.9414ms) # SKIP
+✔ synthetic valid WordprocessingML package passes bounded OOXML and reference inspection (14.0025ms)
+✔ synthetic hostile DOCX variants fail closed before they can be promoted (19.3584ms)
+✔ archive and expansion limits reject ZIP bombs and oversized packages before extraction (133.5431ms)
+✔ root-cause fingerprint ignores job IDs, paths, line numbers and timestamps (2.1362ms)
+✔ stack sanitization discards unrecognized frames and sensitive source material (0.5518ms)
+✖ PostgreSQL execute keys preserve JS identity, legacy replay, owner isolation and atomic outbox (2271.209ms)
+✔ fact evidence reviewer read exposes only current pinned native evidence and audits no quote text (1625.9917ms)
+✔ fact evidence reviewer ledger is exact, append-only, external-safe, and fail-closed (PostgreSQL 16) (3602.3808ms)
+✔ fact review API scopes candidates and appends idempotent decisions without promoting source status (1762.4543ms)
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (146.4902ms)
+✔ missing or non-file output cannot be labelled as available Word (0.2706ms)
+✔ an approved binding for the exact locked input is the only usable generation subject (2.2524ms)
+✔ missing, rejected, stale, conflict, cross-account and malformed bindings all fail closed (3.0813ms)
+✔ a provider failure is never treated as an implicit binding (0.2473ms)
+﹣ generation preflight cannot bypass the immutable input pin with an injected issuer binding (1.353ms) # SKIP
+✔ synthetic PostgreSQL: reparse, material loss and reviewer revocation each invalidate an approved binding (641.5987ms)
+✔ synthetic PostgreSQL: generation issuer binding persists only reviewer-attested, current combination decisions (477.8571ms)
+✔ synthetic PostgreSQL: an approved generation issuer binding fails closed on subject conflict and stale sources (319.0295ms)
+✔ synthetic PostgreSQL: generation issuer binding consumer uses only the exact approved subject (364.2161ms)
+✔ synthetic PostgreSQL: generation issuer binding hardening rejects scope, conflict and history edits (471.0799ms)
+✔ converted no-history project can obtain a reviewed issuer binding and lock a new generation input (2287.5014ms)
+﹣ approved generation input with parsed audit enters the controlled channel without a historical draft (0.3769ms) # SKIP
+﹣ synthetic PostgreSQL input revision locks an approved generation issuer binding and exact message set (0.1876ms) # SKIP
+﹣ synthetic PostgreSQL input revision pins the active message set and rejects fabricated or divergent sets (0.1606ms) # SKIP
+﹣ HTTP chain: register/session, project and upload drive a locked input revision that pins an approved issuer binding and exact message set (1.0268ms) # SKIP
+﹣ HTTP chain: missing, withdrawn, mismatched and cross-account refs are refused without persisting a revision (0.1496ms) # SKIP
+﹣ HTTP chain: a withdrawn approved binding is refused for the lock and leaves no new revision (0.1492ms) # SKIP
+﹣ HTTP chain: revoking only the binding approver invalidates the exact ref, lock and preflight (0.124ms) # SKIP
+﹣ HTTP chain: synthetic financial XLSX is durably parsed before scoped issuer review and successor admission (0.141ms) # SKIP
+✔ annual issuer-profile review routes require a trusted session and CSRF on decisions (1026.2494ms)
+✔ PostgreSQL 16: reviewer GET lists exact parser evidence hashes and pinned issuer identity (1099.0236ms)
+✔ synthetic PostgreSQL: update input revisions pin exact reviewed issuer sources and fail closed on replay/staleness (1958.8354ms)
+✔ source records bind one owner/project/material-version anchor, are idempotent, versioned and hashed (5.3545ms)
+✔ no reviewer grant means no verified binding; active grant and exact evidence decision are required (5.3186ms)
+✔ parallel project grants are selected exactly; unscoped and cross-project contexts cannot review (1.3644ms)
+✔ multiple conflicting verified entities never resolve by first-row ordering; unreviewed observations block (1.8993ms)
+✔ observation and review outbox append atomically; evidence or outbox failure cannot create a row (1.0696ms)
+✔ PostgreSQL 16: owner/evidence binding, privileged review, append-only versions, conflict gate and hash verification (414.9562ms)
+✔ operator imports inspect every item before staging or enqueueing (24077.6269ms)
+✔ public contract has no library route, schema or candidate field (73.2213ms)
+✔ admin library routes: 404 for ordinary users, read-only for readers, actions for operators; user routes never leak library data (1571.8092ms)
+✔ synthetic full-line proof rejects mismatched denominator, missing page, stale review and stale profile (7.035ms)
+✔ proof-hash mismatch returns a schema-safe needs-review decision without an untrusted profile hash (0.7352ms)
+✔ third-place tie requires a complete reviewed selection and exact excluded roster (13.1468ms)
+✔ proof snapshot is persisted, immutable, version-bound and withdrawn profiles become insufficient (706.6154ms)
+﹣ #79 archive retention, legal hold and user deletion use PG16 and private Blob (1.0096ms) # SKIP
+✖ run-less preflight and execute rejection retain atomic owned job timelines (1514.0164ms)
+✔ eleven distinct case layouts select by type, market, offering and explicit variant; bytes are pinned (291.5734ms)
+✔ new material validation is actionable without changing existing initiation requirements (1.4988ms)
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (4874.9974ms)
+✔ synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection (713.9961ms)
+✖ all material/exchange combinations select actual source knowledge with distinct immutable bytes (46.2186ms)
+✔ readable SSE opinion replaces missing case layout while historical guide evidence remains unchanged (13.9738ms)
+✔ missing material generation input returns all actionable fields without tasks, quotes or charges (1468.8081ms)
+✔ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (2378.0153ms)
+✔ synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes (1845.4565ms)
+✔ synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage (2063.5611ms)
+✔ M4 free task preparation and unavailable capabilities do not turn basic QA into free help (0.7757ms)
+✔ product help remains free with selected sources while mixed professional questions remain paid (2.4027ms)
+✔ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (9927.6084ms)
+﹣ deleted material and template do not break a shared workspace; ownership and immutable inputs are preserved (1.0399ms) # SKIP
+✔ verified material stream passes matching bytes and withholds the last chunk on mismatch (8.5116ms)
+﹣ PostgreSQL/Azurite material download streams verified bytes, keeps owner 404 and fails closed on corruption (0.3072ms) # SKIP
+﹣ owner material read exposes the current non-failed parse snapshot for reference pinning (1.1744ms) # SKIP
+﹣ owner explicitly copies exact reference bytes with durable replay and isolated role (1.5303ms) # SKIP
+▶ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions
+  ✔ the real intent INSERT atomically binds V1, runtime and completed-result reuse retain their exact source (1077.5984ms)
+  ✔ new attempts reject wrong revision with identical hash, wrong hash, missing input metadata and non-model prompts (637.7082ms)
+  ✔ missing or corrupted binding blocks real latest, reuse, runtime and observation paths without writes or Blob reads (312.7391ms)
+  ✔ historical unprompted attempts retain identity but never gain an invented provider input binding (38.8962ms)
+✔ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions (2070.3263ms)
+✔ model work binding returns the exact immutable input and prompt without selecting latest (2.4084ms)
+✔ missing, duplicate, foreign, altered input and incomplete prompt bindings fail closed (2.1961ms)
+✔ actual provider lookups never turn an existing unbound prompted attempt into a new call (1.1605ms)
+✖ test submissions cannot reserve the exact browser update key (2500.4137ms)
+✖ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (1786.1051ms)
+✔ working draft admission defers parse and business gaps while retaining ownership, pin and revocation checks (1882.8457ms)
+▶ OCR interrupted settlement is isolated by purpose and exact execution identity
+  ✔ source preflight never settles live or cancelled full OCR batches and only settles its own purpose (641.9696ms)
+  ✔ wrong full OCR identity under the same token is a no-op; valid current identity settles only its own run (236.3078ms)
+✔ OCR interrupted settlement is isolated by purpose and exact execution identity (881.1307ms)
+✔ OCR validator rejects wrong identities, coordinates, edited pixels and certainty promotion (6.2908ms)
+﹣ owned OCR snapshots and user corrections are immutable, replay-safe and private (0.2769ms) # SKIP
+✔ every supported project material is stored opaquely without content parsing (20.738ms)
+✔ both authorized qx audit originals retain their exact bytes and need no signature profile (67.6083ms)
+﹣ raw material public upload preserves bytes, ownership, idempotency and old signature records without starting parsing (0.4021ms) # SKIP
+✔ synthetic signed provider: forged/mismatched/replayed callbacks and query-based credit repair (1802.8649ms)
+✖ HTTP update preflight returns conservative, owner-scoped immutable difficulty summaries (1549.0633ms)
+✔ all business gaps are advisory with or without a working-draft grant (1.99ms)
+✔ execution capability stays truthful; an empty diagnostic is ready (1.6452ms)
+✔ strictly parses a complete bundle and rejects extra or missing keys (1.8923ms)
+✔ registers all immutable snapshots in one transaction and rolls back failed registration (6.2866ms)
+✔ rolls back when commit fails and does not expose component content (1.1705ms)
+✔ scope parser requires reviewedDimension shapes and canonical sorted unique arrays (4.0417ms)
+✔ grant validates target/actor, role and market-offering; grant and immutable scope share one timestamp and transaction (2.2725ms)
+✔ revoke locks one grant, writes actor-owned outbox references, and never withdraws releases (0.9677ms)
+✔ grant transaction rolls back if scope insertion fails (0.5455ms)
+✔ synthetic PostgreSQL ledger enforces scoped grants, immutable hash pins and self-attested append-only events (3628.6123ms)
+✔ synthetic PostgreSQL 16 production release binds exact approvals, snapshots, evidence and actor outbox (1828.866ms)
+✔ approved loader result reaches the production selector after context-pin hash verification (3.6658ms)
+✔ approved loader result with a mismatched context hash fails closed before selection (0.4069ms)
+▶ needs_review and withdrawn loader outcomes remain fail closed
+  ✔ rule_applicability_overall_review_required (0.4538ms)
+  ✔ rule_applicability_overall_review_withdrawn (0.3383ms)
+✔ needs_review and withdrawn loader outcomes remain fail closed (1.4419ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.6646ms)
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (3210.8658ms)
+﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (1.8442ms) # SKIP
+✔ batch recovery code is part of the public error contract (1.3511ms)
+✔ an accepted receipt is returned before inspecting a changed current source or draft (399.3232ms)
+✔ a missing receipt and advanced source selection return a trusted expired rejection (42.304ms)
+✔ re-adopting the same source still expires the old selection revision without a receipt (23.6381ms)
+✔ an early archived-project conflict never becomes proof that an old receipt is missing (21.3246ms)
+✔ a missing receipt and advanced persisted draft return the trusted expired code (23.278ms)
+✔ idempotency and active-batch conflicts retain their original public codes (37.9758ms)
+✔ unavailable sources and future input versions do not claim irreversible expiry (55.1497ms)
+✔ authorization failure never becomes an expired-input receipt (20.1985ms)
+✔ old exact check is readable outside the unchanged recent 30 and retains original pins and all updates (387.1509ms)
+✔ old check marks a changed source adoption as stale without replacing its fixed source (28.3545ms)
+✔ old running check does not expose a stored result as completed (23.9426ms)
+✔ exact check returns the same safe 404 for missing (26.4241ms)
+✔ exact check returns the same safe 404 for other owner (16.8502ms)
+✔ exact check returns the same safe 404 for other project (16.0696ms)
+✔ exact check returns the same safe 404 for mismatched project (18.7889ms)
+✔ exact check returns the same safe 404 for patch operation (16.6964ms)
+✔ exact check returns the same safe 404 for foreign project (15.1155ms)
+✔ deleted project is rejected before reading any source or operation (17.475ms)
+✔ unauthenticated exact read never queries the database (16.7961ms)
+✔ accepted old update reads its exact original check outside the unchanged recent thirty and retains V2 separately from a later V3 retry (361.2878ms)
+✔ an original running update remains distinct from its successful retry and has no invented delivery (28.6184ms)
+✔ an original paused update remains distinct from its successful retry and has no invented delivery (23.7076ms)
+✔ an original failed update remains distinct from its successful retry and has no invented delivery (15.6292ms)
+✔ an original cancelled update remains distinct from its successful retry and has no invented delivery (16.4718ms)
+✔ accepted-update history rejects no-acceptance with the same safe 404 (21.5608ms)
+✔ accepted-update history rejects other-owner with the same safe 404 (26.9489ms)
+✔ accepted-update history rejects other-project with the same safe 404 (17.802ms)
+✔ accepted-update history rejects run-project with the same safe 404 (14.6163ms)
+✔ accepted-update history rejects not-patch with the same safe 404 (17.9554ms)
+✔ accepted-update history rejects duplicate-acceptance with the same safe 404 (13.926ms)
+✔ accepted-update history rejects manifest-check with the same safe 404 (11.9561ms)
+✔ accepted-update history rejects manifest-file with the same safe 404 (16.718ms)
+✔ accepted-update history rejects manifest-family with the same safe 404 (13.7271ms)
+✔ accepted-update history rejects manifest-sha with the same safe 404 (14.0033ms)
+✔ accepted-update history rejects manifest-source with the same safe 404 (15.1738ms)
+✔ accepted-update history rejects malformed-manifest with the same safe 404 (14.0686ms)
+✔ accepted-update history rejects missing-check with the same safe 404 (15.5483ms)
+✔ accepted-update history rejects duplicate-update with the same safe 404 (17.6616ms)
+✔ accepted-update history rejects wrong-projected-file with the same safe 404 (11.8288ms)
+✔ accepted-update history rejects duplicate-file with the same safe 404 (11.7215ms)
+✔ accepted-update history refuses missing patch (12.5547ms)
+✔ accepted-update history refuses check used as patch (14.3886ms)
+✔ accepted-update history refuses different owned project (13.4293ms)
+✔ accepted-update history refuses foreign project (15.7249ms)
+✔ deleted project and unauthenticated session are rejected before reading update or check records (21.6084ms)
+✔ accepted-update history OpenAPI reuses the public check DTO and owned GET path parameters (0.8265ms)
+✔ owner conversion preserves the old input and refuses its preflight and execute; replay is durable (1829.9017ms)
+✔ conversion rejects historical material and terminal run, and serializes against a new input lock (2408.9869ms)
+✔ conversion rejects a completed historical upload without a material version, but permits a deleted material (1037.6379ms)
+✔ #10 PostgreSQL global search, literal names, tied cursor pages, archive isolation and transaction rollback (2672.1239ms)
+﹣ #10 actual run status and previous successful Word remain available after a newer failure and archive (0.3384ms) # SKIP
+✔ empty history is an explicit empty set, never inferred from absence of rows (3.4094ms)
+✔ latest version per message is selected in first-submission conversation order (1.0116ms)
+✔ malformed history fails closed instead of fabricating a set (0.9931ms)
+✔ only the exact aggregate ref matches; a bare version or divergent projection never does (1.5878ms)
+✔ project messages persist exact edits, replay, ordered history, audited plaintext and input refs without execution (6197.3363ms)
+▶ independent prompt registration requires the initial execution before Blob writes and intent locks
+  ✔ V1 registers with exact input pins and with legacy optional pins omitted (595.008ms)
+  ✔ missing execution rejects both independent registration paths without new durable evidence (60.2067ms)
+  ✔ wrong_hash execution rejects both independent registration paths without new durable evidence (31.668ms)
+  ✔ wrong owner, project, revision and hash retain their original not-found semantics (79.3274ms)
+  ✔ waiting for the run leaves its committed intent available to another transaction (240.0115ms)
+  ✔ a project-first writer can lock the run while snapshot registration waits for the project (46.3718ms)
+✔ independent prompt registration requires the initial execution before Blob writes and intent locks (1057.609ms)
+✔ an asynchronous false verdict cannot persist a private result (7.7447ms)
+✔ private persistence waits for an asynchronous verdict and binds checked bytes (2.1102ms)
+✔ a rejected asynchronous validator never stores a result (1.3565ms)
+✔ synchronous validators remain compatible and malformed JSON is rejected first (1.0046ms)
+✔ provider retry and failure events retain the known model format code (2.6065ms)
+✔ known provider pause codes remain public without changing their safe reason (0.3604ms)
+✔ unrecognized provider values cannot enter run or outbox task payloads (0.3913ms)
+▶ runtime evidence shares run -> job lock order with renewal and cancellation
+  ✔ renewal keeps the job lock available while runtime waits for the run (695.4338ms)
+  ✔ cancellation wins before evidence locks and prevents a late runtime insert (58.2839ms)
+  ✔ owner, project, token and expired lease remain enforced (35.37ms)
+  ✔ every independent provider boundary rejects a different execution version or input under the same live token (96.5852ms)
+✔ runtime evidence shares run -> job lock order with renewal and cancellation (889.828ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (6355.596ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4037ms) # SKIP
+▶ review actions preserve execution state and obey owner, lease, replay and terminal boundaries
+  ✔ atomic progress/outbox, stable identity, no stage/checkpoint or billing mutation (390.1965ms)
+  ✔ expired/wrong leases, foreign owners, paused and terminal tasks reject late actions (105.4433ms)
+  ✔ a cancelled task winning the run lock cannot receive in-flight activity (236.635ms)
+✔ review actions preserve execution state and obey owner, lease, replay and terminal boundaries (735.3169ms)
+✔ long review timelines retain bounded completed categories with ordering, deduplication and owner/project isolation (1843.9895ms)
+✔ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (2445.1858ms)
+✔ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (3552.3853ms)
+✔ reply citations require the actual immutable report, never finding text (4.5258ms)
+✔ legacy origin is explicitly unknown and nested internal fields never reach a task card (1.1314ms)
+✔ M3 proposals explicitly adopt, lock executable requirements and project one durable task timeline (2807.8302ms)
+✔ an adopted typed revision can become a new quick-action scope without losing requirements or rewriting its prior execution (1534.1839ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (1.0969ms)
+✔ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (3218.8547ms)
+✖ readable report keeps valid legacy files readable and accepts exact live registry metadata (285.7238ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✖ prompt_snapshot (245.0954ms)
+  ✖ provider_result (257.5924ms)
+✖ readable report rechecks parent tombstones after waiting, before any private Blob read (504.6903ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✖ purged_file (223.4379ms)
+  ✖ closed_account (276.2222ms)
+  ✖ deleted_project (233.6937ms)
+✖ readable report rechecks file state and account/project visibility after the file lock wait (735.5516ms)
+✖ real working-file purge waits for readable report validation and denies the next raw read (232.4891ms)
+✔ readable view loads the exact private Markdown, no prompts or final chatter (4.6739ms)
+✔ cross-run references, mismatched input/hash, unavailable or invalid UTF8 safely disable only the optional view (1.1508ms)
+✔ purged parents and visibility lost while waiting for the file deny further private reads (0.7205ms)
+✔ registered unavailable, purging, purged or mismatched files deny reads even while their bytes remain (3.5297ms)
+✔ M3 ownership, independent drafts, idempotency, immutable input, mutex and failed version history (2384.3324ms)
+✔ reviewer parse-evidence lookup pages immutable anchors, fails closed, and audits without excerpts (1476.3925ms)
+✖ contract-valid revision beyond PostgreSQL integer range has owned atomic rejection evidence (2768.8228ms)
+✔ owner applicability API derives a needs_review ref from locked evidence and remains fail-closed (4695.2293ms)
+✔ rule applicability reviewer grants are exact-scope, independent, privileged, revocable and audited (970.0015ms)
+✔ run event DTO allows only declared safe public fields (3.1737ms)
+✔ raw output, hidden prompts, malformed safe fields and scalar payloads never leak (0.6488ms)
+✔ known adapter failures retain a safe reason without provider output (0.2492ms)
+✔ review action projection accepts only the exact versioned enums and drops nested private fields (0.8207ms)
+✔ all legacy business inserts bridge complete exact snapshots; actual reader preserves fields and original timestamps (333.6797ms)
+✔ a bad bridge aborts the legacy insert instead of dropping or fabricating a snapshot (1926.9535ms)
+✔ versioned snapshots are immutable and cannot borrow another owner, input, timestamp or executable V2 (1625.6067ms)
+✔ missing canonical snapshots fail closed even when valid legacy records still exist (274.9519ms)
+✔ a legacy insert without its exact initial execution fails rather than silently skipping the bridge (275.0444ms)
+✔ actual migration backfills exact legacy V1 content and rejects mismatched or missing historical identity (4823.1506ms)
+✔ storage pin checks accept integral JSONB numbers regardless of scale and reject nonpositive or fractional values (176.7755ms)
+✔ migration drains topic row lockers before locking inputs, so an in-flight M4 creator can finish (5070.4255ms)
+✔ execution input reader consumes exact versioned business snapshots without changing origin or business versions (6.2314ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (1.8679ms)
+✔ ordinary M1 has no business snapshots; every component of a business snapshot identity is checked (2.8029ms)
+✔ required snapshots reject absence and duplicates without legacy or latest fallback (1.2061ms)
+✔ review snapshots reject invalid shapes and changed input, business version, operation, source, origin or findings (2.3827ms)
+✔ review result revisions keep exact source, materials and saved requirements (1.5553ms)
+✔ M4 snapshots require shared manifest schema, exact topic/content and task kind (1.3298ms)
+✔ an ordinary M1 manifest cannot consume an unrelated business snapshot (0.4258ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (3225.0296ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (126.37ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (638.4007ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (309.6208ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (4303.0757ms)
+✔ real collector envelopes extract exact provider, local correction and project-file references (5.753ms)
+✔ explicit review correction provider output can mix its exact attempt and local correction files (1.2234ms)
+✔ single-reference validator supports storing before an output envelope exists (0.376ms)
+✔ a review provider attempt named correction cannot collide with the local correction namespace (0.6652ms)
+✔ foreign scope, different attempt and path mutations are rejected by complete key equality (1.2253ms)
+✔ all schemas reject unknown files, extra ref/envelope fields and invalid ref structures (3.8559ms)
+✔ input binding, schema, provenance and hash validation fail closed even for empty error results (1.19ms)
+✔ file-specific size limits accept boundaries and reject nonpositive, fractional and oversized bytes (1.9457ms)
+✔ correction report and editor use the actual collector maximum only at their exact authorized correction keys (1.4936ms)
+✔ partial errors inventory every valid retained file and never excuse malformed optional files (1.3153ms)
+✔ revision no-change JSON output and completion metadata remain strict (1.2671ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (236.6999ms)
+  ✔ owner (243.2274ms)
+  ✔ project (227.8804ms)
+  ✔ input revision (232.5127ms)
+  ✔ input hash (222.2867ms)
+  ✔ execution request id (212.735ms)
+  ✔ request hash (237.923ms)
+  ✔ valid successor input pair (212.8394ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (3597.498ms)
+✔ real review-result update can prepare supplements and resume its original input (1998.3963ms)
+▶ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them
+  ✔ m1 (1164.8014ms)
+  ✔ m3 (136.1891ms)
+  ✔ m4 (268.6906ms)
+  ✔ new source declarations and bound M4 source replacements remain explicit (225.3972ms)
+✔ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them (2010.6697ms)
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (55.9785ms)
+  ✔ old request receipt survives a later save and explicit resume (100.3835ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1379.5065ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (112.759ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (417.3572ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1689.3632ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (595.8559ms)
+  ✔ wrong hash (105.4485ms)
+  ✔ wrong owner (14.9859ms)
+  ✔ wrong project (15.2315ms)
+  ✔ duplicate additions (16.6891ms)
+  ✔ unknown replacement (14.8971ms)
+  ✔ duplicate replacements (16.0436ms)
+  ✔ different role (16.1743ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (1145.135ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (826.3872ms)
+  ✔ saving (72.5757ms)
+  ✔ paused_lease (55.5636ms)
+  ✔ automatic_pause (79.7613ms)
+  ✔ pending_provider (101.4229ms)
+  ✔ completed_unknown (62.0027ms)
+  ✔ failed_unknown (61.7256ms)
+  ✔ terminal (62.723ms)
+  ✔ archived (55.4106ms)
+  ✔ unsupported (52.4632ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (121.6412ms)
+  ✔ deleted project is owner-safe 404 (19.5451ms)
+  ✔ test-channel metadata obeys the deployment read gate (25.381ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1819.5824ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (996.2313ms)
+  ✖ m3 (17.6216ms)
+  ✖ m4 (416.8915ms)
+  ✖ inconsistent M3 version is unavailable (19.0787ms)
+  ✖ inconsistent M3 operation is unavailable (304.5315ms)
+  ✖ inconsistent M3 origin is unavailable (330.3129ms)
+  ✖ inconsistent M3 missing_review is unavailable (289.8859ms)
+  ✖ inconsistent review-result update source_run is unavailable (278.5146ms)
+  ✖ inconsistent review-result update source_pin is unavailable (282.3301ms)
+  ✖ inconsistent review-result update materials is unavailable (277.4121ms)
+  ✖ inconsistent review-result update requirements is unavailable (293.3188ms)
+  ✖ inconsistent review-result update operation is unavailable (281.1333ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (533.9773ms)
+✖ supplement base and business snapshots remain frozen across M3 and cross-project M4 (4534.2521ms)
+✔ source-only supplement edits preserve exact idempotent receipts and require a fresh revision and CAS (1463.5435ms)
+▶ HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit
+  ✔ wrong material (17.0852ms)
+  ✔ wrong revision (15.8896ms)
+  ✔ wrong content (15.1081ms)
+  ✔ incompatible market (16.2804ms)
+  ✔ m3 cannot accept M1 source authority (58.5553ms)
+  ✔ m4 cannot accept M1 source authority (130.9303ms)
+✔ HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit (1531.7487ms)
+✔ HTTP capture exposes only counts while internal pins bind the exact provider output and read original private bytes (2079.4926ms)
+▶ captured private file authority rejects changed scopes, sources and every modified pin field
+  ✔ wrong owner (145.2305ms)
+  ✔ wrong project (86.4296ms)
+  ✔ wrong run (85.4397ms)
+  ✔ wrong revision (82.4326ms)
+  ✔ wrong source result (92.3698ms)
+  ✔ wrong source schema (90.3047ms)
+  ✔ wrong unrelated checkpoint (95.7993ms)
+  ✔ modified pin version (56.4562ms)
+  ✔ modified pin owner (55.9684ms)
+  ✔ modified pin projectId (54.2793ms)
+  ✔ modified pin runId (55.3615ms)
+  ✔ modified pin revision (54.4963ms)
+  ✔ modified pin executionVersion (60.7203ms)
+  ✔ modified pin inputRevision (60.757ms)
+  ✔ modified pin inputHash (57.1894ms)
+  ✔ modified pin checkpointHash (52.7173ms)
+  ✔ modified pin sourceHash (56.852ms)
+  ✔ modified pin name (58.4062ms)
+  ✔ modified pin hash (58.572ms)
+  ✔ modified pin size (55.2152ms)
+  ✔ modified pin media (56.9482ms)
+  ✔ modified pin key (54.7162ms)
+  ✔ modified pin attempt path (54.4724ms)
+  ✔ modified pin source binding (56.5183ms)
+✔ captured private file authority rejects changed scopes, sources and every modified pin field (3271.848ms)
+▶ missing or damaged nested files do not block saving materials and cannot cause retries or mutations
+  ✔ missing nested Blob (106.6873ms)
+  ✔ same-size hash corruption (59.5489ms)
+  ✔ oversized nested Blob (56.0697ms)
+  ✔ short nested Blob (63.2972ms)
+  ✔ provider_result tombstone denies retained nested bytes (72.1798ms)
+  ✔ prompt_snapshot tombstone denies retained nested bytes (261.1348ms)
+✔ missing or damaged nested files do not block saving materials and cannot cause retries or mutations (2089.7086ms)
+▶ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version
+  ✔ wrong attempt directory (1178.7979ms)
+  ✔ wrong nested version (215.9231ms)
+✔ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version (1624.8631ms)
+✖ a real paused local correction captures six exact checkpoint files with zero provider results and no charges (898.2525ms)
+▶ checkpoint correction bytes require the exact review execution, export-only source and frozen source material
+  ✖ missing_execution (227.8367ms)
+  ✖ execution_version (28.9539ms)
+  ✖ execution_operation (269.255ms)
+  ✖ snapshot_input (264.2927ms)
+  ✖ snapshot_origin (274.8205ms)
+  ✖ missing_export_only (276.3058ms)
+  ✖ false_export_only (263.434ms)
+  ✖ snapshot_source_run (282.3405ms)
+  ✖ missing_export (259.641ms)
+  ✖ invalid_export_hash (288.125ms)
+  ✖ self_source_run (265.707ms)
+  ✖ source_not_in_manifest (273.347ms)
+✖ checkpoint correction bytes require the exact review execution, export-only source and frozen source material (3785.4378ms)
+✔ ordinary authoring supplements preserve every frozen context and return independent candidate bytes (5.5179ms)
+✔ no changes do not produce an adoptable input; unavailable bytes do not produce a candidate hash (0.592ms)
+✔ new historical/reference bytes never inherit a declaration from another version or current project data (5.7367ms)
+✔ explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate (13.0379ms)
+✔ complete source information still requires an explicit choice for every changed source bound to an old output (1.6264ms)
+✔ same-content different source revisions require their own exact declaration and incomplete fields remain saveable information gaps (1.4987ms)
+✔ new source declarations without an old output prepare normally and do not accept a meaningless discard flag (1.0623ms)
+✔ source metadata rejects wrong exact pins, ordinary evidence roles and non-M1 contexts without changing input (2.1516ms)
+✔ M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot (0.9209ms)
+✔ M3 unchanged evidence links preserve the exact original report, finding and material identity (0.9227ms)
+✔ M3 replacing linked source or evidence requires explicit new evidence mapping without rewriting old links (1.5823ms)
+✔ M3 source replacements preserve the DOCX/PDF boundary while ordinary text evidence stays usable (1.0562ms)
+✔ M3 correction exports retain the original editor decisions and cannot be converted into new material processing (0.5627ms)
+✔ accepted M3 origin, finding revisions and report follow-ups retain their original authority and cannot be rewritten (1.5052ms)
+✔ M4 preserves cross-project source, duplicated source/template pins, edit base and all business context (1.4595ms)
+✔ material limits and malformed shared-schema inputs fail without partially changing any input (2.228ms)
+✔ M4 source/template-only pins remain outside evidence, while its evidence limit is enforced independently (1.6516ms)
+✔ legacy M3 origin may remain absent and malformed or mismatched review snapshots cannot be guessed (0.9836ms)
+✔ a result material list cannot silently inject, omit or retarget materials outside the saved changes (0.5576ms)
+▶ captured-result locks cover the async validator while real prompt and provider-result retention wait
+  ✔ prompt_snapshot (1462.7551ms)
+  ✔ provider_result (1333.9304ms)
+✔ captured-result locks cover the async validator while real prompt and provider-result retention wait (2798.5539ms)
+✔ a real purge holding the prompt lock makes the captured-result reader wait, then reject without reading result bytes (1249.1008ms)
+✔ safe HTTP supplement capture freezes exact work independently for each receipt and replays without charges (2268.975ms)
+▶ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history
+  ✔ missing completed result (110.3631ms)
+  ✔ duplicate result (52.1546ms)
+  ✔ wrong result id (45.7812ms)
+  ✔ wrong result hash (52.4268ms)
+  ✔ wrong attempt (47.6621ms)
+  ✔ wrong schema (52.6132ms)
+  ✔ unmatched extra reference (53.9235ms)
+  ✔ malformed stages (49.0689ms)
+✔ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history (1944.0484ms)
+▶ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes
+  ✔ an async exact schema validator reads the original value (76.6667ms)
+  ✔ a schema rejection cannot trigger another call (39.4657ms)
+  ✔ a different expected schema never reaches Blob reads (38.716ms)
+  ✔ foreign owner and uncaptured result references never reach Blob reads (110.4826ms)
+  ✔ same-size corruption, oversized bytes and missing Blob remain read-only failures (150.376ms)
+  ✔ provider_result purge receipt denies existing bytes (31.5988ms)
+  ✔ prompt_snapshot purge receipt denies existing bytes (30.1839ms)
+✔ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes (1926.6622ms)
+✔ legacy supplement receipts report not_captured and grant no access to later durable work (1316.9249ms)
+▶ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result
+  ✔ put (5734.37ms)
+  ✔ readback (5583.5931ms)
+✔ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result (11319.8223ms)
+✔ working-file authority rejects wrong source, execution, owner, path and local lease before put (10106.7098ms)
+✔ shared correction objects keep both real attempt claims and every report hash is inventoried (5834.9636ms)
+✔ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (9661.813ms)
+✔ a newer exact attempt claim extends retention of a shared correction physical object (5264.1622ms)
+▶ old paused work is retained, terminal work is purged, and account/project deletion uses its own window
+  ✔ paused and terminal (6499.6815ms)
+  ✔ closed (5449.1583ms)
+  ✔ deleted (5762.0168ms)
+✔ old paused work is retained, terminal work is purged, and account/project deletion uses its own window (17712.3484ms)
+▶ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes
+  ✔ delete (5498.3953ms)
+  ✔ receipt (5477.2136ms)
+✔ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes (10976.6852ms)
+▶ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed
+  ✔ delete (5487.3703ms)
+  ✔ unknown-envelope (5648.7714ms)
+  ✔ wrong-hash (5640.0282ms)
+✔ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed (16777.4056ms)
+▶ legacy shared correction files retain every newer exact result claim across prompts, attempts and conflicting candidates
+  ✖ separate-attempt-and-prompt: working-file (5699.7263ms)
+  ✖ separate-attempt-and-prompt: parent-content (5554.0815ms)
+  ✖ same-attempt-candidates: working-file (5849.652ms)
+  ✖ same-attempt-candidates: parent-content (5295.978ms)
+✖ legacy shared correction files retain every newer exact result claim across prompts, attempts and conflicting candidates (22401.4952ms)
+▶ legacy observation records only verified bytes and keeps missing or corrupt raw addresses unavailable for cleanup
+  ✔ missing (5802.9868ms)
+  ✔ corrupt (6392.5879ms)
+✔ legacy observation records only verified bytes and keeps missing or corrupt raw addresses unavailable for cleanup (12196.3853ms)
+✔ age purge fails closed when a different recent known result has corrupt provenance (6444.7996ms)
+▶ real PG writer/purger serialization preserves intent then denies writes after purge starts
+  ✔ writer (6741.0455ms)
+  ✔ purger (6051.5336ms)
+✔ real PG writer/purger serialization preserves intent then denies writes after purge starts (12793.7846ms)
+✔ captured-file read holds its parent and file locks through readback while real PG purge waits (6566.6713ms)
+✔ authenticated schema rejections retain bounded owned evidence and atomic outbox (2959.4893ms)
+✔ production seam rejects arbitrary client identity and reports honest capabilities (1074.4486ms)
+✔ public registration agreement returns the configured version or a stable 503 (1563.4772ms)
+﹣ PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox (0.6038ms) # SKIP
+﹣ username/password sessions preserve owner resources across relogin (0.1238ms) # SKIP
+﹣ source-profile PATCH appends an owner-scoped asserted profile with verified anchors and atomic audit/outbox (1.2639ms) # SKIP
+﹣ source-profile correction accepts OCR identities and fails closed on invalid or mixed extractor identities (0.1719ms) # SKIP
+✔ inventory keys accept only known private object layouts (3.5288ms)
+✔ owners inventory reports registered, pending and unregistered working bytes without enabling their deletion (3.2616ms)
+﹣ PostgreSQL/Azurite inventory is read-only by default and deletes only old unreferenced snapshots (0.4388ms) # SKIP
+✔ storage purge configuration fails closed without explicitly set policy (2.702ms)
+﹣ PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orphan uploads in bounded batches (0.1998ms) # SKIP
+﹣ PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve pins without resurrection (0.1591ms) # SKIP
+✔ target intent is an immutable owner-scoped part of the input revision and run replay (2054.8367ms)
+✔ reviewer decision binds complete lock, exact evidence, and authentic actor; exact replay is idempotent (16.7049ms)
+✔ period confirmation requires four anchors from one exact parse response (0.4476ms)
+✔ period decision rejects unhashed production pins, mismatched current roles and duplicate locked materials (1.1189ms)
+✔ OCR anchors preserve method/page identity and date or scope suspicion cannot be confirmed (0.5392ms)
+✔ PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and invalidate after review changes (5424.904ms)
+✔ test database remains available through the file teardown (206.175ms)
+✔ existing knowledge snapshots are selected by target type, including all eleven scopes (100.1782ms)
+✔ source declarations never select target knowledge and stale material replacements fail (18.9993ms)
+✔ PPN locks the complete 20261013 writing framework without leaking it to other target products (88.944ms)
+✔ PPN review retains its prior rule sources without treating the update template as review policy (9.6076ms)
+✔ source metadata uses public enums and validates dates without converting user declarations into evidence (2.997ms)
+✔ source-name-free declarations pass the same API gate used by input locking, quote and execute (1.6001ms)
+✔ API transaction-client entry point replays idempotently without owning transaction or connection (3.0983ms)
+✔ preflight failures distinguish pending inputs from stale locks and persisted data corruption (1.0529ms)
+✔ locked update loader verifies production-rule-pin v1 manifest digests and preserves legacy locks (16.7533ms)
+✔ ensure-current is idempotent under concurrent PG16 calls and refreshes only for a changed lock/profile (1055.311ms)
+﹣ update project: real uploads, version CAS, exact input pins, cross-kind reuse, owner isolation and no implicit execution (1.1985ms) # SKIP
+✔ project HTTP schema rejects malformed target periods, invented fields, string booleans and extra DFI questionnaire (1034.1623ms)
+✔ saved details round-trip, old clients preserve them, snapshots are immutable, conflicts and owners are enforced (1416.1396ms)
+﹣ #12 HTTP transport persists five real 100 MiB files and enforces 500 MiB without duplicate jobs (0.9352ms) # SKIP
+✔ upload inspection exposes only bounded public detail and a correlation id (2.7202ms)
+✔ inspection service failure is retryable without claiming damage; non-upload errors keep empty detail (0.3435ms)
+﹣ real storage: concurrent renamed uploads reuse one immutable version, replay survives cleanup and stays owner scoped (1.3368ms) # SKIP
+﹣ project byte capacity checks exact boundary using explicit synthetic metadata (0.1605ms) # SKIP
+﹣ real storage: 60-file boundary, concurrent final slots, partial failure and duplicate reuse at capacity (0.1585ms) # SKIP
+✔ upload inspection exception requires preprod, an explicit switch and one exact XLSX identity (2.1715ms)
+✔ bounded upload inspection accepts valid synthetic samples for the seven shared MIME types (32120.8366ms)
+✔ authorized rq-202509 historical DOCX passes both inspection paths at its recorded hash (4374.4196ms)
+✔ authorized rq-202509 financial XLSX passes both inspection paths at its recorded hash (3349.2181ms)
+✔ all four registered XLSX originals retain their recorded hashes and pass inspection (12659.3068ms)
+✔ externalLink extension lists and markup compatibility branches remain passive (16248.0432ms)
+✔ passive XLSX alternate URLs and multiple external link paths are accepted without resolving targets (5862.9889ms)
+✔ XLSX external workbook parts require a book, its relationships part and every referenced passive path (33743.4776ms)
+✔ internal relationship targets resolve from package root or source directory without escaping (14322.525ms)
+✔ an empty DEFLATE directory is valid only when it expands to no bytes (8831.2071ms)
+✔ only bounded, absolute DOCX http/https/mailto hyperlink relationships are passive (48568.1999ms)
+✔ passive XLSX workbook links are accepted on both upload inspection paths (2802.326ms)
+✔ passive externalBook children and TargetMode casing remain accepted (2804.1202ms)
+✔ OPC percent-encoded part names are resolved once and unsafe aliases are rejected (16980.7671ms)
+✔ a ZIP end-of-central-directory comment does not make a readable XLSX invalid (2791.8926ms)
+✔ UTF-16 XML with either byte-order mark remains readable (5717.6822ms)
+✔ structural details distinguish ZIP header mismatch, expanded CRC, and XML parse failures (8398.6055ms)
+✔ XLSX external links never grant DDE, OLE, macros or malformed XML a path through inspection (19900.6768ms)
+✔ Office XML parts remain capped at 16 MiB despite the authorized large document (5357.6256ms)
+✔ Office containers are inspected from the spooled file entry by entry and zip bombs fail closed (36498.8517ms)
+✖ upload inspection rejects encryption, corrupt structures, active content, and bounded archive abuse (60016.9583ms)
+✔ PDF upload admits only the restricted filled Sig fixture and rejects other Widgets (24636.587ms)
+✖ signed PDF risk controls remain fail-closed on both inspection paths (60011.8576ms)
+✖ multipage signatures retain bytes and reject active, ambiguous or incomplete inputs (60002.5408ms)
+✔ authorized qx signed PDF is accepted unchanged by the multipage profile (8796.6746ms)
+✔ inspection infrastructure and size rejections expose fixed internal reasons (4582.724ms)
+✖ upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503 (7626.8635ms)
+(node:36300) PromiseRejectionHandledWarning: Promise rejection was handled asynchronously (rejection id: 2)
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ spooled and in-memory originals accept identical bytes without content checks at chunk boundaries (114.4801ms)
+✔ spooled PDF stays opaque while a mismatched stored size is rejected (14.1731ms)
+✔ spool stream hashes bytes, rejects overruns and leaves no partial file behind (29.5936ms)
+✔ spool reservations are capped and released once (0.7131ms)
+﹣ PostgreSQL/Azurite streamed PUT verifies size and hash, stages Blob blocks and cleans the spool (0.1315ms) # SKIP
+✔ trusted project target is required; client product and stage are assertions (2.6396ms)
+✔ only exact reviewed DOCX warnings and signed headings permit acceptance (1.6586ms)
+✔ message persistence seam stays closed by default (1072.1962ms)
+﹣ submitted prompt versions, owner and role isolation, replay and lifecycle (0.3927ms) # SKIP
+✔ checked revision metadata exposes clean and baseline downloads with pending review summary (1022.7622ms)
+✖ locked materials enter the draft queue before parsing and business review; security pins and channel isolation remain enforced (3837.3136ms)
+﹣ #79 PG16/Azurite archive survives two rotations, delayed replay and crash boundaries (1.0537ms) # SKIP
+✔ #79 scrubber removes secrets, captcha codes and cookies (6.4376ms)
+✔ #79 normalized loose keys never leave synthetic values in diagnostics (3.5067ms)
+✔ #79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject (3.1689ms)
+﹣ #79 entire prose values and nested fields are safe in real Blob readback (0.2393ms) # SKIP
+﹣ #79 ambiguous diagnostic rejection leaves structured run error evidence writable (0.173ms) # SKIP
+✔ #79 fixed-seed decoded field matrix does not retain synthetic values (221.6548ms)
+✔ #79 scrubber handles nested, embedded and escaped JSON without losing surrounding text (0.9801ms)
+✔ #79 escaped JSON with quoted prose and Chinese business placeholders stays usable (0.5258ms)
+✔ #79 scrubber bounds JSON depth, body length and malformed brace work (3341.4024ms)
+✔ #79 large legal JSON and prompt-shaped text retain the full body (579.8785ms)
+﹣ #79 structured secrets are absent from the private diagnostic Blob readback (0.1895ms) # SKIP
+﹣ #79 fixed-seed field matrix stays safe through real Blob and reference writes (0.1008ms) # SKIP
+﹣ #79 escaped quotes and business placeholders survive private Blob readback (0.0773ms) # SKIP
+﹣ #79 full-size synthetic model diagnostics survive private Blob readback (0.0656ms) # SKIP
+﹣ #79 rejected diagnostics never call Blob put or register a partial snapshot (0.0598ms) # SKIP
+✔ #79 wide JSON arrays stay bounded in 128/256 MiB child heaps (12516.4095ms)
+ℹ 128 MiB heap / 4 MiB wide input: 812 CPU ms, RSS +21 MiB
+ℹ 128 MiB heap / 9 MiB wide input: 1625 CPU ms, RSS +53 MiB
+ℹ 256 MiB heap / 4 MiB wide input: 844 CPU ms, RSS +21 MiB
+ℹ 256 MiB heap / 9 MiB wide input: 1641 CPU ms, RSS +53 MiB
+✔ #79 prose rules scale linearly on long ordinary whitespace in bounded child heaps (19770.9635ms)
+ℹ 128 MiB heap / 2000 spaces: 0.0 CPU ms, peak RSS 91 MiB
+ℹ 128 MiB heap / 4000 spaces: 0.0 CPU ms, peak RSS 91 MiB
+ℹ 128 MiB heap / 8000 spaces: 0.0 CPU ms, peak RSS 91 MiB
+ℹ 128 MiB heap / 16000 spaces: 16.0 CPU ms, peak RSS 91 MiB
+ℹ 128 MiB heap / 32000 spaces: 0.0 CPU ms, peak RSS 91 MiB
+ℹ 256 MiB heap / 2000 spaces: 0.0 CPU ms, peak RSS 92 MiB
+ℹ 256 MiB heap / 4000 spaces: 15.0 CPU ms, peak RSS 91 MiB
+ℹ 256 MiB heap / 8000 spaces: 15.0 CPU ms, peak RSS 91 MiB
+ℹ 256 MiB heap / 16000 spaces: 0.0 CPU ms, peak RSS 90 MiB
+ℹ 256 MiB heap / 32000 spaces: 0.0 CPU ms, peak RSS 91 MiB
+✔ #79 repeated non-delimiting escaped quotes have linear bounded work (4885.3533ms)
+ℹ 128 MiB heap / 4 MiB quote runs: 491 ms, peak RSS 113 MiB
+ℹ 256 MiB heap / 4 MiB quote runs: 479 ms, peak RSS 113 MiB
+✔ #79 dense short strings and long escaped quotes share bounded scan work (12218.9787ms)
+ℹ 128 MiB heap / dense 3600001 B: 2006 ms, peak RSS 117 MiB
+ℹ 128 MiB heap / long_key 9437222 B: 217 ms, peak RSS 118 MiB
+ℹ 256 MiB heap / dense 3600001 B: 1992 ms, peak RSS 118 MiB
+ℹ 256 MiB heap / long_key 9437222 B: 212 ms, peak RSS 118 MiB
+✔ #79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB (4329.0384ms)
+ℹ 128 MiB heap / 9 MiB dense sensitive input: 177 ms, peak RSS 134 MiB
+ℹ 256 MiB heap / 9 MiB dense sensitive input: 169 ms, peak RSS 137 MiB
+✔ #79 densely redacted valid 10 MiB arrays fit bounded child heaps (4988.1267ms)
+ℹ 128 MiB heap / 10485749 B dense valid input: 508 ms, peak RSS 222 MiB
+ℹ 256 MiB heap / 10485749 B dense valid input: 490 ms, peak RSS 221 MiB
+✔ #79 dense ordinary colon strings stay bounded when every value is scanned (7053.18ms)
+ℹ 128 MiB heap / 10485751 B dense colon input: 1556 ms, peak RSS 165 MiB
+ℹ 256 MiB heap / 10485751 B dense colon input: 1565 ms, peak RSS 165 MiB
+✔ #79 near-limit multibyte ordinary JSON remains complete in bounded heaps (7431.5286ms)
+ℹ 128 MiB heap / 10485689 B multibyte: 1178 ms (5 MiB baseline 631 ms), peak RSS 225 MiB
+ℹ 256 MiB heap / 10485689 B multibyte: 1165 ms (5 MiB baseline 595 ms), peak RSS 225 MiB
+✔ #79 file sink fails closed on torn/corrupt lines and unsafe permissions (26.7084ms)
+﹣ #79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections (0.2372ms) # SKIP
+﹣ #79 forwarding drills: sink outage, process crash and replay never lose or double count (0.0783ms) # SKIP
+﹣ #79 production file sink survives two independent processes with crash before PG ack (0.0582ms) # SKIP
+✔ #79 a missing source event blocks the whole claimed batch before sink or PG ACK (281.9501ms)
+✔ #79 malformed outbox envelope or source event blocks the entire PG batch (323.6075ms)
+✔ #79 a conflicting existing receipt cannot ACK a different outbox event (280.2135ms)
+✔ #79 PG event lookup outage cannot call the sink or acknowledge the outbox (272.1135ms)
+﹣ #79 evidence gate: DB transaction failure pauses new external calls and raises an alert (0.2232ms) # SKIP
+﹣ #79 retention purge and user-deletion reclamation keep accounting metadata (0.0725ms) # SKIP
+﹣ #79 orphan prompt Blob intent survives failed compensation, restart and delete retry (0.0636ms) # SKIP
+﹣ #79 prompt response and purge serialize through delivery, with audit and owner boundary (0.1111ms) # SKIP
+﹣ #79 in-flight Blob purge blocks prompt read and failed delete remains replayable (0.0675ms) # SKIP
+﹣ #79 TCP abort releases prompt lock during pending Blob read (resolve late) (0.0597ms) # SKIP
+﹣ #79 TCP abort releases prompt lock during pending Blob read (reject late) (0.0598ms) # SKIP
+﹣ #79 real TCP slow response and onSend failure release the prompt lock (0.0499ms) # SKIP
+﹣ #79 disconnected lock waiter frees a two-connection PG pool (success first read) (0.0485ms) # SKIP
+﹣ #79 disconnected lock waiter frees a two-connection PG pool (failure first read) (0.048ms) # SKIP
+﹣ #79 prompt deadline ends a live TCP Blob read and permits purge (0.0632ms) # SKIP
+﹣ #79 prompt deadline stops a connected lock waiter without retaining its PG connection (0.0505ms) # SKIP
+﹣ #79 prompt deadline closes a unread live TCP response and releases purge (0.0567ms) # SKIP
+﹣ #79 prompt deadline closes a trickle live TCP response and releases purge (0.0484ms) # SKIP
+﹣ #79 prompt deadline allows a normal TCP response and ends a stuck onSend (0.0465ms) # SKIP
+﹣ #79 PG statement deadline cancels a 3-second snapshot query holding the prompt lock (0.0461ms) # SKIP
+﹣ #79 PG statement deadline cancels a 3-second audit query holding the prompt lock (0.0463ms) # SKIP
+﹣ synthetic #79 operation, usage, redaction, owner and outbox recovery (1.3198ms) # SKIP
+﹣ #79 isolated recovery drill: sink outage, parse crash and transaction connection loss (0.9667ms) # SKIP
+✔ config: guard is off outside production unless enabled, and bad values fail closed (20.2382ms)
+﹣ health and readiness probes (0.1667ms) # SKIP
+﹣ run quotas: active runs, runs per day, idempotent replay and logged rejection (0.1318ms) # SKIP
+﹣ token quota counts unknown usage conservatively at submit and before every model call (0.1567ms) # SKIP
+﹣ zero disables only the daily model-token cap while retaining other trial limits (0.1414ms) # SKIP
+﹣ platform cost is attributed once per supplier attempt using exact verified rates (0.1802ms) # SKIP
+﹣ kill switch stops new runs and new model calls; operator-only and append-only (0.1039ms) # SKIP
+﹣ abuse limits: per-account and per-source, shared source not blanket-banned, allow/deny overrides (0.1645ms) # SKIP
+﹣ trial health pass raises stale heartbeat, backlog, error-rate and global-quota alerts (0.1866ms) # SKIP
+ℹ tests 610
+ℹ suites 0
+ℹ pass 484
+ℹ fail 50
+ℹ cancelled 3
+ℹ skipped 73
+ℹ todo 0
+ℹ duration_ms 1935419.8609
+
+✖ failing tests:
+
+test at apps\api\dist\execution-key.test.js:10:1
+✖ PostgreSQL execute keys preserve JS identity, legacy replay, owner isolation and atomic outbox (2271.209ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  202 !== 501
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/execution-key.test.js:41:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 202,
+    expected: 501,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\logical-job.test.js:11:1
+✖ run-less preflight and execute rejection retain atomic owned job timelines (1514.0164ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'needs_confirmation'
+  - 'blocked'
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/logical-job.test.js:21:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'needs_confirmation',
+    expected: 'blocked',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\m4-knowledge.test.js:8:1
+✖ all material/exchange combinations select actual source knowledge with distinct immutable bytes (46.2186ms)
+  Error: M4_KNOWLEDGE_UNAVAILABLE
+      at loadGuide (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-knowledge.js:22:15)
+      at loadM4Knowledge (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-knowledge.js:40:54)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-knowledge.test.js:12:25)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+
+test at apps\api\dist\non-production-test.test.js:16:1
+✖ test submissions cannot reserve the exact browser update key (2500.4137ms)
+  AssertionError [ERR_ASSERTION]: {"run_id":"8afaec36-02ca-4e36-a86a-24ba89043c0c","execution_request_id":"synthetic-test-6714ddb6-9731-48e1-8f56-83668d13fa80","project_id":"5f54f440-b415-4b72-91ba-bf02eb2f33d2","input_revision":1,"input_hash":"08bf60e5810c2cc811e61a783c569c67e0987ae97d3f4046ded765908bba1c0c","channel":"non_production_test","test_grant_id":"6ee3864a-1a53-4cb2-83a3-02601e1e55aa","uncovered_items":[],"state":"queued","stage":"queued","event_cursor":1,"billing_mode":"non_billable_test","reservation_id":null,"artifact_id":null,"prompt_snapshot_ref":null,"updated_at":"2026-10-26T14:20:58.018Z"}
+  
+  202 !== 501
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/non-production-test.test.js:64:28)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 202,
+    expected: 501,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\non-production-test.test.js:108:1
+✖ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (1786.1051ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + {
+  +   attempts: 1,
+  +   checkpoint: {},
+  +   executionVersion: 1,
+  +   inputHash: '08bf60e5810c2cc811e61a783c569c67e0987ae97d3f4046ded765908bba1c0c',
+  +   inputRevision: 1,
+  +   jobId: 'cb49c487-822c-4c5d-afb7-c2f9c3efdfa6',
+  +   owner: 'synthetic-owner-070b0197-cab3-458c-96ee-69041cb9d913',
+  +   runId: '4af30bdd-06fc-4567-8aa4-c3bb4b6d52b2',
+  +   token: 'dd09e185-a4c1-4070-8b6f-fc1152f093e0'
+  + }
+  - null
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/non-production-test.test.js:184:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { executionVersion: 1, inputRevision: 1, inputHash: '08bf60e5810c2cc811e61a783c569c67e0987ae97d3f4046ded765908bba1c0c', jobId: 'cb49c487-822c-4c5d-afb7-c2f9c3efdfa6', runId: '4af30bdd-06fc-4567-8aa4-c3bb4b6d52b2', owner: 'synthetic-owner-070b0197-cab3-458c-96ee-69041cb9d913', token: 'dd09e185-a4c1-4070-8b6f-fc1152f093e0', checkpoint: {}, attempts: 1 },
+    expected: null,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\preflight-difficulty.test.js:14:1
+✖ HTTP update preflight returns conservative, owner-scoped immutable difficulty summaries (1549.0633ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(first.json().missing_inputs.includes('execution_capability_not_ready'))
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/preflight-difficulty.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\project-assistant.pg.test.js:20:1
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (3210.8658ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+  +   available: 10000,
+  +   frozen: 0
+  -   available: 5500,
+  -   frozen: 4500
+    }
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/project-assistant.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { available: 10000, frozen: 0 },
+    expected: { available: 5500, frozen: 4500 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:115:1
+✖ readable report keeps valid legacy files readable and accepts exact live registry metadata (285.7238ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:116:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:129:17
+✖ prompt_snapshot (245.0954ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:130:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:129:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:129:17
+✖ provider_result (257.5924ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:130:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:129:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:156:17
+✖ purged_file (223.4379ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:157:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:156:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:156:17
+✖ closed_account (276.2222ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:157:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:156:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:156:17
+✖ deleted_project (233.6937ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:157:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:156:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:186:1
+✖ real working-file purge waits for readable report validation and denies the next raw read (232.4891ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:51:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:187:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\revision-range.test.js:9:1
+✖ contract-valid revision beyond PostgreSQL integer range has owned atomic rejection evidence (2768.8228ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  404 !== 501
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/revision-range.test.js:88:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 501,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:481:21
+✖ m3 (17.6216ms)
+  error: new row for relation "bb_review_execution_snapshots" violates check constraint "bb_review_execution_snapshots_snapshot_check"
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:482:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:481:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 1100,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (supplement-29c74329-0c94-4b5a-999c-918f6de5b1c6, 809fa7eb-bb70-42ce-9dc5-4c67e67b9bf7, d8f59a5d-9672-4c3e-a9a8-115a8131a8db, 1, 1, 5bc874ae48eb26bc12c90142f85766fd71e5701701130333f64b5cfaf3aeb44c, 1, full_review, null, {"plan": null, "input": {"as_of": "2026-09-30", "requirements": ..., 2026-10-26 22:27:45.411952+08).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: 'public',
+    table: 'bb_review_execution_snapshots',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshots_snapshot_check',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:481:21
+✖ m4 (416.8915ms)
+  AssertionError [ERR_ASSERTION]: {"code":"DATA_UNAVAILABLE","message":"原任务的固定输入暂时无法读取，请稍后重试。","retryable":true,"field_errors":[],"correlation_id":"8bceff32-ad4e-46e8-9082-5ddfa28ee09b"}
+      at ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:18:12)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:487:60)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:481:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:496:21
+✖ inconsistent M3 version is unavailable (19.0787ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:497:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:496:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:496:21
+✖ inconsistent M3 operation is unavailable (304.5315ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:497:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:496:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:496:21
+✖ inconsistent M3 origin is unavailable (330.3129ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:497:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:496:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:496:21
+✖ inconsistent M3 missing_review is unavailable (289.8859ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:497:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:496:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:503:21
+✖ inconsistent review-result update source_run is unavailable (278.5146ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:506:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:503:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:503:21
+✖ inconsistent review-result update source_pin is unavailable (282.3301ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:506:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:503:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:503:21
+✖ inconsistent review-result update materials is unavailable (277.4121ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:506:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:503:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:503:21
+✖ inconsistent review-result update requirements is unavailable (293.3188ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:506:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:503:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-draft.pg.test.js:503:21
+✖ inconsistent review-result update operation is unavailable (281.1333ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:110:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:506:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-draft.pg.test.js:503:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:388:1
+✖ a real paused local correction captures six exact checkpoint files with zero provider results and no charges (898.2525ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:391:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ missing_execution (227.8367ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'be1f12a6-320e-41eb-99c0-9278ea203dd6'
+  - 'b7cf4b1e-b0b2-41dd-bfe3-7d7efe160878'
+  
+      at Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:178:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'be1f12a6-320e-41eb-99c0-9278ea203dd6',
+    expected: 'b7cf4b1e-b0b2-41dd-bfe3-7d7efe160878',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ execution_version (28.9539ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ execution_operation (269.255ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ snapshot_input (264.2927ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ snapshot_origin (274.8205ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ missing_export_only (276.3058ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ false_export_only (263.434ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ snapshot_source_run (282.3405ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ missing_export (259.641ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ invalid_export_hash (288.125ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ self_source_run (265.707ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-supplement-files.pg.test.js:440:21
+✖ source_not_in_manifest (273.347ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Object.localCorrectionFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:173:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:441:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:440:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:522:21
+✖ separate-attempt-and-prompt: working-file (5699.7263ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:525:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:522:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:522:21
+✖ separate-attempt-and-prompt: parent-content (5554.0815ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:525:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:522:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:522:21
+✖ same-attempt-candidates: working-file (5849.652ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:525:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:522:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:522:21
+✖ same-attempt-candidates: parent-content (5295.978ms)
+  error: review snapshot must match its exact execution input
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:82:13)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:525:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:522:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 706,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_check_review_execution_snapshot() line 35 at RAISE\nSQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,\n    version,operation,source_report_id,snapshot,created_at)\n  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,\n    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"\nPL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_review_execution_snapshot_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\upload-safety.test.js:348:1
+✖ upload inspection rejects encryption, corrupt structures, active content, and bounded archive abuse (60016.9583ms)
+  'test timed out after 60000ms'
+
+test at apps\api\dist\upload-safety.test.js:442:1
+✖ signed PDF risk controls remain fail-closed on both inspection paths (60011.8576ms)
+  'test timed out after 60000ms'
+
+test at apps\api\dist\upload-safety.test.js:472:1
+✖ multipage signatures retain bytes and reject active, ambiguous or incomplete inputs (60002.5408ms)
+  'test timed out after 60000ms'
+
+test at apps\api\dist\upload-safety.test.js:514:1
+✖ upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503 (7626.8635ms)
+  Error: Material inspection capacity is temporarily busy
+      at legacy (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/upload-safety.test.js:21:19)
+      at runNextTicks (node:internal/process/task_queues:65:5)
+      at listOnTimeout (node:internal/timers:644:9)
+      at process.processTimers (node:internal/timers:618:7) {
+    status: 503,
+    code: 'DATA_UNAVAILABLE',
+    uploadReason: 'inspection_queue_timeout',
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\working-draft-parse-admission.test.js:13:1
+✖ locked materials enter the draft queue before parsing and business review; security pins and channel isolation remain enforced (3837.3136ms)
+  AssertionError [ERR_ASSERTION]: {"run_id":"b8444930-66d9-434c-8e2c-84ddfeaf32db","execution_request_id":"web-update-cfa2e471e6d71dcd7bad72c103ad9c39bbdab0aedae41e0d1167199283cd9d96","project_id":"236197ca-b54e-4f70-9762-20deccc75370","input_revision":1,"input_hash":"5b503ee631d3839a7a3fa9a9172f1b7844f18aea84e66f81d243c4f5e390fe99","channel":"non_production_test","test_grant_id":"860b4c69-7f51-41cd-a7d5-28f3c077ac85","uncovered_items":[],"state":"queued","stage":"queued","event_cursor":1,"billing_mode":"non_billable_test","reservation_id":null,"artifact_id":null,"prompt_snapshot_ref":null,"updated_at":"2026-10-26T14:43:51.285Z"}
+  
+  202 !== 501
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/working-draft-parse-admission.test.js:218:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 202,
+    expected: 501,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,89 @@
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (552.5247ms)
+▶ real claimed M1, legacy/file M3 and M4 loaders read exact immutable execution inputs without changing history or credits
+  ✔ m1 (1826.4338ms)
+  ▶ m3
+    ✔ m3: missing exact business snapshot never falls back to legacy (33.932ms)
+  ✔ m3 (513.3215ms)
+  ▶ m4
+    ✔ m4: missing exact business snapshot never falls back to legacy (39.8755ms)
+  ✔ m4 (431.5589ms)
+✔ real claimed M1, legacy/file M3 and M4 loaders read exact immutable execution inputs without changing history or credits (2979.7858ms)
+﹣ M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history (1.2445ms) # SKIP
+﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.3227ms) # SKIP
+﹣ project review: real dual Word delivery, explicit promotion, manual export, idempotency and owner isolation (1.0618ms) # SKIP
+✔ review reassembly requires Blob evidence and an explicit exact identity (2.1204ms)
+✔ private review reassembly preserves original evidence, rolls back, is idempotent and reuses CLI result without a new call (1944.7589ms)
+▶ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation
+  ✔ result Blob tamper (1423.5223ms)
+  ✔ missing result Blob (830.9906ms)
+  ✔ prompt Blob tamper (804.4693ms)
+  ✔ missing prompt Blob (1243.7486ms)
+  ✖ wrong run input hash (674.2354ms)
+  ✔ missing prompt checkpoint (839.2957ms)
+  ✔ duplicate result checkpoint (794.0856ms)
+  ✔ live lease (793.7897ms)
+  ✔ wrong task kind (744.4074ms)
+  ✔ deleted project (730.8712ms)
+  ✔ existing report (743.9946ms)
+  ✔ conflicting usage (729.8927ms)
+  ✔ later unresolved attempt (727.737ms)
+  ✔ active run in same project (736.0843ms)
+  ✔ foreign attempt and wrong expected hash (1524.4544ms)
+  ✔ failure in another stage (806.969ms)
+✖ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation (14153.6984ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (344.0047ms)
+  ✔ live lease registers once and only exact report bytes replay (56.46ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (102.9522ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (340.0845ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (847.6146ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (412.1846ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (43.0152ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (45.3155ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (46.5322ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (67.1106ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (617.5159ms)
+﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.4131ms) # SKIP
+ℹ tests 41
+ℹ suites 0
+ℹ pass 35
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 4
+ℹ todo 0
+ℹ duration_ms 109228.65
+
+✖ failing tests:
+
+test at apps\worker\dist\review-reassembly.test.js:205:21
+✖ wrong run input hash (674.2354ms)
+  error: model call must match its exact execution input and prompt
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/queue.js:242:9
+      at async transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/data.js:68:24)
+      at async guardEvidenceWrite (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/evidence-gate.js:66:16)
+      at async recordPotentialCall (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/queue.js:223:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-reassembly.test.js:95:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-reassembly.test.js:206:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-reassembly.test.js:205:13) {
+    length: 218,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_bind_model_call_execution() line 15 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_model_call_execution_exact',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }

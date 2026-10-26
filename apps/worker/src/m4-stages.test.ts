@@ -48,6 +48,21 @@ import type { M4WorkerInput } from './m4-input.js';
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile);
 const python=process.env.BONDBUDDY_TEST_PYTHON??'python3';
+/** Synthetic persisted rows for gates; business snapshots are never read by run alone. */
+function gateExecutionRows(ctx:StageContext,manifest:M4DocumentManifest,sql:string,args?:unknown[]) {
+  const run=ctx.run,identity={owner_user_id:run.owner_user_id,project_id:run.project_id,run_id:run.id,
+    execution_version:ctx.lease.executionVersion,input_revision:run.input_revision,input_hash:run.input_hash};
+  if(sql.startsWith('SELECT r.*'))return {rows:[run]};
+  if(sql.includes('FROM bb_run_execution_versions'))return {rows:[identity]};
+  if(sql.includes('FROM bb_input_revisions'))return {rows:[{owner_user_id:run.owner_user_id,project_id:run.project_id,
+    revision:run.input_revision,input_hash:run.input_hash,manifest,draft_revision:1,material_versions:[],rule_pack_version:null,template_version:null}]};
+  if(sql.includes('FROM bb_review_execution_snapshots')||sql.includes('FROM bb_m4_execution_snapshots')){
+    assert.deepEqual(args,[run.owner_user_id,run.project_id,run.id,ctx.lease.executionVersion,run.input_revision,run.input_hash]);
+    return {rows:sql.includes('FROM bb_review_execution_snapshots')?[]:[{...identity,topic_id:manifest.topic_id,manifest}]};
+  }
+  assert.doesNotMatch(sql,/\bbb_(?:review|m4)_executions\b/,'gate must not reload legacy business snapshots');
+  return undefined;
+}
 async function fixture(kind:'document'|'qa'='document') {
   const base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-m4-synthetic-'));
   const source=Buffer.from('Synthetic source, assets 100 and liabilities 50.');
@@ -292,8 +307,9 @@ test('M4 input gate checks topic, subtype, scope and exact owned source hash',as
   const f=await fixture();
   try{const manifest=f.input.manifest as M4DocumentManifest;const input={manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;
     let subtype='m4_document_v1',scope='project',materialHash=f.pin.sha256;
-    f.ctx.pool={query:async(sql:string)=>sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:scope,input_hash:f.ctx.run.input_hash,manifest,subtype}]}:
-      sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:materialHash}]}:{rows:[]}} as unknown as StageContext['pool'];
+    f.ctx.pool={query:async(sql:string,args?:unknown[])=>gateExecutionRows(f.ctx,manifest,sql,args)
+      ??(sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:scope,input_hash:f.ctx.run.input_hash,manifest,subtype}]}:
+      sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:materialHash}]}:{rows:[]})} as unknown as StageContext['pool'];
     assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,input),null);
     subtype='default';assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,input))?.kind,'fail');subtype='m4_document_v1';
     scope='foreign';assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,input))?.kind,'fail');scope='project';
@@ -310,9 +326,10 @@ test('M4 template registry and edit-base kind are explicit; retiring the exact o
     let template={broker:'Synthetic Broker',document_type:'init',market:'sse',sha256:f.pin.sha256,material:f.pin,retired_at:new Date()};
     let baseKind='document';
     const refresh=()=>{f.ctx.run.input_hash=inputManifestHash(manifest);f.ctx.lease.inputHash=f.ctx.run.input_hash;return {manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;};
-    f.ctx.pool={query:async(sql:string)=>sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
+    f.ctx.pool={query:async(sql:string,args?:unknown[])=>gateExecutionRows(f.ctx,manifest,sql,args)
+      ??(sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
       sql.includes('FROM bb_m4_templates')?{rows:[template]}:sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:f.pin.sha256}]}:
-      sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]}} as unknown as StageContext['pool'];
+      sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]})} as unknown as StageContext['pool'];
     assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null);
     template={...template,broker:''};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail','init still requires a broker');
     manifest.input.document_type='private_summary';manifest.billing_task='m4_G05';template={...template,document_type:'private_summary'};delete manifest.input.fields.broker;

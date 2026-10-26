@@ -146,9 +146,10 @@ async function context() {
     assert.notEqual(sourceRunId, runId);
     const manifest: Record<string, any> = { draft_revision: 1, project_kind: 'review', issuer_name: 'Synthetic correction issuer',
       materials: [{ ...basePin, role: 'other' }], review: { version: 'review_v1', operation: 'full_review', version_number: 1,
+        report_id: uid(), source_report_id: null, source_report_sha256: null,
         input: reviewInput, origin: reviewOrigin, finding_ids: [], file_delivery: { version: 'review-correction-v2', knowledge: [], export: exported } } };
     const snapshot: Record<string, any> = { input: structuredClone(reviewInput), origin: structuredClone(reviewOrigin),
-      export_only: true, source_run_id: sourceRunId };
+      finding_ids: [], export_only: true, source_run_id: sourceRunId };
     // Every mismatch is seeded before immutable input/execution insertion. A
     // receipt that frozenBase permits still cannot supply missing file authority.
     if (options.defect === 'snapshot_input') snapshot.input.requirements = ['Different frozen correction requirement'];
@@ -169,9 +170,19 @@ async function context() {
       VALUES($1,$2,$3,1,$4,$5,'review',$6,'queued','queued')`, [runId, owner, projectId, hash, uid(), digest(uid())]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage)
       VALUES($1,$2,$3,'review','default','queued','queued')`, [jobId, owner, runId]);
-    if (options.defect !== 'missing_execution') await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
-      VALUES($1,$2,$3,$4,$5,$6)`, [runId, owner, projectId, options.defect === 'execution_version' ? 2 : 1,
-      options.defect === 'execution_operation' ? 'differential_review' : 'full_review', snapshot]);
+    if (options.defect !== 'missing_execution') {
+      try {
+        await pool.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+          VALUES($1,$2,$3,$4,$5,$6)`, [runId, owner, projectId, options.defect === 'execution_version' ? 2 : 1,
+          options.defect === 'execution_operation' ? 'differential_review' : 'full_review', snapshot]);
+      } catch (error) {
+        // A rejected synthetic business snapshot must not leave a queued job
+        // available to the next fixture's real claim(). No trigger is disabled.
+        await pool.query("UPDATE bb_jobs SET state='cancelled',stage='cancelled' WHERE owner_user_id=$1 AND id=$2", [owner, jobId]);
+        await pool.query("UPDATE bb_runs SET state='cancelled',stage='cancelled' WHERE owner_user_id=$1 AND id=$2", [owner, runId]);
+        throw error;
+      }
+    }
     const lease = await claim(pool, 300, { runKinds: ['review'] });
     assert.ok(lease); assert.equal(lease.runId, runId); assert.equal(lease.jobId, jobId);
     const fileBytes = new Map<string, Buffer>(), files: Record<string, { key: string; sha256: string; byte_size: number }> = {};
@@ -209,7 +220,8 @@ async function context() {
       'bb_provider_result_refs', 'bb_provider_call_observations', 'bb_usage_observations', 'bb_snapshot_refs',
       'bb_run_supplement_drafts', 'bb_run_supplement_saved_work', 'bb_run_supplement_saved_results',
       'bb_credit_events', 'bb_credit_lots', 'bb_credit_accounts', 'bb_credit_reservations', 'bb_artifact_versions', 'bb_artifact_download_grants',
-      'bb_review_executions', 'bb_run_events', 'bb_outbox', 'bb_observability_events', 'bb_log_content_tombstones']) {
+      'bb_review_executions', 'bb_review_execution_snapshots', 'bb_m4_execution_snapshots',
+      'bb_run_events', 'bb_outbox', 'bb_observability_events', 'bb_log_content_tombstones']) {
       result[table] = (await pool.query(`SELECT t.* FROM ${table} t WHERE owner_user_id=$1 ORDER BY to_jsonb(t)::text`, [owner])).rows;
     }
     result.usage = (await pool.query(`SELECT u.* FROM bb_call_usage u JOIN bb_model_call_attempts a ON a.id=u.attempt_id
@@ -383,13 +395,27 @@ test('a real paused local correction captures six exact checkpoint files with ze
 test('checkpoint correction bytes require the exact review execution, export-only source and frozen source material', { skip: !connection }, async t => {
   const c = await context();
   try {
-    const cases: Array<[NonNullable<Parameters<typeof c.localCorrectionFixture>[0]>['defect'], number]> = [
-      ['missing_execution', 503], ['execution_version', 503], ['execution_operation', 503],
-      ['snapshot_input', 503], ['snapshot_origin', 503],
+    const cases: Array<[NonNullable<Parameters<typeof c.localCorrectionFixture>[0]>['defect'], number | 'bridge_rejected']> = [
+      ['missing_execution', 503], ['execution_version', 'bridge_rejected'], ['execution_operation', 'bridge_rejected'],
+      ['snapshot_input', 'bridge_rejected'], ['snapshot_origin', 'bridge_rejected'],
       ['missing_export_only', 200], ['false_export_only', 200], ['snapshot_source_run', 200],
       ['missing_export', 200], ['invalid_export_hash', 200], ['self_source_run', 200], ['source_not_in_manifest', 200],
     ];
     for (const [defect, expectedStatus] of cases) await t.test(defect!, async () => {
+      if (expectedStatus === 'bridge_rejected') {
+        const before = await c.evidence();
+        await assert.rejects(c.localCorrectionFixture({ defect }), (error: unknown) => {
+          const pgError = error as { code?: string; constraint?: string };
+          return pgError.code === '23514' && pgError.constraint === 'bb_review_execution_snapshot_exact';
+        }, 'the exact business-snapshot bridge rejects the mismatch before any correction file is produced');
+        const after = await c.evidence();
+        for (const table of ['bb_review_executions', 'bb_review_execution_snapshots', 'bb_m4_execution_snapshots',
+          'bb_model_call_attempts', 'bb_provider_result_refs', 'bb_run_supplement_drafts', 'bb_run_supplement_saved_work',
+          'bb_run_supplement_saved_results', 'bb_artifact_versions', 'bb_artifact_download_grants',
+          'bb_credit_events', 'bb_credit_lots', 'bb_credit_accounts', 'bb_credit_reservations', 'balance'])
+          assert.deepEqual(after[table], before[table], `bridge rejection preserves ${table}`);
+        return;
+      }
       const f = await c.localCorrectionFixture({ defect }), beforeSave = await c.evidence();
       const response = await c.send('PUT', f.url, f.request());
       assert.equal(response.statusCode, expectedStatus, response.body);

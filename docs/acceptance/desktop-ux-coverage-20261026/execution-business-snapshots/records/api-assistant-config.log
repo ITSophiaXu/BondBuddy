@@ -1,0 +1,36 @@
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.6109ms)
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (3244.5276ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13918.2707
+
+✖ failing tests:
+
+test at apps\api\dist\project-assistant.pg.test.js:20:1
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (3244.5276ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+  +   available: 10000,
+  +   frozen: 0
+  -   available: 5500,
+  -   frozen: 4500
+    }
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/project-assistant.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { available: 10000, frozen: 0 },
+    expected: { available: 5500, frozen: 4500 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

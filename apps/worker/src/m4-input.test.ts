@@ -20,7 +20,8 @@ function fixture() {
   const run = { id: 'run', owner_user_id: 'owner', project_id: 'project', input_revision: 3, input_hash: hash, task_kind: 'generation' };
   const input = { owner_user_id: 'owner', project_id: 'project', revision: 3, input_hash: hash, manifest,
     draft_revision: 1, material_versions: [pin], rule_pack_version: null, template_version: null };
-  const execution = { owner_user_id: 'owner', run_id: 'run', topic_id: 'topic', input_hash: hash, manifest: structuredClone(manifest) };
+  const execution = { owner_user_id: 'owner', project_id: 'project', run_id: 'run', execution_version: 1,
+    input_revision: 3, topic_id: 'topic', input_hash: hash, manifest: structuredClone(manifest) };
   const scope = { source_project_id: 'source-project', scope_id: 'project', input_hash: hash,
     manifest: structuredClone(manifest), subtype: 'm4_document_v1' };
   const state = { snapshotAvailable: true };
@@ -32,9 +33,11 @@ function fixture() {
     if (sql.includes('FROM bb_input_revisions')) {
       assert.deepEqual(args, ['owner', 'project', 3]); return { rows: [input] };
     }
-    if (sql.includes('FROM bb_review_executions')) return { rows: [] };
-    if (sql.startsWith('SELECT e.* FROM bb_m4_executions')) {
-      assert.deepEqual(args, ['owner', 'project', 'run']); assert.match(sql, /t\.project_id=\$2/);
+    if (sql.includes('FROM bb_review_execution_snapshots')) {
+      assert.deepEqual(args, ['owner', 'project', 'run', 1, 3, hash]); return { rows: [] };
+    }
+    if (sql.includes('FROM bb_m4_execution_snapshots')) {
+      assert.deepEqual(args, ['owner', 'project', 'run', 1, 3, hash]);
       return { rows: state.snapshotAvailable ? [execution] : [] };
     }
     if (sql.startsWith('SELECT t.source_project_id')) {
@@ -108,7 +111,7 @@ test('M4 supplied snapshots are checked directly and explicit absence never fall
     (f: ReturnType<typeof fixture>) => { f.execution.manifest.input.requirements = [requirement('Changed snapshot')]; },
   ]) {
     const f = fixture(); corrupt(f);
-    assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution, f.ctx.lease), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
     assert.deepEqual(f.reads, [], 'even a valid legacy database snapshot cannot replace a mismatched supplied snapshot');
   }
 });
@@ -116,13 +119,56 @@ test('M4 supplied snapshots are checked directly and explicit absence never fall
 test('M4 standalone gate keeps its execution database check and supplied snapshots retain live scope/subtype checks', async () => {
   const standalone = fixture();
   assert.equal(await m4InputGate(standalone.ctx.pool, standalone.ctx.run, standalone.input), null);
-  assert.match(standalone.reads[0], /JOIN bb_m4_executions/);
+  assert.ok(standalone.reads.some(sql => sql.includes('FROM bb_m4_execution_snapshots')));
+  assert.equal(standalone.reads.some(sql => sql.includes('FROM bb_m4_executions')), false);
   for (const corrupt of [
     (f: ReturnType<typeof fixture>) => { f.scope.scope_id = 'other'; },
     (f: ReturnType<typeof fixture>) => { f.scope.subtype = 'm4_qa_v1'; },
   ]) {
     const f = fixture(); corrupt(f);
-    assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution, f.ctx.lease), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
     assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
   }
+});
+
+test('M4 loader and standalone gate reject absent or mismatched versioned snapshots without reading legacy state', async () => {
+  for (const change of [
+    (f: ReturnType<typeof fixture>) => { f.state.snapshotAvailable = false; },
+    (f: ReturnType<typeof fixture>) => { f.execution.execution_version = 2; },
+    (f: ReturnType<typeof fixture>) => { f.execution.input_revision = 4; },
+    (f: ReturnType<typeof fixture>) => { f.execution.input_hash = '0'.repeat(64); },
+    (f: ReturnType<typeof fixture>) => { f.execution.project_id = 'other'; },
+  ]) {
+    const loader = fixture(); change(loader);
+    await assert.rejects(loadM4WorkerInput(loader.ctx),
+      error => (error as { code?: string }).code === 'INPUT_REVISION_CONFLICT' || (error as Error).message === 'INPUT_REVISION_CONFLICT');
+    const direct = fixture(); change(direct);
+    assert.deepEqual(await m4InputGate(direct.ctx.pool, direct.ctx.run, direct.input), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    for (const f of [loader, direct]) {
+      assert.equal(f.reads.some(sql => sql.includes('FROM bb_m4_executions')), false);
+      assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
+    }
+  }
+});
+
+test('supplied M4 snapshots must match every field of the expected execution identity', async () => {
+  for (const change of [
+    (f: ReturnType<typeof fixture>) => { f.execution.execution_version = 2; },
+    (f: ReturnType<typeof fixture>) => { f.execution.input_revision = 4; },
+    (f: ReturnType<typeof fixture>) => { f.execution.input_hash = '0'.repeat(64); },
+  ]) {
+    const f = fixture(); change(f);
+    assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution, f.ctx.lease), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+    assert.equal(f.reads.some(sql => sql.includes('FROM bb_m4_execution_snapshots')), false);
+    assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
+  }
+});
+
+test('supplied M4 snapshots and a forged successor identity cannot bypass the persisted V1 execution', async () => {
+  const f = fixture(); f.execution.execution_version = 2;
+  const forged = { ...f.ctx.lease, executionVersion: 2 };
+  assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution, forged), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+  assert.equal(f.reads.filter(sql => sql.includes('FROM bb_run_execution_versions')).length, 1);
+  assert.equal(f.reads.some(sql => sql.includes('FROM bb_m4_execution_snapshots')), false);
+  assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
 });

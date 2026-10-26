@@ -1,0 +1,12 @@
+✔ upload inspection rejects encryption, corrupt structures, active content, and bounded archive abuse (123277.5393ms)
+✔ signed PDF risk controls remain fail-closed on both inspection paths (62795.8008ms)
+✔ multipage signatures retain bytes and reject active, ambiguous or incomplete inputs (19930.8186ms)
+✔ upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503 (7073.7464ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 215127.0829

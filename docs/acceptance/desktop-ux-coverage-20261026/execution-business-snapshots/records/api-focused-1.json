@@ -1,0 +1,20 @@
+{
+  "started": "2026-10-26T14:52:24.856Z",
+  "finished": "2026-10-26T14:53:06.893Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/run-execution-input.test.js",
+    "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+    "apps/api/dist/run-execution.pg.integration.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "environment": {
+    "BB_RUN_RUNTIME_ENABLED": null,
+    "BB_TEST_DATABASE_URL": "postgresql://bb_g03_test@127.0.0.1:15526/bb_execution_snapshots_template_20261026"
+  },
+  "status": 0,
+  "signal": null,
+  "pid": 40120
+}

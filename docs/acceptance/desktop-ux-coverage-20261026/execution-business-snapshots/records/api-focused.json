@@ -1,0 +1,14 @@
+{
+  "started": "2026-10-26T13:54:01.492Z",
+  "finished": "2026-10-26T13:54:52.570Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/run-execution-input.test.js",
+    "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+    "apps/api/dist/run-execution.pg.integration.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}
