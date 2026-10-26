@@ -1,0 +1,50 @@
+{
+  "before": "2026-10-26T20-42-26-555Z-source-before-42172-fce2979f",
+  "after": "2026-10-26T20-44-58-868Z-source-after-39688-fe97877a",
+  "pg_stop": "2026-10-26T20-45-10-483Z-pg-stop-24744-0407e050",
+  "adopted_test_modes": {
+    "api-preparation": {
+      "tests": 194,
+      "pass": 194,
+      "skipped": 0
+    },
+    "worker-preparation": {
+      "tests": 28,
+      "pass": 28,
+      "skipped": 0
+    },
+    "worker-authoring-regression": {
+      "tests": 87,
+      "pass": 82,
+      "skipped": 5
+    }
+  },
+  "adopted_build_modes": [
+    "contracts-build",
+    "api-build",
+    "worker-build",
+    "web-typecheck"
+  ],
+  "staged_sources": [
+    "apps/api/src/run-supplement-file-preparation-test-fixture.ts",
+    "apps/api/src/run-supplement-file-preparation.pg.test.ts",
+    "apps/api/src/run-supplement-preparation.ts",
+    "apps/worker/src/m4-document-request.test.ts",
+    "apps/worker/src/m4-document-request.ts",
+    "apps/worker/src/m4-document-stage.ts",
+    "apps/worker/src/m4-file-workspace.ts",
+    "apps/worker/src/m4-input.test.ts",
+    "apps/worker/src/m4-input.ts",
+    "apps/worker/src/m4-method.ts",
+    "apps/worker/src/m4-qa-stage.ts",
+    "apps/worker/src/m4-stages.test.ts",
+    "apps/worker/src/project-file-tools.ts",
+    "apps/worker/src/review-file-request.test.ts",
+    "apps/worker/src/review-file-request.ts",
+    "apps/worker/src/review-file-stage.ts",
+    "apps/worker/src/run-supplement-m4-request.pg.test.ts",
+    "apps/worker/src/run-supplement-m4-request.ts",
+    "apps/worker/src/run-supplement-review-request.pg.test.ts",
+    "apps/worker/src/run-supplement-review-request.ts"
+  ]
+}

@@ -133,18 +133,38 @@ export async function loadM4WorkerInput(ctx: StageContext): Promise<M4WorkerInpu
     throw Error('INPUT_REVISION_CONFLICT');
   const row = resolved.input;
   if (!row || !isM4Manifest(row.manifest) || await m4InputGate(ctx.pool, ctx.run, row, resolved.m4Execution, ctx.lease)) throw Error('INPUT_REVISION_CONFLICT');
-  const manifest = row.manifest;
+  return loadM4WorkerFiles(ctx.pool, ctx.run.owner_user_id, row.manifest);
+}
+
+/** Exact authorized file reader shared after the production gate and by internal
+ * candidate preparation. It grants no execution or artifact registration authority. */
+async function loadM4WorkerFiles(pool: Pool, owner: string, manifest: M4Manifest): Promise<M4WorkerInput> {
   const materials: M4WorkerMaterial[] = [], artifacts: M4WorkerArtifact[] = [];
   for (const pin of materialPins(manifest)) {
-    const file = await authorizedMaterial(ctx.pool, ctx.run.owner_user_id, pin);
+    const file = await authorizedMaterial(pool, owner, pin);
     if (!file) throw Error('INPUT_REVISION_CONFLICT');
     materials.push(file);
   }
   for (const pin of artifactPins(manifest)) {
-    const file = await authorizedArtifact(ctx.pool, ctx.run.owner_user_id, pin);
+    const file = await authorizedArtifact(pool, owner, pin);
     if (!file) throw Error('INPUT_REVISION_CONFLICT');
     artifacts.push(file);
   }
   if (manifest.kind === 'document' && manifest.input.source_material && !materials.some(m => same(m.pin, manifest.input.source_material))) throw Error('INPUT_REVISION_CONFLICT');
   return {manifest, materials, artifacts};
+}
+
+/** A candidate is checked against a real original execution; its hash is never
+ * substituted into a run, lease or business snapshot to make the live gate pass. */
+export async function loadM4SupplementInput(input: {pool: Pool; owner: string; projectId: string; runId: string;
+  sourceExecution: RunExecutionIdentity; manifest: unknown; candidateInputHash: string}) {
+  const resolved = await readRunExecutionInput(input.pool, input.owner, input.runId, input.sourceExecution);
+  const source = resolved.input.manifest, candidate = input.manifest;
+  if (resolved.run.project_id !== input.projectId || !isM4Manifest(source) || source.kind !== 'document'
+    || !isM4Manifest(candidate) || candidate.kind !== 'document'
+    || inputManifestHash(candidate) !== input.candidateInputHash
+    || !same({...source, input: {...source.input, materials: candidate.input.materials}}, candidate)
+    || await m4InputGate(input.pool, resolved.run, resolved.input, resolved.m4Execution, input.sourceExecution))
+    throw Error('INPUT_REVISION_CONFLICT');
+  return {input: await loadM4WorkerFiles(input.pool, input.owner, candidate), run: resolved.run};
 }

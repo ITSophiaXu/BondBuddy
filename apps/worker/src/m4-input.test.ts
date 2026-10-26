@@ -4,17 +4,18 @@ import type { Pool } from 'pg';
 import type { M4DocumentManifest, M4Requirement } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import { loadM4WorkerInput, m4InputGate } from './m4-input.js';
+import { loadM4WorkerInput, loadM4SupplementInput, m4InputGate } from './m4-input.js';
 import type { StageContext } from './run-pipeline.js';
 
 const requirement = (text: string): M4Requirement => ({ requirement_id: 'changed-requirement', text,
   message_id: 'changed-message', message_version: 1 });
 
-function fixture() {
+function fixture(withArtifact = false) {
   const pin = { source_project_id: 'source-project', material_id: 'material', material_version: 2, sha256: digest('synthetic source') };
+  const artifact = {source_project_id: 'source-project', artifact_id: 'original-artifact', artifact_version: 2, sha256: digest('original artifact')};
   const manifest: M4DocumentManifest = { version: 'm4-document-input-v1', kind: 'document', topic_id: 'topic',
     execution_scope_project_id: 'project', draft_version: 1, market: 'sse', offering: 'private', billing_task: 'm4_G05',
-    input: { document_type: 'private_summary', source_material: pin, materials: [pin], template: null, edit_base: null,
+    input: { document_type: 'private_summary', source_material: pin, materials: [pin], template: null, edit_base: withArtifact ? artifact : null,
       scope: 'whole', fields: { issuer_name: 'Synthetic' }, requirements: [] }, template_material: null };
   const hash = inputManifestHash(manifest);
   const run = { id: 'run', owner_user_id: 'owner', project_id: 'project', input_revision: 3, input_hash: hash, task_kind: 'generation' };
@@ -47,6 +48,14 @@ function fixture() {
     if (sql.includes('FROM bb_material_versions m')) {
       assert.deepEqual(args, ['owner', 'source-project', 'material', 2]);
       return { rows: [{ filename: 'synthetic.txt', media_type: 'text/plain', object_key: 'exact-source', sha256: pin.sha256 }] };
+    }
+    if (sql.includes('FROM bb_m4_execution_artifact_versions')) {
+      assert.deepEqual(args, ['owner', artifact.artifact_id, artifact.artifact_version]);
+      return {rows: [{kind: 'document', document_type: 'private_summary'}]};
+    }
+    if (sql.includes('FROM bb_delivered_artifact_versions')) {
+      assert.deepEqual(args, ['owner', artifact.source_project_id, artifact.artifact_id, artifact.artifact_version]);
+      return {rows: [{object_key: 'original-artifact-object', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256: artifact.sha256}]};
     }
     throw Error(`Unexpected SQL: ${sql}`);
   } } as unknown as Pool;
@@ -170,5 +179,50 @@ test('supplied M4 snapshots and a forged successor identity cannot bypass the pe
   assert.deepEqual(await m4InputGate(f.ctx.pool, f.ctx.run, f.input, f.execution, forged), { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
   assert.equal(f.reads.filter(sql => sql.includes('FROM bb_run_execution_versions')).length, 1);
   assert.equal(f.reads.some(sql => sql.includes('FROM bb_m4_execution_snapshots')), false);
+  assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
+});
+
+test('M4 candidate files share the exact authorized loader after the original execution gate, without changing its identity', async () => {
+  const f = fixture(true), originalHash = f.ctx.run.input_hash;
+  const added = {source_project_id: 'project', material_id: 'added', material_version: 1, sha256: digest('added evidence')};
+  const query = f.ctx.pool.query.bind(f.ctx.pool);
+  f.ctx.pool.query = (async (sql: string, args: unknown[]) => {
+    if (sql.includes('FROM bb_material_versions m') && args[2] === added.material_id) {
+      assert.deepEqual(args, ['owner', 'project', 'added', 1]);
+      f.reads.push(sql);
+      return {rows: [{filename: 'added.txt', media_type: 'text/plain', object_key: 'added-object', sha256: added.sha256}]};
+    }
+    return query(sql, args);
+  }) as Pool['query'];
+  const candidate = structuredClone(f.manifest); candidate.input.materials.push(added);
+  const loaded = await loadM4SupplementInput({pool: f.ctx.pool, owner: 'owner', projectId: 'project', runId: 'run',
+    sourceExecution: f.ctx.lease, manifest: candidate, candidateInputHash: inputManifestHash(candidate)});
+  assert.equal(loaded.run.input_hash, originalHash);
+  assert.equal(f.ctx.run.input_hash, originalHash);
+  assert.equal(f.ctx.lease.inputHash, originalHash);
+  assert.notEqual(inputManifestHash(candidate), originalHash);
+  assert.deepEqual(loaded.input.manifest, candidate);
+  assert.deepEqual(loaded.input.materials.map(file => file.pin), [f.manifest.input.source_material, added]);
+  assert.equal(loaded.input.materials[1].objectKey, 'added-object');
+  assert.deepEqual(loaded.input.artifacts.map(file => file.pin), [f.manifest.input.edit_base]);
+  assert.equal(loaded.input.artifacts[0].objectKey, 'original-artifact-object');
+  assert.ok(f.reads.some(sql => sql.startsWith('SELECT t.source_project_id')), 'actual live scope/subtype gate still runs');
+});
+
+test('M4 candidate preparation cannot change source/template/requirements/method scope or bypass a failing live source gate', async () => {
+  for (const corrupt of [
+    (m: M4DocumentManifest) => {m.input.requirements = [requirement('unconfirmed new requirement')];},
+    (m: M4DocumentManifest) => {m.input.source_material = {...m.input.source_material!, sha256: 'a'.repeat(64)};},
+    (m: M4DocumentManifest) => {m.input.edit_base = {source_project_id: 'project', artifact_id: 'new-artifact', artifact_version: 1, sha256: 'b'.repeat(64)};},
+    (m: M4DocumentManifest) => {m.input.document_type = 'init';},
+  ]) {
+    const f = fixture(), candidate = structuredClone(f.manifest); corrupt(candidate);
+    await assert.rejects(loadM4SupplementInput({pool: f.ctx.pool, owner: 'owner', projectId: 'project', runId: 'run',
+      sourceExecution: f.ctx.lease, manifest: candidate, candidateInputHash: inputManifestHash(candidate)}), /INPUT_REVISION_CONFLICT/);
+    assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
+  }
+  const f = fixture(); f.scope.subtype = 'm4_qa_v1';
+  await assert.rejects(loadM4SupplementInput({pool: f.ctx.pool, owner: 'owner', projectId: 'project', runId: 'run',
+    sourceExecution: f.ctx.lease, manifest: f.manifest, candidateInputHash: inputManifestHash(f.manifest)}), /INPUT_REVISION_CONFLICT/);
   assert.equal(f.reads.some(sql => sql.includes('FROM bb_material_versions m')), false);
 });

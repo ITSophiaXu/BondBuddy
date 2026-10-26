@@ -82,9 +82,15 @@ async function fixture(kind:'document'|'qa'='document') {
     persisted.push({sql,args});
     if(sql.startsWith('SELECT r.*'))return {rows:[{...ctx.run,state:'running',event_cursor:0}]};
     if(sql.includes('FROM bb_run_execution_versions'))return {rows:[{owner_user_id:ctx.run.owner_user_id,project_id:ctx.run.project_id,run_id:ctx.run.id,execution_version:1,input_revision:ctx.run.input_revision,input_hash:ctx.run.input_hash}]};
-    if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:'job',state:'running',lease_token:'lease',lease_until:new Date(Date.now()+60000)}]};
+    if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:ctx.lease.jobId,owner_user_id:ctx.lease.owner,run_id:ctx.lease.runId,
+      state:'running',lease_token:ctx.lease.token,lease_until:new Date(Date.now()+60000),checkpoint:structuredClone(ctx.lease.checkpoint)}]};
     if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
-    if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
+    if(sql.includes('RETURNING checkpoint')){
+      // Return the real queue writer's exact stage set and execution stamp. An
+      // empty fake return would discard the persisted method on the next read.
+      assert.equal(args?.[0],ctx.lease.jobId);
+      return {rows:[{checkpoint:JSON.parse(String(args?.[2]))}]};
+    }
     if(sql.startsWith('SELECT event_cursor'))return {rows:[{event_cursor:0}]};
     return {rows:[],rowCount:1};
   };

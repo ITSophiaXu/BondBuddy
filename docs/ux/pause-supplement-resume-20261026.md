@@ -228,3 +228,11 @@ SQL 验证基础 envelope、身份、冻结来源和摘要格式，精确复制�
 默认以已保存 clean 工作稿作为本轮编辑基线，拟定的新 tracked 只表示相对该工作稿的变化，原 tracked/baseline 留作回查，不重建最初上传稿以来的完整修订历史。明确 discard 时不选择旧 clean 作为基线。只支持同一准确完整 M1 结果中的双稿；选填 baseline 不成为新门槛。scratch 工作记录没有保留，不能声称恢复任意中途章节；当前无章节依赖图，请求明确保守复核全文，不宣称已完成局部增量复用。
 
 详见[请求准备专项](../acceptance/desktop-ux-coverage-20261026/supplement-authoring-request/README.md)。它证明真实保存回执向实际 M1 请求构建器的传递，没有执行候选输入的模型调用、V2、采用、报价确认或补料后的新 Word；M3/M4 的续做输入也尚未接入。B1/B2 定价规则仍待确定，G03 / UX-A03 和完整 goal 保持 active，不增加用户旅程通过数。
+
+### 2026-10-27：复核与文书续做请求准备
+
+在前述 M1 切片之后，内部 `loadRunSupplementFilePreparation()` 将同一回执、准确暂停检查点、唯一完整 captured result 和候选材料核对扩展到 M3 复核及 M4 文书。M3 的实际 stage 与内部 preparer 共用 prompt/workspace writer；候选源稿和选定问题范围保持固定，旧报告及批注独立标为待重新核实的参考，不自动成为新问题或已核事实。准确修订、接受提案和纯导出不因此取得补料执行权限。
+
+M4 共用真实文书 writer，准备时按原执行核对来源项目、主文档、模板、正式 edit_base、知识及要求，再检查原结果的 skill/method 与当前固定配置一致。旧正文和编制说明仅作工作参考，不替换正式底稿或成果。工作区 I/O 前后重核 plan、暂停边界和完整来源，旧文件、候选材料及 continuation 元数据副本均参与原件 hash 校验；返回的数据副本不能改变实际请求。
+
+本切片只准备真实执行器使用的请求，没有调用模型、采用新输入、分配 V2、生成新 Word 或追加扣费。没有保存 scratch 或建立可靠章节/问题依赖图；请求要求结合完整候选材料重新核对，不据此声称已实现精确局部复用。验证与限制见[复核和文书请求准备专项](../acceptance/desktop-ux-coverage-20261026/supplement-multifile-request/README.md)。B 已选，B1/B2 仍待确定；G03 / UX-A03 与完整 goal 继续 active，不增加桌面用户旅程通过数。

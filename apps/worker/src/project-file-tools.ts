@@ -15,11 +15,11 @@ import {verifiedFileLinks} from './project-file-evidence.js';
 
 export const projectFilesRoot=resolve(fileURLToPath(import.meta.url),'../../../..');
 const run=promisify(execFile);
-export async function projectFilePython(ctx:StageContext,args:string[]){
+export async function projectFilePython(ctx:{signal?:AbortSignal},args:string[]){
   return run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:1024*1024});
 }
-export async function inspectProjectFile(ctx:StageContext,path:string):Promise<ProjectFileText>{
+export async function inspectProjectFile(ctx:{signal?:AbortSignal},path:string):Promise<ProjectFileText>{
   const dir=await mkdtemp(join(tmpdir(),'bb-file-text-'));
   try{
     const output=join(dir,'text.json');await projectFilePython(ctx,['inspect',path,output]);
@@ -29,7 +29,7 @@ export async function inspectProjectFile(ctx:StageContext,path:string):Promise<P
     return value;
   }finally{await rm(dir,{recursive:true,force:true});}
 }
-export async function prepareProjectFileSource(ctx:StageContext,input:M4WorkerInput,cwd:string){
+export async function prepareProjectFileSource(ctx:Pick<StageContext,'blobs'> & {signal?:AbortSignal},input:M4WorkerInput,cwd:string){
   if(input.manifest.kind!=='document'||!input.manifest.input.project_file)return null;
   const pin=input.manifest.input.source_material!,source=input.materials.find(m=>inputManifestHash(m.pin)===inputManifestHash(pin));
   if(!source)throw Error('INPUT_REVISION_CONFLICT');
