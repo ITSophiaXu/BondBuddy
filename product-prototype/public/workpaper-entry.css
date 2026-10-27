@@ -1,9 +1,5 @@
-.pf-generation-heading .pf-workspace-actions{gap:16px;align-items:center}
-.pf-generation-heading .pf-workspace-actions .text-button{font-size:13px;white-space:nowrap}
 .pf-workpaper-heading .pf-title-row{flex-wrap:wrap;align-items:flex-start}
-.pf-workpaper-heading .pf-workspace-actions{flex-wrap:wrap;gap:8px}
-.pf-workpaper-heading .pf-workspace-actions>.btn{min-height:44px;padding:10px 14px;font-size:13px;line-height:22px;border:1px solid var(--line);border-radius:7px;background:var(--white,#fff);color:var(--ink)}
-.pf-workpaper-heading .pf-workspace-actions>.btn:hover{border-color:#a6b69b;background:#f2f6ec}
+.pf-workpaper-heading .pf-workspace-actions{flex-wrap:wrap}
 .pf-generation-choices svg,.wp-prepare svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .wp-upload-picker .btn svg{width:18px;height:18px}
 .pf-generation-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:0 0 28px}
@@ -73,8 +69,6 @@
 .wp-prepare .wp-explanation-note{font-size:12px;color:#74806e;padding-top:16px;margin-bottom:0;line-height:1.8}
 @media(max-width:760px){
   .pf-generation-heading .pf-title-row{gap:14px}
-  .pf-generation-heading .pf-workspace-actions{display:flex;flex-wrap:wrap;gap:12px 20px;margin-top:0}
-  .pf-generation-heading .pf-workspace-actions>.pf-switch-project{width:auto;padding:0;min-height:0}
   .pf-workpaper-heading .pf-workspace-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
   .pf-workpaper-heading .pf-workspace-actions>.btn{padding:10px;min-height:44px;width:auto}
   .pf-generation-choices{grid-template-columns:1fr;gap:12px;margin-bottom:24px}
