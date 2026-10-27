@@ -4,6 +4,8 @@
 
 代码固定于 `4245cdf8`，依赖 #762 的 `dce0a78d`。整合后web类型检查、Vite正式构建和12项Playwright回归再次通过；本目录后续证据提交只变更文档与截图。
 
+远端CI阻碍：PR #763 的 check-runs 122242407669（M4 core）、122242407414（desktop-ux）均报告 “The job was not started because recent account payments have failed or your spending limit needs to be increased.”，没有执行步骤。该账户限制未改动；CI未运行，不记为通过。
+
 已运行：
 
 - TypeScript：contracts、API、worker 编译及 web `--noEmit` 通过；Vite正式构建通过，仅有既有大包体积提示。

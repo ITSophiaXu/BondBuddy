@@ -6,6 +6,8 @@
 
 交付 PR： https://github.com/ITSophiaXu/BondBuddy/pull/763 ，base为develop，尚未合并。没有向其他chat自动发送消息。
 
+GitHub CI 尚未执行：2026-10-27 的 M4 core 与 desktop-ux check annotations 均明确报告账户付款失败或需要提高消费额度，jobs.steps为空（不是代码测试失败）。在账户限制解除后需重新运行远端检查；未修改账户付款或消费上限。本地验证结果不冒充CI通过。
+
 代码实现 commit `4245cdf8`，基于 #762 的 `dce0a78d`；rebase无冲突。整合后重新执行web类型检查、Vite正式构建和12项浏览器回归，全部通过。后续证据提交仅更新截图与交接，不改变实现。
 
 集成顺序：#762（迁移0117/0118）→ 本分支（迁移0119），同步API/worker/contracts/web/中性模板库/运行时skill。无新npm/Python依赖。不要把本机的源募集说明书、原始样例和临时测试数据库作为运行依赖。
