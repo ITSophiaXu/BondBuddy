@@ -19,10 +19,10 @@ export async function projectFilePython(ctx:StageContext,args:string[]){
   return run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:1024*1024});
 }
-export async function inspectProjectFile(ctx:StageContext,path:string):Promise<ProjectFileText>{
+export async function inspectProjectFile(ctx:StageContext,path:string,complete=false):Promise<ProjectFileText>{
   const dir=await mkdtemp(join(tmpdir(),'bb-file-text-'));
   try{
-    const output=join(dir,'text.json');await projectFilePython(ctx,['inspect',path,output]);
+    const output=join(dir,'text.json');await projectFilePython(ctx,[complete?'inspect-complete':'inspect',path,output]);
     const bytes=await readFile(output);if(bytes.length>32*1024*1024)throw Error('FILE_TEXT_TOO_LARGE');
     const value=JSON.parse(bytes.toString('utf8'));
     if(!Value.Check(ProjectFileTextSchema,value))throw Error('FILE_TEXT_INVALID');
@@ -30,26 +30,26 @@ export async function inspectProjectFile(ctx:StageContext,path:string):Promise<P
   }finally{await rm(dir,{recursive:true,force:true});}
 }
 export async function prepareProjectFileSource(ctx:StageContext,input:M4WorkerInput,cwd:string){
-  if(input.manifest.kind!=='document'||!input.manifest.input.project_file)return null;
+  if(input.manifest.kind!=='document'||(!input.manifest.input.project_file&&!input.manifest.input.workpaper))return null;
   const pin=input.manifest.input.source_material!,source=input.materials.find(m=>inputManifestHash(m.pin)===inputManifestHash(pin));
   if(!source)throw Error('INPUT_REVISION_CONFLICT');
   const bytes=await ctx.blobs.getIfExistsBounded(source.objectKey,100*1024*1024);
   if(!bytes||digest(bytes)!==pin.sha256)throw Error('INPUT_REVISION_CONFLICT');
   const path=join(cwd,'scratch',source.mediaType==='application/pdf'?'association-source.pdf':'association-source.docx');
   await writeFile(path,bytes,{mode:0o400});
-  const text=await inspectProjectFile(ctx,path);
+  const text=await inspectProjectFile(ctx,path,!!input.manifest.input.workpaper);
   await writeFile(join(cwd,'source-spans.json'),JSON.stringify(text),{mode:0o400});
   return text;
 }
-export async function saveGenerationLinks(ctx:StageContext,source:ProjectFileText,cwd:string){
+export async function saveGenerationLinks(ctx:StageContext,source:ProjectFileText,cwd:string,complete=false){
   const target=await inspectProjectFile(ctx,join(cwd,'output/document.docx'));
   let proposals:unknown=[];
   try{
     const info=await import('./m4-file-workspace.js');
-    const bytes=await info.checkedM4File(join(cwd,'output'),'file-links.json',4*1024*1024);
+    const bytes=await info.checkedM4File(join(cwd,'output'),'file-links.json',complete?32*1024*1024:4*1024*1024);
     proposals=JSON.parse(bytes.toString('utf8')).links;
   }catch{/* Word delivery remains available; missing associations remain explicit. */}
-  const links=verifiedFileLinks(source,target,proposals);
+  const links=verifiedFileLinks(source,target,proposals,complete?100000:10000);
   const result={links,source_sha256:source.sha256,target_sha256:target.sha256,
     warnings:[...source.warnings,...target.warnings,...(!links.length?['未取得可核验的内容关联，需执行一致性检查。']:[])]};
   return result;

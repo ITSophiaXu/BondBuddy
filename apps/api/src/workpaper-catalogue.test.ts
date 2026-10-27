@@ -56,3 +56,11 @@ test('empty, oversized catalogues and malformed ZIP fail explicitly',async()=>{
   assert.throws(()=>parseWorkpaperXlsx(Buffer.alloc(30)));
   const bytes=await catalogueXlsx(2);bytes[40]^=1;assert.throws(()=>parseWorkpaperXlsx(bytes));
 });
+
+
+test('audit checklist 项目 headers and numbered summary records are retained',()=>{
+  const parsed=parseCatalogueRows([{name:'1 尽职调查文件',rows:[{row:8,cells:['序号','项    目 ']},{row:9,cells:['1','发行人基本情况调查']},{row:10,cells:['1-0','发行人基本情况核查记录']},{row:11,cells:['1-1','历史沿革与股权结构']},{row:12,cells:['1-1-1','批准（备案）文件（如有）']}]}]);
+  assert.deepEqual(parsed.entries.filter(e=>e.kind==='file').map(e=>e.code),['1','1-0','1-1','1-1-1']);
+  assert.match(parsed.entries.at(-1)!.path,/批准或备案文件\.docx$/);
+  assert.match(parsed.entries.at(-1)!.title,/如有/);
+});

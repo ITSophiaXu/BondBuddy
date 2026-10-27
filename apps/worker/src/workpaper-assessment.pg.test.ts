@@ -83,9 +83,9 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   assert.equal(explanation.statusCode,200);assert.equal(digest(explanation.rawPayload),batch.items[3].explanation.sha256);
   const {readBoundedOfficeParts}=await import('../../api/dist/docx-inspector.js');
   const parts=readBoundedOfficeParts(explanation.rawPayload);
-  assert.match(parts.get('word/document.xml')!.toString(),/尚不能认定该业务不适用/);
-  assert.match(parts.get('word/document.xml')!.toString(),/判断版本/);
-  const zip=await send('GET',base+'/batches/'+batch.batch_id+'/download');assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),4);
+  assert.match(parts.get('word/document.xml')!.toString(),/不足以确认该事项不适用/);
+  assert.doesNotMatch(parts.get('word/document.xml')!.toString(),/判断版本|SHA-256|募集书依据|来源：/);
+  const zip=await send('GET',base+'/batches/'+batch.batch_id+'/download');assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),3);
   actor=randomUUID();assert.equal((await send('GET',explanationUrl)).statusCode,404);actor=user;
   await mkdir('test-evidence/workpaper-assessment',{recursive:true});await writeFile('test-evidence/workpaper-assessment/资料不足说明.docx',explanation.rawPayload);
   await ok('POST',base+'/batches/'+batch.batch_id+'/actions',{action:'cancel',expected_revision:batch.revision});

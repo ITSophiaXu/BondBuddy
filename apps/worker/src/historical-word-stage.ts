@@ -1,3 +1,4 @@
+import {workpaperChangeDelivery} from './workpaper-change-stage.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 import { projectQaDeliveryStage } from './project-qa-stage.js';
 import { integrityDeliveryStage } from './integrity-stage.js';
@@ -91,6 +92,7 @@ async function writeHistoricalWord(ctx: StageContext, plan: HistoricalGeneration
 /** Native revision generation is a replayable, deterministic stage; only checked bytes may become artifacts. */
 export function historicalWordDeliveryStage(options: { writer?: typeof writeHistoricalWord } = {}): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
+    if((ctx.values.get('input_lock') as {workpaper_change?:boolean})?.workpaper_change)return workpaperChangeDelivery().run(ctx);
     if((ctx.values.get('input_lock') as {workpaper_assessment?:boolean})?.workpaper_assessment)return workpaperAssessmentDelivery().run(ctx);
     if((ctx.values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return projectQaDeliveryStage().run(ctx);
     if((ctx.values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return integrityDeliveryStage().run(ctx);

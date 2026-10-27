@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { artifactDownloadName } from './artifact-filename.js';
 const row={id:'r',version:1,media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',naming_created_at:'2026-10-09T02:00:00Z',naming_manifest:{name:'冻结项目名'},naming_input_revision:5,naming_pair:{revision_artifact_id:'r',clean_artifact_id:'c'}};
+test('workpaper download keeps original catalogue number and compact name; version stays metadata',()=>{
+  assert.deepEqual(artifactDownloadName({...row,naming_m4_kind:'document',naming_m4_revision:4,naming_m4_manifest:{input:{workpaper:{entry:{path:'尽职调查/1-3 资产分析.docx'}}}}}),{filename:'1-3 资产分析.docx',display_version:4});
+});
 test('authoring names use pinned input and variant, not mutable project fields or artifact version 1',()=>{
   assert.deepEqual(artifactDownloadName({...row,name:'已改名'}),{filename:'冻结项目名_募集书修订版_V5_20261009.docx',display_version:5});
   assert.equal(artifactDownloadName({...row,id:'c'}).filename,'冻结项目名_募集书清洁版_V5_20261009.docx');

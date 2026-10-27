@@ -99,3 +99,15 @@ test('uncertain confirmation can be recovered after the current prospectus chang
  await page.locator('#wp-start').click();expect(state.requests).toHaveLength(2);expect(state.requests[0]).toEqual(state.requests[1]);
  await expect(page.locator('#wp-batches')).toContainText('3 / 3 份完成');
 });
+
+test('affected files can be recompiled from a batch older than the recent ten',async({page})=>{
+ const state=await setup(page,3),catalogue={...state.data.catalogues[0],catalogue_id:'old-catalogue',filename:'历史底稿目录.xlsx'};
+ await page.route('**/api/v1/projects/*/workpapers/batches/old-batch',r=>r.fulfill({json:{batch_id:'old-batch',catalogue_id:catalogue.catalogue_id}}));
+ await page.route('**/api/v1/projects/*/workpapers/catalogues/old-catalogue',r=>r.fulfill({json:catalogue}));
+ await page.route('**/api/v1/projects/*/workpapers/checks',r=>r.fulfill({json:{checks:[{batch_id:'old-batch',stale:false,result:{items:[{item_id:catalogue.entries[1].id,status:'needs_update'},{item_id:catalogue.entries[2].id,status:'current'}]}}]}}));
+ await page.goto('/'+href({step:'workpapers'})+'&workpaper_batch=old-batch');
+ await expect(page.locator('#wp-catalogue')).toHaveValue('old-catalogue');
+ await expect(page.locator('[data-wp-item]:checked')).toHaveCount(1);
+ await expect(page.locator('[data-wp-item]:checked')).toHaveAttribute('data-wp-item',catalogue.entries[1].id);
+ await expect(page.locator('#wp-status')).toContainText('当前募集书重新判断');
+});

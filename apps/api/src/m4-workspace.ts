@@ -279,6 +279,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
 async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifacts a
   JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
   JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')} WHERE a.owner_user_id=$1 AND a.topic_id=$2
+  AND NOT coalesce(a.document_type='workpaper' AND a.kind='preparation_note',false)
   AND v.quality_status='passed' AND v.delivery_status='available' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2')) ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
 const artifactDto=(a:any):M4Artifact=>({source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim(),
   topic_id:a.topic_id,run_id:a.run_id,document_type:a.document_type,kind:a.kind,filename:artifactDownloadName(a).filename,mime_type:a.media_type,byte_size:Number(a.byte_size),

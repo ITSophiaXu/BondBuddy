@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export type M4SkillId = 'm4-workpaper' | 'm4-project-file' | 'm4-application' | 'm4-recommendation' | 'm4-init-report' | 'm4-private-summary' | 'm4-underwriter' | 'm4-legal' | 'm4-project-qa' | 'global-project-assistant';
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
-const manifestHash = 'fc3d72cd0bb6ef6b20e02f961ae1728c4c35b95cdeed972eca6116288c13ba2d';
+const manifestHash = 'b6a90d8618c19a29fd878434a3c879b79227a2c805b65eb1c80d7701733401aa';
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 /** Load only the bundled, pinned bytes; never discover personal CLI skills. */

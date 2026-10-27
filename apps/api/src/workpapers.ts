@@ -1,3 +1,6 @@
+import {workpaperPreview} from './workpaper-preview.js';
+import {loadWorkpaperTemplate} from './workpaper-templates.js';
+import {registerWorkpaperLibrary} from './workpaper-library.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -34,7 +37,7 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 ORDER BY i.ordinal`,[owner,batch])).rows;
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_workpaper_items i JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state='succeeded'
     JOIN bb_m4_artifacts a ON a.owner_user_id=i.owner_user_id AND a.run_id=r.id JOIN bb_artifact_versions v ON v.owner_user_id=a.owner_user_id AND v.id=a.artifact_id AND v.version=a.artifact_version
-    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,batch])).rows;
+    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,batch])).rows;
   const charged=(await db.query(`SELECT coalesce(sum(CASE WHEN c.state='released' THEN 0 ELSE coalesce(c.charged_points,CASE WHEN c.state='settled' THEN c.points ELSE 0 END) END),0) amount
     FROM bb_workpaper_attempts a JOIN bb_credit_reservations c ON c.owner_user_id=a.owner_user_id AND c.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.batch_id=$2`,[owner,batch])).rows[0];
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,
@@ -94,8 +97,16 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
 
 export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
   registerWorkpaperAssessments(app,db,owner);
+  registerWorkpaperLibrary(app,db,owner);
   const base='/api/v1/projects/:project_id/workpapers',params=(r:FastifyRequest)=>r.params as {project_id:string;batch_id:string};
   app.get(base,async r=>readWorkpapers(db(),await owner(r),params(r).project_id));
+  app.get(base+'/batches/:batch_id',async r=>readWorkpaperBatch(db(),await owner(r),params(r).project_id,params(r).batch_id));
+  app.get(base+'/catalogues/:catalogue_id',async r=>{
+    const user=await owner(r),id=params(r).project_id;
+    await project(db(),user,id);
+    const row=(await db().query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,(r.params as {catalogue_id:string}).catalogue_id])).rows[0];
+    if(!row)throw missing();return catalogueDto(row);
+  });
   app.post(base+'/catalogues',{schema:{body:WorkpaperImportSchema}},async r=>{
     const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof WorkpaperImportSchema>,hash=inputManifestHash({project_id:id,...b});
     return transaction(db(),async c=>{
@@ -107,7 +118,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(material.media_type!==xlsx)throw new Problem(422,'VALIDATION_FAILED','请上传 XLSX 底稿目录；旧版 XLS 请先另存为 XLSX。');
       const bytes=await blobs().getIfExistsBounded(material.object_key,WORKPAPER_LIMITS.fileBytes);if(!bytes||digest(bytes)!==b.material.sha256)throw new Problem(422,'VALIDATION_FAILED','目录文件超过 10 MB 或暂时不可读取。');
       let parsed:ReturnType<typeof parseWorkpaperXlsx>;
-      try{parsed=parseWorkpaperXlsx(bytes);}catch(e){if(e instanceof Problem)throw e;throw new Problem(422,'VALIDATION_FAILED','目录格式无法读取，请另存为标准 XLSX 后上传。');}
+      try{parsed=parseWorkpaperXlsx(bytes,b.scope);}catch(e){if(e instanceof Problem)throw e;throw new Problem(422,'VALIDATION_FAILED','目录格式无法读取，请另存为标准 XLSX 后上传。');}
       const row=(await c.query('INSERT INTO bb_workpaper_catalogues(id,owner_user_id,project_id,request_id,request_hash,material,filename,entries,warnings,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [uid(),user,id,b.request_id,hash,b.material,material.filename,JSON.stringify(parsed.entries),JSON.stringify(parsed.warnings),inputManifestHash(parsed)])).rows[0];
       await event(c,user,id,'workpaper.catalogue_imported',{catalogue_id:row.id});return catalogueDto(row);
@@ -150,12 +161,12 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       for(const [ordinal,entry] of selected.entries()){
         const decision=decisions.find(d=>d.item_id===entry.id)!;
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
-          market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering),
+          market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry),
           input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,decision},source_material:sourcePin,materials:[cat.material],template:null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
         if(decision.status!=='generate'){
-          const bytes=await workpaperDocx('不适用说明（本次未生成情况说明）',explanationParagraphs(entry,decision,source,'判断版本：'+b.assessment_hash+'；确认时间：'+new Date().toISOString()));
+          const bytes=await workpaperDocx(entry.path.split('/').at(-1)!.replace(/\.docx$/i,'')+' — 不适用说明',explanationParagraphs(entry,decision,source,''),loadWorkpaperTemplate({code:entry.code,title:'不适用说明'}));
           const sha256=digest(bytes),key=`owners/${user}/projects/${id}/workpapers/${batchId}/${entry.id}/${sha256}.docx`;
           await blobs().put(key,bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
           const stored=await blobs().getIfExistsBounded(key,1024*1024);if(!stored||digest(stored)!==sha256)throw Error('WORKPAPER_EXPLANATION_STORE_FAILED');
@@ -193,6 +204,15 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),item=(r.params as {item_id:string}).item_id;
     return reply.header('Cache-Control','private, no-store').header('Content-Disposition','attachment; filename="explanation.docx"').type('application/vnd.openxmlformats-officedocument.wordprocessingml.document').send(await explanationBytes(db(),blobs(),user,id,batch,item));
   });
+  app.get(base+'/batches/:batch_id/items/:item_id/preview',async(r,reply)=>{
+    const user=await owner(r),{project_id:id,batch_id:batch}=params(r),itemId=(r.params as {item_id:string}).item_id;
+    const data=await readWorkpaperBatch(db(),user,id,batch),item=data.items.find(i=>i.entry.id===itemId);if(!item)throw missing();
+    let bytes:Buffer;
+    if(item.explanation)bytes=await explanationBytes(db(),blobs(),user,id,batch,itemId);
+    else{const a=item.artifacts.find(a=>a.kind==='document');if(!a)throw missing();const row=await readProjectFileAsset(db(),user,{kind:'artifact',pin:a.pin});
+      const stored=await blobs().getIfExistsBounded(row.object_key,64*1024*1024);if(!stored||digest(stored)!==a.pin.sha256)throw new Problem(503,'DATA_UNAVAILABLE','文件暂不可读取。');bytes=stored;}
+    try{return reply.header('Cache-Control','private, no-store').send({text:workpaperPreview(bytes)});}catch{throw new Problem(422,'DATA_UNAVAILABLE','正文暂无法预览，请下载原文件查看。');}
+  });
   app.get(base+'/batches/:batch_id/download',async(r,reply)=>{
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),data=await readWorkpaperBatch(db(),user,id,batch);
     if(!data.items.some(i=>i.artifacts.length||i.explanation))throw new Problem(422,'INPUT_REQUIRED','尚无已完成底稿可打包。');
@@ -209,19 +229,17 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
             zip.addReadStreamLazy(path,{},callback=>{const s=new PassThrough();activeInput=s;s.on('end',resolve);s.on('error',reject);callback(null,s);s.end(bytes);bytes=Buffer.alloc(0);});
           });await finished;activeInput=undefined;abortEntry=undefined;
         };
-        const manifest=data.items.map(i=>({编号:i.entry.code,名称:i.entry.title,路径:i.entry.path,状态:i.state,来源:`${data.source.filename} V${data.source.sequence}`,判断:i.decision,交付类型:i.explanation?'不适用说明':'底稿',缺口:i.error??'',内容复核:'尚未人工复核'}));
-        zip.addBuffer(Buffer.from(JSON.stringify(manifest,null,2)),'生成清单.json');
         for(const item of data.items)if(item.explanation){
           const bytes=await explanationBytes(db(),blobs(),user,id,batch,item.entry.id);
           await append('不适用说明/'+item.entry.path.replace(/\.docx$/i,'-不适用说明.docx'),bytes);
         }
-        for(const item of data.items)for(const artifact of item.artifacts){
+        for(const item of data.items)for(const artifact of item.artifacts.filter(a=>a.kind==='document')){
           if(stream.destroyed)return;
           const row=await readProjectFileAsset(db(),user,{kind:'artifact',pin:artifact.pin});
           const bytes=await blobs().getIfExistsBounded(row.object_key,64*1024*1024);
           if(stream.destroyed)return;
           if(!bytes||digest(bytes)!==artifact.pin.sha256)throw Error('WORKPAPER_DOWNLOAD_UNAVAILABLE');
-          const path=(artifact.kind==='preparation_note'?'编制说明/':'底稿/')+item.entry.path;
+          const path='可生成文件/'+item.entry.path;
           // addReadStreamLazy avoids buffering the entire batch in yazl.
           await append(path,bytes);
         }
