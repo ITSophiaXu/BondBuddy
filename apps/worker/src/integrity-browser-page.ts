@@ -26,6 +26,25 @@ export async function firstVisible(locator:Locator){
  for(let i=0;i<Math.min(await locator.count(),40);i++){const item=locator.nth(i);if(await item.isVisible()&&await item.isEnabled())return item;}
  return undefined;
 }
+/** Observed official modal: strong enough to identify before unrelated resources finish.
+ * A bare/unstyled verification field (for example a feedback form) is not sufficient. */
+export async function creditChinaVerification(page:Page){
+ for(const frame of await visibleFrames(page)){
+  let host='';try{host=new URL(frame.url()).hostname;}catch{continue;}
+  if(!['www.creditchina.gov.cn','creditchina.gov.cn'].includes(host))continue;
+  const popup=frame.locator('.vcodepop:visible').filter({has:frame.locator('input#vcode:visible')});
+  if(await popup.count()!==1)continue;
+  if(!await popup.evaluate(e=>{const style=getComputedStyle(e);return style.position==='fixed'&&Number(style.zIndex)>0;}))continue;
+  if(!await popup.locator('#vcodeimg:visible').count()||!await popup.locator('.buttongroup .confirm:visible').filter({hasText:/^验证$/}).count())continue;
+  return true;
+ }
+ return false;
+}
+/** Poll readiness so a visible verification gate can interrupt a stalled deferred script. */
+export async function domReady(frame:Page|Frame){
+ try{await frame.waitForLoadState('domcontentloaded',{timeout:50});return true;}
+ catch(error){if(error instanceof Error&&error.name==='TimeoutError')return false;throw error;}
+}
 export async function challenge(page:Page,text:string){
  // A footer login link, a help article mentioning captcha, or a WAF error is not an authentication gate.
  let captcha=/请完成.{0,8}验证|向右滑动|拖动.{0,12}(滑块|验证)|请(?:输入|填写).{0,8}验证码|verify you are human/i.test(text);

@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {integrityDiagnosticLabel,type IntegrityDiagnostic,type IntegrityBrowser,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
 import {integrityProxy,integrityBrowserUrlAllowed} from './integrity-browser-network.js';
 import {startIntegrityDesktop,type IntegrityDesktop} from './integrity-desktop.js';
-import {visibleFrames,visibleText,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading,companyNameCondition} from './integrity-browser-page.js';
+import {visibleFrames,visibleText,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading,companyNameCondition,creditChinaVerification,domReady} from './integrity-browser-page.js';
 
 export type BrowserCapture={kind:'result'|'detail'|'blocker';url:string;title:string;captured_at:string;page:number;text:string;screenshot:Buffer};
 export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic};
@@ -38,7 +38,7 @@ async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,scree
  if(height>20000)throw Error('BROWSER_PAGE_TOO_LONG');
  const screenshot=screenCapture?await screenCapture(page):await page.screenshot({type:'png',fullPage:true,timeout:10000});
  text=await visibleText(page);
- if(query&&(!await queryReflected(page,query,text)||await resultsLoading(page)||outcome(text,query,await structuredResultSignature(page,site))==='unverified'))throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
+ if(query&&(await blocker(page,text)||!await queryReflected(page,query,text)||await resultsLoading(page)||outcome(text,query,await structuredResultSignature(page,site))==='unverified'))throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
  return {kind,url:page.url(),title:(await page.title()).slice(0,200),captured_at:new Date().toISOString(),page:pageNo,text,screenshot};
 }
 async function structuredResultSignature(page:Page,site?:IntegritySite){
@@ -123,27 +123,33 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
  context.on('response',onNavigation);
  const diagnostic=async()=>{try{result.captures.push(await capturePage(page,'blocker',1));}catch{/* A blank/error document is never fabricated as evidence. */}};
  const styleFailure=()=>mark({code:'network_error',phase,detail:'OFFICIAL_STYLESHEET_LOAD_FAILED'},'failed','官网样式资源未能加载，页面及查询状态无法确认。');
+ const stopForVerification=async()=>{
+  if(!await creditChinaVerification(page))return false;
+  mark({code:'captcha_required',phase},'blocked','官网要求验证后才能继续，其他网站继续。');
+  return true;
+ };
  try{
   signal.throwIfAborted();
   // Commit permits slow scripts/redirects to finish inside the readiness loop.
   await page.goto(entry,{waitUntil:'commit'});
-  let text='',form:Awaited<ReturnType<typeof searchInput>>,openedSearch=false;
+  let text='',form:Awaited<ReturnType<typeof searchInput>>,openedSearch=false,waitingForForm=false;
   const readyDeadline=Date.now()+limits.waitMs;
   while(Date.now()<readyDeadline){
    signal.throwIfAborted();text=await visibleText(page);
+   if(await stopForVerification()){await diagnostic();return result;}
    if(errors.test(text)){mark(pageFailure(text,navigationStatuses.get(page)??0,phase));await diagnostic();return result;}
    if(await blocker(page,text)){
-    await page.waitForLoadState('domcontentloaded',{timeout:Math.max(1,readyDeadline-Date.now())});
+    if(!await domReady(page)){await page.waitForTimeout(300);continue;}
     text=await visibleText(page);const gate=await blocker(page,text);
     if(failedStyles.size){styleFailure();await diagnostic();return result;}
     if(gate){mark({code:gate,phase},'blocked','自动查询已停止，其他网站继续。');await diagnostic();return result;}
    }
-   form=await searchInput(page);if(form)break;
+   form=await searchInput(page);waitingForForm=!!form&&!await domReady(form.frame);if(form&&!waitingForForm)break;form=undefined;
    if(!openedSearch){const opener=await firstVisible(page.getByRole('link',{name:/^(站内搜索|搜索|查询|信息查询)$/}).or(page.getByRole('button',{name:/^(站内搜索|搜索|查询|信息查询)$/})));if(opener){openedSearch=true;await opener.click({noWaitAfter:true});}}
    const opened=context.pages().filter(p=>!p.isClosed());if(opened.length>1)page=opened.at(-1)!;
    await page.waitForTimeout(300);
   }
-  if(!form){const status=navigationStatuses.get(page)??0;if(status>=400)mark(pageFailure(text,status,phase));else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)?'page_load_timeout':'query_form_unavailable',phase},'unverified',`等待 ${limits.waitMs/1000} 秒后仍未能查询${loadingOnly(text)?'，未保存空白或加载中的截图':''}。`);await diagnostic();return result;}
+  if(!form){const status=navigationStatuses.get(page)??0;if(status>=400)mark(pageFailure(text,status,phase));else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)||waitingForForm||!await domReady(page)?'page_load_timeout':'query_form_unavailable',phase},'unverified',`等待 ${limits.waitMs/1000} 秒后仍未能查询${loadingOnly(text)?'，未保存空白或加载中的截图':''}。`);await diagnostic();return result;}
   phase='query';
   // An iframe may expose an enabled field while deferred scripts are still loading.
   // DOM interactive alone does not mean its search handler has been registered.
@@ -166,8 +172,9 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   while(Date.now()<deadline){
    signal.throwIfAborted();await page.waitForTimeout(600);
    const opened=context.pages().filter(p=>!beforePages.includes(p)&&!p.isClosed());if(opened.length)page=opened.at(-1)!;
-   await page.waitForLoadState('domcontentloaded',{timeout:Math.max(1,deadline-Date.now())});
    text=await visibleText(page).catch(()=>'');
+   if(await stopForVerification())break;
+   if(!await domReady(page))continue;
    if(failedStyles.size){styleFailure();break;}
    if(errors.test(text)){mark(pageFailure(text,queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,phase));break;}
    const gate=await blocker(page,text);if(gate){mark({code:gate,phase},'blocked','官网要求验证后才能继续，其他网站继续。');break;}
@@ -184,11 +191,11 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   }
   context.off('response',onResponse);
   if(result.outcome==='blocked'||result.outcome==='failed'){await diagnostic();return result;}
-  if(!verified){const status=queryStatus>=400?queryStatus:navigationStatuses.get(page)??0;
+  if(!verified){const status=queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,loading=loadingOnly(text)||await resultsLoading(page)||!await domReady(page);
    if(!result.search_performed)mark({code:'operation_failed',phase:'query'},'unverified','查询控件尚未触发可确认的请求。');
    else if(queryNetworkError)mark({code:'network_error',phase,detail:queryNetworkError});
    else if(status>=400)mark(pageFailure(text,status,phase));
-   else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)?'result_load_timeout':'result_unverified',phase},'unverified',`已提交查询，等待 ${limits.waitMs/1000} 秒后${loadingOnly(text)||await resultsLoading(page)?'页面仍未加载完成':'仍无法确认页面对应本次查询'}。`);
+   else mark({code:!text.trim()?'blank_page_timeout':loading?'result_load_timeout':'result_unverified',phase},'unverified',`已提交查询，等待 ${limits.waitMs/1000} 秒后${loading?'页面仍未加载完成':'仍无法确认页面对应本次查询'}。`);
    await diagnostic();return result;}
   result.diagnostic={code:result.outcome==='no_results'?'no_results':'results',phase};
   result.captures.push(await capturePage(page,'result',1));
@@ -218,6 +225,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
  }catch(error){signal.throwIfAborted();const network=error instanceof Error?error.message.match(/net::[A-Z_]+/)?.[0]:undefined;
   if(result.captures.some(c=>c.kind==='result')&&['results','no_results'].includes(result.outcome)){result.limitation+=' 后续页面采集未完成，已取得的查询结果仍保留。';if(result.diagnostic&&network)result.diagnostic.detail=network;return result;}
   const text=await visibleText(page).catch(()=>''),status=navigationStatuses.get(page)??0;
+  if(await stopForVerification()){await diagnostic();return result;}
   if(status>=400||errors.test(text))mark(pageFailure(text,status,phase));
   else mark({code:network?'network_error':error instanceof Error&&error.name==='TimeoutError'?(!text.trim()?'blank_page_timeout':phase==='open'?'page_load_timeout':phase==='results'?'result_load_timeout':'operation_failed'):'operation_failed',phase,...(network?{detail:network}:{})});
   await diagnostic();return result;}
