@@ -28,7 +28,7 @@ export async function firstVisible(locator:Locator){
 }
 /** Observed official modal: strong enough to identify before unrelated resources finish.
  * A bare/unstyled verification field (for example a feedback form) is not sufficient. */
-export async function creditChinaVerification(page:Page){
+export async function creditChinaVerificationControls(page:Page){
  for(const frame of await visibleFrames(page)){
   let host='';try{host=new URL(frame.url()).hostname;}catch{continue;}
   if(!['www.creditchina.gov.cn','creditchina.gov.cn'].includes(host))continue;
@@ -36,10 +36,11 @@ export async function creditChinaVerification(page:Page){
   if(await popup.count()!==1)continue;
   if(!await popup.evaluate(e=>{const style=getComputedStyle(e);return style.position==='fixed'&&Number(style.zIndex)>0;}))continue;
   if(!await popup.locator('#vcodeimg:visible').count()||!await popup.locator('.buttongroup .confirm:visible').filter({hasText:/^验证$/}).count())continue;
-  return true;
+  return {popup,input:popup.locator('input#vcode'),image:popup.locator('#vcodeimg'),submit:popup.locator('.buttongroup .confirm').filter({hasText:/^验证$/}),refresh:popup.locator('.vcodeimgbox span').filter({hasText:/换一张/}),error:popup.locator('.errortip:visible')};
  }
- return false;
+ return undefined;
 }
+export async function creditChinaVerification(page:Page){return !!await creditChinaVerificationControls(page);}
 /** Poll readiness so a visible verification gate can interrupt a stalled deferred script. */
 export async function domReady(frame:Page|Frame){
  try{await frame.waitForLoadState('domcontentloaded',{timeout:50});return true;}

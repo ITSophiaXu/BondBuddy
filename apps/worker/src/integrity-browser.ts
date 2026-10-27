@@ -1,3 +1,4 @@
+import {resolveCreditChinaCaptcha,IntegrityCaptchaInterruption,type IntegrityCaptchaRecognizer,type IntegrityCaptchaSession} from './integrity-captcha.js';
 import {chromium,type BrowserContext,type Page,type Frame,type Response,type Request} from 'playwright';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -9,7 +10,7 @@ import {visibleFrames,visibleText,firstVisible,challenge as blocker,pageErrors a
 
 export type BrowserCapture={kind:'result'|'detail'|'blocker';url:string;title:string;captured_at:string;page:number;text:string;screenshot:Buffer};
 export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic};
-export type IntegrityCollector=(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal)=>Promise<BrowserCollection>;
+export type IntegrityCollector=(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,options?:{captchaRecognizer?:IntegrityCaptchaRecognizer})=>Promise<BrowserCollection>;
 export function integrityBrowserEnvironment(cacheDirectory:string){
  const env:Record<string,string>={XDG_CACHE_HOME:cacheDirectory};
  for(const key of ['PATH','SystemRoot','SYSTEMROOT','WINDIR','TEMP','TMP','TMPDIR','LANG','LC_ALL'])if(process.env[key])env[key]=process.env[key]!;
@@ -21,7 +22,7 @@ const clean=(s:string)=>s.replace(/\s+/g,' ').trim();
 // Official search pages load their form, configuration and results sequentially.
 // The Beijing runtime observed a valid tax response after the former 18s limit.
 const collectionLimits={waitMs:90000,maxPages:3,attempts:2};
-type CollectionLimits={waitMs:number;maxPages:number;attempts?:number;screenCapture?:(page:Page)=>Promise<Buffer>};
+type CollectionLimits={waitMs:number;maxPages:number;attempts?:number;captchaRecognizer?:IntegrityCaptchaRecognizer;screenCapture?:(page:Page)=>Promise<Buffer>};
 /** Court forms take an exact name; topical keywords belong only in general site searches. */
 export function integritySearchQuery(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'province'>){
  const exactName=['credit-china','execution-dishonest','execution-debtor','execution-restriction'].includes(site.id);
@@ -45,6 +46,13 @@ async function structuredResultSignature(page:Page,site?:IntegritySite){
  // MOT's observed search list has no total-count label. Recognize only its visible
  // result-title structure on the exact search page, never arbitrary subject text.
  const url=new URL(page.url());
+ // Credit China's observed entity list may contain just one page and no count.
+ // This is a search hit only; its information/adverse nature is assessed separately.
+ if(site?.id==='credit-china'&&['creditchina.gov.cn','www.creditchina.gov.cn'].includes(url.hostname)&&url.pathname==='/xinyongxinxi/index.html')return page.locator('#companylists > li.company-item:visible').evaluateAll(nodes=>nodes.flatMap(node=>{
+  const name=(node.querySelector('.company-name') as HTMLElement|null)?.innerText.trim();
+  const info=(node.querySelector('.company-messages') as HTMLElement|null)?.innerText;
+  return name&&info&&/统一社会信用代码[：:]/.test(info)&&/主体类型[：:]/.test(info)?[name+' '+info]:[];
+ }).join('\n'));
  if(site?.id!=='transport'||url.origin!=='https://zs.mot.gov.cn'||url.pathname!=='/mot/s')return '';
  return page.locator('.search-result-header .result-header-title a[href]:visible').evaluateAll(nodes=>nodes.flatMap(node=>{
   const link=node as HTMLAnchorElement,title=link.innerText.replace(/\s+/g,' ').trim();
@@ -69,7 +77,7 @@ function resultSignature(text:string,query:string,structured=''){
 }
 
 /** Uses the product's own short-lived browser, never the developer/user browser profile. */
-export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signal)=>{
+export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signal,options)=>{
  const cache=await mkdtemp(join(tmpdir(),'bb-integrity-browser-'));
  let browser;let desktop:IntegrityDesktop|undefined;let proxy:Awaited<ReturnType<typeof integrityProxy>>|undefined;
  try{
@@ -79,7 +87,7 @@ export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signa
   const context=await browser.newContext({viewport:null,locale:'zh-CN',timezoneId:'Asia/Shanghai',acceptDownloads:false,serviceWorkers:'block'});
   await context.route('**/*',route=>integrityBrowserUrlAllowed(site,route.request().url())?route.continue():route.abort('blockedbyclient'));
   const abort=()=>void context.close();signal.addEventListener('abort',abort,{once:true});
-  try{return await collectInContext(context,site,subject,signal,{...collectionLimits,screenCapture:desktop.capture});}finally{signal.removeEventListener('abort',abort);await context.close();}
+  try{return await collectInContext(context,site,subject,signal,{...collectionLimits,captchaRecognizer:options?.captchaRecognizer,screenCapture:desktop.capture});}finally{signal.removeEventListener('abort',abort);await context.close();}
  }finally{try{await browser?.close();}finally{
   const closed=await Promise.allSettled([desktop?.close(),proxy?.close()]);
   await rm(cache,{recursive:true,force:true});
@@ -91,12 +99,13 @@ export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signa
 export async function collectInContext(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits=collectionLimits):Promise<BrowserCollection>{
  let result:BrowserCollection|undefined;
  const started=Date.now();
+ const captchaSession:IntegrityCaptchaSession={recognize:limits.captchaRecognizer,attempts:0};
  const attempts=limits.attempts??collectionLimits.attempts;
  for(let attempt=0;attempt<attempts;attempt++){
   // Official credit search entry observed from the portal's search button (2026-10-26).
   // A broken portal shell must not prevent the normal query form from loading.
   const entry=site.id==='credit-china'&&attempt>0?new URL('/xinyongxinxi/index.html',site.links[0].url).href:site.links[0].url;
-  signal.throwIfAborted();result=await collectAttempt(context,site,subject,signal,limits,entry);
+  signal.throwIfAborted();result=await collectAttempt(context,site,subject,signal,limits,entry,captchaSession);
   if(result.diagnostic)Object.assign(result.diagnostic,{attempts:attempt+1,elapsed_ms:Date.now()-started});
   if(!['failed','unverified'].includes(result.outcome))return result;
  }
@@ -104,7 +113,7 @@ export async function collectInContext(context:BrowserContext,site:IntegritySite
  result.reason=`已自动尝试 ${attempts} 次。${result.reason}`;
  return result;
 }
-async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits,entry:string):Promise<BrowserCollection>{
+async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits,entry:string,captchaSession:IntegrityCaptchaSession):Promise<BrowserCollection>{
  const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number)=>capture(page,kind,n,limits.screenCapture,kind==='result'?query:undefined,site);
  const query=integritySearchQuery(site,subject);
  const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图保留采集时的完整屏幕内容；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，无需上传补充证据。',captures:[]};
@@ -123,9 +132,13 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
  context.on('response',onNavigation);
  const diagnostic=async()=>{try{result.captures.push(await capturePage(page,'blocker',1));}catch{/* A blank/error document is never fabricated as evidence. */}};
  const styleFailure=()=>mark({code:'network_error',phase,detail:'OFFICIAL_STYLESHEET_LOAD_FAILED'},'failed','官网样式资源未能加载，页面及查询状态无法确认。');
+ let captchaWaitMs=0;
  const stopForVerification=async()=>{
-  if(!await creditChinaVerification(page))return false;
-  mark({code:'captcha_required',phase},'blocked','官网要求验证后才能继续，其他网站继续。');
+  const started=Date.now();
+  const verification=await resolveCreditChinaCaptcha(page,captchaSession,signal,limits.waitMs);
+  if(verification==='passed')captchaWaitMs+=Date.now()-started;
+  if(verification!=='blocked')return false;
+  mark({code:'captcha_required',phase,...(captchaSession.attempts?{detail:'CAPTCHA_NOT_ACCEPTED_AFTER_BOUNDED_ATTEMPTS'}:{})},'blocked',captchaSession.attempts?'已尝试自动验证，仍未通过网站验证，本项未完成查询。':'官网要求验证后才能继续，其他网站继续。');
   return true;
  };
  try{
@@ -134,9 +147,10 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   await page.goto(entry,{waitUntil:'commit'});
   let text='',form:Awaited<ReturnType<typeof searchInput>>,openedSearch=false,waitingForForm=false;
   const readyDeadline=Date.now()+limits.waitMs;
-  while(Date.now()<readyDeadline){
+  while(Date.now()<readyDeadline+captchaWaitMs){
    signal.throwIfAborted();text=await visibleText(page);
    if(await stopForVerification()){await diagnostic();return result;}
+   text=await visibleText(page);
    if(errors.test(text)){mark(pageFailure(text,navigationStatuses.get(page)??0,phase));await diagnostic();return result;}
    if(await blocker(page,text)){
     if(!await domReady(page)){await page.waitForTimeout(300);continue;}
@@ -150,7 +164,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
    await page.waitForTimeout(300);
   }
   if(!form){const status=navigationStatuses.get(page)??0;if(status>=400)mark(pageFailure(text,status,phase));else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)||waitingForForm||!await domReady(page)?'page_load_timeout':'query_form_unavailable',phase},'unverified',`等待 ${limits.waitMs/1000} 秒后仍未能查询${loadingOnly(text)?'，未保存空白或加载中的截图':''}。`);await diagnostic();return result;}
-  phase='query';
+  phase='query';captchaWaitMs=0;
   // An iframe may expose an enabled field while deferred scripts are still loading.
   // DOM interactive alone does not mean its search handler has been registered.
   await form!.frame.waitForLoadState('domcontentloaded',{timeout:limits.waitMs});
@@ -169,11 +183,12 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   await submit();
   phase='results';
   const deadline=Date.now()+limits.waitMs;let previous='',stable=0,verified=false;
-  while(Date.now()<deadline){
+  while(Date.now()<deadline+captchaWaitMs){
    signal.throwIfAborted();await page.waitForTimeout(600);
    const opened=context.pages().filter(p=>!beforePages.includes(p)&&!p.isClosed());if(opened.length)page=opened.at(-1)!;
    text=await visibleText(page).catch(()=>'');
    if(await stopForVerification())break;
+   text=await visibleText(page).catch(()=>'');
    if(!await domReady(page))continue;
    if(failedStyles.size){styleFailure();break;}
    if(errors.test(text)){mark(pageFailure(text,queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,phase));break;}
@@ -222,10 +237,10 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   }
   result.limitation+=` 本次保留 ${result.captures.filter(c=>c.kind==='result').length} 页查询截图，最多采集 ${limits.maxPages} 页；未展示的结果不在本次核查范围内。`;
   return result;
- }catch(error){signal.throwIfAborted();const network=error instanceof Error?error.message.match(/net::[A-Z_]+/)?.[0]:undefined;
+ }catch(error){signal.throwIfAborted();if(error instanceof IntegrityCaptchaInterruption)throw error;const network=error instanceof Error?error.message.match(/net::[A-Z_]+/)?.[0]:undefined;
   if(result.captures.some(c=>c.kind==='result')&&['results','no_results'].includes(result.outcome)){result.limitation+=' 后续页面采集未完成，已取得的查询结果仍保留。';if(result.diagnostic&&network)result.diagnostic.detail=network;return result;}
   const text=await visibleText(page).catch(()=>''),status=navigationStatuses.get(page)??0;
-  if(await stopForVerification()){await diagnostic();return result;}
+  if(await creditChinaVerification(page)){mark({code:'captcha_required',phase},'blocked','官网要求验证后才能继续，本项未完成查询。');await diagnostic();return result;}
   if(status>=400||errors.test(text))mark(pageFailure(text,status,phase));
   else mark({code:network?'network_error':error instanceof Error&&error.name==='TimeoutError'?(!text.trim()?'blank_page_timeout':phase==='open'?'page_load_timeout':phase==='results'?'result_load_timeout':'operation_failed'):'operation_failed',phase,...(network?{detail:network}:{})});
   await diagnostic();return result;}
