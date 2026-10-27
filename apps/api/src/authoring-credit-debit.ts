@@ -1,16 +1,21 @@
 import type { PoolClient } from 'pg';
 import { creditBalance, lockCreditAccount } from './billing.js';
-import { uid } from './data.js';
+import { Problem,uid } from './data.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
+import type { RunExecutionIdentity } from './run-execution.js';
 
 export const DYNAMIC_AUTHORING_POLICY = 'authoring_balance_v2';
 
 /** Caller holds run then job locks. Account serialization prevents concurrent runs overdrawing. */
-export async function debitAuthoringCredits(c: PoolClient, run: any, target: number) {
-  if (!run.reservation_id) return null;
+export async function debitAuthoringCredits(c: PoolClient, run: any, target: number, execution?: RunExecutionIdentity) {
+  const segment=await readRunBillingSegment(c,run,execution);
+  if (!segment) return null;
   await lockCreditAccount(c, run.owner_user_id);
   const reservation = (await c.query('SELECT * FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',
-    [run.reservation_id, run.owner_user_id])).rows[0];
-  if (!reservation || reservation.billing_policy !== DYNAMIC_AUTHORING_POLICY) return null;
+    [segment.reservationId, run.owner_user_id])).rows[0];
+  if (!reservation || reservation.billing_policy!==segment.billingPolicy || Number(reservation.points)!==segment.points)
+    throw new Problem(503,'BILLING_NOT_READY','任务的收费记录暂时无法核对，请稍后重试。');
+  if (reservation.billing_policy !== DYNAMIC_AUTHORING_POLICY) return null;
   const previous = Number(reservation.charged_points ?? 0), ceiling = Number(reservation.points);
   if (reservation.state !== 'held') return { charged: previous, available: (await creditBalance(c, run.owner_user_id)).available, ceiling };
   const balance = await creditBalance(c, run.owner_user_id);

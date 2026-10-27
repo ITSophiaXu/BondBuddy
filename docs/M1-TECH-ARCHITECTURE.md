@@ -966,3 +966,13 @@ M4 测试交付先给 Word 加测试标记，再登记实际成品的字节数�
 认证 HTTP 提供创建、准确读取和明确确认三个端点；客户端只提交保存回执、候选 hash 和请求 key，不能指定价格、类别或内部计划。确认另存 `bb_run_supplement_quote_confirmations`；报价和确认分别与对应 outbox 事件同事务提交。SQL 按 project→run→job 锁重查暂停、无租约/待对账调用、准确 V1/head、最新补料与计划、来源报价、现价、材料删除屏障。报价有效期由 DB 实时时钟设置，HTTP 不接受 TTL。确认前再次核对当前依据；历史精确回执与同 key 重放不因边界后来变化而重算金额，归档/删除/关闭账号仍撤销读取和确认权限。两表拒绝修改、删除和 TRUNCATE。
 
 处理计划新增内部 bundle 返回同一次字节核对的 basis，报价无需重复读取大文件；原要求 expectedBasisHash 的调用入口保持。此切片没有采用新输入、创建 reservation、扣款、pin 材料或启动模型。生产续做仍须按 execution segment 隔离费用上限、meter、扣款和退款，再接独立生产采用授权及完整桌面流程；不能仅放开 0135/0136 的付费限制。专项验证与限制见[B1 报价记录](acceptance/desktop-ux-coverage-20261026/supplement-b1-quotes/README.md)。G03 / UX-A03 与完整 goal 保持 active，未推送、创建 PR 或部署。
+
+## 2026-10-27：原收费记录的费用段与执行绑定（0138）
+
+`bb_run_billing_segments` 将原 reservation 的归属、完整原执行、报价、policy、上限和微秒创建时间保存为不可变费用身份；`bb_run_execution_billing_bindings` 将完整 V1 execution identity 指向该费用段。原 `run.reservation_id`、账本、分配及已扣金额保持原值。首次收费的 pointer UPDATE 在 enqueue 前立即 capture，迁移按原值回填；两者只写一次 `run.billing_segment_bound` outbox，回填事件明确标为 historical_backfill，不冒充新的执行或扣费。延迟检查拒绝缺失或不一致的 reservation/segment/binding/meter，原报价、policy、cap 和收费指针不能事后替换。
+
+`bb_run_billing_progress` 按费用段保存计量，精确 seed 原 active_ms、work_bps、accrued_points、clock_at、lease_until 和 last_activity_at；与旧 `bb_authoring_progress` 双向精确镜像，保留旧 worker 和历史检查的输入语义。两方向先用 owned run NOWAIT 锁，再 NOWAIT 锁目标 meter；直接旧 writer 已持子行时遇反向锁以 55P03 结束，释放后可重试，不反向等待。两表同值重放不重复 UPDATE，paid meter 不允许删除或 TRUNCATE。
+
+实际 debit、progress sync/read、worker activity、finish 尾款及 SQL finalizer 使用准确绑定；缺失或不同的收费绑定拒绝收费，不回退原 pointer。free V1 和原内部免费 V2 没有费用段，继续使用零金额 legacy meter。SQL 结算只替换准确费用来源与 meter，原 on_delivery、authoring_progress_v1、authoring_balance_v2 的交付要求、取消金额、退款及追加账本语句保留。历史按费用段原输入取名称，公开 DTO 与分页保持；运维冲正可指定 reservation，审计覆盖全部五类原报价和完整映射/镜像，避免遗漏 M4 等原 credit_quotes 外费用。
+
+此迁移仍保留每 run 一条 reservation 的唯一约束及全部 paid successor gates，仅建立并接入原费用段。B1 重做段、0 追加的原费用延续绑定、前段停止计费与本段独立退款、正式生产采用授权和桌面闭环仍待接通；不能据此称已实现追加收费或关闭 G03。验证见[原费用段专项](acceptance/desktop-ux-coverage-20261026/original-billing-segments/README.md)，完整 goal 继续 active。

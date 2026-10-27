@@ -10,6 +10,7 @@ import {claim,renew,checkpointStage,pauseAtCheckpoint,resumePausedRun,recordRevi
 import {digest,uid,transaction,type PrivateBlobs} from './data.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {syntheticReviewPair} from './review-delivery-test-fixture.js';
+import {attachInitialLegacyCreditPolicy} from './legacy-credit-policy-test-fixture.js';
 
 const connection=await isolatedTestDatabase(undefined,'review-dynamic-balance');
 test('review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund',{skip:!connection,timeout:120000},async()=>{
@@ -17,6 +18,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
   const files=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
   const app=createServer({pool,blobs,enablePaidReview:true,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  const legacyApp=createServer({pool,blobs,enablePaidReview:false,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
   const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
   const fund=(points:number)=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points,expiresAt:null,actor:'synthetic',reason:'isolated test'}));
@@ -32,7 +34,11 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
     ok(await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:0,input:{source_material_ref:pin,material_versions:[pin],requirements:['Synthetic requirement'],as_of:null}}));
     const request={execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
     const quote=ok(await send('POST',`${base}/review-executions/quote`,request));
-    return {project,quote,start:()=>send('POST',`${base}/review-executions`,{...request,quote_id:quote.quote.quote_id})};
+    return {project,quote,start:()=>send('POST',`${base}/review-executions`,{...request,quote_id:quote.quote.quote_id}),
+      startLegacy:async(lotId:string)=>{
+        const run=ok(await legacyApp.inject({method:'POST',url:`${base}/review-executions`,headers:{origin:'http://bondbuddy.test'},payload:{...request,quote_id:quote.quote.quote_id}}));
+        return attachInitialLegacyCreditPolicy(pool,{owner,runId:run.run_id,quoteId:quote.quote.quote_id,policy:'on_delivery',lotId});
+      }};
   };
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'review_dynamic']);
@@ -69,13 +75,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
     // Reconstruct pre-change paid review reservations in this isolated database only.
     // New code must neither debit these incrementally nor change their release policy.
     for(const outcome of ['succeeded','cancelled','failed'] as const){
-      const lot=await fund(10000),legacy=await prepare(),old=ok(await legacy.start());
-      await transaction(pool,async c=>{
-        await c.query("UPDATE bb_credit_reservations SET billing_policy='on_delivery',charged_points=NULL WHERE id=$1",[old.reservation_id]);
-        await c.query('UPDATE bb_credit_lots SET frozen=frozen+10000 WHERE id=$1',[lot]);
-        await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,10000)',[old.reservation_id,lot]);
-        await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',10000,$4,$5,$2,'synthetic_legacy_fixture')",[uid(),owner,'reserve:'+old.reservation_id,old.reservation_id,old.run_id]);
-      });
+      const lot=await fund(10000),legacy=await prepare(),old=await legacy.startLegacy(lot);
       const before=await creditBalance(pool,owner),oldLease=await claim(pool);assert.ok(oldLease);assert.equal(oldLease.runId,old.run_id);
       await checkpointStage(pool,oldLease,'materials_ready',{});await age(old.run_id);await renew(pool,oldLease);
       assert.deepEqual(await creditBalance(pool,owner),before);assert.equal((await charge(old.run_id)).progress.policy,'on_delivery');
@@ -89,5 +89,5 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
     }
     actor='foreign-'+uid();assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);actor=owner;
     assert.equal((await auditCredits(pool)).consistent,true);
-  }finally{await app.close();await pool.end();}
+  }finally{await legacyApp.close();await app.close();await pool.end();}
 });

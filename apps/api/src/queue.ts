@@ -14,7 +14,7 @@ import { inputManifestHash } from './production-rule-pin.js';
 import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
 
-import { syncAuthoringProgress } from './authoring-progress.js';
+import { syncAuthoringProgress,recordAuthoringProgressActivity } from './authoring-progress.js';
 import { creditBalance,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
 import { assertRunExecution, readExecutionStages, stampExecutionCheckpoint, type RunExecutionIdentity } from './run-execution.js';
@@ -146,7 +146,7 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
       VALUES($1,$2,'run',$3,'run.progress',$4)`,[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
     await syncAuthoringProgress(client,r);
-    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
+    await recordAuthoringProgressActivity(client,r,lease);
     return true;
   });
 }
@@ -190,7 +190,7 @@ export async function recordAuthoringActivity(pool:Pool,lease:Lease,activity:Aut
     await client.query('UPDATE bb_runs SET event_cursor=$2,updated_at=now() WHERE id=$1',[r.id,seq]);
     await client.query("INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)",[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
     await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'run',$3,'run.progress',$4)",[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
-    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
+    await recordAuthoringProgressActivity(client,r,lease);
     return true;
   });
 }
@@ -612,7 +612,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       }
       if(r.channel!=='production')throw new Problem(409,'TEST_GRANT_MISMATCH','Run channel cannot enter this terminal state');
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
-      const debit=await debitAuthoringCredits(client,r,Number.MAX_SAFE_INTEGER);
+      const debit=await debitAuthoringCredits(client,r,Number.MAX_SAFE_INTEGER,lease);
       if(debit&&debit.charged<debit.ceiling){
         await client.query("UPDATE bb_jobs SET credit_pause_requested=true,state='paused',stage='credits_exhausted',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
         await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');

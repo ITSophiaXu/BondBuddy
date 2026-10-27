@@ -1,0 +1,40 @@
+{
+  "mode": "regression",
+  "startedAt": "2026-10-27T01:22:27.269Z",
+  "completedAt": "2026-10-27T01:27:54.156Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "apps/api/dist/authoring-dynamic-balance.pg.test.js",
+    "apps/api/dist/authoring-progress.pg.test.js",
+    "apps/api/dist/review-dynamic-balance.pg.test.js",
+    "apps/api/dist/m4-dynamic-balance.pg.test.js",
+    "apps/api/dist/billing.pg.test.js",
+    "apps/api/dist/review-billing.pg.test.js",
+    "apps/api/dist/m4-fixed-billing.pg.test.js",
+    "apps/api/dist/credit-history.test.js",
+    "apps/api/dist/run-supplement-quote.pg.test.js",
+    "apps/api/dist/run-supplement-test-adoption.pg.test.js",
+    "apps/api/dist/run-supplement-execution.pg.test.js"
+  ],
+  "template": "/bb_segments_final02_20261027",
+  "exitCode": 0,
+  "signal": null,
+  "totals": {
+    "tests": 57,
+    "pass": 57,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "sourcesStable": false,
+  "sourceEntries": 1429,
+  "stdout": {
+    "bytes": 14973,
+    "sha256": "efe34239e6d80836c96447f0d777edf585cacef4c2ae17a8cca9eb7cccbd2d72"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

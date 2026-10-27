@@ -1,0 +1,359 @@
+TAP version 13
+# Subtest: authoring meter: monotonic, capped, lease bounded and independent of page time
+ok 1 - authoring meter: monotonic, capped, lease bounded and independent of page time
+  ---
+  duration_ms: 1.6921
+  type: 'test'
+  ...
+# Subtest: dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement
+ok 2 - dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement
+  ---
+  duration_ms: 8463.6364
+  type: 'test'
+  ...
+# Subtest: authoring meter: monotonic, capped, lease bounded and independent of page time
+ok 3 - authoring meter: monotonic, capped, lease bounded and independent of page time
+  ---
+  duration_ms: 1.8925
+  type: 'test'
+  ...
+# Subtest: authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved
+ok 4 - authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved
+  ---
+  duration_ms: 6271.4082
+  type: 'test'
+  ...
+# Subtest: paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes
+ok 5 - paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes
+  ---
+  duration_ms: 9724.9267
+  type: 'test'
+  ...
+# Subtest: history whitelist, ledger totals, microsecond pagination and owner-scoped cursors
+ok 6 - history whitelist, ledger totals, microsecond pagination and owner-scoped cursors
+  ---
+  duration_ms: 1109.0889
+  type: 'test'
+  ...
+# Subtest: M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation
+ok 7 - M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation
+  ---
+  duration_ms: 13411.0417
+  type: 'test'
+  ...
+# Subtest: synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection
+ok 8 - synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection
+  ---
+  duration_ms: 708.1577
+  type: 'test'
+  ...
+# Subtest: paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release
+ok 9 - paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release
+  ---
+  duration_ms: 4335.9622
+  type: 'test'
+  ...
+# Subtest: review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund
+ok 10 - review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund
+  ---
+  duration_ms: 7041.7694
+  type: 'test'
+  ...
+# (node:15336) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring: successor lease reconstructs the exact adopted basis and only its captured files
+ok 11 - authoring: successor lease reconstructs the exact adopted basis and only its captured files
+  ---
+  duration_ms: 6977.4583
+  type: 'test'
+  ...
+# Subtest: authoring: before_prompt receipt remains no-prior-work after new successor stages
+ok 12 - authoring: before_prompt receipt remains no-prior-work after new successor stages
+  ---
+  duration_ms: 2856.0933
+  type: 'test'
+  ...
+# Subtest: authoring: after_prompt receipt remains no-prior-work after new successor stages
+ok 13 - authoring: after_prompt receipt remains no-prior-work after new successor stages
+  ---
+  duration_ms: 2710.8018
+  type: 'test'
+  ...
+# Subtest: review: successor lease reconstructs the exact adopted basis and only its captured files
+ok 14 - review: successor lease reconstructs the exact adopted basis and only its captured files
+  ---
+  duration_ms: 5949.102
+  type: 'test'
+  ...
+# Subtest: review: before_prompt receipt remains no-prior-work after new successor stages
+ok 15 - review: before_prompt receipt remains no-prior-work after new successor stages
+  ---
+  duration_ms: 2525.8708
+  type: 'test'
+  ...
+# Subtest: review: after_prompt receipt remains no-prior-work after new successor stages
+ok 16 - review: after_prompt receipt remains no-prior-work after new successor stages
+  ---
+  duration_ms: 2607.3614
+  type: 'test'
+  ...
+# Subtest: m4: successor lease reconstructs the exact adopted basis and only its captured files
+ok 17 - m4: successor lease reconstructs the exact adopted basis and only its captured files
+  ---
+  duration_ms: 5495.6627
+  type: 'test'
+  ...
+# Subtest: m4: before_prompt receipt remains no-prior-work after new successor stages
+ok 18 - m4: before_prompt receipt remains no-prior-work after new successor stages
+  ---
+  duration_ms: 2955.5931
+  type: 'test'
+  ...
+# Subtest: m4: after_prompt receipt remains no-prior-work after new successor stages
+ok 19 - m4: after_prompt receipt remains no-prior-work after new successor stages
+  ---
+  duration_ms: 3002.3871
+  type: 'test'
+  ...
+# Subtest: revoked successor permission cannot be replaced with the original grant, including revocation during file I/O
+ok 20 - revoked successor permission cannot be replaced with the original grant, including revocation during file I/O
+  ---
+  duration_ms: 3749.411
+  type: 'test'
+  ...
+# Subtest: candidate material deletion committed during byte I/O rejects the reconstructed basis
+ok 21 - candidate material deletion committed during byte I/O rejects the reconstructed basis
+  ---
+  duration_ms: 3028.4751
+  type: 'test'
+  ...
+# Subtest: missing or changed retained Word bytes reject source reuse without a model retry or new ledger writes
+ok 22 - missing or changed retained Word bytes reject source reuse without a model retry or new ledger writes
+  ---
+  duration_ms: 4733.8404
+  type: 'test'
+  ...
+# Subtest: a successor lease that expires during retained file I/O cannot release the old bytes
+ok 23 - a successor lease that expires during retained file I/O cannot release the old bytes
+  ---
+  duration_ms: 3778.5597
+  type: 'test'
+  ...
+# Subtest: new V2 prompt and attempt carry explicit authority while an old writer cannot borrow the new input
+ok 24 - new V2 prompt and attempt carry explicit authority while an old writer cannot borrow the new input
+  ---
+  duration_ms: 2589.2207
+  type: 'test'
+  ...
+# (node:14468) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: all three genuine early pauses quote zero without any published price and preserve the original fee
+    # Subtest: authoring: before_prompt
+    ok 1 - authoring: before_prompt
+      ---
+      duration_ms: 2634.0896
+      type: 'test'
+      ...
+    # Subtest: authoring: after_prompt
+    ok 2 - authoring: after_prompt
+      ---
+      duration_ms: 2223.4629
+      type: 'test'
+      ...
+    # Subtest: review: before_prompt
+    ok 3 - review: before_prompt
+      ---
+      duration_ms: 2325.6141
+      type: 'test'
+      ...
+    # Subtest: review: after_prompt
+    ok 4 - review: after_prompt
+      ---
+      duration_ms: 1996.4905
+      type: 'test'
+      ...
+    # Subtest: m4: before_prompt
+    ok 5 - m4: before_prompt
+      ---
+      duration_ms: 2285.6508
+      type: 'test'
+      ...
+    # Subtest: m4: after_prompt
+    ok 6 - m4: after_prompt
+      ---
+      duration_ms: 2697.015
+      type: 'test'
+      ...
+    1..6
+ok 25 - all three genuine early pauses quote zero without any published price and preserve the original fee
+  ---
+  duration_ms: 14165.218
+  type: 'test'
+  ...
+# Subtest: authoring: captured work quotes and confirms one exact document package
+ok 26 - authoring: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 2954.7994
+  type: 'test'
+  ...
+# Subtest: review: captured work quotes and confirms one exact document package
+ok 27 - review: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 3272.1677
+  type: 'test'
+  ...
+# Subtest: review differential: captured work quotes and confirms one exact document package
+ok 28 - review differential: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 3714.0693
+  type: 'test'
+  ...
+# Subtest: m4: captured work quotes and confirms one exact document package
+ok 29 - m4: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 3047.5304
+  type: 'test'
+  ...
+# Subtest: a zero-work supplement does not replace or waive an existing paid source reservation
+ok 30 - a zero-work supplement does not replace or waive an existing paid source reservation
+  ---
+  duration_ms: 2197.5842
+  type: 'test'
+  ...
+# Subtest: an original paid category uses its current price even when candidate source information would classify differently
+ok 31 - an original paid category uses its current price even when candidate source information would classify differently
+  ---
+  duration_ms: 3049.3356
+  type: 'test'
+  ...
+# Subtest: an owned reservation cannot make a quote for a different original input authoritative
+ok 32 - an owned reservation cannot make a quote for a different original input authoritative
+  ---
+  duration_ms: 2568.0824
+  type: 'test'
+  ...
+# Subtest: concurrent exact quote and confirmation requests persist one receipt, while reused keys reject changed payloads
+ok 33 - concurrent exact quote and confirmation requests persist one receipt, while reused keys reject changed payloads
+  ---
+  duration_ms: 4768.3764
+  type: 'test'
+  ...
+# Subtest: run.supplement_quote_created: outbox failure rolls back the immutable receipt and the same request can retry
+ok 34 - run.supplement_quote_created: outbox failure rolls back the immutable receipt and the same request can retry
+  ---
+  duration_ms: 3423.3709
+  type: 'test'
+  ...
+# Subtest: run.supplement_quote_confirmed: outbox failure rolls back the immutable receipt and the same request can retry
+ok 35 - run.supplement_quote_confirmed: outbox failure rolls back the immutable receipt and the same request can retry
+  ---
+  duration_ms: 3474.7913
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects new_draft changes without advancing the run or touching its fee
+ok 36 - unconfirmed quote rejects new_draft changes without advancing the run or touching its fee
+  ---
+  duration_ms: 2797.0102
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects checkpoint changes without advancing the run or touching its fee
+ok 37 - unconfirmed quote rejects checkpoint changes without advancing the run or touching its fee
+  ---
+  duration_ms: 2529.4329
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects price_version changes without advancing the run or touching its fee
+ok 38 - unconfirmed quote rejects price_version changes without advancing the run or touching its fee
+  ---
+  duration_ms: 2844.0421
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects expired changes without advancing the run or touching its fee
+ok 39 - unconfirmed quote rejects expired changes without advancing the run or touching its fee
+  ---
+  duration_ms: 4216.7045
+  type: 'test'
+  ...
+# Subtest: a confirmed historical receipt remains exact after a new draft, price update and quotation expiry
+ok 40 - a confirmed historical receipt remains exact after a new draft, price update and quotation expiry
+  ---
+  duration_ms: 5091.2956
+  type: 'test'
+  ...
+# Subtest: authenticated HTTP quote/read/confirm uses shared contracts and rejects CSRF, arbitrary prices and foreign owners
+ok 41 - authenticated HTTP quote/read/confirm uses shared contracts and rejects CSRF, arbitrary prices and foreign owners
+  ---
+  duration_ms: 3285.1889
+  type: 'test'
+  ...
+# Subtest: revoked archived access cannot read or confirm a saved quote
+ok 42 - revoked archived access cannot read or confirm a saved quote
+  ---
+  duration_ms: 1887.4303
+  type: 'test'
+  ...
+# Subtest: revoked deleted access cannot read or confirm a saved quote
+ok 43 - revoked deleted access cannot read or confirm a saved quote
+  ---
+  duration_ms: 1787.0922
+  type: 'test'
+  ...
+# Subtest: revoked closed_account access cannot read or confirm a saved quote
+ok 44 - revoked closed_account access cannot read or confirm a saved quote
+  ---
+  duration_ms: 1704.6516
+  type: 'test'
+  ...
+# (node:20932) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring: exact new grant adopts the candidate in the same run and claim resolves V2 without changing original accounting
+ok 45 - authoring: exact new grant adopts the candidate in the same run and claim resolves V2 without changing original accounting
+  ---
+  duration_ms: 4488.9411
+  type: 'test'
+  ...
+# Subtest: review: exact new grant adopts the candidate in the same run and claim resolves V2 without changing original accounting
+ok 46 - review: exact new grant adopts the candidate in the same run and claim resolves V2 without changing original accounting
+  ---
+  duration_ms: 3922.0023
+  type: 'test'
+  ...
+# Subtest: m4: exact new grant adopts the candidate in the same run and claim resolves V2 without changing original accounting
+ok 47 - m4: exact new grant adopts the candidate in the same run and claim resolves V2 without changing original accounting
+  ---
+  duration_ms: 4005.6011
+  type: 'test'
+  ...
+# Subtest: production adoption is closed; old, wrong and revoked test grants cannot move the head
+ok 48 - production adoption is closed; old, wrong and revoked test grants cannot move the head
+  ---
+  duration_ms: 4845.1931
+  type: 'test'
+  ...
+# Subtest: revoking the successor grant blocks a new claim without reusing the original grant
+ok 49 - revoking the successor grant blocks a new claim without reusing the original grant
+  ---
+  duration_ms: 2164.1994
+  type: 'test'
+  ...
+# Subtest: two adopters serialize on the same paused boundary; exactly one request and one target execution commit
+ok 50 - two adopters serialize on the same paused boundary; exactly one request and one target execution commit
+  ---
+  duration_ms: 2162.8012
+  type: 'test'
+  ...
+# Subtest: direct SQL cannot commit an incomplete adoption or create an unreceipted V2
+ok 51 - direct SQL cannot commit an incomplete adoption or create an unreceipted V2
+  ---
+  duration_ms: 3101.0647
+  type: 'test'
+  ...
+1..51
+# tests 57
+# suites 0
+# pass 57
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 325830.0606

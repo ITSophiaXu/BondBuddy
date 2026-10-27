@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "recordedAt": "2026-10-27T01:21:58.7813069Z",
+  "baseCommit": "05155d3d",
+  "scope": "Canonical V1 fee mapping only. Reservation run_id uniqueness and all paid-successor rejection gates remain installed.",
+  "implementation": [
+    {
+      "path": "apps/api/src/billing-ops.ts",
+      "sha256": "ca40293b8ede13961c16e5f63b475cd8dee0fbda893da7a99d053d20dd87d6f7"
+    },
+    {
+      "path": "apps/api/src/credit-history.ts",
+      "sha256": "596c07da36b4a2bcaf17bd38e7450528b50071b28affb5961ebfa89295cd93db"
+    },
+    {
+      "path": "apps/api/src/billing-segment-compatibility.pg.test.ts",
+      "sha256": "93e0a8cf273f60985a7101870014a7cb676c72d2a04f4f064697ec355816df69"
+    },
+    {
+      "path": "apps/api/src/legacy-credit-policy-test-fixture.ts",
+      "sha256": "07b7316441559bbcb69ed669e4d809d6793cfb00e265370e3e239f032a9f5eb3"
+    },
+    {
+      "path": "apps/api/src/authoring-progress.pg.test.ts",
+      "sha256": "23cc046d58b1e4ecf2fad24d52aacbdb3041cf2b03b3e76ecad691e92ae2c1d4"
+    },
+    {
+      "path": "apps/api/src/review-dynamic-balance.pg.test.ts",
+      "sha256": "c4d66accf9895228fd10105a5bb2e4950f0cf5bd9f8d709fdcec66be34fb5228"
+    }
+  ],
+  "sourceReview": {
+    "reviewed": [
+      "apps/api/src/run-billing-segment.ts",
+      "apps/api/src/authoring-credit-debit.ts",
+      "apps/api/src/authoring-progress.ts",
+      "apps/api/src/queue.ts",
+      "db/migrations/0138_run_billing_segments.sql"
+    ],
+    "conclusions": [
+      "Paid execution selector refuses missing or inconsistent binding before debit; no fallback to the original pointer.",
+      "Initial run INSERT creates V1 origin/head; reserve inserts fee then sets first paid pointer; immediate canonical capture precedes enqueue/progress.",
+      "Canonical and legacy meters mirror exact fields without recursively updating equal rows.",
+      "Existing debit, cancellation, failure correction and final settlement policies are retained; the current slice does not authorize paid V2.",
+      "Three old fixtures that changed an existing paid policy now establish their historical policy at first reservation INSERT before canonical capture."
+    ],
+    "remainingSourceBlockers": []
+  },
+  "verification": {
+    "diffCheck": "git diff --check passed for owned changes",
+    "apiBuild": "Not run by this agent; root unified build pending",
+    "postgres": "Not started or run by this agent; root unified PG verification pending",
+    "newFocusedTests": "Four authored PostgreSQL tests, not executed by this agent."
+  },
+  "limitations": [
+    "Source inspection is not runtime acceptance.",
+    "No scenario coverage percentage or paid-successor capability is established by this record."
+  ]
+}

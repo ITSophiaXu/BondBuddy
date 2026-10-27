@@ -38,7 +38,9 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
       COALESCE(e.charged,0)::text AS charged,COALESCE(e.released,0)::text AS released,COALESCE(e.corrected,0)::text AS corrected
     FROM selected c JOIN bb_runs r ON r.id=c.run_id AND r.owner_user_id=c.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=c.owner_user_id
-    LEFT JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.owner_user_id=c.owner_user_id AND i.revision=r.input_revision
+    LEFT JOIN bb_run_billing_segments segment ON segment.reservation_id=c.id AND segment.owner_user_id=c.owner_user_id AND segment.run_id=c.run_id
+    LEFT JOIN bb_input_revisions i ON i.project_id=segment.project_id AND i.owner_user_id=c.owner_user_id
+      AND i.revision=segment.origin_input_revision AND i.input_hash=segment.origin_input_hash
     LEFT JOIN bb_credit_quotes q ON q.id=c.quote_id AND q.owner_user_id=c.owner_user_id
     LEFT JOIN bb_m4_quotes mq ON mq.id=c.quote_id AND mq.owner_user_id=c.owner_user_id
     LEFT JOIN bb_project_file_update_quotes fq ON fq.id=c.quote_id AND fq.owner_user_id=c.owner_user_id

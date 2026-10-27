@@ -1,0 +1,289 @@
+TAP version 13
+# Subtest: authoring: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+not ok 1 - authoring: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+  ---
+  duration_ms: 4107.0082
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:215:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'authoring_balance_v2'
+    - undefined
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual: 'authoring_balance_v2'
+  operator: 'strictEqual'
+  stack: |-
+    assertCaptured (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:149:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:221:29)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: review: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+not ok 2 - review: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+  ---
+  duration_ms: 1482.9672
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:215:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'authoring_balance_v2'
+    - undefined
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual: 'authoring_balance_v2'
+  operator: 'strictEqual'
+  stack: |-
+    assertCaptured (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:149:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:221:29)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: m4: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+not ok 3 - m4: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+  ---
+  duration_ms: 1503.5713
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:215:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '909a1999-bc79-41cd-ab84-47cb0ed39e76'
+    - '6c857448-4f7c-48e2-85e4-8d84364bcd2f'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '6c857448-4f7c-48e2-85e4-8d84364bcd2f'
+  actual: '909a1999-bc79-41cd-ab84-47cb0ed39e76'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:233:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: canonical V1: one point exhausts, saved work and manual pause survive topup, unfunded elapsed time is discarded, delivery finishes at the original cap
+not ok 4 - canonical V1: one point exhausts, saved work and manual pause survive topup, unfunded elapsed time is discarded, delivery finishes at the original cap
+  ---
+  duration_ms: 1737.5032
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:272:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'authoring_balance_v2'
+    - undefined
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual: 'authoring_balance_v2'
+  operator: 'strictEqual'
+  stack: |-
+    assertCaptured (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:149:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:280:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: authoring: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+not ok 5 - authoring: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+  ---
+  duration_ms: 1588.2818
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:324:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(beforeCancel > 0)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:334:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: review: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+not ok 6 - review: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+  ---
+  duration_ms: 1365.3455
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:324:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(beforeCancel > 0)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:334:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: m4: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+not ok 7 - m4: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+  ---
+  duration_ms: 1479.7832
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:324:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(beforeCancel > 0)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:334:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real paid V1: missing or inconsistent canonical query results fail closed before debit; a different execution cannot reuse the original reservation
+not ok 8 - real paid V1: missing or inconsistent canonical query results fail closed before debit; a different execution cannot reuse the original reservation
+  ---
+  duration_ms: 1365.6987
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:373:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'authoring_balance_v2'
+    - undefined
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual: 'authoring_balance_v2'
+  operator: 'strictEqual'
+  stack: |-
+    assertCaptured (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:149:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:378:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: platform trial V1 keeps its nonmonetary legacy meter and creates no canonical segment, reservation or debit
+ok 9 - platform trial V1 keeps its nonmonetary legacy meter and creates no canonical segment, reservation or debit
+  ---
+  duration_ms: 1401.9667
+  type: 'test'
+  ...
+# Subtest: authoring: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+not ok 10 - authoring: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+  ---
+  duration_ms: 1096.6213
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:462:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'b0acbfb8-809e-41f9-b7bd-13e94a39a065'
+    - 'f6980744-f8df-49bb-9d0c-0038297cdcfd'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'f6980744-f8df-49bb-9d0c-0038297cdcfd'
+  actual: 'b0acbfb8-809e-41f9-b7bd-13e94a39a065'
+  operator: 'strictEqual'
+  stack: |-
+    buildFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-preparation-test-fixture.js:119:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async buildRunSupplementPreparationFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-preparation-test-fixture.js:208:38)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:464:15)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: review: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+not ok 11 - review: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+  ---
+  duration_ms: 1146.5338
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:462:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '22cdddf1-aa5f-4182-adac-e0e3f7b4221b'
+    - 'b72f9e95-15bc-416e-87fa-d8b545664dad'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'b72f9e95-15bc-416e-87fa-d8b545664dad'
+  actual: '22cdddf1-aa5f-4182-adac-e0e3f7b4221b'
+  operator: 'strictEqual'
+  stack: |-
+    buildRunSupplementFilePreparationFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-file-preparation-test-fixture.js:139:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:465:15)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: m4: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+not ok 12 - m4: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+  ---
+  duration_ms: 1094.588
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\dist\\run-billing-segments.pg.test.js:462:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '77e690b5-e22a-488d-98e8-18f87f46042f'
+    - 'c34a8abb-8940-44e8-a392-cff08de63342'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'c34a8abb-8940-44e8-a392-cff08de63342'
+  actual: '77e690b5-e22a-488d-98e8-18f87f46042f'
+  operator: 'strictEqual'
+  stack: |-
+    buildRunSupplementFilePreparationFixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-file-preparation-test-fixture.js:139:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-billing-segments.pg.test.js:465:15)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 1
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52525.8951
