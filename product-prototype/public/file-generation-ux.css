@@ -33,7 +33,7 @@
 .pf-generation-source { padding: 16px 20px; margin: 0 0 22px; background: #f2f6ec; border-color: #dce5d4; }
 .pf-generation-source strong { font-size: 14px; }
 .pf-generation-source .btn { min-height: 44px; }
-.pf-documents-layout .pf-optional-grid { display: grid; grid-area: auto; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; margin-top: 22px; gap: 22px; }
+.pf-documents-layout .pf-optional-grid { display: grid; grid-area: auto; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: stretch; margin-top: 22px; gap: 22px; }
 .pf-documents-layout .pf-optional { box-shadow: none; margin: 0; }
 .pf-documents-layout .pf-documents-next { position: sticky; bottom: 12px; z-index: 4; margin: 22px 0 0; padding: 16px 20px; background: #fff; box-shadow: 0 4px 24px #243a2312; }
 .pf-documents-next #pf-price { font-size: 13px; }
