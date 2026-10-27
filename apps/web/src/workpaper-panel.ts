@@ -31,7 +31,7 @@ export class WorkpaperPanel {
       if(saved?.assessing){if(!Value.Check(WorkpaperAssessSchema,saved.assessing))throw Error('invalid assessment');this.assessing=saved.assessing;}
       if(saved?.pending){if(!Value.Check(WorkpaperStartSchema,saved.pending))throw Error('invalid pending');this.pending=saved.pending;}
       this.catalogue=this.data.catalogues.find(c=>c.catalogue_id===(this.pending?.catalogue_id??this.assessing?.catalogue_id??saved?.catalogue))??this.data.catalogues[0];
-      this.selected=new Set(this.pending?.item_ids??this.assessing?.item_ids??(saved?.catalogue===this.catalogue?.catalogue_id?saved.selected:undefined)??this.catalogue?.entries.filter(e=>e.kind==='file').map(e=>e.id)??[]);
+      this.selected=new Set(this.pending?.item_ids??this.assessing?.item_ids??(saved&&this.catalogue&&saved.catalogue===this.catalogue.catalogue_id?saved.selected:undefined)??this.catalogue?.entries.filter(e=>e.kind==='file').map(e=>e.id)??[]);
       this.requirements=this.pending?.requirements??this.assessing?.requirements??saved?.requirements??'';this.paint();this.poll();
     }catch(e){if(this.live()){this.host.innerHTML='<p role="status">底稿记录暂时无法读取。原记录已保留，请刷新重试。</p>';}}
   }

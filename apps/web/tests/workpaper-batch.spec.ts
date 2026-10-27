@@ -26,6 +26,15 @@ async function setup(page:import('@playwright/test').Page,count=350){
     return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
   });return state;
 }
+test('first visit with no catalogue presents the upload control',async({page})=>{
+  const state=await setup(page);state.data.catalogues=[];
+  await page.goto('/'+href({step:'workpapers'}));
+  await expect(page.getByRole('heading',{name:'按底稿目录批量生成'})).toBeVisible();
+  await expect(page.locator('#wp-upload')).toBeEnabled();
+  await expect(page.getByText('底稿记录暂时无法读取。原记录已保留，请刷新重试。')).toHaveCount(0);
+  await page.reload();await expect(page.locator('#wp-upload')).toBeEnabled();
+});
+
 for(const width of [1440,390])test(`workpapers ${width}: 350-row preview, selection, cost, existing source and batch progress`,async({page})=>{
   const state=await setup(page);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));
   await expect(page.getByRole('heading',{name:'按底稿目录批量生成'})).toBeVisible();await expect(page.locator('[data-wp-item]')).toHaveCount(350);
