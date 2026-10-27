@@ -1,0 +1,34 @@
+[
+  {
+    "scene": "source-empty",
+    "width": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "source-current",
+    "width": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "documents",
+    "width": 1440,
+    "scrollWidth": 1425,
+    "directoryHeight": 630.984375
+  },
+  {
+    "scene": "source-empty",
+    "width": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "source-current",
+    "width": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "documents",
+    "width": 390,
+    "scrollWidth": 375,
+    "directoryHeight": 893.375
+  }
+]

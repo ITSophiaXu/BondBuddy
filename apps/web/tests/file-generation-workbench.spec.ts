@@ -1,5 +1,5 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {mkdir} from 'node:fs/promises';
+import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_FIXED_PRICE,m4Schemas,projectFileSchemas,
@@ -66,8 +66,9 @@ async function fixture(page:Page){
       if(method==='GET'&&state.workspaceMissing){state.workspaceMissing=false;return json(route,404,{code:'NOT_FOUND'});}
       return json(route,200,state.workspaces.get(workspaceMatch[1]));
     }
-    if(path===`/projects/${sourceProject}/prospectus-versions`){
-      const s=state.workspaces.get(apiProject)!.source!;
+    if([`/projects/${sourceProject}/prospectus-versions`,`/projects/${apiProject}/prospectus-versions`].includes(path)){
+      const s=state.workspaces.get(apiProject)!.source;
+      if(!s)return json(route,200,{project_id:apiProject,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]});
       return json(route,200,{project_id:sourceProject,current_version_id:s.version_id,selection_revision:s.selection_revision,inactive_material_ids:[],versions:[{
         version_id:s.version_id,sequence:s.sequence,origin:'upload',filename:s.filename,sha256:sha,created_at:now,material_id:'source-material',material_version:1,
         artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]});
@@ -126,7 +127,7 @@ const supportFile={name:'合成补充依据.pdf',mimeType:'application/pdf',buff
 test('prepared source opens document selection without preparation or initial bulk selection',async({page})=>{
   const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.setViewportSize({width:1440,height:1000});
   const s=await fixture(page);await open(page);
-  await expect(page.getByRole('heading',{name:'选择要生成的关联文件'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
   await expect(page.locator('[data-pf-type]')).toHaveCount(12);
   await expect(page.locator('[data-pf-type]:checked')).toHaveCount(0);
   await expect(page.locator('#pf-requirements')).toHaveValue('');
@@ -185,7 +186,10 @@ test('missing templates explain why only the selected package cannot run',async(
   await expect(page.locator('#pf-generate')).toBeDisabled();
   await expect(page.locator('#pf-package-readiness')).toContainText(/模板/);
   await expect(page.locator('#pf-template-list')).toContainText('法律意见书');
+  await expect(page.locator('#pf-footer-template')).toHaveText('添加 1 份模板');await page.locator('#pf-footer-template').click();
+  await expect(page.locator('dialog')).toContainText('法律意见书');await page.locator('dialog [data-close]').click();
   await page.locator('#pf-select-none').click();await choose(page,['init']);
+  await expect(page.locator('#pf-footer-template')).toBeHidden();
   await expect(page.locator('#pf-generate')).toBeEnabled();
   expect(batches(s.calls)).toHaveLength(0);
 });
@@ -475,7 +479,7 @@ test('a trusted expired-input receipt requires explicit preparation and a new pa
 test('the task-list entry opens an existing running batch with the API and navigation projects preserved',async({page})=>{
   const s=await fixture(page);s.workspaces.get(apiProject)!.batches=[{batch_id:'existing-running',state:'running',items:[{document_type:'init',run_id:null,state:'queued',error:null}]}];
   await open(page);
-  const tasks=page.getByRole('link',{name:'查看生成任务',exact:true});
+  const tasks=page.getByRole('link',{name:/^生成记录/});
   const link=await tasks.getAttribute('href'),query=new URLSearchParams(link!.split('?')[1]);
   expect(query.get('project')).toBe(apiProject);expect(query.get('return_project')).toBe(navigationProject);expect(query.get('step')).toBe('results');
   await tasks.click();await expect(page.getByRole('heading',{name:'文件生成任务'})).toBeVisible();
@@ -522,8 +526,11 @@ for(const width of [390,320]){
     await page.setViewportSize({width,height:844});await fixture(page);await open(page);await choose(page,['init','underwriter']);
     const overflow=()=>page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
     expect(await overflow()).toBe(false);
-    const projectText=await page.locator('.pf-project-strip>div').boundingBox();
+    const projectText=await page.locator('.project-context').boundingBox();
     expect(projectText!.width).toBeGreaterThan(150);expect(projectText!.height).toBeLessThan(125);
+    for(const row of await page.locator('.pf-document-option').all()){
+      const box=(await row.boundingBox())!;expect(box.height).toBeGreaterThanOrEqual(44);expect(box.height).toBeLessThan(66);
+    }
     const dir=process.env.BB_UX_EVIDENCE_DIR;
     if(dir){await mkdir(dir,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:join(dir,`file-generation-preparation-${width}.png`),fullPage:true});}
     await confirm(page);expect(await overflow()).toBe(false);
@@ -531,3 +538,63 @@ for(const width of [390,320]){
     if(dir)await page.screenshot({path:join(dir,`file-generation-confirmation-${width}.png`)});
   });
 }
+
+for(const width of [1440,390,320])test(`source upload has one obvious entry and no empty disclosures at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:960});const s=await fixture(page);s.workspaces.get(apiProject)!.source=null;
+  await page.goto('/'+href(apiProject,{step:'source'}));
+  await expect(page.locator('.pf-prospectus-dropzone')).toBeVisible();
+  await expect(page.locator('.pf-steps,.pf-project-strip,.pf-source-intro')).toHaveCount(0);
+  await expect(page.locator('[data-prospectus-history]')).toBeHidden();
+  await expect(page.locator('.prospectus-upload-editor')).toBeHidden();
+  await expect(page.locator('#pf-source-next')).toBeDisabled();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const dir=process.env.BB_UX_EVIDENCE_DIR;
+  if(dir){await mkdir(dir,{recursive:true});await page.screenshot({path:join(dir,`source-empty-${width}.png`),fullPage:true});if(width===1440)await writeFile(join(dir,'source-empty.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-source-workspace')!.outerHTML));}
+  const chooser=page.waitForEvent('filechooser');await page.locator('.pf-prospectus-dropzone').click();
+  await(await chooser).setFiles(supportFile);
+  await expect(page.locator('.prospectus-selected-file')).toContainText(supportFile.name);
+  await expect(page.locator('#save-prospectus-version')).toBeVisible();
+  await expect(page.locator('#save-prospectus-version')).toBeEnabled();
+  if(dir)await page.screenshot({path:join(dir,`source-selected-${width}.png`),fullPage:true});
+  await page.locator('#cancel-prospectus-version').click();
+  await expect(page.locator('.prospectus-upload-editor')).toBeHidden();
+  await expect(page.locator('.pf-prospectus-dropzone')).toBeFocused();
+  expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+test('source to directory preserves the exact version and presents selection beside template actions',async({page})=>{
+  await page.setViewportSize({width:1440,height:1000});const s=await fixture(page);
+  await page.goto('/'+href(apiProject,{step:'source'}));
+  await expect(page.locator('#pf-source-next')).toBeEnabled();
+  const dir=process.env.BB_UX_EVIDENCE_DIR;
+  if(dir){await page.screenshot({path:join(dir,'source-current-1440.png'),fullPage:true});await writeFile(join(dir,'source-current.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-source-workspace')!.outerHTML));}
+  await page.locator('#pf-source-next').click();await expect(page.locator('#pf-document-directory')).toBeVisible();
+  expect(s.calls.find(c=>c.method==='POST'&&c.path.endsWith('/project-files/source'))?.body).toEqual({source_version_id:'source-v3',expected_selection_revision:7});
+  await choose(page,['init','underwriter']);
+  const directory=await page.locator('#pf-document-directory').boundingBox(),side=await page.locator('.pf-selection-side').boundingBox();
+  expect(directory!.width).toBeGreaterThan(380);expect(side!.width).toBeGreaterThan(290);
+  expect(directory!.height).toBeLessThan(660);
+  expect(side!.height).toBeLessThan(directory!.height+120);
+  expect(Math.abs(directory!.y-side!.y)).toBeLessThan(3);expect(side!.x).toBeGreaterThan(directory!.x+directory!.width);
+  for(const panel of await page.locator('.pf-selection-side > *').all()){
+    const box=(await panel.boundingBox())!;expect(Math.abs(box.x-side!.x)).toBeLessThan(2);expect(Math.abs(box.width-side!.width)).toBeLessThan(2);
+  }
+  const optional=await page.locator('.pf-optional-grid').boundingBox(),requirements=await page.locator('#pf-requirements-details').boundingBox(),support=await page.locator('#pf-support-details').boundingBox();
+  expect(optional!.y).toBeGreaterThanOrEqual(Math.max(directory!.y+directory!.height,side!.y+side!.height));
+  expect(Math.abs(optional!.x-directory!.x)).toBeLessThan(2);
+  expect(Math.abs(optional!.x+optional!.width-side!.x-side!.width)).toBeLessThan(2);
+  expect(Math.abs(requirements!.y-support!.y)).toBeLessThan(2);
+  expect(support!.x).toBeGreaterThan(requirements!.x+requirements!.width);
+  expect(Math.abs(requirements!.width-support!.width)).toBeLessThan(2);
+  await expect(page.locator('.pf-document-option')).toHaveCount(12);
+  for(const row of await page.locator('.pf-document-option').all()){
+    const box=(await row.boundingBox())!;expect(box.height).toBeGreaterThanOrEqual(44);expect(box.height).toBeLessThan(50);
+  }
+  await checked(page,'legal').focus();await page.keyboard.press('Space');await expect(checked(page,'legal')).toBeChecked();
+  await page.keyboard.press('Space');await expect(checked(page,'legal')).not.toBeChecked();
+  await checked(page,'legal').blur();
+  for(const button of await page.locator('[data-pf-template]').all())expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(batches(s.calls)).toHaveLength(0);
+  if(dir){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:join(dir,'documents-1440.png'),fullPage:true});await writeFile(join(dir,'documents.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-generation-source')!.outerHTML+document.querySelector('.pf-documents-layout')!.outerHTML));}
+});
