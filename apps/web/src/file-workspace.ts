@@ -1,7 +1,7 @@
 import {UserFacingError} from './user-facing-error.js';
 import { ProjectEntry } from './project-entry';
 import {PROJECT_DOCUMENT_CATALOG,PROJECT_DOCUMENT_FOLDERS,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,M4_DOCUMENT_FIXED_PRICE,
-  ProjectFileBatchSchema,M4DraftRequestSchema,M4TemplateCreateRequestSchema,type M4DraftRequest,type M4TemplateCreateRequest,type M4DocumentType,type M4Template,type M4MaterialPin,type ProjectFileBatch} from '@bondbuddy/contracts';
+  ProjectFileBatchSchema,M4DraftRequestSchema,M4TemplateCreateRequestSchema,type M4DraftRequest,type M4TemplateCreateRequest,type ProjectDocumentType as M4DocumentType,type M4Template,type M4MaterialPin,type ProjectFileBatch} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {ArtifactDownloads} from './artifact-download';
@@ -14,6 +14,7 @@ import {runStateLabel} from './review-state';
 import {withProjectContext,navigationProjectContext,projectWorkHref} from './project-navigation';
 import {UploadRecovery,type UploadRecoveryJson,type UploadRecoveryRecord} from './upload-recovery';
 import './file-workspace.css';
+import {WorkpaperPanel} from './workpaper-panel';
 
 type Workspace=import('@bondbuddy/contracts').ProjectFileWorkspace;
 export type UploadFileMaterialState={
@@ -54,6 +55,7 @@ export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undef
 }
 
 export class FileWorkspace {
+  private workpapers?:WorkpaperPanel;
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
   private state?:Workspace;private project?:Dto<'ProjectResponse'>;private selected=new Set<M4DocumentType>();private busy=false;
   private timer?:ReturnType<typeof setTimeout>;private pendingBatch?:Readonly<FileGenerationBatchRequest>;private pendingUncertain=false;private pendingStored=false;private pendingExpired=false;
@@ -83,7 +85,7 @@ export class FileWorkspace {
     if(!c||typeof c!=='object'||Array.isArray(c)||!['support','template'].includes(String(c.kind))||typeof c.topic!=='string'||!c.topic||!Array.isArray(c.types)||!c.types.length||c.types.some(t=>!PROJECT_DOCUMENT_CATALOG.some(d=>d.id===t))||new Set(c.types).size!==c.types.length||c.kind==='template'&&(!c.templateRequest||c.types.length!==1))throw new UserFacingError('原上传的文件范围无法核实，请保留记录并核对。');
     if(c.apply!==undefined&&!Value.Check(M4DraftRequestSchema,c.apply)||c.kind==='template'&&!Value.Check(M4DraftRequestSchema,c.templateBase))throw new UserFacingError('原草稿保存条件无法核实，请保留记录并核对。');
     const context=c as unknown as GenerationUploadContext;
-    if(context.apply&&!context.types.includes(context.apply.input.document_type))throw new UserFacingError('原草稿保存范围不一致，请核对。');
+    if(context.apply&&(context.apply.input.document_type==='workpaper'||!context.types.includes(context.apply.input.document_type)))throw new UserFacingError('原草稿保存范围不一致，请核对。');
     if(context.templateBase&&context.templateBase.input.document_type!==context.types[0])throw new UserFacingError('原模板采用范围不一致，请核对。');
     if(context.kind==='support'&&context.types.some(type=>!Value.Check(M4DraftRequestSchema,context.supportBases?.[type])||context.supportBases?.[type]?.input.document_type!==type))throw new UserFacingError('原补料草稿依据无法核实，请保留记录并核对。');
     return context;
@@ -150,9 +152,10 @@ export class FileWorkspace {
   }
   private filesHref(){return projectWorkHref('files',navigationProjectContext(location.hash)?.projectId??this.id!);}
   get hasUnconfirmed(){
-    return this.busy||!!this.panel?.hasUnconfirmed||!!this.support||!!this.pendingBatch&&!this.pendingStored||!!this.noteOperation&&!this.noteOperationStored||!!this.note&&!this.noteStored;
+    return !!this.workpapers?.hasUnconfirmed||this.busy||!!this.panel?.hasUnconfirmed||!!this.support||!!this.pendingBatch&&!this.pendingStored||!!this.noteOperation&&!this.noteOperationStored||!!this.note&&!this.noteStored;
   }
   async beforeLeave(){
+    if(this.workpapers&&!await this.workpapers.beforeLeave())return false;
     if(this.busy)return false;
     if(this.panel&&!await this.panel.beforeLeave())return false;
     if(this.support){this.status('补充资料尚未全部保存，请先重试保存。');return false;}
@@ -161,7 +164,7 @@ export class FileWorkspace {
     if(this.note&&!this.noteStored){this.noteStored=this.cache?.saveNote(this.note)??false;if(!this.noteStored){this.status('补充要求尚未保存，请先保存到所选文件。');return false;}}
     return true;
   }
-  dispose(){this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
+  dispose(){this.workpapers?.dispose();this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
   private request<T>(method:'GET'|'POST',suffix:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,{},this.controller.signal);}
   async render(){
     this.shell('<p role="status">正在读取文件生成…</p>','generate');
@@ -183,7 +186,7 @@ export class FileWorkspace {
   private prepared(){const source=this.state?.source;if(!source)return false;const matches=(id:M4DocumentType)=>{const pin=this.state!.workspace.drafts[id].project_file;return !!pin&&pin.project_id===this.id&&pin.source_version_id===source.version_id&&pin.source_selection_revision===source.selection_revision;};return this.selected.size?[...this.selected].every(matches):PROJECT_DOCUMENT_CATALOG.some(d=>matches(d.id));}
   private saveSelection(){if(this.cache&&!this.cache.saveSelection([...this.selected]))this.status('本次文件选择暂未保存到浏览器会话，刷新后请重新核对。');}
   private header(step:string){return `<a class="back-link" href="#tasks">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">FILE GENERATION</div><h1>${step==='documents'?'选择要生成的关联文件':'文件生成'}</h1><p>按项目目录选择文件，基于募集说明书与已保存模板生成，完成后统一归入项目。</p></div></div>
-    ${this.id?`<nav class="pf-steps" aria-label="文件生成步骤"><a href="#generate">1 选择项目</a><a ${step==='source'?'aria-current="step"':''} href="${esc(this.href({step:'source'}))}">2 选择募集说明书</a><a ${['documents','results'].includes(step)?'aria-current="step"':''} href="${esc(this.href({step:'documents'}))}">3 生成关联文件</a></nav><div class="pf-source-strip pf-project-strip">${ico('folder')}<div><strong>${esc(this.project!.name)}</strong><small>${esc(this.project!.issuer_name??'发行人待填写')} · ${MARKET_LABELS[this.project!.market as keyof typeof MARKET_LABELS]??''} · ${OFFERING_LABELS[this.project!.offering as keyof typeof OFFERING_LABELS]??''}</small></div><a class="text-button" href="#generate">更换项目</a><a class="text-button" href="${esc(this.href({step:'results'}))}">查看生成任务</a><a class="text-button" href="${esc(this.filesHref())}">项目文件 →</a></div><section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`:''}`;}
+    ${this.id?`<nav class="pf-steps" aria-label="文件生成步骤"><a href="#generate">1 选择项目</a><a ${step==='source'?'aria-current="step"':''} href="${esc(this.href({step:'source'}))}">2 选择募集说明书</a><a ${['documents','results','workpapers'].includes(step)?'aria-current="step"':''} href="${esc(this.href({step:'documents'}))}">3 生成关联文件</a></nav><div class="pf-source-strip pf-project-strip">${ico('folder')}<div><strong>${esc(this.project!.name)}</strong><small>${esc(this.project!.issuer_name??'发行人待填写')} · ${MARKET_LABELS[this.project!.market as keyof typeof MARKET_LABELS]??''} · ${OFFERING_LABELS[this.project!.offering as keyof typeof OFFERING_LABELS]??''}</small></div><a class="text-button" href="#generate">更换项目</a><a class="text-button" href="${esc(this.href({step:'workpapers'}))}">批量生成底稿</a><a class="text-button" href="${esc(this.href({step:'results'}))}">查看生成任务</a><a class="text-button" href="${esc(this.filesHref())}">项目文件 →</a></div><section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`:''}`;}
   private async chooseProject(){
     this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'generate',title:'文件生成',eyebrow:'FILE GENERATION',
       description:'先选择项目，基于募集说明书与已保存模板生成关联文件，完成后统一归入项目。',
@@ -201,10 +204,15 @@ export class FileWorkspace {
         .then(p=>{if(this.live()){d.close();location.hash=`generate?project=${p.project_id}&step=source`;}}).catch(e=>{d.querySelector('#pf-modal-status')!.textContent=friendlyError(e,'submit');}).finally(()=>{this.busy=false;});});
   }
   private async paint(){
+    this.workpapers?.dispose();this.workpapers=undefined;
     if(!this.state||!this.live())return;this.capturePreparationView();this.panel?.dispose();this.panel=undefined;
     const step=new URLSearchParams(location.hash.split('?')[1]).get('step')??(this.prepared()?'documents':'source');
     if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,'generate');this.paintEntryIntent();return;}
     if(this.pendingBatch){this.paintRecovery();return;}
+    if(step==='workpapers'){
+      this.shell(`${this.header(step)}<div id="pf-workpapers"></div>`,'generate');
+      this.workpapers=new WorkpaperPanel(this.api,document.querySelector('#pf-workpapers')!,this.id!,this.owner!,this.state.source,()=>this.live());await this.workpapers.render();return;
+    }
     if(step==='source'){
       this.shell(`${this.header(step)}<section class="pf-source-intro"><h2>选择本次生成依据的募集说明书</h2><p>上传新稿或使用项目当前版本；文件生成会固定本次采用的版本。</p></section><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-footer"><a class="btn secondary" href="#generate">重新选择项目</a><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>使用当前募集书，选择文件 →</button></footer>`,'generate');this.paintEntryIntent();
       const sourceProject=this.state.source?.project_id??this.id!;

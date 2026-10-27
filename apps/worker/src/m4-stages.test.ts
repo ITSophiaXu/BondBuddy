@@ -32,7 +32,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
-import {loadM4Knowledge} from '@bondbuddy/api/m4-knowledge';
+import {loadM4Knowledge,loadWorkpaperKnowledge} from '@bondbuddy/api/m4-knowledge';
 import type { M4AssistantReply,M4DocumentManifest,M4QaManifest } from '@bondbuddy/contracts';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { m4DocumentStage,m4DocumentDeliveryStage,validM4DocumentResult } from './m4-document-stage.js';
@@ -112,6 +112,28 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
     assert.match(delivered.namedArtifacts![0].previewContent!,/Synthetic preparation note/);
     result.value.files['document.docx']!.key=result.value.files['document.docx']!.key.replace('owners/owner/','owners/foreign/');
     assert.equal(validM4DocumentResult(result.value,f.ctx),false);
+  }finally{await f.clean();}
+});
+
+test('workpaper CLI receives its exact catalogue entry and public prospectus scope, publishes two real editable Word files',async()=>{
+  const f=await fixture();
+  try{
+    const m=f.input.manifest as M4DocumentManifest;
+    m.offering='public';m.billing_task='m4_workpaper';m.input.document_type='workpaper';
+    m.input.workpaper={batch_id:'batch',catalogue_id:'catalogue',entry:{id:'s1-r2',code:'1.1',title:'访谈记录',folder:'主体',path:'主体/1.1 访谈记录.docx',sheet:'目录',row:2,instructions:'准备提纲，尚未访谈',kind:'file'}};
+    m.knowledge=loadWorkpaperKnowledge('sse','public');f.ctx.run.input_hash=inputManifestHash(m);
+    let calls=0;
+    const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+      calls++;const prompt=await options.buildPrompt(f.ctx);assert.match(prompt,/不能伪造/);assert.match(prompt,/归档准备页/);
+      await options.fileWorkspace!.prepare(f.directory);
+      const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
+      assert.equal(input.skill.id,'m4-workpaper');assert.deepEqual(input.task.input.workpaper,m.input.workpaper);assert.equal(input.task.offering,'public');
+      assert.equal(input.materials[0].purpose,'source_prospectus');await outputWords(f.directory);
+      return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'})};
+    }})});
+    const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing result');
+    f.ctx.values.set('model_generation',result.value);const delivered=await m4DocumentDeliveryStage().run(f.ctx);
+    assert.equal(calls,1);assert.equal(delivered.kind,'deliver');if(delivered.kind==='deliver'){assert.equal(delivered.bytes.readUInt32LE(0),0x04034b50);assert.equal(delivered.namedArtifacts?.length,1);}
   }finally{await f.clean();}
 });
 

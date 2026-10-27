@@ -95,7 +95,7 @@ test('project files: template batch, provenance, real checks with synthetic mode
     const source=await upload(id,'source-v1.docx',oldBytes,'historical');
     let versions=await ok('GET',path+'/prospectus-versions');
     const selected=await ok('POST',path+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:0,version_id:versions.versions[0].version_id});
-    let w=await ok('POST',base+'/workspace',{request_id:randomUUID()});assert.equal(Object.keys(w.workspace.drafts).length,12);
+    let w=await ok('POST',base+'/workspace',{request_id:randomUUID()});assert.equal(Object.keys(w.workspace.drafts).length,13);
     w=await ok('POST',base+'/source',{source_version_id:selected.current_version_id,expected_selection_revision:selected.selection_revision});
     const batch={request_id:randomUUID(),source_version_id:selected.current_version_id,expected_selection_revision:selected.selection_revision,documents:[{document_type:'issuer',draft_version:w.workspace.drafts.issuer.version}]};
     assert.equal((await send('POST',base+'/batches',batch)).statusCode,422,'template required');

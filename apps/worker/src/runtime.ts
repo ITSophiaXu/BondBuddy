@@ -14,6 +14,7 @@ import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bond
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type LoadGenerationIssuerBinding, type ParsedFactProducer, type RunStage, type TargetPeriodCandidateProducer } from './run-pipeline.js';
 import {advanceProjectFileBatch} from '@bondbuddy/api/project-file-workspace';
+import {advanceWorkpaperBatch} from '@bondbuddy/api/workpapers';
 import {advanceProjectFileUpdates} from '@bondbuddy/api/project-file-consistency';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
@@ -151,7 +152,7 @@ export class WorkerRuntime {
         const kind = kinds[(turn + i) % kinds.length];
         try {
           if(kind==='run'&&this.o.runKinds.includes('generation')){
-            for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates])try{await advance(this.o.pool);}
+            for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates,advanceWorkpaperBatch])try{await advance(this.o.pool);}
             catch(error){this.emit({slot,kind:'file_batch',outcome:'scheduler_error',message:error instanceof Error?error.message:'Unknown error'});}
           }
           const outcome = kind === 'run'

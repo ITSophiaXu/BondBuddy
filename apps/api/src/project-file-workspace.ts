@@ -37,7 +37,7 @@ export async function ensureProjectFileWorkspace(c:PoolClient,owner:string,id:st
 async function batchDto(db:Db,owner:string,row:any):Promise<ProjectFileBatch>{
   const items=row.items as BatchItem[],ids=items.flatMap(i=>i.run_id?[i.run_id]:[]);
   const runs=(await db.query('SELECT id,state FROM bb_runs WHERE owner_user_id=$1 AND id=ANY($2::text[])',[owner,ids])).rows;
-  return {batch_id:row.id,state:row.state,items:items.map(i=>({document_type:i.manifest.input.document_type,run_id:i.run_id,
+  return {batch_id:row.id,state:row.state,items:items.filter(i=>i.manifest.input.document_type!=='workpaper').map(i=>({document_type:i.manifest.input.document_type as ProjectFileBatch['items'][number]['document_type'],run_id:i.run_id,
     state:runs.find(r=>r.id===i.run_id)?.state??'queued',error:i.error}))};
 }
 export async function readProjectFileWorkspace(db:Pool,owner:string,id:string){

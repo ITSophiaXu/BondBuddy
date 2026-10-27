@@ -31,7 +31,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file'} as const)[input.manifest.input.document_type]);
+    const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file',workpaper:'m4-workpaper'} as const)[input.manifest.input.document_type]);
     const config = options.config ?? loadCodexAdapterConfig();
     const modelGate=await m4ModelGate(ctx,config); if(modelGate)return modelGate;
     const pinned=await m4PinnedMethod(ctx,'document',skill,config);if(pinned.gate)return pinned.gate;

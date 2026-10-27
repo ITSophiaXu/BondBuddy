@@ -155,6 +155,12 @@ export class ApiClient {
   }
 
   /** Only fixed owner-authorized artifact routes may use this binary seam. */
+  async workpaperZip(project:string,batch:string,signal:AbortSignal):Promise<Blob>{
+    const response=await this.response('GET',`/projects/${encodeURIComponent(project)}/workpapers/batches/${encodeURIComponent(batch)}/download`,undefined,{},signal);
+    if(response.status!==200||response.headers.get('content-type')?.split(';')[0]!=='application/zip')throw new ApiError(0,'DATA_UNAVAILABLE');
+    const bytes=await response.blob();signal.throwIfAborted();if(bytes.size<22)throw new ApiError(0,'DATA_UNAVAILABLE');return bytes;
+  }
+
   async m4ArtifactBytes(artifact: import('@bondbuddy/contracts').M4Artifact, signal?: AbortSignal): Promise<Blob> {
     const activeSignal = signal ?? this.controller.signal;
     const path = `/m4/artifacts/${encodeURIComponent(artifact.artifact_id)}/versions/${artifact.artifact_version}/bytes`;

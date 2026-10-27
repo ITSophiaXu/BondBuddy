@@ -109,6 +109,7 @@ async function readDraft(db:Db,owner:string,topic:string,type:M4DocumentType):Pr
   return row?{...row.input,version:row.version,sha256:row.sha256.trim(),updated_at:date(row.updated_at)}:{...emptyM4Draft(type),version:0,sha256:inputManifestHash(emptyM4Draft(type)),updated_at:null};
 }
 async function validateDraft(db:Db,owner:string,topic:string,input:M4DraftInput){
+  if(input.document_type==='workpaper'||input.workpaper)invalid('请在底稿目录批量生成入口准备底稿。');
   if(input.project_file){
     const link=input.project_file;
     const w=(await db.query('SELECT 1 FROM bb_project_file_workspaces WHERE owner_user_id=$1 AND project_id=$2 AND topic_id=$3',[owner,link.project_id,topic])).rowCount;
@@ -295,7 +296,7 @@ export async function registerM4Artifacts(db:Db,owner:string,runId:string,entrie
     WHERE v.owner_user_id=$1 AND v.run_id=$2 AND v.id=$3 AND v.version=$4
     AND v.delivery_status='available' AND v.quality_status='passed' AND e.delivery_code='readback_verified' AND e.readback_sha256=v.sha256`,[owner,runId,a.artifact_id,a.artifact_version])).rows[0];
     if(!row || row.media_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document' || !Number.isSafeInteger(a.byte_size) || a.byte_size<1 || Number(row.delivered_bytes)!==a.byte_size)throw new Problem(422,'DELIVERY_FAILED','M4 Word unavailable');
-    const filename=`${M4_DOCUMENT_LABELS[manifest.input.document_type as M4DocumentType]} 第${revisionNumber}稿${a.kind==='preparation_note'?' 编制说明':''}.docx`;
+    const filename=`${manifest.input.workpaper?.entry.path.split('/').at(-1)?.replace(/\.docx$/i,'')??M4_DOCUMENT_LABELS[manifest.input.document_type as M4DocumentType]} 第${revisionNumber}稿${a.kind==='preparation_note'?' 编制说明':''}.docx`;
     const prior=(await db.query('SELECT * FROM bb_m4_artifacts WHERE run_id=$1 AND kind=$2',[runId,a.kind])).rows[0];
     if(prior){if(prior.artifact_id!==a.artifact_id || prior.artifact_version!==a.artifact_version || prior.filename!==filename || Number(prior.byte_size)!==a.byte_size)throw conflict('IDEMPOTENCY_CONFLICT','M4 artifact changed');continue;}
     await db.query(`INSERT INTO bb_m4_artifacts(owner_user_id,topic_id,run_id,artifact_id,artifact_version,kind,filename,byte_size,document_type,base_artifact,input_hash,preview_content,revision_number)

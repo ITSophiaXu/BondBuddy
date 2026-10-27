@@ -96,6 +96,9 @@ export async function projectFileVersions(db:Db,owner:string,id:string):Promise<
 /** Runs inside queue.finish's locked transaction; failed/unpublished outputs never replace a current file. */
 export async function registerProjectFileOutcome(c:PoolClient,run:any,artifact:{id:string;version:number},pair:any){
   const input=(await c.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[run.owner_user_id,run.project_id,run.input_revision])).rows[0]?.manifest;
+  // Catalogue items have independent identities in bb_workpaper_items; they are not
+  // successive versions of the twelve fixed project document families.
+  if(input?.version==='m4-document-input-v1'&&input.input?.document_type==='workpaper')return;
   const link=input?.kind==='document'?input.input?.project_file:null;
   const operation=input?.version==='project-file-operation-v1'?input:null;
   if(!link&&operation?.operation!=='patch'&&!(input?.kind==='document'&&input?.version==='m4-document-input-v1'))return;
