@@ -117,7 +117,7 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
   }finally{await f.clean();}
 });
 
-test('workpaper CLI verifies full source, coverage, pinned template and links; preparation note stays internal',async()=>{
+test('workpaper CLI verifies source, coverage, template and links; the private note remains required for settlement',async()=>{
   const f=await fixture();
   try{
     const m=f.input.manifest as M4DocumentManifest;
@@ -144,7 +144,7 @@ test('workpaper CLI verifies full source, coverage, pinned template and links; p
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing result');
     f.ctx.values.set('model_generation',result.value);const delivered=await m4DocumentDeliveryStage().run(f.ctx);
-    assert.equal(calls,1);assert.equal(delivered.kind,'deliver');if(delivered.kind==='deliver'){assert.equal(delivered.bytes.readUInt32LE(0),0x04034b50);assert.equal(delivered.namedArtifacts?.length,0);}
+    assert.equal(calls,1);assert.equal(delivered.kind,'deliver');if(delivered.kind==='deliver'){assert.equal(delivered.bytes.readUInt32LE(0),0x04034b50);assert.equal(delivered.namedArtifacts?.length,1);assert.equal(delivered.namedArtifacts[0]!.kind,'preparation_note');}
   }finally{await f.clean();}
 });
 

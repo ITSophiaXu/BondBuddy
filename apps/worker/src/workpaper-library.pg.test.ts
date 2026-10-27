@@ -13,7 +13,7 @@ import {isolatedTestDatabase} from './test-database.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,type codexModelStage,type RunStage} from './run-pipeline.js';
 import {workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 import {workpaperChangeStage,workpaperChangeDelivery} from './workpaper-change-stage.js';
-import {publishProjectFileLinks} from './project-file-tools.js';
+import {m4DocumentDeliveryStage} from './m4-document-stage.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
 const database=await isolatedTestDatabase(undefined,'workpaper-library');
 test('real API/PG: generation → library/preview/ZIP → changed prospectus → mapped impact, stale check and owner isolation (synthetic model)',{skip:!database,timeout:240000},async()=>{
@@ -49,10 +49,19 @@ test('real API/PG: generation → library/preview/ZIP → changed prospectus →
     const assessment=(await ok('GET',wp)).assessments[0];
     const batch=await ok('POST',wp+'/batches',{...request,request_id:randomUUID(),assessment_id:assessment.assessment_id,assessment_hash:assessment.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points});
     await advanceWorkpaperBatch(pool);
-    assert.equal(await execute([{name:'model_generation',run:async()=>({kind:'done',value:{}})},{name:'word_delivery',run:async ctx=>{
-      await publishProjectFileLinks(pool,user,ctx.run.id,{source_sha256:original.sha256,target_sha256:digest(document),warnings:[],links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'总资产',period:'2025年末',unit:'万元',source_location:'段落1',target_location:'资产表第1行',source_sha256:original.sha256,target_sha256:digest(document)}]});
-      return {kind:'deliver',bytes:document,namedArtifacts:[{kind:'preparation_note',filename:'preparation-note.docx',bytes:makeSyntheticDocxFixture({text:'内部记录'})}],deliveryPolicy:'generated_review_v1'};
-    }}]),'succeeded');await advanceWorkpaperBatch(pool);
+    assert.equal(await execute([{name:'model_generation',run:async ctx=>{
+      const files:Record<string,{key:string;sha256:string;byte_size:number}>={};
+      for(const [name,bytes] of [['document.docx',document],['preparation-note.docx',makeSyntheticDocxFixture({text:'内部记录'})]] as const){
+        const sha256=digest(bytes),key=`owners/${user}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-documents/synthetic/${sha256}/${name}`;
+        await blobs.put(key,bytes,docx);files[name]={key,sha256,byte_size:bytes.length};
+      }
+      return {kind:'done',value:{version:'codex-m4-document-v1',input_hash:ctx.run.input_hash.trim(),skill_sha256:'a'.repeat(64),method_hash:'b'.repeat(64),internal_note:true,files,
+        project_file_links:{source_sha256:original.sha256,target_sha256:digest(document),warnings:[],links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'总资产',period:'2025年末',unit:'万元',source_location:'段落1',target_location:'资产表第1行',source_sha256:original.sha256,target_sha256:digest(document)}]}}};
+    }},m4DocumentDeliveryStage()]),'succeeded');await advanceWorkpaperBatch(pool);
+    const workspace=await ok('GET',`/api/v1/m4/topics/${batch.topic_id}/workspace`);
+    assert.equal(workspace.artifacts.length,1);assert.equal(workspace.artifacts[0].kind,'document');
+    const internal=(await pool.query('SELECT kind FROM bb_m4_artifacts WHERE topic_id=$1 ORDER BY kind',[batch.topic_id])).rows;
+    assert.deepEqual(internal.map(a=>a.kind),['document','preparation_note'],'settlement retains both verified files while the public workspace exposes only the workpaper');
     let library=await ok('GET',wp+'/library?limit=1') as WorkpaperLibrary;assert.equal(library.total,2);assert.equal(library.items.length,1);assert.equal(library.items[0]!.links_count,1);
     assert.equal((await ok('GET',wp+`/batches/${batch.batch_id}`)).batch_id,batch.batch_id);
     assert.equal((await ok('GET',wp+`/catalogues/${cat.catalogue_id}`)).catalogue_id,cat.catalogue_id);
