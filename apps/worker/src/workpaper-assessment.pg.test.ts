@@ -12,9 +12,19 @@ import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {catalogueXlsx} from '../../api/dist/workpaper-catalogue.test.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,type codexModelStage} from './run-pipeline.js';
-import {workpaperAssessmentStage,workpaperAssessmentDelivery,groundWorkpaperDecision} from './workpaper-assessment-stage.js';
+import {workpaperAssessmentStage,workpaperAssessmentDelivery,groundWorkpaperDecision,workpaperAssessmentModelSchema} from './workpaper-assessment-stage.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
 const database=await isolatedTestDatabase(undefined,'workpaper-assessment');
+
+test('assessment model schema uses strict required properties and server-resolved citation locations',()=>{
+ const schema=workpaperAssessmentModelSchema(4);
+ const visit=(node:any)=>{if(!node||typeof node!=='object')return;if(node.properties){assert.deepEqual(new Set(node.required),new Set(Object.keys(node.properties)));assert.equal(node.additionalProperties,false);}for(const value of Object.values(node))if(Array.isArray(value))value.forEach(visit);else visit(value);};
+ visit(schema);
+ assert.equal('location' in schema.properties.decisions.items.properties.citations.items.properties,false);
+ const entry={id:'a',title:'财务分析'} as WorkpaperEntry;
+ const decision=groundWorkpaperDecision({item_id:'a',status:'generate',reason:'披露充分',missing_materials:[],citations:[{span_id:'p1',quote:'总资产100万元'}]},entry,[{id:'p1',text:'总资产100万元',location:'第二节段落3',sha256:'a'.repeat(64)}]);
+ assert.equal(decision.citations[0].location,'第二节段落3');
+});
 test('unsupported applicability claims and originals cannot become generated workpapers',()=>{
  const entry={id:'a',title:'财务分析'} as WorkpaperEntry,base:WorkpaperDecision={item_id:'a',status:'not_applicable',reason:'无该业务',missing_materials:[],citations:[]};
  assert.equal(groundWorkpaperDecision(base,entry,[]).status,'missing_information');
