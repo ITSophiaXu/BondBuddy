@@ -1,6 +1,6 @@
 import {XMLParser,XMLValidator} from 'fast-xml-parser';
 import {posix} from 'node:path';
-import {WORKPAPER_LIMITS,workpaperPathPart,type WorkpaperEntry} from '@bondbuddy/contracts';
+import {WORKPAPER_LIMITS,workpaperPathPart,workpaperFilenameTitle,type WorkpaperEntry} from '@bondbuddy/contracts';
 import {readBoundedOfficeParts} from './docx-inspector.js';
 import {Problem} from './data.js';
 const invalid=(message:string):never=>{throw new Problem(422,'VALIDATION_FAILED',message);};
@@ -9,7 +9,7 @@ const array=(v:any):any[]=>v===undefined?[]:Array.isArray(v)?v:[v];
 const parser=new XMLParser({ignoreAttributes:false,parseTagValue:false,trimValues:false,processEntities:true,htmlEntities:true});
 const plain=(v:any):string=>v==null?'':typeof v==='object'?(v['#text']??(v.t!==undefined?plain(v.t):array(v.r).map(r=>plain(r.t)).join(''))):String(v);
 const header=(s='')=>s.replace(/[\s：:（）()]/g,'').toLowerCase();
-const aliases={title:['底稿名称','文件名称','材料名称','资料名称','目录名称','底稿内容','文件名','名称'],code:['底稿编号','文件编号','索引号','索引编号','编号','序号'],folder:['目录路径','文件夹','所属目录','目录层级','分类','路径'],instructions:['编制要求','底稿要求','内容要求','说明','备注'],kind:['类型','条目类型','文件类型']} as const;
+const aliases={title:['底稿名称','文件名称','材料名称','资料名称','目录名称','底稿内容','文件名','名称','项目'],code:['底稿编号','文件编号','索引号','索引编号','编号','序号'],folder:['目录路径','文件夹','所属目录','目录层级','分类','路径'],instructions:['编制要求','底稿要求','内容要求','说明','备注'],kind:['类型','条目类型','文件类型']} as const;
 export type CatalogueSheet={name:string;rows:{row:number;cells:string[]}[]};
 
 export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEntry[];warnings:string[]}{
@@ -23,22 +23,22 @@ export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEn
     for(const row of sheet.rows.slice(head+1)){
       const get=(key:string)=>row.cells[cols[key]!]??'';
       const title=get('title').trim(),code=get('code').trim();
-      if(!title||aliases.title.includes(header(title) as any))continue;
+      if(!title||aliases.title.includes(header(title) as any)||/^(注|备注|填表说明)[：:]?$/.test(code))continue;
       if(title.length>300||code.length>100||get('instructions').length>2000||get('folder').length>600)invalid(`“${sheet.name}”第 ${row.row} 行文字过长，请缩短后上传。`);
       const kind=/^(目录|文件夹|章节|分类|folder)$/i.test(get('kind').trim())?'folder':'file';
       local.push({id:`s${sheets.indexOf(sheet)+1}-r${row.row}`,code,title,folder:get('folder').trim(),instructions:get('instructions').trim(),sheet:sheet.name,row:row.row,kind,path:''});
     }
-    // Numbered parents with actual descendants are directory entries, not empty output files.
-    for(const item of local)if(item.code&&local.some(other=>other!==item&&other.code.startsWith(item.code)&&/^[.．\-、]/.test(other.code.slice(item.code.length))))item.kind='folder';
+    // Numbered summary rows are deliverables too. Only an explicit 类型=目录
+    // marks a folder; hierarchy alone must never silently discard a workpaper.
     const stack:WorkpaperEntry[]=[];
     for(const item of local){
       if(!item.code&&item.kind==='folder')stack.length=0;
       while(stack.length&&stack.at(-1)!.code&&!(item.code&&item.code.startsWith(stack.at(-1)!.code)&&/^[.．\-、]/.test(item.code.slice(stack.at(-1)!.code.length))))stack.pop();
-      const folder=item.folder?item.folder.split(/[\\/]+/).filter(Boolean).map(workpaperPathPart):stack.map(p=>workpaperPathPart([p.code,p.title].filter(Boolean).join(' ')));
+      const folder=item.folder?item.folder.split(/[\\/]+/).filter(Boolean).map(workpaperPathPart):stack.map(p=>workpaperPathPart([p.code,workpaperFilenameTitle(p.title)].filter(Boolean).join(' ')));
       if(sheets.length>1)folder.unshift(workpaperPathPart(sheet.name));
       item.folder=folder.join('/');
       if(item.folder.length>600)invalid(`“${sheet.name}”第 ${item.row} 行保存目录过长，请缩短目录名称。`);
-      item.path=[...folder,workpaperPathPart([item.code,item.title.replace(/\.docx$/i,'')].filter(Boolean).join(' '))+(item.kind==='file'?'.docx':'')].join('/');
+      item.path=[...folder,workpaperPathPart([item.code,workpaperFilenameTitle(item.title)].filter(Boolean).join(' '))+(item.kind==='file'?'.docx':'')].join('/');
       if(item.path.length>950)invalid(`“${sheet.name}”第 ${item.row} 行目录层级过长。`);
       entries.push(item);if(item.kind==='folder')stack.push(item);
     }
@@ -53,9 +53,11 @@ export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEn
 }
 
 /** Read cells only: never evaluate formulas, hyperlinks, macros or external relationships. */
-export function parseWorkpaperXlsx(bytes:Buffer){
+export function parseWorkpaperXlsx(bytes:Buffer,scope:'due_diligence'|'all'='due_diligence'){
   if(bytes.length>WORKPAPER_LIMITS.fileBytes)invalid('底稿目录请控制在 10 MB 以内。');
-  const parts=readBoundedOfficeParts(bytes),xml=(name:string)=>{
+  const parts=readBoundedOfficeParts(bytes,n=>['xl/workbook.xml','xl/_rels/workbook.xml.rels','xl/sharedStrings.xml'].includes(n)),xml=(name:string)=>{
+    if(!parts.has(name))for(const [key,value] of readBoundedOfficeParts(bytes,n=>n===name))parts.set(key,value);
+    if([...parts.values()].reduce((n,b)=>n+b.length,0)>32*1024*1024)invalid('所选目录展开后过大，请缩小范围。');
     const part=parts.get(name);if(!part)invalid('Excel 目录缺少必要工作表，请另存为 XLSX 后上传。');
     const text=part!.toString('utf8');if(/<!DOCTYPE|<!ENTITY/i.test(text)||XMLValidator.validate(text)!==true)invalid('Excel XML 格式无效。');return parser.parse(text);
   };
@@ -64,7 +66,9 @@ export function parseWorkpaperXlsx(bytes:Buffer){
   const sheets=array(wb.workbook?.sheets?.sheet),warnings:string[]=[];
   if(sheets.length>WORKPAPER_LIMITS.sheets)invalid('目录最多支持 30 个工作表。');
   const result:CatalogueSheet[]=[];
+  const defaultSheet=sheets.find(s=>/^1\s*尽职调查文件\s*$/.test(String(s['@_name'])));
   for(const sheet of sheets){
+    if(scope==='due_diligence'&&defaultSheet&&sheet!==defaultSheet)continue;
     const name=String(sheet['@_name']??'工作表');
     if(name.length>200)invalid('工作表名称过长。');
     if(sheet['@_state']&&sheet['@_state']!=='visible'){warnings.push(`隐藏工作表“${name}”已跳过。`);continue;}

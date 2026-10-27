@@ -1,0 +1,15 @@
+import {Type,type Static} from '@sinclair/typebox';
+import {ProjectFileSourceSchema,type ProjectFileLink} from './project-file-workspace.js';
+import type {WorkpaperItem} from './workpapers.js';
+const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
+const id=Type.String({minLength:1,maxLength:128});
+export const WorkpaperCheckRequestSchema=obj({request_id:id,source_version_id:id,source_selection_revision:Type.Integer({minimum:0})});
+export const WorkpaperChangeInputSchema=obj({version:Type.Literal('workpaper-change-v1'),batch_id:id,source:ProjectFileSourceSchema,baseline:ProjectFileSourceSchema});
+export type WorkpaperChangeInput=Static<typeof WorkpaperChangeInputSchema>;
+export type WorkpaperChange={source_span_id:string;before:string;after:string;source_location:string;target_locations:string[];fields:string[];reason:string};
+export type WorkpaperImpact={item_id:string;status:'needs_update'|'manual'|'current';changes:WorkpaperChange[];reason:string};
+export type WorkpaperChangeResult={version:'workpaper-change-result-v1';source_sha256:string;baseline_sha256:string;items:WorkpaperImpact[];warnings:string[];changed_spans:number};
+export type WorkpaperCheck={run_id:string;batch_id:string;state:string;source:WorkpaperChangeInput['source'];baseline:WorkpaperChangeInput['baseline'];stale:boolean;result:WorkpaperChangeResult|null;created_at:string};
+export type WorkpaperLibraryItem=WorkpaperItem&{batch_id:string;catalogue_id:string;created_at:string;source:WorkpaperChangeInput['source'];latest:boolean;version_count:number;impact:WorkpaperImpact|null;check_stale:boolean;links_count:number};
+export type WorkpaperLibrary={items:WorkpaperLibraryItem[];total:number;offset:number;limit:number;source:WorkpaperChangeInput['source']|null;checks:WorkpaperCheck[]};
+export type WorkpaperDependencies={links:ProjectFileLink[];warnings:string[];source_sha256:string;target_sha256:string};

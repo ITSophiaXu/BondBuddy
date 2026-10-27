@@ -16,7 +16,7 @@ import {loadCodexAdapterConfig} from './codex-adapter.js';
 import {m4InputGate} from './m4-input.js';
 const database=await isolatedTestDatabase(undefined,'workpaper-batches');
 
-test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolation/retry, billing and 601 ZIP entries (synthetic content)',{skip:!database,timeout:1800000},async()=>{
+test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolation/retry, billing and 300 ZIP entries (synthetic content)',{skip:!database,timeout:1800000},async()=>{
   const pool=new Pool({connectionString:database}),user=randomUUID();let actor=user;
   const store=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
@@ -94,12 +94,12 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');await advanceWorkpaperBatch(pool);batch=await read();
     assert.equal(batch.state,'complete');assert.equal(processed,301);assert.ok(succeededRuns.every(id=>batch.items.some(i=>i.run_id===id)));
     assert.equal(batch.charged_points,300*WORKPAPER_PRICE.points);assert.equal(batch.items[1].attempt,2);
-    assert.equal(batch.items[0].artifacts.length,2);assert.ok(batch.items[0].artifacts.every(a=>a.filename.includes('财务核查 1')));
+    assert.equal(batch.items[0].artifacts.length,1);assert.ok(batch.items[0].artifacts.every(a=>a.kind==='document'&&a.filename.includes('财务核查 1')));
     const response=await send('GET',base+`/batches/${batch.batch_id}/download`);assert.equal(response.statusCode,200);assert.equal(response.headers['content-type'],'application/zip');
-    const bytes=response.rawPayload,end=bytes.length-22;assert.equal(bytes.readUInt32LE(end),0x06054b50);assert.equal(bytes.readUInt16LE(end+10),601);
+    const bytes=response.rawPayload,end=bytes.length-22;assert.equal(bytes.readUInt32LE(end),0x06054b50);assert.equal(bytes.readUInt16LE(end+10),300);
     let cursor=bytes.readUInt32LE(end+16);const names:string[]=[];
     while(cursor<end){assert.equal(bytes.readUInt32LE(cursor),0x02014b50);const len=bytes.readUInt16LE(cursor+28);names.push(bytes.subarray(cursor+46,cursor+46+len).toString('utf8'));cursor+=46+len+bytes.readUInt16LE(cursor+30)+bytes.readUInt16LE(cursor+32);}
-    assert.equal(new Set(names).size,601);assert.ok(names.includes('底稿/财务资料/300 财务核查 300.docx'));assert.ok(names.includes('编制说明/财务资料/1 财务核查 1.docx'));
+    assert.equal(new Set(names).size,300);assert.ok(names.includes('可生成文件/财务资料/300 财务核查 300.docx'));assert.ok(names.every(n=>n.startsWith('可生成文件/')));
     assert.equal((await pool.query('SELECT count(*) n FROM bb_model_call_attempts')).rows[0].n,'0');
     assert.equal((await ok('POST',base+'/batches',request)).batch_id,batch.batch_id);
     let smallRequest={...request,request_id:randomUUID(),item_ids:request.item_ids.slice(0,3),expected_points:3*WORKPAPER_PRICE.points,source_version_id:updatedSource.current_version_id,source_selection_revision:updatedSource.selection_revision};

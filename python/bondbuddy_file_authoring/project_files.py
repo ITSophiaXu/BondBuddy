@@ -16,12 +16,12 @@ from .review_corrections import package, write
 from .word_patch import Patcher, add_layout_comments, paragraph_text, q, serialized, xml
 
 
-def inspect(path):
+def inspect(path, complete=False):
     path = Path(path)
     if path.suffix.lower() not in ('.docx', '.pdf'):
         raise ValueError('FILE_FORMAT_UNSUPPORTED')
     with tempfile.TemporaryDirectory(prefix='bb-file-inspect-') as tmp:
-        _, root, warnings = package(path, Path(tmp))
+        parts, root, warnings = package(path, Path(tmp))
     heading = ''
     spans = []
     tables = list(root.iter(q('tbl')))
@@ -39,6 +39,20 @@ def inspect(path):
                 location = f'表格 {tables.index(table) + 1} / 行 {list(table.iterchildren(q("tr"))).index(row) + 1} / 列 {list(row.iterchildren(q("tc"))).index(cell) + 1}'
         spans.append(dict(id=f'p{index}', text=text, location=location,
                           sha256=hashlib.sha256(text.encode('utf8')).hexdigest()))
+    if complete:
+        for name, content in sorted(parts.items()):
+            if re.fullmatch(r'word/(footnotes|endnotes|header\d*|footer\d*)\.xml', name):
+                extra = xml(content)
+                for index, paragraph in enumerate(extra.iter(q('p'))):
+                    text = paragraph_text(paragraph)
+                    spans.append(dict(id=f'{Path(name).stem}-p{index}', text=text,
+                                      location=f'{Path(name).stem} / 段落 {index+1}',
+                                      sha256=hashlib.sha256(text.encode('utf8')).hexdigest()))
+        images = [name for name in parts if name.startswith('word/media/')]
+        if images:
+            warnings.append(f'含 {len(images)} 个图片对象，须阅读其中信息；文字提取不能证明图片已完整覆盖。')
+        if any(root.iter(q('altChunk'))):
+            warnings.append('含嵌入内容，需要另行读取，尚不能确认全文覆盖。')
     if not any(s['text'].strip() for s in spans):
         warnings.append('文件没有可提取的文字，需补充可检索 PDF 或 Word 后重新检查。')
     return dict(version='project-file-text-v1', sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -141,9 +155,40 @@ def patch(path, request, output):
     return result
 
 
+def source_diff(before, after):
+    """Align by text, not paragraph indexes; insertions must not shift all links.
+
+    Expand a changed table to its complete cell group so a revised period/header
+    also invalidates links to numbers whose literal value did not change.
+    """
+    from difflib import SequenceMatcher
+    left = [s for s in before['spans'] if s['text'].strip()]
+    right = [s for s in after['spans'] if s['text'].strip()]
+    changes = []
+    if [s['text'] for s in left] == [s['text'] for s in right]:
+        return []
+    for tag, a, b, c, d in SequenceMatcher(None, [s['text'] for s in left],
+                                        [s['text'] for s in right], autojunk=False).get_opcodes():
+        if tag == 'equal':
+            continue
+        old, new = left[a:b], right[c:d]
+        def tables(group, spans):
+            names = {s['location'].split(' / 行 ')[0] for s in group if ' / 行 ' in s['location']}
+            return [s for s in spans if s in group or s['location'].split(' / 行 ')[0] in names]
+        old, new = tables(old, left), tables(new, right)
+        changes.append(dict(before_ids=[s['id'] for s in old], after_ids=[s['id'] for s in new],
+                            before='\n'.join(s['text'] for s in old), after='\n'.join(s['text'] for s in new),
+                            location=(old or new)[0]['location']))
+    unique = {json.dumps([c['before_ids'], c['after_ids']]): c for c in changes}
+    return list(unique.values())
+
+
 if __name__ == '__main__':
-    if sys.argv[1] == 'inspect':
-        Path(sys.argv[3]).write_text(json.dumps(inspect(sys.argv[2]), ensure_ascii=False), encoding='utf8')
+    if sys.argv[1] in ('inspect', 'inspect-complete'):
+        Path(sys.argv[3]).write_text(json.dumps(inspect(sys.argv[2], complete=sys.argv[1]=='inspect-complete'), ensure_ascii=False), encoding='utf8')
+    elif sys.argv[1] == 'diff':
+        before, after = [json.loads(Path(p).read_text(encoding='utf8')) for p in sys.argv[2:4]]
+        Path(sys.argv[4]).write_text(json.dumps(source_diff(before, after), ensure_ascii=False), encoding='utf8')
     elif sys.argv[1] == 'patch':
         patch(sys.argv[2], json.loads(Path(sys.argv[3]).read_text(encoding='utf8')), sys.argv[4])
     else:

@@ -1,3 +1,5 @@
+import {validateWorkpaperCoverage} from './workpaper-content.js';
+import {inspectProjectFile} from './project-file-tools.js';
 import { join } from 'node:path';
 import { digest } from '@bondbuddy/api/data';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -12,6 +14,7 @@ import type {ProjectFileText} from '@bondbuddy/contracts';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export type M4DocumentResult = {version: 'codex-m4-document-v1'; input_hash: string; skill_sha256: string; method_hash: string;
+  internal_note?:true;
   project_file_links?:Awaited<ReturnType<typeof saveGenerationLinks>>;
   files: Record<string, {key: string; sha256: string; byte_size: number}>; error?: 'WORD_DELIVERY_UNAVAILABLE'};
 const names = ['document.docx', 'preparation-note.docx'] as const;
@@ -44,7 +47,11 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
     const collect = async (cwd: string, intent: {call_id: string}): Promise<M4DocumentResult> => {
       await verifyM4Originals(cwd, originals);
       await verifyM4Calculation(ctx,cwd);
-      const project_file_links=linkedSource?await saveGenerationLinks(ctx,linkedSource,cwd):undefined;
+      const project_file_links=linkedSource?await saveGenerationLinks(ctx,linkedSource,cwd,input.manifest.kind==='document'&&!!input.manifest.input.workpaper):undefined;
+      if(input.manifest.kind==='document'&&input.manifest.input.workpaper&&linkedSource&&project_file_links){
+        const coverage=JSON.parse((await checkedM4File(join(cwd,'output'),'workpaper-coverage.json',32*1024*1024)).toString('utf8'));
+        validateWorkpaperCoverage(linkedSource,await inspectProjectFile(ctx,join(cwd,'output/document.docx')),project_file_links.links,coverage);
+      }
       const files: M4DocumentResult['files'] = {};
       for (const name of names) {
         let bytes: Buffer;
@@ -56,6 +63,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         files[name] = {key, sha256, byte_size: bytes.length};
       }
       return {version: 'codex-m4-document-v1', input_hash: ctx.run.input_hash.trim(), skill_sha256: skill.sha256, method_hash: methodHash, files,project_file_links,
+        ...(input.manifest.kind==='document'&&input.manifest.input.workpaper?{internal_note:true as const}:{}),
         ...(!names.every(name => files[name]) ? {error: 'WORD_DELIVERY_UNAVAILABLE' as const} : {})};
     };
     try {
@@ -86,7 +94,7 @@ export function m4DocumentDeliveryStage(): RunStage {
       await publishProjectFileLinks(ctx.pool,ctx.run.owner_user_id,ctx.run.id,result.project_file_links);
     }
     const [documentPreview,notePreview]=await Promise.all([m4ArtifactPreview(ctx,document),m4ArtifactPreview(ctx,note)]);
-    return {kind: 'deliver', bytes:document, namedArtifacts: [{kind: 'preparation_note', filename: 'preparation-note.docx', bytes:note,
+    return {kind: 'deliver', bytes:document, namedArtifacts: result.internal_note?[]:[{kind: 'preparation_note', filename: 'preparation-note.docx', bytes:note,
       ...(notePreview?{previewContent:notePreview}:{})}],
       deliveryPolicy: 'generated_review_v1', wordSummary: {writer_version: result.version, content_review: 'not_performed',...(documentPreview?{preview_content:documentPreview}:{})}};
   }};
