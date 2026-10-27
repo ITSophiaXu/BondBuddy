@@ -5,7 +5,8 @@ import {readBoundedOfficeParts} from './docx-inspector.js';
 import {Problem} from './data.js';
 const invalid=(message:string):never=>{throw new Problem(422,'VALIDATION_FAILED',message);};
 const array=(v:any):any[]=>v===undefined?[]:Array.isArray(v)?v:[v];
-const parser=new XMLParser({ignoreAttributes:false,parseTagValue:false,trimValues:false,processEntities:true});
+// Excel writers may encode Chinese text as decimal or hexadecimal XML references.
+const parser=new XMLParser({ignoreAttributes:false,parseTagValue:false,trimValues:false,processEntities:true,htmlEntities:true});
 const plain=(v:any):string=>v==null?'':typeof v==='object'?(v['#text']??(v.t!==undefined?plain(v.t):array(v.r).map(r=>plain(r.t)).join(''))):String(v);
 const header=(s='')=>s.replace(/[\s：:（）()]/g,'').toLowerCase();
 const aliases={title:['底稿名称','文件名称','材料名称','资料名称','目录名称','底稿内容','文件名','名称'],code:['底稿编号','文件编号','索引号','索引编号','编号','序号'],folder:['目录路径','文件夹','所属目录','目录层级','分类','路径'],instructions:['编制要求','底稿要求','内容要求','说明','备注'],kind:['类型','条目类型','文件类型']} as const;

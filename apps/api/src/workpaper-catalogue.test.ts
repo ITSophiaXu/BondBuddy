@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {ZipFile} from 'yazl';
 import {parseCatalogueRows,parseWorkpaperXlsx} from './workpaper-catalogue.js';
 import {workpaperPathPart,WORKPAPER_LIMITS} from '@bondbuddy/contracts';
-export async function catalogueXlsx(rows:number=500,extra=''){
+export async function catalogueXlsx(rows:number=500,extra='',numericEntities?:'decimal'|'hex'){
   const zip=new ZipFile(),chunks:Buffer[]=[];
   const complete=new Promise<Buffer>((resolve,reject)=>{zip.outputStream.on('data',c=>chunks.push(c));zip.outputStream.on('end',()=>resolve(Buffer.concat(chunks)));zip.outputStream.on('error',reject);});
   const parts:Record<string,string>={
@@ -13,8 +13,17 @@ export async function catalogueXlsx(rows:number=500,extra=''){
     'xl/_rels/workbook.xml.rels':'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>',
     'xl/sharedStrings.xml':'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1"><si><t>底稿名称</t></si></sst>',
     'xl/worksheets/sheet1.xml':`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>编号</t></is></c><c r="B1" t="s"><v>0</v></c><c r="C1" t="inlineStr"><is><t>分类</t></is></c></row>${Array.from({length:rows},(_,i)=>`<row r="${i+2}"><c r="A${i+2}"><v>${i+1}</v></c><c r="B${i+2}" t="inlineStr"><is><t>财务核查 ${i+1}</t></is></c>${i===0?'<c r="C2" t="inlineStr"><is><t>财务资料</t></is></c>':''}</row>`).join('')}${extra}</sheetData><mergeCells><mergeCell ref="C2:C${rows+1}"/></mergeCells></worksheet>`};
-  for(const [name,text] of Object.entries(parts))zip.addBuffer(Buffer.from(text),name,{compress:true});zip.end();return complete;
+  for(const [name,text] of Object.entries(parts))zip.addBuffer(Buffer.from(numericEntities?text.replace(/[^\x00-\x7f]/gu,c=>numericEntities==='hex'?'&#x'+c.codePointAt(0)!.toString(16)+';':'&#'+c.codePointAt(0)+';'):text),name,{compress:true});zip.end();return complete;
 }
+
+for(const encoding of ['decimal','hex'] as const)test(`Chinese XML ${encoding} references preserve catalogue headers, cells and sheet names`,async()=>{
+  const parsed=parseWorkpaperXlsx(await catalogueXlsx(1,'<row r="3"><c r="B3" t="inlineStr"><is><t>&amp;#24213;</t></is></c></row>',encoding));
+  assert.equal(parsed.entries.length,2);
+  assert.equal(parsed.entries[0]!.title,'财务核查 1');
+  assert.equal(parsed.entries[0]!.sheet,'底稿目录');
+  assert.equal(parsed.entries[0]!.folder,'财务资料');
+  assert.equal(parsed.entries[1]!.title,'&#24213;');
+});
 test('500 real XLSX rows, shared strings and merged classification cells retain exact ordering',async()=>{
   const parsed=parseWorkpaperXlsx(await catalogueXlsx());assert.equal(parsed.entries.length,500);
   assert.equal(parsed.entries[0]!.title,'财务核查 1');assert.equal(parsed.entries[499]!.code,'500');
