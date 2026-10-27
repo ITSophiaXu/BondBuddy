@@ -6,7 +6,18 @@ const diagnosticLabels:Record<IntegrityDiagnostic['code'],string>={
  result_load_timeout:'查询结果加载超时',query_form_unavailable:'查询页面尚未就绪',result_unverified:'本次查询结果未确认',network_error:'网络连接失败',page_error:'网站页面报错',operation_failed:'查询操作未完成'
 };
 export function integrityDiagnosticLabel(d:IntegrityDiagnostic){
- return diagnosticLabels[d.code];
+ return specificFailure(d)?.label??diagnosticLabels[d.code];
+}
+// Existing diagnostic detail is retained for audits. Only known causes become
+// customer copy; raw errors, URLs and internal messages never enter the page/Word.
+function specificFailure(d:IntegrityDiagnostic){
+ if(d.code==='network_error'){
+  if(/net::ERR_CERT_DATE_INVALID\b/.test(d.detail??''))return {label:'网站证书有效期异常',description:'网站安全证书已过期或尚未生效，未能建立安全连接，本次查询未完成。'};
+  if(/net::ERR_CERT_[A-Z_]+\b/.test(d.detail??''))return {label:'网站证书校验失败',description:'网站安全证书未通过校验，未能建立安全连接，本次查询未完成。'};
+  if(/^OFFICIAL_STYLESHEET_LOAD_FAILED\b/.test(d.detail??''))return {label:'查询页面样式加载失败',description:'当前查询页面的样式资源未能完整加载，尚不能确认页面及查询结果。'};
+ }
+ if(d.code==='http_error'&&d.http_status===429)return {label:'网站限制访问频率',description:'网站限制了当前访问频率，本次查询未完成，请稍后再试。'};
+ return undefined;
 }
 const diagnosticDescriptions:Record<IntegrityDiagnostic['code'],string>={
  results:'官网搜索返回结果，具体事项及主体关联以本次查询记录为准。',
@@ -53,7 +64,7 @@ export function integrityRecordPresentation(record:IntegrityRecord):IntegrityPre
  }
  if(record.status==='no_public_results')return view('搜索无返回结果','no_results');
  // Derive customer copy from the cause; raw reason/detail/status remain available for diagnosis only.
- if(d){const phase={open:'加载官网',query:'提交查询',results:'等待查询结果'}[d.phase];return view(integrityDiagnosticLabel(d),'incomplete','warning',`${diagnosticDescriptions[d.code]}\n发生阶段：${phase}${d.attempts?` · 已尝试 ${d.attempts} 次`:''}${d.elapsed_ms!==undefined?` · 总耗时 ${Math.ceil(d.elapsed_ms/1000)} 秒`:''}`);}
+ if(d){const phase={open:'加载官网',query:'提交查询',results:'等待查询结果'}[d.phase];return view(integrityDiagnosticLabel(d),'incomplete','warning',`${specificFailure(d)?.description??diagnosticDescriptions[d.code]}\n发生阶段：${phase}${d.attempts?` · 已尝试 ${d.attempts} 次`:''}${d.elapsed_ms!==undefined?` · 总耗时 ${Math.ceil(d.elapsed_ms/1000)} 秒`:''}`);}
  // Historical free text can only support causes it explicitly records; do not guess a phase or status code.
  const http=reason.match(/\bHTTP\s*(4\d{2}|5\d{2})\b/i)??reason.match(/\b(403)\s*Forbidden\b/i);
  if(http?.[1]==='403'||/拒绝访问|访问已被拦截|访问受限|Forbidden|GeoBL/i.test(reason))return failure('access_denied');
@@ -61,7 +72,10 @@ export function integrityRecordPresentation(record:IntegrityRecord):IntegrityPre
  if(/验证码或登录|验证码\s*\/\s*登录/.test(reason))return view('验证码／登录受限（类型未记录）','incomplete','warning','网站要求验证码或登录，历史记录未区分具体要求，本次查询未完成。');
  if(/要求验证码|需要验证码/.test(reason))return failure('captcha_required');
  if(/要求登录|需要登录|请先登录/.test(reason))return failure('login_required');
- if(/net::ERR_|ECONNRESET|ECONNREFUSED|ENOTFOUND|网络连接失败/.test(reason))return failure('network_error');
+ if(/net::ERR_|ECONNRESET|ECONNREFUSED|ENOTFOUND|网络连接失败/.test(reason)){
+  const specific=specificFailure({code:'network_error',phase:'open',detail:reason});
+  return specific?view(specific.label,'incomplete','warning',specific.description):failure('network_error');
+ }
  if(/超时/.test(reason))return view('查询超时（阶段未记录）','incomplete','warning','等待后仍未完成查询，历史记录未说明在哪一步超时。');
  if(/未能自动确定属地官网/.test(reason))return view('未能确定查询网站','incomplete','warning','未能自动确定属地官网，本项未完成查询。');
  return view('查询未完成（原因未记录）','incomplete','warning','历史记录未保存可区分的失败原因，本次查询未完成。');

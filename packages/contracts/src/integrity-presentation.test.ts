@@ -31,6 +31,21 @@ test('historical unknown errors never acquire invented HTTP or authentication ca
  }
  assert.equal(JSON.stringify(record),before);
 });
+
+test('certificate, required stylesheet and rate-limit failures are actionable without exposing raw diagnostics',()=>{
+ for(const [d,label] of [
+  [{code:'network_error',phase:'open',detail:'net::ERR_CERT_DATE_INVALID'},'网站证书有效期异常'],
+  [{code:'network_error',phase:'open',detail:'net::ERR_CERT_AUTHORITY_INVALID'},'网站证书校验失败'],
+  [{code:'network_error',phase:'results',detail:'OFFICIAL_STYLESHEET_LOAD_FAILED net::ERR_ABORTED https://example.test/style.css'},'查询页面样式加载失败'],
+  [{code:'http_error',phase:'open',http_status:429},'网站限制访问频率']
+ ] as [IntegrityDiagnostic,string][]){
+  const r=withDiagnostic({...d,attempts:1}),before=JSON.stringify(r),v=present(r);
+  assert.equal(v.label,label);assert.equal(v.group,'incomplete');assert.match(v.description,/本次查询未完成|尚不能确认/);
+  assert.doesNotMatch(v.label+v.description,/net::|ERR_|OFFICIAL_|example\.test|429/);assert.equal(JSON.stringify(r),before);
+ }
+ const historical={...record,reason:'官网连接失败 net::ERR_CERT_DATE_INVALID'},before=JSON.stringify(historical);
+ assert.equal(present(historical).label,'网站证书有效期异常');assert.equal(JSON.stringify(historical),before);
+});
 test('display limitations omit legacy collection diagnostics without changing original scope or evidence',()=>{
  const r=withDiagnostic({code:'results',phase:'results',detail:'net::ERR_CONNECTION_RESET'});
  r.status='public_matches';r.browser!.limitation='截图直接采集隔离服务器桌面的完整屏幕，含浏览器和 XFCE 原生系统面板（北京时间），未叠加时间或绘制时钟栏；仅覆盖屏幕可见区域。 本次仅查询河南省，不覆盖其他地区执行案件。 后续页面采集未完成（net::ERR_CONNECTION_RESET），已取得的查询结果仍保留。';

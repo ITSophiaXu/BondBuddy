@@ -2,10 +2,11 @@ import {chromium,type BrowserContext,type Page,type Frame,type Response,type Req
 import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
+import {setTimeout as delay} from 'node:timers/promises';
 import {integrityDiagnosticLabel,type IntegrityDiagnostic,type IntegrityBrowser,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
 import {integrityProxy,integrityBrowserUrlAllowed} from './integrity-browser-network.js';
 import {startIntegrityDesktop,type IntegrityDesktop} from './integrity-desktop.js';
-import {visibleFrames,visibleText,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading,companyNameCondition} from './integrity-browser-page.js';
+import {visibleFrames,visibleText,activeStylesheet,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading,companyNameCondition} from './integrity-browser-page.js';
 
 export type BrowserCapture={kind:'result'|'detail'|'blocker';url:string;title:string;captured_at:string;page:number;text:string;screenshot:Buffer};
 export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic};
@@ -22,6 +23,14 @@ const clean=(s:string)=>s.replace(/\s+/g,' ').trim();
 // The Beijing runtime observed a valid tax response after the former 18s limit.
 const collectionLimits={waitMs:90000,maxPages:3,attempts:2};
 type CollectionLimits={waitMs:number;maxPages:number;attempts?:number;screenCapture?:(page:Page)=>Promise<Buffer>};
+/** Retry transient transport/server failures, never repeat a rejected or insecure request. */
+export function retryIntegrityCollection(result:BrowserCollection){
+ if(!['failed','unverified'].includes(result.outcome))return false;
+ const d=result.diagnostic;
+ if(d?.code==='access_denied'||/net::ERR_(?:CERT_[A-Z_]+|BLOCKED_BY_CLIENT)\b/.test(d?.detail??''))return false;
+ if(d?.http_status&&d.http_status<500)return [408,425].includes(d.http_status);
+ return true;
+}
 /** Court forms take an exact name; topical keywords belong only in general site searches. */
 export function integritySearchQuery(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'province'>){
  const exactName=['credit-china','execution-dishonest','execution-debtor','execution-restriction'].includes(site.id);
@@ -93,12 +102,13 @@ export async function collectInContext(context:BrowserContext,site:IntegritySite
  const started=Date.now();
  const attempts=limits.attempts??collectionLimits.attempts;
  for(let attempt=0;attempt<attempts;attempt++){
+  if(attempt)await delay(600,undefined,{signal});
   // Official credit search entry observed from the portal's search button (2026-10-26).
   // A broken portal shell must not prevent the normal query form from loading.
   const entry=site.id==='credit-china'&&attempt>0?new URL('/xinyongxinxi/index.html',site.links[0].url).href:site.links[0].url;
   signal.throwIfAborted();result=await collectAttempt(context,site,subject,signal,limits,entry);
   if(result.diagnostic)Object.assign(result.diagnostic,{attempts:attempt+1,elapsed_ms:Date.now()-started});
-  if(!['failed','unverified'].includes(result.outcome))return result;
+  if(!retryIntegrityCollection(result))return result;
  }
  if(!result)throw Error('INVALID_COLLECTION_LIMITS');
  result.reason=`已自动尝试 ${attempts} 次。${result.reason}`;
@@ -111,18 +121,55 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
  let page=await context.newPage();page.setDefaultTimeout(Math.min(limits.waitMs,15000));page.setDefaultNavigationTimeout(limits.waitMs);
  let onResponse:((response:Response)=>void)|undefined,onRequestFailed:((request:Request)=>void)|undefined,onRequest:((request:Request)=>void)|undefined,onRequestFinished:((request:Request)=>void)|undefined;
  let phase:IntegrityDiagnostic['phase']='open';
- const pendingScripts=new Set<Request>(),failedStyles=new Set<string>();
- const scriptStarted=(request:Request)=>{if(request.resourceType()==='script')pendingScripts.add(request);};
+ type StyleFailure={frame:Frame;document:string;url:string;source:string;error?:string;status?:number};
+ const pendingScripts=new Set<Request>(),styleRequests=new WeakMap<Request,StyleFailure>(),failedStyles=new Map<Request,StyleFailure>(),latestStyles=new WeakMap<Frame,Map<string,Request>>();
+ const scriptStarted=(request:Request)=>{
+  if(request.resourceType()==='script')pendingScripts.add(request);
+  if(request.resourceType()==='stylesheet')try{
+   const frame=request.frame(),url=request.url(),previous=request.redirectedFrom(),prior=previous?styleRequests.get(previous):undefined,source=prior?.source??url;
+   styleRequests.set(request,{frame,document:prior?.document??frame.url(),url,source});
+   if(!latestStyles.has(frame))latestStyles.set(frame,new Map());latestStyles.get(frame)!.set(source,request);
+  }catch{/* Detached resource. */}
+ };
  const scriptFinished=(request:Request)=>{pendingScripts.delete(request);};
- const resourceFailed=(request:Request)=>{scriptFinished(request);if(request.resourceType()==='stylesheet')failedStyles.add(request.url());};
- const resourceResponse=(response:Response)=>{if(response.request().resourceType()==='stylesheet'){if(response.ok())failedStyles.delete(response.url());else failedStyles.add(response.url());}};
+ const resourceFailed=(request:Request)=>{scriptFinished(request);const style=failedStyles.get(request)??styleRequests.get(request);if(style)failedStyles.set(request,{...style,error:request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0]});};
+ const resourceResponse=(response:Response)=>{const request=response.request(),style=styleRequests.get(request);if(style){
+  if(response.ok())failedStyles.delete(request);
+  else if(response.status()>=400)failedStyles.set(request,{...style,status:response.status()});
+ }};
  context.on('request',scriptStarted);context.on('requestfinished',scriptFinished);context.on('requestfailed',resourceFailed);context.on('response',resourceResponse);
- const navigationStatuses=new WeakMap<Page,number>();
- const onNavigation=(response:Response)=>{try{const frame=response.frame();if(response.request().isNavigationRequest()&&frame===frame.page().mainFrame())navigationStatuses.set(frame.page(),response.status());}catch{/* Popup navigation can precede creation of its frame. */}};
+ const navigationStatuses=new WeakMap<Page,number>(),navigationTimes=new WeakMap<Page,number>();
+ const onNavigation=(response:Response)=>{try{const frame=response.frame();if(response.request().isNavigationRequest()&&frame===frame.page().mainFrame()){navigationStatuses.set(frame.page(),response.status());navigationTimes.set(frame.page(),Date.now());}}catch{/* Popup navigation can precede creation of its frame. */}};
  const mark=(d:IntegrityDiagnostic,outcome:BrowserCollection['outcome']='failed',explanation='未取得可确认的查询结果。')=>{result.diagnostic=d;result.outcome=outcome;result.reason=`${integrityDiagnosticLabel(d)}。${explanation} 无需补充信息或上传证据。`;};
  context.on('response',onNavigation);
  const diagnostic=async()=>{try{result.captures.push(await capturePage(page,'blocker',1));}catch{/* A blank/error document is never fabricated as evidence. */}};
- const styleFailure=()=>mark({code:'network_error',phase,detail:'OFFICIAL_STYLESHEET_LOAD_FAILED'},'failed','官网样式资源未能加载，页面及查询状态无法确认。');
+ let optionalPbcStyleFailed=false;
+ const styleFailure=async()=>{
+  const frames=await visibleFrames(page);
+  for(const [request,f]of failedStyles){
+   // Portal resources can fail while navigating to a new result page or popup.
+   // Only a stylesheet still required by a visible, current document can block it.
+   if(!frames.includes(f.frame)||f.frame.url()!==f.document||latestStyles.get(f.frame)?.get(f.source)!==request)continue;
+   if(!await activeStylesheet(f.frame,f.source))continue;
+   // Observed 2026-10-27: this PBC template references an absent, unused service
+   // widget stylesheet (404). Its result layout comes from rmyh.css. Scope this
+   // exception to that exact resource/template, intact main CSS and result DOM;
+   // normal response/query/stability checks still decide whether results are valid.
+   const resourceUrl=new URL(f.url),documentUrl=new URL(f.document);
+   if(site.id==='pbc'&&phase==='results'&&f.status===404&&f.frame===page.mainFrame()&&documentUrl.origin==='https://wzdig.pbc.gov.cn'&&documentUrl.pathname==='/search/pcRender'&&documentUrl.searchParams.get('pageId')==='c177a85bd02b4114bebebd210809f691'&&resourceUrl.origin===documentUrl.origin&&resourceUrl.pathname==='/search/fileDir/template/system/pageTemp/pc/commonresult/96e3f317e7f8427aa584841e0a84b8ed/fuwuxiang/fuwuxiang.css'){
+    const intact=await f.frame.evaluate(()=>!document.querySelector('[class*=fuwu],[id*=fuwu],[class*=service],[id*=service]')&&[...document.styleSheets].some(sheet=>{
+     if(!sheet.href||sheet.disabled||sheet.media.mediaText&&!matchMedia(sheet.media.mediaText).matches)return false;
+     const url=new URL(sheet.href);if(url.origin!==location.origin||url.pathname!=='/search/fileDir/sites/main/rmyh/rmyh.css')return false;
+     try{return sheet.cssRules.length>0;}catch{return false;}
+    })).catch(()=>false);
+    if(intact&&await page.locator('.result-count').isVisible()&&await page.locator('.default-result-list').isVisible()){optionalPbcStyleFailed=true;continue;}
+   }
+   const url=new URL(f.url);const resource=(url.origin+url.pathname).slice(0,320);
+   mark({code:'network_error',phase,detail:['OFFICIAL_STYLESHEET_LOAD_FAILED',f.error,resource].filter(Boolean).join(' '),...(f.status&&f.status>=400?{http_status:f.status}:{})},'failed','官网样式资源未能加载，页面及查询状态无法确认。');
+   return true;
+  }
+  return false;
+ };
  try{
   signal.throwIfAborted();
   // Commit permits slow scripts/redirects to finish inside the readiness loop.
@@ -132,10 +179,16 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   while(Date.now()<readyDeadline){
    signal.throwIfAborted();text=await visibleText(page);
    if(errors.test(text)){mark(pageFailure(text,navigationStatuses.get(page)??0,phase));await diagnostic();return result;}
+   const status=navigationStatuses.get(page)??0;
+   // Allow the site's automatic 412 interstitial and a short redirect grace.
+   // A settled error document has no query form to wait 90 seconds for.
+   if(status>=400&&status!==412&&Date.now()-(navigationTimes.get(page)??Date.now())>=1000&&await page.locator('body').evaluate(()=>document.readyState!=='loading').catch(()=>false)){
+    mark(pageFailure(text,status,phase));await diagnostic();return result;
+   }
    if(await blocker(page,text)){
     await page.waitForLoadState('domcontentloaded',{timeout:Math.max(1,readyDeadline-Date.now())});
     text=await visibleText(page);const gate=await blocker(page,text);
-    if(failedStyles.size){styleFailure();await diagnostic();return result;}
+    if(await styleFailure()){await diagnostic();return result;}
     if(gate){mark({code:gate,phase},'blocked','自动查询已停止，其他网站继续。');await diagnostic();return result;}
    }
    form=await searchInput(page);if(form)break;
@@ -148,17 +201,22 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   // An iframe may expose an enabled field while deferred scripts are still loading.
   // DOM interactive alone does not mean its search handler has been registered.
   await form!.frame.waitForLoadState('domcontentloaded',{timeout:limits.waitMs});
-  if(failedStyles.size){styleFailure();await diagnostic();return result;}
+  if(await styleFailure()){await diagnostic();return result;}
   if(site.id==='commerce-credit'&&subject.kind==='company')await companyNameCondition(form!.frame);
   if(site.id.startsWith('execution-')){const region=await courtRegion(page,subject);if(region){result.scope+=` 执行法院范围：${region}。`;if(region!=='全国')result.limitation+=` 官网要求选择地区，本次仅查询${region}，不覆盖其他地区执行案件。`;}}
   await form.input.fill(query);
   const baseline=resultSignature(await visibleText(page),query,await structuredResultSignature(page,site));
-  const beforePages=context.pages(),beforeUrl=page.url(),pendingRequests=new Set<Request>(),freshQueryFrames=new Map<Frame,string>();let changedResponse=false,queryStatus=0,queryNetworkError='',submitCount=0,submittedAt=0;
-  const carriesQuery=(request:Request)=>{try{let body=request.postData()??'';try{body=JSON.stringify(JSON.parse(body));}catch{}return decodeURIComponent((request.url()+' '+body).replace(/\+/g,' ')).includes(query);}catch{return false;}};
+  const beforePages=context.pages(),beforeUrl=page.url(),pendingRequests=new Set<Request>(),freshQueryFrames=new Map<Frame,string>();let changedResponse=false,queryStatus=0,queryNetworkError='',queryFailureAt=0,submitCount=0,submittedAt=0;
+  const carriesQuery=(request:Request)=>{try{
+   // Analytics images/scripts can echo the query and fail independently. They
+   // are neither a submitted search nor its result response.
+   if(!['document','xhr','fetch'].includes(request.resourceType())||!integrityBrowserUrlAllowed(site,request.url()))return false;
+   let body=request.postData()??'';try{body=JSON.stringify(JSON.parse(body));}catch{}return decodeURIComponent((request.url()+' '+body).replace(/\+/g,' ')).includes(query);
+  }catch{return false;}};
   onRequest=(request:Request)=>{if(['document','xhr','fetch'].includes(request.resourceType()))pendingRequests.add(request);if(carriesQuery(request))result.search_performed=true;};context.on('request',onRequest);
   onRequestFinished=request=>{pendingRequests.delete(request);};context.on('requestfinished',onRequestFinished);context.on('requestfailed',onRequestFinished);
-  onResponse=(response:Response)=>{if(carriesQuery(response.request())){queryStatus=response.status();changedResponse=response.ok();queryNetworkError='';if(response.ok()&&response.request().isNavigationRequest())try{freshQueryFrames.set(response.frame(),response.url());}catch{/* Detached navigation is not visible evidence. */}}};context.on('response',onResponse);
-  onRequestFailed=(request:Request)=>{if(carriesQuery(request)){queryNetworkError=request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0]??'查询请求未完成';changedResponse=false;}};context.on('requestfailed',onRequestFailed);
+  onResponse=(response:Response)=>{if(carriesQuery(response.request())){queryStatus=response.status();changedResponse=response.ok();queryNetworkError='';queryFailureAt=response.ok()?0:Date.now();if(response.ok()&&response.request().isNavigationRequest())try{freshQueryFrames.set(response.frame(),response.url());}catch{/* Detached navigation is not visible evidence. */}}};context.on('response',onResponse);
+  onRequestFailed=(request:Request)=>{if(carriesQuery(request)){queryNetworkError=request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0]??'查询请求未完成';changedResponse=false;queryFailureAt=Date.now();}};context.on('requestfailed',onRequestFailed);
   const submit=async()=>{submitCount++;submittedAt=Date.now();const current=await searchInput(page);if(!current)return;await current.input.fill(query);const button=await searchButton(current.frame,current.input);if(button)await button.click({noWaitAfter:true});else await current.input.press('Enter',{noWaitAfter:true});};
   await submit();
   phase='results';
@@ -168,9 +226,16 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
    const opened=context.pages().filter(p=>!beforePages.includes(p)&&!p.isClosed());if(opened.length)page=opened.at(-1)!;
    await page.waitForLoadState('domcontentloaded',{timeout:Math.max(1,deadline-Date.now())});
    text=await visibleText(page).catch(()=>'');
-   if(failedStyles.size){styleFailure();break;}
+   if(await styleFailure())break;
    if(errors.test(text)){mark(pageFailure(text,queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,phase));break;}
    const gate=await blocker(page,text);if(gate){mark({code:gate,phase},'blocked','官网要求验证后才能继续，其他网站继续。');break;}
+   // A completed failed query has no response left to wait for. Keep a short
+   // grace for the site's own recovery, then apply our bounded retry policy.
+   if(queryFailureAt&&!pendingRequests.size&&Date.now()-queryFailureAt>=1000){
+    if(queryStatus>=400)mark(pageFailure(text,queryStatus,phase));
+    else mark({code:'network_error',phase,detail:queryNetworkError});
+    break;
+   }
    const reflected=await queryReflected(page,query,text);
    const structured=await structuredResultSignature(page,site),compact=resultSignature(text,query,structured),candidate=outcome(text,query,structured);
    stable=compact===previous?stable+1:0;previous=compact;
@@ -190,7 +255,7 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
    else if(status>=400)mark(pageFailure(text,status,phase));
    else mark({code:!text.trim()?'blank_page_timeout':loadingOnly(text)||await resultsLoading(page)?'result_load_timeout':'result_unverified',phase},'unverified',`已提交查询，等待 ${limits.waitMs/1000} 秒后${loadingOnly(text)||await resultsLoading(page)?'页面仍未加载完成':'仍无法确认页面对应本次查询'}。`);
    await diagnostic();return result;}
-  result.diagnostic={code:result.outcome==='no_results'?'no_results':'results',phase};
+  result.diagnostic={code:result.outcome==='no_results'?'no_results':'results',phase,...(optionalPbcStyleFailed?{detail:'OPTIONAL_PBC_WIDGET_STYLESHEET_HTTP_404'}:{})};
   result.captures.push(await capturePage(page,'result',1));
   result.reason=result.outcome==='no_results'?'搜索无返回结果：官网已响应本次查询，页面明确显示无结果；仅限所列查询词和页面范围，不代表无风险。':'搜索返回结果：官网已响应本次查询，具体事项与主体关联见下方记录。';
   if(result.outcome==='no_results')return result;
