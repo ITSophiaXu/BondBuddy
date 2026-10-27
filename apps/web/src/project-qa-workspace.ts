@@ -185,7 +185,7 @@ export class ProjectQaWorkspace {
  private activeTasks(){
   const active=this.state!.runs.filter(run=>!terminal.has(run.state)&&run.run_id!==this.selectedRun());
   if(!active.length)return '';
-  return `<section class="qa-recovery" aria-label="进行中的问答任务"><h2>进行中的问答任务</h2>${active.map(run=>`<p>${run.operation==='prepare'?'识别 Word 问题清单':'回答问题'} · ${esc(runStateLabel[run.state as keyof typeof runStateLabel]??'状态待核对')}</p><a class="btn secondary" href="${esc(this.href({run:run.run_id}))}">查看进度与操作</a>`).join('')}</section>`;
+  return `<section class="qa-recovery" aria-label="进行中的问答任务"><h2>进行中的问答任务</h2>${active.map(run=>`<p>${run.operation==='prepare'?'识别问题清单':'回答问题'} · ${esc(runStateLabel[run.state as keyof typeof runStateLabel]??'状态待核对')}</p><a class="btn secondary" href="${esc(this.href({run:run.run_id}))}">查看进度与操作</a>`).join('')}</section>`;
  }
 
  private scanJournal(){

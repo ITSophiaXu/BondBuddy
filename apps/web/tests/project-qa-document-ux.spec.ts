@@ -14,7 +14,9 @@ for(const width of [1440,390])test(`document QA: upload and delivery at ${width}
   await expect(page.getByRole('heading',{name:'上传问题清单',exact:true})).toBeVisible();
   await expect(page.locator('#qa-upload')).toHaveAttribute('accept','.docx,.doc,.pdf');
   await expect(page.locator('.qa-document')).toHaveCount(0);
-  await expect(page.locator('#qa-history')).toBeHidden();
+  await expect(page.locator('#qa-history')).toBeVisible();
+  await expect(page.locator('#qa-history option')).toHaveCount(2);
+  await expect(page.locator('#qa-history')).toContainText('识别问题');
   await expect(page.locator('.qa-page .pf-source-strip')).toHaveCount(0);
   await expect(page.locator('.qa-page #qa-assistant,.qa-page .bb-assistant,.qa-page #qa-agent')).toHaveCount(0);
   await expect(page.locator('.qa-page')).not.toContainText('与 BondBuddy 讨论');
