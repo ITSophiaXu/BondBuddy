@@ -2,10 +2,12 @@ import {randomUUID} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
 import {IntegrityBrowserInterpretationSchema,IntegrityBrowserAssessmentSchema,IntegrityBrowserSchema,type IntegrityBrowserAssessment,type IntegrityBrowserInterpretation,type IntegrityCapture,type IntegrityRecord,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
+import {writeRunWorkingFile} from '@bondbuddy/api/run-working-files';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {codexModelStage,type StageContext,type StageOutcome} from './run-pipeline.js';
 import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
 import {collectIntegrityWebsite,integritySearchQuery,type IntegrityCollector,type BrowserCollection} from './integrity-browser.js';
+import {lockStageRunExecution} from './run-execution-lease.js';
 
 type StoredCapture={metadata:IntegrityCapture;screenshot_key:string;text_key:string};
 type Batch=Omit<BrowserCollection,'captures'>&{captures:StoredCapture[]};
@@ -22,8 +24,7 @@ export function validateIntegrityAssessment(value:unknown,subject:Pick<Integrity
  return Value.Check(IntegrityBrowserAssessmentSchema,value)&&value.findings.every(f=>f.quote.trim().length>=4&&materials.some(m=>m.ref===f.capture_id&&m.text.includes(f.quote))&&(f.subject_match!=='company_name'||subject.kind==='company'&&f.quote.includes(subject.name)));
 }
 export async function lockIntegrityObservation(c:import('pg').PoolClient,ctx:StageContext){
- const r=await c.query("SELECT 1 FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2 AND r.state='running' AND j.id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now() FOR UPDATE OF r,j",[ctx.run.owner_user_id,ctx.run.id,ctx.lease.jobId,ctx.lease.token]);
- if(!r.rowCount)throw Error('WORKER_LEASE_LOST');
+ if(!await lockStageRunExecution(c,ctx))throw Error('WORKER_LEASE_LOST');
 }
 async function loadBatch(ctx:StageContext,subjectId:string,siteId:string):Promise<Batch|undefined>{
  const row=(await ctx.pool.query('SELECT payload,sha256 FROM bb_integrity_browser_batches WHERE owner_user_id=$1 AND run_id=$2 AND subject_id=$3 AND site_id=$4',[ctx.run.owner_user_id,ctx.run.id,subjectId,siteId])).rows[0];
@@ -37,7 +38,8 @@ async function saveBatch(ctx:StageContext,subject:IntegritySubject,site:Integrit
   const screenshotHash=digest(c.screenshot),textBytes=Buffer.from(c.text),textHash=digest(textBytes);
   const root=`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/integrity/browser/`;
   const screenshot_key=root+screenshotHash+'.png',text_key=root+textHash+'.txt';
-  await ctx.blobs.put(screenshot_key,c.screenshot,'image/png');await ctx.blobs.put(text_key,textBytes,'text/plain; charset=utf-8');
+  await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,source:{kind:'local_integrity_browser'},name:'capture.png',key:screenshot_key,bytes:c.screenshot,mediaType:'image/png'});
+  await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,source:{kind:'local_integrity_browser'},name:'capture.txt',key:text_key,bytes:textBytes,mediaType:'text/plain; charset=utf-8'});
   for(const [key,hash,max] of [[screenshot_key,screenshotHash,15000000],[text_key,textHash,500000]] as const){const bytes=await ctx.blobs.getIfExistsBounded(key,max);if(!bytes||digest(bytes)!==hash)throw Error('FILE_OUTPUT_STORE_FAILED');}
   captures.push({metadata:{id:randomUUID(),kind:c.kind,url:c.url,title:c.title,captured_at:c.captured_at,page:c.page,screenshot_sha256:screenshotHash,text_sha256:textHash,byte_size:c.screenshot.length},screenshot_key,text_key});
  }

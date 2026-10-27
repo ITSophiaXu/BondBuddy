@@ -431,12 +431,16 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   return { outcome: 'completed', error_code: null, finish_reason: 'stop', usage, value: parsed.value };
 }
 
-export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean };
+export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean; prompt_snapshot_ref?: string };
+export type CodexAttemptState = { latest: PriorAttempt | null; next_attempt_no: number; execution_attempt_count: number; blocked?: boolean };
 export interface CodexJournal extends ProbeJournal {
   recordWebSearchEvents?(intent: ProviderCallIntent, events: NonNullable<CodexProcessResult['web_search_events']>): Promise<void>;
   recordObservation(observation: ProviderCallObservation, options?: { retryable?: boolean }): Promise<void>;
   recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void>;
   latestAttempt(logicalCallId: string): Promise<PriorAttempt | null>;
+  /** Durable run journals separate global numbering from execution-local retries.
+   * Older probe/assistant journals retain their single-execution numbering. */
+  attemptState?(logicalCallId: string): Promise<CodexAttemptState>;
   readCompleted(logicalCallId: string, attemptNo: number): Promise<{ value: unknown; result_sha256: string } | null>;
 }
 
@@ -528,9 +532,23 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
   const base = { owner_user_id: input.owner_user_id, project_id: input.project_id, job_id: input.job_id, run_id: input.run_id, trace_id: input.trace_id, logical_call_id: input.logical_call_id, model_id: c.model_id, model_config_version: c.model_config_version, prompt_snapshot_ref: input.prompt_snapshot_ref };
   if (input.signal?.aborted) return { status:'needs_reconcile',value:null,error_code:'MODEL_CANCELLED',attempts,thread_id:null,codex_home:null };
 
-  const prior = await journal.latestAttempt(input.logical_call_id);
-  let attemptNo = 1;
+  const state: CodexAttemptState = journal.attemptState ? await journal.attemptState(input.logical_call_id) : await (async () => {
+    const latest = await journal.latestAttempt(input.logical_call_id);
+    return { latest, next_attempt_no: (latest?.attempt_no ?? 0) + 1, execution_attempt_count: latest?.attempt_no ?? 0 };
+  })();
+  if (!Number.isSafeInteger(state.next_attempt_no) || state.next_attempt_no < 1
+    || !Number.isSafeInteger(state.execution_attempt_count) || state.execution_attempt_count < 0
+    || state.execution_attempt_count >= state.next_attempt_no
+    || !!state.latest !== (state.execution_attempt_count > 0)
+    || state.latest && (!Number.isSafeInteger(state.latest.attempt_no) || state.latest.attempt_no < 1 || state.latest.attempt_no >= state.next_attempt_no))
+    throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  if (state.blocked) return { status:'needs_reconcile',value:null,error_code:'MODEL_PRIOR_ATTEMPT_UNRESOLVED',attempts,thread_id:null,codex_home:null };
+  const prior = state.latest;
+  let attemptNo = state.next_attempt_no;
+  let executionAttemptNo = state.execution_attempt_count + 1;
   if (prior) {
+    if (prior.prompt_snapshot_ref!==undefined && prior.prompt_snapshot_ref!==input.prompt_snapshot_ref)
+      return { status:'needs_reconcile',value:null,error_code:'MODEL_PRIOR_ATTEMPT_UNRESOLVED',attempts,thread_id:null,codex_home:null };
     if (prior.status === 'completed') {
       const done = await journal.readCompleted(input.logical_call_id, prior.attempt_no);
       if (done && input.reviewTools && input.output.kind==='json') {
@@ -552,12 +570,11 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
       }
       return { status: 'needs_reconcile', value: null, error_code: 'MODEL_PRIOR_ATTEMPT_UNRESOLVED', attempts, thread_id: null, codex_home: null };
     }
-    attemptNo = prior.attempt_no + 1;
   }
   // An explicit disposition permits exactly one further send beyond the normal re-ask budget.
-  const maxAttempts = (prior?.operator_retry && prior.status === 'failed' ? attemptNo : 1) +
+  const maxAttempts = (prior?.operator_retry && prior.status === 'failed' ? executionAttemptNo : 1) +
     (input.output.kind === 'json' ? c.max_schema_reasks : 0);
-  if (attemptNo > maxAttempts) return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: null, codex_home: null };
+  if (executionAttemptNo > maxAttempts) return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: null, codex_home: null };
 
   await mkdir(c.work_root, { recursive: true, mode: 0o700 });
   let codexHome: string | null = session.mode === 'resume' ? session.codex_home : null;
@@ -567,7 +584,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
   if (!codexHome && persistent) codexHome = await mkdtemp(join(c.work_root, 'session-'));
   let prompt = input.prompt;
   try {
-    for (; attemptNo <= maxAttempts; attemptNo++) {
+    for (; executionAttemptNo <= maxAttempts; attemptNo++, executionAttemptNo++) {
       if (input.signal?.aborted) return cancelledResult();
       const intent: ProviderCallIntent = { ...base, call_id: newCallId(), attempt_no: attemptNo };
       const attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
@@ -653,7 +670,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         }
         if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? 'codex-file-authoring-1' : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
-        const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
+        const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && executionAttemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });
         attempts.push(attemptRecord(intent, c, runtime, obs));

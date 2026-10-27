@@ -1,0 +1,51 @@
+✔ trusted report registration creates one exact execution body and V1 mirror; only identical bytes replay (802.6881ms)
+✔ wrong or expired lease identity and mismatched frozen report pins cannot create either registry row (16430.6486ms)
+✔ a rolling old writer bridges V1 once and the trusted writer replays its exact persisted timestamp (2998.6827ms)
+✔ an incompatible V1 mirror rolls back a newly inserted canonical report rather than leaving partial storage (2957.2216ms)
+✔ registration waiting for the project catalog lock rechecks lease time after that lock is released (3133.8502ms)
+✔ a schema-valid undefined locator value cannot commit a partial report after JSONB serialization changes its body hash (1957.0676ms)
+✖ a differential report writer rejects a schema-valid wrong follow-up source digest before either registry is created (2448.556ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (1067.9045ms)
+  ✔ live lease registers once and only exact report bytes replay (101.4457ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (125.12ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (773.9175ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (2072.4439ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 11
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 60785.9561
+
+✖ failing tests:
+
+test at apps\worker\dist\review-report-execution.pg.test.js:199:1
+✖ a differential report writer rejects a schema-valid wrong follow-up source digest before either registry is created (2448.556ms)
+  error: Project already has an active business run
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-report-execution.pg.test.js:213:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 166,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_m3_project_run_mutex() line 13 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-reports-20261027\\runs\\2026-10-26T18-12-33-406Z-worker-report-30936-14629e12\\run.log\n\n1 !== 0\n"}

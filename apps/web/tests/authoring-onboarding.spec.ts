@@ -7,6 +7,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Dto } from '../src/api';
 import { taskPage } from './collection-fixtures';
+import { docx, downloadBytes } from './word-roundtrip-fixtures';
 
 // Synthetic public HTTP boundary in Chromium. This does not accept real parsing, billing, models or Word output.
 const projectId = 'synthetic-onboarding-project';
@@ -31,6 +32,9 @@ function fixture() {
     materials: [] as Dto<'MaterialResponse'>[], uploads: new Map<string, { request: Dto<'UploadCreateRequest'>; bytes?: Buffer }>(),
     locked: [] as LockedInput[], preflights: [] as Dto<'PreflightRequest'>[], quotes: [] as Dto<'FixedQuoteRequest'>[],
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), quote: null as Dto<'FixedQuoteResponse'>['quote'],
+    runQuotes: new Map<string, Dto<'FixedQuoteResponse'>['quote']>(),
+    artifacts: new Map<string, Dto<'ArtifactResponse'>>(), artifactBytes: new Map<string, Buffer>(),
+    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'],
     calls: [] as Call[], unexpected: [] as string[], errors: [] as string[], failNextPatch: false
   };
 }
@@ -101,12 +105,13 @@ async function install(page: Page, state = fixture()) {
     if (path === `/projects/${projectId}/prospectus-versions` && method === 'GET') {
       const historical = state.materials.find(material => material.role === 'historical');
       return reply(route, 'ProspectusVersionsResponse', {
-        project_id: projectId, current_version_id: historical ? 'synthetic-source-version' : null, selection_revision: historical ? 1 : 0,
-        inactive_material_ids: [], versions: historical ? [{
+        project_id: projectId, current_version_id: state.generatedVersions.at(-1)?.version_id ?? (historical ? 'synthetic-source-version' : null),
+        selection_revision: (historical ? 1 : 0) + state.generatedVersions.length,
+        inactive_material_ids: [], versions: [...(historical ? [{
           version_id: 'synthetic-source-version', sequence: 1, origin: 'upload', filename: historical.filename, sha256: historical.sha256,
           created_at: now, material_id: historical.material_id, material_version: historical.material_version,
           artifact_id: null, artifact_version: null, revision_artifact_id: null, run_id: null
-        }] : []
+        } as Dto<'ProspectusVersionsResponse'>['versions'][number]] : []), ...state.generatedVersions]
       });
     }
     if (path === `/projects/${projectId}/materials/uploads` && method === 'POST') {
@@ -138,7 +143,12 @@ async function install(page: Page, state = fixture()) {
     if (path === `/projects/${projectId}/input-revisions` && method === 'POST') {
       checked('InputRevisionCreateRequest', body);
       expect(body.draft_revision).toBe(state.project.draft_revision);
-      expect(body.prospectus_selection_revision).toBe(0);
+      expect(body.prospectus_selection_revision).toBe(state.generatedVersions.length);
+      if (body.edit_base) {
+        const clean = state.artifacts.get(body.edit_base.artifact_id);
+        expect(clean).toBeDefined(); expect(clean!.word_delivery?.variant).toBe('clean');
+        expect(body.edit_base).toEqual({ artifact_id: clean!.artifact_id, artifact_version: clean!.version, sha256: clean!.sha256 });
+      }
       expect(body.material_versions).toEqual(state.materials.map(value => ({ material_id: value.material_id, material_version: value.material_version })));
       expect(body.project_message_set_ref).toEqual(emptyMessages); expect(body.requirement_message_ids).toEqual([]);
       const response: Dto<'InputRevisionResponse'> = { project_id: projectId, input_revision: state.locked.length + 1,
@@ -164,7 +174,7 @@ async function install(page: Page, state = fixture()) {
     }
     if (path === `/projects/${projectId}/credit-quote` && method === 'POST') {
       checked('FixedQuoteRequest', body); state.quotes.push(structuredClone(body)); expect(body).toEqual(state.preflights.at(-1));
-      state.quote = { quote_id: 'synthetic-onboarding-quote', project_id: projectId, ...body,
+      state.quote = { quote_id: body.input_revision === 1 ? 'synthetic-onboarding-quote' : `synthetic-onboarding-quote-${body.input_revision}`, project_id: projectId, ...body,
         task_type: 'interim', points: 17900, price_version: 'synthetic-v1', reason: '合成一期编制', created_at: now };
       return reply(route, 'FixedQuoteResponse', { enabled: true, quote: state.quote, balance: { available: 1, frozen: 0 }, shortage: 17899, reason: null });
     }
@@ -175,20 +185,32 @@ async function install(page: Page, state = fixture()) {
       expect(body.input_hash).toBe(snapshot.input_hash); expect(body.quote_id).toBe(state.quote!.quote_id);
       let run = state.runs.get(body.execution_request_id);
       if (!run) {
-        run = { run_id: 'synthetic-onboarding-run', execution_request_id: body.execution_request_id, project_id: projectId,
+        run = { run_id: state.runs.size ? `synthetic-onboarding-run-${state.runs.size + 1}` : 'synthetic-onboarding-run', execution_request_id: body.execution_request_id, project_id: projectId,
           input_revision: body.input_revision, input_hash: body.input_hash, state: 'queued', stage: 'queued', event_cursor: 0,
           channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: 'fixed_credits', reservation_id: null,
           artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
         state.runs.set(body.execution_request_id, run);
+        state.runQuotes.set(run.run_id, structuredClone(state.quote));
       }
       return reply(route, 'RunResponse', run, 202);
     }
     const run = [...state.runs.values()].find(value => path === `/runs/${value.run_id}` || path.startsWith(`/runs/${value.run_id}/`));
     if (run && method === 'GET') {
       if (path === `/runs/${run.run_id}/events`) return reply(route, 'RunEventsResponse', { items: [], next_cursor: null });
-      if (path === `/runs/${run.run_id}/credit-charge`) return reply(route, 'RunCreditChargeResponse', { quote: state.quote, state: 'held' });
+      if (path === `/runs/${run.run_id}/credit-charge`) return reply(route, 'RunCreditChargeResponse', {
+        quote: state.runQuotes.get(run.run_id) ?? null, state: run.state === 'succeeded' ? 'settled' : 'held'
+      });
       if (path === `/runs/${run.run_id}/stream`) return route.fulfill({ contentType: 'text/event-stream', body: ': synthetic polling fallback\n\n' });
       if (path === `/runs/${run.run_id}`) return reply(route, 'RunResponse', run);
+    }
+    const artifactMatch = path.match(/^\/artifacts\/([^/]+)(\/download)?$/);
+    if (artifactMatch && method === 'GET') {
+      const artifact = state.artifacts.get(artifactMatch[1]);
+      if (!artifact) return errorReply(route, 404, 'NOT_FOUND');
+      if (!artifactMatch[2]) return reply(route, 'ArtifactResponse', artifact);
+      const bytes = state.artifactBytes.get(artifact.artifact_id); expect(bytes).toBeDefined();
+      expect(sha256(bytes!)).toBe(artifact.sha256);
+      return route.fulfill({ contentType: artifact.media_type, body: bytes! });
     }
     state.unexpected.push(`${method} ${path}`);
     return errorReply(route, 501, 'UNEXPECTED_SYNTHETIC_REQUEST');
@@ -414,4 +436,119 @@ test('finance-only project uses the existing explicit start and locks the exact 
   await page.reload(); await expect(page.locator('#execution-progress')).toContainText('等待开始'); await expect(page.locator('#execute-input')).toBeDisabled();
   expect(state.runs.size).toBe(1); expect(state.executes).toEqual([execution]); expect(state.locked).toEqual([locked]);
   expect(state.project.update_details?.authoring_mode).toBe('unified_v1'); expect(state.project.update_details?.source_prospectuses).toEqual([]);
+});
+
+// This projection represents only the background completion of the exact run
+// accepted by the preceding UI request. It never preloads a successful run or
+// changes an input after submission, and does not call a worker or provider.
+function completeAcceptedRun(state: State, request: Dto<'ExecuteRequest'>) {
+  const run = state.runs.get(request.execution_request_id);
+  expect(run).toBeDefined(); expect(run!.artifact_id).toBeNull(); expect(run!.state).toBe('queued');
+  expect(run!.project_id).toBe(projectId); expect(run!.input_revision).toBe(request.input_revision);
+  expect(run!.input_hash).toBe(request.input_hash);
+  const locked = state.locked.find(input => input.response.input_revision === request.input_revision)!;
+  expect(locked).toBeDefined(); expect(locked.response.input_hash).toBe(request.input_hash);
+  expect(state.executes.filter(value => value.execution_request_id === request.execution_request_id)).toEqual([request]);
+  const revisionId = `synthetic-onboarding-revision-${request.input_revision}`, cleanId = `synthetic-onboarding-clean-${request.input_revision}`;
+  const delivery: NonNullable<Dto<'ArtifactResponse'>['word_delivery']> = {
+    variant: 'revision', revision_artifact_id: revisionId, clean_artifact_id: cleanId,
+    writer_version: 'bondbuddy-unified-word-1.0.0', source_sha256: locked.request.edit_base?.sha256 ?? null,
+    baseline_hash: null, effective_baseline_sha256: null, plan_hash: null, delivery_policy: 'generated_pair_v1',
+    content_review: 'not_performed', baseline_kind: locked.request.edit_base ? 'project_output' : 'none',
+    source_issuer: locked.project.issuer_name ?? undefined, replacements: null, columns: null,
+    pending_review_count: 0, pending_review: []
+  };
+  const pair = (['revision', 'clean'] as const).map(variant => {
+    const artifactId = variant === 'revision' ? revisionId : cleanId;
+    const bytes = docx(`Synthetic browser fixture only; ${locked.project.issuer_name}; run=${run!.run_id}; input=${request.input_revision}/${request.input_hash}; base=${locked.request.edit_base?.sha256 ?? 'none'}; variant=${variant}`);
+    const artifact: Dto<'ArtifactResponse'> = {
+      artifact_id: artifactId, run_id: run!.run_id, version: request.input_revision, display_version: request.input_revision,
+      filename: `合成第${request.input_revision}轮募集书_${variant === 'revision' ? '修订版' : '清洁版'}.docx`,
+      media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256: sha256(bytes),
+      quality_status: 'passed', delivery_status: 'available', download_url: `/api/v1/artifacts/${artifactId}/download`,
+      expires_at: now, word_delivery: { ...delivery, variant }
+    };
+    checked('ArtifactResponse', artifact); state.artifacts.set(artifactId, artifact); state.artifactBytes.set(artifactId, bytes);
+    return artifact;
+  });
+  const [revision, clean] = pair;
+  state.generatedVersions.push({
+    version_id: `synthetic-generated-${run!.run_id}`, sequence: state.generatedVersions.length + 1,
+    origin: 'generated', filename: clean.filename!, sha256: clean.sha256, created_at: now,
+    material_id: null, material_version: null, artifact_id: clean.artifact_id, artifact_version: clean.version,
+    revision_artifact_id: revision.artifact_id, run_id: run!.run_id
+  });
+  run!.state = 'succeeded'; run!.stage = 'succeeded'; run!.artifact_id = revision.artifact_id;
+  state.project.draft_revision++;
+  return { revision, clean };
+}
+
+async function downloadAcceptedPair(page: Page, state: State, pair: ReturnType<typeof completeAcceptedRun>) {
+  await expect(page.locator('#artifact-downloads')).toBeVisible();
+  const before = state.calls.length, received = new Map<string, Buffer>();
+  for (const [variant, label] of [['revision', '修订版'], ['clean', '清洁版']] as const) {
+    const artifact = pair[variant], download = page.waitForEvent('download');
+    await page.locator('.artifact-download-panel').getByRole('button', { name: `下载${label}`, exact: true }).click();
+    const file = await download, bytes = await downloadBytes(file);
+    expect(file.suggestedFilename()).toBe(artifact.filename); expect(bytes).toEqual(state.artifactBytes.get(artifact.artifact_id));
+    expect(sha256(bytes)).toBe(artifact.sha256); expect(artifact.run_id).toBe(pair.revision.run_id);
+    received.set(variant, bytes);
+  }
+  expect(state.calls.slice(before).filter(call => call.path.endsWith('/download')).map(call => call.path)).toEqual([
+    `/artifacts/${pair.revision.artifact_id}/download`, `/artifacts/${pair.clean.artifact_id}/download`
+  ]);
+  expect(state.calls.slice(before).every(call => call.method === 'GET')).toBe(true);
+  return received;
+}
+
+test('desktop authoring journey creates with finance, downloads its accepted pair, continues from that clean draft and returns to the original pair', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  const state = await install(page); await page.goto('/#/new');
+  await page.locator('#issuer').fill('合成连续编制发行人有限公司');
+  await page.locator('#market').selectOption('sse'); await page.locator('#offering').selectOption('private');
+  await page.locator('#reporting-year').selectOption('2026'); await page.locator('[name=reporting_quarter][value="06-30"]').check();
+  await page.locator('#create-form button[type=submit]').click(); await expect(page.locator('#materials-title')).toBeVisible();
+  const financeBytes = Buffer.from('%PDF-1.7\nsynthetic finance for continuous desktop authoring\n%%EOF');
+  await page.locator('[data-upload-role=audit]').setInputFiles({ name: '合成连续编制财务资料.pdf', mimeType: 'application/pdf', buffer: financeBytes });
+  await expect(page.locator('[data-material-role=audit] .material-file-row')).toContainText('服务器已确认保存');
+  expect(state.created).toHaveLength(1); expect(state.materials).toHaveLength(1);
+  expect(state.materials[0].sha256).toBe(sha256(financeBytes)); expectNoExecution(state);
+
+  await page.locator('#execute-input').click(); await expect.poll(() => state.executes.length).toBe(1);
+  await expect(page.locator('#execution-progress')).toContainText('等待开始');
+  const firstRequest = structuredClone(state.executes[0]), firstLocked = structuredClone(state.locked[0]);
+  expect(firstLocked.request.edit_base).toBeUndefined(); expect(firstLocked.project.update_details?.source_prospectuses).toEqual([]);
+  const firstPair = completeAcceptedRun(state, firstRequest), firstRun = structuredClone(state.runs.get(firstRequest.execution_request_id)!);
+  await page.getByRole('button', { name: '重新读取', exact: true }).click();
+  const firstBytes = await downloadAcceptedPair(page, state, firstPair);
+  await screenshot(page, 'desktop-authoring-first-pair.png');
+
+  await page.locator('#prepare-next-version').click(); await expect(page.locator('[data-next-authoring-summary]')).toContainText(firstPair.clean.filename!);
+  expect(state.executes).toEqual([firstRequest]); await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click(); await expect.poll(() => state.executes.length).toBe(2);
+  await expect(page.locator('#execution-progress')).toContainText('等待开始');
+  const nextRequest = structuredClone(state.executes[1]), nextLocked = structuredClone(state.locked[1]);
+  expect(nextRequest.execution_request_id).not.toBe(firstRequest.execution_request_id); expect(nextRequest.input_revision).toBe(firstRequest.input_revision + 1);
+  expect(nextLocked.request.edit_base).toEqual({ artifact_id: firstPair.clean.artifact_id, artifact_version: firstPair.clean.version, sha256: firstPair.clean.sha256 });
+  expect(nextLocked.request.material_versions).toEqual(firstLocked.request.material_versions);
+  const nextPair = completeAcceptedRun(state, nextRequest);
+  await page.getByRole('button', { name: '重新读取', exact: true }).click();
+  const nextBytes = await downloadAcceptedPair(page, state, nextPair);
+  expect(nextBytes.get('clean')).not.toEqual(firstBytes.get('clean')); expect(nextBytes.get('revision')).not.toEqual(firstBytes.get('revision'));
+  await screenshot(page, 'desktop-authoring-next-pair.png');
+
+  // Follow the actual task-history link back to the first accepted run after a
+  // newer current version exists. No fixture selects a historical UI result.
+  await page.goto('/#tasks');
+  await page.locator(`.collection-project[data-project-id="${projectId}"] [data-tasks="${projectId}"]`).click();
+  const originalTask = page.locator(`[data-task-panel="${projectId}"] [data-run-id="${firstRun.run_id}"]`);
+  await expect(originalTask.locator('a')).toHaveAttribute('href', `#/artifacts/${firstPair.revision.artifact_id}`);
+  await originalTask.locator('a').click(); await expect(page).toHaveURL(new RegExp(`#/artifacts/${firstPair.revision.artifact_id}$`));
+  const oldBytes = await downloadAcceptedPair(page, state, firstPair);
+  expect(oldBytes.get('clean')).toEqual(firstBytes.get('clean')); expect(oldBytes.get('revision')).toEqual(firstBytes.get('revision'));
+  expect(state.generatedVersions.at(-1)!.artifact_id).toBe(nextPair.clean.artifact_id);
+  expect(state.runs.get(firstRequest.execution_request_id)).toEqual(firstRun); expect(state.locked[0]).toEqual(firstLocked);
+  expect(state.executes).toEqual([firstRequest, nextRequest]); expect(state.runs.size).toBe(2); expect(state.uploads.size).toBe(1);
+  expect(state.calls.filter(call => call.path.endsWith('/download'))).toHaveLength(6);
+  await screenshot(page, 'desktop-authoring-original-history-pair.png');
 });

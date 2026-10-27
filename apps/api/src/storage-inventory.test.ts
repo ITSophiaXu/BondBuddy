@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
-import { azureBlobs } from './data.js';
+import { azureBlobs, type PrivateBlobs } from './data.js';
 import { inventoryPolicyFromEnv, parseInventoryKey, runStorageInventory } from './storage-inventory.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -22,8 +22,63 @@ test('inventory keys accept only known private object layouts', () => {
   assert.equal(parseInventoryKey(`log-archive/ndjson_file/${u}.ndjson`), 'log_archive');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/snapshots/x/extra`), 'unrecognized');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/unknown/x`), 'unrecognized');
+  const root = `owners/${owner}/projects/${project}/runs/run_1/`;
+  for (const path of [
+    `file-authoring/call:1/${sha}/tracked.docx`,`file-authoring/call/${sha}/clean.docx`,
+    `file-authoring/call/${sha}/baseline.docx`,`file-authoring/call/${sha}/delivery.md`,
+    `m4-documents/call/${sha}/document.docx`,`m4-documents/call/${sha}/preparation-note.docx`,
+    ...['report.docx','model-report.docx','report.md','final-response.md','comments.docx','comments.pdf','annotations.json'].map(name=>`review-files/call/${sha}/${name}`),
+    ...['revision.docx','clean.docx','baseline.docx','report.docx','report.md','editor.json'].map(name=>`review-files/correction/${sha}/${name}`),
+    ...['tracked.docx','clean.docx','baseline.docx','handling.json','summary.json','proposal.json'].map(name=>`review-revision-cli/call/${sha}/${name}`),
+    ...['report.docx','revision.docx','clean.docx','baseline.docx'].map(name=>`project-files/${sha}/${name}`),
+    `qa/${sha}/document.docx`,`integrity/${sha}/company.docx`,`integrity/${sha}/person.docx`,
+    `integrity/browser/${sha}.png`,`integrity/browser/${sha}.txt`,
+  ]) assert.equal(parseInventoryKey(root+path),'run_working_file',path);
+  for (const path of [`qa/${sha}/secret.txt`,`integrity/${sha}/report.docx`,`integrity/browser/${sha}.json`,
+    `review-files/correction/${sha}/model-report.docx`,`file-authoring/../${sha}/tracked.docx`,
+    `project-files/${sha}/report.docx/extra`,`other/${sha}/report.docx`])
+    assert.equal(parseInventoryKey(root+path),'unrecognized',path);
+  assert.equal(parseInventoryKey(root.replace('/run_1/','/run..1/')+`qa/${sha}/document.docx`),'unrecognized');
   assert.equal(inventoryPolicyFromEnv({}).deleteEnabled, false);
   assert.equal(inventoryPolicyFromEnv({ BB_STORAGE_ORPHAN_GRACE_HOURS: '0' }).graceHours, 24);
+});
+
+test('owners inventory reports registered, pending and unregistered working bytes without enabling their deletion', async () => {
+  const sha='a'.repeat(64),root='owners/owner/projects/project/runs/run/';
+  const keys=['stored','pending','purging','purged','unknown'].map((name,index)=>
+    root+`file-authoring/${name}/${index.toString().repeat(64)}/tracked.docx`);
+  const unexpected=root+'unexpected/private.txt';
+  const state = new Map<string, Record<string, unknown>>([
+    [keys[0],{stored_at:new Date(),purge_started_at:null,purged_at:null}],
+    [keys[1],{stored_at:null,purge_started_at:null,purged_at:null}],
+    [keys[2],{stored_at:new Date(),purge_started_at:new Date(),purged_at:null}],
+    [keys[3],{stored_at:new Date(),purge_started_at:new Date(),purged_at:new Date()}],
+  ]);
+  const queries:string[]=[],deleted:string[]=[],prefixes:string[]=[];
+  const pool={query:async(sql:string,values?:unknown[])=>{
+    queries.push(sql);
+    if(sql.includes('FROM bb_run_working_objects')){const row=state.get(values![0] as string);return {rows:row?[row]:[],rowCount:row?1:0};}
+    if(sql.includes('INSERT INTO bb_ops_alerts'))return {rows:[{id:'alert'}],rowCount:1};
+    return {rows:[],rowCount:0};
+  }} as unknown as Pool;
+  const blobs={listPage:async(prefix:string)=>{
+    prefixes.push(prefix);
+    return {items:prefix==='owners/'?[...keys,unexpected].map(key=>({key,bytes:12,lastModified:new Date('2020-01-01T00:00:00Z'),etag:'old'})):[]};
+  },deleteIfMatch:async(key:string)=>{deleted.push(key);return true;}} as unknown as PrivateBlobs;
+  const report=await runStorageInventory(pool,blobs,{deleteEnabled:true,now:()=>new Date('2026-10-26T00:00:00Z'),sampleLimit:20});
+  assert.ok(prefixes.includes('owners/'));
+  assert.equal(report.byPrefix['owners/'].referenced.count,1);
+  assert.equal(report.byPrefix['owners/'].intent_pending.count,1);
+  assert.equal(report.byPrefix['owners/'].unregistered_working_file.count,4);
+  assert.equal(report.byKind.run_working_file.unregistered_working_file.count,3);
+  assert.equal(report.byKind.unrecognized.unregistered_working_file.count,1);
+  assert.equal(report.byPrefix['owners/'].orphan_candidate.count,0);
+  assert.deepEqual(deleted,[]);assert.equal(report.deleted,0);assert.equal(report.deleteSkipped,4);
+  assert.equal(queries.some(sql=>sql.includes('bb_storage_inventory_delete_attempts')),false);
+  assert.equal(queries.some(sql=>sql.includes('INSERT INTO bb_storage_inventory_cursors')),true);
+  assert.equal(report.candidateKeyHashes.length,4);
+  assert.doesNotMatch(JSON.stringify(report),/owners\/owner\//);
+  assert.equal(parseInventoryKey(root+`qa/${sha}/document.docx`),'run_working_file');
 });
 
 const connection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;

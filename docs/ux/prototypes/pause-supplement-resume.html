@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>暂停、补料并继续原任务 · BondBuddy 提案原型</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { --ink:#24483e; --muted:#687d70; --line:#dce4d9; --green:#3e6548; --soft:#f3f6ef; --amber:#865c20; }
+    body { margin:0; min-width:1000px; background:#f7f8f3; color:var(--ink); font:15px/1.65 "Microsoft YaHei", "PingFang SC", sans-serif; }
+    button, select { font:inherit; color:inherit; }
+    button { min-height:44px; border:1px solid var(--line); border-radius:8px; padding:9px 17px; background:#fff; cursor:pointer; }
+    button:hover:not(:disabled) { background:#eef3e8; border-color:#a9bca3; }
+    button.primary { background:var(--green); color:white; border-color:var(--green); }
+    button.primary:hover:not(:disabled) { background:#2d5337; }
+    button:disabled { color:#778376; background:#eff1eb; border-color:#dce2d7; cursor:not-allowed; }
+    button.text { background:transparent; padding:7px 2px; border-color:transparent; text-decoration:underline; text-underline-offset:4px; }
+    button:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible { outline:3px solid #b28a44; outline-offset:3px; }
+    [tabindex="-1"]:focus { outline:2px solid #a7bda0; outline-offset:5px; border-radius:3px; }
+    select { min-height:42px; padding:7px 30px 7px 10px; border:1px solid #d1d8cb; background:white; border-radius:7px; max-width:100%; }
+    .review-banner { background:#fff4da; border-bottom:1px solid #e3d4af; padding:12px 30px; color:#705424; font-size:14px; }
+    .review-banner strong { margin-right:14px; }
+    .demo { max-width:1240px; margin:22px auto 24px; padding:18px 24px; background:#faf8f1; border:1px dashed #cec4a9; border-radius:12px; }
+    .demo h2 { margin:0 0 3px; font-size:15px; color:#6b614c; }
+    .demo p { margin:0 0 12px; color:#766e5d; font-size:12px; }
+    .demo-row { display:flex; flex-wrap:wrap; align-items:end; gap:12px 18px; }
+    .demo label { display:grid; gap:4px; font-size:12px; color:#706856; }
+    .demo-meta { display:flex; justify-content:space-between; gap:20px; margin-top:12px; color:#776f5c; font-size:12px; }
+    .demo button { min-height:42px; font-size:13px; }
+    main { max-width:1240px; margin:0 auto 32px; padding:0 24px; }
+    .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:21px; }
+    .brand-name { display:flex; gap:11px; align-items:center; font-size:18px; font-weight:600; }
+    .brand-mark { display:grid; place-items:center; background:#e7eedf; border:1px solid #d5dfcc; width:36px; height:36px; border-radius:50%; font-size:11px; letter-spacing:1px; }
+    .crumb { color:var(--muted); font-size:13px; }
+    .panel { background:white; border:1px solid #e4e9df; border-radius:16px; padding:28px; }
+    .page-heading { display:flex; justify-content:space-between; gap:24px; align-items:start; margin-bottom:22px; }
+    .eyebrow { font-size:12px; letter-spacing:2px; color:#798c78; margin-bottom:5px; }
+    h1 { margin:0; font-size:24px; font-weight:600; }
+    .task-meta { color:var(--muted); font-size:13px; margin:6px 0 0; }
+    .synthetic { color:#7a6a4a; font-size:12px; padding:4px 10px; border:1px solid #e7ddc7; background:#fbf8ef; border-radius:6px; white-space:nowrap; }
+    .status { padding:24px 26px; border:1px solid #e0e8d7; border-radius:16px; background:var(--soft); }
+    .status h2 { font-size:23px; margin:0 0 7px; font-weight:600; }
+    .status p { color:var(--muted); margin:0 0 22px; max-width:100%; }
+    .status-mark { display:inline-block; width:9px; height:9px; border-radius:50%; background:#6e8a5e; margin-right:10px; vertical-align:middle; }
+    .steps { display:flex; gap:12px; list-style:none; padding:0; margin:0; }
+    .steps li { flex:1; border-top:2px solid #d9e1d3; padding-top:11px; color:#7b8b78; font-size:13px; }
+    .steps .done { border-color:#b5c5ac; color:#61785a; }
+    .steps .current { border-color:#628253; color:#365f3c; font-weight:600; }
+    .meter { display:flex; align-items:center; justify-content:space-between; gap:28px; margin:22px 0 0; padding:18px 23px; border:1px solid #dbe4d4; border-radius:12px; background:linear-gradient(110deg,#f4f7ef,#fff); }
+    .meter strong { font-size:29px; font-weight:600; margin-left:16px; font-variant-numeric:tabular-nums; }
+    .meter small { font-size:13px; font-weight:400; }
+    .meter .meta { font-size:12px; color:var(--muted); margin-top:3px; }
+    .meter-side { text-align:right; font-size:12px; color:var(--muted); }
+    .actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:20px; }
+    .hint { color:var(--muted); font-size:13px; margin:11px 0 0; }
+    .card { margin-top:26px; padding-top:25px; border-top:1px solid #e5eadf; }
+    .card h2, .card h3 { margin:0 0 9px; font-size:18px; font-weight:600; }
+    .section-head { display:flex; align-items:center; justify-content:space-between; gap:24px; }
+    .project-meta { color:var(--muted); font-size:13px; margin:0 0 18px; }
+    .file-list { margin:0; padding:0; list-style:none; }
+    .file { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:12px 0; border-bottom:1px solid #edf0e9; }
+    .file-name { font-size:14px; font-weight:500; }
+    .file-meta { color:var(--muted); font-size:12px; margin-top:2px; }
+    .file-icon { width:31px; height:36px; flex:0 0 auto; border:1px solid #dbe3d4; border-radius:5px; background:#f6f8f2; color:#7b8c72; font-size:9px; display:grid; place-items:center; }
+    .file-info { display:flex; gap:12px; align-items:center; }
+    .badges { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+    .badge { display:inline-flex; padding:2px 8px; border-radius:5px; font-size:11px; white-space:nowrap; background:#edf3e7; border:1px solid #dbe6d2; color:#536e48; }
+    .badge.pending { background:#fbf6e8; border-color:#e9dec2; color:#8a6b31; }
+    .badge.neutral { background:#f3f4f0; border-color:#e2e5dc; color:#74806f; }
+    .supplement { margin-top:22px; padding:21px 23px; background:#fbfcf8; border:1px solid #e0e7d8; border-radius:12px; }
+    .supplement h3 { margin:0; font-size:16px; }
+    .supplement .intro { margin:5px 0 14px; color:var(--muted); font-size:13px; }
+    .callout { border-left:3px solid #b7c9ab; padding:10px 14px; margin-top:15px; background:#f1f6ed; font-size:13px; }
+    .callout.warning { background:#fcf7e9; border-color:#cbb079; color:#7e612f; }
+    .callout.error { background:#faf1eb; border-color:#c8a184; color:#875d3f; }
+    .callout strong { display:block; font-size:14px; margin-bottom:3px; }
+    .callout p { margin:3px 0 0; }
+    .review { margin-top:20px; padding:20px 23px; border:1px solid #dfe7d7; border-radius:12px; }
+    .review h3 { font-size:16px; margin:0 0 10px; }
+    .review-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+    .review h4 { margin:0 0 5px; font-size:13px; font-weight:600; }
+    .review ul { margin:0; padding-left:18px; font-size:13px; }
+    .review li { padding:2px 0; }
+    .review .scope { margin:13px 0 0; padding-top:12px; border-top:1px solid #e5eadf; font-size:13px; color:var(--muted); }
+    .fee { margin-top:17px; border-radius:9px; border:1px solid #e8dcc3; padding:15px 18px; background:#fcf8ed; font-size:13px; color:#7b6335; }
+    .fee strong { display:block; margin-bottom:4px; font-size:14px; }
+    .fee p { margin:4px 0 0; }
+    .adopt-actions { display:flex; flex-wrap:wrap; gap:11px; align-items:center; margin-top:18px; }
+    .result { margin-top:25px; padding:24px; border:1px solid #d9e4cf; border-radius:13px; background:#fbfdf8; }
+    .result h2 { font-size:18px; margin:0 0 8px; }
+    .result p { margin:6px 0; color:var(--muted); font-size:13px; }
+    .downloads { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:17px 0 21px; }
+    .download { padding:18px; background:white; border:1px solid #e0e8d8; border-radius:9px; }
+    .download strong { display:block; font-size:15px; margin-bottom:4px; }
+    .download p { min-height:22px; margin-bottom:13px; }
+    .result-summary { border-top:1px solid #e1e8da; padding-top:18px; }
+    .result-summary h3 { font-size:18px; margin:0 0 8px; }
+    .result-summary ul { padding-left:19px; font-size:13px; margin:0; }
+    details.history { margin-top:24px; color:var(--muted); font-size:13px; }
+    summary { cursor:pointer; padding:5px 0; }
+    .history ol { list-style:none; border-left:2px solid #e3eadc; margin:13px 0 0 4px; padding:0 0 0 19px; }
+    .history li { margin:9px 0; }
+    .history time { display:inline-block; width:57px; font-variant-numeric:tabular-nums; color:#8a9784; }
+    .notice { margin-top:16px; border:1px solid #d9e3d0; padding:12px 16px; border-radius:8px; background:#f5f8f0; font-size:13px; }
+    footer { color:#8a9784; font-size:12px; margin:18px 0 24px; }
+    dialog { color:var(--ink); width:570px; max-width:80vw; border:1px solid #d9e3d0; border-radius:15px; padding:27px; box-shadow:0 16px 60px #21332124; }
+    dialog::backdrop { background:#263b3138; }
+    dialog h2 { margin:0 0 11px; font-size:20px; }
+    dialog p, dialog ul { font-size:14px; color:var(--muted); }
+    dialog .actions { justify-content:flex-end; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
+  </style>
+</head>
+<body>
+  <div class="review-banner" id="proposal-banner"><strong>交互提案 · 模拟演示 · 尚未实现或验收</strong>B另行报价已选择，具体报价规则待确定。必要重做须另行报价并明确确认后才能继续。本页仅使用合成资料，不连接业务服务、不上传真实文件、不执行任务或扣费。</div>
+
+  <aside class="demo" id="demo-controls" aria-labelledby="demo-title">
+    <h2 id="demo-title">演示台 · 以下控件不属于拟议产品界面</h2>
+    <p>B另行报价已选择，具体报价规则待确定；默认不载入费用示例，采用按钮保持禁用。完整交互仍可用历史备选A演示：用户未选择A，仅演示交互，不代表已批准费用。产品操作从下方任务面板开始。</p>
+    <div class="demo-row">
+      <label for="demo-fee">费用演示<select id="demo-fee"><option value="">B已选择 · 具体报价规则待确定</option><option value="a">历史备选A：用户未选择，仅演示交互</option></select></label>
+      <label for="demo-scenario">载入合成场景<select id="demo-scenario"><option value="running">从编制中开始</option><option value="pausing">正在保存后暂停</option><option value="paused">已确认暂停</option><option value="saved">补料已保存、未采用</option><option value="save-failed">补料保存失败</option><option value="save-unknown">补料保存回执未知</option><option value="adopt-unknown">采用回执未知</option><option value="conflict">另一窗口已采用</option><option value="completed">最新补料成果示例</option></select></label>
+      <label for="demo-receipt">只读核对模拟结果<select id="demo-receipt"><option value="adopted">查到已采用</option><option value="not-adopted">查到尚未采用</option><option value="unavailable">暂时仍无法确认</option></select></label>
+      <button id="demo-load" type="button">载入场景 / 重置</button>
+      <button id="demo-complete" type="button" disabled>模拟本次处理完成</button>
+    </div>
+    <div class="demo-meta"><span id="demo-fee-state">当前：B另行报价已选择，具体报价规则待确定</span><span id="demo-counts">模拟采用动作：0 次 · 只读核对：0 次</span></div>
+  </aside>
+
+  <main>
+    <div class="brand"><div class="brand-name"><span class="brand-mark" aria-hidden="true">BB</span>BondBuddy</div><div class="crumb">合成项目 / 募集书全文更新 / 本次任务</div></div>
+    <article class="panel" id="product-pane" aria-labelledby="task-title"></article>
+    <footer>桌面交互提案 · 沿用任务过程页及原材料区。全部文件、时间、金额、回执与成果均为合成示例；不作为功能验收、费用决定或上线证据。</footer>
+  </main>
+  <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="original-dialog" aria-labelledby="original-dialog-title" aria-describedby="original-dialog-description">
+    <h2 id="original-dialog-title">仅用原材料继续？</h2>
+    <p id="original-dialog-description">本次继续只使用原有的 3 份材料。已保存的“2026年三季度附注补充.pdf”不会用于本次任务，文件仍保留在原材料区。</p>
+    <div class="actions"><button type="button" data-action="close-dialog" autofocus>返回核对补料</button><button type="button" class="primary" id="confirm-original" data-action="confirm-original">仅用原材料继续</button></div>
+  </dialog>
+  <dialog id="download-dialog" aria-labelledby="download-title" aria-describedby="download-description">
+    <h2 id="download-title">清洁版 · 模拟下载</h2>
+    <p id="download-description">本原型只演示下载交互，不生成或下载真实 Word 文件。</p>
+    <div class="callout" id="download-source"></div>
+    <div class="actions"><button type="button" data-action="close-dialog" autofocus>关闭预览</button></div>
+  </dialog>
+
+  <script>
+    'use strict';
+    // Standalone synthetic UX only. No fetch, file upload, business API, or billing operation.
+    // Parameters: ?scenario=running|pausing|paused|saved|save-failed|save-unknown|adopt-unknown|conflict|completed
+    //             &fee=a (historical unchosen A, interaction demonstration only)
+    //             Omitted/pending keeps B quotation rules unresolved and adoption disabled.
+    //             &receipt=adopted|not-adopted|unavailable
+    // Reload restores this tab's simulated state; loading/resetting a scenario starts a fresh demonstration.
+    const $ = (selector) => document.querySelector(selector);
+    const params = new URLSearchParams(location.search);
+    const scenarios = ['running','pausing','paused','saved','save-failed','save-unknown','adopt-unknown','conflict','completed'];
+    const receipts = ['adopted','not-adopted','unavailable'];
+    const storageKey = 'bondbuddy-pause-proposal:' + location.pathname + location.search;
+    const supplementName = '2026年三季度附注补充.pdf';
+    const originals = [
+      ['2025年募集说明书.docx', '原稿 · 同企业 · 2025年末', 'DOCX'],
+      ['2025年度审计报告.pdf', '财务材料 · 2025年末', 'PDF'],
+      ['2026年三季度财务报表.pdf', '财务材料 · 2026年9月末', 'PDF']
+    ];
+    let timer;
+    let returnFocus = null;
+    let state;
+
+    function initial(scenario) {
+      const hasFile = ['saved','save-unknown','adopt-unknown','conflict','completed'].includes(scenario);
+      const adopted = scenario === 'completed';
+      return {
+        phase: scenario === 'saved' ? 'paused' : scenario,
+        fee: params.get('fee') === 'a' ? 'a' : '',
+        receipt: receipts.includes(params.get('receipt')) ? params.get('receipt') : 'adopted',
+        saved: hasFile && scenario !== 'save-unknown',
+        selected: hasFile && !adopted,
+        adopted,
+        pausedOnce: scenario !== 'running',
+        adoptionAttempts: ['adopt-unknown','conflict','completed'].includes(scenario) ? 1 : 0,
+        receiptReads: 0,
+        notice: '',
+        scenario
+      };
+    }
+
+    function resetHistoricalAdoption(message) {
+      clearTimeout(timer);
+      state.phase = 'paused';
+      state.saved = true;
+      state.selected = true;
+      state.adopted = false;
+      state.pausedOnce = true;
+      state.adoptionAttempts = 0;
+      state.receiptReads = 0;
+      state.scenario = 'saved';
+      state.notice = message;
+    }
+
+    function enforceFeeBoundary() {
+      state.fee = state.fee === 'a' ? 'a' : '';
+      // Historical A adoption must never be restored or displayed as an unquoted B adoption.
+      // This also normalizes state saved by earlier revisions of this standalone prototype.
+      if (state.fee !== 'a' && (state.adopted || state.phase === 'adopting')) {
+        resetHistoricalAdoption('检测到历史备选A的采用状态与当前B报价待确定状态不一致，已重置该演示的采用、恢复及成果。文件保留为已保存、未采用，任务保持暂停；B尚未报价或确认。');
+      }
+    }
+
+    function persist() {
+      enforceFeeBoundary();
+      try { sessionStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { /* file: storage may be unavailable */ }
+    }
+
+    function announce(message) {
+      $('#announcer').textContent = '';
+      setTimeout(() => { $('#announcer').textContent = message; }, 25);
+    }
+
+    function focus(selector) {
+      requestAnimationFrame(() => { const target = $(selector); if (target) target.focus(); });
+    }
+
+    function transition(phase, message, target = '#status-title') {
+      state.phase = phase;
+      persist();
+      render();
+      if (message) announce(message);
+      if (target) focus(target);
+    }
+
+    function schedule(callback, delay = 1200) {
+      clearTimeout(timer);
+      timer = setTimeout(callback, delay);
+    }
+
+    function safePause() { return ['paused','save-failed','save-unknown','saving','checking-file'].includes(state.phase); }
+    function unresolved() { return ['adopting','adopt-unknown','checking-adoption','conflict'].includes(state.phase); }
+
+    function statusContent() {
+      const messages = {
+        running: ['正在编制募集书内容', '最近一次进度：已完成目录核对，正在更新财务章节。需要补充材料时，请先暂停并保存当前工作。'],
+        pausing: ['正在保存进度后暂停', '积分已冻结。当前处理仍在保存，尚未确认暂停；保存完成前不能补料或继续。'],
+        paused: ['任务已暂停，进度已保存', state.adopted ? '本次已采用的补充材料保留。积分停止累计，可按当前材料继续本次任务。' : '当前工作已保存，已确认暂停。可在下方原材料区补充资料；保存文件不会自动采用或开始处理。'],
+        saving: ['任务保持暂停 · 正在保存补充文件', '正在模拟保存文件。文件保存后仍需明确采用，才会用于本次任务。'],
+        'save-failed': ['任务保持暂停 · 补充文件未保存', '模拟保存失败，原材料及已保存工作保留。请重试保存，文件尚未用于本次任务。'],
+        'save-unknown': ['任务保持暂停 · 文件保存结果待核对', '暂未收到保存回执。请先核对文件是否保存，不重复上传，也不采用未确认的文件。'],
+        'checking-file': ['正在核对文件保存结果', '只读取先前的保存结果；任务保持暂停，不发起新的上传或采用。'],
+        adopting: ['正在确认补充材料采用结果', '正在模拟记录本次采用，并继续同一任务。请等待结果，不重复提交。'],
+        'adopt-unknown': ['采用结果暂未确认', '页面没有收到采用回执，不能据此判断采用失败。请核对采用结果；不重复采用，也不重复扣款。'],
+        'checking-adoption': ['正在核对采用结果', '仅查询先前的采用回执，不重新采用材料，不重复开始处理。'],
+        conflict: ['本次材料已在另一窗口更新', '当前页面的材料清单已过期。请读取最新采用结果后继续，旧页面不能直接采用或恢复。'],
+        resumed: [state.adopted ? '已采用补充材料，正在继续本次任务' : '正在按原材料继续本次任务', state.adopted ? '已采用“2026年三季度附注补充.pdf”。保留原有工作，正在结合新增附注更新相关正文。' : '使用原有 3 份材料继续。已保存但未采用的补充文件不用于本次处理。'],
+        completed: ['修订版和清洁版已生成，可以下载', state.adopted ? '本次成果使用了最新采用的补充附注；原任务和先前记录保留。以下为模拟交付。' : '本次成果仅使用原材料；已保存的补充文件未被采用。以下为模拟交付。']
+      };
+      return messages[state.phase] || messages.paused;
+    }
+
+    function renderStatus() {
+      const [title, description] = statusContent();
+      const currentStep = state.phase === 'completed' ? 4 : 2;
+      return `<section class="status" aria-labelledby="status-title"><h2 id="status-title" tabindex="-1"><span class="status-mark" aria-hidden="true"></span>${title}</h2><p id="status-description">${description}</p><ol class="steps" aria-label="任务步骤">${['等待开始','准备材料','编制募集书','保存文档','可下载'].map((label, index) => `<li class="${index === currentStep ? 'current' : index < currentStep ? 'done' : ''}" ${index === currentStep ? 'aria-current="step"' : ''}>${index + 1} ${label}</li>`).join('')}</ol></section>`;
+    }
+
+    function renderMeter() {
+      const complete = state.phase === 'completed';
+      const frozen = !['running','resumed','completed'].includes(state.phase);
+      return `<section class="meter" aria-label="本次任务积分"><div><span>${complete ? '本次总扣款（示例）' : '当前已消耗'}</span><strong>${complete ? '4,500' : '1,200'} <small>积分</small></strong><div class="meta">${frozen ? '积分已冻结；暂停和准备补料期间不累计。' : complete ? '演示金额，未发生真实扣费。' : '仅展示合成进度；实际计量以原任务规则为准。'}</div></div><div class="meter-side">原任务价格 <b>4,500</b> 积分<br>已消耗记录保留，不因补料重置</div></section>`;
+    }
+
+    function renderActions() {
+      let controls = '';
+      if (['running','resumed'].includes(state.phase)) controls = '<button id="pause-task" type="button" data-action="pause">暂停任务</button>';
+      else if (state.phase === 'pausing') controls = '<button type="button" disabled>正在保存后暂停…</button>';
+      else if (state.phase !== 'completed') controls = `<button id="resume-original" type="button" data-action="resume-original" ${!safePause() || ['saving','checking-file','save-unknown'].includes(state.phase) ? 'disabled' : ''}>${state.adopted ? '继续当前已采用材料' : '继续原材料'}</button>`;
+      return `<div class="actions">${controls}<button id="view-materials" type="button" data-action="view-materials">查看材料${safePause() && !state.adopted ? ' / 补充本次材料' : ''}</button></div><p class="hint">原任务开始于今日 09:32。关闭页面不会取消任务；补料准备、充值或刷新均不会代替采用确认。</p>`;
+    }
+
+    function fileRow(file, badges) {
+      return `<li class="file"><div class="file-info"><span class="file-icon" aria-hidden="true">${file[2]}</span><div><div class="file-name">${file[0]}</div><div class="file-meta">${file[1]}</div></div></div><div class="badges">${badges}</div></li>`;
+    }
+
+    function renderSupplement() {
+      let content = '';
+      const available = state.phase === 'paused' || state.phase === 'save-failed';
+      if (state.saved) {
+        content += `<ul class="file-list" id="supplement-files">${fileRow([supplementName, '补充附注 · 2026年9月末 · 09:40 保存（合成）', 'PDF'], `<span class="badge">文件已保存</span><span class="badge ${state.adopted ? '' : 'pending'}" id="supplement-adoption-label">${state.adopted ? '已用于本次任务' : unresolved() ? '采用结果待核对' : '尚未用于本次任务'}</span>`)}</ul>`;
+        if (state.adopted) content += '<p class="hint">09:41 已明确采用本次补充资料。后续处理与最终成果以这份已采用资料为依据。</p>';
+        else if (!state.selected && !unresolved()) content += '<div class="callout"><strong>本次补料草稿已放弃</strong>文件仍已保存，没有删除。原任务仍使用原材料；需要使用这份补料时，可重新加入采用清单。</div>';
+      } else if (['saving','checking-file'].includes(state.phase)) content += `<div class="callout"><strong>${state.phase === 'saving' ? '正在保存示例文件…' : '正在核对原保存结果…'}</strong>${supplementName} · 尚未用于本次任务</div>`;
+      else if (state.phase === 'save-unknown') content += `<div class="callout warning"><strong>文件保存回执未知</strong>${supplementName} · 尚未确认保存，尚未采用。</div><div class="actions"><button id="read-file-save" type="button" data-action="read-file">核对文件保存结果</button></div>`;
+      else if (state.phase === 'save-failed') content += `<div class="callout error"><strong>示例文件未保存</strong>模拟存储中断，${supplementName} 尚未用于本次任务。</div><div class="actions"><button id="retry-file-save" type="button" data-action="sample-file">重试保存示例文件（模拟）</button></div>`;
+      else content += '<p class="hint">本次尚未添加补充资料。</p>';
+
+      if (!state.saved && !['saving','checking-file','save-unknown','save-failed'].includes(state.phase)) content += `<div class="actions"><button id="add-sample-file" type="button" data-action="sample-file" ${available ? '' : 'disabled'} aria-describedby="sample-file-help">添加示例补充文件（模拟）</button></div>`;
+      if (state.saved && !state.selected && !state.adopted && !unresolved()) content += `<div class="actions"><button id="select-saved-file" type="button" data-action="select-saved" ${available ? '' : 'disabled'}>将已保存示例加入本次补料</button></div>`;
+      return `<section class="supplement" aria-labelledby="supplement-title"><h3 id="supplement-title">补充本次材料</h3><p class="intro" id="sample-file-help">${state.phase === 'pausing' ? '正在保存当前工作；只有确认暂停后才开放补料。' : ['running','resumed'].includes(state.phase) ? '先暂停任务并保存当前工作，再补充本次资料。' : state.phase === 'completed' ? '以下为本次资料记录。' : '文件保存与任务采用分开；只有明确采用并继续，才会处理新增资料。'} 示例按钮只添加本页合成文件，不打开文件选择器或上传真实文件。</p>${content}</section>`;
+    }
+
+    function renderReview() {
+      if (!state.selected && !state.adopted && !unresolved()) return '';
+      if (!state.saved && state.phase !== 'conflict') return '';
+      const pending = !state.adopted;
+      let disabledReason = '';
+      if (unresolved()) disabledReason = '采用结果待核对，不能再次采用或继续原材料。';
+      else if (!safePause()) disabledReason = state.adopted ? '本次补料已采用，无需再次采用。' : '请先暂停并保存当前工作。';
+      else if (state.fee !== 'a') disabledReason = 'B另行报价已选择，具体报价规则待确定；尚无可明确确认的追加报价，暂不能采用补料继续。';
+      else if (state.adopted) disabledReason = '本次补料已采用，无需再次采用。';
+      const summary = `<section class="review" aria-labelledby="review-title"><h3 id="review-title">${pending ? '继续时将使用的材料 · 4 份' : '本次已采用的材料 · 4 份'}</h3><div class="review-grid"><div><h4>原有资料 · 3 份，全部保留</h4><ul>${originals.map(file => `<li>${file[0]} <span class="file-meta">${file[1]}</span></li>`).join('')}</ul></div><div><h4>本次新增 · 1 份</h4><ul><li>${supplementName} <span class="file-meta">补充附注 · 2026年9月末</span></li></ul><p class="hint">替换资料：无。未删除或覆盖原资料。</p></div></div><p class="scope"><b>继续处理范围：</b>保留已保存的目录核对与原工作稿，结合补充附注更新财务、偿债能力及受限资产相关正文，再保存双 Word。影响范围不能可靠确定时，核对所有依赖该材料的正文。原有工作和先前处理记录保留。</p></section>`;
+      if (state.adopted) return summary;
+      const fee = state.fee === 'a'
+        ? '<div class="fee" id="fee-explanation"><strong>历史备选A，用户未选择，仅演示交互</strong><p>以下为历史备选A的合成示例：原任务总价 4,500 积分，已消耗 1,200 积分保留；本任务最终总扣款最多 4,500 积分。保存和采用补料本身不扣款，继续处理沿原方式累计。</p><p>用户已选择B另行报价。A的封顶金额与下方采用交互只供演示，不是B的价格、报价规则或费用确认。</p></div>'
+        : '<div class="fee" id="fee-explanation"><strong>B另行报价已选择，具体报价规则待确定</strong><p>必要重做须先另行报价，明确展示追加金额及新上限，并由用户确认后才能采用补料继续。具体计算规则、追加金额和新上限尚未确定，当前采用按钮不可用。</p><p>原任务的已消耗记录保留；保存文件不会启动处理或扣费。</p></div>';
+      let recovery = '';
+      if (['adopt-unknown','conflict'].includes(state.phase)) recovery = `<div class="callout warning"><strong>${state.phase === 'conflict' ? '请读取另一窗口的最新采用结果' : '请先核对采用回执'}</strong>即使页面没有收到响应，也不重复采用。<div class="actions"><button class="primary" id="read-adoption" type="button" data-action="read-adoption">${state.phase === 'conflict' ? '读取最新采用结果' : '核对采用结果'}</button></div></div>`;
+      return summary + fee + recovery + `<div class="adopt-actions"><button id="adopt-resume" type="button" class="primary" data-action="adopt" ${disabledReason ? 'disabled' : ''} aria-describedby="adopt-reason fee-explanation">采用补充材料并继续本次任务</button><button id="discard-draft" type="button" class="text" data-action="discard" ${!safePause() || state.phase !== 'paused' ? 'disabled' : ''}>放弃本次补料草稿</button></div><p class="hint" id="adopt-reason">${disabledReason || '这一次操作将采用上列完整材料，并从已保存工作继续同一任务。原任务和原开始时间保留。'}</p>`;
+    }
+
+    function renderMaterials() {
+      return `<section class="card" id="materials" aria-labelledby="materials-title"><div class="section-head"><h2 id="materials-title" tabindex="-1">项目信息与材料</h2><span class="file-meta">原材料区 · 同一项目、同一任务</span></div><p class="project-meta">发行人：海岚城市建设有限公司（合成）　｜　上交所普通私募　｜　目标报告期：2026年9月末</p><ul class="file-list" id="original-files">${originals.map(file => fileRow(file, '<span class="badge neutral">本次已采用</span>')).join('')}</ul>${renderSupplement()}${renderReview()}</section>`;
+    }
+
+    function renderResults() {
+      if (state.phase !== 'completed') return '';
+      return `<section class="result" id="results" aria-labelledby="result-title"><h2 id="result-title" tabindex="-1">本次成果 · ${state.adopted ? '已反映最新补充材料' : '按原材料完成'}</h2><p id="result-source">${state.adopted ? '资料依据：原有 3 份资料 + 09:41 最新采用的“2026年三季度附注补充.pdf”（2026年9月末）。' : '资料依据：原有 3 份资料。已保存的“2026年三季度附注补充.pdf”未被采用。'}</p><div class="downloads"><div class="download"><strong>清洁版 <span class="badge">适合阅读</span></strong><p>正文已整理，便于阅读和后续编辑。</p><button class="primary" id="download-clean" type="button" data-action="download-clean">下载清洁版（模拟）</button></div><div class="download"><strong>修订版</strong><p>保留本轮增删改痕迹，便于审核。</p><button id="download-revised" type="button" data-action="download-revised">下载修订版（模拟）</button></div></div><div class="result-summary"><h3>更新说明</h3><ul>${state.adopted ? '<li>已结合最新补充附注更新受限资产、偿债能力及相关风险段落。</li><li>合成补料载明：2026年9月末受限货币资金为 2,300 万元；该示例事实已反映在本轮成果说明中。</li><li>原有资料与旧工作记录保留，没有以先前暂存文件代替本次成果。</li>' : '<li>按原有材料继续并完成；未将已保存但未采用的补料写入成果。</li>'}<li>待人工确认：受限资金的担保安排尚缺说明，相关正文保留待确认标记。</li><li>本页仅为合成交付示例，未生成真实 Word，未进行内容或专业审核。</li></ul></div></section>`;
+    }
+
+    function renderHistory() {
+      let items = '<li><time>09:32</time>开始本次募集书全文更新，采用原有 3 份材料。</li><li><time>09:36</time>已保存目录核对结果，继续财务章节。</li>';
+      if (state.pausedOnce) items += '<li><time>09:38</time>用户请求暂停，积分冻结。</li>';
+      if (state.pausedOnce && state.phase !== 'pausing') items += '<li><time>09:39</time>当前工作保存完成，确认暂停。</li>';
+      if (state.saved) items += `<li><time>09:40</time>文件已保存：${supplementName}。保存时尚未采用。</li>`;
+      if (state.adopted) items += `<li><time>09:41</time>已明确采用本次补充材料，继续原任务；原有处理记录保留。</li>`;
+      else if (['adopt-unknown','checking-adoption','conflict'].includes(state.phase)) items += '<li><time>09:41</time>页面采用回执待核对；不重复提交采用。</li>';
+      else if (['resumed','completed'].includes(state.phase)) items += '<li><time>09:41</time>按原材料继续；已保存但未采用的补料不用于本次处理。</li>';
+      if (state.phase === 'completed') items += `<li><time>09:46</time>本次双 Word 成果已生成（模拟）${state.adopted ? '，使用最新采用的补充附注。' : '，仅使用原材料。'}</li>`;
+      return `<details class="history" id="task-history"><summary>查看本次任务过程记录</summary><ol>${items}</ol></details>`;
+    }
+
+    function render() {
+      const historyOpen = $('#task-history')?.open;
+      $('#product-pane').innerHTML = `<header class="page-heading"><div><div class="eyebrow">募集书全文更新</div><h1 id="task-title">海岚城投 · 本次编制任务</h1><p class="task-meta" id="task-identity">原任务开始时间：2026年10月26日 09:32　·　始终继续同一任务</p></div><span class="synthetic">合成项目 · 桌面提案</span></header>${renderStatus()}${renderMeter()}${renderActions()}${state.notice ? `<div class="notice" id="action-notice">${state.notice}</div>` : ''}${renderResults()}${renderMaterials()}${renderHistory()}`;
+      if (historyOpen) $('#task-history').open = true;
+      $('#demo-fee').value = state.fee;
+      $('#demo-scenario').value = state.scenario;
+      $('#demo-receipt').value = state.receipt;
+      $('#demo-fee-state').textContent = state.fee === 'a' ? '当前：历史备选A，用户未选择，仅演示交互；B报价规则仍待确定' : '当前：B另行报价已选择，具体报价规则待确定';
+      $('#demo-counts').textContent = `模拟采用动作：${state.adoptionAttempts} 次 · 只读核对：${state.receiptReads} 次`;
+      $('#demo-complete').disabled = state.phase !== 'resumed' || (state.adopted && state.fee !== 'a');
+    }
+
+    function confirmPause() {
+      state.pausedOnce = true;
+      transition('paused', '当前工作已保存，任务已确认暂停。现在可在原材料区补充资料。');
+    }
+
+    function saveSample() {
+      if (!['paused','save-failed'].includes(state.phase) || state.adopted) return;
+      state.selected = true;
+      state.notice = '';
+      transition('saving', '正在模拟保存补充文件。', '#materials-title');
+      schedule(() => { state.saved = true; transition('paused', '文件已保存，尚未用于本次任务。请核对采用清单。', '#materials-title'); });
+    }
+
+    function finishAdoption(message) {
+      if (state.fee !== 'a') {
+        state.saved = true;
+        state.selected = true;
+        state.adopted = false;
+        state.notice = '“查到已采用”仅为历史备选A的演示回执。当前B具体报价规则待确定，不载入这条A回执，不采用补料，也不继续或完成本次处理。若需查看A恢复交互，请在演示台明确切换历史备选A后重新核对。';
+        transition('adopt-unknown', state.notice, '#read-adoption');
+        return;
+      }
+      state.saved = true;
+      state.selected = false;
+      state.adopted = true;
+      state.notice = message || '已采用本次补充材料，继续的是今日 09:32 开始的原任务。';
+      transition('resumed', state.notice);
+    }
+
+    function showDialog(id, trigger) {
+      returnFocus = trigger;
+      $(id).showModal();
+    }
+
+    function resumeOriginal() {
+      if (state.phase !== 'paused' && state.phase !== 'save-failed') return;
+      if (state.saved && !state.adopted) { showDialog('#original-dialog', $('#resume-original')); return; }
+      state.notice = state.adopted ? '按当前已采用材料继续，保留先前补料采用记录。' : '按原有 3 份材料继续本次任务。';
+      transition('resumed', state.notice);
+    }
+
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-action]');
+      if (!button || button.disabled) return;
+      switch (button.dataset.action) {
+        case 'pause':
+          if (!['running','resumed'].includes(state.phase)) return;
+          state.pausedOnce = true; state.notice = '';
+          transition('pausing', '已请求暂停，积分冻结。正在保存当前工作，尚未确认暂停。');
+          schedule(confirmPause, 1600);
+          break;
+        case 'view-materials': focus('#materials-title'); break;
+        case 'sample-file': saveSample(); break;
+        case 'select-saved':
+          if (state.phase !== 'paused' || !state.saved || state.adopted) return;
+          state.selected = true; state.notice = '已将保存的示例文件加入补料草稿，尚未采用。';
+          persist(); render(); announce(state.notice); focus('#materials-title');
+          break;
+        case 'discard':
+          if (state.phase !== 'paused' || state.adopted) return;
+          state.selected = false; state.notice = '已放弃本次补料草稿。文件仍已保存，原材料与已保存工作保留。';
+          persist(); render(); announce(state.notice); focus('#materials-title');
+          break;
+        case 'resume-original': resumeOriginal(); break;
+        case 'confirm-original':
+          $('#original-dialog').close();
+          state.selected = false; state.notice = '已明确选择原有 3 份材料继续。已保存的补充附注不会用于本次任务，文件仍保留。';
+          transition('resumed', state.notice);
+          break;
+        case 'adopt':
+          if (state.phase !== 'paused' || !state.saved || !state.selected || state.adopted || state.fee !== 'a') return;
+          state.adoptionAttempts += 1; state.notice = '';
+          transition('adopting', '正在模拟采用补充材料并继续同一任务，请勿重复提交。');
+          schedule(() => finishAdoption());
+          break;
+        case 'read-adoption':
+          if (!['adopt-unknown','conflict'].includes(state.phase)) return;
+          state.receiptReads += 1;
+          transition('checking-adoption', '正在只读核对先前采用结果，没有再次提交采用。');
+          schedule(() => {
+            if (state.receipt === 'adopted') finishAdoption('已读回先前的采用回执：补充附注已采用，原任务正在继续。没有再次采用。');
+            else if (state.receipt === 'not-adopted') {
+              state.adopted = false; state.saved = true; state.selected = true;
+              state.notice = '已核对：先前没有采用成功，任务仍暂停。文件已保存，尚未用于本次任务；可再次核对清单后明确采用。';
+              transition('paused', state.notice, '#materials-title');
+            } else {
+              state.notice = '仍无法确认采用结果。保留原请求，稍后再次核对；现在不能重复采用或恢复。';
+              transition('adopt-unknown', state.notice, '#read-adoption');
+            }
+          });
+          break;
+        case 'read-file':
+          if (state.phase !== 'save-unknown') return;
+          transition('checking-file', '正在只读核对文件保存结果，没有再次上传。', '#materials-title');
+          schedule(() => { state.saved = true; state.selected = true; state.notice = '已读回保存结果：文件已保存，但尚未采用。没有再次上传。'; transition('paused', state.notice, '#materials-title'); });
+          break;
+        case 'download-clean':
+        case 'download-revised':
+          if (state.phase !== 'completed') return;
+          $('#download-title').textContent = (button.dataset.action === 'download-clean' ? '清洁版' : '修订版') + ' · 模拟下载';
+          $('#download-source').textContent = state.adopted ? `本次示例成果使用了 09:41 最新采用的“${supplementName}”；合成事实：受限货币资金 2,300 万元。` : '本次示例成果只使用原有 3 份材料；没有采用已保存的补充附注。';
+          showDialog('#download-dialog', button);
+          break;
+        case 'close-dialog': button.closest('dialog').close(); break;
+      }
+    });
+
+    document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('close', () => {
+      if (returnFocus?.isConnected && !returnFocus.disabled) returnFocus.focus();
+      returnFocus = null;
+    }));
+
+    $('#demo-fee').addEventListener('change', (event) => {
+      const previousFee = state.fee;
+      const nextFee = event.target.value === 'a' ? 'a' : '';
+      const leavingHistoricalAdoption = previousFee === 'a' && nextFee !== 'a' &&
+        (state.adopted || state.adoptionAttempts > 0 || unresolved());
+      state.fee = nextFee;
+      if (leavingHistoricalAdoption) {
+        resetHistoricalAdoption('已退出历史备选A演示，并重置其采用、恢复和成果示例；在途A演示已停止。文件保留为已保存、未采用，任务保持暂停。当前B另行报价已选择，具体报价规则待确定，尚未报价或确认。');
+      }
+      persist(); render();
+      announce(leavingHistoricalAdoption ? state.notice : state.fee === 'a' ? '切换为历史备选A，用户未选择，仅演示交互。用户已选择B，具体报价规则待确定。' : 'B另行报价已选择，具体报价规则待确定，采用补料按钮保持禁用。');
+    });
+    $('#demo-receipt').addEventListener('change', (event) => { state.receipt = event.target.value; persist(); });
+    $('#demo-load').addEventListener('click', () => {
+      clearTimeout(timer);
+      const chosen = $('#demo-scenario').value;
+      const fee = $('#demo-fee').value;
+      const receipt = $('#demo-receipt').value;
+      state = initial(chosen); state.fee = fee; state.receipt = receipt;
+      if (chosen === 'completed' && fee !== 'a') {
+        state.adopted = false; state.selected = false; state.adoptionAttempts = 0;
+        state.notice = 'B另行报价已选择，具体报价规则待确定，因此此完成示例仅按原材料完成；补充文件已保存、未采用。仅为审阅交互，可载入用户未选择的历史备选A演示成果，不表示B已报价或确认。';
+      }
+      persist(); render(); announce('已重置为合成场景：' + $('#demo-scenario').selectedOptions[0].textContent);
+      if (chosen === 'pausing') schedule(confirmPause, 1600);
+    });
+    $('#demo-complete').addEventListener('click', () => {
+      if (state.phase !== 'resumed') return;
+      if (state.adopted && state.fee !== 'a') {
+        persist(); render(); announce(state.notice); focus('#status-title');
+        return;
+      }
+      state.notice = '';
+      transition('completed', state.adopted ? '模拟处理完成。本次成果使用最新采用的补充附注，下载区已显示。' : '模拟处理完成。本次成果只使用原材料，没有采用已保存补料。', '#result-title');
+    });
+
+    state = initial(scenarios.includes(params.get('scenario')) ? params.get('scenario') : 'running');
+    if (state.phase === 'completed' && state.fee !== 'a') {
+      state.adopted = false; state.selected = false; state.adoptionAttempts = 0;
+      state.notice = 'B另行报价已选择，具体报价规则待确定。此完成场景只演示原材料成果；补充文件已保存、未采用。';
+    }
+    try {
+      if (performance.getEntriesByType('navigation')[0]?.type === 'reload') {
+        const restored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+        if (restored && typeof restored.phase === 'string') {
+          state = restored;
+          // A missing response is recovered by reading the saved result, never by replaying a submission.
+          if (['adopting','checking-adoption'].includes(state.phase)) state.phase = 'adopt-unknown';
+          if (['saving','checking-file'].includes(state.phase)) state.phase = 'save-unknown';
+          state.notice = '已恢复本页的模拟状态；刷新没有新增采用、上传或任务。';
+        }
+      }
+    } catch (_) { /* The proposal also runs without browser storage. */ }
+    persist(); render();
+    if (state.phase === 'pausing') schedule(confirmPause, 1600);
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "server_version": "16.14",
+  "server_port": "15527",
+  "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/artifact-origin-postgres/data",
+  "schema": [
+    {
+      "filename": "0125_artifact_execution_bindings.sql"
+    },
+    {
+      "filename": "0124_run_execution_business_snapshots.sql"
+    },
+    {
+      "filename": "0123_run_working_file_result_claims.sql"
+    }
+  ],
+  "runs": 0,
+  "executions": 0,
+  "reviews": 0,
+  "m4": 0,
+  "artifacts": 0,
+  "artifact_bindings": 0,
+  "clones": [],
+  "other_clients": [],
+  "postmaster_pid": 15772
+}

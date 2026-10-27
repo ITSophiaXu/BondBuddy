@@ -3,6 +3,8 @@ import { isM4Manifest, m4DocumentScopeSupported, M4_DOCUMENT_BILLING_TASKS, M4_D
 import {validM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { StageContext, RunRow, InputRevisionRow, StageOutcome } from './run-pipeline.js';
+import { readRunExecutionInput, type M4ExecutionInputSnapshot } from '@bondbuddy/api/run-execution-input';
+import { assertRunExecution, runExecutionOrigin, type RunExecutionIdentity } from '@bondbuddy/api/run-execution';
 
 export type M4WorkerMaterial = {pin: M4MaterialPin; filename: string; mediaType: string; objectKey: string};
 export type M4WorkerArtifact = {pin: M4ArtifactPin; filename: string; mediaType: string; objectKey: string; bodyContent?: string};
@@ -34,10 +36,10 @@ async function authorizedMaterial(pool: Pool, owner: string, pin: M4MaterialPin)
     ? {pin, filename: row.filename, mediaType: row.media_type, objectKey: row.object_key} : null;
 }
 async function authorizedArtifact(pool: Pool, owner: string, pin: M4ArtifactPin): Promise<M4WorkerArtifact | null> {
-  const row = (await pool.query(`SELECT a.object_key,a.media_type,a.sha256,m.body_content FROM bb_artifact_versions a
+  const row = (await pool.query(`SELECT a.object_key,a.media_type,a.sha256,m.body_content FROM bb_delivered_artifact_versions a
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id AND p.deleted_at IS NULL
-    LEFT JOIN bb_m4_artifacts m ON m.owner_user_id=a.owner_user_id AND m.artifact_id=a.id AND m.artifact_version=a.version
+    LEFT JOIN bb_m4_artifact_execution_versions m ON m.owner_user_id=a.owner_user_id AND m.artifact_id=a.id AND m.artifact_version=a.version AND m.kind='qa_text'
     WHERE a.owner_user_id=$1 AND r.project_id=$2 AND a.id=$3 AND a.version=$4
       AND a.quality_status='passed' AND a.delivery_status='available'`,
   [owner, pin.source_project_id, pin.artifact_id, pin.artifact_version])).rows[0];
@@ -46,21 +48,40 @@ async function authorizedArtifact(pool: Pool, owner: string, pin: M4ArtifactPin)
       ...(typeof row.body_content === 'string' ? {bodyContent:row.body_content} : {})} : null;
 }
 
-export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionRow): Promise<Extract<StageOutcome, {kind: 'fail' | 'pause'}> | null> {
+export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionRow,
+  execution?: M4ExecutionInputSnapshot | null, expected?: RunExecutionIdentity): Promise<Extract<StageOutcome, {kind: 'fail' | 'pause'}> | null> {
   const fail = {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'} as const;
   const manifest = input.manifest;
   if (!isM4Manifest(manifest) || inputManifestHash(manifest) !== run.input_hash.trim() || input.input_hash.trim() !== run.input_hash.trim()
     || run.task_kind !== (manifest.kind === 'document' ? 'generation' : 'qa')) return fail;
-  const scope = (await pool.query(`SELECT t.source_project_id,COALESCE(p.execution_scope_project_id,p.id) AS scope_id,
-    e.input_hash,e.manifest,j.subtype FROM bb_m4_topics t
+  // Supplied snapshots and standalone gates both use the same exact execution.
+  if (execution !== undefined && (!execution || execution.owner_user_id !== run.owner_user_id
+    || execution.project_id !== run.project_id || execution.run_id !== run.id || execution.topic_id !== manifest.topic_id
+    || typeof execution.input_hash !== 'string' || execution.input_hash.trim() !== run.input_hash.trim()
+    || !same(execution.manifest, manifest))) return fail;
+  if (expected && (expected.inputRevision !== run.input_revision || expected.inputHash !== run.input_hash.trim())) return fail;
+  let identity: RunExecutionIdentity;
+  try {
+    identity = await assertRunExecution(pool, runExecutionOrigin(run), expected);
+    if (identity.inputRevision !== run.input_revision || identity.inputHash !== run.input_hash.trim()
+      || 'executionVersion' in run && identity.executionVersion !== run.executionVersion) return fail;
+    if (execution === undefined) execution = (await readRunExecutionInput(pool, run.owner_user_id, run.id, identity)).m4Execution;
+  } catch (error) {
+    if ((error as { code?: string }).code === 'INPUT_REVISION_CONFLICT') return fail;
+    throw error;
+  }
+  if (!execution || execution.owner_user_id !== run.owner_user_id || execution.project_id !== run.project_id
+    || execution.run_id !== run.id || execution.topic_id !== manifest.topic_id
+    || execution.execution_version !== identity.executionVersion || execution.input_revision !== identity.inputRevision
+    || typeof execution.input_hash !== 'string' || execution.input_hash.trim() !== identity.inputHash
+    || !same(execution.manifest, manifest)) return fail;
+  const scope = (await pool.query(`SELECT t.source_project_id,COALESCE(p.execution_scope_project_id,p.id) AS scope_id,j.subtype FROM bb_m4_topics t
     JOIN bb_projects p ON p.id=t.project_id AND p.owner_user_id=t.owner_user_id AND p.deleted_at IS NULL
     LEFT JOIN bb_projects s ON s.id=t.source_project_id AND s.owner_user_id=t.owner_user_id
-    JOIN bb_m4_executions e ON e.topic_id=t.id AND e.owner_user_id=t.owner_user_id AND e.run_id=$3
-    JOIN bb_jobs j ON j.run_id=e.run_id AND j.owner_user_id=e.owner_user_id
+    JOIN bb_jobs j ON j.run_id=$3 AND j.owner_user_id=t.owner_user_id
     WHERE t.owner_user_id=$1 AND t.id=$2 AND t.project_id=$4 AND (t.source_project_id IS NULL OR s.deleted_at IS NULL)`,
     [run.owner_user_id,manifest.topic_id,run.id,run.project_id])).rows[0];
-  if (!scope || String(scope.input_hash).trim() !== run.input_hash.trim() || !same(scope.manifest,manifest)
-    || scope.subtype !== (manifest.kind === 'document' ? M4_DOCUMENT_SUBTYPE : M4_QA_SUBTYPE)) return fail;
+  if (!scope || scope.subtype !== (manifest.kind === 'document' ? M4_DOCUMENT_SUBTYPE : M4_QA_SUBTYPE)) return fail;
   if (manifest.kind === 'document') {
     if(!m4DocumentScopeSupported(manifest.input.document_type,manifest.market,manifest.offering,!!manifest.input.project_file))return fail;
     if(manifest.billing_task!==M4_DOCUMENT_BILLING_TASKS[manifest.input.document_type])return fail;
@@ -93,7 +114,7 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
     } else if (manifest.template_material) return fail;
     if (manifest.template_material && manifest.input.template?.sha256 !== manifest.template_material.sha256) return fail;
     if(manifest.input.edit_base){const pin=manifest.input.edit_base;
-      const base=(await pool.query(`SELECT kind,document_type FROM bb_m4_artifacts WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3`,
+      const base=(await pool.query(`SELECT kind,document_type FROM bb_m4_execution_artifact_versions WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3`,
         [run.owner_user_id,pin.artifact_id,pin.artifact_version])).rows[0];
       if(!base || base.kind!=='document' || base.document_type!==manifest.input.document_type)return fail;
     }
@@ -105,21 +126,49 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
 
 /** Always reload exact persisted inputs; an open tab or latest draft never chooses the run's source. */
 export async function loadM4WorkerInput(ctx: StageContext): Promise<M4WorkerInput> {
-  const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
-    [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
-  if (!row || !isM4Manifest(row.manifest) || await m4InputGate(ctx.pool, ctx.run, row)) throw Error('INPUT_REVISION_CONFLICT');
-  const manifest = row.manifest;
+  if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.executionVersion !== ctx.lease.executionVersion || ctx.run.inputRevision !== ctx.lease.inputRevision
+    || ctx.run.inputHash !== ctx.lease.inputHash
+    || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
+    throw Error('INPUT_REVISION_CONFLICT');
+  const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);
+  if (resolved.run.project_id !== ctx.run.project_id || resolved.run.task_kind !== ctx.run.task_kind
+    || resolved.run.input_revision !== ctx.run.input_revision || resolved.run.input_hash.trim() !== ctx.run.input_hash.trim())
+    throw Error('INPUT_REVISION_CONFLICT');
+  const row = resolved.input;
+  if (!row || !isM4Manifest(row.manifest) || await m4InputGate(ctx.pool, ctx.run, row, resolved.m4Execution, ctx.lease)) throw Error('INPUT_REVISION_CONFLICT');
+  return loadM4WorkerFiles(ctx.pool, ctx.run.owner_user_id, row.manifest);
+}
+
+/** Exact authorized file reader shared after the production gate and by internal
+ * candidate preparation. It grants no execution or artifact registration authority. */
+async function loadM4WorkerFiles(pool: Pool, owner: string, manifest: M4Manifest): Promise<M4WorkerInput> {
   const materials: M4WorkerMaterial[] = [], artifacts: M4WorkerArtifact[] = [];
   for (const pin of materialPins(manifest)) {
-    const file = await authorizedMaterial(ctx.pool, ctx.run.owner_user_id, pin);
+    const file = await authorizedMaterial(pool, owner, pin);
     if (!file) throw Error('INPUT_REVISION_CONFLICT');
     materials.push(file);
   }
   for (const pin of artifactPins(manifest)) {
-    const file = await authorizedArtifact(ctx.pool, ctx.run.owner_user_id, pin);
+    const file = await authorizedArtifact(pool, owner, pin);
     if (!file) throw Error('INPUT_REVISION_CONFLICT');
     artifacts.push(file);
   }
   if (manifest.kind === 'document' && manifest.input.source_material && !materials.some(m => same(m.pin, manifest.input.source_material))) throw Error('INPUT_REVISION_CONFLICT');
   return {manifest, materials, artifacts};
+}
+
+/** A candidate is checked against a real original execution; its hash is never
+ * substituted into a run, lease or business snapshot to make the live gate pass. */
+export async function loadM4SupplementInput(input: {pool: Pool; owner: string; projectId: string; runId: string;
+  sourceExecution: RunExecutionIdentity; manifest: unknown; candidateInputHash: string}) {
+  const resolved = await readRunExecutionInput(input.pool, input.owner, input.runId, input.sourceExecution);
+  const source = resolved.input.manifest, candidate = input.manifest;
+  if (resolved.run.project_id !== input.projectId || !isM4Manifest(source) || source.kind !== 'document'
+    || !isM4Manifest(candidate) || candidate.kind !== 'document'
+    || inputManifestHash(candidate) !== input.candidateInputHash
+    || !same({...source, input: {...source.input, materials: candidate.input.materials}}, candidate)
+    || await m4InputGate(input.pool, resolved.run, resolved.input, resolved.m4Execution, input.sourceExecution))
+    throw Error('INPUT_REVISION_CONFLICT');
+  return {input: await loadM4WorkerFiles(input.pool, input.owner, candidate), run: resolved.run};
 }

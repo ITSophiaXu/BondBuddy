@@ -1,0 +1,10 @@
+{
+  "recorded_at": "2026-10-26T14:34:31.147Z",
+  "owned_dispatch_pid": 51120,
+  "started": "2026-10-26T14:01:42.277Z",
+  "finished": "2026-10-26T14:09:58.134Z",
+  "status": null,
+  "meaning": "Owned ChildProcess.kill() succeeded after taskkill returned Access denied; finished status null reflects signal exit. No test counts adopted.",
+  "prior_record": "api-all-aborted.json records taskkill attempt time, not process exit",
+  "observed_error": null
+}

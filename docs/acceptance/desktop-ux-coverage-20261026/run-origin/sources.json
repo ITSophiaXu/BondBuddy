@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-26T09:20:02.91Z",
+  "baseCommit": "a79c7ba02afaef837d12ceb32551e8b605913de2",
+  "scope": "Run origin UPDATE immutability prerequisite only. No execution-version adoption or supplemental pricing implemented.",
+  "environment": {
+    "os": "Windows",
+    "node": "v24.22.1",
+    "postgres": "16.14",
+    "host": "127.0.0.1:15526",
+    "database": "bb_g03_template_20261026",
+    "runtimeEnabled": true,
+    "providerCalls": false,
+    "paymentCalls": false,
+    "blob": "synthetic in-memory"
+  },
+  "results": {
+    "red": {
+      "passed": 0,
+      "failed": 9,
+      "skipped": 0
+    },
+    "firstGreen": {
+      "passed": 33,
+      "failed": 1,
+      "skipped": 1
+    },
+    "final": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 1,
+      "durationMs": 84528.2694
+    },
+    "apiBuild": "passed",
+    "workerBuild": "passed"
+  },
+  "database": {
+    "version": "16.14",
+    "lastMigration": "0117_run_origin_input_immutable.sql",
+    "originTrigger": [
+      {
+        "tgname": "bb_run_origin_immutable",
+        "tgenabled": "O"
+      }
+    ],
+    "remainingTestClones": 0,
+    "templateRuns": 0
+  },
+  "modifiedSourceHashesUnchangedDuringVerification": true,
+  "sources": [
+    {
+      "path": "db/migrations/0117_run_origin_input_immutable.sql",
+      "sha256": "7dc6b34974a2e84b96a20567dca03e86ae76fa0b27ac08324c6e8be5442f5551"
+    },
+    {
+      "path": "apps/api/src/run-origin-immutability.pg.test.ts",
+      "sha256": "88ce56370f02afe1dcddd60c7fbe7668d336070dd655e217a0da234b279730df"
+    },
+    {
+      "path": "apps/api/src/queue.test.ts",
+      "sha256": "0849a051ccea96f936cfb26230258eef74ba323e8ab7f533430e7b6254beb411"
+    },
+    {
+      "path": "apps/worker/src/review-reassembly.test.ts",
+      "sha256": "bb1ccd89c67141f40fb3d83b579cf9acefd4cfa5318f822d8d7d5f1e01ef37f5"
+    }
+  ],
+  "referenceSuiteSources": [
+    {
+      "path": "apps/worker/src/authoring-pause.pg.test.ts",
+      "sha256": "1a2b962ec3426d486a99a3d9f914bdc3ef6a2a3b8091c2117d90e9b743c710ad"
+    },
+    {
+      "path": "apps/api/src/authoring-dynamic-balance.pg.test.ts",
+      "sha256": "014c73a335f42fa3e798265c423ef8e8e7648a3687613a8ccd991b6c0fd23940"
+    },
+    {
+      "path": "apps/api/src/review-dynamic-balance.pg.test.ts",
+      "sha256": "1ebffb100ca63229963c3138fe94491dc1a62867da7789ea2771ef57f6eed384"
+    },
+    {
+      "path": "apps/api/src/m4-dynamic-balance.pg.test.ts",
+      "sha256": "0892c4938a7aefcb30657301b68ff059862a381bb7a836817c8d18ec85077297"
+    }
+  ],
+  "postgresStoppedAfterVerification": true
+}

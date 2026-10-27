@@ -1,0 +1,71 @@
+{
+  "audited_at": "2026-10-27T02:47:21.482Z",
+  "read_only_maintenance_database": "postgres@127.0.0.1:15542",
+  "cases": [
+    {
+      "round": 4,
+      "kind": "authoring",
+      "clone": "bb_prod_supplement02_20261027_t44004_3439107a",
+      "normal_cleanup_receipt_present": true,
+      "normal_cleanup_receipt": {
+        "clone_name": "bb_prod_supplement02_20261027_t44004_3439107a",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "round": 4,
+      "kind": "review",
+      "clone": "bb_prod_supplement02_20261027_t36332_25995406",
+      "normal_cleanup_receipt_present": true,
+      "normal_cleanup_receipt": {
+        "clone_name": "bb_prod_supplement02_20261027_t36332_25995406",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "round": 4,
+      "kind": "m4",
+      "clone": "bb_prod_supplement02_20261027_t37020_0cf63735",
+      "normal_cleanup_receipt_present": true,
+      "normal_cleanup_receipt": {
+        "clone_name": "bb_prod_supplement02_20261027_t37020_0cf63735",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "round": 5,
+      "kind": "authoring",
+      "clone": "bb_prod_supplement02_20261027_t49876_2d6471fd",
+      "normal_cleanup_receipt_present": true,
+      "normal_cleanup_receipt": {
+        "clone_name": "bb_prod_supplement02_20261027_t49876_2d6471fd",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "round": 5,
+      "kind": "review",
+      "clone": "bb_prod_supplement02_20261027_t49876_43c274cd",
+      "normal_cleanup_receipt_present": false,
+      "normal_cleanup_receipt": null
+    },
+    {
+      "round": 5,
+      "kind": "m4",
+      "clone": "bb_prod_supplement02_20261027_t53052_521b74ae",
+      "normal_cleanup_receipt_present": true,
+      "normal_cleanup_receipt": {
+        "clone_name": "bb_prod_supplement02_20261027_t53052_521b74ae",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    }
+  ],
+  "owned_clones_remaining": [],
+  "round5_result": "2 passed / 1 timeout in teardown after all business assertions; not a full pass",
+  "review_note": "Round5 review normal cleanup receipt is absent. Clone absence is a later read-only audit, not proof r.close completed."
+}

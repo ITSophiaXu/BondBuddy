@@ -143,11 +143,16 @@ test('editable task card uses quarters and optional requirements; insufficient i
 });
 test('desktop, focus and narrow assistant stay within viewport and preserve normal page layout',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();
- for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ const panel=page.locator('.ba-panel');
+ // Opening reads the conversation asynchronously and can repaint between a
+ // visibility check and a separate geometry read. Retry the same assertions on
+ // the current panel instead of dereferencing a detached element's null box.
+ const bounds=async()=>{const box=await panel.boundingBox();expect(box).not.toBeNull();return box!;};
+ for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(async()=>{await expect(panel).toBeVisible();const box=await bounds();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}).toPass({timeout:5000});
   if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
- await page.setViewportSize({width:1440,height:960});const normal=(await page.locator('.ba-panel').boundingBox())!.width;
- await page.locator('[data-a=wide]').click();expect((await page.locator('.ba-panel').boundingBox())!.width).toBeGreaterThan(normal);
- const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(errors).toEqual([]);
+ await page.setViewportSize({width:1440,height:960});let normal=0;await expect(async()=>{normal=(await bounds()).width;expect(normal).toBeGreaterThan(0);}).toPass({timeout:5000});
+ await page.locator('[data-a=wide]').click();await expect(async()=>expect((await bounds()).width).toBeGreaterThan(normal)).toPass({timeout:5000});
+ await expect(async()=>{const main=await page.locator('.shell').boundingBox(),box=await bounds();expect(main).not.toBeNull();expect(main!.x+main!.width).toBeLessThanOrEqual(box.x+1);}).toPass({timeout:5000});expect(errors).toEqual([]);
 });
 
 test('attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload',async({page})=>{

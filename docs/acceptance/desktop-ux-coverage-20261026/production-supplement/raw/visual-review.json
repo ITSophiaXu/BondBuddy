@@ -1,0 +1,97 @@
+{
+  "record_type": "read-only visual review of round2 screenshot evidence",
+  "recorded_at_utc": "2026-10-27T02:31:38.397352+00:00",
+  "reviewer_task": "/root/review_body_tests/visual_evidence_check",
+  "scope": "Only the four named round2 screenshots were visually inspected in this review.",
+  "desktop_viewport": {
+    "width": 1440,
+    "height": 960,
+    "source": "real browser test viewport configuration; full-page PNG dimensions are recorded separately"
+  },
+  "screenshots": [
+    {
+      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round2\\authoring\\b1-quote-full.png",
+      "purpose": "M1 quote",
+      "actually_viewed": true,
+      "viewing_tool": "functions view_image (rendered image visually inspected)",
+      "png_width": 1440,
+      "png_height": 3039,
+      "metadata_source": "PNG IHDR bytes",
+      "sha256": "4e960379e26cdf9465fd68e437d5de94f8a5b441cd583fc5e3c1c360598849b1",
+      "bytes": 283964,
+      "observations": [
+        "The paused task, saved work and supplement draft marked not yet adopted are visible.",
+        "The fee section explicitly shows an additional total of 4500 points and a confirmation button to add 4500 points and continue.",
+        "No visible overlapping controls, clipping or horizontal overflow in this full-page desktop screenshot."
+      ]
+    },
+    {
+      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round2\\authoring\\successor-word-downloaded-full.png",
+      "purpose": "M1 completed download",
+      "actually_viewed": true,
+      "viewing_tool": "functions view_image (rendered image visually inspected)",
+      "png_width": 1440,
+      "png_height": 2800,
+      "metadata_source": "PNG IHDR bytes",
+      "sha256": "1be73ca2296ffb2d1d733b7d3ca83c85181db30bb1d9081e866aece266cdf2e5",
+      "bytes": 263545,
+      "observations": [
+        "The task states that the document has been generated and can be downloaded.",
+        "The download section identifies the current result as version 2 and offers clean and tracked downloads.",
+        "The clean download shows a browser-download handoff message; the adopted supplement summary shows the additional 4500 points.",
+        "No visible overlapping controls, clipping or horizontal overflow in this full-page desktop screenshot."
+      ]
+    },
+    {
+      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round2\\m4\\b1-quote-full.png",
+      "purpose": "M4 quote",
+      "actually_viewed": true,
+      "viewing_tool": "functions view_image (rendered image visually inspected)",
+      "png_width": 1440,
+      "png_height": 3167,
+      "metadata_source": "PNG IHDR bytes",
+      "sha256": "402d53032180af00b4cf5304bd09215b8adde1abc6ce1256d9ea2360c1892709",
+      "bytes": 275066,
+      "observations": [
+        "The paused task and supplement draft marked not yet adopted are visible.",
+        "The fee section explicitly shows an additional total of 4500 points and a confirmation button to add 4500 points and continue.",
+        "No visible overlapping controls, clipping or horizontal overflow in this full-page desktop screenshot."
+      ]
+    },
+    {
+      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round2\\m4\\successor-word-downloaded-full.png",
+      "purpose": "M4 completed download",
+      "actually_viewed": true,
+      "viewing_tool": "functions view_image (rendered image visually inspected)",
+      "png_width": 1440,
+      "png_height": 2176,
+      "metadata_source": "PNG IHDR bytes",
+      "sha256": "7eb8ecc60e66b1b47b82ecc76d738dbd6bb421ca4bdd2b5e554a2f7b343dd0a9",
+      "bytes": 211418,
+      "observations": [
+        "The task states that the document has been generated and can be downloaded.",
+        "The current artifact is labelled draft 2 and its displayed filename includes V2.",
+        "The main Word download and preparation-note download are distinct; the main Word download shows a browser-download handoff message.",
+        "No visible overlapping controls, clipping or horizontal overflow in this full-page desktop screenshot."
+      ]
+    }
+  ],
+  "observed_conclusion": "The additional 4500-point consent and completed-download states are visually understandable; no obvious desktop layout obstruction was seen in these four images.",
+  "product_asset_at_round2_capture": {
+    "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\dist\\assets\\index-CumTaIPJ.js",
+    "sha256": "f9fc10bb5746c5e07ea61b4811688d5f451ad0be435f2f0d14bccbeb0f5650eb",
+    "bytes": 1662864,
+    "round2_before_after_asset_manifest_identical": true,
+    "round2_before_manifest": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round2\\source-before.json",
+    "round2_after_manifest": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round2\\source-after.json",
+    "basis": "Association is from the frozen round2 source manifests; this review does not claim that later screenshots or test rounds were visually inspected."
+  },
+  "limitations": [
+    "The quotation section is low on each long page and requires scrolling from the initial desktop viewport.",
+    "This is a visual screenshot review; the screenshots alone do not prove actual HTTP delivery, Word file contents, or financial correctness.",
+    "The supplier/provider output and credit grants used by these test fixtures are synthetic. No real supplier or real payment was validated.",
+    "The five wallet checkpoints, ledger conservation and pause-clock behavior were not visually reviewed here.",
+    "The review covers the recorded 1440-pixel desktop viewport only; mobile layout, keyboard navigation and accessibility were not evaluated.",
+    "No source, supplier fixture, built asset, or existing screenshot was changed by this visual-review record."
+  ]
+}

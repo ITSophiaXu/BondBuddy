@@ -24,6 +24,10 @@ import {m4DocumentStage} from './m4-document-stage.js';
 import {projectFileModelStage,projectFileDeliveryStage} from './project-file-stage.js';
 import {historicalWordDeliveryStage} from './historical-word-stage.js';
 import {inspectProjectFile} from './project-file-tools.js';
+import type {writeRunWorkingFile} from '@bondbuddy/api/run-working-files';
+
+// Synthetic M4 collector IO; this writer deliberately makes no registry DB claim.
+const syntheticWriter:typeof writeRunWorkingFile=async input=>input.blobs.put(input.key,input.bytes,input.mediaType);
 
 const database=await isolatedTestDatabase(undefined,'project-files-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -86,7 +90,7 @@ test('project files: template batch, provenance, real checks with synthetic mode
     return result;
   }};
   const execute=(operation:boolean)=>runPipelineOnce({pool,blobs,leaseSeconds:120,runKinds:['generation'],
-    stages:[inputLockStage,materialsReadyStage,operation?replaySafeFileStage:m4DocumentStage({config,model}),operation?projectFileDeliveryStage():historicalWordDeliveryStage()],
+    stages:[inputLockStage,materialsReadyStage,operation?replaySafeFileStage:m4DocumentStage({config,model,writer:syntheticWriter}),operation?projectFileDeliveryStage():historicalWordDeliveryStage()],
     onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'files_'+randomUUID().slice(0,8)]);

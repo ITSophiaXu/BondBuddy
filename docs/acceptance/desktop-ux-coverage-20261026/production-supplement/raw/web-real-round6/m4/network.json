@@ -1,0 +1,422 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/bceab6f6-97ea-42fc-8b66-22e92d3ed8cd",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/pause",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-adoptions/current",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-draft",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/projects/3b4734bd-caa4-4691-98fc-06e0bd73a57e/materials/uploads",
+    "status": 201
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/projects/3b4734bd-caa4-4691-98fc-06e0bd73a57e/materials/uploads/1e2c639d-87ce-4a4e-85e4-06eb17419bb8/bytes",
+    "status": 204
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/projects/3b4734bd-caa4-4691-98fc-06e0bd73a57e/materials/uploads/1e2c639d-87ce-4a4e-85e4-06eb17419bb8/complete",
+    "status": 200
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-draft",
+    "status": 200,
+    "body": {
+      "request_id": "ec900cf4-bdb4-4617-99e6-93719af60283",
+      "expected_revision": 1,
+      "base_input_revision": 1,
+      "base_input_hash": "888a7cfd0546cc253ded79cfc49c71683ebfe9ff62f509d354869609fe7ba4c8",
+      "changes": [
+        {
+          "material": {
+            "material_id": "c590a9cf-3086-45b1-b34d-daf41be2469c",
+            "material_version": 1,
+            "sha256": "0388731e175d2715a886b3cb060b11966dc2a2318980eb62d02057cc18fc6fc6"
+          },
+          "replaces": null
+        },
+        {
+          "material": {
+            "material_id": "7afb1748-939e-4804-828f-f1069dc4c058",
+            "material_version": 1,
+            "sha256": "78d934e3bf3e60af8d34c9876cea72753f18d64a7d42594076ecb8776cd7b334"
+          },
+          "replaces": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-quotes",
+    "status": 200,
+    "body": {
+      "request_id": "243ac20c-9dc4-42a8-a7e7-4166c0992d89",
+      "supplement_revision": 2,
+      "saved_request_id": "ec900cf4-bdb4-4617-99e6-93719af60283",
+      "candidate_input_hash": "c48e5b1c81f58b836c9c5d1e2aa16f0ba180fcf5d92f73e72d16edb6c0eb5be7"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/bceab6f6-97ea-42fc-8b66-22e92d3ed8cd",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-adoptions/current",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-quotes/d5ba02f3-1869-4474-8fa0-84cba27ca219",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-draft",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-quotes/d5ba02f3-1869-4474-8fa0-84cba27ca219/confirm",
+    "status": 200,
+    "body": {
+      "request_id": "0537fb50-10cb-4d3e-af13-42ff7db60b9a",
+      "quote_hash": "54569124b7b64dc3ca7e6449cabb0e1ab0e43cc9dafc50d39b0d004557f4c985"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-adoptions",
+    "status": 200,
+    "body": {
+      "request_id": "909c5abc-de10-4915-a3af-41fa44f9a51f",
+      "quote_id": "d5ba02f3-1869-4474-8fa0-84cba27ca219",
+      "confirmation_id": "a5e53d7b-88c0-4ff3-94c3-073a07c51ab6",
+      "quote_hash": "54569124b7b64dc3ca7e6449cabb0e1ab0e43cc9dafc50d39b0d004557f4c985"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/pause",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/bceab6f6-97ea-42fc-8b66-22e92d3ed8cd",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-adoptions/current",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/supplement-adoptions/current",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/3b4734bd-caa4-4691-98fc-06e0bd73a57e",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/78a5a5e4-6efb-4243-9d99-c44d881fd84d/resume",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/topics/8706d58e-b248-4b35-aa1c-6ccf65df945f/workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/artifacts/word-b57aabd1116ff5cc334785923cb88eb7bdb9bf0a9d42a580bffd65f3932fd767/versions/1/preview",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/m4/artifacts/word-b57aabd1116ff5cc334785923cb88eb7bdb9bf0a9d42a580bffd65f3932fd767/versions/1/bytes",
+    "status": 200
+  }
+]

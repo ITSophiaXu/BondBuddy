@@ -1,0 +1,70 @@
+{
+  "observedAt": "2026-10-27T01:28:34.408Z",
+  "template": "bb_segments_final02_20261027",
+  "intermediates": [
+    "bb_segments_template_20261027",
+    "bb_segments_final_20261027"
+  ],
+  "cluster": {
+    "current_user": "bb_successor_test",
+    "port": 15542,
+    "data": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data"
+  },
+  "clientsBefore": [],
+  "databasesBefore": [
+    {
+      "datname": "bb_b1_template_20261027",
+      "owner": "bb_successor_test"
+    },
+    {
+      "datname": "bb_segments_final02_20261027",
+      "owner": "bb_successor_test"
+    },
+    {
+      "datname": "bb_segments_final_20261027",
+      "owner": "bb_successor_test"
+    },
+    {
+      "datname": "bb_segments_template_20261027",
+      "owner": "bb_successor_test"
+    },
+    {
+      "datname": "bb_successor_template_20261027",
+      "owner": "bb_successor_test"
+    },
+    {
+      "datname": "bb_successor_word_final_20261027",
+      "owner": "bb_successor_test"
+    }
+  ],
+  "removed": [
+    "bb_segments_template_20261027",
+    "bb_segments_final_20261027"
+  ],
+  "clientsAfter": [],
+  "databasesAfter": [
+    {
+      "datname": "bb_b1_template_20261027"
+    },
+    {
+      "datname": "bb_segments_final02_20261027"
+    },
+    {
+      "datname": "bb_successor_template_20261027"
+    },
+    {
+      "datname": "bb_successor_word_final_20261027"
+    }
+  ],
+  "templateState": {
+    "migrations": 137,
+    "latest": "0138_run_billing_segments.sql",
+    "runs": 0,
+    "reservations": 0,
+    "segments": 0,
+    "bindings": 0,
+    "meters": 0
+  },
+  "completedAt": "2026-10-27T01:28:35.906Z",
+  "success": true
+}

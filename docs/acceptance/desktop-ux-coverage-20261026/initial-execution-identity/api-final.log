@@ -1,0 +1,99 @@
+▶ OCR interrupted settlement is isolated by purpose and exact execution identity
+  ✔ source preflight never settles live or cancelled full OCR batches and only settles its own purpose (594.0499ms)
+  ✔ wrong full OCR identity under the same token is a no-op; valid current identity settles only its own run (248.9134ms)
+✔ OCR interrupted settlement is isolated by purpose and exact execution identity (846.2762ms)
+▶ independent prompt registration requires the initial execution before Blob writes and intent locks
+  ✔ V1 registers with exact input pins and with legacy optional pins omitted (431.9323ms)
+  ✔ missing execution rejects both independent registration paths without new durable evidence (34.9701ms)
+  ✔ wrong_hash execution rejects both independent registration paths without new durable evidence (33.1418ms)
+  ✔ wrong owner, project, revision and hash retain their original not-found semantics (78.1042ms)
+  ✔ waiting for the run leaves its committed intent available to another transaction (125.8426ms)
+  ✔ a project-first writer can lock the run while snapshot registration waits for the project (47.7443ms)
+✔ independent prompt registration requires the initial execution before Blob writes and intent locks (757.2136ms)
+▶ runtime evidence shares run -> job lock order with renewal and cancellation
+  ✔ renewal keeps the job lock available while runtime waits for the run (441.0745ms)
+  ✔ cancellation wins before evidence locks and prevents a late runtime insert (56.4049ms)
+  ✔ owner, project, token and expired lease remain enforced (34.3644ms)
+  ✔ every independent provider boundary rejects a different execution version or input under the same live token (98.3693ms)
+✔ runtime evidence shares run -> job lock order with renewal and cancellation (634.2081ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (5715.1547ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4808ms) # SKIP
+▶ review actions preserve execution state and obey owner, lease, replay and terminal boundaries
+  ✔ atomic progress/outbox, stable identity, no stage/checkpoint or billing mutation (270.0888ms)
+  ✔ expired/wrong leases, foreign owners, paused and terminal tasks reject late actions (108.0779ms)
+  ✔ a cancelled task winning the run lock cannot receive in-flight activity (143.1685ms)
+✔ review actions preserve execution state and obey owner, lease, replay and terminal boundaries (524.7795ms)
+✔ long review timelines retain bounded completed categories with ordering, deduplication and owner/project isolation (1952.6662ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (2672.2506ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (179.3867ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (734.6792ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (373.5033ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (3963.2884ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (152.8982ms)
+  ✔ owner (166.4922ms)
+  ✔ project (163.9758ms)
+  ✔ input revision (161.6624ms)
+  ✔ input hash (166.6249ms)
+  ✔ execution request id (153.7004ms)
+  ✔ request hash (161.0899ms)
+  ✔ valid successor input pair (157.5885ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (3147.5437ms)
+✔ real review-result update can prepare supplements and resume its original input (1990.4057ms)
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (39.512ms)
+  ✔ old request receipt survives a later save and explicit resume (92.7512ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1418.2406ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (81.6393ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (293.6045ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1356.5073ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (633.4473ms)
+  ✔ wrong hash (93.481ms)
+  ✔ wrong owner (14.3035ms)
+  ✔ wrong project (16.2583ms)
+  ✔ duplicate additions (16.7861ms)
+  ✔ unknown replacement (16.5929ms)
+  ✔ duplicate replacements (16.6641ms)
+  ✔ different role (16.1844ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (1096.7739ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (808.6486ms)
+  ✔ saving (53.1471ms)
+  ✔ paused_lease (54.5464ms)
+  ✔ automatic_pause (71.1023ms)
+  ✔ pending_provider (100.0695ms)
+  ✔ completed_unknown (57.5349ms)
+  ✔ failed_unknown (57.5539ms)
+  ✔ terminal (60.2777ms)
+  ✔ archived (47.0288ms)
+  ✔ unsupported (45.8671ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (115.901ms)
+  ✔ deleted project is owner-safe 404 (17.7057ms)
+  ✔ test-channel metadata obeys the deployment read gate (23.6405ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1634.237ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (1202.6444ms)
+  ✔ m3 (92.4267ms)
+  ✔ m4 (79.26ms)
+  ✔ inconsistent M3 version is unavailable (43.1716ms)
+  ✔ inconsistent M3 operation is unavailable (42.5231ms)
+  ✔ inconsistent M3 origin is unavailable (60.7217ms)
+  ✔ inconsistent M3 missing_review is unavailable (37.0614ms)
+  ✔ inconsistent review-result update source_run is unavailable (43.2057ms)
+  ✔ inconsistent review-result update source_pin is unavailable (45.0915ms)
+  ✔ inconsistent review-result update materials is unavailable (42.2931ms)
+  ✔ inconsistent review-result update requirements is unavailable (46.0285ms)
+  ✔ inconsistent review-result update operation is unavailable (37.3947ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (78.7686ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1976.159ms)
+ℹ tests 80
+ℹ suites 0
+ℹ pass 79
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 104675.8817

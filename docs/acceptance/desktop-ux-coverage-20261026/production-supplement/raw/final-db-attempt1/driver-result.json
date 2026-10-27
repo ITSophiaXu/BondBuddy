@@ -1,0 +1,11 @@
+{
+  "command": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe",
+  "args": [
+    ".local/production-supplement-20261027/final-db-audit.mjs",
+    "--stop"
+  ],
+  "code": 1,
+  "signal": null,
+  "stdout": "",
+  "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: pg_ctl: could not send stop signal (PID: 17984): Operation not permitted\r\r\n\r\n\r\n1 !== 0\r\n\r\n    at file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/production-supplement-20261027/final-db-audit.mjs:42:8 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 1,\r\n  expected: 0,\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.22.1\r\n"
+}

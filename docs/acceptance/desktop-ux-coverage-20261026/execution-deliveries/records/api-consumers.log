@@ -1,0 +1,340 @@
+✔ #34 PG16 project Word history: complete pairs, stable pages, isolation and failure boundaries (129600.5535ms)
+✔ eleven distinct case layouts select by type, market, offering and explicit variant; bytes are pinned (290.742ms)
+✔ new material validation is actionable without changing existing initiation requirements (1.5964ms)
+✔ missing material generation input returns all actionable fields without tasks, quotes or charges (1445.0375ms)
+✔ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (6113.0089ms)
+✔ synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes (1816.6376ms)
+✔ synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage (2027.0703ms)
+✔ M4 free task preparation and unavailable capabilities do not turn basic QA into free help (0.9588ms)
+✔ product help remains free with selected sources while mixed professional questions remain paid (1.8617ms)
+✖ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (6899.9594ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.6354ms)
+✔ assistant baseline choices retain exact delivered names, pair and time after current run/job projections change (3655.1351ms)
+✔ global assistant persistence, owner isolation, no implicit execution and create retries (6094.5782ms)
+✔ project collection keeps the delivered names, file groups and exact members after mutable job/primary changes (4056.2672ms)
+﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.7941ms) # SKIP
+✔ batch recovery code is part of the public error contract (1.2879ms)
+✔ an accepted receipt is returned before inspecting a changed current source or draft (366.4964ms)
+✔ a missing receipt and advanced source selection return a trusted expired rejection (42.1319ms)
+✔ re-adopting the same source still expires the old selection revision without a receipt (24.642ms)
+✔ an early archived-project conflict never becomes proof that an old receipt is missing (23.4186ms)
+✔ a missing receipt and advanced persisted draft return the trusted expired code (20.7654ms)
+✔ idempotency and active-batch conflicts retain their original public codes (44.313ms)
+✔ unavailable sources and future input versions do not claim irreversible expiry (67.6926ms)
+✔ authorization failure never becomes an expired-input receipt (18.7893ms)
+✔ old exact check is readable outside the unchanged recent 30 and retains original pins and all updates (357.0396ms)
+✔ old check marks a changed source adoption as stale without replacing its fixed source (23.9746ms)
+✔ old running check does not expose a stored result as completed (21.9075ms)
+✔ exact check returns the same safe 404 for missing (23.4931ms)
+✔ exact check returns the same safe 404 for other owner (16.0484ms)
+✔ exact check returns the same safe 404 for other project (15.8583ms)
+✔ exact check returns the same safe 404 for mismatched project (18.3724ms)
+✔ exact check returns the same safe 404 for patch operation (15.2903ms)
+✔ exact check returns the same safe 404 for foreign project (13.869ms)
+✔ deleted project is rejected before reading any source or operation (16.1374ms)
+✔ unauthenticated exact read never queries the database (13.2823ms)
+✔ accepted old update reads its exact original check outside the unchanged recent thirty and retains V2 separately from a later V3 retry (384.546ms)
+✔ an original running update remains distinct from its successful retry and has no invented delivery (30.6317ms)
+✔ an original paused update remains distinct from its successful retry and has no invented delivery (26.4129ms)
+✔ an original failed update remains distinct from its successful retry and has no invented delivery (25.6583ms)
+✔ an original cancelled update remains distinct from its successful retry and has no invented delivery (18.8163ms)
+✔ accepted-update history rejects no-acceptance with the same safe 404 (17.2359ms)
+✔ accepted-update history rejects other-owner with the same safe 404 (18.5633ms)
+✔ accepted-update history rejects other-project with the same safe 404 (16.8434ms)
+✔ accepted-update history rejects run-project with the same safe 404 (13.8983ms)
+✔ accepted-update history rejects not-patch with the same safe 404 (20.6931ms)
+✔ accepted-update history rejects duplicate-acceptance with the same safe 404 (14.8064ms)
+✔ accepted-update history rejects manifest-check with the same safe 404 (13.3014ms)
+✔ accepted-update history rejects manifest-file with the same safe 404 (12.9845ms)
+✔ accepted-update history rejects manifest-family with the same safe 404 (15.6705ms)
+✔ accepted-update history rejects manifest-sha with the same safe 404 (15.6512ms)
+✔ accepted-update history rejects manifest-source with the same safe 404 (15.9758ms)
+✔ accepted-update history rejects malformed-manifest with the same safe 404 (13.3322ms)
+✔ accepted-update history rejects missing-check with the same safe 404 (13.714ms)
+✔ accepted-update history rejects duplicate-update with the same safe 404 (15.9072ms)
+✔ accepted-update history rejects wrong-projected-file with the same safe 404 (14.4698ms)
+✔ accepted-update history rejects duplicate-file with the same safe 404 (20.4308ms)
+✔ accepted-update history refuses missing patch (18.7601ms)
+✔ accepted-update history refuses check used as patch (22.1053ms)
+✔ accepted-update history refuses different owned project (14.92ms)
+✔ accepted-update history refuses foreign project (20.068ms)
+✔ deleted project and unauthenticated session are rejected before reading update or check records (31.1676ms)
+✔ accepted-update history OpenAPI reuses the public check DTO and owned GET path parameters (0.9584ms)
+✔ owner conversion preserves the old input and refuses its preflight and execute; replay is durable (1536.7287ms)
+✔ conversion rejects historical material and terminal run, and serializes against a new input lock (2188.2531ms)
+✔ conversion rejects a completed historical upload without a material version, but permits a deleted material (976.0324ms)
+✔ #10 PostgreSQL global search, literal names, tied cursor pages, archive isolation and transaction rollback (10857.2638ms)
+✔ #10 actual run status and previous successful Word remain available after a newer failure and archive (10720.7768ms)
+✔ reply citations require the actual immutable report, never finding text (2.7395ms)
+✔ legacy origin is explicitly unknown and nested internal fields never reach a task card (0.9923ms)
+✔ M3 proposals explicitly adopt, lock executable requirements and project one durable task timeline (4058.2446ms)
+✔ an adopted typed revision can become a new quick-action scope without losing requirements or rewriting its prior execution (1442.6214ms)
+✖ readable report keeps valid legacy files readable and accepts exact live registry metadata (378.1618ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✖ prompt_snapshot (353.0123ms)
+  ✖ provider_result (326.5025ms)
+✖ readable report rechecks parent tombstones after waiting, before any private Blob read (681.0557ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✖ purged_file (326.5672ms)
+  ✖ closed_account (338.5321ms)
+  ✖ deleted_project (352.5245ms)
+✖ readable report rechecks file state and account/project visibility after the file lock wait (1019.5298ms)
+✖ real working-file purge waits for readable report validation and denies the next raw read (332.4819ms)
+✔ readable view loads the exact private Markdown, no prompts or final chatter (4.165ms)
+✔ cross-run references, mismatched input/hash, unavailable or invalid UTF8 safely disable only the optional view (1.0724ms)
+✔ purged parents and visibility lost while waiting for the file deny further private reads (0.6847ms)
+✔ registered unavailable, purging, purged or mismatched files deny reads even while their bytes remain (2.2398ms)
+✔ M3 ownership, independent drafts, idempotency, immutable input, mutex and failed version history (4706.3018ms)
+✔ existing knowledge snapshots are selected by target type, including all eleven scopes (94.8937ms)
+✔ source declarations never select target knowledge and stale material replacements fail (19.9672ms)
+✔ PPN locks the complete 20261013 writing framework without leaking it to other target products (76.7359ms)
+✔ PPN review retains its prior rule sources without treating the update template as review policy (9.6776ms)
+✔ source metadata uses public enums and validates dates without converting user declarations into evidence (1.7881ms)
+✔ source-name-free declarations pass the same API gate used by input locking, quote and execute (1.058ms)
+✔ project HTTP schema rejects malformed target periods, invented fields, string booleans and extra DFI questionnaire (1047.7135ms)
+✔ saved details round-trip, old clients preserve them, snapshots are immutable, conflicts and owners are enforced (2255.7682ms)
+ℹ tests 93
+ℹ suites 0
+ℹ pass 82
+ℹ fail 10
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 328472.2495
+
+✖ failing tests:
+
+test at apps\api\dist\m4-workspace.pg.test.js:451:1
+✖ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (6899.9594ms)
+  error: delivery member requires one exact verified artifact version
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-workspace.pg.test.js:598:234
+      at async transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/data.js:68:24)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-workspace.pg.test.js:598:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 495,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 135 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_member',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:118:1
+✖ readable report keeps valid legacy files readable and accepts exact live registry metadata (378.1618ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:119:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:132:17
+✖ prompt_snapshot (353.0123ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:133:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:132:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:132:17
+✖ provider_result (326.5025ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:133:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:132:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:159:17
+✖ purged_file (326.5672ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:160:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:159:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:159:17
+✖ closed_account (338.5321ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:160:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:159:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:159:17
+✖ deleted_project (352.5245ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:160:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:159:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\review-readable-retention.pg.test.js:189:1
+✖ real working-file purge waits for readable report validation and denies the next raw read (332.4819ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:85:9)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-readable-retention.pg.test.js:190:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }

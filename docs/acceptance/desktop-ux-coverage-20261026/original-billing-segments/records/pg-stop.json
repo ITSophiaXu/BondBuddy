@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-10-27T01:28:52.5050775Z",
+  "completedAt": "2026-10-27T01:28:53.9399824Z",
+  "before": {
+    "ProcessId": 31152,
+    "ParentProcessId": 39852,
+    "CreationDate": "2026-10-27T09:16:36.273689+08:00",
+    "ExecutablePath": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\postgres.exe",
+    "CommandLine": "\"C:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe\"  -D \"C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data\" -h 127.0.0.1 -p 15542 "
+  },
+  "data": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data",
+  "port": 15542,
+  "exitCode": 0,
+  "processGone": true,
+  "listenersAfter": 0,
+  "success": true
+}

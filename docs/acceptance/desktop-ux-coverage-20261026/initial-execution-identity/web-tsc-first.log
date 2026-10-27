@@ -1,0 +1,2 @@
+apps/web/tests/run-supplement-inflight-main.spec.ts(49,38): error TS2352: Conversion of type '{ balance: { available: number; frozen: number; }; }' to type 'Evidence' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ balance: { available: number; frozen: number; }; }' is missing the following properties from type '{ run: Row[]; job: Row[]; ownerJobs: Row[]; outbox: Row[]; creditEvents: Row[]; }': run, job, ownerJobs, outbox, creditEvents

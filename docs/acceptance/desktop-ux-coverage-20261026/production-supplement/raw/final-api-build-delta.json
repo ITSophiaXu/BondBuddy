@@ -1,0 +1,18 @@
+{
+  "baseline": "regression-20261027T021159870Z-25640/sources-after.json",
+  "final": "api-20261027T022142158Z-32828/sources-after.json",
+  "changes": [
+    {
+      "path": "apps/api/dist/run-supplement-adoption.pg.test.js",
+      "bytes": 22478,
+      "sha256": "7768666994d6ddb2cc6c22bf11b93bd4516e8fb6b7d6b3a7ad96a7bec3d8f201"
+    },
+    {
+      "path": "apps/api/src/run-supplement-adoption.pg.test.ts",
+      "bytes": 20303,
+      "sha256": "8820e7483e022f5f05f8d236596d6b96238cbee4a387136b33f2fab9bbc84bf2"
+    }
+  ],
+  "removed": [],
+  "interpretation": "Only the internal-test fixture environment setup and its compiled JS changed; production bytes are identical."
+}

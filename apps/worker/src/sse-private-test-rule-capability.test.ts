@@ -12,7 +12,7 @@ import { workerRuntimeOptionsFromEnv } from './runtime.js';
 type Fixture = ReturnType<typeof fixture>;
 
 function fixture(withReviewPin = true, investorScope = 'professional', reviewState: { reasons: string[] | null } = { reasons: null },
-  blockReason?: string, candidateState?: { matches: boolean }) {
+  blockReason?: string, candidateState?: { matches: boolean }, executionVersion: 1 | 2 = 1) {
   const owner = `synthetic-owner-${randomUUID()}`, project = `synthetic-project-${randomUUID()}`;
   const files = AUTHORIZED_SAMPLE_CASE_FILES.filter(file => file.caseId === 'rq-202509');
   const selected = [files.find(file => file.uploadRole === 'historical')!, files.find(file => file.uploadRole === 'interimFinancial')!];
@@ -51,9 +51,18 @@ function fixture(withReviewPin = true, investorScope = 'professional', reviewSta
     expires_at: new Date(Date.now() + 60_000), revoked_at: null };
   const queries: string[] = [];
   const pool = {
-    query: async (sql: string) => {
+    query: async (sql: string, args?: unknown[]) => {
       queries.push(sql);
-      if (sql.includes('FROM bb_non_production_test_grants')) return { rows: [grant] };
+      if (sql.includes('SELECT h.execution_version FROM bb_runs r')) return { rows: [{ execution_version: executionVersion }] };
+      if (sql.includes('SELECT r.* FROM bb_runs r')) return { rows: [rawRun] };
+      if (sql.includes('FROM bb_run_execution_versions e')) return { rows: [{ execution_version: executionVersion,
+        input_revision: run.input_revision, input_hash: run.input_hash, channel: rawRun.channel,
+        successor_authorization_id: executionVersion === 2 ? 'synthetic-successor-receipt' : null }] };
+      if (sql.includes('FROM bb_run_test_successor_authorizations a')) return { rows: [{ id: 'synthetic-successor-receipt', test_grant_id: 'synthetic-successor-grant' }] };
+      if (sql.includes('FROM bb_non_production_test_grants')) {
+        assert.deepEqual(args, [executionVersion === 1 ? 'synthetic-grant' : 'synthetic-successor-grant']);
+        return { rows: [grant] };
+      }
       throw new Error(`unexpected pool query: ${sql}`);
     },
     connect: async () => {
@@ -80,6 +89,11 @@ function fixture(withReviewPin = true, investorScope = 'professional', reviewSta
   } as unknown as Pool;
   const run = { id: 'synthetic-run', owner_user_id: owner, project_id: project, input_revision: 2,
     input_hash: inputHash, task_kind: 'update', channel: 'non_production_test' as const, test_grant_id: 'synthetic-grant' };
+  const rawRun = { ...run };
+  if (executionVersion === 2) {
+    rawRun.input_hash = 'f'.repeat(64);
+    run.input_revision = 3; grant.input_revision = 3;
+  }
   let reviewCalls = 0;
   const loader = createSsePrivateTestRuleCapabilityLoader(pool, { candidateMatcher:async()=>candidateState?.matches??true,
     reviewedContextLoader: async (_db, args) => {
@@ -106,7 +120,7 @@ function fixture(withReviewPin = true, investorScope = 'professional', reviewSta
         asOf: '2026-09-27', documentPurpose: 'issuance', fieldCandidates: [],
       } };
   } });
-  return { owner, project, materials, manifest, input, inputHash, grant, pool, run, loader, reviewCalls: () => reviewCalls, queries };
+  return { owner, project, materials, manifest, input, inputHash, grant, pool, run, rawRun, loader, reviewCalls: () => reviewCalls, queries };
 }
 
 async function preprod(action: () => Promise<void>) {
@@ -134,6 +148,18 @@ test('candidate capability validates the live grant, exact sample subset, assets
   assert.equal(f.reviewCalls(), 1);
   assert.ok(f.queries.some(sql => sql.includes('FOR SHARE')));
   assert.equal(f.queries.filter(sql => sql.includes('FROM bb_non_production_test_grants')).length, 1);
+}));
+
+test('successor candidate capability uses the receipt grant for the exact active input', async () => preprod(async () => {
+  const f = fixture(false, 'professional', { reasons: null }, undefined, undefined, 2);
+  const result = await f.loader(f.run, f.input);
+  assert.equal(result.status, 'ready');
+  assert.equal(f.run.test_grant_id, 'synthetic-grant');
+  assert.equal(f.run.input_revision, 3); assert.equal(f.rawRun.input_revision, 2);
+  assert.notEqual(f.rawRun.input_hash, f.inputHash);
+  assert.ok(f.queries.some(sql => sql.includes('FROM bb_run_test_successor_authorizations a')));
+  f.grant.revoked_at = new Date();
+  assert.deepEqual(await f.loader(f.run, f.input), { status: 'not_ready', reason: 'test_grant_inactive_or_scope_changed' });
 }));
 
 test('candidate capability fails closed before applicability when grant, membership, candidate hash or exact context is wrong', async () => preprod(async () => {

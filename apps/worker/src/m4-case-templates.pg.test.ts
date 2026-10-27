@@ -19,6 +19,10 @@ import { modelGenerationRouter } from './model-generation-router.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import { m4DocumentStage } from './m4-document-stage.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
+import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
+
+// Synthetic collector IO only; real registry evidence lives in the API PG suite.
+const syntheticWriter:typeof writeRunWorkingFile=async input=>input.blobs.put(input.key,input.bytes,input.mediaType);
 
 const connection=await isolatedTestDatabase(undefined,'m4-cases');
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile);
@@ -63,7 +67,7 @@ test('case templates: real API -> exact worker input -> native Word pair -> one 
       // Changing the live draft after submission cannot replace the pinned bytes.
       await ok('PUT',`${url}/drafts/${entry.document_type}`,{expected_version:1,input:{...input,supplemental_requirements:'next run only'}});
       const result=await runPipelineOnce({pool,blobs,leaseSeconds:60,runKinds:['generation'],stages:defaultRunStages({
-        model_generation:modelGenerationRouter({m4Document:m4DocumentStage({config:loadCodexAdapterConfig({}),model})}),word_delivery:historicalWordDeliveryStage()}),onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
+        model_generation:modelGenerationRouter({m4Document:m4DocumentStage({config:loadCodexAdapterConfig({}),model,writer:syntheticWriter})}),word_delivery:historicalWordDeliveryStage()}),onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
       assert.equal(result,'succeeded',JSON.stringify((await ok('GET',`${url}/workspace`)).tasks[0].events));
       const task=(await ok('GET',`${url}/workspace`)).tasks[0];assert.equal(task.artifacts.length,2);assert.deepEqual(task.manifest,before);
       assert.equal(task.credit_charge.progress.charged_points,4500);

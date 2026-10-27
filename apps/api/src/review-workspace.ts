@@ -21,6 +21,7 @@ import { enqueue } from './queue.js';
 import { lockReviewFileDelivery } from './review-file-knowledge.js';
 import { recordOperation } from './observability.js';
 import { runEventPayloadDto } from './run-event-dto.js';
+import { readReviewExecutionReport } from './review-report-execution.js';
 
 type Db = Pool | PoolClient;
 const finalStates = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'];
@@ -45,10 +46,7 @@ async function pins(db: Db, user: string, id: string, selected: ReviewMaterialPi
   return rows;
 }
 export async function readReviewReport(db: Db, user: string, projectId: string, reportId: string): Promise<{ id: string; run_id: string; version: number; content_sha256: string; report: ReviewReport }> {
-  const row = (await db.query('SELECT * FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND id=$3', [user, projectId, reportId])).rows[0];
-  if (!row) throw missing();
-  if (!isReviewReport(row.report) || inputManifestHash(row.report) !== row.content_sha256.trim()) throw new Problem(503, 'DATA_UNAVAILABLE', 'Report snapshot is invalid');
-  return { ...row, report: row.report as ReviewReport };
+  return readReviewExecutionReport(db, user, projectId, reportId);
 }
 async function context(db: Db, user: string, id: string, value: ReviewContext) {
   if (value.project_id !== id) invalid('The message is bound to another project');
@@ -83,8 +81,8 @@ export function reviewReplyMetadataDto(r: { reply_metadata?: unknown; context?: 
 }
 const messageDto = (r: any): ReviewMessage => ({ message_id: r.id, role: r.role, content: r.content, context: r.context, created_at: date(r.created_at), reply_status: r.reply_status, reply_to: r.reply_to, proposal: r.proposal, error: r.error, reply_metadata: reviewReplyMetadataDto(r) });
 async function artifacts(db: Db, user: string, id: string, runId: string) {
-  return (await db.query(`SELECT a.artifact_id,a.artifact_version,a.kind,v.media_type,${artifactNameColumns('v')} FROM bb_review_artifacts a
-    JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
+  return (await db.query(`SELECT a.artifact_id,a.artifact_version,a.kind,v.media_type,${artifactNameColumns('v')} FROM bb_review_execution_artifact_versions a
+    JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')}
     WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3 AND v.quality_status='passed' AND v.delivery_status='available' ORDER BY a.kind`, [user, id, runId])).rows.map(a=>({artifact_id:a.artifact_id,artifact_version:a.artifact_version,kind:a.kind,filename:artifactDownloadName(a).filename}));
 }
@@ -112,11 +110,11 @@ async function reportRef(db: Db, user: string, id: string, ref: ReviewReportRef 
 async function executionRows(db: Db, user: string, id: string) {
   return (await db.query(`SELECT r.*,e.operation,e.version,e.source_report_id,e.snapshot,p.id AS report_id
     FROM bb_review_executions e JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id AND r.project_id=e.project_id
-    LEFT JOIN bb_review_reports p ON p.run_id=r.id AND p.owner_user_id=r.owner_user_id AND p.project_id=r.project_id
+    LEFT JOIN bb_review_execution_reports p ON p.run_id=r.id AND p.owner_user_id=r.owner_user_id AND p.project_id=r.project_id AND p.execution_version=1
     WHERE e.owner_user_id=$1 AND e.project_id=$2 ORDER BY e.version DESC`, [user, id])).rows;
 }
 async function reportCatalogVersion(db: Db, user: string, id: string): Promise<number> {
-  return Number((await db.query('SELECT COALESCE(max(version),0) AS version FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2', [user, id])).rows[0].version);
+  return Number((await db.query('SELECT COALESCE(max(version),0) AS version FROM bb_review_execution_reports WHERE owner_user_id=$1 AND project_id=$2', [user, id])).rows[0].version);
 }
 async function timeline(db: Db, user: string, id: string, messages: ReviewMessage[]): Promise<ReviewTimelineEntry[]> {
   const rows = await executionRows(db, user, id);
@@ -164,7 +162,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
   app.get('/api/v1/projects/:project_id/review-workspace', async request => {
     const user = await owner(request), id = projectId(request), p = await requireReview(db(), user, id);
     const materials = (await db().query(`SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC`, [user, id])).rows;
-    const reports = (await db().query('SELECT id AS report_id,version,run_id,created_at FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 ORDER BY version DESC', [user, id])).rows.map(r => ({ ...r, created_at: date(r.created_at) }));
+    const reports = (await db().query('SELECT id AS report_id,version,run_id,created_at FROM bb_review_execution_reports WHERE owner_user_id=$1 AND project_id=$2 ORDER BY version DESC', [user, id])).rows.map(r => ({ ...r, created_at: date(r.created_at) }));
     const requestedReport = (request.query as { report_id?: string }).report_id;
     const requested = requestedReport ? await readReviewReport(db(), user, id, requestedReport) : null;
     const artifactRun = (await db().query(`SELECT e.run_id,e.version,e.operation,e.source_report_id,e.snapshot->>'source_run_id' AS source_run_id FROM bb_review_executions e
@@ -441,13 +439,13 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       if(prior){if(prior.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Execution key already used');return runDto(prior);}
       await assertCanonicalBusinessRunIdle(client,user,p);
       if((await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) LIMIT 1',[user,id,finalStates])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','A project task is still active');
-      const source=(await client.query(`SELECT r.input_revision,r.input_hash,e.snapshot,e.source_report_id,i.manifest,a.artifact_id,a.artifact_version,v.sha256
-        FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
-        JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
-        JOIN bb_review_artifacts a ON a.run_id=r.id AND a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.kind='report'
-        JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=r.id
+      const source=(await client.query(`SELECT a.input_revision,a.input_hash,a.execution_snapshot AS snapshot,a.source_report_id,a.manifest,a.artifact_id,a.artifact_version,v.sha256
+        FROM bb_runs r
+        JOIN bb_review_execution_artifact_versions a ON a.run_id=r.id AND a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id
+          AND a.execution_version=1 AND a.input_revision=r.input_revision AND a.input_hash=r.input_hash AND a.kind='report'
+        JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=r.id
         WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state='succeeded' AND r.channel='production'
-        AND e.operation IN ('full_review','differential_review') AND v.quality_status='passed' AND v.delivery_status='available'`,[user,id,b.source_run_id])).rows[0];
+        AND a.operation IN ('full_review','differential_review') AND v.quality_status='passed' AND v.delivery_status='available'`,[user,id,b.source_run_id])).rows[0];
       if(!source)throw missing();
       const original=source.snapshot.input as ReviewDraftInput;
       if(!original?.source_material_ref||inputManifestHash(source.manifest)!==source.input_hash.trim())throw conflict('INPUT_REVISION_CONFLICT','Review input is unavailable');
@@ -466,7 +464,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,'[]')`,[id,revision,user,p.draft_revision,inputHash,manifest,JSON.stringify(manifest.materials)]);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
       const run=(await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$6,'update',$7,'queued') RETURNING *`,[runId,user,id,revision,inputHash,key,requestHash])).rows[0];
-      const report=(await client.query('SELECT id FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[user,id,b.source_run_id])).rows[0];
+      const report=(await client.query('SELECT id FROM bb_review_execution_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 AND execution_version=1',[user,id,b.source_run_id])).rows[0];
       const origin:ReviewExecutionOrigin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
       await client.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,'revision',$5,$6)`,[runId,user,id,version,report?.id??null,{input,input_version:source.snapshot.input_version,finding_ids:[],plan:null,origin,context_messages:[],source_run_id:b.source_run_id}]);
       if(paidReview)await reserveCredits(client,user,run,b.quote_id,null,p,await intentHash(client,user,id,p,b));

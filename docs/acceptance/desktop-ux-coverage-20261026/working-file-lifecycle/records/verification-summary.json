@@ -1,0 +1,1422 @@
+{
+  "synthetic": true,
+  "baseline_commit": "a35034b3",
+  "generated_at": "2026-10-26T13:32:39.792Z",
+  "goal_complete": false,
+  "g03_complete": false,
+  "scope": "Exact private working-file registration, immutable multi-source claims, retention/purge serialization and protected reads",
+  "current_round_browser_claim": false,
+  "new_adoption_executed": false,
+  "new_supplier_generation_accepted": false,
+  "supplemented_word_accepted": false,
+  "surcharge_decision": "B: necessary rework quoted separately; explicit surcharge confirmation before continuing",
+  "surcharge_formula": null,
+  "source_binding": {
+    "final_before": {
+      "path": "source-before.json",
+      "bytes": 304550,
+      "sha256": "af5a1ae1371e978a9c8498f75bd36644f27068b71e516659a5b4b25f49940a77"
+    },
+    "final_after": {
+      "path": "source-after.json",
+      "bytes": 304550,
+      "sha256": "af5a1ae1371e978a9c8498f75bd36644f27068b71e516659a5b4b25f49940a77"
+    },
+    "final_unchanged_files": 2052,
+    "current_files_match": true,
+    "verification_freeze": {
+      "record": {
+        "path": "verification-freeze.json",
+        "bytes": 158,
+        "sha256": "887230403a6b40c99205dc506832b569e97c422ae72a00a42ec01f3cef6211c7"
+      },
+      "created_at": "2026-10-26T13:29:14.342Z",
+      "source_before_sha256": "af5a1ae1371e978a9c8498f75bd36644f27068b71e516659a5b4b25f49940a77",
+      "files": 2052
+    },
+    "selected_test_window_validated": true,
+    "retained_verification_freeze": {
+      "record": {
+        "path": "verification-freeze-2.json",
+        "bytes": 158,
+        "sha256": "53221096aa140ec818e51180c9907a8a4a410fb80068b868a5dd896343220f9b"
+      },
+      "snapshot": {
+        "path": "source-before-2.json",
+        "bytes": 304550,
+        "sha256": "1cf786b2da31a0012d3bf359e40955ffaade887f63ea14c98a12b126945bba13"
+      },
+      "created_at": "2026-10-26T13:15:24.390Z",
+      "source_before_sha256": "1cf786b2da31a0012d3bf359e40955ffaade887f63ea14c98a12b126945bba13",
+      "files": 2052
+    },
+    "fixture_only_correction": {
+      "allowed_paths": [
+        "apps/api/src/review-readable-retention.pg.test.ts",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js.map",
+        "apps/api/dist/review-readable-retention.pg.test.d.ts",
+        "apps/api/dist/review-readable-retention.pg.test.d.ts.map"
+      ],
+      "changes": {
+        "added": [],
+        "modified": [
+          {
+            "path": "apps/api/dist/review-readable-retention.pg.test.js",
+            "before": "65484dd946dbbf82f714e30074982f7b96c89a4947ed36603643331d0db1a795",
+            "after": "8e138f188357abf11a7de4266500acc762122816359ccbbc3e15c0f0fa8bded1"
+          },
+          {
+            "path": "apps/api/src/review-readable-retention.pg.test.ts",
+            "before": "88d72d462d68c018ae66cad53c59dc61bb1dbed59aa242d8c4b95541e305efd5",
+            "after": "134cfa883faae222ff1804a215cabd4de9d42f327639655c6e154224e552affe"
+          }
+        ],
+        "removed": []
+      },
+      "production_changes": false
+    },
+    "selected_test_receipts": [
+      {
+        "receipt": "working-files-test-2.json",
+        "started": "2026-10-26T13:15:32.780Z",
+        "finished": "2026-10-26T13:18:53.265Z",
+        "freeze": "verification-freeze-2.json"
+      },
+      {
+        "receipt": "api-test-1.json",
+        "started": "2026-10-26T13:15:32.778Z",
+        "finished": "2026-10-26T13:26:09.669Z",
+        "freeze": "verification-freeze-2.json"
+      },
+      {
+        "receipt": "worker-test-1.json",
+        "started": "2026-10-26T13:15:33.787Z",
+        "finished": "2026-10-26T13:20:19.961Z",
+        "freeze": "verification-freeze-2.json"
+      },
+      {
+        "receipt": "readable-retention-test.json",
+        "started": "2026-10-26T13:29:32.503Z",
+        "finished": "2026-10-26T13:29:44.336Z",
+        "freeze": "verification-freeze.json"
+      }
+    ],
+    "per_command_source_hash_available": false,
+    "selected_receipt_scope_review": "Working-files/full API/worker bind the retained freeze; only the exact readable-retention fixture source/build changed, and its targeted correction binds the final freeze; final before/after and current files match",
+    "history": [
+      {
+        "record": {
+          "path": "source-before-1.json",
+          "bytes": 304391,
+          "sha256": "a692e28deff681c45e7dd5b1a9e3175627efb2f842699d6263f87b820dc9c3d8"
+        },
+        "files": 2051,
+        "changes_to_final": {
+          "added": [
+            {
+              "path": "db/migrations/0123_run_working_file_result_claims.sql",
+              "sha256": "d92ebf2cfc4c6091ee4c38cbc149dd967bb54c15e95b2744f5d28e2df78f249e"
+            }
+          ],
+          "modified": [
+            {
+              "path": "apps/api/dist/review-readable-retention.pg.test.js",
+              "before": "65484dd946dbbf82f714e30074982f7b96c89a4947ed36603643331d0db1a795",
+              "after": "8e138f188357abf11a7de4266500acc762122816359ccbbc3e15c0f0fa8bded1"
+            },
+            {
+              "path": "apps/api/dist/run-working-files.js",
+              "before": "b0673539c5aca24bd0b4aff624eab0f509eca652085e1d66aaa8710d5a64c86d",
+              "after": "66ed97806424adf35ce93af4bd202679e671f1adc2505868c947473bc983315c"
+            },
+            {
+              "path": "apps/api/dist/run-working-files.pg.test.js",
+              "before": "4abea9d417ae5609e93ddbdc04e8872e753b1853cbba778d06b85df86d4d34c5",
+              "after": "c57d82f520d95e3f3c444b559ac58749fd1323f4ac44674aa6a83d378cafc32a"
+            },
+            {
+              "path": "apps/api/src/review-readable-retention.pg.test.ts",
+              "before": "88d72d462d68c018ae66cad53c59dc61bb1dbed59aa242d8c4b95541e305efd5",
+              "after": "134cfa883faae222ff1804a215cabd4de9d42f327639655c6e154224e552affe"
+            },
+            {
+              "path": "apps/api/src/run-working-files.pg.test.ts",
+              "before": "3efdeffd2a16a239c7713aaac095c1a91c424a45ac2be41dd9647c23a50a9fc4",
+              "after": "3ebd27672924134eff501dba742991baef61f893e08ec468c9b5b2c4dbfd777a"
+            },
+            {
+              "path": "apps/api/src/run-working-files.ts",
+              "before": "755d881d42b03204d7029107db0fd490520a027d802f4d9a3ccc2099b5cf9377",
+              "after": "f4385e6316952d89e0daabee892c7fb814a7a4bd66ac91581706e685c365b644"
+            }
+          ],
+          "removed": []
+        }
+      },
+      {
+        "record": {
+          "path": "source-before-2.json",
+          "bytes": 304550,
+          "sha256": "1cf786b2da31a0012d3bf359e40955ffaade887f63ea14c98a12b126945bba13"
+        },
+        "files": 2052,
+        "changes_to_final": {
+          "added": [],
+          "modified": [
+            {
+              "path": "apps/api/dist/review-readable-retention.pg.test.js",
+              "before": "65484dd946dbbf82f714e30074982f7b96c89a4947ed36603643331d0db1a795",
+              "after": "8e138f188357abf11a7de4266500acc762122816359ccbbc3e15c0f0fa8bded1"
+            },
+            {
+              "path": "apps/api/src/review-readable-retention.pg.test.ts",
+              "before": "88d72d462d68c018ae66cad53c59dc61bb1dbed59aa242d8c4b95541e305efd5",
+              "after": "134cfa883faae222ff1804a215cabd4de9d42f327639655c6e154224e552affe"
+            }
+          ],
+          "removed": []
+        }
+      },
+      {
+        "record": {
+          "path": "source-before.json",
+          "bytes": 304550,
+          "sha256": "af5a1ae1371e978a9c8498f75bd36644f27068b71e516659a5b4b25f49940a77"
+        },
+        "files": 2052,
+        "changes_to_final": {
+          "added": [],
+          "modified": [],
+          "removed": []
+        }
+      }
+    ]
+  },
+  "migration": {
+    "latest": {
+      "receipt": "migrate-1.json",
+      "log": "migrate-1.log",
+      "started": "2026-10-26T13:10:20.546Z",
+      "finished": "2026-10-26T13:10:21.255Z",
+      "args": [
+        "db/migrate.mjs"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    "proofs": [
+      {
+        "filename": "0122_run_working_file_lifecycle.sql",
+        "receipts": [
+          {
+            "receipt": "migrate.json",
+            "log": "migrate.log"
+          }
+        ]
+      },
+      {
+        "filename": "0123_run_working_file_result_claims.sql",
+        "receipts": [
+          {
+            "receipt": "migrate-1.json",
+            "log": "migrate-1.log"
+          }
+        ]
+      }
+    ],
+    "history": [
+      {
+        "receipt": "migrate.json",
+        "log": "migrate.log",
+        "started": "2026-10-26T12:43:51.702Z",
+        "finished": "2026-10-26T12:43:52.646Z",
+        "args": [
+          "db/migrate.mjs"
+        ],
+        "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+        "status": 0,
+        "applied": [
+          "0122_run_working_file_lifecycle.sql"
+        ]
+      },
+      {
+        "receipt": "migrate-1.json",
+        "log": "migrate-1.log",
+        "started": "2026-10-26T13:10:20.546Z",
+        "finished": "2026-10-26T13:10:21.255Z",
+        "args": [
+          "db/migrate.mjs"
+        ],
+        "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+        "status": 0,
+        "applied": [
+          "0123_run_working_file_result_claims.sql"
+        ]
+      }
+    ]
+  },
+  "builds": [
+    {
+      "receipt": "contracts-build.json",
+      "log": "contracts-build.log",
+      "started": "2026-10-26T12:56:56.936Z",
+      "finished": "2026-10-26T12:57:03.632Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "packages/contracts/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-7.json",
+      "log": "api-build-7.log",
+      "started": "2026-10-26T13:27:57.688Z",
+      "finished": "2026-10-26T13:28:13.742Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "worker-build-2.json",
+      "log": "worker-build-2.log",
+      "started": "2026-10-26T13:14:39.765Z",
+      "finished": "2026-10-26T13:14:55.238Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/worker/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "web-tsc.json",
+      "log": "web-tsc.log",
+      "started": "2026-10-26T12:56:36.660Z",
+      "finished": "2026-10-26T12:56:56.005Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "--noEmit",
+        "-p",
+        "apps/web/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "web-build.json",
+      "log": "web-build.log",
+      "started": "2026-10-26T12:57:04.137Z",
+      "finished": "2026-10-26T12:57:07.468Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\vite\\bin\\vite.js",
+        "build"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+      "status": 0
+    }
+  ],
+  "contracts": {
+    "receipt": "contracts-check.json",
+    "log": "contracts-check.log",
+    "started": "2026-10-26T12:57:28.450Z",
+    "finished": "2026-10-26T12:57:30.867Z",
+    "args": [
+      "packages/contracts/dist/check-examples.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "synthetic_examples": 186,
+    "internal_library_examples": 12
+  },
+  "api": {
+    "status": "full_run_with_targeted_fixture_correction",
+    "full_run": {
+      "receipt": "api-test-1.json",
+      "log": "api-test-1.log",
+      "started": "2026-10-26T13:15:32.778Z",
+      "finished": "2026-10-26T13:26:09.669Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-skip-pattern=^#79 (?:NDJSON sink cannot be split by log injection|file sink repeat and concurrent processes retain one durable line per key|replay of a complete pre-existing line still acknowledges only after file sync|size cap fails closed for new keys but permits replay of a full segment|replay also detects a key in a legacy rotated segment)$",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1,
+      "counts": {
+        "tests": 295,
+        "passed": 264,
+        "failed": 1,
+        "cancelled": 0,
+        "skipped": 30,
+        "todo": 0
+      },
+      "skip_lines": [
+        "﹣ PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and derived content idempotently (0.3791ms) # SKIP",
+        "﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.3981ms) # SKIP",
+        "﹣ PostgreSQL/Azurite inventory is read-only by default and deletes only old unreferenced snapshots (0.6035ms) # SKIP",
+        "﹣ #79 entire prose values and nested fields are safe in real Blob readback (0.156ms) # SKIP",
+        "﹣ #79 ambiguous diagnostic rejection leaves structured run error evidence writable (0.1546ms) # SKIP",
+        "﹣ #79 structured secrets are absent from the private diagnostic Blob readback (0.1471ms) # SKIP",
+        "﹣ #79 fixed-seed field matrix stays safe through real Blob and reference writes (0.0996ms) # SKIP",
+        "﹣ #79 escaped quotes and business placeholders survive private Blob readback (0.0777ms) # SKIP",
+        "﹣ #79 full-size synthetic model diagnostics survive private Blob readback (0.0576ms) # SKIP",
+        "﹣ #79 rejected diagnostics never call Blob put or register a partial snapshot (0.0534ms) # SKIP",
+        "﹣ #79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections (0.2338ms) # SKIP",
+        "﹣ #79 forwarding drills: sink outage, process crash and replay never lose or double count (0.0662ms) # SKIP",
+        "﹣ #79 production file sink survives two independent processes with crash before PG ack (0.0487ms) # SKIP",
+        "﹣ #79 evidence gate: DB transaction failure pauses new external calls and raises an alert (0.2368ms) # SKIP",
+        "﹣ #79 retention purge and user-deletion reclamation keep accounting metadata (0.0652ms) # SKIP",
+        "﹣ #79 orphan prompt Blob intent survives failed compensation, restart and delete retry (0.0661ms) # SKIP",
+        "﹣ #79 prompt response and purge serialize through delivery, with audit and owner boundary (0.0473ms) # SKIP",
+        "﹣ #79 in-flight Blob purge blocks prompt read and failed delete remains replayable (0.0451ms) # SKIP",
+        "﹣ #79 TCP abort releases prompt lock during pending Blob read (resolve late) (0.0505ms) # SKIP",
+        "﹣ #79 TCP abort releases prompt lock during pending Blob read (reject late) (0.0554ms) # SKIP",
+        "﹣ #79 real TCP slow response and onSend failure release the prompt lock (0.0427ms) # SKIP",
+        "﹣ #79 disconnected lock waiter frees a two-connection PG pool (success first read) (0.0461ms) # SKIP",
+        "﹣ #79 disconnected lock waiter frees a two-connection PG pool (failure first read) (0.0463ms) # SKIP",
+        "﹣ #79 prompt deadline ends a live TCP Blob read and permits purge (0.0434ms) # SKIP",
+        "﹣ #79 prompt deadline stops a connected lock waiter without retaining its PG connection (0.0537ms) # SKIP",
+        "﹣ #79 prompt deadline closes a unread live TCP response and releases purge (0.0656ms) # SKIP",
+        "﹣ #79 prompt deadline closes a trickle live TCP response and releases purge (0.8526ms) # SKIP",
+        "﹣ #79 prompt deadline allows a normal TCP response and ends a stuck onSend (0.0495ms) # SKIP",
+        "﹣ #79 PG statement deadline cancels a 3-second snapshot query holding the prompt lock (0.0427ms) # SKIP",
+        "﹣ #79 PG statement deadline cancels a 3-second audit query holding the prompt lock (0.0396ms) # SKIP"
+      ]
+    },
+    "corrective": {
+      "receipt": "readable-retention-test.json",
+      "log": "readable-retention-test.log",
+      "started": "2026-10-26T13:29:32.503Z",
+      "finished": "2026-10-26T13:29:44.336Z",
+      "args": [
+        "--test",
+        "apps/api/dist/review-readable-retention.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0,
+      "counts": {
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "skip_lines": []
+    },
+    "retained_full_run_failure": {
+      "title": "real working-file purge waits for readable report validation and denies the next raw read",
+      "reason": "Synthetic successful codex-review-file-v1 fixture omitted its required raw report.docx; production unchanged"
+    },
+    "full_run_repeated_after_fixture_correction": false,
+    "aggregate_counts": null,
+    "excluded_windows_sink_tests": {
+      "argument": "--test-skip-pattern=^#79 (?:NDJSON sink cannot be split by log injection|file sink repeat and concurrent processes retain one durable line per key|replay of a complete pre-existing line still acknowledges only after file sync|size cap fails closed for new keys but permits replay of a full segment|replay also detects a key in a legacy rotated segment)$",
+      "titles": [
+        "#79 NDJSON sink cannot be split by log injection",
+        "#79 file sink repeat and concurrent processes retain one durable line per key",
+        "#79 replay of a complete pre-existing line still acknowledges only after file sync",
+        "#79 size cap fails closed for new keys but permits replay of a full segment",
+        "#79 replay also detects a key in a legacy rotated segment"
+      ],
+      "count": 5,
+      "included_in_node_summary_skipped_count": false,
+      "acceptance": false,
+      "scope_record": "sink-scope.json"
+    },
+    "result_note": "Composite evidence only: retain the full-run failure and its exact targeted correction; do not add counts or label a single complete API run as passed"
+  },
+  "worker": {
+    "receipt": "worker-test-1.json",
+    "log": "worker-test-1.log",
+    "started": "2026-10-26T13:15:33.787Z",
+    "finished": "2026-10-26T13:20:19.961Z",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "apps/worker/dist/project-qa-e2e.pg.test.js",
+      "apps/worker/dist/integrity-e2e.pg.test.js",
+      "apps/worker/dist/integrity-browser.test.js",
+      "apps/worker/dist/integrity-evidence.test.js",
+      "apps/worker/dist/project-file-evidence.test.js",
+      "apps/worker/dist/m4-stages.test.js",
+      "apps/worker/dist/m4-case-templates.pg.test.js",
+      "apps/worker/dist/project-files-e2e.pg.test.js",
+      "apps/worker/dist/review-project-e2e.pg.test.js",
+      "apps/worker/dist/review-revision-cli-stage.test.js",
+      "apps/worker/dist/review-revision-cli-native.test.js",
+      "apps/worker/dist/review-input-execution.test.js",
+      "apps/worker/dist/unified-execution-input.test.js",
+      "apps/worker/dist/m4-input.test.js",
+      "apps/worker/dist/unified-input.test.js",
+      "apps/worker/dist/review-assistant-linked.test.js",
+      "apps/worker/dist/review-rule-context.test.js",
+      "apps/worker/dist/run-execution-consumers.pg.test.js",
+      "apps/worker/dist/execution-input-loaders.pg.test.js",
+      "apps/worker/dist/review-file-stage.test.js",
+      "apps/worker/dist/unified-authoring.pg.test.js",
+      "apps/worker/dist/authoring-pause.pg.test.js",
+      "apps/worker/dist/m4-pipeline.pg.test.js",
+      "apps/worker/dist/worker-runtime-pipeline-seams.pg.integration.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 120,
+      "passed": 108,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 12,
+      "todo": 0
+    },
+    "skip_lines": [
+      "﹣ real Chromium on synthetic official-site fixtures: query, screenshot, zero, challenge, stale, failure and continuation (0.5501ms) # SKIP",
+      "﹣ observed tax next-page label advances before a second result screenshot (0.1392ms) # SKIP",
+      "﹣ default collection waits for official search responses beyond the former 18s limit (0.3031ms) # SKIP",
+      "﹣ integrity E2E: saved scope, paid round, evidence, free exports, archive, replay, cancellation and isolation (1.5266ms) # SKIP",
+      "﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.1027ms) # SKIP",
+      "﹣ M4 output symlink never publishes external bytes (0.2177ms) # SKIP",
+      "﹣ project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation (1.0818ms) # SKIP",
+      "﹣ project Q&A: free extraction, confirmed count, grounded Word, knowledge review, versions, billing and ownership (1.0915ms) # SKIP",
+      "﹣ report symlinks cannot publish outside files (0.2927ms) # SKIP",
+      "﹣ project review: real dual Word delivery, explicit promotion, manual export, idempotency and owner isolation (1.0323ms) # SKIP",
+      "﹣ M3 revision uses real native Codex sandbox + Python tool, saves actual files, and replays without another CLI (0.9692ms) # SKIP",
+      "﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.0919ms) # SKIP"
+    ]
+  },
+  "focused_tests": {
+    "working_files": {
+      "receipt": "working-files-test-2.json",
+      "log": "working-files-test-2.log",
+      "started": "2026-10-26T13:15:32.780Z",
+      "finished": "2026-10-26T13:18:53.265Z",
+      "args": [
+        "--test",
+        "apps/api/dist/run-working-files.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0,
+      "counts": {
+        "tests": 31,
+        "passed": 31,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "skip_lines": []
+    }
+  },
+  "browser": {
+    "full_main": {
+      "status": "not_run",
+      "reason": "No current-round command receipt; earlier browser evidence is excluded"
+    },
+    "desktop_components": {
+      "status": "not_run",
+      "reason": "No current-round command receipt; earlier browser evidence is excluded"
+    },
+    "controlled_inflight": {
+      "status": "not_run",
+      "reason": "No current-round command receipt; earlier browser evidence is excluded"
+    }
+  },
+  "database": {
+    "server_version": "16.14",
+    "schema": [
+      {
+        "filename": "0123_run_working_file_result_claims.sql"
+      },
+      {
+        "filename": "0122_run_working_file_lifecycle.sql"
+      }
+    ],
+    "runs": 0,
+    "executions": 0,
+    "clones": []
+  },
+  "infrastructure_cleanup": {
+    "audit": {
+      "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+      "port": "15526",
+      "server_version": "16.14",
+      "postmaster_pid": 16128,
+      "databases": [
+        {
+          "datname": "bb_g03_template_20261026"
+        }
+      ],
+      "other_client_sessions": [],
+      "template_runs": 0,
+      "template_executions": 0,
+      "checked_at": "2026-10-26T13:31:16.475Z"
+    },
+    "postgres": {
+      "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+      "pgctl": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+      "postmaster_pid": 16128,
+      "status_before": {
+        "args": [
+          "status"
+        ],
+        "status": 0,
+        "stdout": "pg_ctl: server is running (PID: 16128)\r\nC:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe \"-D\" \"C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data\" \"-h\" \"127.0.0.1\" \"-p\" \"15526\"\r\n",
+        "stderr": ""
+      },
+      "stop": {
+        "args": [
+          "-w",
+          "stop"
+        ],
+        "status": 0,
+        "stdout": "waiting for server to shut down.... done\r\nserver stopped\r\n",
+        "stderr": ""
+      },
+      "status_after": {
+        "args": [
+          "status"
+        ],
+        "status": 3,
+        "stdout": "pg_ctl: no server running\r\n",
+        "stderr": ""
+      },
+      "finished": "2026-10-26T13:31:16.961Z"
+    }
+  },
+  "command_history": [
+    {
+      "receipt": "api-build.json",
+      "log": "api-build.log",
+      "started": "2026-10-26T12:43:02.499Z",
+      "finished": "2026-10-26T12:43:19.806Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "migrate.json",
+      "log": "migrate.log",
+      "started": "2026-10-26T12:43:51.702Z",
+      "finished": "2026-10-26T12:43:52.646Z",
+      "args": [
+        "db/migrate.mjs"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "worker-build.json",
+      "log": "worker-build.log",
+      "started": "2026-10-26T12:44:15.403Z",
+      "finished": "2026-10-26T12:44:30.348Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/worker/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-1.json",
+      "log": "api-build-1.log",
+      "started": "2026-10-26T12:45:33.328Z",
+      "finished": "2026-10-26T12:45:48.829Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-2.json",
+      "log": "api-build-2.log",
+      "started": "2026-10-26T12:48:08.691Z",
+      "finished": "2026-10-26T12:48:24.195Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "worker-build-1.json",
+      "log": "worker-build-1.log",
+      "started": "2026-10-26T12:48:29.901Z",
+      "finished": "2026-10-26T12:48:44.786Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/worker/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-3.json",
+      "log": "api-build-3.log",
+      "started": "2026-10-26T12:49:11.701Z",
+      "finished": "2026-10-26T12:49:30.105Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-test.json",
+      "log": "api-test.log",
+      "started": "2026-10-26T12:50:16.139Z",
+      "finished": "2026-10-26T12:55:13.548Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1
+    },
+    {
+      "receipt": "worker-test.json",
+      "log": "worker-test.log",
+      "started": "2026-10-26T12:50:17.111Z",
+      "finished": "2026-10-26T12:53:38.404Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/project-qa-e2e.pg.test.js",
+        "apps/worker/dist/integrity-e2e.pg.test.js",
+        "apps/worker/dist/integrity-browser.test.js",
+        "apps/worker/dist/integrity-evidence.test.js",
+        "apps/worker/dist/project-file-evidence.test.js",
+        "apps/worker/dist/m4-stages.test.js",
+        "apps/worker/dist/m4-case-templates.pg.test.js",
+        "apps/worker/dist/project-files-e2e.pg.test.js",
+        "apps/worker/dist/review-project-e2e.pg.test.js",
+        "apps/worker/dist/review-revision-cli-stage.test.js",
+        "apps/worker/dist/review-revision-cli-native.test.js",
+        "apps/worker/dist/review-input-execution.test.js",
+        "apps/worker/dist/unified-execution-input.test.js",
+        "apps/worker/dist/m4-input.test.js",
+        "apps/worker/dist/unified-input.test.js",
+        "apps/worker/dist/review-assistant-linked.test.js",
+        "apps/worker/dist/review-rule-context.test.js",
+        "apps/worker/dist/run-execution-consumers.pg.test.js",
+        "apps/worker/dist/execution-input-loaders.pg.test.js",
+        "apps/worker/dist/review-file-stage.test.js",
+        "apps/worker/dist/unified-authoring.pg.test.js",
+        "apps/worker/dist/authoring-pause.pg.test.js",
+        "apps/worker/dist/m4-pipeline.pg.test.js",
+        "apps/worker/dist/worker-runtime-pipeline-seams.pg.integration.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "web-tsc.json",
+      "log": "web-tsc.log",
+      "started": "2026-10-26T12:56:36.660Z",
+      "finished": "2026-10-26T12:56:56.005Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "--noEmit",
+        "-p",
+        "apps/web/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "contracts-build.json",
+      "log": "contracts-build.log",
+      "started": "2026-10-26T12:56:56.936Z",
+      "finished": "2026-10-26T12:57:03.632Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "packages/contracts/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "web-build.json",
+      "log": "web-build.log",
+      "started": "2026-10-26T12:57:04.137Z",
+      "finished": "2026-10-26T12:57:07.468Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\vite\\bin\\vite.js",
+        "build"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+      "status": 0
+    },
+    {
+      "receipt": "contracts-check.json",
+      "log": "contracts-check.log",
+      "started": "2026-10-26T12:57:28.450Z",
+      "finished": "2026-10-26T12:57:30.867Z",
+      "args": [
+        "packages/contracts/dist/check-examples.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-4.json",
+      "log": "api-build-4.log",
+      "started": "2026-10-26T12:57:28.452Z",
+      "finished": "2026-10-26T12:57:43.993Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "working-files-test.json",
+      "log": "working-files-test.log",
+      "started": "2026-10-26T12:57:56.091Z",
+      "finished": "2026-10-26T12:58:11.244Z",
+      "args": [
+        "--test",
+        "apps/api/dist/run-working-files.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1
+    },
+    {
+      "receipt": "api-build-5.json",
+      "log": "api-build-5.log",
+      "started": "2026-10-26T12:59:46.862Z",
+      "finished": "2026-10-26T13:00:01.970Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "working-files-test-1.json",
+      "log": "working-files-test-1.log",
+      "started": "2026-10-26T13:00:44.271Z",
+      "finished": "2026-10-26T13:03:33.608Z",
+      "args": [
+        "--test",
+        "apps/api/dist/run-working-files.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "migrate-1.json",
+      "log": "migrate-1.log",
+      "started": "2026-10-26T13:10:20.546Z",
+      "finished": "2026-10-26T13:10:21.255Z",
+      "args": [
+        "db/migrate.mjs"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-6.json",
+      "log": "api-build-6.log",
+      "started": "2026-10-26T13:13:59.124Z",
+      "finished": "2026-10-26T13:14:16.367Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "worker-build-2.json",
+      "log": "worker-build-2.log",
+      "started": "2026-10-26T13:14:39.765Z",
+      "finished": "2026-10-26T13:14:55.238Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/worker/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-test-1.json",
+      "log": "api-test-1.log",
+      "started": "2026-10-26T13:15:32.778Z",
+      "finished": "2026-10-26T13:26:09.669Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-skip-pattern=^#79 (?:NDJSON sink cannot be split by log injection|file sink repeat and concurrent processes retain one durable line per key|replay of a complete pre-existing line still acknowledges only after file sync|size cap fails closed for new keys but permits replay of a full segment|replay also detects a key in a legacy rotated segment)$",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1
+    },
+    {
+      "receipt": "working-files-test-2.json",
+      "log": "working-files-test-2.log",
+      "started": "2026-10-26T13:15:32.780Z",
+      "finished": "2026-10-26T13:18:53.265Z",
+      "args": [
+        "--test",
+        "apps/api/dist/run-working-files.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "worker-test-1.json",
+      "log": "worker-test-1.log",
+      "started": "2026-10-26T13:15:33.787Z",
+      "finished": "2026-10-26T13:20:19.961Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/project-qa-e2e.pg.test.js",
+        "apps/worker/dist/integrity-e2e.pg.test.js",
+        "apps/worker/dist/integrity-browser.test.js",
+        "apps/worker/dist/integrity-evidence.test.js",
+        "apps/worker/dist/project-file-evidence.test.js",
+        "apps/worker/dist/m4-stages.test.js",
+        "apps/worker/dist/m4-case-templates.pg.test.js",
+        "apps/worker/dist/project-files-e2e.pg.test.js",
+        "apps/worker/dist/review-project-e2e.pg.test.js",
+        "apps/worker/dist/review-revision-cli-stage.test.js",
+        "apps/worker/dist/review-revision-cli-native.test.js",
+        "apps/worker/dist/review-input-execution.test.js",
+        "apps/worker/dist/unified-execution-input.test.js",
+        "apps/worker/dist/m4-input.test.js",
+        "apps/worker/dist/unified-input.test.js",
+        "apps/worker/dist/review-assistant-linked.test.js",
+        "apps/worker/dist/review-rule-context.test.js",
+        "apps/worker/dist/run-execution-consumers.pg.test.js",
+        "apps/worker/dist/execution-input-loaders.pg.test.js",
+        "apps/worker/dist/review-file-stage.test.js",
+        "apps/worker/dist/unified-authoring.pg.test.js",
+        "apps/worker/dist/authoring-pause.pg.test.js",
+        "apps/worker/dist/m4-pipeline.pg.test.js",
+        "apps/worker/dist/worker-runtime-pipeline-seams.pg.integration.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "api-build-7.json",
+      "log": "api-build-7.log",
+      "started": "2026-10-26T13:27:57.688Z",
+      "finished": "2026-10-26T13:28:13.742Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "receipt": "readable-retention-test.json",
+      "log": "readable-retention-test.log",
+      "started": "2026-10-26T13:29:32.503Z",
+      "finished": "2026-10-26T13:29:44.336Z",
+      "args": [
+        "--test",
+        "apps/api/dist/review-readable-retention.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    }
+  ],
+  "historical_failures_retained": [
+    {
+      "receipt": "api-test.json",
+      "log": "api-test.log",
+      "started": "2026-10-26T12:50:16.139Z",
+      "finished": "2026-10-26T12:55:13.548Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1
+    },
+    {
+      "receipt": "working-files-test.json",
+      "log": "working-files-test.log",
+      "started": "2026-10-26T12:57:56.091Z",
+      "finished": "2026-10-26T12:58:11.244Z",
+      "args": [
+        "--test",
+        "apps/api/dist/run-working-files.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1
+    },
+    {
+      "receipt": "api-test-1.json",
+      "log": "api-test-1.log",
+      "started": "2026-10-26T13:15:32.778Z",
+      "finished": "2026-10-26T13:26:09.669Z",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-skip-pattern=^#79 (?:NDJSON sink cannot be split by log injection|file sink repeat and concurrent processes retain one durable line per key|replay of a complete pre-existing line still acknowledges only after file sync|size cap fails closed for new keys but permits replay of a full segment|replay also detects a key in a legacy rotated segment)$",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 1
+    }
+  ],
+  "record_files": [
+    {
+      "path": "api-build-1.json",
+      "bytes": 336,
+      "sha256": "19cd823fc9ba7265ac441bd39297c6ebf0de356bfee44d8fc798c72b450d4f44"
+    },
+    {
+      "path": "api-build-1.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-2.json",
+      "bytes": 336,
+      "sha256": "b5b1d4af976fa947ef2565d778704d9cd8626e596a40ed403e39c860945e0ef6"
+    },
+    {
+      "path": "api-build-2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-3.json",
+      "bytes": 336,
+      "sha256": "2563c74f1ed752fcf8a808163a397eb7136668e4a3ba102be6272e3a1ebeeb10"
+    },
+    {
+      "path": "api-build-3.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-4.json",
+      "bytes": 336,
+      "sha256": "8b41d6f9bdad4cfe7db7b1756b8d017fec8dd32cc40cef72ff1f304c2d914660"
+    },
+    {
+      "path": "api-build-4.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-5.json",
+      "bytes": 336,
+      "sha256": "0a845f4e555a31e23e2b930ec26ca10d72841284aae3bcbc881890cc47e05b7c"
+    },
+    {
+      "path": "api-build-5.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-6.json",
+      "bytes": 336,
+      "sha256": "2b98088d888eb4d013647131aae3f6697678ea86d4bca1969bbdf698daa87edb"
+    },
+    {
+      "path": "api-build-6.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-7.json",
+      "bytes": 336,
+      "sha256": "371a43f15005247eb95a793f6b23cbe6f0422108a261ba4159b79bb89a7d1c8b"
+    },
+    {
+      "path": "api-build-7.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build.json",
+      "bytes": 336,
+      "sha256": "8f1e7dbe7d7a3969c07b6c95697a3c7411c2805d86d309c5747e28377cceb551"
+    },
+    {
+      "path": "api-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-test-1.json",
+      "bytes": 1636,
+      "sha256": "cc810c49429cf4cbf13201585828e80367484f774f329977a4d9e1cd37dc6550"
+    },
+    {
+      "path": "api-test-1.log",
+      "bytes": 28463,
+      "sha256": "f0014f0876297b11aad43e6aefeffec43dd9b0926caabe9df01ff9cff787bc1f"
+    },
+    {
+      "path": "api-test.json",
+      "bytes": 1275,
+      "sha256": "f00f3d48f43b179266d62132777c18f54447d8e6ec732b6600528ce1acbe5fee"
+    },
+    {
+      "path": "api-test.log",
+      "bytes": 47043,
+      "sha256": "4261b66cf86082ab106a2860608bbcbdeb36a8ee41d03c4978552435f4315209"
+    },
+    {
+      "path": "contracts-build.json",
+      "bytes": 346,
+      "sha256": "9c580bf401ea4b8701be0afd7d4fc76f807d90429ea8eab0f33e611fb14fc330"
+    },
+    {
+      "path": "contracts-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "contracts-check.json",
+      "bytes": 240,
+      "sha256": "4174b76f5644ad3d6ba75845a82a6024d48e955f5ee04f50fa1de80ddd0559a5"
+    },
+    {
+      "path": "contracts-check.log",
+      "bytes": 103,
+      "sha256": "e09c107bccc0ba1429b6a58b822a5f619acbf1192e2447b4b70df8e048fb50b9"
+    },
+    {
+      "path": "database-cleanup-audit.json",
+      "bytes": 387,
+      "sha256": "71a76e66c9d8b84f9f9d42014942d45bf0b801d7f63a29707fd95d580127fc3a"
+    },
+    {
+      "path": "database-final.json",
+      "bytes": 240,
+      "sha256": "0fa8643ee4f74436f632d3a2c46cf81335a9e419597b63b12aa58c9795db7800"
+    },
+    {
+      "path": "migrate-1.json",
+      "bytes": 213,
+      "sha256": "70135b3b5ea05545eef96da930c4733ee997ecf616b1886337c4fcec83ff24be"
+    },
+    {
+      "path": "migrate-1.log",
+      "bytes": 48,
+      "sha256": "2958aad96c1d4ff585f48293d58d512d8c38527fd9c464adf7595a400bc10658"
+    },
+    {
+      "path": "migrate.json",
+      "bytes": 213,
+      "sha256": "705ca613cc0a65cf093fabcd91f2ef5f141cd782a7adb9b71142574342e23cc6"
+    },
+    {
+      "path": "migrate.log",
+      "bytes": 44,
+      "sha256": "b001b21b8574a36d8183c1d42d3bc097e2d05d50c931b2f93b01421a25172978"
+    },
+    {
+      "path": "postgres-start.json",
+      "bytes": 173,
+      "sha256": "f8ee71df552614660a355ae2b39f2349b62c660a580e4971fa16b6a188a5e126"
+    },
+    {
+      "path": "postgres-stderr.log",
+      "bytes": 644,
+      "sha256": "44ccb22c6ab3f045c2f7db1169274a3f67e8d2f27f6ccbff3d284ccc41efab06"
+    },
+    {
+      "path": "postgres-stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "postgres-stop.json",
+      "bytes": 1048,
+      "sha256": "f295b38ec3bad15a48123295be6a1afd0fdd6c3c87cd876bed0c9550048d3b0c"
+    },
+    {
+      "path": "readable-retention-test.json",
+      "bytes": 263,
+      "sha256": "17c3e49f872bbe91c52e289f85a620273ebb024004967abdaa6e461106e0f626"
+    },
+    {
+      "path": "readable-retention-test.log",
+      "bytes": 901,
+      "sha256": "db0222362f5c6feed09694dc46462ec40768f53a2af59a2d32fe1bec0978c5ea"
+    },
+    {
+      "path": "sink-scope.json",
+      "bytes": 573,
+      "sha256": "99a95dd0360ba769f83c516cdde7b773c3f0d1ca819a3ab8a4b28e9363f02a66"
+    },
+    {
+      "path": "source-after.json",
+      "bytes": 304550,
+      "sha256": "af5a1ae1371e978a9c8498f75bd36644f27068b71e516659a5b4b25f49940a77"
+    },
+    {
+      "path": "source-before-1.json",
+      "bytes": 304391,
+      "sha256": "a692e28deff681c45e7dd5b1a9e3175627efb2f842699d6263f87b820dc9c3d8"
+    },
+    {
+      "path": "source-before-2.json",
+      "bytes": 304550,
+      "sha256": "1cf786b2da31a0012d3bf359e40955ffaade887f63ea14c98a12b126945bba13"
+    },
+    {
+      "path": "source-before.json",
+      "bytes": 304550,
+      "sha256": "af5a1ae1371e978a9c8498f75bd36644f27068b71e516659a5b4b25f49940a77"
+    },
+    {
+      "path": "verification-freeze-2.json",
+      "bytes": 158,
+      "sha256": "53221096aa140ec818e51180c9907a8a4a410fb80068b868a5dd896343220f9b"
+    },
+    {
+      "path": "verification-freeze.json",
+      "bytes": 158,
+      "sha256": "887230403a6b40c99205dc506832b569e97c422ae72a00a42ec01f3cef6211c7"
+    },
+    {
+      "path": "web-build.json",
+      "bytes": 318,
+      "sha256": "be7d7482407c0e604bdd2c8e8ecd28b4cba1bd37181e7ed4034f95b59186dacb"
+    },
+    {
+      "path": "web-build.log",
+      "bytes": 718,
+      "sha256": "abbb5a30baeea9865bc4926fae8abc96dd3bd62becac35ff74c42ea7c7cb0ba3"
+    },
+    {
+      "path": "web-tsc.json",
+      "bytes": 352,
+      "sha256": "60b3db77a803c7f742560cb8d0e922df101f08e699f7addbcd200ff08f08a408"
+    },
+    {
+      "path": "web-tsc.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build-1.json",
+      "bytes": 339,
+      "sha256": "4d2a787ec7d6989fba06ee4d084a1572647fd1325096628b2b1d0dde4edd2b40"
+    },
+    {
+      "path": "worker-build-1.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build-2.json",
+      "bytes": 339,
+      "sha256": "de322d35c63373326b14ecb7d56baa86e970e8c7a4746f71898582c71ca911f9"
+    },
+    {
+      "path": "worker-build-2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build.json",
+      "bytes": 339,
+      "sha256": "97b638912686c379d3b1bdd2426d77037f614c9c2b5497c07ae9007b70a76434"
+    },
+    {
+      "path": "worker-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-test-1.json",
+      "bytes": 1508,
+      "sha256": "0300d9e3978962ce67b970231f8e2ea769fedbf6b395ae323dbad9a9142e8bc6"
+    },
+    {
+      "path": "worker-test-1.log",
+      "bytes": 12504,
+      "sha256": "6dd5508bde9b0e86743cd7b8645bf28298b5b23b4092a34b29a6ba80de92b2f4"
+    },
+    {
+      "path": "worker-test.json",
+      "bytes": 1508,
+      "sha256": "c62da2f4114e849b2e2e28a492224a6ac293ac4f29187b287c86040c00fe9552"
+    },
+    {
+      "path": "worker-test.log",
+      "bytes": 12507,
+      "sha256": "bee9bc7c49bf4110719f9a9b4d294b9d31330655d9bdd33e2bc7d107896e8c1b"
+    },
+    {
+      "path": "working-files-test-1.json",
+      "bytes": 255,
+      "sha256": "167cfd4eae031789404e30b7ec8b56a2ee83f2d316f6a7198dd8027e85936a20"
+    },
+    {
+      "path": "working-files-test-1.log",
+      "bytes": 2208,
+      "sha256": "90c2f39d765d687e54ccc537f680e1be4e3690a0a5ad4972a819a7c25dcfc47b"
+    },
+    {
+      "path": "working-files-test-2.json",
+      "bytes": 255,
+      "sha256": "f950b729b8ab86f14c4777b55649fd255c61b5cd16faac9465e895cc3dd0fd84"
+    },
+    {
+      "path": "working-files-test-2.log",
+      "bytes": 3131,
+      "sha256": "07ad809f395c50ef808ae825b3e824001792b295c138dfb895b330f86dd47aa9"
+    },
+    {
+      "path": "working-files-test.json",
+      "bytes": 255,
+      "sha256": "cc85e3227ccdd5da2ba1f6a61a7a5625178c30e612b8b721f2e671f3b2126874"
+    },
+    {
+      "path": "working-files-test.log",
+      "bytes": 19746,
+      "sha256": "42d053133a34053b78240fa55aba55bb1f90981eba11ab160805f2e683d607a1"
+    }
+  ],
+  "limits": [
+    "Synthetic cases and private bytes do not establish Word content or professional quality",
+    "Only actual current-round receipts support browser results; prior browser counts are excluded",
+    "Historical raw files whose parent content was already lost and which lack registry may remain diagnostic only",
+    "Immutable database editor body lifecycle and general provider JSON pre-write intent remain separate gaps",
+    "V1 only; no adopted successor input, surcharge formula, new business execution or supplemented Word acceptance",
+    "The API evidence is a failed full run plus targeted fixture correction, not one complete passing run and not an additive pass total",
+    "Skipped tests remain explicit; five exact Windows NDJSON sink titles are excluded by name and not included in the Node skipped count or sink acceptance",
+    "No real supplier, Azure, PR, push or deployment acceptance"
+  ]
+}

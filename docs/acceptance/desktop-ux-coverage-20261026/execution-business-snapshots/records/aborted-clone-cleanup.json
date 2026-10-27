@@ -1,0 +1,127 @@
+{
+  "started": "2026-10-26T14:59:26.267Z",
+  "expected_postmaster_pid": 38148,
+  "dropped": [
+    "bb_g03_template_20261026_t37768_4d2e406a",
+    "bb_g03_template_20261026_t41052_03d9cda1",
+    "bb_g03_template_20261026_t41052_093107e9",
+    "bb_g03_template_20261026_t41052_1d6a1872",
+    "bb_g03_template_20261026_t41052_261f4152",
+    "bb_g03_template_20261026_t41052_2b9839c4",
+    "bb_g03_template_20261026_t41052_334822df",
+    "bb_g03_template_20261026_t41052_4990962c",
+    "bb_g03_template_20261026_t41052_52b7bc7d",
+    "bb_g03_template_20261026_t41052_7581584e",
+    "bb_g03_template_20261026_t41052_78ccb6b0",
+    "bb_g03_template_20261026_t41052_7e83fbd2",
+    "bb_g03_template_20261026_t41052_94e460ee",
+    "bb_g03_template_20261026_t41052_957fd03e",
+    "bb_g03_template_20261026_t41052_b1397ab6",
+    "bb_g03_template_20261026_t41052_b2933f3f",
+    "bb_g03_template_20261026_t41052_bd38611e",
+    "bb_g03_template_20261026_t41052_d7a3d70e",
+    "bb_g03_template_20261026_t41052_e24e0843"
+  ],
+  "before": {
+    "clones": [
+      {
+        "datname": "bb_g03_template_20261026_t37768_4d2e406a",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_03d9cda1",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_093107e9",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_1d6a1872",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_261f4152",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_2b9839c4",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_334822df",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_4990962c",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_52b7bc7d",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_7581584e",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_78ccb6b0",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_7e83fbd2",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_94e460ee",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_957fd03e",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_b1397ab6",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_b2933f3f",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_bd38611e",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_d7a3d70e",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      },
+      {
+        "datname": "bb_g03_template_20261026_t41052_e24e0843",
+        "owner": "bb_g03_test",
+        "datistemplate": false
+      }
+    ],
+    "clients": []
+  },
+  "remaining": [],
+  "finished": "2026-10-26T14:59:36.142Z"
+}

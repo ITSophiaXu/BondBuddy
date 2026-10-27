@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T13:51:31.003Z",
+  "finished": "2026-10-26T13:51:31.827Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "db/migrate.mjs"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

@@ -1,0 +1,158 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-inflight-main.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-work\\inflight-test-results",
+      "--reporter=line,json"
+    ],
+    "configFile": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\playwright.config.ts",
+    "rootDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/supplement-work/inflight-test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "run-supplement-inflight-main.spec.ts",
+      "file": "run-supplement-inflight-main.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "real main: an in-flight contained adapter finishes durably before manual pause permits preparation; original resume reuses its result",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 90000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 6782,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -2,8 +2,8 @@\u001b[39m\n\u001b[2m    \"adopted\": false,\u001b[22m\n\u001b[2m    \"request_id\": \"cf5320a2-d3e7-4c53-b41d-9357892a2d98\",\u001b[22m\n\u001b[2m    \"revision\": 1,\u001b[22m\n\u001b[2m    \"saved_work\": Object {\u001b[22m\n\u001b[2m      \"result_count\": 1,\u001b[22m\n\u001b[32m-     \"status\": \"stale_boundary\",\u001b[39m\n\u001b[31m+     \"status\": \"captured\",\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  }\u001b[22m",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -2,8 +2,8 @@\u001b[39m\n\u001b[2m    \"adopted\": false,\u001b[22m\n\u001b[2m    \"request_id\": \"cf5320a2-d3e7-4c53-b41d-9357892a2d98\",\u001b[22m\n\u001b[2m    \"revision\": 1,\u001b[22m\n\u001b[2m    \"saved_work\": Object {\u001b[22m\n\u001b[2m      \"result_count\": 1,\u001b[22m\n\u001b[32m-     \"status\": \"stale_boundary\",\u001b[39m\n\u001b[31m+     \"status\": \"captured\",\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  }\u001b[22m\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-inflight-main.spec.ts:182:147",
+                    "location": {
+                      "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-inflight-main.spec.ts",
+                      "column": 147,
+                      "line": 182
+                    },
+                    "snippet": "  180 |     for(const key of ['input','creditEvents','reservations','lots','creditAccount','balance'])expect(finalEvidence[key],key).toEqual(initial[key]);\n  181 |     expect(await real.blobs.get(String(result.result_ref))).toEqual(resultBytes);\n> 182 |     const exactReceipt=await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft?request_id=${receipt.request_id}`);expect(exactReceipt).toMatchObject({request_id:receipt.request_id,revision:1,adopted:false,\n      |                                                                                                                                                   ^\n  183 |       saved_work:{status:'stale_boundary',result_count:1}});\n  184 |     await writeFile(join(real.artifactRoot,'m1-inflight-assertions.json'),JSON.stringify({synthetic:true,full_main:true,\n  185 |       scope:'Generic worker mechanics with a controlled local Codex subprocess, real durable journal and private disk bytes. Seeded original run; no business execution, supplier, Azure, adoption, surcharge or Word acceptance.',"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-inflight-main.spec.ts",
+                        "column": 147,
+                        "line": 182
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -2,8 +2,8 @@\u001b[39m\n\u001b[2m    \"adopted\": false,\u001b[22m\n\u001b[2m    \"request_id\": \"cf5320a2-d3e7-4c53-b41d-9357892a2d98\",\u001b[22m\n\u001b[2m    \"revision\": 1,\u001b[22m\n\u001b[2m    \"saved_work\": Object {\u001b[22m\n\u001b[2m      \"result_count\": 1,\u001b[22m\n\u001b[32m-     \"status\": \"stale_boundary\",\u001b[39m\n\u001b[31m+     \"status\": \"captured\",\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  }\u001b[22m\n\n  180 |     for(const key of ['input','creditEvents','reservations','lots','creditAccount','balance'])expect(finalEvidence[key],key).toEqual(initial[key]);\n  181 |     expect(await real.blobs.get(String(result.result_ref))).toEqual(resultBytes);\n> 182 |     const exactReceipt=await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft?request_id=${receipt.request_id}`);expect(exactReceipt).toMatchObject({request_id:receipt.request_id,revision:1,adopted:false,\n      |                                                                                                                                                   ^\n  183 |       saved_work:{status:'stale_boundary',result_count:1}});\n  184 |     await writeFile(join(real.artifactRoot,'m1-inflight-assertions.json'),JSON.stringify({synthetic:true,full_main:true,\n  185 |       scope:'Generic worker mechanics with a controlled local Codex subprocess, real durable journal and private disk bytes. Seeded original run; no business execution, supplier, Azure, adoption, surcharge or Word acceptance.',\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-inflight-main.spec.ts:182:147"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-26T11:44:22.101Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-work\\inflight-test-results\\run-supplement-inflight-ma-5fe58-al-resume-reuses-its-result\\error-context.md"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-work\\inflight-test-results\\run-supplement-inflight-ma-5fe58-al-resume-reuses-its-result\\error-context.md"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-inflight-main.spec.ts",
+                    "column": 147,
+                    "line": 182
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "6d1777267ef9c1cd20bd-87447f9951cfa8b9fe6c",
+          "file": "run-supplement-inflight-main.spec.ts",
+          "line": 71,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-26T11:44:14.957Z",
+    "duration": 20948.894,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

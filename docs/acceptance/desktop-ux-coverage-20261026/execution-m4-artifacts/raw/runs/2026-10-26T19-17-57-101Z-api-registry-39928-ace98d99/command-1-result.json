@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T19:17:57.304Z",
+  "finished": "2026-10-26T19:18:54.687Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/m4-artifact-execution.pg.test.js"
+  ],
+  "status": 1,
+  "signal": null,
+  "pid": 40584
+}

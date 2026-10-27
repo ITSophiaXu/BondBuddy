@@ -1,0 +1,18 @@
+{
+  "started": "2026-10-26T11:12:57.912Z",
+  "finished": "2026-10-26T11:13:28.048Z",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+    "test",
+    "--config",
+    "playwright.config.ts",
+    "run-supplement-draft.spec.ts",
+    "--workers",
+    "1",
+    "--output",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-input\\browser-ui-results-1",
+    "--reporter=line,json"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+  "status": 0
+}

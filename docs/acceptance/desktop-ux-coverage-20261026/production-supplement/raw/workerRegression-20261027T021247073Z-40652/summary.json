@@ -1,0 +1,30 @@
+{
+  "mode": "workerRegression",
+  "startedAt": "2026-10-27T02:12:55.699Z",
+  "completedAt": "2026-10-27T02:18:12.302Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "apps/worker/dist/run-supplement-execution-request.pg.test.js"
+  ],
+  "template": "/bb_prod_supplement02_20261027",
+  "exitCode": 0,
+  "signal": null,
+  "totals": {
+    "tests": 11,
+    "pass": 8,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 3
+  },
+  "sourcesStable": true,
+  "sourceEntries": 2121,
+  "stdout": {
+    "bytes": 4048,
+    "sha256": "699be5fb981e80c97f629dfedf20c7d4403262ab25253c15d3c0ab0e7fdc4f1f"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

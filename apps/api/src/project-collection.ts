@@ -18,7 +18,7 @@ export const memberProjectsSql = (alias:string) => `
 export const collectionTasksSql = `
  SELECT r.*, CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END AS display_kind,
    coalesce('qa_'||pqa.operation,CASE WHEN ir.operation='check' THEN 'integrity_check' WHEN ir.operation='export' THEN 'integrity_export' END,e.operation,CASE WHEN pf.operation='check' THEN 'file_check' WHEN pf.operation='patch' THEN 'file_patch' END) AS operation, t.id AS topic_id, me.manifest#>>'{input,document_type}' AS document_type,
-   (SELECT id FROM bb_review_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.run_id=r.id LIMIT 1) AS report_id,
+   (SELECT id FROM bb_review_execution_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.project_id=r.project_id AND rep.run_id=r.id AND rep.execution_version=1) AS report_id,
    row_number() OVER(PARTITION BY r.project_id,CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END,
      coalesce(me.manifest#>>'{input,document_type}',pf.operation,'qa_'||pqa.operation,'integrity_'||ir.operation,'') ORDER BY r.created_at DESC,r.id DESC) AS lane_rank
  FROM bb_runs r
@@ -55,23 +55,23 @@ export const collectionFilesSql = `
    WHERE tm.owner_user_id=m.owner_user_id AND tm.source_project_id=m.project_id AND tm.material_id=m.id AND tm.material_version=m.version
      AND t.project_id IN(SELECT id FROM members) AND t.surface<>'assistant'))
  UNION ALL
- SELECT a.id,r.project_id||':'||coalesce(CASE WHEN n_input.manifest->>'version'='project-qa-v1' THEN 'qa:'||(n_input.manifest->>'preparation_id') WHEN n_input.manifest->>'version'='integrity-round-v1' THEN 'integrity' END,n_m4.document_type,CASE WHEN n_review.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END)||':'||
-   coalesce(n_integrity.kind,n_m4.kind,n_review_art.kind,CASE WHEN n_job.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}'=a.id THEN 'clean'
-    WHEN n_job.checkpoint#>>'{stages,word_delivery_pair,revision_artifact_id}'=a.id THEN 'revision' ELSE 'result' END),
+ SELECT a.id,r.project_id||':'||coalesce(CASE WHEN n_delivery.naming_manifest->>'version'='project-qa-v1' THEN 'qa:'||(n_delivery.naming_manifest->>'preparation_id') WHEN n_delivery.naming_manifest->>'version'='integrity-round-v1' THEN 'integrity' END,n_delivery.naming_m4_type,CASE WHEN n_delivery.naming_review_version IS NOT NULL THEN 'review' ELSE r.task_kind END)||':'||
+   coalesce(n_delivery.naming_integrity_kind,n_delivery.naming_m4_kind,n_delivery.naming_review_kind,CASE WHEN n_delivery.word_delivery_pair->>'clean_artifact_id'=a.id THEN 'clean'
+    WHEN n_delivery.word_delivery_pair->>'revision_artifact_id'=a.id THEN 'revision' ELSE 'result' END),
  r.project_id,'artifact','',a.version,a.version,a.sha256,a.created_at,
- CASE WHEN n_input.manifest->>'version'='project-qa-v1' THEN '4.2' WHEN n_input.manifest->>'version'='integrity-round-v1' THEN '4.3' WHEN n_m4.kind='preparation_note' THEN '4.1' WHEN n_m4.document_type='init' THEN '1'
-   WHEN n_m4.document_type IN ('annual','semiannual') THEN '3' WHEN n_m4.document_type IN ('issuer','financial','credit','proceeds') THEN '4.1' WHEN n_m4.document_type IS NOT NULL THEN '2.2' WHEN n_input.manifest->>'version'='project-file-operation-v1' THEN '4.2' WHEN n_review_art.kind='report' THEN '4.2' ELSE '2' END,r.id,
+ CASE WHEN n_delivery.naming_manifest->>'version'='project-qa-v1' THEN '4.2' WHEN n_delivery.naming_manifest->>'version'='integrity-round-v1' THEN '4.3' WHEN n_delivery.naming_m4_kind='preparation_note' THEN '4.1' WHEN n_delivery.naming_m4_type='init' THEN '1'
+   WHEN n_delivery.naming_m4_type IN ('annual','semiannual') THEN '3' WHEN n_delivery.naming_m4_type IN ('issuer','financial','credit','proceeds') THEN '4.1' WHEN n_delivery.naming_m4_type IS NOT NULL THEN '2.2' WHEN n_delivery.naming_manifest->>'version'='project-file-operation-v1' THEN '4.2' WHEN n_delivery.naming_review_kind='report' THEN '4.2' ELSE '2' END,r.id,
  EXISTS(SELECT 1 FROM bb_prospectus_selection s JOIN bb_prospectus_versions v ON v.id=s.version_id AND v.owner_user_id=s.owner_user_id
    WHERE s.owner_user_id=a.owner_user_id AND v.artifact_id=a.id AND v.artifact_version=a.version),
  (SELECT to_jsonb(names) FROM (SELECT a.id,a.version,a.media_type,${artifactNameColumns('a')}) names)
- FROM bb_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
+ FROM bb_delivered_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
  ${artifactNameJoins('a')}
  WHERE a.owner_user_id=$1 AND r.project_id IN(SELECT id FROM members) AND r.state='succeeded'
- AND a.quality_status='passed' AND a.delivery_status='available' AND NOT coalesce(n_input.manifest->>'version'='project-qa-v1' AND n_input.manifest->>'operation'='prepare',false)
+ AND a.quality_status='passed' AND a.delivery_status='available' AND NOT coalesce(n_delivery.naming_manifest->>'version'='project-qa-v1' AND n_delivery.naming_manifest->>'operation'='prepare',false)
  AND NOT EXISTS(SELECT 1 FROM bb_project_file_versions fv JOIN bb_project_files ff ON ff.owner_user_id=fv.owner_user_id AND ff.id=fv.file_id WHERE fv.owner_user_id=a.owner_user_id AND ff.project_id IN(SELECT id FROM members)
    AND ((fv.asset#>>'{pin,artifact_id}'=a.id AND (fv.asset#>>'{pin,artifact_version}')::int=a.version) OR (fv.revision_asset#>>'{pin,artifact_id}'=a.id AND (fv.revision_asset#>>'{pin,artifact_version}')::int=a.version)))
- AND (a.id=r.artifact_id OR n_integrity.kind IS NOT NULL OR n_m4.kind IN('document','preparation_note') OR n_review_art.kind IS NOT NULL
-   OR a.id IN(n_job.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}',n_job.checkpoint#>>'{stages,word_delivery_pair,revision_artifact_id}'))
+ AND (n_delivery.is_primary OR n_delivery.naming_integrity_kind IS NOT NULL OR n_delivery.naming_m4_kind IN('document','preparation_note') OR n_delivery.naming_review_kind IS NOT NULL
+   OR a.id IN(n_delivery.word_delivery_pair->>'clean_artifact_id',n_delivery.word_delivery_pair->>'revision_artifact_id'))
  UNION ALL
  SELECT coalesce(v.asset#>>'{pin,material_id}',v.asset#>>'{pin,artifact_id}'),'project-file:'||f.id,
  v.asset#>>'{pin,source_project_id}',v.asset->>'kind',v.filename,

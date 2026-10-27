@@ -1,0 +1,10 @@
+{
+  "id": "2026-10-26T17-24-12-241Z-pg-start-direct-5888-97da5907",
+  "mode": "pg-start-direct",
+  "status": 1,
+  "finished": "2026-10-26T17:24:14.374Z",
+  "error": {
+    "name": "error",
+    "message": "the database system is starting up"
+  }
+}

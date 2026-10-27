@@ -1,0 +1,187 @@
+{
+  "recordedAt": "2026-10-27T01:28:30.381Z",
+  "baseCommit": "05155d3d066e653101e71ff8682ee9c2fe10ceb1",
+  "scope": "Original V1 fee segment/binding/meter used by actual debits, progress, finalizers, history and audit; paid successors remain disabled",
+  "migration": {
+    "template": "bb_segments_final02_20261027",
+    "from": "template0",
+    "count": 137,
+    "sourcesStable": true
+  },
+  "build": {
+    "completedAt": "2026-10-27T01:22:01.3755406Z",
+    "exitCode": 0,
+    "command": "node node_modules/typescript/bin/tsc -p apps/api/tsconfig.json"
+  },
+  "finalTypecheck": {
+    "completedAt": "2026-10-27T01:25:31.6292038Z",
+    "exitCode": 0,
+    "command": "node node_modules/typescript/bin/tsc -p apps/api/tsconfig.json --noEmit"
+  },
+  "accepted": {
+    "functional": {
+      "mode": "functional",
+      "startedAt": "2026-10-27T01:25:05.230Z",
+      "completedAt": "2026-10-27T01:25:47.671Z",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/run-billing-segments.pg.test.js"
+      ],
+      "template": "/bb_segments_final02_20261027",
+      "exitCode": 0,
+      "signal": null,
+      "totals": {
+        "tests": 19,
+        "pass": 19,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "sourcesStable": true,
+      "sourceEntries": 1429,
+      "stdout": {
+        "bytes": 5198,
+        "sha256": "0e87b16e71e575dd43971664ada9eac9fb34e5c7febea31891ce6ab21f162d55"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "directory": "functional-20261027T012504194Z-50364",
+      "changesDuringRun": [],
+      "changesToFinal": []
+    },
+    "compat": {
+      "mode": "compat",
+      "startedAt": "2026-10-27T01:22:27.270Z",
+      "completedAt": "2026-10-27T01:23:22.045Z",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/billing-segment-compatibility.pg.test.js"
+      ],
+      "template": "/bb_segments_final02_20261027",
+      "exitCode": 0,
+      "signal": null,
+      "totals": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "sourcesStable": true,
+      "sourceEntries": 1429,
+      "stdout": {
+        "bytes": 1323,
+        "sha256": "2bce9a0fc185b305b4dff6e5b736a6a0b16413744853140d9886fe4b5711b3b0"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "directory": "compat-20261027T012219994Z-39092",
+      "changesDuringRun": [],
+      "changesToFinal": [
+        "apps/api/dist/run-billing-segments.pg.test.js",
+        "apps/api/src/run-billing-segments.pg.test.ts"
+      ]
+    },
+    "sql": {
+      "mode": "sql",
+      "startedAt": "2026-10-27T01:22:27.267Z",
+      "completedAt": "2026-10-27T01:23:22.045Z",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/run-billing-segments-sql.pg.test.js"
+      ],
+      "template": "/bb_segments_final02_20261027",
+      "exitCode": 0,
+      "signal": null,
+      "totals": {
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "sourcesStable": true,
+      "sourceEntries": 1429,
+      "stdout": {
+        "bytes": 1979,
+        "sha256": "830948388f8d88773bee08b070fc54622354dc345a248fdefaec36ba1d2d64ce"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "directory": "sql-20261027T012221309Z-38268",
+      "changesDuringRun": [],
+      "changesToFinal": [
+        "apps/api/dist/run-billing-segments.pg.test.js",
+        "apps/api/src/run-billing-segments.pg.test.ts"
+      ]
+    },
+    "regression": {
+      "mode": "regression",
+      "startedAt": "2026-10-27T01:22:27.269Z",
+      "completedAt": "2026-10-27T01:27:54.156Z",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/authoring-dynamic-balance.pg.test.js",
+        "apps/api/dist/authoring-progress.pg.test.js",
+        "apps/api/dist/review-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-dynamic-balance.pg.test.js",
+        "apps/api/dist/billing.pg.test.js",
+        "apps/api/dist/review-billing.pg.test.js",
+        "apps/api/dist/m4-fixed-billing.pg.test.js",
+        "apps/api/dist/credit-history.test.js",
+        "apps/api/dist/run-supplement-quote.pg.test.js",
+        "apps/api/dist/run-supplement-test-adoption.pg.test.js",
+        "apps/api/dist/run-supplement-execution.pg.test.js"
+      ],
+      "template": "/bb_segments_final02_20261027",
+      "exitCode": 0,
+      "signal": null,
+      "totals": {
+        "tests": 57,
+        "pass": 57,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "sourcesStable": false,
+      "sourceEntries": 1429,
+      "stdout": {
+        "bytes": 14973,
+        "sha256": "efe34239e6d80836c96447f0d777edf585cacef4c2ae17a8cca9eb7cccbd2d72"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "directory": "regression-20261027T012222481Z-44808",
+      "changesDuringRun": [
+        "apps/api/dist/run-billing-segments.pg.test.js",
+        "apps/api/src/run-billing-segments.pg.test.ts"
+      ],
+      "changesToFinal": []
+    }
+  },
+  "sourceEntries": 1429,
+  "sourceInterpretation": "Only the corrected functional test source/JS differs from earlier SQL/compat runs and overlaps unrelated regression. All production code, SQL, selected regression tests and their dependencies are identical. Final corrected functional suite and noEmit typecheck validate the final file.",
+  "preservedNonAdopted": [
+    "First migration observed SQL edits: source stability false; not adopted.",
+    "First stable 0138 template predates explicit TRUNCATE guard improvement; final02 is adopted.",
+    "First build failed on two functional-test TypeScript errors; fixed.",
+    "First functional run: 1 pass / 11 fail from DTO policy assumption and leftover queued fixture tasks; corrected run adopted without accumulating repeated counts."
+  ],
+  "limitations": [
+    "No additional reservation, B1 rework billing, zero-additional successor binding, paid V2, public adoption or browser acceptance is established.",
+    "G03/UX-A03 and the complete original goal remain active; previous desktop counters are unchanged."
+  ],
+  "success": true
+}

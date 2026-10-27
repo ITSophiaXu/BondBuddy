@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "recordedAt": "2026-10-27T00:56:00.0782045Z",
+  "scope": "Read-only source review of the B1 quote/confirmation slice. No implementation edits, tests, builds, or PostgreSQL processes were started by this review.",
+  "files": [
+    {
+      "path": "apps/api/src/run-supplement-quote.ts",
+      "sha256": "a7c24561fd7e16a1673b8d9aa86b1834379e140bd4f6f262cf192484256d059a"
+    },
+    {
+      "path": "apps/api/src/run-supplement-processing-plan.ts",
+      "sha256": "3406f7fc083889aae800efefe0cf46cb224fb33c4d6b408bfa5dec7691628fdf"
+    },
+    {
+      "path": "db/migrations/0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    }
+  ],
+  "findings": [
+    {
+      "id": "zero-work-dto",
+      "status": "fixed-source-reviewed",
+      "detail": "The zero-work item now explicitly has task_type=null, no price/version, and zero points while preserving source_quote_id."
+    },
+    {
+      "id": "zero-work-paid-source-sql",
+      "status": "fixed-source-reviewed",
+      "detail": "SQL retains the original paid source and validates its category independently; only needs_redo=true requires the item task to equal that source category."
+    },
+    {
+      "id": "archived-read",
+      "status": "fixed-source-reviewed",
+      "detail": "visibleRun now rejects archived projects in addition to deleted projects and closed accounts."
+    },
+    {
+      "id": "concurrent-confirmation-replay",
+      "status": "fixed-source-reviewed",
+      "detail": "The outer exact-request replay branch now reloads the quote response, avoiding a stale null confirmation after another request commits."
+    },
+    {
+      "id": "m4-null-price-version",
+      "status": "fixed-source-reviewed",
+      "detail": "SQL M4 fixed-price source/version checks use IS DISTINCT FROM so JSON null cannot bypass the current-price guard."
+    },
+    {
+      "id": "paid-source-api-sql-parity",
+      "status": "fixed-source-reviewed",
+      "detail": "SQL validates M4 original intent hash/snapshot/reservation points, review intent/input hash and frozen draft revision, and authoring original input/category."
+    }
+  ],
+  "inspections": [
+    "API canonical body columns and SQL snapshot fields agree; INSERT placeholder/value ordering is consistent.",
+    "Captured prior work uses one business-document package at the current price of the original paid category; saved clean/candidate classification cannot lower the original paid task category.",
+    "True zero prior work does not require a published current price and does not waive or replace existing paid accounting.",
+    "Historical reads and exact confirmed-request replay preserve the immutable quote and confirmation rather than requiring the current active draft or current price.",
+    "New confirmation reloads the verified plan/basis and performs live receipt, execution, checkpoint, material, prior-work, current-price and expiry checks.",
+    "This slice writes quotes, explicit acceptance and outbox facts only; it does not adopt materials, resume a run, reserve credits or charge a wallet."
+  ],
+  "remaining": [
+    "Runtime/API/PostgreSQL acceptance and raw verification logs are owned by the root and SQL/test agents. This source review establishes no execution success or scenario-coverage percentage."
+  ]
+}

@@ -8,8 +8,9 @@ import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, ERROR_CATEGORIES, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { assertTestChannelReadable, testChannelEnabled } from './non-production-test.js';
-import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
+import { assertSnapshotScope, emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
 import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
+import {inventoryWorkingFilesForContent,purgeRunWorkingFiles} from './run-working-files.js';
 
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const safeCode = /^[a-z][a-z0-9_]{0,63}$/;
@@ -681,7 +682,7 @@ export function scrubSecrets(text: string) {
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */
-export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
+export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; executionVersion?: number; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
   const scrubbed = scrubSecrets(input.body);
   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
   const intentId = uid();
@@ -689,6 +690,9 @@ export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input:
   await pool.query('INSERT INTO bb_prompt_blob_intents(id,owner_user_id,project_id,object_key) VALUES($1,$2,$3,$4)', [intentId, input.owner, input.projectId, objectKey]);
   try {
     return await transaction(pool, async client => {
+      // Project -> run -> intent matches report/recovery writers and rejects a
+      // corrupt execution identity before private bytes are written.
+      if (input.runId) await assertSnapshotScope(client, input);
       // Keep the intent locked across Blob IO and reference commit. The sweeper
       // cannot delete an in-flight write even when it passes its grace period.
       await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
@@ -876,13 +880,13 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
   const deletedCutoff = deletedDays === undefined ? null : new Date(now.getTime() - deletedDays * 86_400_000);
   const due = (await pool.query(`
     SELECT * FROM (
-      SELECT 'prompt_snapshot' kind,s.id,s.owner_user_id,s.project_id,s.object_key,s.created_at,
+      SELECT 'prompt_snapshot' kind,s.id,s.owner_user_id,s.project_id,s.run_id,s.object_key,s.created_at,
         CASE WHEN u.status='closed' OR p.deleted_at<$4 THEN 'user_deleted' ELSE 'retention_expired' END reason
       FROM bb_snapshot_refs s JOIN bb_users u ON u.id=s.owner_user_id LEFT JOIN bb_runs r ON r.id=s.run_id
       JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id
       WHERE (u.status='closed' OR p.deleted_at<$4 OR (s.created_at<$1 AND (r.id IS NULL OR r.state IN ('succeeded','test_completed','failed','cancelled','rejected'))))
       UNION ALL
-      SELECT 'provider_result',p.id,p.owner_user_id,p.project_id,p.result_ref,p.created_at,
+      SELECT 'provider_result',p.id,p.owner_user_id,p.project_id,p.run_id,p.result_ref,p.created_at,
         CASE WHEN u.status='closed' OR pj.deleted_at<$4 THEN 'user_deleted' ELSE 'retention_expired' END
       FROM bb_provider_result_refs p JOIN bb_users u ON u.id=p.owner_user_id JOIN bb_runs r ON r.id=p.run_id
       JOIN bb_projects pj ON pj.owner_user_id=p.owner_user_id AND pj.id=p.project_id
@@ -892,12 +896,32 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
   let purged = 0, failed = 0;
   for (const row of due) {
     try {
+      // Preserve an exact child inventory before a legacy parent disappears.
+      // A failed/missing source is not permission to treat it as zero files.
+      try {
+        const runs=await inventoryWorkingFilesForContent(pool,blobs,row);
+        for(const runId of runs){
+          const files=await purgeRunWorkingFiles(pool,blobs,{...policy,runId});
+          if(files.failed||files.pending)throw new BlobPurgeError('Working file deletion is incomplete');
+        }
+      } catch { throw new BlobPurgeError('Working file inventory or deletion failed'); }
       const deleted = await transaction(pool, async client => {
-        // The prompt view holds this same lock through response completion. Deletion and
-        // tombstoning must be one serialized operation, including the Blob I/O window.
-        if (row.kind === 'prompt_snapshot') await client.query("SELECT pg_advisory_xact_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [row.id]);
+        // All relational locks precede content locks, including the project FK
+        // used by the eventual audit event. This matches deletion scope order.
+        await client.query('SELECT id FROM bb_users WHERE id=$1 FOR KEY SHARE',[row.owner_user_id]);
+        await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR KEY SHARE',[row.owner_user_id,row.project_id]);
+        if(row.run_id)await client.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR KEY SHARE',[row.owner_user_id,row.run_id]);
+        // Prompt views and internal saved-work reads hold the matching content
+        // locks through validation. Serialize deletion plus its tombstone with both.
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text),hashtext($2::text))', [row.kind,row.id]);
+        if(row.run_id)await client.query("SELECT pg_advisory_xact_lock(hashtext('run_work_files'),hashtext($1::text))",[row.run_id]);
         const existing = await client.query('SELECT 1 FROM bb_log_content_tombstones WHERE content_kind=$1 AND content_id=$2', [row.kind, row.id]);
         if (existing.rowCount) return false;
+        const visible=(await client.query(`SELECT u.status,p.deleted_at,r.state FROM bb_users u
+          JOIN bb_projects p ON p.owner_user_id=u.id AND p.id=$2 LEFT JOIN bb_runs r ON r.owner_user_id=u.id AND r.id=$3
+          WHERE u.id=$1`,[row.owner_user_id,row.project_id,row.run_id])).rows[0];
+        if(!visible||!(visible.status==='closed'||visible.deleted_at&&deletedCutoff&&new Date(visible.deleted_at)<deletedCutoff
+          ||new Date(row.created_at)<cutoff&&(!row.run_id||['succeeded','test_completed','failed','cancelled','rejected'].includes(visible.state))))return false;
         try { await blobs.delete(row.object_key); }
         catch { throw new BlobPurgeError('Private content deletion failed'); }
         const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
@@ -942,7 +966,8 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
   let browserPurged = 0;
   for (const owner of policy.ownerScope ?? [undefined])
     browserPurged += await purgeBrowserErrorContent(pool, policy.contentRetentionDays, now, owner);
-  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed, browserPurged };
+  const workingFiles=await purgeRunWorkingFiles(pool,blobs,policy);
+  return { due: due.length, purged, failed:failed+workingFiles.failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed, browserPurged,workingFiles };
 }
 
 // ---------------------------------------------------------------- operator access

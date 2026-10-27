@@ -1,0 +1,581 @@
+// Synthetic documents and sessions; real PostgreSQL, HTTP auth/CSRF and transactions.
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { Pool, type PoolClient } from 'pg';
+import { createServer } from './server.js';
+import { isolatedTestDatabase } from './test-database.js';
+import { digest, transaction, uid, type PrivateBlobs } from './data.js';
+import { creditBalance, grantCredits } from './billing.js';
+import { inputManifestHash } from './production-rule-pin.js';
+import { compileRunSupplementInput } from './run-supplement-input.js';
+import { emptyM4Draft } from './m4-workspace.js';
+import { claim, finish } from './queue.js';
+import { syntheticReviewPair } from './review-delivery-test-fixture.js';
+import { loadM4Knowledge } from './m4-knowledge.js';
+import { emptyUpdateDetails, M4_DOCUMENT_BILLING_TASKS, type ReviewMaterialPin, type RunSupplementChange, type SourceProspectus } from '@bondbuddy/contracts';
+
+const connection = await isolatedTestDatabase(undefined, 'run-supplement-draft');
+const origin = 'http://bondbuddy.test';
+const ok = (r: { statusCode: number; body: string; json(): any }) => {
+  assert.ok(r.statusCode >= 200 && r.statusCode < 300, r.body); return r.json();
+};
+const sourceDeclaration = (pin: ReviewMaterialPin, overrides: Partial<SourceProspectus> = {}): SourceProspectus => ({
+  ...pin, issuer_name: 'Synthetic declared issuer', relation: 'same_issuer', market: 'sse', offering: 'private',
+  reporting_periods: [{ start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: null,
+    status: 'needs_confirmation', evidence_refs: [] }], status: 'user_asserted', ...overrides,
+});
+async function context(blobs?: PrivateBlobs) {
+  const pool = new Pool({ connectionString: connection }), owner = `supplement-${uid()}`;
+  const app = createServer({ pool, blobs, allowedOrigin: origin, enableSyntheticQueue: true });
+  const session = async (user: string) => {
+    const access = uid(), csrf = uid();
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [user, `supplement_${uid().replaceAll('-', '').slice(0, 20)}`]);
+    await pool.query(`INSERT INTO bb_auth_sessions(id,user_id,access_hash,refresh_hash,csrf_hash,access_expires_at,refresh_expires_at)
+      VALUES($1,$2,$3,$4,$5,now()+interval '1 hour',now()+interval '1 day')`, [uid(), user, digest(access), digest(uid()), digest(csrf)]);
+    return { cookie: `bb_session=${access}; bb_csrf=${csrf}`, 'x-bb-csrf': csrf, origin };
+  };
+  const headers = await session(owner);
+  await transaction(pool, db => grantCredits(db, { owner, points: 10000, key: `synthetic-${uid()}`,
+    source: 'existing_grant', expiresAt: null, actor: 'synthetic-test', reason: 'Seed nonempty ledger before free supplement preparation' }));
+  const send = (method: string, url: string, payload?: unknown, customHeaders: Record<string, string> = headers) => app.inject({ method: method as any, url, payload: payload as any, headers: customHeaders });
+  const project = async (kind = 'update', user = owner) => {
+    const id = uid();
+    await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name) VALUES($1,$2,'Synthetic supplements',$3,'Frozen issuer')", [id, user, kind]);
+    return id;
+  };
+  const material = async (projectId: string, role = 'other', user = owner, id = uid(), version = 1) => {
+    const upload = uid(), sha = digest(`synthetic-${id}-${version}`);
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic.pdf','application/pdf',16,$4,$5,$6,now()+interval '1 hour','completed')`, [upload, user, projectId, sha, role, `users/${user}/projects/${projectId}/synthetic/uploads/${upload}`]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,$2,$3,$4,$5,$6,'synthetic.pdf','application/pdf',16,$7,$8,'persisted')`, [id, version, user, projectId, upload, role, sha, `users/${user}/projects/${projectId}/synthetic/materials/${upload}`]);
+    return { material_id: id, material_version: version, sha256: sha } satisfies ReviewMaterialPin;
+  };
+  const fixture = async (flow: 'm1' | 'm1_generation' | 'm3' | 'm3_result' | 'm4' = 'm1', reviewDrift?: 'version' | 'operation' | 'origin' | 'missing_review' | 'source_run' | 'source_pin' | 'materials' | 'requirements', canonical = false,
+    sourceContext?: { role: 'historical' | 'reference'; boundOutput?: boolean }) => {
+    const task = flow === 'm4' || flow === 'm1_generation' ? 'generation' : flow === 'm3' ? 'review' : 'update';
+    const projectId = await project(flow === 'm3_result' ? 'review' : task);
+    const sourceProject = flow === 'm4' ? await project() : projectId;
+    const basePin = await material(sourceProject, sourceContext?.role ?? 'other'), runId = uid(), jobId = uid();
+    const normalPin = { ...basePin, role: sourceContext?.role ?? 'other' };
+    const reviewInput = { source_material_ref: basePin, material_versions: [basePin],
+      requirements: flow === 'm3_result' ? ['Frozen revision requirement'] : ['Frozen review requirement'], as_of: '2026-09-30' };
+    const reviewOrigin = { version: 'review-execution-origin-v1', entrypoint: 'quick_action', accepted_proposal: null, context_report_ref: null }, sourceRunId = uid();
+    let manifest: any = { draft_revision: 1, issuer_name: 'Frozen issuer', market: 'sse', offering: 'private',
+      update_details: { reporting_cutoff: '2026-09-30' }, goals: ['Frozen original goal'], requirements: ['Frozen original requirement'],
+      materials: [normalPin], rule_pack_version: 'frozen-rules', template_version: 'frozen-template', reference_release: 'frozen-reference' };
+    if (canonical && (flow === 'm1' || flow === 'm1_generation')) {
+      manifest.update_details = { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30' };
+      manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [],
+        knowledge: [{ path: 'synthetic-frozen.md', sha256: digest('Synthetic frozen knowledge'), markdown: 'Synthetic frozen knowledge' }],
+        knowledge_status: 'authoring_reference_not_compliance_approval' };
+      if (sourceContext) {
+        const source = sourceDeclaration(basePin);
+        manifest.authoring.source_prospectuses = [source]; manifest.update_details.source_prospectuses = [structuredClone(source)];
+        if (sourceContext.boundOutput) {
+          manifest.authoring.previous_output = { artifact_id: uid(), version: 1, sha256: digest('Synthetic original output'), run_id: uid(), input_revision: 1 };
+          manifest.authoring.edit_baseline = { market: 'sse', offering: 'private', reporting_periods: structuredClone(source.reporting_periods) };
+        }
+      }
+    }
+    let topic: string | undefined;
+    if (flow === 'm3' && reviewDrift !== 'missing_review') manifest.review = { version: 'review_v1', version_number: 1,
+      operation: 'full_review', report_id: uid(), source_report_id: null, source_report_sha256: null,
+      input: reviewInput, finding_ids: [], origin: reviewOrigin };
+    if (flow === 'm3_result') { manifest.project_kind = 'review'; manifest.authoring = { version: 'unified_v1', source_prospectuses: [], requirements: [], knowledge: [],
+      knowledge_status: 'authoring_reference_not_compliance_approval', review_result: {
+        version: 'review-result-v1', run_id: sourceRunId, input_revision: 1, input_hash: digest('Synthetic source input'),
+        artifact_id: uid(), artifact_version: 1, sha256: digest('Synthetic source result'), source_material: basePin,
+        requirements: 'Frozen revision requirement',
+      } }; }
+    if (flow === 'm4') {
+      topic = uid();
+      await pool.query(`INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash)
+        VALUES($1,$2,$3,$4,'Synthetic frozen M4',$5,$6)`, [topic, owner, projectId, sourceProject, uid(), digest('synthetic-topic')]);
+      const pin = { ...basePin, source_project_id: sourceProject };
+      manifest = { version: 'm4-document-input-v1', kind: 'document', project_name: 'Frozen source', topic_id: topic,
+        execution_scope_project_id: sourceProject, draft_version: 1, input: { ...emptyM4Draft('underwriter'), source_material: pin,
+          materials: [pin], fields: { issuer_name: 'Frozen issuer', market: 'sse' }, requirements: [{ requirement_id: 'frozen', text: 'Frozen requirement', message_id: uid(), message_version: 1 }] },
+        template_material: null, market: 'sse', offering: 'private', knowledge: loadM4Knowledge('sse', 'underwriter', 'private'),
+        billing_task: M4_DOCUMENT_BILLING_TASKS.underwriter };
+    }
+    const hash = inputManifestHash(manifest), pins = flow === 'm4' ? [...manifest.input.materials, manifest.input.source_material] : manifest.materials;
+    await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version,reference_release)
+      VALUES($1,1,$2,1,$3,$4,$5,'[]','frozen-rules','frozen-template','frozen-reference')`, [projectId, owner, hash, manifest, JSON.stringify(pins)]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1', [projectId]);
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage)
+      VALUES($1,$2,$3,1,$4,$5,$6,$7,'paused','user_paused')`, [runId, owner, projectId, hash, uid(), task, digest(uid())]);
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,user_pause_requested,checkpoint)
+      VALUES($1,$2,$3,$4,$5,'paused','user_paused',true,$6)`, [jobId, owner, runId, task, flow === 'm4' ? 'm4_document_v1' : 'default', { saved_work: 'original checkpoint' }]);
+    if (flow === 'm3' || flow === 'm3_result') {
+      const snapshot = { input: { ...reviewInput,
+          ...(reviewDrift === 'source_pin' ? { source_material_ref: { ...basePin, sha256: digest('Different source') } } : {}),
+          ...(reviewDrift === 'materials' ? { material_versions: [] } : {}),
+          ...(reviewDrift === 'requirements' ? { requirements: ['Different requirement'] } : {}),
+        }, finding_ids: [], plan: null, origin: reviewDrift === 'origin' ? { entrypoint: 'different' } : reviewOrigin,
+        ...(flow === 'm3_result' ? { source_run_id: reviewDrift === 'source_run' ? uid() : sourceRunId } : {}),
+      };
+      const insertReview = (db: Pool | PoolClient) => db.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+        VALUES($1,$2,$3,$4,$5,$6)`, [runId, owner, projectId, reviewDrift === 'version' ? 2 : 1,
+        reviewDrift === 'operation' ? 'differential_review' : flow === 'm3_result' ? 'revision' : 'full_review', snapshot]);
+      if (!reviewDrift) await insertReview(pool);
+      else {
+        await assert.rejects(insertReview(pool), (error: unknown) => (error as { code?: string }).code === '23514',
+          'the normal bridge rejects the deliberately inconsistent business snapshot');
+        // Explicit fault injection only in this disposable test database. Copy
+        // the defective legacy content unchanged, so a correct canonical row
+        // cannot conceal the defect from the real HTTP reader. Existing input,
+        // legacy and canonical rows are never updated to create the failure.
+        await transaction(pool, async db => {
+          await db.query('ALTER TABLE bb_review_executions DISABLE TRIGGER bb_review_execution_snapshot_bridge');
+          await db.query('ALTER TABLE bb_review_execution_snapshots DISABLE TRIGGER bb_review_execution_snapshot_exact');
+          await insertReview(db);
+          const injected = await db.query(`INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+            version,operation,source_report_id,snapshot,created_at)
+            SELECT b.owner_user_id,b.project_id,b.run_id,e.execution_version,e.input_revision,e.input_hash,
+              b.version,b.operation,b.source_report_id,b.snapshot,b.created_at
+            FROM bb_review_executions b JOIN bb_run_execution_versions e ON e.owner_user_id=b.owner_user_id
+              AND e.project_id=b.project_id AND e.run_id=b.run_id AND e.execution_version=1
+            WHERE b.run_id=$1 RETURNING snapshot`, [runId]);
+          assert.equal(injected.rowCount, 1); assert.deepEqual(injected.rows[0].snapshot, snapshot);
+          await db.query('ALTER TABLE bb_review_execution_snapshots ENABLE TRIGGER bb_review_execution_snapshot_exact');
+          await db.query('ALTER TABLE bb_review_executions ENABLE TRIGGER bb_review_execution_snapshot_bridge');
+        });
+      }
+    }
+    if (flow === 'm4') await pool.query('INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)', [runId, owner, topic, manifest, hash]);
+    const url = `/api/v1/runs/${runId}/supplement-draft`;
+    const request = (changes: RunSupplementChange[] = [], expected_revision = 0) => ({ request_id: uid(), expected_revision, base_input_revision: 1, base_input_hash: hash, changes });
+    return { flow, projectId, sourceProject, basePin, runId, jobId, topic, manifest, hash, url, request };
+  };
+  const evidence = async (f: Awaited<ReturnType<typeof fixture>>) => ({
+    run: (await pool.query('SELECT * FROM bb_runs WHERE id=$1', [f.runId])).rows,
+    executionVersions: (await pool.query('SELECT * FROM bb_run_execution_versions WHERE run_id=$1 ORDER BY execution_version', [f.runId])).rows,
+    job: (await pool.query('SELECT * FROM bb_jobs WHERE run_id=$1', [f.runId])).rows,
+    input: (await pool.query('SELECT * FROM bb_input_revisions WHERE project_id=$1 ORDER BY revision', [f.projectId])).rows,
+    project: (await pool.query('SELECT * FROM bb_projects WHERE id=$1', [f.projectId])).rows,
+    reviewDraft: (await pool.query('SELECT * FROM bb_review_drafts WHERE project_id=$1', [f.projectId])).rows,
+    review: (await pool.query('SELECT * FROM bb_review_executions WHERE run_id=$1', [f.runId])).rows,
+    reviewSnapshots: (await pool.query('SELECT * FROM bb_review_execution_snapshots WHERE run_id=$1 ORDER BY execution_version', [f.runId])).rows,
+    m4Draft: (await pool.query('SELECT * FROM bb_m4_drafts WHERE topic_id=$1', [f.topic ?? ''])).rows,
+    m4: (await pool.query('SELECT * FROM bb_m4_executions WHERE run_id=$1', [f.runId])).rows,
+    m4Snapshots: (await pool.query('SELECT * FROM bb_m4_execution_snapshots WHERE run_id=$1 ORDER BY execution_version', [f.runId])).rows,
+    attempts: (await pool.query('SELECT * FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY id', [f.jobId])).rows,
+    events: (await pool.query('SELECT * FROM bb_run_events WHERE run_id=$1 ORDER BY seq', [f.runId])).rows,
+    creditEvents: (await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY id', [owner])).rows,
+    reservations: (await pool.query('SELECT * FROM bb_credit_reservations WHERE owner_user_id=$1 ORDER BY id', [owner])).rows,
+    lots: (await pool.query('SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 ORDER BY id', [owner])).rows,
+    creditAccount: (await pool.query('SELECT * FROM bb_credit_accounts WHERE owner_user_id=$1', [owner])).rows,
+    balance: await creditBalance(pool, owner),
+  });
+  return { pool, app, owner, headers, send, session, project, material, fixture, evidence, close: async () => { await app.close(); await pool.end(); } };
+}
+
+test('real review-result update can prepare supplements and resume its original input', { skip: !connection }, async () => {
+  const bytes = new Map<string, Buffer>();
+  const blobs: PrivateBlobs = {
+    put: async (key, value) => { bytes.set(key, Buffer.from(value)); },
+    get: async key => { const value = bytes.get(key); assert.ok(value); return value; },
+    getIfExists: async key => bytes.get(key) ?? null,
+    getIfExistsBounded: async (key, limit) => { const value = bytes.get(key); if (value && value.length > limit) throw new Error('Synthetic byte bound'); return value ?? null; },
+    exists: async key => bytes.has(key), delete: async key => { bytes.delete(key); },
+  };
+  const c = await context(blobs);
+  try {
+    const projectId = await c.project('review'), base = `/api/v1/projects/${projectId}`;
+    const sourcePin = await c.material(projectId, 'historical');
+    const input = { source_material_ref: sourcePin, material_versions: [sourcePin], requirements: [], as_of: null };
+    ok(await c.send('PUT', `${base}/review-draft`, { kind: 'input', expected_version: 0, input }));
+    const source = ok(await c.send('POST', `${base}/review-executions`, {
+      execution_request_id: uid(), operation: 'full_review', expected_input_version: 1,
+      source_report_id: null, expected_plan_version: null, finding_ids: [],
+    }));
+    const lease = await claim(c.pool, 30, { runKinds: ['review'] }); assert.ok(lease); assert.equal(lease.runId, source.run_id);
+    const artifact = await syntheticReviewPair(c.pool, lease, blobs);
+    await finish(c.pool, lease, 'succeeded', { artifactId: artifact.artifactId, artifactVersion: 1, blobs });
+    const updated = ok(await c.send('POST', `${base}/review-updates`, {
+      execution_request_id: uid(), source_run_id: source.run_id, requirements: 'Synthetic result follow-up',
+    }));
+    const runId = updated.run_id, url = `/api/v1/runs/${runId}/supplement-draft`;
+    const frozen = (await c.pool.query(`SELECT r.input_revision,r.input_hash,i.manifest,e.snapshot,e.operation
+      FROM bb_runs r JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.revision=r.input_revision
+      JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1`, [runId])).rows[0];
+    assert.equal(frozen.manifest.review, undefined, 'real result updates use authoring.review_result');
+    assert.equal(frozen.manifest.authoring.review_result.run_id, source.run_id);
+    assert.equal(frozen.snapshot.source_run_id, source.run_id); assert.equal(frozen.operation, 'revision');
+    ok(await c.send('POST', `/api/v1/runs/${runId}/pause`, { reason: 'Synthetic preparation' }));
+    const initial = ok(await c.send('GET', url));
+    assert.equal(initial.can_save, true); assert.deepEqual(initial.base_materials.map((m: any) => m.material_id), [sourcePin.material_id]);
+    const added = await c.material(projectId), changes = [{ material: added, replaces: null }];
+    const request = { request_id: uid(), expected_revision: 0, base_input_revision: updated.input_revision, base_input_hash: updated.input_hash, changes };
+    const balance = await creditBalance(c.pool, c.owner), saved = ok(await c.send('PUT', url, request));
+    assert.equal(saved.revision, 1); assert.deepEqual(saved.changes, changes); assert.equal(saved.adopted, false);
+    assert.equal(saved.input_preview.status, 'needs_information');
+    assert.equal(saved.input_preview.candidate_input_hash, null);
+    assert.equal(saved.input_preview.issues[0].code, 'review_scope_bound');
+    assert.deepEqual(ok(await c.send('GET', `${url}?request_id=${request.request_id}`)).changes, changes);
+    const resumed = ok(await c.send('POST', `/api/v1/runs/${runId}/resume`, { reason: 'Explicit original input' }));
+    assert.equal(resumed.run_id, runId); assert.equal(resumed.input_revision, updated.input_revision); assert.equal(resumed.input_hash, updated.input_hash);
+    const after = (await c.pool.query(`SELECT r.input_revision,r.input_hash,i.manifest,e.snapshot,e.operation
+      FROM bb_runs r JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.revision=r.input_revision
+      JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1`, [runId])).rows[0];
+    assert.deepEqual(after, frozen); assert.deepEqual(await creditBalance(c.pool, c.owner), balance);
+  } finally { await c.close(); }
+});
+
+test('real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    for (const flow of ['m1', 'm3', 'm4'] as const) await t.test(flow, async () => {
+      const f = await c.fixture(flow, undefined, true), added = await c.material(f.projectId, 'audit');
+      const body = f.request([{ material: added, replaces: null }]), expected = structuredClone(f.manifest);
+      if (flow === 'm4') expected.input.materials.push({ ...added, source_project_id: f.projectId });
+      else {
+        expected.materials.push({ ...added, role: 'audit' });
+        if (flow === 'm3') expected.review.input.material_versions.push(added);
+      }
+      const before = await c.evidence(f), saved = ok(await c.send('PUT', f.url, body));
+      if (flow === 'm3') {
+        // Check the route supplies the same exact saved context as a pure caller;
+        // its report identity is already part of the preview's frozen hash.
+        const compiled = compileRunSupplementInput({ projectId: f.projectId, manifest: f.manifest,
+          reviewSnapshot: before.reviewSnapshots[0].snapshot, resultMaterials: saved.result_materials, changes: body.changes,
+          reviewIdentityContext: { owner: c.owner, runId: f.runId,
+            baseExecution: { executionVersion: 1, inputRevision: 1, inputHash: f.hash },
+            supplement: { revision: saved.revision, requestId: body.request_id, requestHash: inputManifestHash(body) } } });
+        assert.equal(compiled.preview.status, 'prepared');
+        expected.review.report_id = (compiled.candidate!.manifest.review as any).report_id;
+        expected.review.version_number = f.manifest.review.version_number + 1;
+        assert.notEqual(expected.review.report_id, f.manifest.review.report_id);
+      }
+      assert.deepEqual(saved.input_preview, { compiler_version: 'run-supplement-input-v1', status: 'prepared',
+        candidate_input_hash: inputManifestHash(expected), issues: [] });
+      assert.notEqual(saved.input_preview.candidate_input_hash, f.hash);
+      assert.equal(saved.adopted, false); assert.deepEqual(await c.evidence(f), before);
+      // Later editable project context is unrelated to this exact saved preparation.
+      await c.pool.query("UPDATE bb_projects SET issuer_name='Unrelated new draft',draft_revision=99 WHERE id=$1", [f.projectId]);
+      assert.deepEqual(ok(await c.send('GET', `${f.url}?request_id=${body.request_id}`)).input_preview, saved.input_preview);
+      assert.deepEqual(ok(await c.send('PUT', f.url, body)).input_preview, saved.input_preview);
+      assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_execution_versions WHERE run_id=$1', [f.runId])).rows[0].n, 1);
+      assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 1);
+      await c.pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1 AND version=$2', [added.material_id, added.material_version]);
+      const unavailable = ok(await c.send('GET', `${f.url}?request_id=${body.request_id}`));
+      assert.equal(unavailable.input_preview.status, 'needs_information');
+      assert.equal(unavailable.input_preview.candidate_input_hash, null);
+      assert.equal(unavailable.input_preview.issues[0].code, 'material_unavailable');
+      assert.deepEqual(unavailable.changes, saved.changes, 'availability never changes the immutable save receipt');
+    });
+    await t.test('new source declarations and bound M4 source replacements remain explicit', async () => {
+      const m1 = await c.fixture('m1', undefined, true), source = await c.material(m1.projectId, 'historical');
+      const before = await c.evidence(m1), saved = ok(await c.send('PUT', m1.url, m1.request([{ material: source, replaces: null }])));
+      assert.equal(saved.input_preview.status, 'needs_information');
+      assert.equal(saved.input_preview.issues[0].code, 'source_information_required');
+      assert.equal(saved.input_preview.candidate_input_hash, null); assert.deepEqual(await c.evidence(m1), before);
+      const m4 = await c.fixture('m4', undefined, true), replacement = await c.material(m4.projectId);
+      const previous = await c.evidence(m4), bound = ok(await c.send('PUT', m4.url, m4.request([{ material: replacement, replaces: m4.basePin }])));
+      assert.equal(bound.input_preview.status, 'needs_information');
+      assert.equal(bound.input_preview.issues[0].code, 'm4_source_bound');
+      assert.equal(bound.input_preview.candidate_input_hash, null); assert.deepEqual(await c.evidence(m4), previous);
+    });
+  } finally { await c.close(); }
+});
+
+test('supplement preparation persists on the original run without adopting, executing or charging', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    const f = await c.fixture(), added = await c.material(f.projectId), replacement = await c.material(f.projectId, 'other', c.owner, f.basePin.material_id, 2);
+    await c.pool.query("UPDATE bb_runs SET state='queued',stage='queued' WHERE id=$1", [f.runId]);
+    await c.pool.query("UPDATE bb_jobs SET state='queued',stage='queued',user_pause_requested=false WHERE id=$1", [f.jobId]);
+    assert.equal(ok(await c.send('GET', f.url)).can_save, false);
+    ok(await c.send('POST', `/api/v1/runs/${f.runId}/pause`, { reason: 'synthetic preparation' }));
+    const initial = ok(await c.send('GET', f.url));
+    assert.equal(initial.revision, 0); assert.equal(initial.can_save, true); assert.equal(initial.adopted, false);
+    assert.deepEqual(initial.base_materials.map((m: any) => m.material_id), [f.basePin.material_id]);
+    // Unrelated current project edits must not become the preparation base.
+    await c.pool.query("UPDATE bb_projects SET draft_revision=99,issuer_name='Later draft issuer',update_details=$2 WHERE id=$1", [f.projectId, { reporting_cutoff: '2027-12-31' }]);
+    const before = await c.evidence(f), changes = [{ material: replacement, replaces: f.basePin }, { material: added, replaces: null }];
+    assert.deepEqual(before.balance, { available: 10000, frozen: 0 });
+    assert.equal(before.creditEvents.length, 1, 'preserve an existing nonempty ledger rather than only comparing empty tables');
+    const body = f.request(changes), saved = ok(await c.send('PUT', f.url, body));
+    assert.equal(saved.revision, 1); assert.equal(saved.latest_revision, 1); assert.equal(saved.base_input_hash, f.hash);
+    assert.deepEqual(saved.changes, changes); assert.equal(saved.adopted, false);
+    assert.deepEqual(saved.result_materials.map((m: any) => m.material_version), [2, 1]);
+    assert.deepEqual(await c.evidence(f), before, 'only preparation receipt and explicit outbox may change');
+    const outbox = (await c.pool.query("SELECT * FROM bb_outbox WHERE aggregate_id=$1 AND event_type='run.supplement_draft_saved'", [f.runId])).rows;
+    assert.equal(outbox.length, 1); assert.equal(outbox[0].aggregate_type, 'run_supplement_draft'); assert.equal(outbox[0].payload.adopted, false);
+    await t.test('saved revision survives reload and a same-request retry', async () => {
+      assert.deepEqual(ok(await c.send('GET', f.url)), saved);
+      assert.deepEqual(ok(await c.send('PUT', f.url, body)), saved);
+      assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 1);
+      assert.equal((await c.pool.query('SELECT bb_material_bytes_pinned($1,$2,$3,$4) pinned', [c.owner, f.projectId, added.material_id, added.material_version])).rows[0].pinned, false,
+        'a draft-only supplement does not become a material retention pin');
+    });
+    await t.test('old request receipt survives a later save and explicit resume', async () => {
+      const next = ok(await c.send('PUT', f.url, f.request([], 1))); assert.equal(next.revision, 2);
+      const old = ok(await c.send('GET', `${f.url}?request_id=${body.request_id}`));
+      assert.equal(old.revision, 1); assert.equal(old.latest_revision, 2); assert.deepEqual(old.changes, changes);
+      ok(await c.send('POST', `/api/v1/runs/${f.runId}/resume`, { reason: 'synthetic' }));
+      const replay = ok(await c.send('PUT', f.url, body));
+      assert.equal(replay.revision, 1); assert.equal(replay.latest_revision, 2); assert.equal(replay.can_save, false); assert.deepEqual(replay.changes, changes);
+      assert.equal((await c.send('PUT', f.url, { ...body, changes: [] })).statusCode, 409);
+      assert.equal((await c.send('GET', `${f.url}?request_id=${uid()}`)).statusCode, 404);
+    });
+  } finally { await c.close(); }
+});
+
+test('supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    const f = await c.fixture(), first = f.request(), second = f.request();
+    const concurrent = await Promise.all([c.send('PUT', f.url, first), c.send('PUT', f.url, second)]);
+    assert.deepEqual(concurrent.map(r => r.statusCode).sort(), [200, 409]);
+    assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 1);
+    assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 409);
+    await t.test('same request saves exactly one revision under concurrent retry', async () => {
+      const next = f.request([], 1), retries = await Promise.all([c.send('PUT', f.url, next), c.send('PUT', f.url, next)]);
+      assert.equal(ok(retries[0]).revision, 2); assert.deepEqual(ok(retries[1]), ok(retries[0]));
+    });
+    await t.test('request receipt GET waits for a committing PUT holding the run lock', async () => {
+      const lock = await c.pool.connect(), key = 1182601;
+      await lock.query('SELECT pg_advisory_lock($1)', [key]);
+      await c.pool.query(`CREATE FUNCTION bb_test_supplement_receipt_wait() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.event_type='run.supplement_draft_saved' THEN PERFORM pg_advisory_xact_lock(${key}); END IF; RETURN NEW; END; $$`);
+      await c.pool.query('CREATE TRIGGER bb_test_supplement_receipt_wait BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_test_supplement_receipt_wait()');
+      const pending = f.request([], 2), put = c.send('PUT', f.url, pending);
+      try {
+        // Observe PostgreSQL's actual blocked advisory statement, without timing
+        // assumptions about when Fastify reached its transaction.
+        let waiting = false;
+        for (let n = 0; n < 200 && !waiting; n++) {
+          waiting = !!(await lock.query(`SELECT 1 FROM pg_locks WHERE locktype='advisory' AND objid=$1 AND NOT granted`, [key])).rowCount;
+          if (!waiting) await new Promise(resolve => setImmediate(resolve));
+        }
+        assert.equal(waiting, true, 'PUT reached its atomic outbox while holding run lock');
+        const receipt = c.send('GET', `${f.url}?request_id=${pending.request_id}`);
+        await lock.query('SELECT pg_advisory_unlock($1)', [key]);
+        assert.equal(ok(await put).revision, 3); assert.equal(ok(await receipt).revision, 3);
+      } finally {
+        await lock.query('SELECT pg_advisory_unlock($1)', [key]); lock.release();
+        await c.pool.query('DROP TRIGGER bb_test_supplement_receipt_wait ON bb_outbox');
+        await c.pool.query('DROP FUNCTION bb_test_supplement_receipt_wait()');
+      }
+    });
+  } finally { await c.close(); }
+});
+
+test('supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    const f = await c.fixture(), valid = await c.material(f.projectId), roleMismatch = await c.material(f.projectId, 'audit');
+    const foreign = `foreign-${uid()}`, foreignHeaders = await c.session(foreign), foreignProject = await c.project('update', foreign);
+    const foreignPin = await c.material(foreignProject, 'other', foreign), otherProject = await c.project(), otherPin = await c.material(otherProject);
+    await t.test('unauthenticated, CSRF and cross-owner access are refused', async () => {
+      assert.equal((await c.app.inject({ method: 'GET', url: f.url })).statusCode, 401);
+      assert.equal((await c.send('PUT', f.url, f.request(), { ...c.headers, 'x-bb-csrf': '' })).statusCode, 403);
+      assert.equal((await c.send('GET', f.url, undefined, foreignHeaders)).statusCode, 404);
+      assert.equal((await c.send('PUT', f.url, f.request(), foreignHeaders)).statusCode, 404);
+    });
+    for (const [name, changes] of [
+      ['wrong hash', [{ material: { ...valid, sha256: 'e'.repeat(64) }, replaces: null }]],
+      ['wrong owner', [{ material: foreignPin, replaces: null }]],
+      ['wrong project', [{ material: otherPin, replaces: null }]],
+      ['duplicate additions', [{ material: valid, replaces: null }, { material: valid, replaces: null }]],
+      ['unknown replacement', [{ material: valid, replaces: otherPin }]],
+      ['duplicate replacements', [{ material: valid, replaces: f.basePin }, { material: roleMismatch, replaces: f.basePin }]],
+      ['different role', [{ material: roleMismatch, replaces: f.basePin }]],
+    ] as Array<[string, RunSupplementChange[]]>) await t.test(name, async () => {
+      const result = await c.send('PUT', f.url, f.request(changes)); assert.ok([409, 422].includes(result.statusCode), result.body);
+    });
+    await c.pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1', [valid.material_id]);
+    assert.equal((await c.send('PUT', f.url, f.request([{ material: valid, replaces: null }]))).statusCode, 409);
+    assert.equal((await c.send('PUT', f.url, { ...f.request(), base_input_hash: 'a'.repeat(64) })).statusCode, 409);
+    assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 0);
+  } finally { await c.close(); }
+});
+
+test('supplement preparation requires a durable manual pause and reconciled provider calls', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    for (const scenario of ['running', 'saving', 'paused_lease', 'automatic_pause', 'pending_provider', 'completed_unknown', 'failed_unknown', 'terminal', 'archived', 'unsupported'] as const) await t.test(scenario, async () => {
+      const f = await c.fixture();
+      if (scenario === 'running' || scenario === 'saving') {
+        await c.pool.query("UPDATE bb_runs SET state='running' WHERE id=$1", [f.runId]);
+        await c.pool.query("UPDATE bb_jobs SET state='running',user_pause_requested=$2,lease_token='synthetic-lease',lease_until=now()+interval '1 hour' WHERE id=$1", [f.jobId, scenario === 'saving']);
+      } else if (scenario === 'paused_lease') await c.pool.query("UPDATE bb_jobs SET lease_token='synthetic-stale-lease',lease_until=now()-interval '1 hour' WHERE id=$1", [f.jobId]);
+      else if (scenario === 'automatic_pause') await c.pool.query('UPDATE bb_jobs SET user_pause_requested=false WHERE id=$1', [f.jobId]);
+      else if (scenario === 'unsupported') await c.pool.query("UPDATE bb_runs SET task_kind='qa' WHERE id=$1", [f.runId]);
+      else if (scenario === 'terminal') {
+        await c.pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [f.runId]);
+        await c.pool.query("UPDATE bb_jobs SET state='cancelled' WHERE id=$1", [f.jobId]);
+      } else if (scenario === 'archived') await c.pool.query('UPDATE bb_projects SET archived_at=now() WHERE id=$1', [f.projectId]);
+      else await c.pool.query(`INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status)
+        VALUES($1,$2,$3,$4,1,$5)`, [uid(), c.owner, f.jobId, uid(), scenario === 'pending_provider' ? 'pending_reconcile' : scenario === 'completed_unknown' ? 'completed' : 'failed']);
+      const before = await c.evidence(f), read = ok(await c.send('GET', f.url));
+      assert.equal(read.can_save, false); assert.ok(read.blocked_reason); assert.equal(read.adopted, false);
+      assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 409);
+      assert.deepEqual(await c.evidence(f), before);
+    });
+    await t.test('manual pause while credits are exhausted remains usable without changing credits', async () => {
+      const f = await c.fixture();
+      await c.pool.query("UPDATE bb_runs SET stage='credits_exhausted' WHERE id=$1", [f.runId]);
+      await c.pool.query("UPDATE bb_jobs SET stage='credits_exhausted',credit_pause_requested=true WHERE id=$1", [f.jobId]);
+      const before = await c.evidence(f); assert.equal(ok(await c.send('PUT', f.url, f.request())).can_save, true);
+      assert.deepEqual(await c.evidence(f), before);
+    });
+    await t.test('deleted project is owner-safe 404', async () => {
+      const f = await c.fixture(); await c.pool.query('UPDATE bb_projects SET deleted_at=now() WHERE id=$1', [f.projectId]);
+      assert.equal((await c.send('GET', f.url)).statusCode, 404); assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 404);
+    });
+    await t.test('test-channel metadata obeys the deployment read gate', async () => {
+      const f = await c.fixture();
+      // A test-channel run is inserted under its immutable channel rather than
+      // changing the existing production row.
+      const id = uid(), grant = uid();
+      await c.pool.query(`INSERT INTO bb_non_production_test_grants(grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+        VALUES($1,$2,$3,1,$4,$5,$5,$5,'synthetic','isolated read gate test',now()+interval '1 hour')`, [grant, c.owner, f.projectId, f.hash, digest('synthetic grant')]);
+      await c.pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,channel,test_grant_id)
+        VALUES($1,$2,$3,1,$4,$5,'qa',$6,'paused','non_production_test',$7)`, [id, c.owner, f.projectId, f.hash, uid(), digest(uid()), grant]);
+      const previousTier = process.env.BB_DEPLOYMENT_TIER, previousGate = process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+      try {
+        process.env.BB_DEPLOYMENT_TIER = 'production'; delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+        assert.equal((await c.send('GET', `/api/v1/runs/${id}/supplement-draft`)).statusCode, 404);
+      } finally {
+        if (previousTier === undefined) delete process.env.BB_DEPLOYMENT_TIER; else process.env.BB_DEPLOYMENT_TIER = previousTier;
+        if (previousGate === undefined) delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL; else process.env.BB_NON_PRODUCTION_TEST_CHANNEL = previousGate;
+      }
+    });
+  } finally { await c.close(); }
+});
+
+test('supplement base and business snapshots remain frozen across M3 and cross-project M4', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    for (const flow of ['m1_generation', 'm3', 'm4'] as const) await t.test(flow, async () => {
+      const f = await c.fixture(flow), added = await c.material(f.projectId);
+      if (flow === 'm3') await c.pool.query('INSERT INTO bb_review_drafts(owner_user_id,project_id,version,input) VALUES($1,$2,99,$3)', [c.owner, f.projectId, { requirements: ['Unrelated current review draft'], material_versions: [] }]);
+      else if (flow === 'm4') await c.pool.query('INSERT INTO bb_m4_drafts(owner_user_id,topic_id,document_type,version,input,sha256) VALUES($1,$2,$3,99,$4,$5)', [c.owner, f.topic, 'underwriter', emptyM4Draft('underwriter'), inputManifestHash(emptyM4Draft('underwriter'))]);
+      const before = await c.evidence(f), read = ok(await c.send('GET', f.url));
+      assert.equal(read.base_materials.length, 1); assert.equal(read.base_materials[0].source_project_id, f.sourceProject);
+      const saved = ok(await c.send('PUT', f.url, f.request([{ material: added, replaces: f.basePin }])));
+      assert.equal(saved.result_materials[0].source_project_id, f.projectId); assert.equal(saved.adopted, false);
+      assert.deepEqual(await c.evidence(f), before, 'original snapshot and current editable draft are both preserved');
+    });
+    for (const drift of ['version', 'operation', 'origin', 'missing_review'] as const) await t.test(`inconsistent M3 ${drift} is unavailable`, async () => {
+      const f = await c.fixture('m3', drift), before = await c.evidence(f);
+      assert.equal((await c.send('GET', f.url)).statusCode, 503);
+      assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 503);
+      assert.deepEqual(await c.evidence(f), before);
+    });
+    for (const drift of ['source_run', 'source_pin', 'materials', 'requirements', 'operation'] as const) await t.test(`inconsistent review-result update ${drift} is unavailable`, async () => {
+      // Insert inconsistent synthetic records up front; immutable inputs and
+      // snapshots are never updated to manufacture these negative cases.
+      const f = await c.fixture('m3_result', drift), before = await c.evidence(f);
+      assert.equal((await c.send('GET', f.url)).statusCode, 503);
+      assert.equal((await c.send('PUT', f.url, f.request())).statusCode, 503);
+      assert.deepEqual(await c.evidence(f), before);
+    });
+    await t.test('outbox failure rolls back the entire save and same request can retry', async () => {
+      const f = await c.fixture(), before = await c.evidence(f), body = f.request();
+      await c.pool.query(`CREATE FUNCTION bb_test_supplement_outbox_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.event_type='run.supplement_draft_saved' THEN RAISE EXCEPTION 'synthetic outbox failure'; END IF; RETURN NEW; END; $$`);
+      await c.pool.query('CREATE TRIGGER bb_test_supplement_outbox_fail BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_test_supplement_outbox_fail()');
+      try {
+        assert.equal((await c.send('PUT', f.url, body)).statusCode, 500);
+        assert.equal((await c.pool.query('SELECT count(*)::int n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 0);
+        assert.deepEqual(await c.evidence(f), before);
+      } finally {
+        await c.pool.query('DROP TRIGGER bb_test_supplement_outbox_fail ON bb_outbox'); await c.pool.query('DROP FUNCTION bb_test_supplement_outbox_fail()');
+      }
+      assert.equal(ok(await c.send('PUT', f.url, body)).revision, 1);
+      await assert.rejects(c.pool.query("UPDATE bb_run_supplement_drafts SET changes='[]' WHERE run_id=$1", [f.runId]), (error: unknown) => (error as { code?: string }).code === '23514');
+    });
+  } finally { await c.close(); }
+});
+
+test('source-only supplement edits preserve exact idempotent receipts and require a fresh revision and CAS', { skip: !connection }, async () => {
+  const c = await context();
+  try {
+    const f = await c.fixture('m1', undefined, true, { role: 'historical', boundOutput: true });
+    const replacement = await c.material(f.projectId, 'historical', c.owner, f.basePin.material_id, 2);
+    const incomplete = sourceDeclaration(replacement, { issuer_name: null, relation: null, market: null, offering: null, reporting_periods: [] });
+    const incompleteChange: RunSupplementChange = { material: replacement, replaces: f.basePin,
+      source_prospectus: incomplete, discard_previous_output: true };
+    const before = await c.evidence(f), firstRequest = f.request([incompleteChange]);
+    const initial = ok(await c.send('GET', f.url));
+    assert.deepEqual(initial.source_context, { kind: 'm1_authoring', previous_output_bound: true });
+    const first = ok(await c.send('PUT', f.url, firstRequest));
+    assert.equal(first.revision, 1); assert.equal(first.adopted, false);
+    assert.equal(first.input_preview.status, 'needs_information');
+    assert.equal(first.input_preview.issues[0].code, 'source_information_required');
+    assert.equal(first.input_preview.candidate_input_hash, null);
+    assert.deepEqual(first.changes, [incompleteChange]);
+    assert.deepEqual(ok(await c.send('PUT', f.url, firstRequest)), first);
+
+    const complete = sourceDeclaration(replacement), secondChange: RunSupplementChange = { ...incompleteChange, source_prospectus: complete };
+    assert.equal((await c.send('PUT', f.url, { ...firstRequest, changes: [secondChange] })).statusCode, 409,
+      'a declaration edit changes the exact request hash');
+    assert.equal((await c.send('PUT', f.url, f.request([secondChange], 0))).statusCode, 409,
+      'source-only edits obey receipt CAS');
+    const secondRequest = f.request([secondChange], 1), second = ok(await c.send('PUT', f.url, secondRequest));
+    assert.equal(second.revision, 2); assert.equal(second.input_preview.status, 'prepared');
+    assert.ok(second.input_preview.candidate_input_hash);
+    const changedDeclaration = sourceDeclaration(replacement, { relation: 'parent', issuer_name: 'Explicitly different declared source' });
+    const thirdChange: RunSupplementChange = { ...secondChange, source_prospectus: changedDeclaration };
+    const thirdRequest = f.request([thirdChange], 2), third = ok(await c.send('PUT', f.url, thirdRequest));
+    assert.equal(third.revision, 3); assert.equal(third.input_preview.status, 'prepared');
+    assert.notEqual(third.input_preview.candidate_input_hash, second.input_preview.candidate_input_hash);
+    assert.deepEqual(ok(await c.send('PUT', f.url, thirdRequest)), third);
+    assert.equal((await c.send('PUT', f.url, f.request([secondChange], 2))).statusCode, 409);
+    const oldReceipt = ok(await c.send('GET', `${f.url}?request_id=${firstRequest.request_id}`));
+    assert.equal(oldReceipt.revision, 1); assert.equal(oldReceipt.latest_revision, 3);
+    assert.deepEqual(oldReceipt.changes, [incompleteChange]); assert.equal(oldReceipt.input_preview.status, 'needs_information');
+    assert.deepEqual((await c.pool.query('SELECT changes FROM bb_run_supplement_drafts WHERE run_id=$1 ORDER BY revision', [f.runId])).rows.map(row => row.changes),
+      [[incompleteChange], [secondChange], [thirdChange]]);
+    assert.deepEqual(await c.evidence(f), before, 'declaring a new source never changes old input, execution, output or credits');
+    assert.equal((await c.pool.query('SELECT bb_material_bytes_pinned($1,$2,$3,$4) AS pinned',
+      [c.owner, f.projectId, replacement.material_id, replacement.material_version])).rows[0].pinned, false);
+  } finally { await c.close(); }
+});
+
+test('HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit', { skip: !connection }, async t => {
+  const c = await context();
+  try {
+    const f = await c.fixture('m1', undefined, true, { role: 'reference', boundOutput: true });
+    const replacement = await c.material(f.projectId, 'reference', c.owner, f.basePin.material_id, 2);
+    const complete = sourceDeclaration(replacement);
+    const before = await c.evidence(f);
+    const choice = ok(await c.send('PUT', f.url, f.request([{ material: replacement, replaces: f.basePin, source_prospectus: complete }])));
+    assert.equal(choice.input_preview.status, 'needs_information');
+    assert.ok(choice.input_preview.issues.some((issue: any) => issue.code === 'source_baseline_choice_required'));
+    assert.equal(choice.input_preview.candidate_input_hash, null);
+    assert.deepEqual(await c.evidence(f), before);
+    for (const [name, declaration] of [
+      ['wrong material', sourceDeclaration(replacement, { material_id: uid() })],
+      ['wrong revision', sourceDeclaration(replacement, { material_version: 1 })],
+      ['wrong content', sourceDeclaration(replacement, { sha256: digest('different source bytes') })],
+      ['incompatible market', sourceDeclaration(replacement, { market: 'sse', offering: 'mtn' })],
+    ] as Array<[string, SourceProspectus]>) await t.test(name, async () => {
+      const response = await c.send('PUT', f.url, f.request([{ material: replacement, replaces: f.basePin,
+        source_prospectus: declaration, discard_previous_output: true }], 1));
+      assert.equal(response.statusCode, 422, response.body);
+    });
+    const ordinary = await c.material(f.projectId, 'audit');
+    assert.equal((await c.send('PUT', f.url, f.request([{ material: ordinary, replaces: null, source_prospectus: sourceDeclaration(ordinary) }], 1))).statusCode, 422);
+    assert.equal((await c.send('PUT', f.url, f.request([{ material: ordinary, replaces: null, discard_previous_output: true }], 1))).statusCode, 422);
+    for (const flow of ['m3', 'm4'] as const) await t.test(`${flow} cannot accept M1 source authority`, async () => {
+      const other = await c.fixture(flow, undefined, true), added = await c.material(other.projectId, 'historical');
+      const evidence = await c.evidence(other);
+      assert.equal((await c.send('PUT', other.url, other.request([{ material: added, replaces: null, source_prospectus: sourceDeclaration(added) }]))).statusCode, 422);
+      assert.equal((await c.pool.query('SELECT count(*)::int AS n FROM bb_run_supplement_drafts WHERE run_id=$1', [other.runId])).rows[0].n, 0);
+      assert.deepEqual(await c.evidence(other), evidence);
+    });
+    const withoutOutput = await c.fixture('m1', undefined, true), source = await c.material(withoutOutput.projectId, 'historical');
+    const noOutputBefore = await c.evidence(withoutOutput);
+    assert.deepEqual(ok(await c.send('GET', withoutOutput.url)).source_context, { kind: 'm1_authoring', previous_output_bound: false });
+    assert.equal((await c.send('PUT', withoutOutput.url, withoutOutput.request([{ material: source, replaces: null,
+      source_prospectus: sourceDeclaration(source), discard_previous_output: true }]))).statusCode, 422);
+    assert.deepEqual(await c.evidence(withoutOutput), noOutputBefore);
+    assert.equal((await c.pool.query('SELECT count(*)::int AS n FROM bb_run_supplement_drafts WHERE run_id=$1', [f.runId])).rows[0].n, 1,
+      'semantic errors create no additional receipt');
+  } finally { await c.close(); }
+});

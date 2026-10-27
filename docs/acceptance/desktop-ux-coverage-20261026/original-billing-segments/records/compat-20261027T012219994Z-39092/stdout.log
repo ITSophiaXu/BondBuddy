@@ -1,0 +1,36 @@
+TAP version 13
+# (node:46124) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: canonical V1 audit detects missing, changed and misbound fee provenance
+ok 1 - canonical V1 audit detects missing, changed and misbound fee provenance
+  ---
+  duration_ms: 6226.1047
+  type: 'test'
+  ...
+# Subtest: M4 original fees are included in provenance and cap auditing
+ok 2 - M4 original fees are included in provenance and cap auditing
+  ---
+  duration_ms: 2331.3495
+  type: 'test'
+  ...
+# Subtest: history names the canonical fee input and retains the existing reservation DTO and cursor
+ok 3 - history names the canonical fee input and retains the existing reservation DTO and cursor
+  ---
+  duration_ms: 1954.7722
+  type: 'test'
+  ...
+# Subtest: correction explicitly selects the original reservation while retaining run-only idempotency
+ok 4 - correction explicitly selects the original reservation while retaining run-only idempotency
+  ---
+  duration_ms: 1516.5281
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52467.2506

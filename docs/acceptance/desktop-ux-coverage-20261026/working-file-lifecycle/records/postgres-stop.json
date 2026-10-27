@@ -1,0 +1,31 @@
+{
+  "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+  "pgctl": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+  "postmaster_pid": 16128,
+  "status_before": {
+    "args": [
+      "status"
+    ],
+    "status": 0,
+    "stdout": "pg_ctl: server is running (PID: 16128)\r\nC:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe \"-D\" \"C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data\" \"-h\" \"127.0.0.1\" \"-p\" \"15526\"\r\n",
+    "stderr": ""
+  },
+  "stop": {
+    "args": [
+      "-w",
+      "stop"
+    ],
+    "status": 0,
+    "stdout": "waiting for server to shut down.... done\r\nserver stopped\r\n",
+    "stderr": ""
+  },
+  "status_after": {
+    "args": [
+      "status"
+    ],
+    "status": 3,
+    "stdout": "pg_ctl: no server running\r\n",
+    "stderr": ""
+  },
+  "finished": "2026-10-26T13:31:16.961Z"
+}

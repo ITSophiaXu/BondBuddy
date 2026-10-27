@@ -6,9 +6,10 @@ import {loadM4Knowledge,validM4Knowledge} from './m4-knowledge.js';
 import {emptyM4Draft,m4UnavailableDocument} from './m4-workspace.js';
 import {M4_MULTIPLIERS,validateM4BillingConfig} from './m4-billing.js';
 
-test('all material/exchange combinations select actual source knowledge with distinct immutable bytes',()=>{
+test('standalone exchange guides cover four document types with eight distinct immutable snapshots',()=>{
   const hashes=new Set<string>();
-  for(const market of ['sse','szse'] as const)for(const type of M4_DOCUMENT_TYPES.filter(t=>!['application','recommendation'].includes(t))){
+  const standaloneTypes=['init','underwriter','legal','private_summary'] as const;
+  for(const market of ['sse','szse'] as const)for(const type of standaloneTypes){
     const pin=loadM4Knowledge(market,type);hashes.add(pin.sha256);
     assert.equal(Value.Check(M4KnowledgeSnapshotSchema,pin),true);
     assert.ok(validM4Knowledge(pin,market,type));

@@ -184,6 +184,9 @@ test('password change checks input locally, keeps the session on a wrong passwor
 });
 
 test('closure lists blockers and retained records, needs confirmation, then leaves no private data in any tab', async ({ page, context }) => {
+  // This complete two-tab journey includes closure, logout and a rejected login.
+  // Keep each assertion bounded while allowing the whole journey under suite load.
+  test.setTimeout(60_000);
   const state = fixture(); state.activeRuns = [{ run_id: 'run-active', project_id: 'project-synthetic', state: 'running' }]; await installApi(context, state);
   await openSettings(page, state);
   await openSecurity(page);

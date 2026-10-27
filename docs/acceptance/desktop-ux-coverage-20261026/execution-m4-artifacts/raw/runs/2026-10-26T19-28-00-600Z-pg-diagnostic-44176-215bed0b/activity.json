@@ -1,0 +1,15 @@
+[
+  {
+    "pid": 39324,
+    "datname": "postgres",
+    "state": "active",
+    "wait_event_type": "IPC",
+    "wait_event": "CheckpointDone",
+    "age": {
+      "seconds": 8,
+      "milliseconds": 857.35
+    },
+    "blockers": [],
+    "query": "DROP DATABASE IF EXISTS \"bb_execution_report_template_20261027_t24924_863865bb\" WITH (FORCE)"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "recorded_at": "2026-10-26T14:33:21.263Z",
+  "source": "Retained session handoff and root observations; not a captured process environment",
+  "broad_run": "api-all-stream",
+  "broad_runtime_enabled": "1 according to retained session history: this mode was launched before driver removed its global override",
+  "limitation": "The original command receipt did not capture the effective environment or pre-edit driver bytes. Treat this explanation as session provenance, not independently verified launch-env evidence.",
+  "supporting_observations": [
+    "execution-key original 202 vs501; corrected default-config rerun passed",
+    "revision-range same source/dist passed with current sanitized environment",
+    "logical-job/non-production/preflight group passed with default environment"
+  ],
+  "default_driver": "Current verify.mjs removes all inherited BB_* keys and does not assign BB_RUN_RUNTIME_ENABLED. Subsequent receipts capture its null value.",
+  "acceptance": "Broad run remains exploratory and failed; cannot claim a clean default full-suite run."
+}

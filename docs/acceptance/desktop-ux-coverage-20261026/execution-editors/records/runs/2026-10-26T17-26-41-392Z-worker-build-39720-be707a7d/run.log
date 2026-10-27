@@ -1,0 +1,2 @@
+apps/worker/src/review-editor-execution.pg.test.ts(79,39): error TS2322: Type 'string' is not assignable to type '`${string}-${string}-${string}-${string}-${string}`'.
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 2; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-editors-20261027\\runs\\2026-10-26T17-26-41-392Z-worker-build-39720-be707a7d\\run.log\n\n2 !== 0\n"}

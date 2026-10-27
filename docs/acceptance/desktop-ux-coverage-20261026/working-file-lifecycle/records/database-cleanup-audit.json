@@ -1,0 +1,15 @@
+{
+  "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+  "port": "15526",
+  "server_version": "16.14",
+  "postmaster_pid": 16128,
+  "databases": [
+    {
+      "datname": "bb_g03_template_20261026"
+    }
+  ],
+  "other_client_sessions": [],
+  "template_runs": 0,
+  "template_executions": 0,
+  "checked_at": "2026-10-26T13:31:16.475Z"
+}

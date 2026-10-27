@@ -1,0 +1,8 @@
+{
+  "recorded_at": "2026-10-26T15:23:21.499Z",
+  "chunk_id": "439a93",
+  "wall_time_seconds": 0.0000111,
+  "exit_code": 0,
+  "original_token_count": 85,
+  "output": "ok\r\n\r\nSuccess. You can now start the database server using:\r\n\r\n    ^\"C^:^\\Users^\\lezhai^\\Downloads^\\Bondbuddy^\\^.m3^-test^-tools^\\node^_modules^\\^@embedded^-postgres^\\windows^-x64^\\native^\\bin^\\pg^_ctl^\" -D ^\"C^:^\\Users^\\lezhai^\\Downloads^\\Bondbuddy^\\ux^-coverage^-20261026^\\^.local^\\artifact^-origin^-postgres^\\data^\" -l logfile start\r\n\r\n"
+}

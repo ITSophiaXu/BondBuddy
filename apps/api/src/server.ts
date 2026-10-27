@@ -1,7 +1,9 @@
+import { assertArtifactExecution } from './artifact-execution.js';
 import { registerProjectQa } from './project-qa.js';
 import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
 import { readAuthoringProgress } from './authoring-progress.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
 import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
@@ -17,10 +19,13 @@ import type { OcrCorrectionRequest, SignatureAssessment } from '@bondbuddy/contr
 import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
 import { registerM4Routes } from './m4-workspace.js';
+import { registerRunSupplementDraftRoutes } from './run-supplement-draft.js';
+import { registerRunSupplementQuoteRoutes } from './run-supplement-quote.js';
+import { registerRunSupplementAdoptionRoutes } from './run-supplement-adoption.js';
 import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
-import { ReviewRevisionHandlingSchema, reportingWindow } from '@bondbuddy/contracts';
+import { BILLING_TASKS, ReviewRevisionHandlingSchema, reportingWindow } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
@@ -184,6 +189,9 @@ export function createServer(settings: Settings = {}) {
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   registerReviewRoutes(app, db, owner, paidReview);
   registerM4Routes(app, db, owner, blob, queueEnabled);
+  registerRunSupplementDraftRoutes(app, db, owner);
+  registerRunSupplementQuoteRoutes(app, db, blob, owner);
+  registerRunSupplementAdoptionRoutes(app, db, blob, owner);
   registerProjectAssistant(app, db, owner);
   registerProjectQa(app, db, owner);
   registerQaKnowledge(app, db, owner);
@@ -267,6 +275,7 @@ export function createServer(settings: Settings = {}) {
   }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
+    await assertArtifactExecution(db(),artifact);
     let bytes:Buffer|null;
     if(artifact.media_type===WORD_MEDIA_TYPE){
       const expectedSize=Number(artifact.delivery_evidence_byte_size);
@@ -838,13 +847,16 @@ export function createServer(settings: Settings = {}) {
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       if (p.update_details?.authoring_mode === 'unified_v1') {
         const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(p, resolved, currentMessageSet);
-        const previous = (await client.query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.input_revision,i.manifest
-          FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
-          JOIN bb_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
-          JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
-          WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND r.channel='production'
+        const previous = (await client.query(`SELECT a.id,a.version,a.sha256,d.run_id,d.input_revision,i.manifest
+          FROM bb_run_execution_deliveries d
+          JOIN bb_delivered_artifact_versions a ON a.id=d.word_delivery_pair->>'clean_artifact_id' AND a.owner_user_id=d.owner_user_id AND a.run_id=d.run_id
+            AND a.version=(d.word_delivery_pair->>'clean_artifact_version')::integer
+          JOIN bb_run_execution_delivery_artifact_details member ON member.owner_user_id=d.owner_user_id AND member.run_id=d.run_id
+            AND member.execution_version=d.execution_version AND member.artifact_id=a.id AND member.artifact_version=a.version AND member.delivery_phase='final'
+          JOIN bb_input_revisions i ON i.owner_user_id=d.owner_user_id AND i.project_id=d.project_id AND i.revision=d.input_revision AND i.input_hash=d.input_hash
+          WHERE d.owner_user_id=$1 AND d.project_id=$2 AND d.delivery_phase='final' AND d.terminal_state='succeeded' AND d.channel='production'
             AND a.quality_status='passed' AND a.delivery_status='available'
-            AND ($3::text IS NULL OR (a.id=$3 AND a.version=$4 AND a.sha256=$5)) ORDER BY r.created_at DESC LIMIT 1`,
+            AND ($3::text IS NULL OR (a.id=$3 AND a.version=$4 AND a.sha256=$5)) ORDER BY d.delivered_at DESC,d.run_id DESC,d.execution_version DESC LIMIT 1`,
             [user,id,b.edit_base?.artifact_id??null,b.edit_base?.artifact_version??null,b.edit_base?.sha256??null])).rows[0];
         const sourceKey = (items: {material_id:string;material_version:number;role:string;sha256:string}[]) => JSON.stringify(items.filter(m => ['historical','reference'].includes(m.role)).map(m => [m.material_id,m.material_version,m.sha256]).sort());
         if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
@@ -1330,12 +1342,27 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request);return {enabled:paidAuthoring,...await creditBalance(db(),user)};
   });
   app.get('/api/v1/runs/:run_id/credit-charge',{schema:{response:{200:schemas.RunCreditChargeResponse}}},async request=>{
-    const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
-    const progress=await readAuthoringProgress(db(),user,r.id);
-    if(!r.reservation_id)return {quote:null,state:null,...(progress?{progress}:{})};
-    const row=(await db().query('SELECT q.*,r.state AS charge_state FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2',[user,r.reservation_id])).rows[0];
-    if(!row)throw missing();
-    return {quote:quoteDto(row),state:row.charge_state,...(progress?{progress}:{})};
+    const user=await owner(request);
+    return transaction(db(),async client=>{
+      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+      const r=await run(client,user,param(request,'run_id')),progress=await readAuthoringProgress(client,user,r.id);
+      const fee=await readRunBillingSegment(client,r),extra=progress?{progress}:{};
+      if(!fee)return {quote:null,state:null,...extra};
+      const charge=(await client.query('SELECT state FROM bb_credit_reservations WHERE owner_user_id=$1 AND id=$2',[user,fee.reservationId])).rows[0];
+      const supplemental=(await client.query('SELECT * FROM bb_run_supplement_quotes WHERE owner_user_id=$1 AND id=$2 AND run_id=$3',[user,fee.sourceQuoteId,r.id])).rows[0];
+      if(supplemental){
+        const item=supplemental.items[0];
+        // M4 retains its dedicated quotation DTO; this common endpoint still
+        // reports its exact current meter and settlement state.
+        if(!Object.hasOwn(BILLING_TASKS,item.task_type))return {quote:null,state:charge.state,...extra};
+        return {quote:quoteDto({id:supplemental.id,project_id:r.project_id,input_revision:fee.execution.inputRevision,
+          input_hash:fee.execution.inputHash,task_type:item.task_type,points:fee.points,price_version:item.price_version,
+          reason:'补料续做：需重做的文档按已确认的完整文档价格另行计费。',created_at:supplemental.created_at}),state:charge.state,...extra};
+      }
+      const row=(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND id=$2',[user,fee.sourceQuoteId])).rows[0];
+      if(!row){if(r.task_kind==='generation')return {quote:null,state:charge.state,...extra};throw missing();}
+      return {quote:quoteDto(row),state:charge.state,...extra};
+    });
   });
   app.post('/api/v1/projects/:project_id/credit-quote',{schema:{body:schemas.FixedQuoteRequest,response:{200:schemas.FixedQuoteResponse}}},async request=>{
     const user=await owner(request),id=param(request,'project_id');
@@ -1540,19 +1567,19 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_delivered_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
-      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
+      ${artifactNameJoins('a')}
+      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=n_delivery.test_grant_id AND tg.user_id=a.owner_user_id
+        AND tg.project_id=n_delivery.project_id AND tg.input_revision=n_delivery.input_revision AND tg.input_hash=n_delivery.input_hash
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       LEFT JOIN bb_review_pdf_delivery_evidence pdf_e ON pdf_e.owner_user_id=a.owner_user_id AND pdf_e.run_id=a.run_id AND pdf_e.id=a.review_pdf_delivery_evidence_id
-      ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
-        ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
-         (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
+        ((n_delivery.channel='production' AND (n_delivery.terminal_state='succeeded' OR (n_delivery.delivery_phase='m4_durable' AND r.state='succeeded')) AND a.delivery_status='available') OR
+         (n_delivery.channel='non_production_test' AND $3::boolean AND n_delivery.terminal_state='test_completed' AND a.delivery_status='test_only'
           AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id,testChannelEnabled()]);
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
-    const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
-    const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
+    const pair=a.naming_pair as Record<string,unknown>|undefined;
     if (pair?.revision_handling && (!Value.Check(ReviewRevisionHandlingSchema,pair.revision_handling) || pair.review_passed !== false)) throw new Problem(503,'DATA_UNAVAILABLE','Revision handling snapshot is invalid');
     const variant=pair?.revision_artifact_id===a.id?'revision':pair?.clean_artifact_id===a.id?'clean':pair?.baseline_artifact_id===a.id?'baseline':null;
     const wordDelivery=variant ? {variant,revision_artifact_id:pair!.revision_artifact_id,clean_artifact_id:pair!.clean_artifact_id,
@@ -1573,15 +1600,16 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_delivered_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
-      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
+      ${artifactNameJoins('a')}
+      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=n_delivery.test_grant_id AND tg.user_id=a.owner_user_id
+        AND tg.project_id=n_delivery.project_id AND tg.input_revision=n_delivery.input_revision AND tg.input_hash=n_delivery.input_hash
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       LEFT JOIN bb_review_pdf_delivery_evidence pdf_e ON pdf_e.owner_user_id=a.owner_user_id AND pdf_e.run_id=a.run_id AND pdf_e.id=a.review_pdf_delivery_evidence_id
-      ${artifactNameJoins('a')}
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
-        ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
-         (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
+        ((n_delivery.channel='production' AND (n_delivery.terminal_state='succeeded' OR (n_delivery.delivery_phase='m4_durable' AND r.state='succeeded')) AND a.delivery_status='available') OR
+         (n_delivery.channel='non_production_test' AND $3::boolean AND n_delivery.terminal_state='test_completed' AND a.delivery_status='test_only'
           AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id,testChannelEnabled()]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();

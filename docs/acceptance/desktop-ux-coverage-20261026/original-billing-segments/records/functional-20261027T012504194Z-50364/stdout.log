@@ -1,0 +1,127 @@
+TAP version 13
+# Subtest: authoring: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+ok 1 - authoring: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+  ---
+  duration_ms: 3862.6175
+  type: 'test'
+  ...
+# Subtest: review: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+ok 2 - review: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+  ---
+  duration_ms: 3302.3642
+  type: 'test'
+  ...
+# Subtest: m4: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+ok 3 - m4: reserve immediately captures exact V1 terms; queue, activity, progress and verified delivery use the original cap
+  ---
+  duration_ms: 3800.9352
+  type: 'test'
+  ...
+# Subtest: canonical V1: one point exhausts, saved work and manual pause survive topup, unfunded elapsed time is discarded, delivery finishes at the original cap
+ok 4 - canonical V1: one point exhausts, saved work and manual pause survive topup, unfunded elapsed time is discarded, delivery finishes at the original cap
+  ---
+  duration_ms: 3552.5305
+  type: 'test'
+  ...
+# Subtest: authoring: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+ok 5 - authoring: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+  ---
+  duration_ms: 2010.6777
+  type: 'test'
+  ...
+# Subtest: review: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+ok 6 - review: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+  ---
+  duration_ms: 1732.8865
+  type: 'test'
+  ...
+# Subtest: m4: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+ok 7 - m4: cancellation retains consumed V1 points; platform failure appends one compensating correction without rewriting gross debits
+  ---
+  duration_ms: 1809.7047
+  type: 'test'
+  ...
+# Subtest: real paid V1: missing or inconsistent canonical query results fail closed before debit; a different execution cannot reuse the original reservation
+    # Subtest: missing binding
+    ok 1 - missing binding
+      ---
+      duration_ms: 10.2491
+      type: 'test'
+      ...
+    # Subtest: cap mismatch
+    ok 2 - cap mismatch
+      ---
+      duration_ms: 11.5594
+      type: 'test'
+      ...
+    # Subtest: source mismatch
+    ok 3 - source mismatch
+      ---
+      duration_ms: 9.6235
+      type: 'test'
+      ...
+    # Subtest: policy mismatch
+    ok 4 - policy mismatch
+      ---
+      duration_ms: 10.8261
+      type: 'test'
+      ...
+    # Subtest: wrong input
+    ok 5 - wrong input
+      ---
+      duration_ms: 11.5868
+      type: 'test'
+      ...
+    # Subtest: duplicate binding
+    ok 6 - duplicate binding
+      ---
+      duration_ms: 9.7322
+      type: 'test'
+      ...
+    # Subtest: missing canonical meter cannot fall back to the existing legacy meter
+    ok 7 - missing canonical meter cannot fall back to the existing legacy meter
+      ---
+      duration_ms: 15.7132
+      type: 'test'
+      ...
+    1..7
+ok 8 - real paid V1: missing or inconsistent canonical query results fail closed before debit; a different execution cannot reuse the original reservation
+  ---
+  duration_ms: 1584.7434
+  type: 'test'
+  ...
+# Subtest: platform trial V1 keeps its nonmonetary legacy meter and creates no canonical segment, reservation or debit
+ok 9 - platform trial V1 keeps its nonmonetary legacy meter and creates no canonical segment, reservation or debit
+  ---
+  duration_ms: 1348.6521
+  type: 'test'
+  ...
+# (node:17612) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+ok 10 - authoring: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+  ---
+  duration_ms: 1334.1368
+  type: 'test'
+  ...
+# Subtest: review: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+ok 11 - review: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+  ---
+  duration_ms: 1408.87
+  type: 'test'
+  ...
+# Subtest: m4: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+ok 12 - m4: an actual nonproduction V1 fixture never acquires a monetary segment or charges its funded owner
+  ---
+  duration_ms: 1620.2063
+  type: 'test'
+  ...
+1..12
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41172.4012

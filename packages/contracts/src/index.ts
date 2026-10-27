@@ -1,4 +1,10 @@
 import { qaSchemas,qaOpenApiPaths } from './project-qa.js';
+import {runSupplementSchemas} from './run-supplement.js';
+export * from './run-supplement.js';
+import {runSupplementQuoteSchemas} from './run-supplement-quote.js';
+export * from './run-supplement-quote.js';
+import {runSupplementAdoptionSchemas} from './run-supplement-adoption.js';
+export * from './run-supplement-adoption.js';
 export * from './project-qa.js';
 import { integritySchemas,integrityOpenApiPaths } from './integrity.js';
 export * from './integrity.js';
@@ -170,7 +176,7 @@ const historyResult = {
   word_delivery: nullable(obj({
     revision: obj({ artifact_id: id, version: revision }),
     clean: obj({ artifact_id: id, version: revision }),
-    baseline: obj({ artifact_id: id, version: revision })
+    baseline: Type.Optional(obj({ artifact_id: id, version: revision }))
   }))
 };
 const ProjectMessageSchema = obj({
@@ -196,6 +202,9 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
+  ...runSupplementSchemas,
+  ...runSupplementQuoteSchemas,
+  ...runSupplementAdoptionSchemas,
   ...prospectusVersionSchemas,
   ...m4Schemas,
   ...projectFileSchemas,
@@ -357,9 +366,17 @@ export function isMarketOffering(market: Market, offering: Offering): boolean {
 }
 
 export type SchemaName = keyof typeof schemas;
-export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
+export type Operation = { method: 'get' | 'post' | 'put' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get','/runs/{run_id}/supplement-draft','Read an owned frozen-run supplement preparation or exact save receipt; never adopt or execute','RunSupplementDraftResponse',200,undefined,[404,409,422,503]),
+  op('put','/runs/{run_id}/supplement-draft','Save a versioned supplement preparation while durably paused; never adopt, resume or charge','RunSupplementDraftResponse',200,'RunSupplementDraftRequest',[404,409,422,503]),
+  op('post','/runs/{run_id}/supplement-quotes','Create an immutable B1 quote for one saved supplement preparation; never adopt, resume, reserve or charge','RunSupplementQuoteResponse',200,'RunSupplementQuoteRequest',[404,409,422,503]),
+  op('get','/runs/{run_id}/supplement-quotes/{quote_id}','Read an owned exact B1 quote and any confirmation receipt without authorising execution','RunSupplementQuoteResponse',200,undefined,[404,422,503]),
+  op('post','/runs/{run_id}/supplement-quotes/{quote_id}/confirm','Explicitly confirm one exact B1 quote; never adopt, resume, reserve or charge','RunSupplementQuoteResponse',200,'RunSupplementQuoteConfirmRequest',[404,409,422,503]),
+  op('post','/runs/{run_id}/supplement-adoptions','Adopt one exactly confirmed supplement atomically in the same production run; replay returns its immutable receipt','RunSupplementAdoptionResponse',200,'RunSupplementAdoptRequest',[402,404,409,422,503]),
+  op('get','/runs/{run_id}/supplement-adoptions','Recover the immutable owned adoption receipt for one exact request without scheduling work','RunSupplementAdoptionResponse',200,undefined,[404,422,503]),
+  op('get','/runs/{run_id}/supplement-adoptions/current','Read the current production execution adoption receipt without a local request journal; never adopt, debit or resume','RunSupplementAdoptionResponse',200,undefined,[404,409,503]),
   op('get','/credits/consumption-history','Read owned task reservations, settlements and releases','CreditConsumptionHistoryResponse',200,undefined,[422]),
   op('get','/credits/recharge-history','Read owned payment recharge orders','RechargeHistoryResponse',200,undefined,[422]),
   op('get','/credits/balance','Read available and frozen credits','CreditBalanceResponse'),
@@ -480,6 +497,7 @@ export function openApiDocument() {
   };
   for (const operation of operations) {
     const path = `/api/v1${operation.path}`;
+    const supplementQuoteOperation = operation.path.startsWith('/runs/{run_id}/supplement-quotes');
     paths[path] ??= {};
     const binary = operation.path.endsWith('/download');
     const responses: Record<string, unknown> = { [operation.status]: { description: 'Response for this operation', ...(operation.status === 204 ? {} : { content: binary ? { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } : { 'application/json': { schema: ref(operation.response) } } }) } };
@@ -493,7 +511,7 @@ export function openApiDocument() {
             : status === 422
               ? operation.path === '/projects/{project_id}/events' || operation.path === '/projects/{project_id}/artifacts' ? 'Invalid cursor or page size' : 'Contract validation error'
               : status === 503
-                ? operation.path === '/projects/{project_id}/artifacts' ? 'Stored Word bytes failed the bounded integrity check; retryable' : operation.path === '/projects/{project_id}/materials/{material_id}' ? 'Private object storage is temporarily unavailable; retryable' : 'Upload inspection capacity is temporarily unavailable; retryable'
+                ? supplementQuoteOperation ? 'Saved supplement basis or current price is temporarily unavailable; retryable' : operation.path === '/runs/{run_id}/supplement-draft' ? 'Frozen run input or business snapshot is temporarily unavailable; retryable' : operation.path === '/projects/{project_id}/artifacts' ? 'Stored Word bytes failed the bounded integrity check; retryable' : operation.path === '/projects/{project_id}/materials/{material_id}' ? 'Private object storage is temporarily unavailable; retryable' : 'Upload inspection capacity is temporarily unavailable; retryable'
                 : 'Contract error';
       responses[status] = { description, content: { 'application/json': { schema: ref('Error') } } };
     }
@@ -504,15 +522,24 @@ export function openApiDocument() {
     const issuerReviewReady = operation.path.includes('/issuer-identity/observations') ||
       operation.path.includes('/generation-issuer-bindings') || operation.path.endsWith('/issuer-parse-evidence');
     const status = operation.path.includes('/recovery') ? 'implemented; manual-channel-delivery; configured-support-and-grant-required' : operation.path.startsWith('/admin/') ? 'implemented; operator-grant-required; deny-by-default-404' : operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready || issuerReviewReady ? 'implemented; requires-valid-session' : 'contract-only-or-501';
-    const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!(['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
+    const csrfHeader=operation.method==='post'||operation.method==='put'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!(['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
+    const supplementQueryParameters = operation.path === '/runs/{run_id}/supplement-draft' && operation.method === 'get'
+      ? Object.entries(schemas.RunSupplementDraftQuery.properties).map(([name,schema])=>({name,in:'query',required:false,schema,description:'Read the exact immutable receipt for this save request; does not mutate or resume.'}))
+      : operation.path === '/runs/{run_id}/supplement-adoptions' && operation.method === 'get'
+        ? Object.entries(schemas.RunSupplementAdoptionQuery.properties).map(([name,schema])=>({name,in:'query',required:true,schema,description:'Exact adoption request receipt; does not mutate, debit or resume.'})) : [];
     const messageQueryParameters = operation.path === '/projects/{project_id}/messages' && operation.method === 'get'
       ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string', maxLength: 256 } },
         { name: 'limit', in: 'query', required: false, schema: { type: 'string', pattern: '^(?:[1-9]|[1-4][0-9]|50)$', default: '20' } }] : [];
     const historySchema=operation.path==='/projects/{project_id}/tasks'?schemas.ProjectTasksQuery:operation.path==='/projects/{project_id}/artifacts'?schemas.ArtifactHistoryQuery:['/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download'].includes(operation.path)&&operation.method==='get'?schemas.MaterialVersionQuery:null;
     const historyQueryParameters = historySchema?Object.entries(historySchema.properties).map(([name, schema]) => ({ name, in: 'query', required: false, schema })) : [];
     const creditHistoryQueryParameters = ['/credits/consumption-history','/credits/recharge-history'].includes(operation.path) ? Object.entries(schemas.CreditHistoryQuery.properties).map(([name,schema])=>({name,in:'query',required:false,schema})) : [];
-    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...messageQueryParameters, ...historyQueryParameters, ...creditHistoryQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
+    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': operation.path === '/runs/{run_id}/supplement-draft' ? 'implemented; owner-and-run-scoped; frozen-origin; preparation-only; never-adopt-resume-or-charge' : supplementQuoteOperation ? 'implemented; owner-and-run-scoped; immutable-b1-quote-and-confirmation-only; never-adopt-resume-reserve-or-charge' : status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...supplementQueryParameters, ...messageQueryParameters, ...historyQueryParameters, ...creditHistoryQueryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
+  for (const method of ['get','post'] as const)
+    (paths['/api/v1/runs/{run_id}/supplement-adoptions'][method] as Record<string,unknown>)['x-implementation-status'] =
+      'implemented; owner-and-run-scoped; production-only; exact-confirmed-quote; atomic-adoption; immutable-receipt-replay';
+  (paths['/api/v1/runs/{run_id}/supplement-adoptions/current'].get as Record<string,unknown>)['x-implementation-status'] =
+    'implemented; owner-and-run-scoped; production-only; current-execution; read-only; immutable-receipt';
   paths['/api/v1/projects/{project_id}/review-executions/{run_id}/readable-report'] = { get: {
     summary: 'Read a delivered private review report for display without executing a task',
     'x-implementation-status': 'implemented; owner-scoped; read-only; private-no-store', security: [{ sessionCookie: [] }],

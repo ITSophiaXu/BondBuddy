@@ -1,0 +1,12 @@
+{
+  "status": 1,
+  "signal": null,
+  "output": [
+    null,
+    "",
+    "Get-Process : Cannot find a process with the process identifier 17984.\r\nAt line:1 char:1\r\n+ Get-Process -Id 17984 -ErrorAction Stop | Select-Object Id,Path,Start ...\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (17984:Int32) [Get-Process], ProcessCommandException\r\n    + FullyQualifiedErrorId : NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.GetProcessCommand\r\n \r\n"
+  ],
+  "pid": 14880,
+  "stdout": "",
+  "stderr": "Get-Process : Cannot find a process with the process identifier 17984.\r\nAt line:1 char:1\r\n+ Get-Process -Id 17984 -ErrorAction Stop | Select-Object Id,Path,Start ...\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (17984:Int32) [Get-Process], ProcessCommandException\r\n    + FullyQualifiedErrorId : NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.GetProcessCommand\r\n \r\n"
+}

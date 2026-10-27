@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createServer } from '@bondbuddy/api';
 import { transaction } from '@bondbuddy/api/data';
 import { enqueue, claim, promoteWordArtifact, finish, checkpointStage } from '@bondbuddy/api/queue';
+import { projectRunExecution, resolveRunExecution } from '@bondbuddy/api/run-execution';
 import { isolatedTestDatabase } from './test-database.js';
 import { markTestWord } from './test-word-marking.js';
 import { test } from 'node:test';
@@ -27,7 +28,7 @@ import { HISTORICAL_GENERATION_VERSION, mergeInventories, semanticInventory, typ
 import type { StoredParseSnapshot } from './parse-evidence-repository.js';
 import type { StoredFactCandidate } from './fact-repository.js';
 import type { StoredHistoricalProfile } from './historical-profile-repository.js';
-import type { StageContext } from './run-pipeline.js';
+import type { RunRow, StageContext } from './run-pipeline.js';
 import type { StoredFactDecision } from './fact-decision-repository.js';
 import { validateDocumentParseResponse } from './document-parser.js';
 import { syntheticHistoricalRules } from './test-fixtures/historical-rules.js';
@@ -78,6 +79,9 @@ function fixture(testChannel = false) {
     sample_manifest_sha256: 'a'.repeat(64), taxonomy_hash: candidatePin.taxonomy.contentSha256,
     rule_pack_hash: candidatePin.rulePack.contentSha256, expires_at: new Date(Date.now() + 3600000), revoked_at: null as Date | null };
   const pool = { async query(sql: string, values: unknown[]) {
+    if (sql.includes('SELECT r.* FROM bb_runs r')) return { rows: [rawRun] };
+    if (sql.includes('FROM bb_run_execution_versions e')) return { rows: [{ execution_version: 1,
+      input_revision: rawRun.input_revision, input_hash: rawRun.input_hash }] };
     if (sql.includes('FROM bb_non_production_test_grants')) { assert.equal(testChannel, true); return { rows: [grant] }; }
     if (sql.includes('FROM bb_input_revisions')) { assert.deepEqual(values, ['owner-1','project-1',1]); return { rows: [row] }; }
     if (sql.includes('FROM bb_jobs')) { assert.equal(values[1], 'owner-1'); return { rows: [{ checkpoint: { stages: { parse_evidence: { snapshot_id: snapshot.snapshotId } } } }] }; }
@@ -85,10 +89,15 @@ function fixture(testChannel = false) {
     if (sql.includes('FROM bb_fact_evidence_context_sets')) return { rows: [] };
     throw new Error('Unexpected SQL in synthetic test');
   }, async connect() { throw new Error('Synthetic test uses repository adapters'); } };
+  const rawRun: RunRow = { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: row.input_hash, task_kind: 'update',
+    ...(testChannel ? { channel: 'non_production_test' as const, test_grant_id: 'synthetic-grant' } : {}) };
   const ctx: StageContext = { pool: pool as unknown as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
-    run: { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: row.input_hash, task_kind: 'update',
-      ...(testChannel ? { channel: 'non_production_test' as const, test_grant_id: 'synthetic-grant' } : {}) },
+    run: projectRunExecution(rawRun, { executionVersion: 1, inputRevision: rawRun.input_revision, inputHash: rawRun.input_hash }),
     signal: new AbortController().signal, checkpoint: {}, values: new Map() };
+  const setRun = (patch: Partial<RunRow>) => {
+    Object.assign(rawRun, patch);
+    ctx.run = projectRunExecution(rawRun, { executionVersion: 1, inputRevision: rawRun.input_revision, inputHash: rawRun.input_hash });
+  };
   if (testChannel) {
     ctx.validateBeforeModelCall = async () => null;
     ctx.testRuleCapabilityLoader = async () => ({ status: 'ready', sampleManifestSha256: grant.sample_manifest_sha256,
@@ -108,7 +117,7 @@ function fixture(testChannel = false) {
   const checkpoint: NonNullable<HistoricalModelStageOptions['checkpoint']> = async (c,name,data) => { c.checkpoint[name] = data; };
   const model: NonNullable<HistoricalModelStageOptions['model']> = o => ({ name: o.name, run: async () => { assert.equal(o.validate(answer), true); return { kind: 'done', value: structuredClone(answer) }; } });
   const options: HistoricalModelStageOptions = { load: c => loadHistoricalGenerationInput(c,readers), prepare, checkpoint, model };
-  return { source, snapshot, profile, facts, manifest, row, ctx, readers, answer, options, grant };
+  return { source, snapshot, profile, facts, manifest, row, rawRun, ctx, setRun, readers, answer, options, grant };
 }
 
 test('test-channel input reaches the historical planner with exact research guidance and no production release', async () => {
@@ -514,7 +523,7 @@ test('missing issuer binding, rule pin, unconfirmed baseline and unsupported mar
 });
 
 test('foreign run is rejected and task kinds never fall back to the historical branch', async()=>{
-  const s=fixture(); s.ctx.run.task_kind='generation'; let loads=0; s.options.load=async()=>{loads++;throw new Error('Unexpected');};
+  const s=fixture(); s.setRun({task_kind:'generation'}); let loads=0; s.options.load=async()=>{loads++;throw new Error('Unexpected');};
   assert.equal((await historicalModelGenerationStage(s.options).run(s.ctx)).kind,'pause'); assert.equal(loads,0);
   const other=fixture(); const input=await loadHistoricalGenerationInput(other.ctx,other.readers);
   input.locked.context.ownerUserId='other-owner'; other.options.load=async()=>input;
@@ -842,7 +851,7 @@ function missingCutoffFixture() {
   const s = fixture(true);
   (s.manifest.update_details as UpdateDetails).reporting_cutoff = null;
   s.row.input_hash = inputManifestHash(s.manifest);
-  s.ctx.run.input_hash = s.row.input_hash; s.grant.input_hash = s.row.input_hash;
+  s.setRun({ input_hash: s.row.input_hash }); s.grant.input_hash = s.row.input_hash;
   return s;
 }
 
@@ -905,7 +914,7 @@ test('cutoff bridge preserves explicit target intent and production missing-cuto
     const explicit = fixture(true);
     explicit.manifest.update_details.reporting_cutoff = '2023-12-31';
     explicit.row.input_hash = inputManifestHash(explicit.manifest);
-    explicit.ctx.run.input_hash = explicit.row.input_hash; explicit.grant.input_hash = explicit.row.input_hash;
+    explicit.setRun({ input_hash: explicit.row.input_hash }); explicit.grant.input_hash = explicit.row.input_hash;
     const input = await loadHistoricalGenerationInput(explicit.ctx, explicit.readers);
     assert.equal(input.details.reporting_cutoff, '2023-12-31'); assert.equal(input.reportingCutoffBasis, undefined);
     assert.equal((explicit.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, undefined);
@@ -1086,8 +1095,8 @@ d.save(sys.argv[1])`, sourcePath],
       s.snapshot.response.records.forEach(r => r.content_hash = sourceHash);
       const { request_id: _, ...stable } = s.snapshot.response; s.snapshot.responseSha256 = updateContentHash(stable);
       s.manifest.materials[0]!.sha256 = sourceHash;
-      s.row.input_hash = inputManifestHash(s.manifest); s.ctx.run.input_hash = s.row.input_hash; s.grant.input_hash = s.row.input_hash;
-      s.ctx.run.id = randomUUID(); s.ctx.run.test_grant_id = randomUUID();
+      s.row.input_hash = inputManifestHash(s.manifest); s.grant.input_hash = s.row.input_hash;
+      s.setRun({ input_hash: s.row.input_hash, id: randomUUID(), test_grant_id: randomUUID() });
       for (const b of s.answer.blocks) { b.changes = []; b.disposition = 'needs_evidence'; b.reason = '锁定审计候选金额待人工核验，保留原文'; }
       s.answer.columns = [];
       const before = structuredClone(s.facts);
@@ -1109,8 +1118,9 @@ d.save(sys.argv[1])`, sourcePath],
       await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,channel,test_grant_id)
         VALUES($1,'owner-1','project-1',1,$2,$3,'update',$2,'preparing','non_production_test',$4)`,
         [s.ctx.run.id,s.row.input_hash,randomUUID(),s.ctx.run.test_grant_id]);
-      await transaction(pool, c => enqueue(c,s.ctx.run));
+      await transaction(pool, c => enqueue(c,s.rawRun));
       const lease = await claim(pool,120); assert.ok(lease);
+      s.ctx.run = await resolveRunExecution(pool, s.rawRun.owner_user_id, s.rawRun.id, lease);
       // Generation uses synthetic scoped repository adapters and a synthetic model; checkpoint/audit persistence is real.
       s.readers.checkpoint = async (c,pin) => { await checkpointStage(pool,lease,GENERATION_INPUT_CHECKPOINT,pin as unknown as Record<string,unknown>); c.checkpoint[GENERATION_INPUT_CHECKPOINT]=pin as unknown as Record<string,unknown>; };
       s.options.checkpoint = async (c,name,data) => { await checkpointStage(pool,lease,name,data); c.checkpoint[name]=data; };
@@ -1163,7 +1173,9 @@ z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); ns={'w':'http://schemas.
       const tampered=structuredClone(plan); tampered.pendingOriginalDraft!.reportingCutoff='2025-06-30';
       const {planHash:ignored,...rest}=tampered; tampered.planHash=updateContentHash(rest);
       assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,values:new Map([['model_generation',tampered]])}),{kind:'fail',code:'VALIDATION_FAILED'});
-      assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,run:{...ctx.run,channel:'production'}}),{kind:'fail',code:'VALIDATION_FAILED'});
+      const productionRawRun = { ...s.rawRun, channel: 'production' as const };
+      const productionRun = projectRunExecution(productionRawRun, { executionVersion: 1, inputRevision: productionRawRun.input_revision, inputHash: productionRawRun.input_hash });
+      assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,run:productionRun}),{kind:'fail',code:'VALIDATION_FAILED'});
       evidence.plan=plan; evidence.word_summary=delivered.wordSummary; evidence.state='test_completed'; evidence.owner_download='passed'; evidence.foreign_download='404';
       if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,'pending-original-evidence.json'),JSON.stringify(evidence,null,2),{mode:0o600});
     } finally { await app.close(); await pool.end(); await rm(directory,{recursive:true,force:true}); }
@@ -1174,7 +1186,7 @@ test('pending-only delivery respects explicit targets and production zero-change
   await withCutoffDraftTest(async()=>{
     const s=fourPendingAuditFixture();
     s.manifest.update_details.reporting_cutoff='2025-12-31'; s.row.input_hash=inputManifestHash(s.manifest);
-    s.ctx.run.input_hash=s.row.input_hash; s.grant.input_hash=s.row.input_hash;
+    s.setRun({ input_hash: s.row.input_hash }); s.grant.input_hash=s.row.input_hash;
     for(const b of s.answer.blocks){b.changes=[];b.disposition='needs_evidence';b.reason='合成待核事实';} s.answer.columns=[];
     const result=await historicalModelGenerationStage(s.options).run(s.ctx);assert.equal(result.kind,'done');
     if(result.kind==='done'){const plan=result.value as HistoricalGenerationPlan;assert.equal(plan.pendingOriginalDraft!.targetSource,'user_asserted');assert.equal(plan.pendingOriginalDraft!.reportingCutoff,'2025-12-31');assert.equal(plan.pendingOriginalDraft!.periodEvidence.cutoff,'2025-09-30');}

@@ -1,0 +1,28 @@
+
+Running 21 tests using 1 worker
+
+(node:41764) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\assistant-continuation.spec.ts:102:1 › continuing a successful card selects its exact original clean result and saves only a draft (1.7s)
+  ok  2 tests\assistant-continuation.spec.ts:111:109 › original result missing never reuses an earlier selected baseline (4.8s)
+  ok  3 tests\assistant-continuation.spec.ts:111:109 › original result ambiguous never reuses an earlier selected baseline (5.4s)
+  ok  4 tests\assistant-continuation.spec.ts:111:109 › original result invalid-version never reuses an earlier selected baseline (2.9s)
+  ok  5 tests\assistant-continuation.spec.ts:111:109 › original result foreign-project never reuses an earlier selected baseline (2.7s)
+  ok  6 tests\assistant-continuation.spec.ts:111:109 › original result shared-artifact never reuses an earlier selected baseline (3.8s)
+  ok  7 tests\assistant-continuation.spec.ts:122:130 › unverified original artifact wrong-run keeps the complete prior draft (3.5s)
+  ok  8 tests\assistant-continuation.spec.ts:122:130 › unverified original artifact wrong-version keeps the complete prior draft (2.2s)
+  ok  9 tests\assistant-continuation.spec.ts:122:130 › unverified original artifact wrong-hash keeps the complete prior draft (3.8s)
+  ok 10 tests\assistant-continuation.spec.ts:122:130 › unverified original artifact unavailable keeps the complete prior draft (3.6s)
+  ok 11 tests\assistant-continuation.spec.ts:122:130 › unverified original artifact wrong-media keeps the complete prior draft (2.5s)
+  ok 12 tests\assistant-continuation.spec.ts:122:130 › unverified original artifact revision-instead-of-clean keeps the complete prior draft (3.4s)
+  ok 13 tests\assistant-continuation.spec.ts:133:1 › a failed original project read keeps the complete prior draft and does not prepare another task (2.3s)
+  ok 14 tests\assistant-continuation.spec.ts:137:1 › a failed original artifact read keeps the complete prior draft and does not prepare another task (2.4s)
+  ok 15 tests\assistant-continuation.spec.ts:141:1 › continuing an old project A card replaces project B source context durably and prepares only the A confirmation (4.2s)
+  ok 16 tests\assistant-continuation.spec.ts:157:1 › same-project continuation preserves saved assistant source information until preparation (4.2s)
+  ok 17 tests\assistant-continuation.spec.ts:174:1 › generation continues the exact document through confirmation, explicit execution, the same completed run and a verified Word download (7.0s)
+  ok 18 tests\assistant-continuation.spec.ts:195:78 › a late original result cannot replace another-card (3.2s)
+  ok 19 tests\assistant-continuation.spec.ts:195:78 › a late original result cannot replace new-conversation (3.2s)
+  ok 20 tests\assistant-continuation.spec.ts:195:78 › a late original result cannot replace new-draft (2.7s)
+  ok 21 tests\assistant-continuation.spec.ts:206:1 › successful review cards keep the existing review preparation flow without requiring a Word edit base (3.5s)
+
+  21 passed (1.3m)

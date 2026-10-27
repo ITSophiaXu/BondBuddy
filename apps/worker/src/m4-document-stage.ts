@@ -1,14 +1,15 @@
 import { join } from 'node:path';
 import { digest } from '@bondbuddy/api/data';
+import { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadM4WorkerInput } from './m4-input.js';
-import { loadM4RuntimeSkill } from './m4-runtime-skills.js';
-import { checkedM4File, prepareM4Files, verifyM4Originals, verifyM4Calculation,m4ArtifactPreview, M4_FILE_MAX } from './m4-file-workspace.js';
+import { checkedM4File, verifyM4Calculation,m4ArtifactPreview, M4_FILE_MAX } from './m4-file-workspace.js';
+import { buildM4DocumentRequest, loadM4DocumentSkill } from './m4-document-request.js';
 import { m4ActionObserver, recordM4Progress } from './m4-action-progress.js';
 import { m4ModelGate,m4PinnedMethod } from './m4-method.js';
-import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks} from './project-file-tools.js';
-import type {ProjectFileText} from '@bondbuddy/contracts';
+import {saveGenerationLinks,publishProjectFileLinks} from './project-file-tools.js';
+import { adoptedM4DocumentRequest } from './run-supplement-execution-request.js';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export type M4DocumentResult = {version: 'codex-m4-document-v1'; input_hash: string; skill_sha256: string; method_hash: string;
@@ -27,30 +28,36 @@ export function validM4DocumentResult(value: unknown, ctx: StageContext): value 
       && v.files['document.docx']!.sha256!==v.files['preparation-note.docx']!.sha256);
 }
 
-export function m4DocumentStage(options: {model?: typeof codexModelStage; load?: typeof loadM4WorkerInput; config?: ReturnType<typeof loadCodexAdapterConfig>} = {}): RunStage {
+export function m4DocumentStage(options: {model?: typeof codexModelStage; load?: typeof loadM4WorkerInput; config?: ReturnType<typeof loadCodexAdapterConfig>;
+  /** Internal test seam; production always uses the durable working-file writer. */
+  writer?: typeof writeRunWorkingFile} = {}): RunStage {
   return {name: 'model_generation', replay: true, run: async ctx => {
-    const input = await (options.load ?? loadM4WorkerInput)(ctx);
-    if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file'} as const)[input.manifest.input.document_type]);
+    const load = () => (options.load ?? loadM4WorkerInput)(ctx);
+    const loaded = await load();
+    if (loaded.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
+    const skill = loadM4DocumentSkill(loaded.manifest);
     const config = options.config ?? loadCodexAdapterConfig();
     const modelGate=await m4ModelGate(ctx,config); if(modelGate)return modelGate;
+    // Validate the receipt's original method before stamping any V2 checkpoint.
+    const adopted=ctx.lease.executionVersion===2 ? await adoptedM4DocumentRequest(ctx,loaded,load,skill,config) : null;
     const pinned=await m4PinnedMethod(ctx,'document',skill,config);if(pinned.gate)return pinned.gate;
     const methodHash=pinned.hash;
-    let originals = new Map<string, string>();
-    let linkedSource:ProjectFileText|null=null;
+    if(adopted&&adopted.methodHash!==methodHash)throw Error('m4_document_method_changed');
+    const {input,request}=adopted??{input:loaded,request:buildM4DocumentRequest({context:{blobs:ctx.blobs,signal:ctx.signal,inputHash:ctx.run.input_hash.trim()},
+      input:loaded,skill,methodHash})};
     const observer = m4ActionObserver(ctx, 'document');
-    const prepare = async (cwd: string) => { await recordM4Progress(ctx, 'm4_reading_materials'); originals = await prepareM4Files(ctx, input, skill, cwd);
-      linkedSource=await prepareProjectFileSource(ctx,input,cwd);if(linkedSource)originals.set('source-spans.json',digest(await checkedM4File(cwd,'source-spans.json',32*1024*1024))); };
+    const prepare = async (cwd: string) => { await recordM4Progress(ctx, 'm4_reading_materials'); await request.prepare(cwd); };
     const collect = async (cwd: string, intent: {call_id: string}): Promise<M4DocumentResult> => {
-      await verifyM4Originals(cwd, originals);
+      await request.verifyOriginals(cwd);
       await verifyM4Calculation(ctx,cwd);
-      const project_file_links=linkedSource?await saveGenerationLinks(ctx,linkedSource,cwd):undefined;
+      const project_file_links=request.linkedSource?await saveGenerationLinks(ctx,request.linkedSource,cwd):undefined;
       const files: M4DocumentResult['files'] = {};
       for (const name of names) {
         let bytes: Buffer;
         try { bytes = await checkedM4File(join(cwd, 'output'), name); } catch { continue; }
         const sha256 = digest(bytes), key = `${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-        await ctx.blobs.put(key, bytes, DOCX);
+        await (options.writer??writeRunWorkingFile)({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+          source:{kind:'provider',attemptId:intent.call_id,resultSchemaVersion:'codex-m4-document-v1'},name,key,bytes,mediaType:DOCX});
         const stored = await ctx.blobs.getIfExistsBounded(key, M4_FILE_MAX);
         if (!stored || digest(stored) !== sha256) throw Error('M4_OUTPUT_STORE_FAILED');
         files[name] = {key, sha256, byte_size: bytes.length};
@@ -61,7 +68,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
     try {
       return await (options.model ?? codexModelStage)({name: 'm4_document_v1', logicalCallId: 'm4-document-v1',
         config: {...config, work_root: join(process.env.BB_PARSE_STAGING_DIR ?? config.work_root, 'm4-documents'), max_output_bytes: 32 * 1024 * 1024},
-        buildPrompt: async () => `${skill.content}\n\n完整阅读 input.json 及 knowledge 指定的对应市场编制知识 MD；存在 template_path 时从该固定 Word 模板复制正文并按其章节字体填写，使用 render_template.py 填充内容槽位或保留格式扩展章节、表格，禁止凭空另建通用样式，按准确来源、模板、用户要求和底稿一次编制完整文书与独立编制说明。必须写出两份真实Word，不能以聊天文字冒充成果。固定方法：${methodHash}。在读取材料、分析、编制正文和保存文件等实际操作切换时，简短报告用户可见进度，格式为 BB_PROGRESS:read_materials|正在核对本次材料。可用类型 read_materials、read_knowledge、analyze、write_document、check_document、prepare_download。只描述实际发生的工作，不写命令、路径、内部标识或推理内容。`,
+        buildPrompt: request.buildPrompt,
         schema: {}, validate: value => validM4DocumentResult(value, ctx), resultSchemaVersion: 'codex-m4-document-v1', templateVersion: `m4-document-${methodHash}`,
         onActivity: event => observer.onEvent(event), fileWorkspace: {prepare, collect}}).run(ctx);
     } finally { await observer.drain(); }

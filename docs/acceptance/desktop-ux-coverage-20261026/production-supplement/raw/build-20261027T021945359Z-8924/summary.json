@@ -1,0 +1,16 @@
+[
+  {
+    "name": "api",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "apps/api/tsconfig.json"
+    ],
+    "startedAt": "2026-10-27T02:19:45.363Z",
+    "completedAt": "2026-10-27T02:20:04.744Z",
+    "exitCode": 0,
+    "signal": null,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

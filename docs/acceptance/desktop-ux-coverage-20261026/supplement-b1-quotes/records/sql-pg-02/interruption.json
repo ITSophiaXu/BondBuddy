@@ -1,0 +1,63 @@
+{
+  "status": "incomplete_tool_timeout",
+  "recordedAt": "2026-10-27T01:02:23.783Z",
+  "verifiedPassedSubtests": [
+    {
+      "number": 1,
+      "name": "authoring: genuine zero-attempt work quotes and confirms zero without any price catalog"
+    },
+    {
+      "number": 2,
+      "name": "review: genuine zero-attempt work quotes and confirms zero without any price catalog"
+    },
+    {
+      "number": 3,
+      "name": "m4: genuine zero-attempt work quotes and confirms zero without any price catalog"
+    },
+    {
+      "number": 4,
+      "name": "authoring: captured work uses one whole-document price and retains original paid accounting"
+    },
+    {
+      "number": 5,
+      "name": "review: captured work uses one whole-document price and retains original paid accounting"
+    },
+    {
+      "number": 6,
+      "name": "review differential: captured work uses one whole-document price and retains original paid accounting"
+    },
+    {
+      "number": 7,
+      "name": "m4: captured work uses one whole-document price and retains original paid accounting"
+    },
+    {
+      "number": 8,
+      "name": "authoring: an existing paid zero-attempt source retains its real quote while confirming zero with a null task"
+    },
+    {
+      "number": 9,
+      "name": "review: an existing paid zero-attempt source retains its real quote while confirming zero with a null task"
+    },
+    {
+      "number": 10,
+      "name": "m4: an existing paid zero-attempt source retains its real quote while confirming zero with a null task"
+    },
+    {
+      "number": 11,
+      "name": "SQL rejects altered scope, invented free work, split delivery pricing and forged snapshot hashes"
+    },
+    {
+      "number": 12,
+      "name": "paid source classification and current price are both bound; a changed price needs a new quote"
+    }
+  ],
+  "observedFinalSummary": false,
+  "exitCode": null,
+  "resultFileWritten": false,
+  "reason": "The 60-second node_repl execution timeout reset the kernel and interrupted the runner/test. Root independently verified no live test/runner process via CIM and PostgreSQL logged forcibly closed clients; the private clone remained with zero sessions.",
+  "privateClone": "bb_b1_template_20261027_t49352_36fc6ec8",
+  "testPid": 49352,
+  "cleanup": "Root controls cleanup of the interrupted private clone. No PostgreSQL service was started or stopped by this agent.",
+  "sourceSha256": "07a50fbec5bebdd56e5d3693e3e902bf4ec585b57e6b43fa81327e0ca96cd8f2",
+  "migrationSha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+}

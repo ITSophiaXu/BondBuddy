@@ -1,0 +1,19 @@
+{
+  "id": "2026-10-26T17-26-17-490Z-api-build-16108-b041ea00",
+  "mode": "api-build",
+  "started": "2026-10-26T17:26:17.497Z",
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\editor-postgres\\data",
+  "port": 15530,
+  "user": "bb_editor_test",
+  "database": "bb_execution_editor_template_20261027",
+  "script_sha256": "f28323082cdb218f6482f86cb6c0cd61472a7c61f10934f6e0e20c5fd82e44e8",
+  "script_version": "versions/f28323082cdb218f6482f86cb6c0cd61472a7c61f10934f6e0e20c5fd82e44e8.mjs",
+  "environment": {
+    "BB_TEST_DATABASE_URL": "postgresql://bb_editor_test@127.0.0.1:15530/bb_execution_editor_template_20261027",
+    "BONDBUDDY_TEST_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "BONDBUDDY_WORD_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "PGOPTIONS": null,
+    "BB_RUN_RUNTIME_ENABLED": null
+  }
+}

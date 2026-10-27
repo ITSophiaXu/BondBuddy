@@ -1,0 +1,21 @@
+{
+  "started": "2026-10-26T11:10:24.364Z",
+  "finished": "2026-10-26T11:11:20.452Z",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/worker/dist/review-input-execution.test.js",
+    "apps/worker/dist/unified-execution-input.test.js",
+    "apps/worker/dist/m4-input.test.js",
+    "apps/worker/dist/unified-input.test.js",
+    "apps/worker/dist/review-assistant-linked.test.js",
+    "apps/worker/dist/review-rule-context.test.js",
+    "apps/worker/dist/run-execution-consumers.pg.test.js",
+    "apps/worker/dist/unified-authoring.pg.test.js",
+    "apps/worker/dist/authoring-pause.pg.test.js",
+    "apps/worker/dist/m4-pipeline.pg.test.js",
+    "apps/worker/dist/worker-runtime-pipeline-seams.pg.integration.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

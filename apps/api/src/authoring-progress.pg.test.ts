@@ -11,6 +11,7 @@ import {claim,checkpointStage,pauseAtCheckpoint,recordAuthoringActivity,finish,p
 import {digest,transaction,type PrivateBlobs} from './data.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {accruedAuthoringPoints,measuredActiveMs} from './authoring-progress.js';
+import {attachInitialLegacyCreditPolicy} from './legacy-credit-policy-test-fixture.js';
 
 test('authoring meter: monotonic, capped, lease bounded and independent of page time',()=>{
   assert.equal(accruedAuthoringPoints(48900,0,0),0);
@@ -29,9 +30,10 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
  const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,
    getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
+ const legacyApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:false});
  const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
  const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
- const create=async()=>{
+ const create=async(policy:'authoring_progress_v1'|'on_delivery'='authoring_progress_v1')=>{
    const p=ok(await send('POST','/api/v1/projects',{kind:'update',name:'Synthetic progress',issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}}));
    const b=Buffer.from('Synthetic issuer information'),d={byte_size:b.length,sha256:digest(b)};
    const u=ok(await send('POST','/api/v1/projects/'+p.project_id+'/materials/uploads',{...d,filename:'synthetic.txt',media_type:'text/plain',role:'audit'}));
@@ -39,14 +41,8 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    const m=ok(await send('POST','/api/v1/projects/'+p.project_id+'/materials/uploads/'+u.upload_id+'/complete',d));
    const i=ok(await send('POST','/api/v1/projects/'+p.project_id+'/input-revisions',{draft_revision:1,material_versions:[{material_id:m.material_id,material_version:1}],requirement_message_ids:[]}));
    const q=ok(await send('POST','/api/v1/projects/'+p.project_id+'/credit-quote',{input_revision:i.input_revision,input_hash:i.input_hash}));
-   const run=ok(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:p.project_id,quote_id:q.quote.quote_id}));
-   // Synthetic persisted v1 reservation, representing a task created before this policy rollout.
-   await pool.query("UPDATE bb_credit_reservations SET billing_policy='authoring_progress_v1',charged_points=NULL WHERE run_id=$1",[run.run_id]);
-   const lot=(await pool.query('SELECT id FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining-frozen>=10000 ORDER BY created_at LIMIT 1',[owner])).rows[0];
-   await pool.query('UPDATE bb_credit_lots SET frozen=frozen+10000 WHERE id=$1',[lot.id]);
-   await pool.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,10000)',[run.reservation_id,lot.id]);
-   await pool.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$1,'reserve',10000,$3,$4,'test','synthetic_legacy')",[randomUUID(),owner,run.reservation_id,run.run_id]);
-   return run;
+   const run=ok(await legacyApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:p.project_id,quote_id:q.quote.quote_id}}));
+   return attachInitialLegacyCreditPolicy(pool,{owner,runId:run.run_id,quoteId:q.quote.quote_id,policy});
  };
  const charge=async(id:string)=>ok(await send('GET','/api/v1/runs/'+id+'/credit-charge'));
  const act=async(id:string,kind:string)=>send('POST','/api/v1/runs/'+id+'/'+kind,{reason:'synthetic-test'});
@@ -98,7 +94,7 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    const failed=await create(),failureLease=await claim(pool);assert.ok(failureLease);await age(failed.run_id);
    await finish(pool,failureLease,'failed',{errorCode:'DATA_UNAVAILABLE'});
    assert.equal((await charge(failed.run_id)).progress.charged_points,0);
-   const legacy=await create();await pool.query("UPDATE bb_credit_reservations SET billing_policy='on_delivery' WHERE run_id=$1",[legacy.run_id]);
+   const legacy=await create('on_delivery');
    assert.ok(await claim(pool));await age(legacy.run_id);ok(await act(legacy.run_id,'cancel'));
    assert.equal((await charge(legacy.run_id)).progress.charged_points,0);
    const success=await create(),successLease=await claim(pool);assert.ok(successLease);
@@ -112,5 +108,5 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    await finish(pool,deliveryLease,'succeeded',{artifactId:revision.artifactId,artifactVersion:1,blobs});
    assert.equal((await charge(success.run_id)).progress.charged_points,10000);
    assert.equal((await auditCredits(pool)).consistent,true);
- }finally{await app.close();await pool.end();}
+ }finally{await legacyApp.close();await app.close();await pool.end();}
 });

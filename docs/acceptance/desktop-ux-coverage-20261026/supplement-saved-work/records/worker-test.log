@@ -1,0 +1,78 @@
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (514.2115ms)
+▶ real claimed M1, legacy/file M3 and M4 loaders read exact immutable execution inputs without changing history or credits
+  ✔ m1 (1316.6133ms)
+  ✔ m3 (640.388ms)
+  ✔ m4 (321.2665ms)
+✔ real claimed M1, legacy/file M3 and M4 loaders read exact immutable execution inputs without changing history or credits (2436.3513ms)
+✔ M4 loader resolves the exact execution input and retains scoped source-material checks (7.3625ms)
+✔ M4 loader rejects stale run/lease identity before reading inputs (2.705ms)
+✔ M4 loader retains V1-only, persisted project/task and immutable M4 snapshot checks (6.0082ms)
+✔ M4 supplied snapshots are checked directly and explicit absence never falls back to a database snapshot (2.0267ms)
+✔ M4 standalone gate keeps its execution database check and supplied snapshots retain live scope/subtype checks (1.6592ms)
+﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.2254ms) # SKIP
+✔ v2 context pins its own protocol and catalog while legacy messages keep v1 (6.0901ms)
+✔ typed proposals bind explicit selected, related and excluded scope and refuse model-authored authority (1.2317ms)
+✔ legacy result validation preserves 160-character finding identities without widening v2 model output (0.8288ms)
+✔ host supplies source, input, material and citation pins; full review keeps conversation reference separate (2.2778ms)
+✔ adopted input is hash-locked and the worker actually consumes its accepted requirements (5.6263ms)
+✔ quick actions and immutable legacy manifests retain their own origin without adopting a discussion (0.9024ms)
+✔ CLI Word is delivered without a structured report, JSON response, or second call (86.9649ms)
+✔ missing output is recorded without inventing a report; immutable input tampering fails (92.8168ms)
+﹣ report symlinks cannot publish outside files (0.3671ms) # SKIP
+✔ pinned DOCX produces source comments and the same canonical report; missing comment bytes block delivery (1607.7579ms)
+✔ correction delivery rejects absent and retains diagnostics without publishing an unchanged pair (48.1621ms)
+✔ correction delivery rejects progress-markdown and retains diagnostics without publishing an unchanged pair (50.6011ms)
+✔ correction delivery rejects invalid-word and retains diagnostics without publishing an unchanged pair (683.4533ms)
+✔ correction delivery reads actual Word report fields when Markdown is absent and preserves final response (2710.0089ms)
+✔ review loader consumes the resolved V1 input and keeps the original run creation time (16.351ms)
+✔ another revision with identical bytes cannot fall back to the original run input (2.1174ms)
+▶ review context and lease identity must agree before loading evidence
+  ✔ context run (0.6842ms)
+  ✔ context owner (0.503ms)
+  ✔ context project (0.8023ms)
+  ✔ context revision (0.6004ms)
+  ✔ context hash (0.3915ms)
+  ✔ lease run (0.5776ms)
+  ✔ lease owner (0.4676ms)
+  ✔ lease revision (0.7406ms)
+  ✔ lease hash (0.3652ms)
+  ✔ successor execution (0.5082ms)
+✔ review context and lease identity must agree before loading evidence (7.773ms)
+✔ missing execution identity never falls back to an otherwise valid origin snapshot (0.5423ms)
+✔ missing exact input never selects another revision with the same hash (0.5912ms)
+✔ tampered fixed manifest is rejected before material evidence is read (0.6493ms)
+✔ resolved input still passes the existing immutable review snapshot gate (0.8084ms)
+✔ an explicitly missing or differently scoped resolved review snapshot cannot reload the origin (1.5556ms)
+✔ direct review gate callers retain the original exact database snapshot check (1.3242ms)
+✔ malformed review snapshot objects fail explicitly for resolved and direct database gates (2.2453ms)
+✔ missing market, offering or date remains uncovered and never supplies fabricated defaults (31.2624ms)
+✔ actual published ledger sources are pinned as unknown applicability when context is unreviewed (4.9356ms)
+✔ replay rechecks the exact pinned release and never silently selects a newer replacement (7.3013ms)
+✔ withdrawn, expired, unpublished, tampered and cross-market sources never enter the prompt (21.8078ms)
+✔ reviewed-context selection and exact production revalidation supply eligible rules (synthetic) (7.1094ms)
+✔ withdrawn approved pin does not fall back to a reference or another rule release (5.4177ms)
+✔ public-all and DFI lookups retain exact offering without substituting private/public (8.4638ms)
+✔ hash/owner/material mismatches fail before rule queries (4.5812ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (311.3575ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (39.1148ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (41.9337ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (33.7497ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (71.5573ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (500.79ms)
+﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.3439ms) # SKIP
+✔ unified original-file loader uses the resolved exact input before reading material bytes (3.657ms)
+✔ unified loader rejects stale run/lease identity before any material or input read (1.5274ms)
+✔ unified loader rejects another persisted project or task and corrupted frozen input before material access (1.3757ms)
+✔ optional absent and partial source context does not gate an uploaded-source-only run; ownership/hash checks remain (5.7877ms)
+✔ the input_lock stage re-verifies a pinned generation issuer binding from an injected loader (902.4518ms)
+✔ a producer failure is swallowed and never blocks the rest of the run (282.1997ms)
+✔ the producer call site skips inputs without financial materials and reads no rows for them (0.5098ms)
+ℹ tests 67
+ℹ suites 0
+ℹ pass 64
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 99199.7608

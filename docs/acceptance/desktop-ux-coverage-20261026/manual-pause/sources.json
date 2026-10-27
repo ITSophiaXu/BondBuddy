@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "recordedAt": "2026-10-26T09:02:06.8578185Z",
+  "baseCommit": "24f3e122589b3821d8d2fe02a17ca8221b22ae45",
+  "branch": "codex/desktop-ux-coverage-20261026",
+  "scope": "Synthetic frontend manual-pause and recharge correction; separate proposed HTML only. Does not establish same-run new-input adoption, worker, real billing or Word acceptance.",
+  "environment": {
+    "os": "Windows",
+    "node": "v24.22.1",
+    "browser": "Microsoft Edge via Playwright",
+    "viewport": "1440x960",
+    "baseUrl": "http://127.0.0.1:5187"
+  },
+  "results": {
+    "unitPassed": 7,
+    "browserPassed": 11,
+    "browserDurationSeconds": 34.2,
+    "build": "passed",
+    "prototypePassed": 3
+  },
+  "sourceHashesUnchangedDuringFinalBrowserRun": true,
+  "sources": [
+    {
+      "path": "apps/web/src/authoring-progress.ts",
+      "sha256": "393750d7f4691ff8162a67cacd8a445c71f2c748745a19315f5b9ad4d170b389"
+    },
+    {
+      "path": "apps/web/src/authoring-progress.test.ts",
+      "sha256": "0cca537cfd607acccf4a0df68d4540497aa15780c17d297b4fbf1723db9f4c9e"
+    },
+    {
+      "path": "apps/web/src/project-execution.ts",
+      "sha256": "3150d5f61cc34290f196d09a89ca2608990fd25edb337b98917f3bedd8ea8ac2"
+    },
+    {
+      "path": "apps/web/src/billing-page.ts",
+      "sha256": "fa980c52b96249570167afa6022e418a63e2d3e2d44ac269cde6b72d922be202"
+    },
+    {
+      "path": "apps/web/src/material-workspace.ts",
+      "sha256": "a55a5abc50e9d27226cf63ef8b696c425d469216473fbb95bdab9272405e2187"
+    },
+    {
+      "path": "apps/web/src/review-progress.ts",
+      "sha256": "997ee31c94061d4a29fda3e8ee9a28c6af9b216568c217e0c1c6b8bff1dd62ab"
+    },
+    {
+      "path": "apps/web/src/review-workspace.ts",
+      "sha256": "e728caf251335d724153713d2e722a2bfeda541492401a46c81fc887834f473e"
+    },
+    {
+      "path": "apps/web/tests/project-execution.spec.ts",
+      "sha256": "d0d9a4a1e3cf7a6af6d878d61078c8aaad2759f038d27208e422daad5914d161"
+    },
+    {
+      "path": "apps/web/tests/billing-navigation.spec.ts",
+      "sha256": "0e1091401f76d9674d190727057012e721a3c0a1e72fd63afb3e8bd67004c58b"
+    },
+    {
+      "path": "apps/web/tests/m4-workspace.spec.ts",
+      "sha256": "f45ff3456543c1c04be906f878136f95786d972ccf09909306493700931139fd"
+    },
+    {
+      "path": "apps/web/tests/review-workspace.spec.ts",
+      "sha256": "805a6da09472f9f3ad15adb370adfbaececee2f2ad791797a519a76c0cabfc75"
+    }
+  ],
+  "prototypeVerification": {
+    "passed": 3,
+    "scope": "Standalone proposed HTML after product final11. B fee boundary checks included; no API/worker/billing implementation.",
+    "sources": [
+      {
+        "path": "docs/ux/prototypes/pause-supplement-resume.html",
+        "sha256": "90f8be03d463fea5df0bd432f2dfb20b351fa4d73c826100dcaba2cdb8818dee"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/manual-pause/prototype-qa.mjs",
+        "sha256": "05c37f01164435d916ae216447f38ded861d604610dca6244334251965bf54db"
+      }
+    ]
+  }
+}

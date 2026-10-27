@@ -1,0 +1,14 @@
+{
+  "id": "2026-10-26T19-12-26-441Z-pg-start-direct-37192-05f3e284",
+  "mode": "pg-start-direct",
+  "status": 0,
+  "finished": "2026-10-26T19:12:28.174Z",
+  "server": {
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/report-postgres/data",
+    "port": 15540,
+    "server_version": "16.14",
+    "server_user": "bb_report_test",
+    "server_started_at": "2026-10-26T19:12:27.126Z",
+    "pid": 49196
+  }
+}

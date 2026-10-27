@@ -1,0 +1,106 @@
+
+Running 11 tests using 2 workers
+
+(node:2436) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41140) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\billing-navigation.spec.ts:37:1 › recharge order keeps execution ownership and returns to the exact mapped review (3.0s)
+  ok  3 tests\billing-navigation.spec.ts:52:1 › associated-file recharge retains the check and never claims automatic batch continuation (4.1s)
+  ok  4 tests\billing-navigation.spec.ts:64:1 › authoring recharge distinguishes a manual pause from automatic credit recovery (1.7s)
+  ok  5 tests\billing-navigation.spec.ts:81:1 › a topic-only wallet retains navigation without assigning the original project to its order (1.5s)
+  ok  6 tests\billing-navigation.spec.ts:95:1 › an external recharge return target is discarded (1.7s)
+  x   2 tests\m4-workspace.spec.ts:598:72 › dynamic material progress, persistent tabs, pause/resume and wallet polling at 1440px (12.2s)
+(node:46556) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  7 tests\project-execution.spec.ts:1587:31 › dynamic balance: 1 point starts, exhaustion dialog, refresh and automatic same-run resume 1440 (8.1s)
+  x   8 tests\m4-workspace.spec.ts:627:1 › desktop funded material keeps a manual pause and offers explicit continuation after exhaustion (7.5s)
+(node:40892) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 10 tests\review-workspace.spec.ts:954:1 › review live progress refreshes actual debit and activities, survives reload and exposes pause without another execution (8.3s)
+  x   9 tests\project-execution.spec.ts:1610:1 › desktop manual pause remains explicit when credits exhaust and an open recharge dialog refreshes (16.7s)
+  ok 11 tests\review-workspace.spec.ts:978:1 › desktop review recharge updates an open dialog when manual pause arrives and keeps the same task paused after topup (7.7s)
+
+
+  1) tests\m4-workspace.spec.ts:598:72 › dynamic material progress, persistent tabs, pause/resume and wallet polling at 1440px
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('button', { name: '暂停生成' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('button', { name: '暂停生成' }) with timeout 5000ms
+      - waiting for getByRole('button', { name: '暂停生成' })
+
+
+      611 |   await page.getByRole('button',{name:'暂停生成',exact:true}).click();await expect(page.locator('.task-progress')).toContainText('任务已暂停');
+      612 |   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分');await page.reload();await expect(page.getByRole('button',{name:'继续生成'})).toBeVisible();
+    > 613 |   await page.getByRole('button',{name:'继续生成'}).click();await expect(page.getByRole('button',{name:'暂停生成'})).toBeVisible();expect(s.controls).toEqual(['pause','resume']);
+          |                                                                                                             ^
+      614 |   p.credit_exhausted=true;p.clock_running=false;p.available_points=s.balance.available=0;p.charged_points=p.accrued_points=1000;task.run.state='paused';task.run.stage='credits_exhausted';
+      615 |   await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).toContainText('积分已用完');await expect(page.getByRole('link',{name:'充值积分',exact:true})).toBeVisible();
+      616 |   await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\m4-workspace.spec.ts:613:109
+
+    Error Context: ..\..\.local\supplement-preparation\old-manual-first-results\m4-workspace-dynamic-mater-84b2b-nd-wallet-polling-at-1440px\error-context.md
+
+  2) tests\m4-workspace.spec.ts:627:1 › desktop funded material keeps a manual pause and offers explicit continuation after exhaustion
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 3
+    + Received  + 1
+
+    - Array [
+    -   "resume",
+    - ]
+    + Array []
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      645 |   expect(s.controls).toEqual([]);expect(s.executions).toHaveLength(1);expect(p.credit_exhausted).toBe(true);
+      646 |   const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('.m4-delivery').screenshot({path:resolve(evidence,'material-manual-after-topup.png')});}
+    > 647 |   await page.getByRole('button',{name:'继续生成',exact:true}).click();await expect.poll(()=>s.controls).toEqual(['resume']);
+          |                                                                                                     ^
+      648 |   expect(s.executions).toHaveLength(1);
+      649 | });
+      650 |
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\m4-workspace.spec.ts:647:101
+
+    Error Context: ..\..\.local\supplement-preparation\old-manual-first-results\m4-workspace-desktop-funde-867c0-ntinuation-after-exhaustion\error-context.md
+
+  3) tests\project-execution.spec.ts:1610:1 › desktop manual pause remains explicit when credits exhaust and an open recharge dialog refreshes
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 3
+    + Received  + 1
+
+    - Array [
+    -   "/runs/synthetic-run-1/resume",
+    - ]
+    + Array []
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      1633 |  expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect(state.inputs).toEqual([inputBefore]);
+      1634 |  const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#execution-progress').screenshot({path:join(evidence,'authoring-manual-after-topup.png')});}
+    > 1635 |  await page.locator('#resume-run').click();await expect.poll(()=>state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
+           |                                                                                    ^
+      1636 |  expect(state.executes).toHaveLength(1);expect(state.inputs).toEqual([inputBefore]);
+      1637 | });
+      1638 |
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\project-execution.spec.ts:1635:84
+
+    Error Context: ..\..\.local\supplement-preparation\old-manual-first-results\project-execution-desktop--acd6f-n-recharge-dialog-refreshes\error-context.md
+
+  3 failed
+    tests\m4-workspace.spec.ts:598:72 › dynamic material progress, persistent tabs, pause/resume and wallet polling at 1440px
+    tests\m4-workspace.spec.ts:627:1 › desktop funded material keeps a manual pause and offers explicit continuation after exhaustion
+    tests\project-execution.spec.ts:1610:1 › desktop manual pause remains explicit when credits exhaust and an open recharge dialog refreshes
+  8 passed (46.6s)

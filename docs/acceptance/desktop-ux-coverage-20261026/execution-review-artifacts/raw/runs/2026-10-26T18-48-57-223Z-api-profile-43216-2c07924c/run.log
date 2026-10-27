@@ -1,0 +1,101 @@
+{"trace":"begin","id":1,"sql":"INSERT INTO bb_users(id,username) VALUES($1,$2)"}
+{"trace":"end","id":1,"ms":502.5483000000004}
+{"trace":"begin","id":2,"sql":"INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic artifact origin',$3)"}
+{"trace":"end","id":2,"ms":14.71270000000004}
+{"trace":"begin","id":3,"sql":"INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')"}
+{"trace":"end","id":3,"ms":10.85530000000017}
+{"trace":"begin","id":4,"sql":"INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')"}
+{"trace":"end","id":4,"ms":1.8134000000000015}
+{"trace":"begin","id":5,"sql":"INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')"}
+{"trace":"end","id":5,"ms":1.5858999999991283}
+{"trace":"begin","id":6,"sql":"UPDATE bb_projects SET latest_input_revision=3 WHERE id=$1"}
+{"trace":"end","id":6,"ms":9.520400000000336}
+{"trace":"begin","id":7,"sql":"INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage) VALUES($1,$2,$3,2,$4,$5,$6,$7,'running','word_del"}
+{"trace":"end","id":7,"ms":26.28139999999985}
+{"trace":"begin","id":8,"sql":"INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,lease_token,lease_until,attempts) VALUES($1,$2,$3,$4,$5,'running','word_delivery',$6,now()+interval '10 min"}
+{"trace":"end","id":8,"ms":23.195600000000013}
+{"trace":"begin","id":9,"sql":"INSERT INTO bb_users(id,username) VALUES($1,$2)"}
+{"trace":"end","id":9,"ms":1.6329999999998108}
+{"trace":"begin","id":10,"sql":"INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic artifact origin',$3)"}
+{"trace":"end","id":10,"ms":1.542899999999463}
+{"trace":"begin","id":11,"sql":"INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')"}
+{"trace":"end","id":11,"ms":1.0369000000000597}
+{"trace":"begin","id":12,"sql":"INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')"}
+{"trace":"end","id":12,"ms":13.376800000000003}
+{"trace":"begin","id":13,"sql":"INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')"}
+{"trace":"end","id":13,"ms":5.02770000000055}
+{"trace":"begin","id":14,"sql":"UPDATE bb_projects SET latest_input_revision=3 WHERE id=$1"}
+{"trace":"end","id":14,"ms":1.712399999999434}
+{"trace":"begin","id":15,"sql":"INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage) VALUES($1,$2,$3,2,$4,$5,$6,$7,'running','word_del"}
+{"trace":"end","id":15,"ms":2.9169999999994616}
+{"trace":"begin","id":16,"sql":"INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,lease_token,lease_until,attempts) VALUES($1,$2,$3,$4,$5,'running','word_delivery',$6,now()+interval '10 min"}
+{"trace":"end","id":16,"ms":2.103399999999965}
+{"trace":"begin","id":17,"sql":"INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)"}
+{"trace":"end","id":17,"ms":19.89800000000014}
+{"trace":"begin","id":18,"sql":"SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=$2"}
+{"trace":"end","id":18,"ms":2.342899999999645}
+{"trace":"begin","id":19,"sql":"SELECT * FROM bb_artifact_execution_bindings WHERE artifact_id=$1 AND artifact_version=$2"}
+{"trace":"end","id":19,"ms":1.256199999999808}
+{"trace":"begin","id":20,"sql":"SELECT * FROM bb_execution_artifact_versions WHERE id=$1 AND version=$2"}
+{"trace":"end","id":20,"ms":5.624000000000706}
+{"trace":"begin","id":21,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":21,"ms":2.7930999999998676,"code":"23514"}
+{"trace":"begin","id":22,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":22,"ms":797.2394999999997,"code":"23514"}
+{"trace":"begin","id":23,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":23,"ms":431.27180000000044,"code":"23514"}
+{"trace":"begin","id":24,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":24,"ms":795.5127999999995,"code":"23514"}
+{"trace":"begin","id":25,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":25,"ms":1021.1640000000007,"code":"23514"}
+{"trace":"begin","id":26,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":26,"ms":1132.1661999999997,"code":"23514"}
+{"trace":"begin","id":27,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":27,"ms":1383.1389,"code":"23514"}
+{"trace":"begin","id":28,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":28,"ms":864.0743000000002,"code":"23514"}
+{"trace":"begin","id":29,"sql":"INSERT INTO bb_artifact_execution_bindings(artifact_id,artifact_version,owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,created_at) VALUES($1,$2,$3,$4,$"}
+{"trace":"error","id":29,"ms":909.3482000000004,"code":"23514"}
+{"trace":"begin","id":30,"sql":"UPDATE bb_artifact_execution_bindings SET input_hash=input_hash WHERE artifact_id=$1"}
+{"trace":"error","id":30,"ms":845.795900000001,"code":"23514"}
+{"trace":"begin","id":31,"sql":"DELETE FROM bb_artifact_execution_bindings WHERE artifact_id=$1"}
+{"trace":"error","id":31,"ms":859.933500000001,"code":"23514"}
+{"trace":"begin","id":32,"sql":"UPDATE bb_artifact_versions SET id=id||'-moved' WHERE id=$1"}
+{"trace":"error","id":32,"ms":873.2837999999992,"code":"23514"}
+{"trace":"begin","id":33,"sql":"UPDATE bb_artifact_versions SET version=2 WHERE id=$1"}
+{"trace":"error","id":33,"ms":888.5337,"code":"23514"}
+{"trace":"begin","id":34,"sql":"UPDATE bb_artifact_versions SET owner_user_id='f606f1e0-bf3f-494d-b371-13f6d17eb8d1' WHERE id=$1"}
+{"trace":"error","id":34,"ms":846.7351999999992,"code":"23514"}
+{"trace":"begin","id":35,"sql":"UPDATE bb_artifact_versions SET run_id='98ea6989-f433-4e99-8709-cf3e6c43ddd3' WHERE id=$1"}
+{"trace":"error","id":35,"ms":901.0503000000026,"code":"23514"}
+{"trace":"begin","id":36,"sql":"UPDATE bb_artifact_versions SET media_type='application/json' WHERE id=$1"}
+{"trace":"error","id":36,"ms":868.6882000000005,"code":"23514"}
+{"trace":"begin","id":37,"sql":"UPDATE bb_artifact_versions SET sha256=repeat('f',64) WHERE id=$1"}
+{"trace":"error","id":37,"ms":793.7017000000014,"code":"23514"}
+{"trace":"begin","id":38,"sql":"UPDATE bb_artifact_versions SET object_key=object_key||'-moved' WHERE id=$1"}
+{"trace":"error","id":38,"ms":869.6203999999998,"code":"23514"}
+{"trace":"begin","id":39,"sql":"UPDATE bb_artifact_versions SET created_at=created_at+interval '1 second' WHERE id=$1"}
+{"trace":"error","id":39,"ms":869.4979999999996,"code":"23514"}
+{"trace":"begin","id":40,"sql":"DELETE FROM bb_artifact_versions WHERE id=$1"}
+{"trace":"error","id":40,"ms":888.1995999999999,"code":"23503"}
+{"trace":"begin","id":41,"sql":"UPDATE bb_artifact_versions SET quality_status='passed',delivery_status='pending' WHERE id=$1"}
+{"trace":"end","id":41,"ms":853.388600000002}
+{"trace":"begin","id":42,"sql":"UPDATE bb_artifact_versions SET delivery_status='revoked' WHERE id=$1"}
+{"trace":"end","id":42,"ms":1.6832999999969616}
+{"trace":"begin","id":43,"sql":"SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=$2"}
+{"trace":"end","id":43,"ms":0.9781000000002678}
+{"trace":"begin","id":44,"sql":"SELECT * FROM bb_artifact_execution_bindings WHERE artifact_id=$1 AND artifact_version=$2"}
+{"trace":"end","id":44,"ms":7.705000000001746}
+{"trace":"begin","id":45,"sql":"SELECT * FROM bb_execution_artifact_versions WHERE id=$1 AND version=$2"}
+{"trace":"end","id":45,"ms":32.1830000000009}
+{"trace":"begin","id":46,"sql":"INSERT INTO bb_run_execution_versions(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash) VALUES($1,$2,$3,2,2,$4)"}
+{"trace":"error","id":46,"ms":1.877199999998993,"code":"23514"}
+✔ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (18399.2634ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25607.5082

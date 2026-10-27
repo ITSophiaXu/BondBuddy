@@ -1,0 +1,10 @@
+{
+  "id": "2026-10-26T17-26-41-392Z-worker-build-39720-be707a7d",
+  "mode": "worker-build",
+  "status": 1,
+  "finished": "2026-10-26T17:26:56.528Z",
+  "error": {
+    "name": "AssertionError",
+    "message": "C:\\Program Files\\nodejs\\node.exe exited 2; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-editors-20261027\\runs\\2026-10-26T17-26-41-392Z-worker-build-39720-be707a7d\\run.log\n\n2 !== 0\n"
+  }
+}

@@ -1,0 +1,14 @@
+✔ PostgreSQL execute keys preserve JS identity, legacy replay, owner isolation and atomic outbox (4623.1187ms)
+✔ run-less preflight and execute rejection retain atomic owned job timelines (3102.6316ms)
+✔ test submissions cannot reserve the exact browser update key (2459.7196ms)
+✔ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (5421.0616ms)
+✔ working draft admission defers parse and business gaps while retaining ownership, pin and revocation checks (1813.828ms)
+✔ HTTP update preflight returns conservative, owner-scoped immutable difficulty summaries (1781.5303ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 73912.2947

@@ -1,0 +1,1829 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "recorded_at": "2026-10-26T15:02:53.707Z",
+  "baseline_commit": "25c39048",
+  "goal_complete": false,
+  "g03_complete": false,
+  "status": "failed_exploratory_full_run_with_selected_final_corrections",
+  "notes": "The full API exploration remains failed (610 tests:484 passed,50 failed,3 cancelled,73 skipped); it used a session-recorded global runtime override and a60000ms per-test limit, whose original effective process environment was not captured. Final affected files are recompiled and verified in separate groups. Only six API test sources and their compiled JS changed between broad and final freezes; production, contracts, migrations and worker compiled files did not change. Synthetic snapshot/worker evidence is separate from authorized sample upload inspection. No full default all-green rerun, current browser journey, new-input adoption, surcharge authority, real model/Azure/payment, or new Word acceptance is claimed.",
+  "aggregate": null,
+  "current_round_browser_claim": false,
+  "includes_private_byte_store": false,
+  "includes_generated_word": false,
+  "count_policy": "Each invocation reports its own counters. Full, corrective, repeated and overlapping groups are never added.",
+  "selected_results": [
+    {
+      "label": "Exploratory broad API collection",
+      "phase": "broad",
+      "kind": "node_test",
+      "acceptance": false,
+      "note": null,
+      "receipt": "api-all-stream.json",
+      "log": "api-all-stream.log",
+      "status": 1,
+      "started": "2026-10-26T14:13:32.196Z",
+      "finished": "2026-10-26T14:45:47.760Z",
+      "environment": null,
+      "args": [
+        "--test",
+        "--test-timeout=60000",
+        "--test-concurrency=1",
+        "--test-skip-pattern=^#79 (?:NDJSON sink cannot be split by log injection|file sink repeat and concurrent processes retain one durable line per key|replay of a complete pre-existing line still acknowledges only after file sync|size cap fails closed for new keys but permits replay of a full segment|replay also detects a key in a legacy rotated segment)$",
+        "apps/api/dist/account-recovery.test.js",
+        "apps/api/dist/account.test.js",
+        "apps/api/dist/artifact-filename.test.js",
+        "apps/api/dist/artifact-history.test.js",
+        "apps/api/dist/authoring-dynamic-balance.pg.test.js",
+        "apps/api/dist/authoring-progress.pg.test.js",
+        "apps/api/dist/authoring-task-kind.pg.test.js",
+        "apps/api/dist/billing-classification.test.js",
+        "apps/api/dist/billing.pg.test.js",
+        "apps/api/dist/browser-errors.test.js",
+        "apps/api/dist/credit-facility-supplement-input-lock.test.js",
+        "apps/api/dist/credit-facility-supplements.test.js",
+        "apps/api/dist/credit-history.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/direct-execute-admission.pg.test.js",
+        "apps/api/dist/docx-inspector.test.js",
+        "apps/api/dist/error-diagnostics.test.js",
+        "apps/api/dist/execution-key.test.js",
+        "apps/api/dist/fact-evidence-read.test.js",
+        "apps/api/dist/fact-evidence-reviews.test.js",
+        "apps/api/dist/fact-review.test.js",
+        "apps/api/dist/generated-word-delivery.test.js",
+        "apps/api/dist/generation-issuer-binding-consumer.test.js",
+        "apps/api/dist/generation-issuer-binding-seam.test.js",
+        "apps/api/dist/generation-issuer-binding.test.js",
+        "apps/api/dist/input-lock-consumption.pg.integration.test.js",
+        "apps/api/dist/input-revision-chain.pg.test.js",
+        "apps/api/dist/issuer-annual-profile-reviews.test.js",
+        "apps/api/dist/issuer-identity-input-lock.test.js",
+        "apps/api/dist/issuer-identity-source.test.js",
+        "apps/api/dist/library-admin.test.js",
+        "apps/api/dist/library-revenue-proof.test.js",
+        "apps/api/dist/log-archive-lifecycle.test.js",
+        "apps/api/dist/logical-job.test.js",
+        "apps/api/dist/m4-case-templates.test.js",
+        "apps/api/dist/m4-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-fixed-billing.pg.test.js",
+        "apps/api/dist/m4-knowledge.test.js",
+        "apps/api/dist/m4-workspace.pg.test.js",
+        "apps/api/dist/material-delete-workspace.pg.test.js",
+        "apps/api/dist/material-download.test.js",
+        "apps/api/dist/material-parse-snapshot-visibility.test.js",
+        "apps/api/dist/material-role-copy.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/ocr-execution-boundary.pg.integration.test.js",
+        "apps/api/dist/ocr.test.js",
+        "apps/api/dist/original-material-upload.test.js",
+        "apps/api/dist/payments.pg.test.js",
+        "apps/api/dist/preflight-difficulty.test.js",
+        "apps/api/dist/preflight-readiness.test.js",
+        "apps/api/dist/production-component-import-cli.test.js",
+        "apps/api/dist/production-review-grants-cli.test.js",
+        "apps/api/dist/production-review-ledger.test.js",
+        "apps/api/dist/production-rule-pack-releases.test.js",
+        "apps/api/dist/production-rule-pin.test.js",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/project-collection.pg.test.js",
+        "apps/api/dist/project-file-batch-recovery.test.js",
+        "apps/api/dist/project-file-check-history.test.js",
+        "apps/api/dist/project-file-update-history.test.js",
+        "apps/api/dist/project-kind-conversion.pg.test.js",
+        "apps/api/dist/project-list.test.js",
+        "apps/api/dist/project-message-set-lock.test.js",
+        "apps/api/dist/project-messages.test.js",
+        "apps/api/dist/prompt-execution-boundary.pg.integration.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-run-events.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/review-action-events.pg.integration.test.js",
+        "apps/api/dist/review-billing.pg.test.js",
+        "apps/api/dist/review-dynamic-balance.pg.test.js",
+        "apps/api/dist/review-linked-workspace.test.js",
+        "apps/api/dist/review-price-activation.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/reviewer-parse-evidence.test.js",
+        "apps/api/dist/revision-range.test.js",
+        "apps/api/dist/rule-applicability-context-owner.test.js",
+        "apps/api/dist/rule-applicability-reviewer-grants.test.js",
+        "apps/api/dist/run-event-dto.test.js",
+        "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/schema-rejection.test.js",
+        "apps/api/dist/server.test.js",
+        "apps/api/dist/source-profile-correction.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/storage-lifecycle.test.js",
+        "apps/api/dist/target-confirmation.test.js",
+        "apps/api/dist/target-period-evidence-decisions.test.js",
+        "apps/api/dist/test-database-teardown.test.js",
+        "apps/api/dist/unified-authoring.test.js",
+        "apps/api/dist/update-difficulty-repository.test.js",
+        "apps/api/dist/update-project-e2e.pg.test.js",
+        "apps/api/dist/update-project.test.js",
+        "apps/api/dist/upload-capacity.test.js",
+        "apps/api/dist/upload-error-response.test.js",
+        "apps/api/dist/upload-reuse.test.js",
+        "apps/api/dist/upload-safety.test.js",
+        "apps/api/dist/upload-spool.test.js",
+        "apps/api/dist/user-reference-lock.test.js",
+        "apps/api/dist/user-submissions.test.js",
+        "apps/api/dist/word-delivery-artifact.test.js",
+        "apps/api/dist/working-draft-parse-admission.test.js",
+        "apps/api/dist/zz_log_archive.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/zz_observability.test.js",
+        "apps/api/dist/zz_recovery_drill.test.js",
+        "apps/api/dist/zz_trial_guard.test.js"
+      ],
+      "counts": {
+        "tests": 610,
+        "passed": 484,
+        "failed": 50,
+        "cancelled": 3,
+        "skipped": 73,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/api/dist/account-recovery.test.js",
+        "apps/api/dist/account.test.js",
+        "apps/api/dist/artifact-filename.test.js",
+        "apps/api/dist/artifact-history.test.js",
+        "apps/api/dist/authoring-dynamic-balance.pg.test.js",
+        "apps/api/dist/authoring-progress.pg.test.js",
+        "apps/api/dist/authoring-task-kind.pg.test.js",
+        "apps/api/dist/billing-classification.test.js",
+        "apps/api/dist/billing.pg.test.js",
+        "apps/api/dist/browser-errors.test.js",
+        "apps/api/dist/credit-facility-supplement-input-lock.test.js",
+        "apps/api/dist/credit-facility-supplements.test.js",
+        "apps/api/dist/credit-history.test.js",
+        "apps/api/dist/deletion-lifecycle.test.js",
+        "apps/api/dist/direct-execute-admission.pg.test.js",
+        "apps/api/dist/docx-inspector.test.js",
+        "apps/api/dist/error-diagnostics.test.js",
+        "apps/api/dist/execution-key.test.js",
+        "apps/api/dist/fact-evidence-read.test.js",
+        "apps/api/dist/fact-evidence-reviews.test.js",
+        "apps/api/dist/fact-review.test.js",
+        "apps/api/dist/generated-word-delivery.test.js",
+        "apps/api/dist/generation-issuer-binding-consumer.test.js",
+        "apps/api/dist/generation-issuer-binding-seam.test.js",
+        "apps/api/dist/generation-issuer-binding.test.js",
+        "apps/api/dist/input-lock-consumption.pg.integration.test.js",
+        "apps/api/dist/input-revision-chain.pg.test.js",
+        "apps/api/dist/issuer-annual-profile-reviews.test.js",
+        "apps/api/dist/issuer-identity-input-lock.test.js",
+        "apps/api/dist/issuer-identity-source.test.js",
+        "apps/api/dist/library-admin.test.js",
+        "apps/api/dist/library-revenue-proof.test.js",
+        "apps/api/dist/log-archive-lifecycle.test.js",
+        "apps/api/dist/logical-job.test.js",
+        "apps/api/dist/m4-case-templates.test.js",
+        "apps/api/dist/m4-dynamic-balance.pg.test.js",
+        "apps/api/dist/m4-fixed-billing.pg.test.js",
+        "apps/api/dist/m4-knowledge.test.js",
+        "apps/api/dist/m4-workspace.pg.test.js",
+        "apps/api/dist/material-delete-workspace.pg.test.js",
+        "apps/api/dist/material-download.test.js",
+        "apps/api/dist/material-parse-snapshot-visibility.test.js",
+        "apps/api/dist/material-role-copy.test.js",
+        "apps/api/dist/model-call-execution.pg.integration.test.js",
+        "apps/api/dist/model-call-execution.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/ocr-execution-boundary.pg.integration.test.js",
+        "apps/api/dist/ocr.test.js",
+        "apps/api/dist/original-material-upload.test.js",
+        "apps/api/dist/payments.pg.test.js",
+        "apps/api/dist/preflight-difficulty.test.js",
+        "apps/api/dist/preflight-readiness.test.js",
+        "apps/api/dist/production-component-import-cli.test.js",
+        "apps/api/dist/production-review-grants-cli.test.js",
+        "apps/api/dist/production-review-ledger.test.js",
+        "apps/api/dist/production-rule-pack-releases.test.js",
+        "apps/api/dist/production-rule-pin.test.js",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/project-collection.pg.test.js",
+        "apps/api/dist/project-file-batch-recovery.test.js",
+        "apps/api/dist/project-file-check-history.test.js",
+        "apps/api/dist/project-file-update-history.test.js",
+        "apps/api/dist/project-kind-conversion.pg.test.js",
+        "apps/api/dist/project-list.test.js",
+        "apps/api/dist/project-message-set-lock.test.js",
+        "apps/api/dist/project-messages.test.js",
+        "apps/api/dist/prompt-execution-boundary.pg.integration.test.js",
+        "apps/api/dist/provider-result-validation.test.js",
+        "apps/api/dist/provider-run-events.test.js",
+        "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+        "apps/api/dist/queue.test.js",
+        "apps/api/dist/review-action-events.pg.integration.test.js",
+        "apps/api/dist/review-billing.pg.test.js",
+        "apps/api/dist/review-dynamic-balance.pg.test.js",
+        "apps/api/dist/review-linked-workspace.test.js",
+        "apps/api/dist/review-price-activation.pg.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-readable.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/reviewer-parse-evidence.test.js",
+        "apps/api/dist/revision-range.test.js",
+        "apps/api/dist/rule-applicability-context-owner.test.js",
+        "apps/api/dist/rule-applicability-reviewer-grants.test.js",
+        "apps/api/dist/run-event-dto.test.js",
+        "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-file-reference.test.js",
+        "apps/api/dist/run-origin-immutability.pg.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-work-retention.pg.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/schema-rejection.test.js",
+        "apps/api/dist/server.test.js",
+        "apps/api/dist/source-profile-correction.test.js",
+        "apps/api/dist/storage-inventory.test.js",
+        "apps/api/dist/storage-lifecycle.test.js",
+        "apps/api/dist/target-confirmation.test.js",
+        "apps/api/dist/target-period-evidence-decisions.test.js",
+        "apps/api/dist/test-database-teardown.test.js",
+        "apps/api/dist/unified-authoring.test.js",
+        "apps/api/dist/update-difficulty-repository.test.js",
+        "apps/api/dist/update-project-e2e.pg.test.js",
+        "apps/api/dist/update-project.test.js",
+        "apps/api/dist/upload-capacity.test.js",
+        "apps/api/dist/upload-error-response.test.js",
+        "apps/api/dist/upload-reuse.test.js",
+        "apps/api/dist/upload-safety.test.js",
+        "apps/api/dist/upload-spool.test.js",
+        "apps/api/dist/user-reference-lock.test.js",
+        "apps/api/dist/user-submissions.test.js",
+        "apps/api/dist/word-delivery-artifact.test.js",
+        "apps/api/dist/working-draft-parse-admission.test.js",
+        "apps/api/dist/zz_log_archive.test.js",
+        "apps/api/dist/zz_log_ops.test.js",
+        "apps/api/dist/zz_observability.test.js",
+        "apps/api/dist/zz_recovery_drill.test.js",
+        "apps/api/dist/zz_trial_guard.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Exact execution input, business snapshot and migration gates",
+      "phase": "final",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": null,
+      "receipt": "api-focused-1.json",
+      "log": "api-focused-1.log",
+      "status": 0,
+      "started": "2026-10-26T14:52:24.856Z",
+      "finished": "2026-10-26T14:53:06.893Z",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_g03_test@127.0.0.1:15526/bb_execution_snapshots_template_20261026"
+      },
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js"
+      ],
+      "counts": {
+        "tests": 21,
+        "passed": 21,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Entire affected supplement, retention and business regression files",
+      "phase": "final",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": null,
+      "receipt": "api-regression.json",
+      "log": "api-regression.log",
+      "status": 0,
+      "started": "2026-10-26T14:52:24.858Z",
+      "finished": "2026-10-26T14:58:07.528Z",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_g03_test@127.0.0.1:15526/bb_execution_snapshots_template_20261026"
+      },
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js"
+      ],
+      "counts": {
+        "tests": 186,
+        "passed": 186,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/run-working-files.pg.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/review-readable-retention.pg.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Corrected standalone catalog, dynamic wallet and default runtime assertions",
+      "phase": "final",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": null,
+      "receipt": "api-corrective.json",
+      "log": "api-corrective.log",
+      "status": 0,
+      "started": "2026-10-26T14:52:24.856Z",
+      "finished": "2026-10-26T14:53:21.453Z",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_g03_test@127.0.0.1:15526/bb_execution_snapshots_template_20261026"
+      },
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/m4-knowledge.test.js",
+        "apps/api/dist/revision-range.test.js",
+        "apps/api/dist/working-draft-parse-admission.test.js"
+      ],
+      "counts": {
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/m4-knowledge.test.js",
+        "apps/api/dist/revision-range.test.js",
+        "apps/api/dist/working-draft-parse-admission.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Default runtime configuration regression",
+      "phase": "broad",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": "The selected compiled test files and all production files remain byte-identical at the final freeze; this earlier corrected-environment run is reported separately.",
+      "receipt": "api-config-regression.json",
+      "log": "api-config-regression.log",
+      "status": 0,
+      "started": "2026-10-26T14:23:18.844Z",
+      "finished": "2026-10-26T14:24:32.857Z",
+      "environment": null,
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/execution-key.test.js",
+        "apps/api/dist/logical-job.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/preflight-difficulty.test.js"
+      ],
+      "counts": {
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/api/dist/execution-key.test.js",
+        "apps/api/dist/logical-job.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/preflight-difficulty.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Worker snapshot and identity unit regression",
+      "phase": "broad",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": "Worker source/compiled bytes and all production bytes are unchanged at final freeze; two Linux-only symlink checks skipped on Windows.",
+      "receipt": "worker-unit-1.json",
+      "log": "worker-unit-1.log",
+      "status": 0,
+      "started": "2026-10-26T14:18:09.721Z",
+      "finished": "2026-10-26T14:18:40.817Z",
+      "environment": null,
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/review-input-execution.test.js",
+        "apps/worker/dist/m4-input.test.js",
+        "apps/worker/dist/m4-stages.test.js",
+        "apps/worker/dist/unified-execution-input.test.js",
+        "apps/worker/dist/review-file-stage.test.js",
+        "apps/worker/dist/unified-input.test.js"
+      ],
+      "counts": {
+        "tests": 64,
+        "passed": 62,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/worker/dist/review-input-execution.test.js",
+        "apps/worker/dist/m4-input.test.js",
+        "apps/worker/dist/m4-stages.test.js",
+        "apps/worker/dist/unified-execution-input.test.js",
+        "apps/worker/dist/review-file-stage.test.js",
+        "apps/worker/dist/unified-input.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Real PostgreSQL worker input loaders and execution boundaries",
+      "phase": "broad",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": "Worker source/compiled bytes and all production bytes are unchanged at final freeze; four Azurite-dependent cases skipped.",
+      "receipt": "worker-pg-2.json",
+      "log": "worker-pg-2.log",
+      "status": 0,
+      "started": "2026-10-26T14:13:32.208Z",
+      "finished": "2026-10-26T14:15:34.933Z",
+      "environment": null,
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/worker/dist/execution-input-loaders.pg.test.js",
+        "apps/worker/dist/run-execution-consumers.pg.test.js",
+        "apps/worker/dist/m3-review-pipeline.pg.integration.test.js",
+        "apps/worker/dist/m4-pipeline.pg.test.js",
+        "apps/worker/dist/unified-authoring.pg.test.js",
+        "apps/worker/dist/authoring-pause.pg.test.js",
+        "apps/worker/dist/review-project-e2e.pg.test.js",
+        "apps/worker/dist/review-reassembly.test.js",
+        "apps/worker/dist/review-word-registration.pg.integration.test.js"
+      ],
+      "counts": {
+        "tests": 41,
+        "passed": 37,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 4,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/worker/dist/execution-input-loaders.pg.test.js",
+        "apps/worker/dist/run-execution-consumers.pg.test.js",
+        "apps/worker/dist/m3-review-pipeline.pg.integration.test.js",
+        "apps/worker/dist/m4-pipeline.pg.test.js",
+        "apps/worker/dist/unified-authoring.pg.test.js",
+        "apps/worker/dist/authoring-pause.pg.test.js",
+        "apps/worker/dist/review-project-e2e.pg.test.js",
+        "apps/worker/dist/review-reassembly.test.js",
+        "apps/worker/dist/review-word-registration.pg.integration.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "label": "Four exact upload checks with sufficient isolated test budget",
+      "phase": "broad",
+      "kind": "node_test",
+      "acceptance": true,
+      "note": "Only four exact titles reran with240000ms runner budget; the complete upload file did not rerun. Its source/compiled file and production bytes remain unchanged at final freeze.",
+      "receipt": "api-upload-timeout.json",
+      "log": "api-upload-timeout.log",
+      "status": 0,
+      "started": "2026-10-26T14:45:57.137Z",
+      "finished": "2026-10-26T14:49:32.372Z",
+      "environment": {
+        "BB_RUN_RUNTIME_ENABLED": null,
+        "BB_TEST_DATABASE_URL": "postgresql://bb_g03_test@127.0.0.1:15526/bb_execution_snapshots_template_20261026"
+      },
+      "args": [
+        "--test",
+        "--test-timeout=240000",
+        "--test-name-pattern=^(?:upload inspection rejects encryption, corrupt structures, active content, and bounded archive abuse|signed PDF risk controls remain fail-closed on both inspection paths|multipage signatures retain bytes and reject active, ambiguous or incomplete inputs|upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503)$",
+        "apps/api/dist/upload-safety.test.js"
+      ],
+      "counts": {
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "test_files": [
+        "apps/api/dist/upload-safety.test.js"
+      ],
+      "aggregate": null
+    }
+  ],
+  "overlapping_test_file_groups": [
+    {
+      "left": "api-all-stream.json",
+      "right": "api-focused-1.json",
+      "shared_test_files": [
+        "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "left": "api-all-stream.json",
+      "right": "api-regression.json",
+      "shared_test_files": [
+        "apps/api/dist/review-readable-retention.pg.test.js",
+        "apps/api/dist/review-workspace.test.js",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-supplement-files.pg.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-work.pg.test.js",
+        "apps/api/dist/run-working-files.pg.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "left": "api-all-stream.json",
+      "right": "api-corrective.json",
+      "shared_test_files": [
+        "apps/api/dist/m4-knowledge.test.js",
+        "apps/api/dist/project-assistant.pg.test.js",
+        "apps/api/dist/revision-range.test.js",
+        "apps/api/dist/working-draft-parse-admission.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "left": "api-all-stream.json",
+      "right": "api-config-regression.json",
+      "shared_test_files": [
+        "apps/api/dist/execution-key.test.js",
+        "apps/api/dist/logical-job.test.js",
+        "apps/api/dist/non-production-test.test.js",
+        "apps/api/dist/preflight-difficulty.test.js"
+      ],
+      "aggregate": null
+    },
+    {
+      "left": "api-all-stream.json",
+      "right": "api-upload-timeout.json",
+      "shared_test_files": [
+        "apps/api/dist/upload-safety.test.js"
+      ],
+      "aggregate": null
+    }
+  ],
+  "historical_commands": [
+    {
+      "receipt": "api-all-stream.json",
+      "log": "api-all-stream.log",
+      "classification": "selected",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 610,
+        "passed": 484,
+        "failed": 50,
+        "cancelled": 3,
+        "skipped": 73,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-assistant-config.json",
+      "log": "api-assistant-config.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 2,
+        "passed": 1,
+        "failed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-build-1.json",
+      "log": "api-build-1.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "api-build-2.json",
+      "log": "api-build-2.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "api-build-3.json",
+      "log": "api-build-3.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "api-build.json",
+      "log": "api-build.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "api-config-regression.json",
+      "log": "api-config-regression.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-corrective.json",
+      "log": "api-corrective.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-execution-key-1.json",
+      "log": "api-execution-key-1.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-execution-key.json",
+      "log": "api-execution-key.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 1,
+        "passed": 0,
+        "failed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-focused-1.json",
+      "log": "api-focused-1.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 21,
+        "passed": 21,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-focused.json",
+      "log": "api-focused.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 20,
+        "passed": 20,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-regression.json",
+      "log": "api-regression.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 186,
+        "passed": 186,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-revision-range.json",
+      "log": "api-revision-range.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "api-upload-timeout.json",
+      "log": "api-upload-timeout.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "contracts-check.json",
+      "log": "contracts-check.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "database-audit-before-cleanup.json",
+      "log": "database-audit-before-cleanup.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "driver-syntax-failed.json",
+      "log": "driver-syntax-failed.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "migrate-1.json",
+      "log": "migrate-1.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "migrate.json",
+      "log": "migrate.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "pg-start.json",
+      "log": "pg-start.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-build-1.json",
+      "log": "worker-build-1.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-build-2.json",
+      "log": "worker-build-2.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-build-3.json",
+      "log": "worker-build-3.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-build-4.json",
+      "log": "worker-build-4.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-build.json",
+      "log": "worker-build.log",
+      "classification": "historical_completed_failed",
+      "status": 2,
+      "signal": null,
+      "acceptance": false,
+      "counts": null,
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-pg-1.json",
+      "log": "worker-pg-1.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 41,
+        "passed": 35,
+        "failed": 2,
+        "cancelled": 0,
+        "skipped": 4,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-pg-2.json",
+      "log": "worker-pg-2.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 41,
+        "passed": 37,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 4,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-pg.json",
+      "log": "worker-pg.log",
+      "classification": "historical_completed_failed",
+      "status": 1,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 39,
+        "passed": 30,
+        "failed": 2,
+        "cancelled": 3,
+        "skipped": 4,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-unit-1.json",
+      "log": "worker-unit-1.log",
+      "classification": "selected",
+      "status": 0,
+      "signal": null,
+      "acceptance": true,
+      "counts": {
+        "tests": 64,
+        "passed": 62,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0
+      },
+      "aggregate": null
+    },
+    {
+      "receipt": "worker-unit.json",
+      "log": "worker-unit.log",
+      "classification": "historical_completed_passed",
+      "status": 0,
+      "signal": null,
+      "acceptance": false,
+      "counts": {
+        "tests": 64,
+        "passed": 62,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0
+      },
+      "aggregate": null
+    }
+  ],
+  "broad_runtime_environment": {
+    "record": "runtime-env-history.json",
+    "captured_process_environment": null,
+    "session_history": {
+      "recorded_at": "2026-10-26T14:33:21.263Z",
+      "source": "Retained session handoff and root observations; not a captured process environment",
+      "broad_run": "api-all-stream",
+      "broad_runtime_enabled": "1 according to retained session history: this mode was launched before driver removed its global override",
+      "limitation": "The original command receipt did not capture the effective environment or pre-edit driver bytes. Treat this explanation as session provenance, not independently verified launch-env evidence.",
+      "supporting_observations": [
+        "execution-key original 202 vs501; corrected default-config rerun passed",
+        "revision-range same source/dist passed with current sanitized environment",
+        "logical-job/non-production/preflight group passed with default environment"
+      ],
+      "default_driver": "Current verify.mjs removes all inherited BB_* keys and does not assign BB_RUN_RUNTIME_ENABLED. Subsequent receipts capture its null value.",
+      "acceptance": "Broad run remains exploratory and failed; cannot claim a clean default full-suite run."
+    },
+    "independently_verified_original_environment": false
+  },
+  "windows_exclusions": {
+    "titles": [
+      "#79 NDJSON sink cannot be split by log injection",
+      "#79 file sink repeat and concurrent processes retain one durable line per key",
+      "#79 replay of a complete pre-existing line still acknowledges only after file sync",
+      "#79 size cap fails closed for new keys but permits replay of a full segment",
+      "#79 replay also detects a key in a legacy rotated segment"
+    ],
+    "expression": "--test-skip-pattern=^#79 (?:NDJSON sink cannot be split by log injection|file sink repeat and concurrent processes retain one durable line per key|replay of a complete pre-existing line still acknowledges only after file sync|size cap fails closed for new keys but permits replay of a full segment|replay also detects a key in a legacy rotated segment)$",
+    "acceptance": false,
+    "included_in_reported_skip_count": false,
+    "scope": "Five exact Windows NDJSON titles were excluded by name. Neither exclusion nor retained historical sink tests establish current sink acceptance."
+  },
+  "source_binding": {
+    "broad": {
+      "before": "source-before-2.json",
+      "freeze": "broad-freeze.json",
+      "command": "api-all-stream.json",
+      "records": [
+        {
+          "path": "source-before-2.json",
+          "bytes": 246859,
+          "sha256": "302de70bc6a6ae889e102f0081b281dfda18b2db2326a3d5a3b70e4b47f2a8a6"
+        },
+        {
+          "path": "broad-freeze.json",
+          "bytes": 173,
+          "sha256": "4b489c1c0d9aba0a6a0095163844281044dd6bd875e955e1bba47310ea599a16"
+        }
+      ]
+    },
+    "final": {
+      "before": "source-before-3.json",
+      "freeze": "current-freeze.json",
+      "after": "source-after.json",
+      "records": [
+        {
+          "path": "source-before-3.json",
+          "bytes": 246859,
+          "sha256": "3f41fc410224f2e64a5a125513097c3053b07ab42f6883df8c391a6119fe4633"
+        },
+        {
+          "path": "current-freeze.json",
+          "bytes": 173,
+          "sha256": "65095bb57d79d15d72db3ba82cd6fcb5a5e20e445db140c8a5a06075ba9cb462"
+        },
+        {
+          "path": "source-after.json",
+          "bytes": 246859,
+          "sha256": "3f41fc410224f2e64a5a125513097c3053b07ab42f6883df8c391a6119fe4633"
+        }
+      ]
+    },
+    "final_before_after_identical": true,
+    "current_files_match": true,
+    "broad_to_final_changes": [
+      {
+        "path": "apps/api/dist/m4-knowledge.test.js",
+        "before": "c7fd91b861343cc9b37ebd595a7e544d7c9316025649c29dd82df8e9ac69b890",
+        "after": "a763cffd394359cb75d9df5fa0c2a5989a5d373b76424e04f97efccc20ab02d7"
+      },
+      {
+        "path": "apps/api/dist/project-assistant.pg.test.js",
+        "before": "5ca1cd0ebbfac3c9551fc21afacb327dcd5b62d3d6195bbb08e60fb0b43f3d0b",
+        "after": "8152ff76c85223a152a5b2c58a048949fbacd2d856bb2f1f6b83483b8aa8a57b"
+      },
+      {
+        "path": "apps/api/dist/review-readable-retention.pg.test.js",
+        "before": "8e138f188357abf11a7de4266500acc762122816359ccbbc3e15c0f0fa8bded1",
+        "after": "3a2085184a9e561e30b7cd0d80c63d15cac971f5e0e774412366c9e1fd8cc6e4"
+      },
+      {
+        "path": "apps/api/dist/run-supplement-draft.pg.test.js",
+        "before": "6d1dea7c444b2536dbad14f6e56e7c16b1298ac0ce40816d94ff4364605184ea",
+        "after": "2bb9dabae0e0a99ad69d78913a902c718dd697fc90449914e4c20cab8c505d48"
+      },
+      {
+        "path": "apps/api/dist/run-supplement-files.pg.test.js",
+        "before": "28af00f45ce7f32e7145646b84c4f3aa27af833ad505c966aec132c3b4e6850e",
+        "after": "8d74cc871671cc0a57231cd82d76141ffa7dda93b9ee43d032c11e8bb71a3e16"
+      },
+      {
+        "path": "apps/api/dist/run-working-files.pg.test.js",
+        "before": "c57d82f520d95e3f3c444b559ac58749fd1323f4ac44674aa6a83d378cafc32a",
+        "after": "17987299e7fa86066af93024fe257d73c7079c28588112371454eaf05af4616c"
+      },
+      {
+        "path": "apps/api/src/m4-knowledge.test.ts",
+        "before": "f8599a82bffa7d2f1737c3a73c3826a2dfa1639649eca8c7fd56f474507d8686",
+        "after": "c719b537ed5f199506db801aed246a7d993ea9158868234317ae5291ff01638f"
+      },
+      {
+        "path": "apps/api/src/project-assistant.pg.test.ts",
+        "before": "42d934f4a050d39b3461bcca5e579152ad158f693e5297e413dfdff598284595",
+        "after": "35d2021a34d7bdddf60709e8b93b0a8770dd8a16962eb5be368f3b0e7174d543"
+      },
+      {
+        "path": "apps/api/src/review-readable-retention.pg.test.ts",
+        "before": "134cfa883faae222ff1804a215cabd4de9d42f327639655c6e154224e552affe",
+        "after": "9dd1b8dbce56c7baa490f5df059c19090a2800d94dfe8e9bed838ed5904af55c"
+      },
+      {
+        "path": "apps/api/src/run-supplement-draft.pg.test.ts",
+        "before": "c7c86edde29e44ce15a28036a7d4e3320b841e4ba9a919c0f1129f2d9a15ad29",
+        "after": "b2c4a1d759b7d3c46f896818da6b7a479132ffb553e8ef0295a145c74cff5b0f"
+      },
+      {
+        "path": "apps/api/src/run-supplement-files.pg.test.ts",
+        "before": "4868a774a2797629d5ec77924c58a13a8ec375b77e10a36b33db5cd44cd1be56",
+        "after": "b4df3ebab7c5dd9f9c8dc4b6cbfc75a4b7023836dc4c7bc89a8a505d0b924f20"
+      },
+      {
+        "path": "apps/api/src/run-working-files.pg.test.ts",
+        "before": "3ebd27672924134eff501dba742991baef61f893e08ec468c9b5b2c4dbfd777a",
+        "after": "998540bd66eea4ccc0a34c9442ab688fc0688bb12e888d251c3d3f3e08ccdcbe"
+      }
+    ],
+    "production_sources_contracts_and_migrations_unchanged_between_broad_and_final": true,
+    "final_files": 1656
+  },
+  "migration_replay": {
+    "receipt": "migrate-1.json",
+    "log": "migrate-1.log",
+    "status": 0,
+    "applied": [
+      "0001_m1_owner_data.sql",
+      "0002_artifact_download_grants.sql",
+      "0003_m1_auth_sessions.sql",
+      "0004_m1_durable_jobs.sql",
+      "0005_m1_observability.sql",
+      "0006_m1_storage_lifecycle.sql",
+      "0007_m1_provider_result_reconciliation.sql",
+      "0008_m1_username_password.sql",
+      "0009_m1_account_lifecycle.sql",
+      "0010_m1_facts_parse_cache.sql",
+      "0010_m1_word_delivery_evidence.sql",
+      "0011_m1_project_material_events.sql",
+      "0012_m1_fact_decisions.sql",
+      "0013_m1_historical_profiles.sql",
+      "0013_m1_update_project_details.sql",
+      "0014_m1_parse_evidence_snapshots.sql",
+      "0015_m1_credit_facility_supplements.sql",
+      "0016_m1_update_difficulty_snapshots.sql",
+      "0017_m1_ocr_review.sql",
+      "0018_m1_rule_pack_release_ledger.sql",
+      "0018_m1_upload_reuse.sql",
+      "0019_m1_model_adapter_attempt_runtime.sql",
+      "0020_m1_material_parse_jobs.sql",
+      "0021_m1_log_operations.sql",
+      "0023_m1_reference_library.sql",
+      "0024_m1_worker_runtime.sql",
+      "0025_m1_trial_guard.sql",
+      "0026_m1_user_deletion_lifecycle.sql",
+      "0027_m1_platform_probe.sql",
+      "0028_m1_ops_scheduler.sql",
+      "0030_m1_library_comparability.sql",
+      "0031_m1_ops_last_success.sql",
+      "0032_m1_library_scheduled_sync.sql",
+      "0033_m1_issuer_business_profiles.sql",
+      "0034_m1_v11_reference_selection_locks.sql",
+      "0035_m1_issuer_identity_source.sql",
+      "0036_m1_production_rule_pack_registry.sql",
+      "0037_m1_rule_pack_sample_expectation_binding.sql",
+      "0038_m1_fact_extraction_runs.sql",
+      "0039_m1_rule_applicability_context.sql",
+      "0040_m1_preflight_logical_jobs.sql",
+      "0041_m1_log_blob_archive.sql",
+      "0042_m1_orphan_prompt_blobs.sql",
+      "0043_m1_project_archive.sql",
+      "0044_m1_account_recovery.sql",
+      "0045_m1_issuer_reviewer_grant_audit.sql",
+      "0046_m1_user_reference_pins.sql",
+      "0047_m1_user_reference_review_evidence.sql",
+      "0048_m1_issuer_reviewer_read_scope.sql",
+      "0049_m1_issuer_reviewer_project_grants.sql",
+      "0050_m1_credit_facility_supplement_versions.sql",
+      "0051_m1_rule_applicability_reviewer_grants.sql",
+      "0052_m1_rule_applicability_field_reviews.sql",
+      "0053_m1_input_revision_target_confirmations.sql",
+      "0054_m1_rule_applicability_overall_reviews.sql",
+      "0055_m1_rule_applicability_feature_evidence_v2.sql",
+      "0056_m1_non_production_test_grants.sql",
+      "0057_m1_target_period_evidence_decisions.sql",
+      "0058_m1_update_difficulty_evidence_identity.sql",
+      "0059_m1_issuer_annual_profile_reviews.sql",
+      "0060_m1_fact_evidence_context_sets.sql",
+      "0061_m1_model_cost_attribution.sql",
+      "0062_m1_user_submission_versions.sql",
+      "0063_m1_reference_revenue_rank_proof.sql",
+      "0064_m1_rule_source_legal_date_evidence.sql",
+      "0065_m1_fact_evidence_reviews.sql",
+      "0066_m1_target_period_candidate_snapshots.sql",
+      "0068_m1_browser_error_reports.sql",
+      "0069_m1_log_archive_retention.sql",
+      "0070_m1_error_diagnosis.sql",
+      "0071_m1_production_review_attestation_ledger.sql",
+      "0072_m1_production_component_snapshots.sql",
+      "0073_m1_production_release_attestation_binding.sql",
+      "0074_m1_storage_inventory.sql",
+      "0075_m1_generation_issuer_bindings.sql",
+      "0076_m1_signed_pdf_assessment.sql",
+      "0077_m1_project_message_revisions.sql",
+      "0080_m1_ocr_v2_checkpoints.sql",
+      "0081_m1_project_kind_conversion.sql",
+      "0082_m1_material_role_copy.sql",
+      "0083_m1_test_execute_rejection_without_grant.sql",
+      "0084_m3_review_workspace.sql",
+      "0085_m3_review_assistant.sql",
+      "0086_m3_project_run_mutex.sql",
+      "0087_m2_fixed_credits.sql",
+      "0088_m3_linked_assistant.sql",
+      "0089_paid_review_credits.sql",
+      "0090_multipage_signed_pdf_assessment.sql",
+      "0091_m4_workspace.sql",
+      "0092_m4_pending_requirements.sql",
+      "0093_m4_qa_text_delivery.sql",
+      "0094_m4_settlement_allocation_variable.sql",
+      "0095_m4_artifact_revision_number.sql",
+      "0096_m4_message_template_identity.sql",
+      "0097_m4_cross_project_material_retention.sql",
+      "0098_m4_material_knowledge.sql",
+      "0099_m4_fixed_document_credits.sql",
+      "0100_global_project_assistant.sql",
+      "0101_m4_fixed_qa_prices.sql",
+      "0102_credit_history_indexes.sql",
+      "0103_authoring_progress.sql",
+      "0103_review_pdf_delivery_evidence.sql",
+      "0104_authoring_dynamic_balance.sql",
+      "0105_m4_dynamic_balance.sql",
+      "0106_m4_case_templates.sql",
+      "0107_update_project_prospectus_versions.sql",
+      "0108_backfill_prospectus_versions.sql",
+      "0109_review_editor.sql",
+      "0110_review_dual_word_settlement.sql",
+      "0111_project_file_workspace.sql",
+      "0112_project_file_update_credits.sql",
+      "0113_integrity_rounds.sql",
+      "0114_integrity_workpapers.sql",
+      "0115_project_qa.sql",
+      "0116_integrity_browser_evidence.sql",
+      "0117_run_origin_input_immutable.sql",
+      "0118_run_supplement_drafts.sql",
+      "0119_initial_run_execution_identity.sql",
+      "0120_model_call_execution_bindings.sql",
+      "0121_run_supplement_saved_work.sql",
+      "0122_run_working_file_lifecycle.sql",
+      "0123_run_working_file_result_claims.sql",
+      "0124_run_execution_business_snapshots.sql"
+    ]
+  },
+  "infrastructure_cleanup": {
+    "audit": {
+      "server_version": "16.14",
+      "server_port": "15526",
+      "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data",
+      "schema": [
+        {
+          "filename": "0124_run_execution_business_snapshots.sql"
+        },
+        {
+          "filename": "0123_run_working_file_result_claims.sql"
+        },
+        {
+          "filename": "0122_run_working_file_lifecycle.sql"
+        }
+      ],
+      "runs": 0,
+      "executions": 0,
+      "reviews": 0,
+      "m4": 0,
+      "clones": [],
+      "other_clients": [],
+      "postmaster_pid": 38148
+    },
+    "stop_audit": {
+      "server_version": "16.14",
+      "server_port": "15526",
+      "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data",
+      "schema": [
+        {
+          "filename": "0124_run_execution_business_snapshots.sql"
+        },
+        {
+          "filename": "0123_run_working_file_result_claims.sql"
+        },
+        {
+          "filename": "0122_run_working_file_lifecycle.sql"
+        }
+      ],
+      "runs": 0,
+      "executions": 0,
+      "reviews": 0,
+      "m4": 0,
+      "clones": [],
+      "other_clients": [],
+      "postmaster_pid": 38148
+    },
+    "stop_command": {
+      "status": 0,
+      "stdout": "waiting for server to shut down.... done\r\nserver stopped\r\n",
+      "stderr": ""
+    },
+    "stopped_status": {
+      "status": 3,
+      "stdout": "pg_ctl: no server running\r\n",
+      "stderr": ""
+    },
+    "start_record": "pg-start-direct.json",
+    "exact_postmaster_pid": 38148
+  },
+  "record_files": [
+    {
+      "path": "aborted-clone-cleanup.json",
+      "bytes": 3848,
+      "sha256": "2ff6f307dca84530be127388cf03522e625d9c7f23138e737ce17f216157ba55"
+    },
+    {
+      "path": "api-all-aborted-followup.json",
+      "bytes": 454,
+      "sha256": "55fd77cc011c6a28afb70f5b464fe8a364afaba09ca7588dbdbe6cf855a8ccf9"
+    },
+    {
+      "path": "api-all-aborted.json",
+      "bytes": 352,
+      "sha256": "bd3b7e20dba9c1e3402ce385d2cb1e563aedd15d63eac56e62f2e9c80d1dbe7a"
+    },
+    {
+      "path": "api-all-stream.json",
+      "bytes": 6896,
+      "sha256": "286dd6ad3736a0badda88f764967292202c6f56f66ffa0c5d92458db557df034"
+    },
+    {
+      "path": "api-all-stream.log",
+      "bytes": 141756,
+      "sha256": "7f2d22bd19d820c0b9141ce96395c5f5b9abcbf9396efab0c63cf99ee296ca4d"
+    },
+    {
+      "path": "api-assistant-config.json",
+      "bytes": 337,
+      "sha256": "675a601a3389def84fe611081e52fd2a82dbee0c81996bb067aa34e6af89090f"
+    },
+    {
+      "path": "api-assistant-config.log",
+      "bytes": 1312,
+      "sha256": "6e645218b6ce976d0a6c83bcde6364d536ec16370b0924b65f5b9f89894ab028"
+    },
+    {
+      "path": "api-build-1.json",
+      "bytes": 384,
+      "sha256": "be86d4178885d77d9c8574816dfd262f881e4888b47a280c1b20569c1abb1890"
+    },
+    {
+      "path": "api-build-1.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-2.json",
+      "bytes": 418,
+      "sha256": "8cf8686b159b8098846711bb57977100534b62133fe34e73e50469d5f83859c0"
+    },
+    {
+      "path": "api-build-2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build-3.json",
+      "bytes": 590,
+      "sha256": "755ffaca8c172fc2a92b7be957da2f790047e8c75753413dc0f0e035e166a535"
+    },
+    {
+      "path": "api-build-3.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-build.json",
+      "bytes": 384,
+      "sha256": "45edb553a56ad075974541f9ff8640b7009df22bad21eb778e3f71de6f45d5ae"
+    },
+    {
+      "path": "api-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "api-config-regression.json",
+      "bytes": 498,
+      "sha256": "2d9ef8aeeddb577e52562e5a44982408fa700814375ee72585358d3a7534507c"
+    },
+    {
+      "path": "api-config-regression.log",
+      "bytes": 740,
+      "sha256": "b6fda030f2b04af147452aaa17d734272da2596985ff4415b149029a52d7503b"
+    },
+    {
+      "path": "api-corrective.json",
+      "bytes": 682,
+      "sha256": "5723018e49232362e00624b259d0c53f5fd59b7e895566169e5ab788c52948eb"
+    },
+    {
+      "path": "api-corrective.log",
+      "bytes": 821,
+      "sha256": "5fc4e7f0a02ea5eed1a122eec7a677a25ea4ab8fd659f3a7652059da753ef4fd"
+    },
+    {
+      "path": "api-execution-key-1.json",
+      "bytes": 330,
+      "sha256": "7f109e6ea2b787874d141179e71e9d8a62dd27577cfcfc7f6fcb61ce0ff67225"
+    },
+    {
+      "path": "api-execution-key-1.log",
+      "bytes": 227,
+      "sha256": "2c7f8685602187c474520354cdc9c16d20e90545f2c0af21b88e2f0ccca276f2"
+    },
+    {
+      "path": "api-execution-key.json",
+      "bytes": 330,
+      "sha256": "71dcb57cdc6ee9ad5811490c913fd2c381658e4b07ec64f4437c061096438917"
+    },
+    {
+      "path": "api-execution-key.log",
+      "bytes": 1023,
+      "sha256": "0f201d48f2ddd9e2e9ad4575b530737da445c9da7f74748a5a47f4f2f7dd853f"
+    },
+    {
+      "path": "api-focused-1.json",
+      "bytes": 659,
+      "sha256": "f7ca40fe68ab7231dfe273471f90ab4101df834b1dea88b2fe0811a8bbba77b2"
+    },
+    {
+      "path": "api-focused-1.log",
+      "bytes": 2610,
+      "sha256": "4d6954a69f5555a3409ab07dfe46174b1ef7201172a9f0c0a2f39c09c87c7640"
+    },
+    {
+      "path": "api-focused.json",
+      "bytes": 453,
+      "sha256": "4c17b39807a389e9deb10b19546854d727fc148571a040bc19340aa6c4fe8184"
+    },
+    {
+      "path": "api-focused.log",
+      "bytes": 2481,
+      "sha256": "2be3c4ae2055bef79d6bc81f33b57230fe15556199b9e734c5284cbd6ef327cd"
+    },
+    {
+      "path": "api-regression.json",
+      "bytes": 849,
+      "sha256": "6161690e046db1e0fc3199115cc66cd97f59768433251761ef15f22f74bf2911"
+    },
+    {
+      "path": "api-regression.log",
+      "bytes": 14828,
+      "sha256": "281116fa2ba3890842295fb0bc2d746e3732ad1cfcda5da1906db4bda1fe5a7e"
+    },
+    {
+      "path": "api-revision-range.json",
+      "bytes": 331,
+      "sha256": "15fc7d0d13b36d23b5e7474b276dc15d03eef80eb9080cbb8a5ebe060e152cdc"
+    },
+    {
+      "path": "api-revision-range.log",
+      "bytes": 225,
+      "sha256": "b98fe50b44a7c3cb0c2ac9b00c6d473294be075498b379ee12d0e5a04e427d2f"
+    },
+    {
+      "path": "api-upload-timeout.json",
+      "bytes": 914,
+      "sha256": "b846d35ff855e3aaae78d9fd542aba0b32acbac2a0151e18c797dc2cc5d4a130"
+    },
+    {
+      "path": "api-upload-timeout.log",
+      "bytes": 543,
+      "sha256": "6e46258387a8e28e00347d4f0a903dae55622e01e00ca4d13e546bfc5d5c9114"
+    },
+    {
+      "path": "broad-failure-triage.json",
+      "bytes": 2465,
+      "sha256": "6ccd311ac41c78a4d273c542d214fa16232009d15bcfc1eb05cc59cdda6723ae"
+    },
+    {
+      "path": "broad-freeze.json",
+      "bytes": 173,
+      "sha256": "4b489c1c0d9aba0a6a0095163844281044dd6bd875e955e1bba47310ea599a16"
+    },
+    {
+      "path": "contracts-check.json",
+      "bytes": 288,
+      "sha256": "d3b6b21469e8f5305596ed9ba926074041c1dbf3e233bd1729c485a53f8582d4"
+    },
+    {
+      "path": "contracts-check.log",
+      "bytes": 103,
+      "sha256": "e09c107bccc0ba1429b6a58b822a5f619acbf1192e2447b4b70df8e048fb50b9"
+    },
+    {
+      "path": "current-freeze.json",
+      "bytes": 173,
+      "sha256": "65095bb57d79d15d72db3ba82cd6fcb5a5e20e445db140c8a5a06075ba9cb462"
+    },
+    {
+      "path": "database-audit-before-cleanup.json",
+      "bytes": 372,
+      "sha256": "04c64155b7ab7fdfa12f4b37e9facfc8f840e236f4431cf501ebc19a4c3946aa"
+    },
+    {
+      "path": "database-audit-before-cleanup.log",
+      "bytes": 526,
+      "sha256": "5d62b98cc05977fcb599856e995d47fe4df5d9d3ed8bf2ab75cc2fbd955228c4"
+    },
+    {
+      "path": "database-audit.json",
+      "bytes": 523,
+      "sha256": "e514b5b219059cfca404770e0067b31953e5716d95b0748da762f8077c206f1d"
+    },
+    {
+      "path": "database-create.json",
+      "bytes": 211,
+      "sha256": "6ffd4aa4167d3c1862441df277882590497b0ead727f2c0a411d61168e5253f5"
+    },
+    {
+      "path": "driver-syntax-failed.json",
+      "bytes": 348,
+      "sha256": "f64d35abedd21b0173128a3bc35c17c6a435c2c736069d080eb8ba0c00ab537e"
+    },
+    {
+      "path": "driver-syntax-failed.log",
+      "bytes": 1374,
+      "sha256": "bf4feeaad532718bf764479ef78fec76af8447bf154b44052e13eb5b661ee010"
+    },
+    {
+      "path": "historical-template-audit.json",
+      "bytes": 370,
+      "sha256": "56ab7d92919eec9ff9e3cd1b9a3d9bc090a6fb2dff67f310fdd6e7ad98a66557"
+    },
+    {
+      "path": "independent-production-audit.json",
+      "bytes": 1046,
+      "sha256": "8f14a6264d2c2f1db2eb31212649754edb0bbce8d7332346108c8a855f94487e"
+    },
+    {
+      "path": "m4-knowledge-existing-standalone-scope-failure-before-fix.txt",
+      "bytes": 2526,
+      "sha256": "5453d57428541eb645a3d4350046a40ec09f6c1c44f14861e7c347b941305b76"
+    },
+    {
+      "path": "migrate-1.json",
+      "bytes": 295,
+      "sha256": "9ad6ff7c0f8a263e24e97e5f06489d81af5706f7a12f1f580293760fdd0f2301"
+    },
+    {
+      "path": "migrate-1.log",
+      "bytes": 5305,
+      "sha256": "bb4bfc1baa8862983a3da2f7af5c99bbbc9c8385a663c30e4fa0c2c373845a82"
+    },
+    {
+      "path": "migrate.json",
+      "bytes": 261,
+      "sha256": "143e205c41803b692f269f83f2dfadb7c702979d8232dcda2900b8d964f90c0b"
+    },
+    {
+      "path": "migrate.log",
+      "bytes": 50,
+      "sha256": "428e4182082fd006587799f37ea652d5fadbacf10fad7943b1047859a0815b92"
+    },
+    {
+      "path": "pg-start-direct.json",
+      "bytes": 235,
+      "sha256": "f23c787446fac01acd6c89b4518e980568571d602dbe6c8814684955a8490f0a"
+    },
+    {
+      "path": "pg-start.json",
+      "bytes": 588,
+      "sha256": "fc0c3e2781bb667547ea5b32c323140212f187532120b867d4d610c280a1debf"
+    },
+    {
+      "path": "pg-start.log",
+      "bytes": 104,
+      "sha256": "ec8d6bc94dcbefe83ae6de3f0d5113de005642889d0b4931c918ea476c811a86"
+    },
+    {
+      "path": "pg-stop-command.json",
+      "bytes": 112,
+      "sha256": "306b0a15584ef47eedf89219f25ea81fe36dee812eb90a2d6d287c21b85fd3a9"
+    },
+    {
+      "path": "pg-stop.json",
+      "bytes": 523,
+      "sha256": "e514b5b219059cfca404770e0067b31953e5716d95b0748da762f8077c206f1d"
+    },
+    {
+      "path": "pg-stopped-status.json",
+      "bytes": 79,
+      "sha256": "b75ade25994d8fc89bc589a2e68f6aecb8e9959a168211c78e63234b3cc2318f"
+    },
+    {
+      "path": "postgres-direct-stderr.log",
+      "bytes": 1375,
+      "sha256": "ddc5332b806948aa332330d4093219e34f9f62c2c2677cf4099d925c62c6b167"
+    },
+    {
+      "path": "postgres-direct-stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "privacy-text-scan.json",
+      "bytes": 2895,
+      "sha256": "9807aa0724e518104dc8574df7b76444ea764e2770e02f33361a3c1a25c395df"
+    },
+    {
+      "path": "runtime-env-history.json",
+      "bytes": 1070,
+      "sha256": "e1b7286c92bc5e561d9c46d6f2d0e7948f2f14bd400f057cedea4953c90044b2"
+    },
+    {
+      "path": "source-after.json",
+      "bytes": 246859,
+      "sha256": "3f41fc410224f2e64a5a125513097c3053b07ab42f6883df8c391a6119fe4633"
+    },
+    {
+      "path": "source-before-1.json",
+      "bytes": 246859,
+      "sha256": "7761b500c7da076bcc058cea6910d4e4190b541d658c85e8d5f4815ca1f58fec"
+    },
+    {
+      "path": "source-before-2.json",
+      "bytes": 246859,
+      "sha256": "302de70bc6a6ae889e102f0081b281dfda18b2db2326a3d5a3b70e4b47f2a8a6"
+    },
+    {
+      "path": "source-before-3.json",
+      "bytes": 246859,
+      "sha256": "3f41fc410224f2e64a5a125513097c3053b07ab42f6883df8c391a6119fe4633"
+    },
+    {
+      "path": "source-before.json",
+      "bytes": 246859,
+      "sha256": "b7c391080feffd89a4f416518accb52e6e6fe349c4733705b9b45630280635a1"
+    },
+    {
+      "path": "worker-build-1.json",
+      "bytes": 387,
+      "sha256": "f5508209c9479fc7ea4d4f468f28843607e998e9039f2a998767a788257b0de3"
+    },
+    {
+      "path": "worker-build-1.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build-2.json",
+      "bytes": 387,
+      "sha256": "b0e277fae306340c999abaf0f3a8e16148ca0e48dcc637136ce92c9e115a0b5b"
+    },
+    {
+      "path": "worker-build-2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build-3.json",
+      "bytes": 387,
+      "sha256": "8f977ecb97e855e5bce56f30598a0224ad2cf3a616fbccba3ea74601da8c81d5"
+    },
+    {
+      "path": "worker-build-3.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build-4.json",
+      "bytes": 420,
+      "sha256": "2846eb73c3408d7dd93e2d5d2b4deba80762598212f31657811a9420aa871e19"
+    },
+    {
+      "path": "worker-build-4.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "worker-build.json",
+      "bytes": 387,
+      "sha256": "5b5715fb7de89612dde74d71ad447e9a510cfe83821dba33bac2181f4d868a81"
+    },
+    {
+      "path": "worker-build.log",
+      "bytes": 253,
+      "sha256": "11069d95454f10aa91290f7dba75cdc069ebe7159b1609d1882fd9392f6d0b03"
+    },
+    {
+      "path": "worker-pg-1.json",
+      "bytes": 792,
+      "sha256": "e01df5827e3fb5d3de1e7662208dcfd7baaba6fb6d4ddc294d3c625975bfa228"
+    },
+    {
+      "path": "worker-pg-1.log",
+      "bytes": 5660,
+      "sha256": "1b3b85515fa3e5404c87e985e0873b66d5a5f4b23b441c620ada3ebbc397b82d"
+    },
+    {
+      "path": "worker-pg-2.json",
+      "bytes": 826,
+      "sha256": "ae888efe81fccd4432589b626d2ad3e44ba4cc2d8f3e29d6a514be75f51ce4f8"
+    },
+    {
+      "path": "worker-pg-2.log",
+      "bytes": 3768,
+      "sha256": "d085b515d3c45f29883ab96a50bb8346758ac667630cfc875ced4b3c21c6112c"
+    },
+    {
+      "path": "worker-pg.json",
+      "bytes": 792,
+      "sha256": "7f16280aca848000126f913bb335e034dac46d73e18857bf72917f97cff08167"
+    },
+    {
+      "path": "worker-pg.log",
+      "bytes": 6511,
+      "sha256": "a2603003acc419a0e58d27f5df0ce25117ce5088f24c5df2fef490406482eb87"
+    },
+    {
+      "path": "worker-unit-1.json",
+      "bytes": 604,
+      "sha256": "82b4414675d129c6321c0c70670df92351bf5cd611153122f3ad542f992ec9a6"
+    },
+    {
+      "path": "worker-unit-1.log",
+      "bytes": 6390,
+      "sha256": "69530981932f63f08cf62d25ab35fe0d2cbb935360533083cf9f5b3df0fee3fc"
+    },
+    {
+      "path": "worker-unit.json",
+      "bytes": 571,
+      "sha256": "c9f67f9051e8086f8248d34e7ba3dfc204e95589ec03db5771df775b598d7196"
+    },
+    {
+      "path": "worker-unit.log",
+      "bytes": 6390,
+      "sha256": "f1ff98b827dba54dde0f454bc1802869fa7867d9e9a22e7717ea9dea16d11fd0"
+    }
+  ],
+  "reproduce_files": [
+    {
+      "path": "cleanup-aborted-clones.mjs",
+      "bytes": 2619,
+      "sha256": "fb9cf82189bbe3b4a66e4800076f6d6af92a3d20ddac4bfa27119270d2e50ec4"
+    },
+    {
+      "path": "collect.mjs",
+      "bytes": 20925,
+      "sha256": "1aad257d81229341dbd3d8a754c5d03d41c5a3c51d6bcf7de20cdefd34635931"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 12260,
+      "sha256": "899bc4ca464bf28b512407ae70c45ecada638eced5c3b9f8cfa551603b8f52a5"
+    },
+    {
+      "path": "collect-config.json",
+      "bytes": 6153,
+      "sha256": "d8f4094269bba368d83402d5ba43b115363f224ded8b643ed18b4baaa1796ff7"
+    }
+  ]
+}

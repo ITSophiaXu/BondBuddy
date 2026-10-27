@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T16:52:30.384Z",
+  "finished": "2026-10-26T16:52:30.717Z",
+  "rows": [
+    {
+      "current_user": "bb_history_test",
+      "current_setting": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/history-pairs-postgres/data",
+      "pg_postmaster_start_time": "2026-10-26T16:50:35.191Z"
+    }
+  ]
+}

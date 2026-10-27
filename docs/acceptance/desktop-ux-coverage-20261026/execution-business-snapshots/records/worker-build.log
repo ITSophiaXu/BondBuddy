@@ -1,0 +1,2 @@
+apps/worker/src/review-input.ts(69,34): error TS2322: Type 'ReviewExecutionInputSnapshot | null' is not assignable to type 'ReviewExecutionInputSnapshot | undefined'.
+  Type 'null' is not assignable to type 'ReviewExecutionInputSnapshot | undefined'.

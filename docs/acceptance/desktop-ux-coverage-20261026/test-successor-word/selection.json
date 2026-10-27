@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "baseline": "5d1f3795d4ecd9c55bb924510dbcc719a0743392",
+  "selected": {
+    "apiPure": {
+      "run": "api-final-20261027T000810343Z",
+      "tests": 36,
+      "pass": 36,
+      "fail": 0,
+      "skip": 0,
+      "sourceEntries": 1401
+    },
+    "apiPg": {
+      "originalRun": "api-final-20261027T000810343Z",
+      "original": {
+        "tests": 157,
+        "pass": 156,
+        "fail": 1,
+        "skip": 0
+      },
+      "replacementRun": "api-assertion-final-20261027T002410159Z",
+      "replacementFile": "artifact-execution.pg.test.js",
+      "replacement": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "skip": 0
+      },
+      "adopted": {
+        "pass": 157,
+        "fail": 0,
+        "skip": 0
+      },
+      "accounting": "151 unaffected passes plus the corrected six-test file; repeated passes counted once",
+      "sourceEntries": 1401,
+      "onlyBetweenRoundChanges": [
+        "apps/api/dist/artifact-execution.pg.test.js",
+        "apps/api/src/artifact-execution.pg.test.ts"
+      ]
+    },
+    "workerPure": {
+      "run": "worker-final-20261027T002500969Z",
+      "tests": 59,
+      "pass": 57,
+      "fail": 0,
+      "skip": 2,
+      "sourceEntries": 2171
+    },
+    "workerPg": {
+      "run": "worker-final-20261027T002500969Z",
+      "tests": 35,
+      "pass": 31,
+      "fail": 0,
+      "skip": 4,
+      "sourceEntries": 2171
+    }
+  },
+  "notAdoptedAsFinal": [
+    {
+      "run": "worker-final-20261027T001907201Z",
+      "mode": "worker",
+      "success": false,
+      "sourcesEqual": false,
+      "note": "Retained complete failure/output; repeated passes are not added to final counts"
+    }
+  ],
+  "finalSourceCheck": {
+    "checkedAt": "2026-10-27T00:30:08.738Z",
+    "entries": 2171,
+    "mismatches": [],
+    "apiFinalMatchesWorker": true
+  },
+  "skipLimits": [
+    "Three new Linux-contained provider cases skipped on Windows",
+    "Two existing Linux-only symlink cases skipped on Windows",
+    "One existing test-channel Word/Azurite case skipped without Azurite"
+  ],
+  "environment": {
+    "template": "bb_successor_word_final_20261027",
+    "port": 15542,
+    "postgres": "16.14",
+    "node": "v24.22.1",
+    "python": "3.12.14",
+    "pythonDocx": "1.2.0",
+    "lxml": "6.1.1",
+    "pythonRuntimeFrozen": false
+  },
+  "productDecision": "B1 chosen; public quote confirmation and supplementary billing are not implemented in this slice",
+  "limits": [
+    "Synthetic provider seam is not Linux containment or external supplier acceptance",
+    "No complete desktop G03 or overall coverage completion claim",
+    "No push, PR, merge or deployment"
+  ]
+}

@@ -37,13 +37,14 @@ test('locked authorized-sample membership uses exact owner/project/revision/hash
     projectId = project,
     ownerId = owner,
     inputRevision = revision,
+    storedMaterials = manifestMaterials,
   ) {
     const manifest = { kind: 'update', materials: manifestMaterials };
     const inputHash = inputManifestHash(manifest);
     await pool.query('INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,$3,$4) ON CONFLICT(owner_user_id,id) DO NOTHING',
       [projectId, ownerId, 'Synthetic membership fixture', 'update']);
     const existingUploads = new Set<string>();
-    for (const material of manifestMaterials) {
+    for (const material of storedMaterials) {
       if (existingUploads.has(material.material_id)) continue;
       existingUploads.add(material.material_id);
       const uploadId = `synthetic-upload-${randomUUID()}`;
@@ -122,9 +123,10 @@ test('locked authorized-sample membership uses exact owner/project/revision/hash
     });
 
     const hashSelected = makeSelected(3);
-    const hashDriftRef = await insertRevision(hashSelected, undefined, project, owner, 3);
-    await pool.query('UPDATE bb_material_versions SET sha256=$4 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=1',
-      [owner, project, hashSelected[1]!.material_id, 'a'.repeat(64)]);
+    // Synthetic corruption fixture: seed inconsistent locked input and stored
+    // bytes directly, preserving every production material-identity guard.
+    const hashDriftRef = await insertRevision(hashSelected, undefined, project, owner, 3,
+      hashSelected.map((material, index) => index === 1 ? { ...material, sha256: 'a'.repeat(64) } : material));
     assert.deepEqual(await loadAuthorizedSampleMembershipFromLockedInput(pool, hashDriftRef), {
       accepted: false, reason: 'material_hash_mismatch',
     });
@@ -139,9 +141,8 @@ test('locked authorized-sample membership uses exact owner/project/revision/hash
 
     const versionSelected = makeSelected(5);
     const driftedVersion = versionSelected.map((material, index) => index === 1 ? { ...material, material_version: 2 } : material);
-    const versionDriftRef = await insertRevision(driftedVersion, undefined, project, owner, 5);
-    await pool.query('UPDATE bb_material_versions SET version=1 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=2',
-      [owner, project, versionSelected[1]!.material_id]);
+    // Only V1 exists while the immutable input names V2; no version is rewritten.
+    const versionDriftRef = await insertRevision(driftedVersion, undefined, project, owner, 5, versionSelected);
     assert.deepEqual(await loadAuthorizedSampleMembershipFromLockedInput(pool, versionDriftRef), {
       accepted: false, reason: 'locked_material_deleted_or_missing',
     });

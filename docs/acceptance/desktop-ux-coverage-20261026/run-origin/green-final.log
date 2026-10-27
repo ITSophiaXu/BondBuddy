@@ -1,0 +1,45 @@
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.1715ms)
+✔ dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement (2881.5997ms)
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (4433.9203ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (5304.5006ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4394ms) # SKIP
+✔ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (3129.3467ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (141.9248ms)
+  ✔ owner (143.471ms)
+  ✔ project (144.809ms)
+  ✔ input revision (143.2322ms)
+  ✔ input hash (151.9976ms)
+  ✔ execution request id (147.5699ms)
+  ✔ request hash (136.2011ms)
+  ✔ valid successor input pair (133.3598ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (2761.4169ms)
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (440.9254ms)
+✔ review reassembly requires Blob evidence and an explicit exact identity (3.7998ms)
+✔ private review reassembly preserves original evidence, rolls back, is idempotent and reuses CLI result without a new call (1691.6883ms)
+▶ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation
+  ✔ result Blob tamper (1204.495ms)
+  ✔ missing result Blob (710.492ms)
+  ✔ prompt Blob tamper (684.8111ms)
+  ✔ missing prompt Blob (671.837ms)
+  ✔ wrong run input hash (676.0958ms)
+  ✔ missing prompt checkpoint (756.3514ms)
+  ✔ duplicate result checkpoint (669.6411ms)
+  ✔ live lease (668.0139ms)
+  ✔ wrong task kind (671.9127ms)
+  ✔ deleted project (671.358ms)
+  ✔ existing report (678.4132ms)
+  ✔ conflicting usage (667.9619ms)
+  ✔ later unresolved attempt (664.8524ms)
+  ✔ active run in same project (663.9087ms)
+  ✔ foreign attempt and wrong expected hash (1322.8641ms)
+  ✔ failure in another stage (792.5403ms)
+✔ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation (12180.6094ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 84528.2694

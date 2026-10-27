@@ -1,0 +1,8 @@
+{"at":"2026-10-26T10:36:25.312Z","message":"Created isolated clone"}
+{"at":"2026-10-26T10:36:25.595Z","message":"Writer inserted input and holds its transaction open"}
+{"at":"2026-10-26T10:36:25.606Z","message":"Observed input wait and absence of a conflicting run lock","data":{"writer_pid":41636,"migration_pid":34668,"locks":[{"relname":"bb_input_revisions","mode":"ShareRowExclusiveLock","granted":false,"blocking_pids":[41636]}],"inputWait":{"relname":"bb_input_revisions","mode":"ShareRowExclusiveLock","granted":false,"blocking_pids":[41636]},"writerLocks":[{"relname":"bb_input_revisions","mode":"RowExclusiveLock","granted":true}]}}
+{"at":"2026-10-26T10:36:25.636Z","message":"Writer inserted run and committed while migration waited"}
+{"at":"2026-10-26T10:36:25.717Z","message":"Migration backfilled the newly committed run without rewriting it"}
+{"at":"2026-10-26T10:36:25.744Z","message":"Uncommitted trigger row is private to its writer and rolls back with run/input"}
+{"at":"2026-10-26T10:36:25.750Z","message":"New-run V1 trigger commits atomically with the original run"}
+{"at":"2026-10-26T10:36:26.212Z","message":"Closed clients and dropped exact rehearsal clone"}

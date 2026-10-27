@@ -1,0 +1,284 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "tests/run-supplement-production-real-main.spec.ts",
+      "--reporter=line,json",
+      "--output=C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round4\\test-results"
+    ],
+    "configFile": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\playwright.config.ts",
+    "rootDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/production-supplement-20261027/web-real-round4/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "run-supplement-production-real-main.spec.ts",
+      "file": "run-supplement-production-real-main.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "real desktop authoring: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 240000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 20620,
+                  "error": {
+                    "message": "AssertionError: GET /api/v1/artifacts/word-8fdc6b7dc458655ecb673c267a3b837fb2550b01e5540803b5a123131392fc8f: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"28cee806-aa2a-4cf6-893e-8d9347406420\"}",
+                    "stack": "AssertionError: GET /api/v1/artifacts/word-8fdc6b7dc458655ecb673c267a3b837fb2550b01e5540803b5a123131392fc8f: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"28cee806-aa2a-4cf6-893e-8d9347406420\"}\n    at Object.request (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts:56:45)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:61:24",
+                    "location": {
+                      "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                      "column": 45,
+                      "line": 56
+                    },
+                    "snippet": "\u001b[90m   at \u001b[39mrun-supplement-production-real-harness.ts:56\n\n  54 |   const request=async(method:string,path:string,body?:unknown)=>{\n  55 |     const response=await fetch(baseURL+path,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});\n> 56 |     const text=await response.text();assert.ok(response.ok,`${method} ${path}: ${response.status} ${text}`);return text?JSON.parse(text):null;\n     |                                             ^\n  57 |   };\n  58 |   const execute=productionWordRunner({...f,blobs,config});\n  59 |   const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\\n').filter(Boolean).map(row=>JSON.parse(row));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return [];throw error;}};"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                        "column": 45,
+                        "line": 56
+                      },
+                      "message": "AssertionError: GET /api/v1/artifacts/word-8fdc6b7dc458655ecb673c267a3b837fb2550b01e5540803b5a123131392fc8f: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"28cee806-aa2a-4cf6-893e-8d9347406420\"}\n\n   at run-supplement-production-real-harness.ts:56\n\n  54 |   const request=async(method:string,path:string,body?:unknown)=>{\n  55 |     const response=await fetch(baseURL+path,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});\n> 56 |     const text=await response.text();assert.ok(response.ok,`${method} ${path}: ${response.status} ${text}`);return text?JSON.parse(text):null;\n     |                                             ^\n  57 |   };\n  58 |   const execute=productionWordRunner({...f,blobs,config});\n  59 |   const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\\n').filter(Boolean).map(row=>JSON.parse(row));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return [];throw error;}};\n    at Object.request (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts:56:45)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:61:24"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-27T02:32:42.000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round4\\test-results\\run-supplement-production--3aaf1-r-worker-→-private-new-Word\\error-context.md"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                    "column": 45,
+                    "line": 56
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "848ba4fdfcfa669b81ba-3153b8e38f0282de4ac9",
+          "file": "run-supplement-production-real-main.spec.ts",
+          "line": 31,
+          "column": 56
+        },
+        {
+          "title": "real desktop review: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 240000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 19556,
+                  "error": {
+                    "message": "AssertionError: GET /api/v1/artifacts/word-996705ec6a570ef2a1d9eebda74890f1c97d22b8591493f42c9dba2b148fd25e: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"9ea18be9-1fb3-4550-b780-4235efebadfa\"}",
+                    "stack": "AssertionError: GET /api/v1/artifacts/word-996705ec6a570ef2a1d9eebda74890f1c97d22b8591493f42c9dba2b148fd25e: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"9ea18be9-1fb3-4550-b780-4235efebadfa\"}\n    at Object.request (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts:56:45)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:61:24",
+                    "location": {
+                      "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                      "column": 45,
+                      "line": 56
+                    },
+                    "snippet": "\u001b[90m   at \u001b[39mrun-supplement-production-real-harness.ts:56\n\n  54 |   const request=async(method:string,path:string,body?:unknown)=>{\n  55 |     const response=await fetch(baseURL+path,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});\n> 56 |     const text=await response.text();assert.ok(response.ok,`${method} ${path}: ${response.status} ${text}`);return text?JSON.parse(text):null;\n     |                                             ^\n  57 |   };\n  58 |   const execute=productionWordRunner({...f,blobs,config});\n  59 |   const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\\n').filter(Boolean).map(row=>JSON.parse(row));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return [];throw error;}};"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                        "column": 45,
+                        "line": 56
+                      },
+                      "message": "AssertionError: GET /api/v1/artifacts/word-996705ec6a570ef2a1d9eebda74890f1c97d22b8591493f42c9dba2b148fd25e: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"9ea18be9-1fb3-4550-b780-4235efebadfa\"}\n\n   at run-supplement-production-real-harness.ts:56\n\n  54 |   const request=async(method:string,path:string,body?:unknown)=>{\n  55 |     const response=await fetch(baseURL+path,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});\n> 56 |     const text=await response.text();assert.ok(response.ok,`${method} ${path}: ${response.status} ${text}`);return text?JSON.parse(text):null;\n     |                                             ^\n  57 |   };\n  58 |   const execute=productionWordRunner({...f,blobs,config});\n  59 |   const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\\n').filter(Boolean).map(row=>JSON.parse(row));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return [];throw error;}};\n    at Object.request (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts:56:45)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:61:24"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [
+                    {
+                      "text": "(node:36332) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.\n"
+                    }
+                  ],
+                  "retry": 0,
+                  "startTime": "2026-10-27T02:33:08.456Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round4\\test-results\\run-supplement-production--0d5e8-r-worker-→-private-new-Word\\error-context.md"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                    "column": 45,
+                    "line": 56
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "848ba4fdfcfa669b81ba-bcd25faf94f55b3bbdb9",
+          "file": "run-supplement-production-real-main.spec.ts",
+          "line": 31,
+          "column": 56
+        },
+        {
+          "title": "real desktop m4: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 240000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 24526,
+                  "error": {
+                    "message": "AssertionError: GET /api/v1/artifacts/word-0b227d4e99fc679ffa6f0097953c0ef2633a08167b52df7a65f79f79869aad23: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"4adbdc54-20da-4019-b477-cbe2c46eb197\"}",
+                    "stack": "AssertionError: GET /api/v1/artifacts/word-0b227d4e99fc679ffa6f0097953c0ef2633a08167b52df7a65f79f79869aad23: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"4adbdc54-20da-4019-b477-cbe2c46eb197\"}\n    at Object.request (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts:56:45)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:61:24",
+                    "location": {
+                      "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                      "column": 45,
+                      "line": 56
+                    },
+                    "snippet": "\u001b[90m   at \u001b[39mrun-supplement-production-real-harness.ts:56\n\n  54 |   const request=async(method:string,path:string,body?:unknown)=>{\n  55 |     const response=await fetch(baseURL+path,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});\n> 56 |     const text=await response.text();assert.ok(response.ok,`${method} ${path}: ${response.status} ${text}`);return text?JSON.parse(text):null;\n     |                                             ^\n  57 |   };\n  58 |   const execute=productionWordRunner({...f,blobs,config});\n  59 |   const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\\n').filter(Boolean).map(row=>JSON.parse(row));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return [];throw error;}};"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                        "column": 45,
+                        "line": 56
+                      },
+                      "message": "AssertionError: GET /api/v1/artifacts/word-0b227d4e99fc679ffa6f0097953c0ef2633a08167b52df7a65f79f79869aad23: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Resource does not exist\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"4adbdc54-20da-4019-b477-cbe2c46eb197\"}\n\n   at run-supplement-production-real-harness.ts:56\n\n  54 |   const request=async(method:string,path:string,body?:unknown)=>{\n  55 |     const response=await fetch(baseURL+path,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});\n> 56 |     const text=await response.text();assert.ok(response.ok,`${method} ${path}: ${response.status} ${text}`);return text?JSON.parse(text):null;\n     |                                             ^\n  57 |   };\n  58 |   const execute=productionWordRunner({...f,blobs,config});\n  59 |   const calls=async()=>{try{return (await readFile(marker,'utf8')).trim().split('\\n').filter(Boolean).map(row=>JSON.parse(row));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return [];throw error;}};\n    at Object.request (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts:56:45)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:61:24"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [
+                    {
+                      "text": "(node:37020) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.\n"
+                    }
+                  ],
+                  "retry": 0,
+                  "startTime": "2026-10-27T02:33:34.048Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round4\\test-results\\run-supplement-production--c2016-r-worker-→-private-new-Word\\error-context.md"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-harness.ts",
+                    "column": 45,
+                    "line": 56
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "848ba4fdfcfa669b81ba-0b878070473de8aa9ca9",
+          "file": "run-supplement-production-real-main.spec.ts",
+          "line": 31,
+          "column": 56
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-27T02:32:33.215Z",
+    "duration": 86757.503,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

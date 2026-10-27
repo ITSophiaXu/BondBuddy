@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T17:26:59.036Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+    "-p",
+    "apps/web/tsconfig.json",
+    "--noEmit"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "recordedAt": "2026-10-27T01:25:33.2651706Z",
+  "provenance": "Read-only transcription of root-owned build and test outputs; this agent did not start or rerun PostgreSQL, the build, or these tests.",
+  "build": {
+    "summary": ".local/billing-segments-20261027/build-api-final.json",
+    "sha256": "047c5b2f6245cd0cf44eee5570f1da96860478b50ff9a8a4d720c1f0a294e1f3",
+    "result": {
+      "completedAt": "2026-10-27T01:22:01.3755406Z",
+      "exitCode": 0,
+      "command": "node node_modules/typescript/bin/tsc -p apps/api/tsconfig.json"
+    }
+  },
+  "compatibility": {
+    "summary": ".local/billing-segments-20261027/compat-20261027T012219994Z-39092/summary.json",
+    "sha256": "301cef1650de79259b1518120c61c1f2a022af0e000e6d5c3cb1f4eac67963d6",
+    "result": {
+      "mode": "compat",
+      "startedAt": "2026-10-27T01:22:27.27Z",
+      "completedAt": "2026-10-27T01:23:22.045Z",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/billing-segment-compatibility.pg.test.js"
+      ],
+      "template": "/bb_segments_final02_20261027",
+      "exitCode": 0,
+      "signal": null,
+      "totals": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "sourcesStable": true,
+      "sourceEntries": 1429,
+      "stdout": {
+        "bytes": 1323,
+        "sha256": "2bce9a0fc185b305b4dff6e5b736a6a0b16413744853140d9886fe4b5711b3b0"
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "legacyFixtures": {
+    "log": ".local/billing-segments-20261027/regression-20261027T012222481Z-44808/stdout.log",
+    "observedPass": [
+      "authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved",
+      "review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund"
+    ],
+    "fullRegression": "Still pending its final summary at recording time; individual passes are not a completed-suite claim."
+  },
+  "limitations": [
+    "Canonical V1 only; no paid V2/additional debit/zero-additional assignment authority was opened.",
+    "These test counters do not establish or increase UX scenario-coverage percentages."
+  ]
+}

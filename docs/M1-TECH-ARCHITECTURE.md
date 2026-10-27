@@ -847,3 +847,146 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 截图基准扩展为 52 个网站/栏目，加 2 项注册地监管。contracts 中维护唯一目录与容量，保留旧网站 ID，web 使用分类紧凑选择器，API 默认空范围，worker 以栏目主题或路径区分同域搜索。无新增迁移与依赖，计费仍为每轮 5,000 积分。详见 [增量验收](acceptance/integrity-sites-20261022/README.md)。
 
 2026-10-26 状态增量：contracts 新增可选 `browser.diagnostic` 与结构化 `findings`，web 与 Word 共用 `integrityRecordPresentation`。HTTP/空白/加载阶段/认证要求按观察记录；客户界面与 Word 使用“网站拒绝访问”等中文说明，原始 HTTP 状态、网络错误与页面错误摘要仅留在诊断数据中，不直接拼入展示文案。历史记录使用同一展示规则，业务范围和原始证据保留。具体不利事项、一般信息与主体未确认分别展示。旧采集批次沿用 v1 模型结果，新批次固定 assessment-v2；记录与证据哈希不重写。无新增迁移，详细状态和回归见上述开发验证。
+
+### 2026-10-26：补料候选与准确执行输入读取（本地未发布）
+
+`@bondbuddy/api/run-execution-input` 提供 `readRunExecutionInput(db, owner, runId, expectedIdentity)`，先经不可变初始 V1 resolver 验证 Lease 绑定，再按准确 revision/hash 读取不可变输入。追加迁移 `0124_run_execution_business_snapshots.sql` 将复核和 M4 完整业务内容分别保存到 `bb_review_execution_snapshots`、`bb_m4_execution_snapshots`；两表均用 owner/project/run/execution_version/input_revision/input_hash 完整外键，保留业务 version、原内容及原 created_at，不修改旧业务表。迁移准确回填已有 V1；现有业务 INSERT 自动桥接，缺失/不符使原 INSERT 一并回滚。迁移先排空 M4 topic 行锁，再锁 input/run，避免与现有 topic→input 创建顺序反转。JSONB 版本号按正整数数值核验，兼容合法的 `1.0` 表示。
+
+补料准备与 M1/M3/M4 实际 loader 共用此入口。必需的业务快照缺失、完整身份或内容不符均拒绝，普通 M1 无业务快照仍可读取；不回退 legacy 或最新草稿。M3/M4 独立 gate、input_lock 及模型调用前复核也验证持久执行身份并使用共同 reader；即使同时传入快照和伪造 V2 身份也不能绕过。当前只允许 V1，未增加活动版本、采用回执、版本化报告/成果、报价或后继执行授权。范围与独立回归见 [业务快照验收](acceptance/desktop-ux-coverage-20261026/execution-business-snapshots/README.md)。
+
+新增迁移 `0125_artifact_execution_bindings.sql`，把每个生成 artifact 的业务版本准确绑定 owner/project/run/execution_version/input_revision/input_hash，保留原创建时间；pending、failed、revoked、test_only 与正式交付均有来源，artifact version 不等于 execution version。全量 V1 回填不静默漏行，真实 INSERT 同事务桥接，缺失来源会使原写入回滚。绑定和文件核心身份不可变；交付状态、质量状态及证据推进继续沿用原规则。迁移按 run→job/artifact→execution 排空行锁，不取得 topic/input 锁。
+
+`bb_execution_artifact_versions` 只返回完整准确 V1 来源；API 历史、直接下载、项目文件/募集书来源、复核、助手、M4 及 Worker previous_output/edit_base 消费者接入。共享字节读取及 Word/PDF promoter 再核对准确身份，结算保留原 artifact 行锁并用 EXISTS 验证来源，避免展开 view 后扩大行锁到 input。上传材料/离线 Word 回存使用各自合法的 runless 版本表，不伪造执行来源。当前仍是 V1 基础，没有受控 V2、采用回执、版本化报告/当前成果投影、旧工作增量处理或追加计价；范围及最终所选回归见[成果执行来源验收](acceptance/desktop-ux-coverage-20261026/artifact-execution-bindings/README.md)。
+
+追加 `0126_run_execution_deliveries.sql` 区分“已保存候选”和“实际交付”：不可变 receipt 绑定完整执行/输入身份、准确主文件/成员版本与 hash、配对、命名依据和交付时间。`final` 在真实终态事务内、既有结算守卫后捕获，event/outbox/业务登记失败一并回滚；平台探针不生成用户交付。历史只能按准确终态事件及可验证成员回填，无法还原时保存结构化 gap 并拒读，不以旧 run 成功状态兜底。
+
+`m4_durable` 单独保留旧非动态 M4 已登记文档/说明或 QA 文本的读取权限；它没有终态或终态事件，不表示已结算成功，动态 authoring_balance_v2 不发布此阶段。完整成员及每个准确来源须同时有效，否则整个 phase 拒读；有效 final 优先，独立有效 durable 只证明原耐久读取权限。完整校验使用非内联、调用方权限的 STABLE 函数和按文件索引，避免历史/命名 join 反复展开全部来源树。
+
+公开成果消费者改用 `bb_delivered_artifact_versions`；命名和配对来自 receipt details，历史按 `(delivered_at, run_id, execution_version)` 分页。准确已交付文件不会被后续 job pair、当前 run primary 或更新时间替换；实时质量/撤销、项目归属和 test grant 撤销/过期仍须校验。助手成果选择、最新成果卡片和 Worker previous_output 读取同一准确交付。该轮另发现两成员首稿被旧历史 DTO 的 baseline 必需条件漏列，后续修复见下段；M3/M4 报告/成果登记仍按 run 唯一，尚未按执行版本化，后继采用和追加价格也尚未实现，G03 不关闭。原轮独立证据见[执行交付记录验收](acceptance/desktop-ux-coverage-20261026/execution-deliveries/README.md)。
+
+历史公共契约的 `word_delivery.baseline` 改为可选，与既有双 Word 交付决定一致；revision/clean 仍必需，旧三成员和 single/null 保持。SQL 只有冻结 pair 未声明 baseline artifact 时才允许双成员；声明过的基线缺失或失效仍整组拒绝，不能降格。DTO 逐份核验实际交付成员的私有字节，存在的 baseline 仍须长度/hash 核验；不生成基线或下载授权。保持原 final receipt、完整 phase、精确版本/hash、实时权限及微秒游标路径，无新迁移或前端流程。回归与原始失败见[双稿历史修复验收](acceptance/desktop-ux-coverage-20261026/history-pairs/README.md)；本修复不开放新输入采用、后继执行或追加计价。
+
+补料 `GET/PUT` 在原准备回执上确定性编译候选，公共 `input_preview` schema 仅在 contracts 定义。候选 hash 来自完整冻结 manifest 加显式材料变更；不读取后来项目草稿，不覆盖原执行输入、来源声明、已确认复核计划或旧模板绑定。复杂来源、证据关联或导出语义当前不能完整表达时，保存仍成功，预览明确阻断，绝不把候选 hash 当采用/费用授权。候选不持久化、不创建任务、不计费，不改变材料保留策略；该候选编译切片本身没有新增迁移。前后端须使用相同新增响应契约。用户已选必要重做另行报价且确认后继续，具体计价公式仍未确定。实现、独立回归与剩余 G03 缺口见 [候选输入验收](acceptance/desktop-ux-coverage-20261026/supplement-input/README.md)。
+
+### 2026-10-26：补料草稿的私有保存工作来源（本地未发布）
+
+追加迁移 `0120_model_call_execution_bindings.sql` 将真实 prompted attempt 与准确 V1/input/prompt 绑定，旧记录只回填已有准确元数据，不伪造缺失来源。真实 provider latest/重放/runtime/observation 先选原调用再验证绑定；缺绑定不能当成没有旧调用而重新发送。`0121_run_supplement_saved_work.sql` 在补料保存的 run→job 锁和安全人工暂停事务内冻结 checkpoint 与准确已完成 result refs；并发、幂等、旧回执和变更边界沿原准备协议。公共 `saved_work` 仅返回状态和计数，不返回对象地址或正文，不授予下载或后继执行。
+
+内服 `readCapturedSupplementResult()` 使用独立只读事务，按 prompt_snapshot→provider_result 获得与 `purgeLogContent()` 相同的内容锁，在 Blob I/O 和异步 schema 校验期间保持，并在等待后重查清理、归属及原输入。结果 JSON 仍按原清理和删除规则处理；没有采用后继输入、长期保留新材料、创建额外任务或新增收费。后续审计确认原始 Word 附件不能由 JSON 的清理推导其已清除，见下节；[保存工作引用验收](acceptance/desktop-ux-coverage-20261026/supplement-saved-work/README.md)保留原轮证据范围。
+
+### 2026-10-26：新原稿声明与准确旧工作文件读取（本地未发布）
+
+补料 changes 可携带唯一 `SourceProspectusSchema` 的准确声明；新稿不继承旧声明或目标报告期。服务按材料准确 pin、M1 unified 范围及共享来源校验编译候选，同时更新候选内两处原稿声明。来源集合变化且原输入已关联旧成果时，需要明确 `discard_previous_output:true` 才在候选中移除旧 previous_output/edit_baseline；原 run、输入和成果不变。M3/M4 不能借该字段改写自己的已确认来源。字段沿原请求 hash、CAS、未知回执、本机刷新和冲突协议保存。没有新数据库迁移、采用或收费。
+
+`run-file-reference.ts` 为五种真实 collector 定义内部准确路径和文件引用校验，逐项检查所有成功、可选及 error 输出，不用宽泛 prefix 校验授权文件；M3 provider 的 `correction` 保留目录不能冒充普通 attempt。`run-supplement-files.ts` 从准确准备回执派生包含 execution/input、checkpoint/source hash 的私有 pin，读取重算完整 pin 并 bounded 校验原字节。provider 来源持续持有 prompt/result 内容锁；本地 correction 还须匹配准确 review execution/input/origin 和合法 export-only 快照。项目文件分支须有合法业务 manifest 和准确 operation；当前该任务没有 HTTP 补料准备，底层识别不构成用户流程交付。
+
+这些 pin 不创建公开 artifact、下载 grant、账本或后继调用，也不承诺所有字节可用。该轮审计仍确认原始 `owners/...` 工作文件缺完整写入 intent、inventory 和清理 tombstone，不能凭 JSON/source metadata 声称其生命周期已解决；[来源与文件读取验收](acceptance/desktop-ux-coverage-20261026/supplement-source-files/README.md)保留当时实现、失败和通过范围。后续生命周期追加实现见下节，G03 仍未完成。
+
+### 2026-10-26：原始工作文件的登记与清理（本地未发布）
+
+基于 `a35034b3` 追加 `0122_run_working_file_lifecycle.sql` 及 `0123_run_working_file_result_claims.sql`，后者不改写已经应用的 `0122`。`@bondbuddy/api/run-working-files` 将九个实际 writer 模块的原十处 Blob put 收敛到共同写入边界。`bb_run_working_objects` 按准确 object key 保存不可变 owner/project/run、filename、SHA-256、大小、MIME 与创建时间；`bb_run_working_sources` 保存多个不可变的准确 job/execution/input/producer/schema 声明，provider 声明还绑定真实 attempt。相同物理对象可有多个来源，收集器内先写后被替换的 report hash 也逐一保留地址。关系登记事务在 Blob IO 前提交；随后在 run/file 内容锁下重验范围、写字节、bounded 读回，再记录存储完成。未产生 result 的部分写入同样可以清理，不伪造 provider 成功或用量。
+
+`bb_run_working_object_state` 只保存单调存储/清理回执：`stored_at`、先于 Blob 删除持久化的 `purge_started_at` 及完成后的 `purged_at`。开始标记永久拒绝新写入/来源声明，读取也不能以残留字节越过它；Blob 或数据库回执失败按准确对象重试，不修改物理身份和旧来源。年龄清理沿现有 `BB_LOG_CONTENT_RETENTION_DAYS`（默认 180），仅终态 run 到期适用，并检查所有来源声明的时间；活跃/暂停工作继续保留。账号关闭沿既有规则，删除项目沿 `deletedProjectPurgeDays` 所承接的 storage 删除窗口，未增加产品留存时长。
+
+`purgeLogContent()` 在删除已知 collector 的父 result/prompt 前，核验尚存旧 JSON 的准确 execution/input、schema、路径及 hash 并补登记真实发现关系，完成到期工作文件清理；已有登记但无 result 的 provider 写入通过真实 attempt/prompt 关系纳入。发现不是历史预写入意图，缺失/损坏的已知父 JSON 不当作零附件。独立原始工作清理也覆盖本地 correction、project-file、QA、诚信文书/浏览器证据，以及最终 JSON 未选择的已登记对象。独立 retention CLI 与用户删除 lifecycle 共用此边界。
+
+复核修正旧父内容清理遗漏同 run 较新 legacy 共享 correction 引用的窗口：尚未标记的年龄候选先在 W/F 锁外核验该 run 全部已知 provider collector 结果，分别遵守关系→P/R→W/F；随后 mark 事务持 run `NO KEY UPDATE` 锁重比准确结果 ID 集合，变化即保守失败，未变才取 W/F 并重判到期。持久化标记重试和账号/项目删除不依赖年龄发现。`0123` 将 `COALESCE(discovered_result_id,'')` 纳入 source 唯一性，使预写 claim 和同 attempt 多个不可变结果候选各保留准确来源时间，不把冲突候选合并或改作成功结果。
+
+legacy 登记后只有 bounded raw 长度/hash 核验正确才设置 `stored_at=now()`，记录当下观察而非历史生产事实；raw 缺失/损坏仍保留准确地址和来源，`stored_at` 为空，实际 reader 拒绝。观察不会延长以对象/来源时间计算的留存、覆盖原回执或复活已清理对象，也不构成新的模型调用/用量。这样准确保留的 legacy 文件不会因首次登记产生空存储状态而被错误拒读。
+
+关系锁先于内容锁；需组合内容锁时保持 prompt_snapshot→provider_result→run_work_files→run_file_object 的相对顺序，路径可以省略无需取得的锁，多个文件按准确 key 排序。物理清理完成回执不新增 run/project/attempt FK，避免内容锁之后反向取得范围锁。内服 captured-file 与公开 readable-review 在 Blob 读取及校验期间保持内容锁，等待后重查账号/项目可见性、父 tombstone 和登记文件状态；有效 legacy 缺 registry 仍由准确旧来源校验，已开始/完成清理的登记即使有字节也拒绝。
+
+`storage-inventory.ts` 新增 `owners/` 和明确的原始文件布局，已登记存储为 `referenced`、未完成写入为 `intent_pending`，未知或清理中/完成后残留为 `unregistered_working_file`；诊断只显示计数、大小和 key hash，未知 owners 对象绝不走旧 snapshot 的自动删除路径。已丢失父内容且未登记的历史 raw 可能仍只有诊断；不可变数据库 editor snapshot 正文生命周期、provider JSON 自身的一般预写入意图窗口不由本次补齐。实现与证据见[工作文件生命周期记录](acceptance/desktop-ux-coverage-20261026/working-file-lifecycle/README.md)。隔离模板已分别应用 `0122`、`0123`，最终构建/类型/契约检查通过。工作文件专项 31 pass、worker 108 pass/12 skip；API 完整集合 264 pass/1 fail/30 skip 的唯一失败来自缺必要 raw Word 的合成测试 fixture，仅修正该测试后单组 9/9，完整集合未重跑，不合计成一次完整通过。五个 Windows sink 标题按名排除，不计入 30 skip、未验收。保留旧冻结和失败日志，两次冻结只该测试 src/编译 JS 变化；最终 before/after 2052 项与实际文件一致，数据库模板为空且无 clones，专用 PG 本轮按准确 PID 停止，详见 summary。本地未创建 PR、推送或部署，没有新材料采用、后继执行、追加计价或补料新版 Word 验收，G03 / 整体 UX goal 保持 active、未完成。
+
+### 2026-10-27：准确执行版本的复核编辑正文（本地专项已封存）
+
+新增 `0127_review_execution_editors.sql` 的 canonical 表 `bb_review_execution_editors`，主键为 `(run_id, execution_version)`，没有 `UNIQUE(run_id)`。owner/project/run/version/input revision/hash 六字段分别整体 FK 到 `bb_run_execution_versions` 与 `bb_review_execution_snapshots`，后者增加对应 supporting UNIQUE。严格 `review-editor-v1` schema、递归 canonical JSON hash、准确冻结原稿 pin、DOCX/PDF 格式和创建时间共同校验正文；身份、正文、hash、created_at 不允许 UPDATE/DELETE。原 `bb_review_editors` 及其 run 主键和旧行保持不变，LEFT JOIN 严格回填不跳过坏来源，AFTER INSERT legacy bridge 原子同步 V1；canonical-first V1 镜像必须连 PostgreSQL 原始精度时间一并相等。迁移按 project→run→execution→snapshot→editor 取得全部所需表锁且使用 NOWAIT，不取 job 锁，冲突由整事务回滚/重试。
+
+`registerReviewEditorSnapshot()` 统一 trusted writer 的登记：project→run→job 行锁内检查项目可见/未归档、run/job running、准确 token 和未过期 lease，再核验 execution/input 与 `review-correction-v2` source pin。canonical insert 幂等核对正文/hash后，V1 用 INSERT SELECT 保留准确创建时间建立旧表镜像。滚动旧 writer 的 `40P01` 只重试完整幂等数据库登记，最多三次且逐次重验 lease，不重新运行模型或 Word。新 reader 按来源 run 的持久执行身份读取 canonical、准确输入及复核快照，要求完整有效 final delivery receipt、匹配的终态/channel、实时测试授权和所有可用交付成员；不以旧表或当前 run 成功状态兜底。
+
+contracts 唯一定义执行三字段 `{execution_version,input_revision,input_hash}`。editor GET 可选版本，省略仍为 V1；响应执行身份可选以兼容旧服务。人工免费 export 的 `source_execution` 可选，但显式值须等于来源持久身份；新输入 export pin 和 export-only review snapshot 均保存该来源。Worker 用来源 run 的身份核对 editor hash，不能借目标 lease 推断；内部 correction-file reader 同样核对 pin/快照两处身份。旧省略请求仍按 V1，原 request/body 幂等保持；此路径继续创建既有确定性 export 新 run，不是 G03 同 run 采用补料。
+
+Web 的恢复 wrapper 和 pending export 保存准确执行身份，原 owner/project/run/hash/完整 issue set 隔离继续保留。执行身份不同即拒绝复用，即使 editor hash 相同；旧无身份 wrapper/raw cache 仅兼容 V1。待确认请求深拷贝、冻结完整来源身份，保留原 body 显式重试，不因刷新自动提交。
+
+**全局 V1 gate 与 current-input integrity 共享 view 未改。** `bb_execution_artifact_versions` 仍要求当前 run input 等于绑定输入，final receipt 的共享可用性校验仍依赖该 view。仅 run state、primary 等投影变化不会改写冻结交付身份，不能宣称 current input 切换后旧版仍可读。按 run 唯一的 M3/M4 报告、业务成果登记及后继处理仍需另行版本化。新表没有 raw-material FK；原材料登记只在插入时核验，source retention 和数据库 editor 正文旧 cleanup 均未解决。
+
+本地专项已封存到[复核编辑结果验收](acceptance/desktop-ux-coverage-20261026/execution-editors/README.md)：API editor/迁移/并发 17 pass，相关 API 回归 92 pass，真实 PG/Python Worker 8 pass，Worker 回归 42 pass/1 Windows skip，缓存 20 pass，桌面 Edge 19 pass；契约/构建通过。不同集合和轮次不相加，两轮各 2,217 文件冻结一致；Python 源码/外部运行时不在冻结范围。314 个归档文件保留 37 次调用、原始失败与重试，专用 PG 已按准确 PID 停止。不累加既有 15/15 或 662 pass。没有新输入采用、后继模型处理、追加账务或补料新版 Word 证据，G03 / 整体 UX goal 保持 active。费用已选 B，B1/B2 仍未定；未推送、创建 PR 或部署。产品范围见[暂停补料提案](ux/pause-supplement-resume-20261026.md)。
+
+## 2026-10-27：结构化复核报告绑定准确执行（G03 前置切片）
+
+0128 追加 canonical `bb_review_execution_reports`，主键 `(run_id,execution_version)`、报告 ID 全局唯一、完整六字段双 FK 到不可变执行与复核快照；旧 run 唯一表保留。严格回填、V1 bridge 和 trusted writer mirror 原子保存原正文、摘要、业务版本及 PostgreSQL 微秒时间。父表顺序 NOWAIT 锁避免迁移等待旧 writer 时的锁反转，没有放宽全局 V1 gate 或新增 raw-material retention FK。
+
+SQL 验证基础 envelope、固定身份/来源和 hash 格式，旧摘要精确复制。报告 locator 含任意 JSON 数字和 Unicode key，SQL 不复用 editor canonicalizer，也不声称重新验证 JavaScript canonical hash。应用唯一 `isReviewReport` / `inputManifestHash` 同时校验正文、冻结 manifest/source/scope/version/operation 与 follow-up 来源 ID/hash；合法格式的错误旧摘要仍拒绝。
+
+真实 writer 保留 project→run→job 和 live lease，canonical 登记后精确镜像 V1；40P01 最多三次完整事务，每次重验租约。新插入后校验失败整笔回滚，不留下部分报告；未插入的冲突保持旧正文。API 工作区/目录/项目集合、恢复存在检查和 Worker 复核/文件处理/修订/助手消费者读取 canonical 来源，按报告持久执行身份解析，不借消费任务 lease，不回退 legacy。已登记报告在 Word final 前的显式可读行为保持。
+
+[本地报告专项验收](acceptance/desktop-ux-coverage-20261026/execution-reports/README.md)保留真实 PG 的读写、迁移、租约和原子性证据及原始失败；没有新增模型、Word 内容或浏览器旅程验收。报告 registry 的拆分没有开放后继输入；M3/M4 文件成果登记、检查点/逻辑调用、实际复用与增量处理、B 追加报价/账务及完整同 run 新 Word 仍待完成。G03 和整体 goal 保持 active，B1/B2 未定；未推送、创建 PR 或部署。
+
+该报告切片独立采用 API 13/94 pass、Worker 12/81 pass（后者另 1 Windows skip）；不同集合及轮次不相加。构建/类型检查通过，三轮各 2,290 文件冻结一致并包含 Python 源码；155 个归档文件保留 28 次完整调用、原始失败与专用 PG PID 22604 的停止记录。迁移 receipt 未独立记录当时 SQL 字节 hash，日志与最终 SQL 的证据边界分别列明。旧 sealed archives 与既有用户旅程统计不变。
+
+## 2026-10-27：复核文件成果登记绑定准确执行（0129，G03 前置切片）
+
+`bb_review_execution_artifacts` 用 `(run_id,execution_version,kind)` 保存成果位置，完整六字段关联执行与复核快照、八字段关联准确 artifact 来源。旧登记没有创建时间，本次不伪造。来源严格回填，旧表的 INSERT/UPDATE 与 canonical 自动精确镜像；身份、kind、filename 固定，最终交付前仅允许替换 artifact 引用。交付回执或成功终态后拒绝更换/新增/删除，完全相同的 UPDATE 和 INSERT ON CONFLICT 重放仍可用。历史 delivery gap 和未被捕获的候选只保留来源，不新增交付成员或权限。
+
+生产登记沿用 run→job 锁与准确 live lease；两个登记表的 guard 使用 owned run KEY SHARE NOWAIT，终态 capture 持 run FOR UPDATE 串行。直接 SQL 已持子行时不得反向等待父行；冲突以 55P03 拒绝。迁移对既有表全部 NOWAIT，避免旧 writer 等父行时与迁移反转。实际 Worker 写入 lease 的准确版本/revision/hash；API 工作区、可读报告与继续修改来源、Worker review-result 来源以及恢复存在检查读取 canonical。`bb_review_delivery_ready` 和 0126 交付 builder 的复核成员/命名同时迁移，M4 durable/final 规则与费用外层保持。
+
+[本地登记专项](acceptance/desktop-ux-coverage-20261026/execution-review-artifacts/README.md)记录真实 PG、合成 DOCX、两方向并发、严格回填、旧/新 writer 与既有回归；失败与完整重跑分别保留。重放旧迁移的 test-only helper 同时恢复当时的 0110/0126 函数，仅在对应交付表仍存在时恢复其 builder。
+
+本切片仍只接受 V1；共享 current-input gate 未放宽。M4 文件登记、后继采用/处理、检查点/调用身份、真正复用与增量、B 追加报价和跨版本账务、材料与正文留存、桌面完整补料续做仍待完成。未增加用户旅程通过数，G03/整体 goal 继续 active，未推送、PR 或部署。
+
+## 2026-10-27：内部测试的同任务补料采用（0135）
+
+0135 新增不可变 `bb_run_test_successor_authorizations`，仅允许 `non_production_test` 原 V1 采用为 V2。内部服务先冻结 byte-verified 候选输入，独立授权者为该准确 revision/hash 建立新 grant；采用在 project→run→job 锁内重查保存回执/处理计划/候选、暂停且无 lease/待对账调用、材料与旧工作，原子写授权回执、V2、canonical review/M4 snapshot、head CAS、空活动 stages、准确 stage_execution、queued 事件/outbox。原 run/job 的请求、输入、grant 与账务身份保留；provider/operator 历史继续 job-wide，旧阶段只经保存回执读取。receipt 的创建时间在 SQL 内直接引用，避免丢失 PostgreSQL 微秒。
+
+`assertRunExecution` 保持结构性校验，V1 要求唯一原执行，V2 要求准确不可变 receipt 与非生产 channel。`assertRunExecutionTestGrant` 从 DB 原 run、活动 head 和 receipt 解析本执行 grant，用于 claim、新调用、finish、规则能力与 fact producer；不信任调用者传入或 projection 中保留的旧 grant，不以实时 grant 阻断已经发出调用的准确结果证据。复核候选在 hash 冻结前按原执行/补料回执确定新 report ID 和原版本+1，保留原报告及复核范围。
+
+接受目标输入与 plan 的完整材料集合先共同取得有序 lifecycle advisory 锁，再按稳定顺序以 FOR SHARE NOWAIT 锁定来源 project/material，复核删除状态、角色/hash，并保留 purge-start 屏障。已接受 V1/V2 的引用参与非终态材料 pin；未接受 plan 不参与。提交时 deferred 检查 receipt、精确 target/head、canonical snapshot、完整新 checkpoint 和 queued 状态，禁止只提交半次采用。迁移表锁 NOWAIT；0133 停旧 storage worker、阻止 claim 并排空已认领 tombstone 的部署前提继续适用。
+
+没有公开采用路由或自动新 grant。生产、付费 reservation/meter/accrued-points 路径和 V3 仍拒绝；V2 artifact 的旧自动绑定也明确拒绝。后继 working/artifact、receipt 授权的历史工作读取、三类实际生成 stage 和 Word delivery 尚待接通。逻辑调用名保持稳定，既有 execution binding 区分调用历史。用户选定 B 另行报价，具体追加计价公式/确认与账务尚未完成。
+
+真实 PG 的同 run 采用/claim、并发、撤销、材料保留、直接 SQL 拒绝及跨项目删除竞态见[专项验收](acceptance/desktop-ux-coverage-20261026/test-successor-adoption/README.md)：本轮分选集 249 pass/2 skip，源码两对冻结各 2,471 项，原始失败保留，独立 PG 已停止。没有 V2 模型/Word 或完整浏览器 G03 验收，不增加用户旅程通过数，完整 UX goal 继续 active。
+## 2026-10-27：内部补料采用后的 Word 执行与交付（0136）
+
+在 0135 精确测试授权采用记录之上，`run-supplement-execution` 为当前 V2 worker 租约读取固定原输入、保存检查点及旧 Word。每次核对当前 head、准确新授权、租约 token/实时时钟、采用记录/处理计划/补料回执；由原输入重新编译候选并与已采用输入及业务快照对比，再重建相同 basis hash。旧文件仍使用 prompt/result/工作文件内容锁及删除屏障，字节 I/O 后重验权限和材料；普通当前输入 reader 继续拒绝历史 V1。首次模型调用前暂停的依据与已有完整 Word 两种情况分别处理，新 V2 阶段或调用不会制造原执行的已有工作。
+
+M1/M3/M4 的实际 stage 与 collector 共用完整 request bundle，将已授权的 prior work 交给既有请求构建器；M1 的 source/hash/baselineKind 和 M4 的 linkedSource accessor 随请求保留。三个逻辑调用 ID 不变，调用编号沿 job 历史递增。M4 先将当前模型/skill 方法与原保存方法核对，再写新执行的 method checkpoint。专用输入路径沿各自的输入 gate，旧历史更新仍要求发行人身份绑定，所有测试路径均核验准确活动授权。
+
+0136 新增 prompt 的显式 execution_version 和 artifact 的显式 execution/input 三元组；V2 不从当前 head 给旧 writer 补默认值。新写入要求准确采用记录、活动 head、有效新授权及无付费账务；原 V1 桥接保留。V2 Word/PDF artifact ID 另外包含执行身份，避免同一 run 生成相同字节时撞用 V1 成果。复核和 M4 的 canonical 登记接受准确内部 V2，V2 不镜像覆盖 V1 legacy 行。最终 test_completed 回执按完整 stage_execution 和成员绑定检查，并记录新授权；M4 原生产 durable/结算路径保持。历史来源 view 按不可变执行/采用记录读取，不依赖当前 head 或实时授权，下载另查其准确交付授权。
+
+工作文件清理的历史发现仅登记已有 provider result 的准确来源，使用不可变原执行/采用记录，不因 head 切换、授权撤销、项目删除或账号关闭而停住清理；普通新写入仍要求活动输入及 V2 实时授权，purge_started 屏障保持。
+
+M4 测试交付先给 Word 加测试标记，再登记实际成品的字节数；主文书与编制说明均与本执行的 Word 交付证据一致，生产通道仍使用原字节。
+
+此切片没有新增 HTTP 补料采用或追加报价入口。用户本轮已选 B1：需重做的每份文件按该文种现行整份价格追加，未受影响文件不收费，确认金额后继续；积分系统后续另行重设计，详见[产品决定](product-decisions/2026-10-27-supplement-rework-b1.md)。报价确认及追加账务仍待实施；不据合成 Word、内部 PG 或跳过的 Linux adapter 测试关闭 G03。验证范围及剩余限制见[内部 V2 Word 验证记录](acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)。未推送、创建 PR 或部署。
+
+## 2026-10-27：B1 追加报价与明确确认（0137）
+
+`bb_run_supplement_quotes` 保存一份业务文书的不可变 B1 报价，绑定原执行、最新补料保存回执、字节核对后的处理计划和候选 hash。M1 双 Word、M3 复核成果、M4 正文与编制说明各为一个计价单位。需要重做时沿用原冻结收费类别并取现行整份价；原报价仅用于证明类别和来源，不复用旧金额。M3 保留原 full/differential operation，M4 按公共文种映射使用现行固定价。真正零 attempt 早停没有重做，追加为 0，收费类别/价格版本/整份价均为空，不依赖已发布价表，也不减免原任务费用。
+
+认证 HTTP 提供创建、准确读取和明确确认三个端点；客户端只提交保存回执、候选 hash 和请求 key，不能指定价格、类别或内部计划。确认另存 `bb_run_supplement_quote_confirmations`；报价和确认分别与对应 outbox 事件同事务提交。SQL 按 project→run→job 锁重查暂停、无租约/待对账调用、准确 V1/head、最新补料与计划、来源报价、现价、材料删除屏障。报价有效期由 DB 实时时钟设置，HTTP 不接受 TTL。确认前再次核对当前依据；历史精确回执与同 key 重放不因边界后来变化而重算金额，归档/删除/关闭账号仍撤销读取和确认权限。两表拒绝修改、删除和 TRUNCATE。
+
+处理计划新增内部 bundle 返回同一次字节核对的 basis，报价无需重复读取大文件；原要求 expectedBasisHash 的调用入口保持。此切片没有采用新输入、创建 reservation、扣款、pin 材料或启动模型。生产续做仍须按 execution segment 隔离费用上限、meter、扣款和退款，再接独立生产采用授权及完整桌面流程；不能仅放开 0135/0136 的付费限制。专项验证与限制见[B1 报价记录](acceptance/desktop-ux-coverage-20261026/supplement-b1-quotes/README.md)。G03 / UX-A03 与完整 goal 保持 active，未推送、创建 PR 或部署。
+
+## 2026-10-27：原收费记录的费用段与执行绑定（0138）
+
+`bb_run_billing_segments` 将原 reservation 的归属、完整原执行、报价、policy、上限和微秒创建时间保存为不可变费用身份；`bb_run_execution_billing_bindings` 将完整 V1 execution identity 指向该费用段。原 `run.reservation_id`、账本、分配及已扣金额保持原值。首次收费的 pointer UPDATE 在 enqueue 前立即 capture，迁移按原值回填；两者只写一次 `run.billing_segment_bound` outbox，回填事件明确标为 historical_backfill，不冒充新的执行或扣费。延迟检查拒绝缺失或不一致的 reservation/segment/binding/meter，原报价、policy、cap 和收费指针不能事后替换。
+
+`bb_run_billing_progress` 按费用段保存计量，精确 seed 原 active_ms、work_bps、accrued_points、clock_at、lease_until 和 last_activity_at；与旧 `bb_authoring_progress` 双向精确镜像，保留旧 worker 和历史检查的输入语义。两方向先用 owned run NOWAIT 锁，再 NOWAIT 锁目标 meter；直接旧 writer 已持子行时遇反向锁以 55P03 结束，释放后可重试，不反向等待。两表同值重放不重复 UPDATE，paid meter 不允许删除或 TRUNCATE。
+
+实际 debit、progress sync/read、worker activity、finish 尾款及 SQL finalizer 使用准确绑定；缺失或不同的收费绑定拒绝收费，不回退原 pointer。free V1 和原内部免费 V2 没有费用段，继续使用零金额 legacy meter。SQL 结算只替换准确费用来源与 meter，原 on_delivery、authoring_progress_v1、authoring_balance_v2 的交付要求、取消金额、退款及追加账本语句保留。历史按费用段原输入取名称，公开 DTO 与分页保持；运维冲正可指定 reservation，审计覆盖全部五类原报价和完整映射/镜像，避免遗漏 M4 等原 credit_quotes 外费用。
+
+此迁移仍保留每 run 一条 reservation 的唯一约束及全部 paid successor gates，仅建立并接入原费用段。B1 重做段、0 追加的原费用延续绑定、前段停止计费与本段独立退款、正式生产采用授权和桌面闭环仍待接通；不能据此称已实现追加收费或关闭 G03。验证见[原费用段专项](acceptance/desktop-ux-coverage-20261026/original-billing-segments/README.md)，完整 goal 继续 active。
+
+## 2026-10-27：生产任务按 B1 确认补料并续做（0139，本地未发布）
+
+`bb_run_supplement_adoptions` 将准确补料回执、处理计划、原执行、候选输入、不可变报价及明确确认关联为生产采用权限。`POST /runs/:run_id/supplement-adoptions` 只接受请求 key、quote ID/hash 与 confirmation ID；客户端不能指定金额、目标输入或收费段。字节读取先于事务，事务按 project→run→job 锁重验材料、最新保存、暂停边界、现价及有效期，再原子写入采用权限、新输入与业务快照、收费绑定、V2 head、全新阶段检查点、状态事件和 outbox。原 run/job、初始输入与执行请求不变。精确请求回执重放先于状态/价格/有效期检查，响应丢失不会重新报价、排队或收费。
+
+需要重做时建立独立 `authoring_balance_v2` 费用段，金额为明确确认的现行整份文档价格，新段从零计量。原段按原 policy 退休：动态费用保留已扣部分；on_delivery 释放原预留；authoring_progress_v1 结算已冻结的 accrued 部分并释放余量。`bb_run_billing_segment_closures` 保存准确执行与关闭后的 charged/released/refunded 值，关闭后的财务状态和 meter 不得改写。新段失败只退款新段，旧消费不被新任务失败抵销。零追加的已付费任务继续原段与剩余上限，免费任务有显式 unbilled 采用且不创建虚假费用。免费起始、补料后付费的任务保留原 billing_mode 与 null reservation pointer，以当前执行的准确费用绑定选择真实责任。
+
+生产 V2 与既有内部测试 V2 使用独立授权。新工作要求完整当前 execution、活动 head、有效 lease 和准确采用权限；历史文件读取与清理使用不可变来源，不要求它仍是当前 head。报价到期与可用积分只在采用准入时核验，已发出的调用结果不会因后来到期或余额耗尽而丢失。provider result、unknown usage 恢复、实际 worker、进度、结算、M4 费用及下载读取当前准确费用段；M4 workspace 的 quote/state/progress 在同一只读重复读快照内返回，避免切换执行时混合两段费用。
+
+认证 `GET /runs/:run_id/supplement-adoptions?request_id=…` 用于准确回执恢复；`GET /runs/:run_id/supplement-adoptions/current` 按完整当前 head 返回同一不可变回执，不接受本机 key，也不产生收费或执行权限。未采用的 V1 和已归属内部任务返回 404；外部账号、已删除项目及已关闭账号不能读取。新浏览器据此显示已采用摘要，并通过普通 resume 恢复当前执行，无需读取只支持原 V1 的补料准备。用户可再次安全暂停、刷新/丢失本机记录后继续，也可撤回仍在保存中的暂停；这些动作不再报价或追加收费。
+
+桌面沿用三类任务原材料区，先保存并核对报价，再点击“确认追加 X 积分并继续”。本机准备草稿与追加确认 journal 分开保存；刷新只读恢复，未知采用先查原回执，跨页冲突不自动覆盖或授权。已采用任务的普通继续显示“继续当前任务”。本次协议限定原 V1 到 V2 的一次采用，未开放 V3 及再次补料采用。供应商与支付仍按既有能力运行，合成验证不代表专业内容或真实供应商验收。最终运行证据与当前 G03 状态见[生产补料采用记录](acceptance/desktop-ux-coverage-20261026/production-supplement/README.md)。
+
+最终本地专项分别采用 API 15/15、相关回归 88/88、生产 worker 5/5、契约 4/4、桌面交互 37/37 和真实本地完整链 3/3；五点钱包/流水及材料标记进入新 Word 已直接核对。内部 worker 回归 8 pass/3 环境跳过，构建/类型/契约检查通过。各选集不合计，历史失败与源码冻结单独保留；G03 的本地合成工程缺口关闭，真实供应商/支付/Azure、客户端、专业与用户效果仍属最终统一验收待办。

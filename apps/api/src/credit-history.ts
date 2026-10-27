@@ -34,14 +34,18 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
     SELECT c.*,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time,
       r.project_id,p.deleted_at,p.kind AS project_kind,
       COALESCE(i.manifest->>'name',i.manifest->>'project_name',i.manifest#>>'{assistant_context,project_name}',p.name,'项目任务') AS project_name,
-      COALESCE(CASE WHEN i.manifest->>'version'='project-qa-v1' THEN 'qa' WHEN i.manifest->>'version'='integrity-round-v1' THEN 'integrity_check' END,q.task_type,mq.task_type,CASE WHEN fq.id IS NOT NULL THEN 'project_file_update' ELSE r.task_kind END) AS task_type,
+      segment.segment_number AS billing_segment_number,
+      COALESCE(CASE WHEN i.manifest->>'version'='project-qa-v1' THEN 'qa' WHEN i.manifest->>'version'='integrity-round-v1' THEN 'integrity_check' END,sq.items->0->>'task_type',q.task_type,mq.task_type,CASE WHEN fq.id IS NOT NULL THEN 'project_file_update' ELSE r.task_kind END) AS task_type,
       COALESCE(e.charged,0)::text AS charged,COALESCE(e.released,0)::text AS released,COALESCE(e.corrected,0)::text AS corrected
     FROM selected c JOIN bb_runs r ON r.id=c.run_id AND r.owner_user_id=c.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=c.owner_user_id
-    LEFT JOIN bb_input_revisions i ON i.project_id=r.project_id AND i.owner_user_id=c.owner_user_id AND i.revision=r.input_revision
+    LEFT JOIN bb_run_billing_segments segment ON segment.reservation_id=c.id AND segment.owner_user_id=c.owner_user_id AND segment.run_id=c.run_id
+    LEFT JOIN bb_input_revisions i ON i.project_id=segment.project_id AND i.owner_user_id=c.owner_user_id
+      AND i.revision=segment.origin_input_revision AND i.input_hash=segment.origin_input_hash
     LEFT JOIN bb_credit_quotes q ON q.id=c.quote_id AND q.owner_user_id=c.owner_user_id
     LEFT JOIN bb_m4_quotes mq ON mq.id=c.quote_id AND mq.owner_user_id=c.owner_user_id
     LEFT JOIN bb_project_file_update_quotes fq ON fq.id=c.quote_id AND fq.owner_user_id=c.owner_user_id
+    LEFT JOIN bb_run_supplement_quotes sq ON sq.id=c.quote_id AND sq.owner_user_id=c.owner_user_id AND sq.run_id=c.run_id
     LEFT JOIN LATERAL (SELECT sum(points) FILTER(WHERE kind='settle') AS charged,
       sum(points) FILTER(WHERE kind='release') AS released,sum(points) FILTER(WHERE kind='correction') AS corrected
       FROM bb_credit_events WHERE owner_user_id=c.owner_user_id AND reservation_id=c.id) e ON true
@@ -50,7 +54,7 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
   const labels:Record<string,string>={...BILLING_TASKS,...M4_BILLING_TASKS,update:'更新募集书',review:'复核募集书',generation:'文件生成',project_file_update:'更新关联文件',integrity_check:'诚信核查',qa:'项目问答'};
   return {page:result.page,items:result.items.map(r=>({reservation_id:r.id,run_id:r.run_id,
     project_id:r.deleted_at||r.project_kind==='qa'?null:r.project_id,project_name:r.deleted_at?'已删除项目':r.project_name,
-    task_name:labels[r.task_type]??'项目任务',created_at:date(r.created_at),finalized_at:r.finalized_at?date(r.finalized_at):null,
+    task_name:(labels[r.task_type]??'项目任务')+(r.billing_segment_number>1?'（补料续做）':''),created_at:date(r.created_at),finalized_at:r.finalized_at?date(r.finalized_at):null,
     state:r.state,billing_policy:r.billing_policy,reserved_points:r.billing_policy==='authoring_balance_v2'?0:Number(r.points),charged_points:Number(r.charged),released_points:Number(r.released),corrected_points:Number(r.corrected)}))};
 }
 export async function rechargeHistory(db:Pool,owner:string,query:Query){

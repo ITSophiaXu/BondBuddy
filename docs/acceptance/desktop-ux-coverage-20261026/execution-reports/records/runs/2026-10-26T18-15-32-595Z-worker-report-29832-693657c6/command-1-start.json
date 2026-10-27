@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T18:15:32.960Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/worker/dist/review-report-execution.pg.test.js",
+    "apps/worker/dist/review-word-registration.pg.integration.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

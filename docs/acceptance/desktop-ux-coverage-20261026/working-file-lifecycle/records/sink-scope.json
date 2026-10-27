@@ -1,0 +1,12 @@
+{
+  "baseline": "a35034b3",
+  "checked_at": "2026-10-26T13:06:12.580Z",
+  "path": "apps/api/src/log-ops.ts",
+  "scope": "lockedNdjsonWrite through ndjsonFileSink; normalized line endings",
+  "unchanged": true,
+  "sha256": "eea6572a799ebcd51de722ed0c8a465e563e5f0b552436952675856fd643bf9c",
+  "tests_unchanged": true,
+  "tests_sha256": "71e0bd687b87be34802cdcaba3f274f300c8ea4719c9700088cc02fa91a33963",
+  "acceptance": false,
+  "reason": "Five existing POSIX file-mode tests failed on Windows; final selected run skips those exact titles without changing sink or tests."
+}

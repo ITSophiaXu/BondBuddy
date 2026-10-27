@@ -18,6 +18,10 @@ import { correctionFiles } from './review-correction-stage.js';
 import {grantCredits,publishPrices} from '../../api/dist/billing.js';
 import {INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
 import {transaction} from '@bondbuddy/api/data';
+import type {writeRunWorkingFile} from '@bondbuddy/api/run-working-files';
+
+// Synthetic finding/progress IO only; no working-file DB provenance is asserted.
+const syntheticWriter:typeof writeRunWorkingFile=async input=>input.blobs.put(input.key,input.bytes,input.mediaType);
 
 const connection=await isolatedTestDatabase(undefined,'review-project-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('project review: real dual Word delivery, explicit promotion, manual export, idempotency and owner isolation',{skip:!connection||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:240000},async()=>{
@@ -47,7 +51,7 @@ test('project review: real dual Word delivery, explicit promotion, manual export
     const first=await ok('POST',path+'/review-executions',request);assert.equal((await ok('POST',path+'/review-executions',request)).run_id,first.run_id);
     const markdown='## 格式与标点\n### 合成文本修订\n- 复核类别：格式与标点\n- 问题说明：合成修改\n- 原文披露：Synthetic worker upload fixture\n- 核对依据：合成依据\n- 处理方式：直接修改\n- 替换文本：Synthetic reviewed fixture\n- 缺少材料：无\n';
     const execute=(model:any)=>runPipelineOnce({pool,blobs,leaseSeconds:120,stages:[inputLockStage,materialsReadyStage,model,historicalWordDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
-    assert.equal(await execute({name:'model_generation',run:async(ctx:any)=>({kind:'done',value:await correctionFiles(ctx,await loadReviewFileInput(ctx),Buffer.from(markdown))})}),'succeeded');
+    assert.equal(await execute({name:'model_generation',run:async(ctx:any)=>({kind:'done',value:await correctionFiles(ctx,await loadReviewFileInput(ctx),Buffer.from(markdown),undefined,syntheticWriter)})}),'succeeded');
     const ws=await ok('GET',path+'/review-workspace');assert.equal(ws.project.kind,'generation');assert.deepEqual(ws.artifacts.map((a:any)=>a.kind).sort(),['clean','report','revision']);
     const charge=await ok('GET','/api/v1/runs/'+first.run_id+'/credit-charge');assert.equal(charge.state,'settled');
     assert.equal(charge.progress.charged_points,quote.quote.points,'paid pair completes the existing settlement policy');
@@ -78,7 +82,7 @@ test('project review: real dual Word delivery, explicit promotion, manual export
     const incompleteRequest={...baseRequest,execution_request_id:randomUUID()};
     const incompleteQuote=await ok('POST',path+'/review-executions/quote',incompleteRequest);
     const incomplete=await ok('POST',path+'/review-executions',{...incompleteRequest,quote_id:incompleteQuote.quote.quote_id});
-    assert.equal(await execute(reviewFileStage({model:options=>({name:options.name,run:async()=>{
+    assert.equal(await execute(reviewFileStage({writer:syntheticWriter,model:options=>({name:options.name,run:async()=>{
       const directory=await mkdtemp(join(tmpdir(),'review-progress-only-'));
       try{
         await options.fileWorkspace!.prepare(directory);

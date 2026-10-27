@@ -1,0 +1,17 @@
+✔ trusted correction → exact completed editor → pinned manual export → original and new Word downloads (9814.5241ms)
+▶ real correctionFiles conversion cannot publish an editor with an expired, cancelled or mismatched lease
+  ✔ expired (2778.3734ms)
+  ✔ cancelled (1654.7362ms)
+  ✔ wrong-token (1635.8618ms)
+  ✔ wrong-execution (2109.3113ms)
+  ✔ wrong-input-revision (1999.7527ms)
+  ✔ wrong-input-hash (1620.5745ms)
+✔ real correctionFiles conversion cannot publish an editor with an expired, cancelled or mismatched lease (13189.8328ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33400.9975

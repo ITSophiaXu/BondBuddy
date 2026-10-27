@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T17:35:42.607Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "apps/web/dist-test/review-editor-cache.test.js",
+    "apps/web/dist-test/review-editor-execution-cache.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

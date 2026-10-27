@@ -1,0 +1,31 @@
+{
+  "mode": "api",
+  "startedAt": "2026-10-27T02:11:50.482Z",
+  "completedAt": "2026-10-27T02:14:28.937Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "apps/api/dist/run-supplement-adoption.pg.test.js",
+    "apps/api/dist/run-supplement-billing-consistency.pg.test.js"
+  ],
+  "template": "/bb_prod_supplement02_20261027",
+  "exitCode": 1,
+  "signal": null,
+  "totals": {
+    "tests": 15,
+    "pass": 14,
+    "fail": 1,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "sourcesStable": true,
+  "sourceEntries": 2121,
+  "stdout": {
+    "bytes": 5635,
+    "sha256": "af03edd9b40614c5225e2fa8e74dfb14f71338c5e0c9bfc68c8c7331af245113"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

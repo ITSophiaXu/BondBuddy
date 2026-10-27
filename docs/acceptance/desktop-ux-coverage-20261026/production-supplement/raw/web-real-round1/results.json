@@ -1,0 +1,265 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "tests/run-supplement-production-real-main.spec.ts",
+      "--reporter=line,json",
+      "--output=C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round1\\test-results"
+    ],
+    "configFile": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\playwright.config.ts",
+    "rootDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/production-supplement-20261027/web-real-round1/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "run-supplement-production-real-main.spec.ts",
+      "file": "run-supplement-production-real-main.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "real desktop authoring: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 240000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 60954,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-27T02:00:59.165Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "848ba4fdfcfa669b81ba-3153b8e38f0282de4ac9",
+          "file": "run-supplement-production-real-main.spec.ts",
+          "line": 26,
+          "column": 56
+        },
+        {
+          "title": "real desktop review: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 240000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 82049,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first()\nExpected: visible\nReceived: hidden\nTimeout:  20000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first() with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first()\u001b[22m\n\u001b[2m    32 × locator resolved to <button class=\"btn secondary\" data-review-action=\"download\" data-artifact-id=\"word-7be7bef5b42dfcbdea16b6123a079620d397af145f319f3f0b792c96f260528b\">下载复核报告（Word）</button>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first()\nExpected: visible\nReceived: hidden\nTimeout:  20000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first() with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first()\u001b[22m\n\u001b[2m    32 × locator resolved to <button class=\"btn secondary\" data-review-action=\"download\" data-artifact-id=\"word-7be7bef5b42dfcbdea16b6123a079620d397af145f319f3f0b792c96f260528b\">下载复核报告（Word）</button>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:96:26",
+                    "location": {
+                      "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                      "column": 26,
+                      "line": 96
+                    },
+                    "snippet": "  94 |     const button=r.surface==='m1'?page.locator('[data-artifact-file=\"0\"]'):\n  95 |       r.surface==='m3'?page.locator('[data-review-action=\"download\"]').filter({hasText:'复核报告'}).first():page.locator('[data-m4-action=\"download\"]').filter({hasText:'正文 Word'}).first();\n> 96 |     await expect(button).toBeVisible({timeout:20000});\n     |                          ^\n  97 |     const bytesResponse=page.waitForResponse(response=>response.request().method()==='GET'&&\n  98 |       /^\\/api\\/v1\\/(?:m4\\/)?artifacts\\/[^/]+\\/(?:download|versions\\/\\d+\\/bytes)$/.test(new URL(response.url()).pathname));\n  99 |     const downloadEvent=page.waitForEvent('download');await button.click();const download=await downloadEvent;const downloadedPath=join(r.artifactRoot,'browser-downloaded-successor.docx');await download.saveAs(downloadedPath);"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                        "column": 26,
+                        "line": 96
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first()\nExpected: visible\nReceived: hidden\nTimeout:  20000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first() with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for locator('[data-review-action=\"download\"]').filter({ hasText: '复核报告' }).first()\u001b[22m\n\u001b[2m    32 × locator resolved to <button class=\"btn secondary\" data-review-action=\"download\" data-artifact-id=\"word-7be7bef5b42dfcbdea16b6123a079620d397af145f319f3f0b792c96f260528b\">下载复核报告（Word）</button>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n\n\n  94 |     const button=r.surface==='m1'?page.locator('[data-artifact-file=\"0\"]'):\n  95 |       r.surface==='m3'?page.locator('[data-review-action=\"download\"]').filter({hasText:'复核报告'}).first():page.locator('[data-m4-action=\"download\"]').filter({hasText:'正文 Word'}).first();\n> 96 |     await expect(button).toBeVisible({timeout:20000});\n     |                          ^\n  97 |     const bytesResponse=page.waitForResponse(response=>response.request().method()==='GET'&&\n  98 |       /^\\/api\\/v1\\/(?:m4\\/)?artifacts\\/[^/]+\\/(?:download|versions\\/\\d+\\/bytes)$/.test(new URL(response.url()).pathname));\n  99 |     const downloadEvent=page.waitForEvent('download');await button.click();const download=await downloadEvent;const downloadedPath=join(r.artifactRoot,'browser-downloaded-successor.docx');await download.saveAs(downloadedPath);\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts:96:26"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [
+                    {
+                      "text": "(node:36788) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.\n"
+                    }
+                  ],
+                  "retry": 0,
+                  "startTime": "2026-10-27T02:02:01.728Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round1\\test-results\\run-supplement-production--0d5e8-r-worker-→-private-new-Word\\error-context.md"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                    "column": 26,
+                    "line": 96
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "848ba4fdfcfa669b81ba-bcd25faf94f55b3bbdb9",
+          "file": "run-supplement-production-real-main.spec.ts",
+          "line": 26,
+          "column": 56
+        },
+        {
+          "title": "real desktop m4: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\run-supplement-production-real-main.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-27T02:03:24.079Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "848ba4fdfcfa669b81ba-0b878070473de8aa9ca9",
+          "file": "run-supplement-production-real-main.spec.ts",
+          "line": 26,
+          "column": 56
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-27T02:00:42.053Z",
+    "duration": 162071.214,
+    "expected": 1,
+    "skipped": 1,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

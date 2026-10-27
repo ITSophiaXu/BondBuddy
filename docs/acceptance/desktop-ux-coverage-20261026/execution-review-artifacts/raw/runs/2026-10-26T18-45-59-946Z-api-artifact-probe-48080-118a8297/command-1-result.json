@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T18:46:00.878Z",
+  "finished": "2026-10-26T18:46:44.249Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-name-pattern=bindings reject foreign ownership",
+    "apps/api/dist/artifact-execution.pg.test.js"
+  ],
+  "status": 1,
+  "signal": null,
+  "pid": 24532
+}

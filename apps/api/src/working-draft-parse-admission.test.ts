@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { createServer } from './server.js';
 import { autoTestExecutionKeyStorage, digest } from './data.js';
 import { executionKeyHash } from './observability.js';
@@ -11,6 +11,41 @@ import { isolatedTestDatabase } from './test-database.js';
 const databaseUrl = await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL', 'working-draft-parse-admission');
 const origin = 'http://bondbuddy.test';
 const sha = (letter: string) => letter.repeat(64);
+
+// Keep HTTP transactions inside this test's outer rollback, including the
+// deliberately corrupted legacy material below. Other guards remain enabled.
+function savepointPool(connection: PoolClient): Pool {
+  let next = 0;
+  return {
+    query: (sql: string, values?: unknown[]) => connection.query(sql, values),
+    connect: async () => {
+      const name = `parse_admission_${++next}`;
+      let active = false;
+      return {
+        release: () => undefined,
+        query: async (sql: string, values?: unknown[]) => {
+          if (sql === 'BEGIN') { await connection.query(`SAVEPOINT ${name}`); active = true; return { rows: [] }; }
+          if (sql === 'COMMIT') {
+            if (active) {
+              // RELEASE alone does not run deferred checks as a real COMMIT
+              // would; preserve that request boundary inside the outer rollback.
+              await connection.query('SET CONSTRAINTS ALL IMMEDIATE');
+              await connection.query(`RELEASE SAVEPOINT ${name}`);
+              active = false;
+              await connection.query('SET CONSTRAINTS ALL DEFERRED');
+            }
+            return { rows: [] };
+          }
+          if (sql === 'ROLLBACK') {
+            if (active) { await connection.query(`ROLLBACK TO SAVEPOINT ${name}`); await connection.query(`RELEASE SAVEPOINT ${name}`); }
+            active = false; return { rows: [] };
+          }
+          return connection.query(sql, values);
+        },
+      };
+    },
+  } as unknown as Pool;
+}
 
 test('locked materials enter the draft queue before parsing and business review; security pins and channel isolation remain enforced',
   { skip: !databaseUrl }, async () => {
@@ -25,13 +60,15 @@ test('locked materials enter the draft queue before parsing and business review;
     process.env.BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH = sha('b');
     process.env.BB_PREPROD_WORKING_DRAFT_STAGE = 'issuance';
     process.env.BB_PREPROD_WORKING_DRAFT_AS_OF = '2026-09-29';
-    const pool = new Pool({ connectionString: databaseUrl });
+    const sourcePool = new Pool({ connectionString: databaseUrl });
+    const connection = await sourcePool.connect(), pool = savepointPool(connection);
     let owner = `parse-owner-${randomUUID()}`;
     const app = createServer({ pool, allowedOrigin: origin,
       principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
     const post = (url: string, payload: unknown) =>
       app.inject({ method: 'POST', url, headers: { origin }, payload: payload as any });
     try {
+      await connection.query('BEGIN ISOLATION LEVEL READ COMMITTED');
       const created = await post('/api/v1/projects',
         { name: 'Synthetic parse admission', kind: 'update', issuer_name: null, market: null, offering: null });
       assert.equal(created.statusCode, 201, created.body);
@@ -108,7 +145,18 @@ test('locked materials enter the draft queue before parsing and business review;
       }
 
       const wrongHash = await add('interimFinancial', sha('e'));
-      await pool.query('UPDATE bb_material_versions SET sha256=$2 WHERE id=$1', [wrongHash.material_id, sha('f')]);
+      // Synthetic legacy corruption, confined to this private clone's outer
+      // rollback. Seed the parse job legally, then restore the byte guard before
+      // HTTP consumers observe an obsolete parse hash. No other guard is bypassed.
+      await connection.query('SET CONSTRAINTS ALL IMMEDIATE');
+      await connection.query('SET CONSTRAINTS ALL DEFERRED');
+      await connection.query('SAVEPOINT synthetic_stale_parse_hash');
+      await connection.query('ALTER TABLE bb_material_versions DISABLE TRIGGER bb_material_byte_identity_guard');
+      await connection.query('UPDATE bb_material_versions SET sha256=$2 WHERE id=$1', [wrongHash.material_id, sha('f')]);
+      await connection.query('SET CONSTRAINTS ALL IMMEDIATE');
+      await connection.query('ALTER TABLE bb_material_versions ENABLE TRIGGER bb_material_byte_identity_guard');
+      await connection.query('SET CONSTRAINTS ALL DEFERRED');
+      await connection.query('RELEASE SAVEPOINT synthetic_stale_parse_hash');
       const wrongHashInput = await lock([historical, wrongHash]);
       assert.equal((await preflight(wrongHashInput)).statusCode, 200);
       assert.equal((await execute(wrongHashInput)).statusCode, 202);
@@ -282,7 +330,9 @@ test('locked materials enter the draft queue before parsing and business review;
       }
     } finally {
       await app.close();
-      await pool.end();
+      await connection.query('ROLLBACK');
+      connection.release();
+      await sourcePool.end();
       names.forEach((name, index) => {
         if (before[index] === undefined) delete process.env[name];
         else process.env[name] = before[index];

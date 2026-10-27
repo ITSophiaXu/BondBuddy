@@ -1,0 +1,30 @@
+{
+  "mode": "contracts",
+  "startedAt": "2026-10-27T01:57:14.158Z",
+  "completedAt": "2026-10-27T01:57:18.153Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "packages/contracts/dist/run-supplement-adoption.test.js"
+  ],
+  "template": "/bb_prod_supplement02_20261027",
+  "exitCode": 0,
+  "signal": null,
+  "totals": {
+    "tests": 3,
+    "pass": 3,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "sourcesStable": true,
+  "sourceEntries": 2117,
+  "stdout": {
+    "bytes": 910,
+    "sha256": "d70beb2004b9b796d6190bcb6eed053ec3fc93d722e56c1ae98d0db75babf74a"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

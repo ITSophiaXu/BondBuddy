@@ -192,6 +192,8 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     const client=await pool.connect();
     await client.query('BEGIN');
     try{
+      await client.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,testRun.run_id]);
+      await client.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[user,testRun.run_id]);
       const evidenceId=randomUUID();
       await client.query(`INSERT INTO bb_word_delivery_evidence
         (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
@@ -201,7 +203,13 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
       await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
         VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','test_only',$6)`,
         [artifactId,user,testRun.run_id,artifactHash,`synthetic-test/${artifactId}`,evidenceId]);
-      await client.query("UPDATE bb_runs SET state='test_completed',artifact_id=$2,artifact_version=1 WHERE id=$1",[testRun.run_id,artifactId]);
+      // Match the terminal transaction's job -> run -> event order and one
+      // transaction timestamp; the authorization fixture does not run a model.
+      await client.query("UPDATE bb_jobs SET state='test_completed',stage='test_completed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE run_id=$1",[testRun.run_id]);
+      const terminal=(await client.query("UPDATE bb_runs SET state='test_completed',stage='test_completed',artifact_id=$2,artifact_version=1,event_cursor=event_cursor+1,updated_at=now() WHERE id=$1 RETURNING event_cursor",[testRun.run_id,artifactId])).rows[0];
+      await client.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload)
+        VALUES($1,$2,$3,$4,$3,'run.state_changed','test_completed','test_completed',$5)`,
+        [randomUUID(),user,testRun.run_id,terminal.event_cursor,{reason:'synthetic_test_delivery',channel:'non_production_test'}]);
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
     await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[testRun.run_id]),
@@ -327,9 +335,18 @@ test('working draft admission defers parse and business gaps while retaining own
     owner=(await pool.query('SELECT owner_user_id FROM bb_projects WHERE id=$1',[project])).rows[0].owner_user_id;
     assert.deepEqual(await counts(),{grants:2,grantEvents:2,runs:2});
 
-    const changed=await addMaterial('financial',sha('b'));
-    const changedInput=await locked([historical,changed]);
-    await pool.query('UPDATE bb_material_versions SET sha256=$2 WHERE id=$1',[changed.material_id,sha('c')]);
+    const changed=await addMaterial('financial',sha('c'));
+    const currentChangedInput=await locked([historical,changed]);
+    // Synthetic legacy corruption: seed an immutable input with an obsolete
+    // material hash, without rewriting the protected original-byte identity.
+    const changedManifest=structuredClone((await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+      [project,currentChangedInput.revision])).rows[0].manifest);
+    changedManifest.materials.find((item:{material_id:string})=>item.material_id===changed.material_id).sha256=sha('b');
+    const changedInput={revision:998,input_hash:inputManifestHash(changedManifest)};
+    await pool.query(`INSERT INTO bb_input_revisions
+      (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,$2,$3,1,$4,$5,$6,'[]')`,[project,changedInput.revision,owner,changedInput.input_hash,
+        changedManifest,JSON.stringify([historical,changed])]);
     assert.equal((await check(changedInput)).json().code,'INPUT_REVISION_CONFLICT');
     assert.equal((await send('/api/v1/runs/execute',request(changedInput))).json().code,'INPUT_REVISION_CONFLICT');
     const stored=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',

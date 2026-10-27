@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "scope": "Proposed standalone HTML only; not implemented API/worker/billing acceptance",
+  "viewport": {
+    "width": 1440,
+    "height": 960
+  },
+  "results": [
+    {
+      "name": "fee remains pending by default",
+      "passed": true
+    },
+    {
+      "name": "save then explicitly adopt in the original task demo",
+      "passed": true
+    },
+    {
+      "name": "unknown adoption is read back without another adoption",
+      "passed": true
+    }
+  ]
+}

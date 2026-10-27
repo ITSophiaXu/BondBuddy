@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: reserve pointer UPDATE immediately captures exact V1 fee, meter and one outbox event
+ok 1 - reserve pointer UPDATE immediately captures exact V1 fee, meter and one outbox event
+  ---
+  duration_ms: 803.8766
+  type: 'test'
+  ...
+# Subtest: canonical and legacy meter updates mirror all fields exactly without charging
+ok 2 - canonical and legacy meter updates mirror all fields exactly without charging
+  ---
+  duration_ms: 377.9863
+  type: 'test'
+  ...
+# Subtest: original pointer, price, policy, identity and mirrored meter cannot be rewritten or removed
+ok 3 - original pointer, price, policy, identity and mirrored meter cannot be rewritten or removed
+  ---
+  duration_ms: 2378.461
+  type: 'test'
+  ...
+# Subtest: deferred integrity rejects an unbound reservation and rolls it back
+ok 4 - deferred integrity rejects an unbound reservation and rolls it back
+  ---
+  duration_ms: 333.2751
+  type: 'test'
+  ...
+# Subtest: free V1 legacy progress remains free and cannot manufacture a paid segment
+ok 5 - free V1 legacy progress remains free and cannot manufacture a paid segment
+  ---
+  duration_ms: 350.347
+  type: 'test'
+  ...
+# Subtest: meter mirror canonical-held fails promptly on reverse row locks and retries exactly
+ok 6 - meter mirror canonical-held fails promptly on reverse row locks and retries exactly
+  ---
+  duration_ms: 479.3586
+  type: 'test'
+  ...
+# Subtest: meter mirror legacy-held fails promptly on reverse row locks and retries exactly
+ok 7 - meter mirror legacy-held fails promptly on reverse row locks and retries exactly
+  ---
+  duration_ms: 527.6761
+  type: 'test'
+  ...
+# Subtest: 0138 backfill preserves historical price, charged prefix and microsecond meters atomically
+ok 8 - 0138 backfill preserves historical price, charged prefix and microsecond meters atomically
+  ---
+  duration_ms: 1017.1792
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 53150.4568

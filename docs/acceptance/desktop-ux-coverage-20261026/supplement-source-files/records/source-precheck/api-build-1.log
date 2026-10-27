@@ -1,0 +1,12 @@
+apps/api/src/run-file-reference.test.ts(101,125): error TS2352: Conversion of type 'string | never[] | null' to type 'Record<string, RawRef>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'never[]' is not comparable to type 'Record<string, RawRef>'.
+    Index signature for type 'string' is missing in type 'never[]'.
+apps/api/src/run-file-reference.ts(87,30): error TS2322: Type 'unknown' is not assignable to type 'string'.
+apps/api/src/run-file-reference.ts(87,45): error TS2322: Type 'unknown' is not assignable to type 'string'.
+apps/api/src/run-file-reference.ts(115,33): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'object'.
+apps/api/src/run-file-reference.ts(117,49): error TS2322: Type 'string | symbol' is not assignable to type 'string'.
+  Type 'symbol' is not assignable to type 'string'.
+apps/api/src/run-file-reference.ts(117,62): error TS18046: 'value.files' is of type 'unknown'.
+apps/api/src/run-supplement-files.ts(60,46): error TS2339: Property 'file_delivery' does not exist on type '{}'.
+apps/api/src/run-supplement-files.ts(74,39): error TS2339: Property 'file_delivery' does not exist on type '{}'.
+apps/api/src/run-supplement-files.ts(74,109): error TS2339: Property 'file_delivery' does not exist on type '{}'.

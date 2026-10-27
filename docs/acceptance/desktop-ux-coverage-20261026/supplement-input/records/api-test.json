@@ -1,0 +1,15 @@
+{
+  "started": "2026-10-26T11:07:29.392Z",
+  "finished": "2026-10-26T11:08:25.307Z",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/run-execution-input.test.js",
+    "apps/api/dist/run-supplement-input.test.js",
+    "apps/api/dist/run-supplement-draft.pg.test.js",
+    "apps/api/dist/run-execution.pg.integration.test.js",
+    "apps/api/dist/run-origin-immutability.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

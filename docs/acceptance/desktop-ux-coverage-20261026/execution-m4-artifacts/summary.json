@@ -1,0 +1,159 @@
+{
+  "scope": "Synthetic M4 exact V1 Word registration, real PostgreSQL readback/receipts/settlement; successor and B repricing remain disabled",
+  "accepted": {
+    "api-registry": {
+      "run": "2026-10-26T19-22-31-928Z-api-registry-7664-8e9e8de7",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "freeze_before": "2026-10-26T19-22-20-301Z-source-before-40916-6a0ca50c",
+      "freeze_after": "2026-10-26T19-30-08-515Z-source-after-2916-e711f362"
+    },
+    "api-regression": {
+      "run": "2026-10-26T19-24-07-874Z-api-regression-5420-4fbaeb66",
+      "tests": 39,
+      "pass": 39,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "freeze_before": "2026-10-26T19-22-20-301Z-source-before-40916-6a0ca50c",
+      "freeze_after": "2026-10-26T19-30-08-515Z-source-after-2916-e711f362"
+    },
+    "api-cases": {
+      "run": "2026-10-26T19-31-13-290Z-api-cases-37544-b11d5d28",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "freeze_before": "2026-10-26T19-31-10-425Z-source-before-45648-37f03375",
+      "freeze_after": "2026-10-26T19-31-15-973Z-source-after-41392-d9be3842"
+    },
+    "worker-regression": {
+      "run": "2026-10-26T19-23-23-726Z-worker-regression-46472-1a38d361",
+      "tests": 43,
+      "pass": 41,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2,
+      "freeze_before": "2026-10-26T19-22-20-301Z-source-before-40916-6a0ca50c",
+      "freeze_after": "2026-10-26T19-30-08-515Z-source-after-2916-e711f362"
+    }
+  },
+  "failures": [
+    {
+      "run": "2026-10-26T19-17-57-101Z-api-registry-39928-ace98d99",
+      "mode": "api-registry",
+      "counts": {
+        "tests": 15,
+        "pass": 13,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "error": {
+        "name": "AssertionError",
+        "message": "C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-m4-artifacts-20261027\\runs\\2026-10-26T19-17-57-101Z-api-registry-39928-ace98d99\\run.log\n\n1 !== 0\n"
+      }
+    },
+    {
+      "run": "2026-10-26T19-17-58-061Z-worker-regression-45980-cecec14a",
+      "mode": "worker-regression",
+      "counts": {
+        "tests": 43,
+        "pass": 40,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 2
+      },
+      "error": {
+        "name": "AssertionError",
+        "message": "C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-m4-artifacts-20261027\\runs\\2026-10-26T19-17-58-061Z-worker-regression-45980-cecec14a\\run.log\n\n1 !== 0\n"
+      }
+    }
+  ],
+  "freeze": {
+    "before": "2026-10-26T19-31-10-425Z-source-before-45648-37f03375",
+    "after": "2026-10-26T19-31-15-973Z-source-after-41392-d9be3842",
+    "files": 2304,
+    "sha256": "c766b698ac4c7edae23ce0313aff6c2213a1d4c2540eac4372359c78b66d1681"
+  },
+  "freeze_windows": [
+    {
+      "before": "2026-10-26T19-17-43-962Z-source-before-46196-60d1df71",
+      "after": "2026-10-26T19-19-15-690Z-source-after-31004-efa0b52b",
+      "files": 2304,
+      "sha256": "f586dfe7733f1f6084da821a1bb8a6199076a67088e495ade281f095b7fbf7c8"
+    },
+    {
+      "before": "2026-10-26T19-22-20-301Z-source-before-40916-6a0ca50c",
+      "after": "2026-10-26T19-30-08-515Z-source-after-2916-e711f362",
+      "files": 2304,
+      "sha256": "5c0a81f3588b3993d4e3470fda64a5a8074d7e5606206e56bc67570196349366"
+    },
+    {
+      "before": "2026-10-26T19-31-10-425Z-source-before-45648-37f03375",
+      "after": "2026-10-26T19-31-15-973Z-source-after-41392-d9be3842",
+      "files": 2304,
+      "sha256": "c766b698ac4c7edae23ce0313aff6c2213a1d4c2540eac4372359c78b66d1681"
+    }
+  ],
+  "database_stop": "2026-10-26T19-31-40-050Z-pg-stop-26480-5df84d47",
+  "calls": 23,
+  "builds": [
+    {
+      "run": "2026-10-26T19-12-26-441Z-build-46940-45efae43",
+      "mode": "build",
+      "status": 0
+    },
+    {
+      "run": "2026-10-26T19-14-19-484Z-contracts-check-12660-b3dd5040",
+      "mode": "contracts-check",
+      "status": 0
+    },
+    {
+      "run": "2026-10-26T19-15-57-679Z-api-build-15428-fe111915",
+      "mode": "api-build",
+      "status": 0
+    },
+    {
+      "run": "2026-10-26T19-16-36-908Z-worker-build-41872-76b440f2",
+      "mode": "worker-build",
+      "status": 0
+    },
+    {
+      "run": "2026-10-26T19-20-31-325Z-api-build-46348-f8833fc6",
+      "mode": "api-build",
+      "status": 0
+    },
+    {
+      "run": "2026-10-26T19-20-47-234Z-worker-build-40972-d07aa3e8",
+      "mode": "worker-build",
+      "status": 0
+    }
+  ],
+  "migration": [
+    {
+      "run": "2026-10-26T19-12-48-627Z-migrate-35836-97253bb6",
+      "mode": "migrate",
+      "status": 0,
+      "migration_sha256": null
+    },
+    {
+      "run": "2026-10-26T19-16-36-858Z-m4-replay-48960-9b13f5cb",
+      "mode": "m4-replay",
+      "status": 0,
+      "migration_sha256": "a6674a45f25770f155112163fde67f495e178ffb2d1e3bc5dbcca483b4b5d40b"
+    }
+  ],
+  "raw_files": 132,
+  "raw_format": "Every original log is losslessly gzip-compressed and round-trip verified; metadata/snapshots are byte copies. Manifest excludes itself.",
+  "limitations": [
+    "No external model, production system, new browser acceptance, professional-content or Word/WPS visual acceptance.",
+    "Worker pipeline test requires Azurite and is skipped; Windows symlink test is skipped.",
+    "Initial migrate precedes the added replay guards; m4-replay installs and saves the final 0130 SQL before both frozen test windows.",
+    "Source freeze records working-tree bytes; Git may normalize line endings. Browser config is a verifier dependency; browser mode was not run."
+  ]
+}

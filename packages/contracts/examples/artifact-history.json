@@ -63,6 +63,66 @@
       }
     },
     {
+      "name": "artifact-history-first-authoring-without-baseline",
+      "schema": "ArtifactHistoryResponse",
+      "valid": true,
+      "value": {
+        "items": [{
+          "run_id": "synthetic-first-authoring",
+          "input_revision": 1,
+          "completed_at": "2026-10-27T02:00:00.000Z",
+          "state": "succeeded",
+          "channel": "production",
+          "primary_artifact": { "artifact_id": "synthetic-first-revision", "version": 1 },
+          "word_delivery": {
+            "revision": { "artifact_id": "synthetic-first-revision", "version": 1 },
+            "clean": { "artifact_id": "synthetic-first-clean", "version": 1 }
+          }
+        }],
+        "page": { "has_more": false, "next_cursor": null }
+      }
+    },
+    {
+      "name": "artifact-history-pair-requires-clean",
+      "schema": "ArtifactHistoryResponse",
+      "valid": false,
+      "value": {
+        "items": [{
+          "run_id": "synthetic-incomplete-pair",
+          "input_revision": 1,
+          "completed_at": "2026-10-27T02:00:00.000Z",
+          "state": "succeeded",
+          "channel": "production",
+          "primary_artifact": { "artifact_id": "synthetic-revision", "version": 1 },
+          "word_delivery": {
+            "revision": { "artifact_id": "synthetic-revision", "version": 1 }
+          }
+        }],
+        "page": { "has_more": false, "next_cursor": null }
+      }
+    },
+    {
+      "name": "artifact-history-declared-baseline-requires-exact-version",
+      "schema": "ArtifactHistoryResponse",
+      "valid": false,
+      "value": {
+        "items": [{
+          "run_id": "synthetic-incomplete-baseline",
+          "input_revision": 1,
+          "completed_at": "2026-10-27T02:00:00.000Z",
+          "state": "succeeded",
+          "channel": "production",
+          "primary_artifact": { "artifact_id": "synthetic-revision", "version": 1 },
+          "word_delivery": {
+            "revision": { "artifact_id": "synthetic-revision", "version": 1 },
+            "clean": { "artifact_id": "synthetic-clean", "version": 1 },
+            "baseline": { "artifact_id": "synthetic-baseline" }
+          }
+        }],
+        "page": { "has_more": false, "next_cursor": null }
+      }
+    },
+    {
       "name": "artifact-history-no-private-keys",
       "schema": "ArtifactHistoryResponse",
       "valid": false,

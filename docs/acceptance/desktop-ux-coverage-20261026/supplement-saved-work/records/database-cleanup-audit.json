@@ -1,0 +1,9 @@
+{
+  "dedicated_port": 15526,
+  "databases": [
+    {
+      "datname": "bb_g03_template_20261026"
+    }
+  ],
+  "other_client_sessions": []
+}

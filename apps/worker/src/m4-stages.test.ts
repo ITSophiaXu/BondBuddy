@@ -6,7 +6,7 @@ test('global assistant CLI gets the selected context and proposes cards without 
     try{
       const manifest=f.input.manifest as M4QaManifest;manifest.content=content;manifest.billing_task='m4_task_assistance';
       manifest.assistant_context={project_id:'source-project',project_name:'Synthetic',issuer_name:'Synthetic',market:'sse',offering:'private',reporting_cutoff:'2025-09-30',action:null};
-      f.ctx.run.input_hash=inputManifestHash(manifest);let calls=0;
+      f.refreshInput();let calls=0;
       const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
         calls++;await options.fileWorkspace!.prepare(f.directory);
         const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
@@ -42,11 +42,28 @@ import { modelGenerationRouter } from './model-generation-router.js';
 import { m4ActionReason } from './m4-action-progress.js';
 import { m4InputGate } from './m4-input.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution, runExecutionOrigin } from '@bondbuddy/api/run-execution';
 import type { StageContext,InputRevisionRow } from './run-pipeline.js';
+import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import type { M4WorkerInput } from './m4-input.js';
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile);
 const python=process.env.BONDBUDDY_TEST_PYTHON??'python3';
+/** Synthetic persisted rows for gates; business snapshots are never read by run alone. */
+function gateExecutionRows(ctx:StageContext,manifest:M4DocumentManifest,sql:string,args?:unknown[]) {
+  const run={...runExecutionOrigin(ctx.run),task_kind:ctx.run.task_kind,billing_mode:ctx.run.billing_mode},identity={owner_user_id:run.owner_user_id,project_id:run.project_id,run_id:run.id,
+    execution_version:ctx.lease.executionVersion,input_revision:run.input_revision,input_hash:run.input_hash};
+  if(sql.startsWith('SELECT r.*'))return {rows:[run]};
+  if(sql.includes('FROM bb_run_execution_versions'))return {rows:[identity]};
+  if(sql.includes('FROM bb_input_revisions'))return {rows:[{owner_user_id:run.owner_user_id,project_id:run.project_id,
+    revision:run.input_revision,input_hash:run.input_hash,manifest,draft_revision:1,material_versions:[],rule_pack_version:null,template_version:null}]};
+  if(sql.includes('FROM bb_review_execution_snapshots')||sql.includes('FROM bb_m4_execution_snapshots')){
+    assert.deepEqual(args,[run.owner_user_id,run.project_id,run.id,ctx.lease.executionVersion,run.input_revision,run.input_hash]);
+    return {rows:sql.includes('FROM bb_review_execution_snapshots')?[]:[{...identity,topic_id:manifest.topic_id,manifest}]};
+  }
+  assert.doesNotMatch(sql,/\bbb_(?:review|m4)_executions\b/,'gate must not reload legacy business snapshots');
+  return undefined;
+}
 async function fixture(kind:'document'|'qa'='document') {
   const base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-m4-synthetic-'));
   const source=Buffer.from('Synthetic source, assets 100 and liabilities 50.');
@@ -59,22 +76,38 @@ async function fixture(kind:'document'|'qa'='document') {
     context_snapshot:{draft:null,messages:[{message_id:'prior',version:1,role:'user',content:'Synthetic pinned history'}]},materials:[pin],billing_task:'m4_Q03'};
   const manifest=kind==='document'?document:qa;
   const store=new Map<string,Buffer>([['source',source]]),persisted:{sql:string;args?:unknown[]}[]=[];
-  const ctx={run:{id:'run',owner_user_id:'owner',project_id:'project',input_revision:1,input_hash:inputManifestHash(manifest),task_kind:kind==='document'?'generation':'qa',billing_mode:'platform_trial'},
-    lease:{owner:'owner',runId:'run',jobId:'job',token:'lease',attempts:1,checkpoint:{}},checkpoint:{},values:new Map(),signal:new AbortController().signal,
+  const rawRun={id:'run',owner_user_id:'owner',project_id:'project',input_revision:1,input_hash:inputManifestHash(manifest),task_kind:kind==='document'?'generation':'qa',billing_mode:'platform_trial' as const};
+  const ctx={run:projectRunExecution(rawRun,{executionVersion:1,inputRevision:1,inputHash:rawRun.input_hash}),
+    lease:{owner:'owner',runId:'run',jobId:'job',token:'lease',attempts:1,checkpoint:{},executionVersion:1,inputRevision:1,inputHash:inputManifestHash(manifest)},checkpoint:{},values:new Map(),signal:new AbortController().signal,
     blobs:{put:async(key:string,bytes:Buffer)=>{store.set(key,bytes);},getIfExistsBounded:async(key:string)=>store.get(key)??null}} as unknown as StageContext;
   const query=async(sql:string,args?:unknown[])=>{
     persisted.push({sql,args});
-    if(sql.startsWith('SELECT r.*'))return {rows:[{...ctx.run,state:'running',event_cursor:0}]};
-    if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:'job',state:'running',lease_token:'lease',lease_until:new Date(Date.now()+60000)}]};
+    if(sql.startsWith('SELECT r.*'))return {rows:[{...runExecutionOrigin(ctx.run),task_kind:ctx.run.task_kind,billing_mode:ctx.run.billing_mode,state:'running',event_cursor:0}]};
+    if(sql.includes('FROM bb_run_execution_versions'))return {rows:[{owner_user_id:ctx.run.owner_user_id,project_id:ctx.run.project_id,run_id:ctx.run.id,execution_version:1,input_revision:ctx.run.input_revision,input_hash:ctx.run.input_hash}]};
+    if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:ctx.lease.jobId,owner_user_id:ctx.lease.owner,run_id:ctx.lease.runId,
+      state:'running',lease_token:ctx.lease.token,lease_until:new Date(Date.now()+60000),checkpoint:structuredClone(ctx.lease.checkpoint)}]};
     if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
-    if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
+    if(sql.includes('RETURNING checkpoint')){
+      // Return the real queue writer's exact stage set and execution stamp. An
+      // empty fake return would discard the persisted method on the next read.
+      assert.equal(args?.[0],ctx.lease.jobId);
+      return {rows:[{checkpoint:JSON.parse(String(args?.[2]))}]};
+    }
     if(sql.startsWith('SELECT event_cursor'))return {rows:[{event_cursor:0}]};
     return {rows:[],rowCount:1};
   };
   const client={query,release:()=>{}};ctx.pool={query,connect:async()=>client} as unknown as StageContext['pool'];
   const input:M4WorkerInput={manifest,materials:[{pin,filename:'synthetic.txt',mediaType:'text/plain',objectKey:'source'}],artifacts:[]};
   const clean=async()=>{assert.ok(directory.startsWith(base+(process.platform==='win32'?'\\':'/')));await rm(directory,{recursive:true,force:true});};
-  return {directory,pin,source,ctx,input,store,persisted,clean};
+  const writes:Parameters<typeof writeRunWorkingFile>[0][]=[];
+  const writer:typeof writeRunWorkingFile=async value=>{writes.push({...value,bytes:Buffer.from(value.bytes)});await value.blobs.put(value.key,value.bytes,value.mediaType);};
+  const refreshInput=()=>{
+    const hash=inputManifestHash(manifest);
+    const raw={...runExecutionOrigin(ctx.run),task_kind:ctx.run.task_kind,billing_mode:ctx.run.billing_mode,input_hash:hash};
+    ctx.run=projectRunExecution(raw,{executionVersion:1,inputRevision:raw.input_revision,inputHash:hash});
+    ctx.lease.inputHash=hash;
+  };
+  return {directory,pin,source,ctx,input,store,persisted,clean,writes,writer,refreshInput};
 }
 async function outputWords(directory:string) {
   await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(directory)})/'output'\nfor name,text in [('document.docx','Synthetic summary'),('preparation-note.docx','Synthetic preparation note')]:\n d=Document();d.add_paragraph(text);t=d.add_table(rows=2,cols=2);t.cell(0,0).text='项目';t.cell(1,0).text='资产';t.cell(1,1).text='100';d.save(p/name)\n`],{cwd:root,timeout:30000});
@@ -88,9 +121,9 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
     const manifest=f.input.manifest as M4DocumentManifest;manifest.input.document_type=documentType;manifest.market=market;
     manifest.billing_task=({private_summary:'m4_G05',underwriter:'m4_G02',legal:'m4_G03'} as const)[documentType];
     manifest.knowledge=loadM4Knowledge(market,documentType);manifest.input.requirements=[{requirement_id:'r',text:'不要生成签署页',message_id:'m',message_version:1}];manifest.input.supplemental_requirements='重点说明偿债安排，保留财务表格';
-    f.ctx.run.input_hash=inputManifestHash(manifest);
+    f.refreshInput();
     let calls=0;
-    const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+    const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),writer:f.writer,model:options=>({name:options.name,run:async()=>{
       calls++;assert.ok(options.fileWorkspace);assert.equal(options.materialTools,undefined);assert.equal(options.reviewTools,undefined);
       await options.fileWorkspace.prepare(f.directory);
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
@@ -105,6 +138,8 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error();
     assert.ok(validM4DocumentResult(result.value,f.ctx));assert.equal(calls,1);
+    assert.deepEqual(f.writes.map(write=>write.name),['document.docx','preparation-note.docx']);
+    for(const write of f.writes){assert.deepEqual(write.source,{kind:'provider',attemptId:'synthetic-call',resultSchemaVersion:'codex-m4-document-v1'});assert.equal(write.lease,f.ctx.lease);assert.equal(digest(write.bytes),result.value.files[write.name]!.sha256);}
     assert.equal(Object.keys(result.value.files).length,2);f.ctx.values.set('model_generation',result.value);
     const delivered=await m4DocumentDeliveryStage().run(f.ctx);assert.equal(delivered.kind,'deliver');if(delivered.kind!=='deliver')throw Error();
     assert.equal(delivered.namedArtifacts?.length,1);assert.notEqual(digest(delivered.bytes),digest(delivered.namedArtifacts![0].bytes));
@@ -119,7 +154,7 @@ test('M4 missing output is honest, readonly input tampering fails and changed pi
   for(const action of ['missing','tamper','method'] as const){const f=await fixture();let calls=0;
     try{
       if(action==='method')f.ctx.checkpoint.m4_document_method={version:'older-method'};
-      const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+      const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),writer:f.writer,model:options=>({name:options.name,run:async()=>{
         calls++;await options.fileWorkspace!.prepare(f.directory);
         if(action==='tamper'){await chmod(join(f.directory,'materials/m0.txt'),0o600);await writeFile(join(f.directory,'materials/m0.txt'),'changed');}
         return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-call'} as never,{text:''})};
@@ -175,7 +210,7 @@ test('M4 QA receives exact execution proposal and reading context but returns in
     manifest.billing_task='m4_task_assistance';manifest.content='资料已确认，按当前报价开始制作私募摘要';
     manifest.context={...manifest.context,document_type:'private_summary',draft_version:7};
     manifest.execution_proposal={document_type:'private_summary',expected_draft_version:7,quote_id:'exact-visible-quote'};
-    f.ctx.run.input_hash=inputManifestHash(manifest);
+    f.refreshInput();
     const frozenHash=f.ctx.run.input_hash;let calls=0;
     const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
       calls++;await options.fileWorkspace!.prepare(f.directory);
@@ -205,7 +240,7 @@ test('M4 Q04 financial comparison requires a host receipt while concept methods 
   ]){
     const f=await fixture('qa');
     try{
-      const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content=scenario.content;f.ctx.run.input_hash=inputManifestHash(manifest);
+      const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content=scenario.content;f.refreshInput();
       const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
         await options.fileWorkspace!.prepare(f.directory);await writeFile(join(f.directory,'output/reply.json'),JSON.stringify(reply({content:scenario.answer})));
         return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-call'} as never,{text:''})};
@@ -221,7 +256,7 @@ test('M4 Q04 financial comparison requires a host receipt while concept methods 
 test('M4 Q04 two-period numerical result and difference come from the host receipt instead of model text',async()=>{
   const f=await fixture('qa');
   try{
-    const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content='比较两期偿债能力';f.ctx.run.input_hash=inputManifestHash(manifest);
+    const manifest=f.input.manifest as M4QaManifest;manifest.billing_task='m4_Q04';manifest.content='比较两期偿债能力';f.refreshInput();
     const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
       await options.fileWorkspace!.prepare(f.directory);
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8')),source={...input.authorized_sources[0],locator:'text/1-1'};
@@ -286,8 +321,9 @@ test('M4 input gate checks topic, subtype, scope and exact owned source hash',as
   const f=await fixture();
   try{const manifest=f.input.manifest as M4DocumentManifest;const input={manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;
     let subtype='m4_document_v1',scope='project',materialHash=f.pin.sha256;
-    f.ctx.pool={query:async(sql:string)=>sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:scope,input_hash:f.ctx.run.input_hash,manifest,subtype}]}:
-      sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:materialHash}]}:{rows:[]}} as unknown as StageContext['pool'];
+    f.ctx.pool={query:async(sql:string,args?:unknown[])=>gateExecutionRows(f.ctx,manifest,sql,args)
+      ??(sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:scope,input_hash:f.ctx.run.input_hash,manifest,subtype}]}:
+      sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:materialHash}]}:{rows:[]})} as unknown as StageContext['pool'];
     assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,input),null);
     subtype='default';assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,input))?.kind,'fail');subtype='m4_document_v1';
     scope='foreign';assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,input))?.kind,'fail');scope='project';
@@ -302,20 +338,24 @@ test('M4 template registry and edit-base kind are explicit; retiring the exact o
     manifest.input.document_type='init';manifest.billing_task='m4_G01';manifest.input.template={template_id:'template',template_version:2,sha256:f.pin.sha256};
     manifest.template_material=f.pin;manifest.input.fields.broker='Synthetic Broker';
     let template={broker:'Synthetic Broker',document_type:'init',market:'sse',sha256:f.pin.sha256,material:f.pin,retired_at:new Date()};
-    let baseKind='document';
-    const refresh=()=>{f.ctx.run.input_hash=inputManifestHash(manifest);return {manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;};
-    f.ctx.pool={query:async(sql:string)=>sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
+    let baseKind='document',hasCanonicalBase=true;
+    const refresh=()=>{f.refreshInput();return {manifest,input_hash:f.ctx.run.input_hash} as unknown as InputRevisionRow;};
+    const gate=()=>{const input=refresh();return m4InputGate(f.ctx.pool,f.ctx.run,input);};
+    f.ctx.pool={query:async(sql:string,args?:unknown[])=>gateExecutionRows(f.ctx,manifest,sql,args)
+      ??(sql.includes('FROM bb_m4_topics')?{rows:[{scope_id:'project',input_hash:f.ctx.run.input_hash,manifest,subtype:'m4_document_v1'}]}:
       sql.includes('FROM bb_m4_templates')?{rows:[template]}:sql.includes('FROM bb_material_versions')?{rows:[{filename:'synthetic.txt',media_type:'text/plain',object_key:'source',sha256:f.pin.sha256}]}:
-      sql.includes('FROM bb_m4_artifacts')?{rows:[{kind:baseKind,document_type:'init'}]}:sql.includes('FROM bb_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]}} as unknown as StageContext['pool'];
-    assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null);
-    template={...template,broker:''};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail','init still requires a broker');
+      sql.includes('FROM bb_m4_execution_artifact_versions')?{rows:hasCanonicalBase?[{kind:baseKind,document_type:'init'}]:[]}:sql.includes('FROM bb_delivered_artifact_versions')?{rows:[{object_key:'base',media_type:'text/plain',sha256:f.pin.sha256}]}:{rows:[]})} as unknown as StageContext['pool'];
+    assert.equal(await gate(),null);
+    template={...template,broker:''};assert.equal((await gate())?.kind,'fail','init still requires a broker');
     manifest.input.document_type='private_summary';manifest.billing_task='m4_G05';template={...template,document_type:'private_summary'};delete manifest.input.fields.broker;
-    assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null,'summary template broker is optional');
+    assert.equal(await gate(),null,'summary template broker is optional');
     manifest.input.document_type='init';manifest.billing_task='m4_G01';manifest.input.fields.broker='Synthetic Broker';template={...template,broker:'Synthetic Broker',document_type:'init'};
-    template={...template,broker:'Other Broker'};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail');template={...template,broker:'Synthetic Broker'};
-    template={...template,sha256:'b'.repeat(64)};assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail');template={...template,sha256:f.pin.sha256};
+    template={...template,broker:'Other Broker'};assert.equal((await gate())?.kind,'fail');template={...template,broker:'Synthetic Broker'};
+    template={...template,sha256:'b'.repeat(64)};assert.equal((await gate())?.kind,'fail');template={...template,sha256:f.pin.sha256};
     manifest.input.edit_base={source_project_id:'project',artifact_id:'base',artifact_version:1,sha256:f.pin.sha256};
-    assert.equal(await m4InputGate(f.ctx.pool,f.ctx.run,refresh()),null);baseKind='report';assert.equal((await m4InputGate(f.ctx.pool,f.ctx.run,refresh()))?.kind,'fail');
+    assert.equal(await gate(),null);baseKind='report';assert.equal((await gate())?.kind,'fail');
+    baseKind='document';hasCanonicalBase=false;
+    assert.equal((await gate())?.kind,'fail','a delivered pin without its canonical Word registration cannot become an edit base');
   }finally{await f.clean();}
 });
 

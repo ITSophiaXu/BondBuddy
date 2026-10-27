@@ -1,0 +1,250 @@
+▶ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions
+  ✔ the real intent INSERT atomically binds V1, runtime and completed-result reuse retain their exact source (1045.7052ms)
+  ✔ new attempts reject wrong revision with identical hash, wrong hash, missing input metadata and non-model prompts (585.2428ms)
+  ✔ missing or corrupted binding blocks real latest, reuse, runtime and observation paths without writes or Blob reads (297.6795ms)
+  ✔ historical unprompted attempts retain identity but never gain an invented provider input binding (41.3824ms)
+✔ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions (1973.2547ms)
+✔ model work binding returns the exact immutable input and prompt without selecting latest (2.8039ms)
+✔ missing, duplicate, foreign, altered input and incomplete prompt bindings fail closed (2.4467ms)
+✔ actual provider lookups never turn an existing unbound prompted attempt into a new call (1.3559ms)
+✔ an asynchronous false verdict cannot persist a private result (5.3713ms)
+✔ private persistence waits for an asynchronous verdict and binds checked bytes (1.6769ms)
+✔ a rejected asynchronous validator never stores a result (0.9106ms)
+✔ synchronous validators remain compatible and malformed JSON is rejected first (0.7376ms)
+▶ runtime evidence shares run -> job lock order with renewal and cancellation
+  ✔ renewal keeps the job lock available while runtime waits for the run (730.5855ms)
+  ✔ cancellation wins before evidence locks and prevents a late runtime insert (63.947ms)
+  ✔ owner, project, token and expired lease remain enforced (40.5067ms)
+  ✔ every independent provider boundary rejects a different execution version or input under the same live token (105.5916ms)
+✔ runtime evidence shares run -> job lock order with renewal and cancellation (945.3338ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (7032.7843ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4182ms) # SKIP
+✔ execution input reader returns exact immutable input and scoped business snapshots without changing origin (3.4522ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (1.981ms)
+✔ business snapshots may be absent but never come from a different run, owner or project (1.4498ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (4319.6679ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (171.0081ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (786.8545ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (376.5035ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (5658.0782ms)
+✔ real collector envelopes extract exact provider, local correction and project-file references (7.3154ms)
+✔ explicit review correction provider output can mix its exact attempt and local correction files (1.217ms)
+✔ single-reference validator supports storing before an output envelope exists (0.4805ms)
+✔ a review provider attempt named correction cannot collide with the local correction namespace (0.5622ms)
+✔ foreign scope, different attempt and path mutations are rejected by complete key equality (1.2762ms)
+✔ all schemas reject unknown files, extra ref/envelope fields and invalid ref structures (2.1933ms)
+✔ input binding, schema, provenance and hash validation fail closed even for empty error results (3.4373ms)
+✔ file-specific size limits accept boundaries and reject nonpositive, fractional and oversized bytes (1.4501ms)
+✔ partial errors inventory every valid retained file and never excuse malformed optional files (1.782ms)
+✔ revision no-change JSON output and completion metadata remain strict (1.6426ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (233.0532ms)
+  ✔ owner (229.0698ms)
+  ✔ project (248.3229ms)
+  ✔ input revision (247.0752ms)
+  ✔ input hash (219.072ms)
+  ✔ execution request id (237.1685ms)
+  ✔ request hash (256.2541ms)
+  ✔ valid successor input pair (262.8498ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (3902.9568ms)
+✔ real review-result update can prepare supplements and resume its original input (2186.3411ms)
+▶ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them
+  ✔ m1 (1195.6623ms)
+  ✔ m3 (133.2122ms)
+  ✔ m4 (296.912ms)
+  ✔ new source declarations and bound M4 source replacements remain explicit (235.0918ms)
+✔ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them (2075.1633ms)
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (65.0986ms)
+  ✔ old request receipt survives a later save and explicit resume (105.7898ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1491.2493ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (111.7698ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (438.5202ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1759.0854ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (613.9178ms)
+  ✔ wrong hash (118.4236ms)
+  ✔ wrong owner (18.7668ms)
+  ✔ wrong project (15.1895ms)
+  ✔ duplicate additions (20.1313ms)
+  ✔ unknown replacement (18.2112ms)
+  ✔ duplicate replacements (20.2898ms)
+  ✔ different role (16.7065ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (1167.3825ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (821.3781ms)
+  ✔ saving (44.2902ms)
+  ✔ paused_lease (43.484ms)
+  ✔ automatic_pause (66.0495ms)
+  ✔ pending_provider (98.1424ms)
+  ✔ completed_unknown (58.5038ms)
+  ✔ failed_unknown (58.8617ms)
+  ✔ terminal (53.0153ms)
+  ✔ archived (48.019ms)
+  ✔ unsupported (58.9936ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (129.8721ms)
+  ✔ deleted project is owner-safe 404 (15.8787ms)
+  ✔ test-channel metadata obeys the deployment read gate (21.7883ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1731.7917ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (994.0693ms)
+  ✔ m3 (114.7656ms)
+  ✔ m4 (102.4935ms)
+  ✔ inconsistent M3 version is unavailable (54.5115ms)
+  ✔ inconsistent M3 operation is unavailable (49.1776ms)
+  ✔ inconsistent M3 origin is unavailable (61.0386ms)
+  ✔ inconsistent M3 missing_review is unavailable (45.0768ms)
+  ✔ inconsistent review-result update source_run is unavailable (45.0022ms)
+  ✔ inconsistent review-result update source_pin is unavailable (49.2006ms)
+  ✔ inconsistent review-result update materials is unavailable (60.2994ms)
+  ✔ inconsistent review-result update requirements is unavailable (53.5729ms)
+  ✔ inconsistent review-result update operation is unavailable (51.7011ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (107.1718ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1982.6365ms)
+✔ source-only supplement edits preserve exact idempotent receipts and require a fresh revision and CAS (1355.8688ms)
+▶ HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit
+  ✔ wrong material (15.2481ms)
+  ✔ wrong revision (16.6802ms)
+  ✔ wrong content (18.8394ms)
+  ✔ incompatible market (15.7714ms)
+  ✔ m3 cannot accept M1 source authority (53.2391ms)
+  ✔ m4 cannot accept M1 source authority (116.9062ms)
+✔ HTTP source metadata accepts only M1 source roles and exact declarations while baseline choices remain explicit (1545.5675ms)
+✔ HTTP capture exposes only counts while internal pins bind the exact provider output and read original private bytes (2159.2146ms)
+▶ captured private file authority rejects changed scopes, sources and every modified pin field
+  ✔ wrong owner (160.214ms)
+  ✔ wrong project (84.1533ms)
+  ✔ wrong run (86.2908ms)
+  ✔ wrong revision (98.349ms)
+  ✔ wrong source result (92.6894ms)
+  ✔ wrong source schema (93.9872ms)
+  ✔ wrong unrelated checkpoint (96.6252ms)
+  ✔ modified pin version (58.9137ms)
+  ✔ modified pin owner (65.0795ms)
+  ✔ modified pin projectId (58.4014ms)
+  ✔ modified pin runId (60.7083ms)
+  ✔ modified pin revision (63.0257ms)
+  ✔ modified pin executionVersion (67.9544ms)
+  ✔ modified pin inputRevision (65.3394ms)
+  ✔ modified pin inputHash (62.1802ms)
+  ✔ modified pin checkpointHash (58.3735ms)
+  ✔ modified pin sourceHash (59.8673ms)
+  ✔ modified pin name (57.746ms)
+  ✔ modified pin hash (58.6213ms)
+  ✔ modified pin size (57.8186ms)
+  ✔ modified pin media (60.3629ms)
+  ✔ modified pin key (59.3216ms)
+  ✔ modified pin attempt path (67.9403ms)
+  ✔ modified pin source binding (61.6088ms)
+✔ captured private file authority rejects changed scopes, sources and every modified pin field (3603.8458ms)
+▶ missing or damaged nested files do not block saving materials and cannot cause retries or mutations
+  ✔ missing nested Blob (104.8716ms)
+  ✔ same-size hash corruption (69.0426ms)
+  ✔ oversized nested Blob (62.8604ms)
+  ✔ short nested Blob (63.0969ms)
+  ✔ provider_result tombstone denies retained nested bytes (82.1129ms)
+  ✔ prompt_snapshot tombstone denies retained nested bytes (315.7589ms)
+✔ missing or damaged nested files do not block saving materials and cannot cause retries or mutations (2252.471ms)
+▶ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version
+  ✔ wrong attempt directory (1336.6238ms)
+  ✔ wrong nested version (266.402ms)
+✔ a durable JSON envelope cannot authorize another attempt directory or an incompatible collector version (1879.2729ms)
+✖ a real paused local correction captures six exact checkpoint files with zero provider results and no charges (1466.5634ms)
+▶ checkpoint correction bytes require the exact review execution, export-only source and frozen source material
+  ✔ missing_execution (1090.956ms)
+  ✔ execution_version (165.3946ms)
+  ✔ execution_operation (159.6168ms)
+  ✔ snapshot_input (166.6354ms)
+  ✔ snapshot_origin (173.9801ms)
+  ✔ missing_export_only (284.3939ms)
+  ✔ false_export_only (199.113ms)
+  ✔ snapshot_source_run (204.5223ms)
+  ✔ missing_export (197.069ms)
+  ✔ invalid_export_hash (209.7678ms)
+  ✔ self_source_run (194.0867ms)
+  ✔ source_not_in_manifest (188.8511ms)
+✔ checkpoint correction bytes require the exact review execution, export-only source and frozen source material (3441.5995ms)
+✔ ordinary authoring supplements preserve every frozen context and return independent candidate bytes (8.3994ms)
+✔ no changes do not produce an adoptable input; unavailable bytes do not produce a candidate hash (0.7404ms)
+✔ new historical/reference bytes never inherit a declaration from another version or current project data (2.975ms)
+✔ explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate (14.6808ms)
+✔ complete source information still requires an explicit choice for every changed source bound to an old output (1.735ms)
+✔ same-content different source revisions require their own exact declaration and incomplete fields remain saveable information gaps (1.626ms)
+✔ new source declarations without an old output prepare normally and do not accept a meaningless discard flag (2.0564ms)
+✔ source metadata rejects wrong exact pins, ordinary evidence roles and non-M1 contexts without changing input (2.1663ms)
+✔ M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot (0.9911ms)
+✔ M3 unchanged evidence links preserve the exact original report, finding and material identity (0.8858ms)
+✔ M3 replacing linked source or evidence requires explicit new evidence mapping without rewriting old links (1.1678ms)
+✔ M3 source replacements preserve the DOCX/PDF boundary while ordinary text evidence stays usable (0.9267ms)
+✔ M3 correction exports retain the original editor decisions and cannot be converted into new material processing (0.4824ms)
+✔ accepted M3 origin, finding revisions and report follow-ups retain their original authority and cannot be rewritten (1.4955ms)
+✔ M4 preserves cross-project source, duplicated source/template pins, edit base and all business context (1.4823ms)
+✔ material limits and malformed shared-schema inputs fail without partially changing any input (2.2798ms)
+✔ M4 source/template-only pins remain outside evidence, while its evidence limit is enforced independently (1.8379ms)
+✔ legacy M3 origin may remain absent and malformed or mismatched review snapshots cannot be guessed (0.9071ms)
+✔ a result material list cannot silently inject, omit or retarget materials outside the saved changes (0.5703ms)
+▶ captured-result locks cover the async validator while real prompt and provider-result retention wait
+  ✔ prompt_snapshot (1404.3491ms)
+  ✔ provider_result (1271.1243ms)
+✔ captured-result locks cover the async validator while real prompt and provider-result retention wait (2677.3971ms)
+✔ a real purge holding the prompt lock makes the captured-result reader wait, then reject without reading result bytes (1180.326ms)
+✔ safe HTTP supplement capture freezes exact work independently for each receipt and replays without charges (2409.6541ms)
+▶ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history
+  ✔ missing completed result (112.9719ms)
+  ✔ duplicate result (49.886ms)
+  ✔ wrong result id (59.5591ms)
+  ✔ wrong result hash (49.5925ms)
+  ✔ wrong attempt (51.7355ms)
+  ✔ wrong schema (57.9454ms)
+  ✔ unmatched extra reference (55.8817ms)
+  ✔ malformed stages (55.4111ms)
+✔ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history (1970.8834ms)
+▶ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes
+  ✔ an async exact schema validator reads the original value (78.0961ms)
+  ✔ a schema rejection cannot trigger another call (40.6987ms)
+  ✔ a different expected schema never reaches Blob reads (45.9439ms)
+  ✔ foreign owner and uncaptured result references never reach Blob reads (137.1956ms)
+  ✔ same-size corruption, oversized bytes and missing Blob remain read-only failures (168.2827ms)
+  ✔ provider_result purge receipt denies existing bytes (37.5603ms)
+  ✔ prompt_snapshot purge receipt denies existing bytes (35.8186ms)
+✔ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes (2094.5016ms)
+✔ legacy supplement receipts report not_captured and grant no access to later durable work (1503.285ms)
+ℹ tests 195
+ℹ suites 0
+ℹ pass 193
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 151965.9342
+
+✖ failing tests:
+
+test at apps\api\dist\run-supplement-files.pg.test.js:388:1
+✖ a real paused local correction captures six exact checkpoint files with zero provider results and no charges (1466.5634ms)
+  error: column "run_id" does not exist
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-files.pg.test.js:402:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 182,
+    severity: 'ERROR',
+    code: '42703',
+    detail: undefined,
+    hint: 'Perhaps you meant to reference the column "bb_model_call_attempts.job_id".',
+    position: '61',
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'parse_relation.c',
+    line: '3738',
+    routine: 'errorMissingColumn'
+  }

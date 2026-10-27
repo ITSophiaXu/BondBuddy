@@ -1,0 +1,25 @@
+✔ real legacy/new registration deadlock converges to one exact V1 mirror and preserves owner/lease gates (2747.9092ms)
+✔ a real registration deadlock retry rechecks an expired lease and leaves neither editor table partially written (5293.2492ms)
+✔ 0127 fresh replay installs six-field editor FKs and a versioned key while preserving the legacy key and V1 gate (636.5735ms)
+✔ 0127 actual replay backfills exact legacy bodies, hashes and PostgreSQL microsecond creation time (685.9268ms)
+✔ 0127 legacy-first bridge matches JavaScript canonical Unicode/control hashes and rejects all immutable editor writes (692.9155ms)
+✔ 0127 canonical-first V1 mirror accepts exact SQL timestamp copying and rejects changed body, hash or microsecond time atomically (844.1487ms)
+✔ 0127 invalid legacy inserts roll back both tables instead of skipping missing or foreign exact source evidence (1121.029ms)
+✔ 0127 actual legacy backfill fails the whole transaction for wrong project, missing snapshot/source, bad hash, source hash or format (1308.2225ms)
+✔ 0127 NOWAIT conflicts release parent locks on rollback and retry succeeds after a real legacy writer commits (7199.4523ms)
+✔ 0127 a late legacy-table lock fails NOWAIT after parent locks without trapping the writer behind those parents (6596.6757ms)
+✔ trusted registration is immutable, exact replay preserves its V1 mirror, and only final delivery exposes the editor (2138.0386ms)
+✔ expired, cancelled, wrong-token and wrong-identity writers cannot create either editor table row (13869.003ms)
+✔ HTTP query, ownership and live delivery gates preserve history while retaining the current V1 input-integrity gate (4310.0414ms)
+✔ missing canonical storage never falls back to legacy and damaged storage fails closed (3825.0857ms)
+✔ old and pinned export requests freeze the source edition without changing old idempotency bodies or creating model charges (4877.5405ms)
+✔ an explicit mismatched export source pin is rejected without falling back to the default edition (3044.3932ms)
+✔ test-only editors require the enabled channel and a live exact-input test grant (2196.3761ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 97409.8828

@@ -1,0 +1,124 @@
+✔ ordinary authoring supplements preserve every frozen context and return independent candidate bytes (8.684ms)
+✔ no changes do not produce an adoptable input; unavailable bytes do not produce a candidate hash (0.6441ms)
+✖ new historical/reference bytes never inherit a declaration from another version or current project data (3.4603ms)
+✖ explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate (1.3006ms)
+✖ complete source information still requires an explicit choice for every changed source bound to an old output (0.7653ms)
+✔ same-content different source revisions require their own exact declaration and incomplete fields remain saveable information gaps (1.5269ms)
+✖ new source declarations without an old output prepare normally and do not accept a meaningless discard flag (0.5837ms)
+✔ source metadata rejects wrong exact pins, ordinary evidence roles and non-M1 contexts without changing input (2.2772ms)
+✔ M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot (1.3395ms)
+✔ M3 unchanged evidence links preserve the exact original report, finding and material identity (1.5937ms)
+✔ M3 replacing linked source or evidence requires explicit new evidence mapping without rewriting old links (1.5251ms)
+✔ M3 source replacements preserve the DOCX/PDF boundary while ordinary text evidence stays usable (0.9534ms)
+✔ M3 correction exports retain the original editor decisions and cannot be converted into new material processing (0.4711ms)
+✔ accepted M3 origin, finding revisions and report follow-ups retain their original authority and cannot be rewritten (1.6795ms)
+✔ M4 preserves cross-project source, duplicated source/template pins, edit base and all business context (1.625ms)
+✔ material limits and malformed shared-schema inputs fail without partially changing any input (2.3756ms)
+✔ M4 source/template-only pins remain outside evidence, while its evidence limit is enforced independently (1.8473ms)
+✔ legacy M3 origin may remain absent and malformed or mismatched review snapshots cannot be guessed (0.9302ms)
+✔ a result material list cannot silently inject, omit or retarget materials outside the saved changes (0.5855ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 15
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9523.9398
+
+✖ failing tests:
+
+test at apps\api\dist\run-supplement-input.test.js:90:1
+✖ new historical/reference bytes never inherit a declaration from another version or current project data (3.4603ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'source'
+  - 'new-source'
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:105:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'source',
+    expected: 'new-source',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-supplement-input.test.js:108:1
+✖ explicit source declarations synchronize candidate contexts and remove a declined old output only from the candidate (1.3006ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unsupported'
+  - 'prepared'
+  
+      at check (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:62:12)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:118:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unsupported',
+    expected: 'prepared',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-supplement-input.test.js:132:1
+✖ complete source information still requires an explicit choice for every changed source bound to an old output (0.7653ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unsupported'
+  - 'needs_information'
+  
+      at check (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:62:12)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:143:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unsupported',
+    expected: 'needs_information',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-supplement-input.test.js:167:1
+✖ new source declarations without an old output prepare normally and do not accept a meaningless discard flag (0.5837ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unsupported'
+  - 'prepared'
+  
+      at check (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:62:12)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-input.test.js:173:5)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unsupported',
+    expected: 'prepared',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

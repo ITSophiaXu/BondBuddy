@@ -8,12 +8,13 @@ import {
   type OcrPageCheckpointV2
 } from '@bondbuddy/contracts';
 import { authorizeOcrMaterial } from './ocr.js';
-import { digest, executionKeyFromStorage, missing, Problem, project, transaction, uid, type PrivateBlobs } from './data.js';
+import { digest, executionKeyFromStorage, missing, Problem, project, run as getRun, transaction, uid, type PrivateBlobs } from './data.js';
+import { assertRunExecution, type RunExecutionIdentity } from './run-execution.js';
 
 export type OcrV2Scope = {
   owner: string; projectId: string; materialId: string; version: number;
-  purpose: 'source_preflight' | 'full_ocr'; runId?: string; leaseToken?: string;
-};
+} & ({ purpose: 'source_preflight'; runId?: string; leaseToken?: string; executionIdentity?: never }
+  | { purpose: 'full_ocr'; runId: string; leaseToken: string; executionIdentity: RunExecutionIdentity });
 const MAX_CHECKPOINT_BYTES = 32 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 48 * 1024 * 1024;
 const integrity = () => new Problem(503, 'DATA_UNAVAILABLE', 'OCR v2 checkpoint integrity failed');
@@ -21,6 +22,8 @@ const invalid = () => new Problem(422, 'VALIDATION_FAILED', 'Invalid OCR v2 iden
 
 /** Never accept document/context authority from Python or a caller without this DB check. */
 export async function authorizeOcrV2(pool: Pool | PoolClient, scope: OcrV2Scope, document: OcrDocumentIdentityV2, lock = false) {
+  if (scope.purpose === 'full_ocr' && !scope.executionIdentity)
+    throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Full OCR requires its worker execution identity');
   if (!Value.Check(OcrDocumentIdentityV2Schema, document) ||
     document.owner_user_id !== scope.owner || document.project_id !== scope.projectId ||
     document.material.material_id !== scope.materialId || document.material.material_version !== scope.version) throw invalid();
@@ -37,16 +40,20 @@ export async function authorizeOcrV2(pool: Pool | PoolClient, scope: OcrV2Scope,
     if (!job.rows[0]) throw new Problem(409, 'CAPABILITY_NOT_READY', 'Source preflight requires a durable parse job');
     return { jobId: job.rows[0].id as string, context: { purpose: 'source_preflight', run: null, billable: false, cost_payer: 'platform' } as const };
   }
-  const run = await pool.query(`SELECT r.id,r.execution_request_id,r.input_revision,r.input_hash,j.id AS job_id
+  // Material authorization holds the project lock first. Match every run writer's
+  // run -> job order before checking the immutable execution association.
+  if (lock) await getRun(pool, scope.owner, scope.runId, true);
+  const run = await pool.query(`SELECT r.*,j.id AS job_id
     FROM bb_runs r JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
     JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
     WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state='running'
       AND r.input_hash=i.input_hash AND j.state='running' AND j.lease_token=$6 AND j.lease_until>now()
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(i.material_versions) m
-        WHERE m->>'material_id'=$4 AND (m->>'material_version')::integer=$5)`,
+        WHERE m->>'material_id'=$4 AND (m->>'material_version')::integer=$5)${lock ? ' FOR UPDATE OF j' : ''}`,
   [scope.owner, scope.projectId, scope.runId ?? '', scope.materialId, scope.version, scope.leaseToken ?? '']);
   if (!run.rows[0]) throw new Problem(409, 'CAPABILITY_NOT_READY', 'Full OCR requires an active run and locked material');
   const row = run.rows[0];
+  await assertRunExecution(pool, row, scope.executionIdentity);
   return { jobId: row.job_id as string, context: {
     purpose: 'full_ocr', run: { run_id: row.id as string, execution_request_id: executionKeyFromStorage(row.execution_request_id as string),
       input_revision: row.input_revision as number, input_hash: (row.input_hash as string).trim() },
@@ -173,9 +180,19 @@ async function recordBatchCost(client: PoolClient, batch: any, quantity: number 
 export async function settleInterruptedOcrV2(pool: Pool, scope: OcrV2Scope) {
   return transaction(pool, async client => {
     await project(client, scope.owner, scope.projectId, true);
+    if (scope.purpose === 'full_ocr') {
+      if (!scope.executionIdentity) throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Full OCR requires its worker execution identity');
+      const run = await getRun(client, scope.owner, scope.runId, true);
+      const job = await client.query(`SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2
+        AND state='running' AND lease_token=$3 AND lease_until>now() FOR UPDATE`, [scope.owner, scope.runId, scope.leaseToken]);
+      if (run.project_id !== scope.projectId || run.state !== 'running' || !job.rowCount)
+        throw new Problem(409, 'CAPABILITY_NOT_READY', 'Full OCR requires an active run and locked material');
+      await assertRunExecution(client, run, scope.executionIdentity);
+    }
     const rows = await client.query(`SELECT * FROM bb_ocr_v2_batches WHERE owner_user_id=$1 AND project_id=$2
-      AND material_id=$3 AND material_version=$4 AND state='started' ORDER BY created_at,id FOR UPDATE`,
-      [scope.owner, scope.projectId, scope.materialId, scope.version]);
+      AND material_id=$3 AND material_version=$4 AND state='started'
+      AND purpose=$5 AND ($6::text IS NULL OR context->'run'->>'run_id'=$6) ORDER BY created_at,id FOR UPDATE`,
+      [scope.owner, scope.projectId, scope.materialId, scope.version, scope.purpose, scope.purpose === 'full_ocr' ? scope.runId : null]);
     for (const row of rows.rows) {
       await client.query("UPDATE bb_ocr_v2_batches SET state='interrupted',finished_at=now() WHERE id=$1", [row.id]);
       await recordBatchCost(client, row, null, 'failed');
@@ -214,6 +231,7 @@ export async function persistOcrV2Page(pool: Pool, blobs: PrivateBlobs, scope: O
   request: OcrBatchRequestV2, checkpoint: OcrPageCheckpointV2, image: Buffer) {
   if (!request.pages.includes(checkpoint.identity.page) || checkpoint.source_request_id !== request.request_id) throw invalid();
   await validateOcrPageCheckpointV2(checkpoint, { document: request.document, page: checkpoint.identity.page }, image);
+  if (scope.purpose === 'full_ocr') await authorizeOcrV2(pool, scope, request.document);
   const prefix = `users/${scope.owner}/projects/${scope.projectId}/ocr-v2/${scope.materialId}/${scope.version}/${checkpoint.identity_sha256}`;
   const imageKey = `${prefix}/${checkpoint.result_sha256}.png`;
   const checkpointKey = `${prefix}/${checkpoint.result_sha256}.json`;

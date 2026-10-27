@@ -1,0 +1,8 @@
+2026-10-26 20:04:42.098 CST [41400] LOG:  starting PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit
+2026-10-26 20:04:42.100 CST [41400] LOG:  listening on IPv4 address "127.0.0.1", port 15526
+2026-10-26 20:04:42.435 CST [41400] LOG:  database system is ready to accept connections
+2026-10-26 20:24:58.218 CST [41400] LOG:  could not reserve shared memory region (addr=0000024A01410000) for child 0000000000001330: error code 487
+2026-10-26 20:27:04.099 CST [41400] LOG:  received fast shutdown request
+2026-10-26 20:27:04.100 CST [41400] LOG:  aborting any active transactions
+2026-10-26 20:27:04.108 CST [41400] LOG:  background worker "logical replication launcher" (PID 23732) exited with exit code 1
+2026-10-26 20:27:04.199 CST [41400] LOG:  database system is shut down

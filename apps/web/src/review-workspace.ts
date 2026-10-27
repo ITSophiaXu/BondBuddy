@@ -11,6 +11,7 @@ import { carryHandoff, copyHandoffSource, mountBusinessHandoff, type BusinessHan
 import { ReadableReview } from './review-readable';
 import { taskProgress } from './task-progress';
 import { reviewLiveStatus, reviewProgressPage } from './review-progress';
+import { authoringNeedsRecharge, authoringRechargeContinuation } from './authoring-progress';
 import { DYNAMIC_REVIEW_BILLING_TASKS } from '@bondbuddy/contracts';
 import { projectListContext, withProjectContext, projectBackLink, projectSection, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
@@ -29,6 +30,7 @@ import { UploadRecoveryNeedsFileError } from './upload-recovery';
 import './review-workspace.css';
 import { ReviewEditor } from './review-editor';
 import { reviewScope, reviewRuleScope } from './review-scope';
+import { RunSupplementDraftPanel } from './run-supplement-draft';
 
 type Operation = ReviewExecutionRequest['operation'];
 type UploadRow = {file?:File;name:string;role:Dto<'MaterialResponse'>['role'];state:string;error:boolean;target?:ReviewContext;material?:Dto<'MaterialResponse'>;duplicateSelection?:boolean;reused?:boolean;envelopeId?:string;itemIndex?:number;operationId?:string;orphan?:boolean};
@@ -40,6 +42,7 @@ const roleLabels: Partial<Record<Dto<'MaterialResponse'>['role'],string>> = {his
 
 /** Production M3 screen. Model responses, findings, task state and downloads come only from the API. */
 export class ReviewWorkspace {
+  private supplements=new Map<string,RunSupplementDraftPanel>();
   private controller = new AbortController();
   private editor?:ReviewEditor;
   private editorRun?:string;
@@ -135,14 +138,16 @@ export class ReviewWorkspace {
     this.explicitTaskFocus=this.requestedTab==='making'&&Boolean(this.focusedTaskRunId)||this.handoffQuery.has('task_run');
     this.selectedResultRunId=this.handoffQuery.get('result_run')??(this.requestedTab==='making'?undefined:this.handoffQuery.get('run')??undefined);
   }
-  get hasUnconfirmed() { return this.followupSaving||this.uploadRows.size>0||this.uploadRecordsPresent||!!this.uploadRecoveryProblem||this.inputDirty||Boolean(this.executionPending)||Boolean(this.adoptionPending)||Boolean(this.editor?.hasUnconfirmed); }
+  get hasUnconfirmed() { return this.followupSaving||this.uploadRows.size>0||this.uploadRecordsPresent||!!this.uploadRecoveryProblem||this.inputDirty||Boolean(this.executionPending)||Boolean(this.adoptionPending)||Boolean(this.editor?.hasUnconfirmed)||[...this.supplements.values()].some(panel=>panel.hasUnconfirmed); }
   dispose() {
     this.disposed=true; this.readGeneration++; clearTimeout(this.pollTimer);clearTimeout(this.inputTimer);
     document.removeEventListener('visibilitychange',this.syncOnReturn);window.removeEventListener('online',this.syncOnReturn);
     window.removeEventListener('storage',this.uploadStorageChanged);
     this.eventStream?.close();this.editor?.dispose();this.controller.abort();this.downloads.dispose();this.handling.dispose();this.dialog?.remove();
+    for(const panel of this.supplements.values())panel.dispose();
   }
   async beforeLeave() {
+    if([...this.supplements.values()].some(panel=>!panel.beforeLeave()))return false;
     if(this.followupSaving){this.message('正在保存下一轮要求，请等待保存回执。',true);return false;}
     if(this.editor&&!this.editor.beforeLeave())return false;
     if(this.uploading){this.message('材料正在上传，请等待保存结果后离开。',true);return false;}
@@ -294,9 +299,25 @@ export class ReviewWorkspace {
     const task=this.progressTask(),run=this.taskRun();
     tab.hidden=!run;tab.textContent=run&&isActiveRun(run)?(task?.export_only?'正在导出':'正在复核'):'本轮任务';
     if(!run){host.innerHTML='<p class="review-muted">暂无本轮任务。</p>';return;}
+    let content=host.querySelector<HTMLElement>('[data-review-progress-content]');
+    if(!content){content=document.createElement('div');content.dataset.reviewProgressContent='';const supplement=document.createElement('div');supplement.dataset.reviewSupplementHost='';host.replaceChildren(content,supplement);}
     const charge=this.chargeKey.startsWith(run.run_id+':')?this.charge:undefined;
     const html=reviewProgressPage(run,task,charge,{chargeError:this.chargeError});
-    if(host.dataset.rendered!==html){host.innerHTML=html;host.dataset.rendered=html;}
+    if(content.dataset.rendered!==html){content.innerHTML=html;content.dataset.rendered=html;}
+    const supplementHost=host.querySelector<HTMLElement>('[data-review-supplement-host]')!;
+    if(run.state==='paused'||this.supplements.has(run.run_id)){
+      const panel=this.supplementFor(run);supplementHost.hidden=false;if(supplementHost.firstElementChild!==panel.element)supplementHost.replaceChildren(panel.element);panel.updateRun(run);this.labelSupplementResume();
+    }else supplementHost.hidden=true;
+  }
+  private supplementFor(run:Dto<'RunResponse'>){
+    let panel=this.supplements.get(run.run_id);
+    if(!panel){panel=new RunSupplementDraftPanel(this.api,this.owner,this.projectId,run.run_id,()=>this.live(),()=>this.labelSupplementResume());this.supplements.set(run.run_id,panel);panel.updateRun(run);}
+    return panel;
+  }
+  private labelSupplementResume(){
+    const run=this.taskRun(),panel=run&&this.supplements.get(run.run_id),button=this.page?.querySelector<HTMLButtonElement>('#review-making-panel [data-review-action="resume"]');
+    if(button&&panel?.hasAdoptedSupplement)button.textContent='继续当前任务';
+    else if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮复核';
   }
   private renderMeta(){
     this.renderCharge();
@@ -889,16 +910,22 @@ export class ReviewWorkspace {
       const changed=charge.progress?.policy==='authoring_balance_v2'&&(charge.progress.charged_points!==this.charge?.progress?.charged_points||charge.progress.available_points!==this.charge?.progress?.available_points);
       this.charge=charge;this.chargeKey=key;this.chargeError=false;
       if(changed)window.dispatchEvent(new Event('bondbuddy:credits-changed'));
-      if(charge.progress?.credit_exhausted&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务并充值。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
-      if(!charge.progress?.credit_exhausted)this.creditPromptRun=undefined;
+      const continuation=this.dialog?.querySelector<HTMLElement>('[data-review-recharge-continuation]');
+      if(continuation?.dataset.reviewRechargeContinuation===run.run_id)continuation.textContent=authoringRechargeContinuation(charge.progress);
+      const needsRecharge=authoringNeedsRecharge(charge.progress);
+      if(needsRecharge&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务并充值。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
+      if(!needsRecharge){this.creditPromptRun=undefined;if(continuation?.dataset.reviewRechargeContinuation===run.run_id)this.dialog?.close();}
     }).catch(()=>{if(this.live())this.chargeError=true;}).finally(()=>{this.chargeLoading=false;this.chargeFetchedAt=Date.now();if(this.live())this.renderMaking();});
   }
   private rechargeDialog(){
-    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。充值到账后继续同一任务。</p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">充值积分</a>',[]);
+    const run=this.taskRun(),progress=run&&this.chargeKey.startsWith(run.run_id+':')?this.charge?.progress:undefined;
+    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。<span data-review-recharge-continuation="'+esc(run?.run_id??'')+'">'+esc(authoringRechargeContinuation(progress))+'</span></p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">充值积分</a>',[]);
     this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
   }
   private async controlRun(action:'pause'|'resume'){
     const run=this.taskRun();if(!run)return;
+    if(action==='resume'&&!await this.supplementFor(run).confirmOriginalResume())return;
+    if(!this.live()||this.taskRun()?.run_id!==run.run_id)return;
     try{await this.api.runAction(run.run_id,action,this.controller.signal);this.chargeFetchedAt=0;await this.refresh();this.message(action==='pause'?'暂停请求已提交，当前处理保存后暂停。':'已请求继续本轮复核。');}catch(error){this.message(friendlyError(error,'submit'),true);}
   }
   private connectProgressStream(){

@@ -1,0 +1,16 @@
+{
+  "recorded_at": "2026-10-26T16:13:47.047Z",
+  "database": "bb_execution_delivery_template_20261027b",
+  "probes": [
+    {
+      "query": "EXPLAIN SELECT bb_execution_delivery_artifact_ready(v,'production',now()) FROM bb_execution_artifact_versions v",
+      "code": "42883",
+      "message": "function bb_execution_delivery_artifact_ready(bb_execution_artifact_versions, unknown, timestamp with time zone) does not exist"
+    },
+    {
+      "query": "EXPLAIN SELECT bb_execution_delivery_artifact_ready(v::bb_artifact_versions,'production',now()) FROM bb_execution_artifact_versions v",
+      "code": "42846",
+      "message": "cannot cast type bb_execution_artifact_versions to bb_artifact_versions"
+    }
+  ]
+}

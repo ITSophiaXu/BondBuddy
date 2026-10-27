@@ -128,7 +128,7 @@ export async function clickEntry(page:Page,type:M4DocumentType){
 }
 export async function documents(page:Page){
   await expect(page.locator('#pf-source-next,#pf-generate').first()).toBeVisible();
-  if(await page.locator('#pf-source-next').isVisible()){await expect(page.locator('#pf-prospectus')).toContainText('当前版本：V');await page.locator('#pf-source-next').click();}
+  if(await page.locator('#pf-source-next').isVisible()){await expect(page.locator('#pf-prospectus')).toContainText(/项目当前稿：V[1-9]\d*/);await page.locator('#pf-source-next').click();}
   await expect(page.locator('#pf-generate')).toBeVisible();
 }
 export function assertFixture(s:State){expect(s.unexpected).toEqual([]);expect(s.errors).toEqual([]);expect(s.calls.filter(c=>/\/(?:quote|execute|credit-quote|checks|updates|answer)(?:\/|$)/.test(c.path))).toEqual([]);}

@@ -1,0 +1,243 @@
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✖ business run id (4.1734ms)
+  ✖ owner (104.4669ms)
+  ✖ project (168.1952ms)
+  ✖ input revision (2.4801ms)
+  ✖ input hash (93.8075ms)
+  ✖ execution request id (2.3123ms)
+  ✖ request hash (2.2333ms)
+  ✖ valid successor input pair (12.1019ms)
+✖ run origin rejects identity replacement while queue progress and original execution replay remain usable (3538.2259ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 0
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25233.8966
+
+✖ failing tests:
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ business run id (4.1734ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  error: update or delete on table "bb_runs" violates foreign key constraint "bb_run_events_owner_user_id_run_id_fkey" on table "bb_run_events"
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: error: update or delete on table "bb_runs" violates foreign key constraint "bb_run_events_owner_user_id_run_id_fkey" on table "bb_run_events"
+        at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ owner (104.4669ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  error: update or delete on table "bb_runs" violates foreign key constraint "bb_run_events_owner_user_id_run_id_fkey" on table "bb_run_events"
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: error: update or delete on table "bb_runs" violates foreign key constraint "bb_run_events_owner_user_id_run_id_fkey" on table "bb_run_events"
+        at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ project (168.1952ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ input revision (2.4801ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  error: insert or update on table "bb_runs" violates foreign key constraint "bb_runs_owner_user_id_project_id_input_revision_fkey"
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: error: insert or update on table "bb_runs" violates foreign key constraint "bb_runs_owner_user_id_project_id_input_revision_fkey"
+        at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ input hash (93.8075ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ execution request id (2.3123ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ request hash (2.2333ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:61:21
+✖ valid successor input pair (12.1019ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+  Caught error:
+
+  error: insert or update on table "bb_runs" violates foreign key constraint "bb_runs_owner_user_id_project_id_input_revision_fkey"
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: error: insert or update on table "bb_runs" violates foreign key constraint "bb_runs_owner_user_id_project_id_input_revision_fkey"
+        at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg-pool\index.js:45:11
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:62:17)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:61:13)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-origin-immutability.pg.test.js:11:1
+✖ run origin rejects identity replacement while queue progress and original execution replay remain usable (3538.2259ms)
+  AssertionError [ERR_ASSERTION]: same-value origin updates remain compatible
+  + actual - expected
+  ... Skipped lines
+
+    {
+      attempts: [
+        {
+          attempt_no: 1,
+          channel: 'production',
+  ...
+          event_cursor: 6,
+  +       execution_request_id: '976d5068-d859-4059-973a-9c77d155d1cd',
+  -       execution_request_id: '7078cda9-4d84-4fff-a1db-a524d815586c',
+          id: 'c19fa430-a23d-4b03-99b7-b1f4149c2e73',
+  +       input_hash: '4b1acc43cc6eef92449183784166b956da41b822127d02dd68654ac22a1b61a2',
+  -       input_hash: 'd83375b447f0d646fde7df5b8559a5586c6cf9477288290045eef990349ea878',
+          input_revision: 1,
+          owner_user_id: 'synthetic-origin-5f0b2eba-d1d9-4471-b77e-85c818bcab5a',
+  +       project_id: '7bec4b63-67df-4721-b279-bd928ef9d199',
+  -       project_id: '4cb39885-1c10-44a6-8aad-9b2601d96560',
+          prompt_snapshot_ref: null,
+  +       request_hash: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+  -       request_hash: 'a79f4e8bfcb1c2fe0b0806bb0192de6f4a2e9c5ef5d2f0e6ef92ac6ee1f905e1',
+          reservation_id: null,
+          stage: 'awaiting_materials',
+          state: 'paused',
+          task_kind: 'update',
+          test_grant_id: null,
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-origin-immutability.pg.test.js:67:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: { run: [ [Object] ], job: [ [Object] ], attempts: [ [Object] ], events: [ [Object], [Object], [Object], [Object], [Object], [Object] ], outbox: [ [Object], [Object], [Object], [Object], [Object], [Object] ] },
+    expected: { run: [ [Object] ], job: [ [Object] ], attempts: [ [Object] ], events: [ [Object], [Object], [Object], [Object], [Object], [Object] ], outbox: [ [Object], [Object], [Object], [Object], [Object], [Object] ] },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

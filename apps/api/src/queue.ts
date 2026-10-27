@@ -1,3 +1,4 @@
+import { assertArtifactExecution } from './artifact-execution.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -6,19 +7,21 @@ import { AuthoringActivitySchema, type AuthoringActivity, ERROR_CODES, RUN_PAUSE
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
-import { assertTestGrant } from './non-production-test.js';
+import { assertRunExecutionTestGrant } from './run-execution-test-grant.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
 
-import { syncAuthoringProgress } from './authoring-progress.js';
+import { syncAuthoringProgress,recordAuthoringProgressActivity } from './authoring-progress.js';
 import { creditBalance,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
+import { assertRunExecution, assertProductionSuccessorExecutionActive, readExecutionStages, stampExecutionCheckpoint, type RunExecutionIdentity } from './run-execution.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
-export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
+export type Lease = RunExecutionIdentity & { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
 export type RunKind = typeof TASK_KINDS[number];
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
   if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)
@@ -39,7 +42,12 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
 }
 
 // Used by claim, the operator queue and resolve so no paused attempt is invisible.
-const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')))";
+const fixedPriceRun = `EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND
+  (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')
+    OR EXISTS(SELECT 1 FROM bb_run_execution_billing_bindings b JOIN bb_run_execution_heads h
+      ON h.owner_user_id=b.owner_user_id AND h.project_id=b.project_id AND h.run_id=b.run_id
+        AND h.execution_version=b.execution_version AND h.input_revision=b.input_revision AND h.input_hash=b.input_hash
+      WHERE b.owner_user_id=billing_run.owner_user_id AND b.run_id=billing_run.id)))`;
 const needsProviderReconciliation = `(
   a.status='pending_reconcile'
   OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
@@ -62,12 +70,13 @@ const needsProviderReconciliation = `(
   ))
 )`;
 
-async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+export async function providerCallNeedsReconciliation(client:Pick<PoolClient,'query'>, jobId:string, attemptIds?:readonly string[]) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
     JOIN bb_jobs j ON j.id=a.job_id
     LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
-    WHERE a.job_id=$1 AND ${needsProviderReconciliation} LIMIT 1`,[jobId]);
+    WHERE a.job_id=$1 AND ${needsProviderReconciliation}
+      AND ($2::text[] IS NULL OR a.id=ANY($2::text[])) LIMIT 1`,[jobId,attemptIds??null]);
   return !!q.rowCount;
 }
 
@@ -86,8 +95,12 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
+    const execution=await assertRunExecution(client,r);
+    readExecutionStages(j.checkpoint,execution);
+    if(r.channel==='production'&&execution.executionVersion===2)
+      await assertProductionSuccessorExecutionActive(client,{owner:r.owner_user_id,projectId:r.project_id,runId:r.id,...execution});
     if(r.channel==='non_production_test'){
-      try { await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash}); }
+      try { await assertRunExecutionTestGrant(client,{owner:r.owner_user_id,projectId:r.project_id,runId:r.id,...execution}); }
       catch(error){
         const code=error instanceof Problem?error.code:'TEST_GRANT_INVALID';
         await client.query("UPDATE bb_jobs SET state='paused',stage='test_grant_invalid',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
@@ -103,7 +116,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     const token=uid();
     await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
     await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
-    return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
+    return {...execution,jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
   });
 }
 
@@ -111,6 +124,10 @@ async function lockedLease(client:PoolClient, lease:Lease) {
   const r=await run(client,lease.owner,lease.runId,true);
   const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
   if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
+  await assertRunExecution(client,r,lease);
+  if(r.channel==='production'&&lease.executionVersion===2)
+    await assertProductionSuccessorExecutionActive(client,{...lease,projectId:r.project_id});
+  readExecutionStages(j.checkpoint,lease);
   return {r,j};
 }
 
@@ -139,7 +156,7 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
       VALUES($1,$2,'run',$3,'run.progress',$4)`,[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
     await syncAuthoringProgress(client,r);
-    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
+    await recordAuthoringProgressActivity(client,r,lease);
     return true;
   });
 }
@@ -183,15 +200,25 @@ export async function recordAuthoringActivity(pool:Pool,lease:Lease,activity:Aut
     await client.query('UPDATE bb_runs SET event_cursor=$2,updated_at=now() WHERE id=$1',[r.id,seq]);
     await client.query("INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$3,'run.progress',$5,$6,$7)",[id,lease.owner,r.id,seq,r.state,r.stage,payload]);
     await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'run',$3,'run.progress',$4)",[uid(),lease.owner,r.id,{run_id:r.id,event_id:id,seq,state:r.state,stage:r.stage,...payload}]);
-    await client.query('UPDATE bb_authoring_progress SET last_activity_at=now() WHERE run_id=$1 AND owner_user_id=$2',[r.id,lease.owner]);
+    await recordAuthoringProgressActivity(client,r,lease);
     return true;
   });
 }
 
 export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Record<string,unknown>) {
   await transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
-    await client.query('UPDATE bb_jobs SET checkpoint=$2,stage=$3,updated_at=now() WHERE id=$1',[lease.jobId,value,stage]);
+    const {r,j}=await lockedLease(client,lease);
+    // Generic processor progress must not erase completed stages or the global
+    // supplier/reconciliation history. Stage changes use checkpointStage instead.
+    const next={...value};
+    for(const key of ['stages','provider_results','operator_reconciliations','timeout_retry_repairs','review_assembly_recovery','word_pair_delivery_recovery']){
+      if(Object.hasOwn(value,key)&&inputManifestHash(value[key])!==inputManifestHash(j.checkpoint[key]??null))
+        throw new Problem(409,'INPUT_REVISION_CONFLICT','Generic progress cannot replace saved execution work');
+      if(Object.hasOwn(j.checkpoint,key))next[key]=j.checkpoint[key];
+    }
+    const saved=stampExecutionCheckpoint(next,lease);
+    await client.query('UPDATE bb_jobs SET checkpoint=$2,stage=$3,updated_at=now() WHERE id=$1',[lease.jobId,saved,stage]);
+    lease.checkpoint=saved;
     await event(client,r,'running',stage,'checkpoint_saved',undefined,'run.progress');
   });
 }
@@ -210,7 +237,7 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     // check uses the locked database checkpoint, never a caller's stale lease copy.
     if(j.checkpoint?.review_assembly_recovery)
       throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
-    if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
+    if(r.channel==='non_production_test')await assertRunExecutionTestGrant(client,{...lease,projectId:r.project_id});
     // #35: kill switch, deny override and the daily token quota are re-checked before every call.
     await assertModelCallAllowed(client,trialGuardConfig(),lease.owner);
     if(metadata.promptSnapshotId){
@@ -246,6 +273,7 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j || r.state!=='paused' || j.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting reconciliation');
+    await assertRunExecution(client,r);
     const q=await client.query("UPDATE bb_model_call_attempts SET status=$5,provider_request_id=$6,updated_at=now() WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 AND status='pending_reconcile' RETURNING id",[owner,j.id,logicalCallId,attemptNo,status,providerRequestId??null]);
     if(!q.rowCount)throw missing();
     await event(client,r,'paused','provider_reconcile','provider_call_reconciled');
@@ -258,6 +286,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+    if(kind==='resume')readExecutionStages(j.checkpoint,await assertRunExecution(client,r));
     if(kind==='pause'){
       if(!['update','generation','review'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
@@ -347,7 +376,8 @@ async function recordWordEvidence(client:PoolClient,lease:Lease,artifactId:strin
 }
 
 function wordArtifactIdentity(lease:Lease,inspection:DocxInspection) {
-  const artifactId=`word-${digest(`${lease.owner}\n${lease.runId}\n${inspection.validator_version}\n${inspection.sha256}`)}`;
+  const execution=lease.executionVersion===1?'':`\nexecution:${lease.executionVersion}:${lease.inputRevision}:${lease.inputHash}`;
+  const artifactId=`word-${digest(`${lease.owner}\n${lease.runId}\n${inspection.validator_version}\n${inspection.sha256}${execution}`)}`;
   const objectKey=`users/${lease.owner}/runs/${lease.runId}/artifacts/${artifactId}/v1.docx`;
   return {artifactId,artifactVersion:1,objectKey};
 }
@@ -357,6 +387,7 @@ async function ensureWordArtifact(client:PoolClient,lease:Lease,inspection:DocxI
   const artifact=q.rows[0];
   if(!artifact || artifact.owner_user_id!==lease.owner || artifact.run_id!==lease.runId || artifact.media_type!==WORD_MEDIA_TYPE || artifact.sha256.trim()!==inspection.sha256 || artifact.object_key!==identity.objectKey)
     throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact identity changed');
+  await assertArtifactExecution(client,artifact,lease);
   return artifact;
 }
 
@@ -365,9 +396,9 @@ async function persistRejectedWord(pool:Pool,lease:Lease,inspection:DocxInspecti
     await assertLockedWordLease(client,lease);
     const id=await recordWordEvidence(client,lease,identity.artifactId,identity.artifactVersion,inspection,'failed','not_attempted','not_attempted');
     await client.query(`INSERT INTO bb_artifact_versions
-      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'failed','revoked',$8) ON CONFLICT(id,version) DO NOTHING`,
-    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,id]);
+      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id,execution_version,input_revision,input_hash)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'failed','revoked',$8,$9,$10,$11) ON CONFLICT(id,version) DO NOTHING`,
+    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,id,lease.executionVersion,lease.inputRevision,lease.inputHash]);
     const artifact=await ensureWordArtifact(client,lease,inspection,identity);
     if(artifact.quality_status!=='failed' || artifact.delivery_status!=='revoked')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Rejected Word artifact changed');
     await client.query('UPDATE bb_artifact_versions SET word_delivery_evidence_id=$3 WHERE id=$1 AND version=$2',[identity.artifactId,identity.artifactVersion,id]);
@@ -419,9 +450,9 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
   await transaction(pool,async client=>{
     await assertLockedWordLease(client,lease);
     await client.query(`INSERT INTO bb_artifact_versions
-      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'passed','pending') ON CONFLICT(id,version) DO NOTHING`,
-    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey]);
+      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,execution_version,input_revision,input_hash)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'passed','pending',$8,$9,$10) ON CONFLICT(id,version) DO NOTHING`,
+    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,lease.executionVersion,lease.inputRevision,lease.inputHash]);
     const artifact=await ensureWordArtifact(client,lease,inspection,identity);
     if(artifact.quality_status==='failed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact has a prior quality rejection');
   });
@@ -446,11 +477,12 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
   {status:'available';artifactId:string;artifactVersion:number} | {status:'unavailable';failureCode:'WORD_DELIVERY_UNAVAILABLE'}> {
   const unavailable = {status:'unavailable' as const,failureCode:'WORD_DELIVERY_UNAVAILABLE' as const};
   if(bytes.length < 8 || bytes.length > 100*1024*1024 || bytes.subarray(0,5).toString() !== '%PDF-')return unavailable;
-  const sha=digest(bytes),artifactId=`review-pdf-${digest(`${lease.owner}\n${lease.runId}\n${sha}`)}`;
+  const execution=lease.executionVersion===1?'':`\nexecution:${lease.executionVersion}:${lease.inputRevision}:${lease.inputHash}`;
+  const sha=digest(bytes),artifactId=`review-pdf-${digest(`${lease.owner}\n${lease.runId}\n${sha}${execution}`)}`;
   const key=`users/${lease.owner}/runs/${lease.runId}/artifacts/${artifactId}/v1.pdf`;
   const check=async(client:PoolClient)=>{
     const run=await assertLockedWordLease(client,lease);
-    if(!(await client.query("SELECT 1 FROM bb_review_executions WHERE owner_user_id=$1 AND run_id=$2 AND operation IN ('full_review','differential_review')",[lease.owner,lease.runId])).rowCount)
+    if(!(await client.query("SELECT 1 FROM bb_review_execution_snapshots WHERE owner_user_id=$1 AND run_id=$2 AND execution_version=$3 AND input_revision=$4 AND input_hash=$5 AND operation IN ('full_review','differential_review')",[lease.owner,lease.runId,lease.executionVersion,lease.inputRevision,lease.inputHash])).rowCount)
       throw new Problem(409,'INPUT_REVISION_CONFLICT','PDF annotation requires a review execution');
     return run;
   };
@@ -462,10 +494,10 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
   } catch {return unavailable;}
   await transaction(pool,async client=>{
     const run=await check(client),status=run.channel==='non_production_test'?'test_only':'available';
-    const input=(await client.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[lease.owner,run.project_id,run.input_revision])).rows[0];
+    const input=(await client.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[lease.owner,run.project_id,lease.inputRevision,lease.inputHash])).rows[0];
     const source=input?.manifest?.review?.input?.source_material_ref;
     if(!source)throw new Problem(409,'INPUT_REVISION_CONFLICT','Missing reviewed source');
-    const evidenceId=`pdf-delivery-${digest(`${lease.owner}\n${lease.runId}\n${sha}`)}`;
+    const evidenceId=`pdf-delivery-${digest(`${lease.owner}\n${lease.runId}\n${sha}${execution}`)}`;
     await client.query(`INSERT INTO bb_review_pdf_delivery_evidence(id,owner_user_id,run_id,artifact_id,artifact_version,sha256,byte_size,object_key,source_material_id,source_material_version,source_sha256)
       VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO NOTHING`,[evidenceId,lease.owner,lease.runId,artifactId,sha,bytes.length,key,source.material_id,source.material_version,source.sha256]);
     const evidence=(await client.query('SELECT * FROM bb_review_pdf_delivery_evidence WHERE id=$1',[evidenceId])).rows[0];
@@ -473,11 +505,12 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
       || evidence.sha256.trim()!==sha || Number(evidence.byte_size)!==bytes.length || evidence.object_key!==key
       || evidence.source_material_id!==source.material_id || evidence.source_material_version!==source.material_version || evidence.source_sha256.trim()!==source.sha256)
       throw new Problem(409,'IDEMPOTENCY_CONFLICT','PDF delivery evidence changed');
-    await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,review_pdf_delivery_evidence_id)
-      VALUES($1,1,$2,$3,'application/pdf',$4,$5,'passed',$6,$7) ON CONFLICT(id,version) DO NOTHING`,[artifactId,lease.owner,lease.runId,sha,key,status,evidenceId]);
+    await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,review_pdf_delivery_evidence_id,execution_version,input_revision,input_hash)
+      VALUES($1,1,$2,$3,'application/pdf',$4,$5,'passed',$6,$7,$8,$9,$10) ON CONFLICT(id,version) DO NOTHING`,[artifactId,lease.owner,lease.runId,sha,key,status,evidenceId,lease.executionVersion,lease.inputRevision,lease.inputHash]);
     const a=(await client.query('SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=1 FOR UPDATE',[artifactId])).rows[0];
     if(a.owner_user_id!==lease.owner || a.run_id!==lease.runId || a.sha256.trim()!==sha || a.object_key!==key || a.media_type!=='application/pdf' || a.quality_status!=='passed' || a.delivery_status!==status || a.review_pdf_delivery_evidence_id!==evidenceId)
       throw new Problem(409,'IDEMPOTENCY_CONFLICT','PDF annotation identity changed');
+    await assertArtifactExecution(client,a,lease);
   });
   return {status:'available',artifactId,artifactVersion:1};
 }
@@ -512,7 +545,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   if(outcome==='succeeded' || outcome==='test_completed'){
     if(!options.artifactId || !options.artifactVersion || !options.blobs)throw new Problem(422,'DELIVERY_FAILED','Verified Word artifact required');
     const q=await pool.query(`SELECT a.*,e.validator_version,e.byte_size AS evidence_byte_size,e.quality_evidence
-      FROM bb_artifact_versions a JOIN bb_word_delivery_evidence e
+      FROM bb_execution_artifact_versions a JOIN bb_word_delivery_evidence e
         ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       WHERE a.owner_user_id=$1 AND a.run_id=$2 AND a.id=$3 AND a.version=$4
         AND a.media_type=$5 AND a.quality_status='passed' AND a.delivery_status=$6
@@ -550,17 +583,21 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   }
   return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
+    if(artifact)await assertArtifactExecution(client,artifact,lease);
+    const fee=await readRunBillingSegment(client,r,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
       if(j.subtype==='m4_document_v1'){
-        const ready=await client.query(`SELECT a.kind,v.id FROM bb_m4_artifacts a
+        const ready=await client.query(`SELECT a.kind,v.id,v.version FROM bb_m4_execution_artifact_versions a
           JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
           JOIN bb_word_delivery_evidence e ON e.id=v.word_delivery_evidence_id AND e.owner_user_id=v.owner_user_id AND e.run_id=v.run_id
           WHERE a.run_id=$1 AND a.owner_user_id=$2 AND a.kind IN ('document','preparation_note')
+            AND a.execution_version=$3 AND a.input_revision=$4 AND a.input_hash=$5 AND a.project_id=$6
             AND v.delivery_status='available' AND e.artifact_id=v.id AND e.artifact_version=v.version
             AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=v.sha256 AND e.candidate_sha256=v.sha256
-          FOR UPDATE OF v`,[r.id,r.owner_user_id]);
-        if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id))
+          AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=v.owner_user_id AND bound.run_id=v.run_id AND bound.id=v.id AND bound.version=v.version)
+        FOR UPDATE OF v`,[r.id,r.owner_user_id,lease.executionVersion,lease.inputRevision,lease.inputHash,r.project_id]);
+        if(ready.rowCount!==2||!ready.rows.some(a=>a.kind==='document'&&a.id===artifact.id&&a.version===artifact.version))
           throw new Problem(422,'DELIVERY_FAILED','Material document and preparation note required for settlement');
       }else if(j.subtype==='project_qa_v1'){
         const ready=(await client.query('SELECT operation,result,manifest FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[r.owner_user_id,r.project_id,r.id])).rows[0];
@@ -570,7 +607,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
         const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);
         if(!ready.rowCount||ready.rows[0].operation==='check'&&!ready.rows[0].result?.records?.some((v:any)=>v.search_performed===true))
           throw new Problem(422,'DELIVERY_FAILED','Integrity workpaper requires recorded actual search');
-      }else if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
+      }else if((r.billing_mode==='fixed_credits'||fee)&&r.task_kind!=='review'){
         const pair=j.checkpoint?.stages?.word_delivery_pair;
         if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)
           throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
@@ -579,13 +616,14 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
             WHERE a.id=$1 AND a.owner_user_id=$2 AND a.run_id=$3 AND a.delivery_status='available'
               AND e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.artifact_id=a.id AND e.artifact_version=a.version
               AND e.delivery_code='readback_verified' AND e.delivery_status='available' AND e.readback_sha256=a.sha256 AND e.candidate_sha256=a.sha256
-            FOR UPDATE OF a`,[id,r.owner_user_id,r.id]);
+            AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=a.owner_user_id AND bound.run_id=a.run_id AND bound.id=a.id AND bound.version=a.version)
+        FOR UPDATE OF a`,[id,r.owner_user_id,r.id]);
           if(!ready.rowCount)throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
         }
       }
       if(r.channel!=='production')throw new Problem(409,'TEST_GRANT_MISMATCH','Run channel cannot enter this terminal state');
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
-      const debit=await debitAuthoringCredits(client,r,Number.MAX_SAFE_INTEGER);
+      const debit=await debitAuthoringCredits(client,r,Number.MAX_SAFE_INTEGER,lease);
       if(debit&&debit.charged<debit.ceiling){
         await client.query("UPDATE bb_jobs SET credit_pause_requested=true,state='paused',stage='credits_exhausted',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
         await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
@@ -598,7 +636,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await event(client,r,'paused','user_paused','user_paused');
       return runDto({...r,updated_at:new Date()});
     }
-    if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
+    if(r.channel==='non_production_test')await assertRunExecutionTestGrant(client,{...lease,projectId:r.project_id});
     if((r.channel==='non_production_test' && outcome==='succeeded') || (r.channel==='production' && outcome==='test_completed'))throw new Problem(409,'TEST_GRANT_MISMATCH','Run channel cannot enter this terminal state');
     if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
     if(outcome==='succeeded' || outcome==='test_completed'){
@@ -609,6 +647,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
           AND e.artifact_id=a.id AND e.artifact_version=a.version AND e.candidate_sha256=a.sha256
           AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
           AND e.readback_sha256=e.candidate_sha256 AND e.readback_byte_size=e.byte_size
+        AND EXISTS (SELECT 1 FROM bb_execution_artifact_versions bound WHERE bound.owner_user_id=a.owner_user_id AND bound.run_id=a.run_id AND bound.id=a.id AND bound.version=a.version)
         FOR UPDATE OF a`,[lease.owner,lease.runId,artifact.id,artifact.version,artifact.object_key,artifact.sha256,WORD_MEDIA_TYPE,outcome==='test_completed'?'test_only':'available']);
       if(!q.rowCount)throw new Problem(422,'DELIVERY_FAILED','Word artifact changed');
       await client.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[r.id,artifact.id,artifact.version]);
@@ -695,10 +734,10 @@ async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:s
 export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:Record<string,unknown>) {
   if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
   await transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
+    const {r,j}=await lockedLease(client,lease);
+    const saved=stampExecutionCheckpoint({...j.checkpoint,stages:{...readExecutionStages(j.checkpoint,lease),[stage]:value}},lease);
     const q=await client.query(`UPDATE bb_jobs SET stage=$2,updated_at=now(),
-      checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
-      WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
+      checkpoint=$3::jsonb WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(saved)]);
     lease.checkpoint=q.rows[0].checkpoint;
     await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
   });
@@ -709,12 +748,12 @@ export async function upgradeStageCheckpoint(pool:Pool,lease:Lease,stage:string,
   if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
   await transaction(pool,async client=>{
     const {j}=await lockedLease(client,lease);
-    const stages=j.checkpoint?.stages;
-    if(!stages || typeof stages!=='object' || Array.isArray(stages) || !Object.prototype.hasOwnProperty.call(stages,stage))
+    const stages=readExecutionStages(j.checkpoint,lease);
+    if(!Object.prototype.hasOwnProperty.call(stages,stage))
       throw new Error('STAGE_CHECKPOINT_UPGRADE_REQUIRES_EXISTING_CHECKPOINT');
+    const saved=stampExecutionCheckpoint({...j.checkpoint,stages:{...stages,[stage]:value}},lease);
     const q=await client.query(`UPDATE bb_jobs SET stage=$2,updated_at=now(),
-      checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
-      WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
+      checkpoint=$3::jsonb WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(saved)]);
     lease.checkpoint=q.rows[0].checkpoint;
   });
 }
@@ -739,6 +778,8 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    const execution=await assertRunExecution(client,r);
+    readExecutionStages(j.checkpoint,execution);
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
@@ -755,8 +796,9 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
         return false;
       }
     }
-    if(r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
-      (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifacts WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rowCount)){
+    const fee=await readRunBillingSegment(client,r,execution);
+    if(fee?.billingPolicy==='on_delivery' && r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
+      (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifact_execution_versions WHERE owner_user_id=$1 AND run_id=$2 AND project_id=$3 AND input_revision=$4 AND input_hash=$5 AND execution_version=$6',[owner,runId,r.project_id,execution.inputRevision,execution.inputHash,execution.executionVersion])).rowCount)){
       const {settleM4Metering}=await import('./m4-billing.js');
       const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;
     }
@@ -785,6 +827,7 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
     if(!r || r.state!=='paused' || r.stage!=='provider_reconcile')return false;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
     if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until)return false;
+    await assertRunExecution(client,r);
     const input=await client.query(`SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2
       AND revision=$3 AND input_hash=$4 AND manifest->'update_details'->>'authoring_mode'='unified_v1'`,
       [owner,r.project_id,r.input_revision,r.input_hash]);
@@ -856,6 +899,7 @@ export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,i
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
     const prior=j.checkpoint?.review_assembly_recovery;
+    readExecutionStages(j.checkpoint,await assertRunExecution(client,r));
     if(prior){
       if(prior.policy!=='review_assembly_v1'||prior.reuse_only!==true||prior.attempt_id!==input.attemptId||prior.result_sha256!==input.resultSha256||prior.actor!==input.actor)
         throw new Problem(409,'IDEMPOTENCY_CONFLICT','Review recovery already has another identity');
@@ -867,7 +911,7 @@ export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,i
     // Serialize with submissions and other recoveries; the M3 database mutex remains in force.
     if(!project||project.kind!=='review'||project.deleted_at)throw refuse();
     const active=await client.query("SELECT 1 FROM bb_runs WHERE project_id=$1 AND owner_user_id=$2 AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')",[r.project_id,r.owner_user_id]);
-    const artifacts=await client.query('SELECT 1 FROM bb_review_reports WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_review_artifacts WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_artifact_versions WHERE run_id=$1',[r.id]);
+    const artifacts=await client.query('SELECT 1 FROM bb_review_execution_reports WHERE owner_user_id=$2 AND project_id=$3 AND run_id=$1 UNION ALL SELECT 1 FROM bb_review_execution_artifacts WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_artifact_versions WHERE run_id=$1',[r.id,r.owner_user_id,r.project_id]);
     if(active.rowCount||artifacts.rowCount||await providerCallNeedsReconciliation(client,j.id))throw refuse();
     const last=(await client.query('SELECT payload FROM bb_run_events WHERE run_id=$1 AND seq=$2',[r.id,r.event_cursor])).rows[0]?.payload;
     const failure=(await client.query("SELECT id FROM bb_observability_errors WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND trace_id=$4 AND code='VALIDATION_FAILED' AND stage='model_generation' AND recovery_status='terminal' ORDER BY created_at DESC LIMIT 1",[r.owner_user_id,r.project_id,j.id,r.id])).rows[0];
@@ -928,6 +972,7 @@ export async function requeueGeneratedWordDelivery(pool:Pool,input:{runId:string
     if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
+    readExecutionStages(j.checkpoint,await assertRunExecution(client,r));
     if(j.checkpoint?.word_pair_delivery_recovery)return {run_id:r.id,idempotent:true};
     const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','No recoverable completed Word pair');
     if(r.channel!=='production'||r.state!=='failed'||j.state!=='failed'||j.lease_token||j.lease_until||r.artifact_id)throw refuse();
@@ -969,6 +1014,7 @@ export async function repairUnifiedTimeoutRetry(pool:Pool,input:{runId:string;at
     if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
+    await assertRunExecution(client,r);
     const repaired=j.checkpoint?.timeout_retry_repairs?.[input.attemptId];
     if(repaired)return {run_id:r.id,attempt_id:input.attemptId,idempotent:true};
     const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','Run does not match the interrupted timeout retry');
@@ -1040,6 +1086,7 @@ export async function resolveOperatorReconciliation(pool:Pool,input:{runId:strin
     const r=q.rows[0];if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
+    await assertRunExecution(client,r);
     const a=(await client.query('SELECT id,status FROM bb_model_call_attempts WHERE id=$1 AND owner_user_id=$2 AND job_id=$3 FOR UPDATE',[input.attemptId,r.owner_user_id,j.id])).rows[0];
     if(!a)throw missing();
     const previous=j.checkpoint?.operator_reconciliations?.[a.id];

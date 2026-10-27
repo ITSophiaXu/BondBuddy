@@ -1,0 +1,120 @@
+{
+  "synthetic": true,
+  "legacy_hash_mismatch_preserved": true,
+  "existing_rows_exactly_unchanged": true,
+  "tables": [
+    {
+      "table": "bb_projects",
+      "rows": 2
+    },
+    {
+      "table": "bb_input_revisions",
+      "rows": 2
+    },
+    {
+      "table": "bb_runs",
+      "rows": 6
+    },
+    {
+      "table": "bb_jobs",
+      "rows": 6
+    },
+    {
+      "table": "bb_run_events",
+      "rows": 6
+    },
+    {
+      "table": "bb_outbox",
+      "rows": 7
+    },
+    {
+      "table": "bb_snapshot_refs",
+      "rows": 6
+    },
+    {
+      "table": "bb_model_call_attempts",
+      "rows": 6
+    },
+    {
+      "table": "bb_credit_events",
+      "rows": 0
+    }
+  ],
+  "identities": [
+    {
+      "owner_user_id": "synthetic-execution-backfill",
+      "project_id": "f592a328-fde8-4d4c-9f5c-b37afdc4f526",
+      "run_id": "2478599c-a96d-4799-ab86-e2327a2b4b5a",
+      "execution_version": 1,
+      "input_revision": 1,
+      "input_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "created_at": "2026-10-01T01:02:03.000Z",
+      "original_revision": 1,
+      "original_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_created_at": "2026-10-01T01:02:03.000Z"
+    },
+    {
+      "owner_user_id": "synthetic-execution-backfill",
+      "project_id": "f592a328-fde8-4d4c-9f5c-b37afdc4f526",
+      "run_id": "4dd3a8c4-2e58-4e8e-8dd3-e3f2268dadf0",
+      "execution_version": 1,
+      "input_revision": 1,
+      "input_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "created_at": "2026-10-01T01:02:03.000Z",
+      "original_revision": 1,
+      "original_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_created_at": "2026-10-01T01:02:03.000Z"
+    },
+    {
+      "owner_user_id": "synthetic-execution-backfill",
+      "project_id": "f592a328-fde8-4d4c-9f5c-b37afdc4f526",
+      "run_id": "5602d52c-9e12-4192-8501-4edeadf1b607",
+      "execution_version": 1,
+      "input_revision": 1,
+      "input_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "created_at": "2026-10-01T01:02:03.000Z",
+      "original_revision": 1,
+      "original_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_created_at": "2026-10-01T01:02:03.000Z"
+    },
+    {
+      "owner_user_id": "synthetic-execution-backfill",
+      "project_id": "f592a328-fde8-4d4c-9f5c-b37afdc4f526",
+      "run_id": "6d2b40e4-4cb7-44db-b0e3-926347508ab4",
+      "execution_version": 1,
+      "input_revision": 1,
+      "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "created_at": "2026-10-01T01:02:03.000Z",
+      "original_revision": 1,
+      "original_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "original_created_at": "2026-10-01T01:02:03.000Z"
+    },
+    {
+      "owner_user_id": "synthetic-execution-backfill",
+      "project_id": "f592a328-fde8-4d4c-9f5c-b37afdc4f526",
+      "run_id": "878dda3d-3de7-49f6-a7cd-61b20b2e7be3",
+      "execution_version": 1,
+      "input_revision": 1,
+      "input_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "created_at": "2026-10-01T01:02:03.000Z",
+      "original_revision": 1,
+      "original_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_created_at": "2026-10-01T01:02:03.000Z"
+    },
+    {
+      "owner_user_id": "synthetic-execution-backfill",
+      "project_id": "f592a328-fde8-4d4c-9f5c-b37afdc4f526",
+      "run_id": "ddbc2f28-9d80-49c9-bdc4-37ada9f0c213",
+      "execution_version": 1,
+      "input_revision": 1,
+      "input_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "created_at": "2026-10-01T01:02:03.000Z",
+      "original_revision": 1,
+      "original_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_created_at": "2026-10-01T01:02:03.000Z"
+    }
+  ],
+  "raw_before_sha256": "bc570be56bd66f454a4e5d0782604e8a12f765e3f98db7d508f3c6a41db3fc4d",
+  "raw_after_sha256": "bc570be56bd66f454a4e5d0782604e8a12f765e3f98db7d508f3c6a41db3fc4d",
+  "raw_bytes": 31606
+}

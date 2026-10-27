@@ -1,0 +1,8 @@
+{
+  "started": "2026-10-26T19:14:25.019Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "packages/contracts/dist/check-data-lifecycle.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

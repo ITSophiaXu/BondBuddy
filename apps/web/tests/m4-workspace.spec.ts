@@ -1,4 +1,4 @@
-import { taskPage } from './collection-fixtures';
+import { emptySupplementPreparation, taskPage } from './collection-fixtures';
 import { test,expect,type Page,type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
@@ -100,6 +100,16 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
       state.workspace.drafts[saved.document_type as M4DocumentType]=saved;state.workspace.pending_requirements=[];return reply(route,{draft:saved});
     }
     if(path.endsWith('/view')){const body=req.postDataJSON();expect(Value.Check(M4ViewRequestSchema,body)).toBe(true);if(body.expected_version!==state.workspace.view.version)return reply(route,{code:'INPUT_REVISION_CONFLICT'},409);state.workspace.view={...body.view,version:body.expected_version+1};return reply(route,{view:state.workspace.view});}
+    if(path.endsWith('/supplement-draft')){
+      const url=new URL(req.url()),task=state.workspace.tasks.find(t=>path===`/api/v1/runs/${t.run.run_id}/supplement-draft`);
+      if(!task||task.manifest.kind!=='document'||req.method()!=='GET'||url.searchParams.has('request_id'))return reply(route,{code:'NOT_FOUND'},404);
+      const pins=[...task.manifest.input.materials,...(task.manifest.input.source_material?[task.manifest.input.source_material]:[]),...(task.manifest.template_material?[task.manifest.template_material]:[])];
+      const base=[...new Map(pins.map(pin=>[`${pin.source_project_id}:${pin.material_id}:${pin.material_version}:${pin.sha256}`,pin])).values()].map(pin=>{
+        const material=state.workspace.material_details.find(m=>m.source_project_id===pin.source_project_id&&m.material_id===pin.material_id&&m.material_version===pin.material_version&&m.sha256===pin.sha256);
+        return {...pin,filename:material?.filename??'合成模板.docx',role:(task.manifest.kind==='document'&&task.manifest.input.source_material?.material_id===pin.material_id?'historical':'other') as 'historical'|'other',media_type:material?.media_type??mime,available:true};
+      });
+      return reply(route,emptySupplementPreparation(task.run,base,task.run.state==='paused'&&(task.run.stage==='user_paused'||task.credit_charge?.progress?.pause_requested===true)));
+    }
     if(state.dynamic&&/\/runs\/[^/]+\/(pause|resume|cancel)$/.test(path)){
       const action=path.split('/').at(-1)!,task=state.workspace.tasks.find(t=>path.includes(t.run.run_id))!;
       state.controls.push(action);const p=task.credit_charge!.progress!;
@@ -622,4 +632,28 @@ for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dyn
 test('dynamic material zero balance keeps the draft and does not execute',async({page})=>{
   const s=fixture(true);s.balance.available=0;await mount(page,s);await choose(page,'private_summary');await start(page);
   await expect(page.locator('#m4-submit-status')).toContainText('积分不足');expect(s.executions).toHaveLength(0);
+});
+
+test('desktop funded material keeps a manual pause and offers explicit continuation after exhaustion',async({page})=>{
+  await page.setViewportSize({width:1440,height:960});const s=fixture(true);s.balance.available=1000;
+  await mount(page,s);await choose(page,'private_summary');await start(page);
+  const task=s.workspace.tasks[0],p=task.credit_charge!.progress!;
+  p.pause_requested=true;p.credit_exhausted=true;p.clock_running=false;p.available_points=s.balance.available=0;
+  task.run.state='paused';task.run.stage='credits_exhausted';
+  await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('充值后仍保持暂停');
+  await expect(page.locator('.task-progress')).not.toContainText('自动继续');
+  await expect(page.getByRole('button',{name:'继续生成',exact:true})).toHaveCount(0);
+  p.available_points=s.balance.available=20000;
+  task.run.state='running';await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('正在保存进度后暂停');await expect(page.getByRole('button',{name:'继续生成',exact:true})).toHaveCount(0);
+  task.run.state='paused';
+  await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect(page.locator('.task-progress')).toContainText('任务已暂停');
+  await expect(page.getByRole('link',{name:'充值积分',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'继续生成',exact:true})).toBeVisible();
+  expect(s.controls).toEqual([]);expect(s.executions).toHaveLength(1);expect(p.credit_exhausted).toBe(true);
+  const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('.m4-delivery').screenshot({path:resolve(evidence,'material-manual-after-topup.png')});}
+  await page.getByRole('button',{name:'继续生成',exact:true}).click();await expect.poll(()=>s.controls).toEqual(['resume']);
+  expect(s.executions).toHaveLength(1);
 });

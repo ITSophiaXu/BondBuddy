@@ -1,0 +1,277 @@
+{
+  "label": "adopted",
+  "captured_at": "2026-10-27T02:37:21.009Z",
+  "http": {
+    "before": {
+      "enabled": true,
+      "available": 9088,
+      "frozen": 0
+    },
+    "after": {
+      "enabled": true,
+      "available": 9088,
+      "frozen": 0
+    }
+  },
+  "database": {
+    "sampled_at": "2026-10-27T02:37:20.994Z",
+    "mvcc_snapshot": "40339:40339:",
+    "isolation": "repeatable read",
+    "tables": {
+      "bb_credit_accounts": [
+        {
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "created_at": "2026-10-27T02:37:03.390Z"
+        }
+      ],
+      "bb_credit_lots": [
+        {
+          "id": "6e656431-59a1-4c63-8943-bb7b9bbd0c52",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "source": "existing_grant",
+          "source_key": "d9478783-8914-4e7a-82d5-93ca19447a12",
+          "original_points": "10000",
+          "remaining": "9088",
+          "frozen": "0",
+          "expires_at": null,
+          "created_at": "2026-10-27T02:37:03.390Z"
+        }
+      ],
+      "bb_credit_reservations": [
+        {
+          "id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "quote_id": "5bb371c8-ae75-486a-8c57-3665ea116c69",
+          "points": "4500",
+          "state": "settled",
+          "created_at": "2026-10-27T02:37:03.695Z",
+          "finalized_at": "2026-10-27T02:37:20.516Z",
+          "charged_points": "912",
+          "billing_policy": "authoring_balance_v2"
+        },
+        {
+          "id": "78c16f9f-ae4c-4a71-8f8d-4d35fe46f692",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "quote_id": "64095aec-ad9c-407d-a95c-dea8c508dd38",
+          "points": "4500",
+          "state": "held",
+          "created_at": "2026-10-27T02:37:20.696Z",
+          "finalized_at": null,
+          "charged_points": "0",
+          "billing_policy": "authoring_balance_v2"
+        }
+      ],
+      "bb_credit_events": [
+        {
+          "id": "145b00d1-0144-4efd-b04a-42b0b257fcd6",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "grant:d9478783-8914-4e7a-82d5-93ca19447a12",
+          "kind": "grant",
+          "points": "10000",
+          "reservation_id": null,
+          "lot_id": "6e656431-59a1-4c63-8943-bb7b9bbd0c52",
+          "run_id": null,
+          "actor": "synthetic-test",
+          "reason": "Continuation preparation is read only",
+          "created_at": "2026-10-27T02:37:03.390Z"
+        },
+        {
+          "id": "2958eda8-31fc-4a19-aed2-11bafb39029d",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:190",
+          "kind": "settle",
+          "points": "6",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:12.392Z"
+        },
+        {
+          "id": "2c2e77ea-783b-4e57-8624-995d9cbda823",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:184",
+          "kind": "settle",
+          "points": "1",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:08.908Z"
+        },
+        {
+          "id": "3880a351-f508-4bda-8b01-8b600b2ad11a",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:1",
+          "kind": "settle",
+          "points": "1",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:04.726Z"
+        },
+        {
+          "id": "58eff2e8-4a06-4900-9205-d6be16317b37",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:912",
+          "kind": "settle",
+          "points": "2",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:13.647Z"
+        },
+        {
+          "id": "7664e7a2-72bc-4b57-a062-708b92f1e3ee",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:183",
+          "kind": "settle",
+          "points": "1",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:08.586Z"
+        },
+        {
+          "id": "c4905375-4df3-46a1-b257-2b9ea9123e15",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:182",
+          "kind": "settle",
+          "points": "135",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:08.091Z"
+        },
+        {
+          "id": "e6fb95e9-b4a7-4693-85e5-af481ca44558",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:47",
+          "kind": "settle",
+          "points": "46",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:07.846Z"
+        },
+        {
+          "id": "f049b8fa-c83d-4eeb-babd-9e5f626b8b7a",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "event_key": "progress:3bc91a71-48ed-4437-a9d7-a16abfee1608:910",
+          "kind": "settle",
+          "points": "720",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": null,
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "actor": "system",
+          "reason": "authoring_progress_debit",
+          "created_at": "2026-10-27T02:37:12.627Z"
+        }
+      ],
+      "bb_run_billing_segments": [
+        {
+          "id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "project_id": "95e32cb0-53b2-4800-8fc4-55cb4e1036f2",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "segment_number": 1,
+          "origin_execution_version": 1,
+          "origin_input_revision": 1,
+          "origin_input_hash": "a282392efd093b340d4d280ca4750a8590a7b7d481b747e2dff0c5d03dc0e60c",
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "source_quote_id": "5bb371c8-ae75-486a-8c57-3665ea116c69",
+          "billing_policy": "authoring_balance_v2",
+          "points": "4500",
+          "created_at": "2026-10-27T02:37:03.695Z",
+          "adoption_id": null
+        },
+        {
+          "id": "78c16f9f-ae4c-4a71-8f8d-4d35fe46f692",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "project_id": "95e32cb0-53b2-4800-8fc4-55cb4e1036f2",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "segment_number": 2,
+          "origin_execution_version": 2,
+          "origin_input_revision": 2,
+          "origin_input_hash": "73cbb88f732de8f58000249ee40d6af6fe55da7c2603e7e4760604ac60a3b6a0",
+          "reservation_id": "78c16f9f-ae4c-4a71-8f8d-4d35fe46f692",
+          "source_quote_id": "64095aec-ad9c-407d-a95c-dea8c508dd38",
+          "billing_policy": "authoring_balance_v2",
+          "points": "4500",
+          "created_at": "2026-10-27T02:37:20.696Z",
+          "adoption_id": "4f7ee618-fca4-4b4b-9f71-bda6803f313a"
+        }
+      ],
+      "bb_run_billing_progress": [
+        {
+          "billing_segment_id": "78c16f9f-ae4c-4a71-8f8d-4d35fe46f692",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "project_id": "95e32cb0-53b2-4800-8fc4-55cb4e1036f2",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "active_ms": "0",
+          "work_bps": 0,
+          "accrued_points": "0",
+          "clock_at": "2026-10-27T02:37:20.696Z",
+          "lease_until": null,
+          "last_activity_at": null
+        },
+        {
+          "billing_segment_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "project_id": "95e32cb0-53b2-4800-8fc4-55cb4e1036f2",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "active_ms": "6986",
+          "work_bps": 2000,
+          "accrued_points": "912",
+          "clock_at": "2026-10-27T02:37:20.722Z",
+          "lease_until": null,
+          "last_activity_at": null
+        }
+      ],
+      "bb_run_execution_heads": [
+        {
+          "owner_user_id": "supp-preparation-3dc43864-ac0a-447c-81fb-2dc4b6dcd9e6",
+          "project_id": "95e32cb0-53b2-4800-8fc4-55cb4e1036f2",
+          "run_id": "10abb978-35d1-4739-847a-dfec333ccfdb",
+          "execution_version": 2,
+          "input_revision": 2,
+          "input_hash": "73cbb88f732de8f58000249ee40d6af6fe55da7c2603e7e4760604ac60a3b6a0",
+          "activated_at": "2026-10-27T02:37:20.696Z"
+        }
+      ],
+      "bb_credit_allocations": [
+        {
+          "reservation_id": "3bc91a71-48ed-4437-a9d7-a16abfee1608",
+          "lot_id": "6e656431-59a1-4c63-8943-bb7b9bbd0c52",
+          "points": "912",
+          "charged_points": "912"
+        }
+      ]
+    }
+  },
+  "totals": {
+    "available": 9088,
+    "reserved": 0,
+    "consumed": 912,
+    "granted": 10000
+  },
+  "semantics": {
+    "reserved": "HTTP frozen / actual frozen lot balance",
+    "consumed": "SUM(credit_events.points WHERE kind=settle)",
+    "http_and_rr": "Separate transactions bracketed at a stable worker barrier or paused state"
+  }
+}

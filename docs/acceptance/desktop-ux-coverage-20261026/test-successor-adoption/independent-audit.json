@@ -1,0 +1,856 @@
+{
+  "version": 1,
+  "kind": "independent-read-only-evidence-audit",
+  "checked_at": "2026-10-26T23:45:17.512Z",
+  "status": "passed",
+  "sealedManifest": {
+    "path": "manifest.json",
+    "sha256": "3c8f09ba78efce5906fe047f63ea4d3e47b40b01162209de5b42e44c98ff4786",
+    "entries": 134,
+    "readme_sha256": "109ab29218fa613eef511f8fc7a0f05580660715aca1bd5359d3360b93362005",
+    "selection_sha256": "106ce621f0c20f005db150e1ec5721bb3475cc500bd87a3afad4969f3ad11df6"
+  },
+  "auditScope": "This independent-audit.json is outside the already sealed manifest and deliberately is not a manifest member. No server, test or build was started by this audit. No product file was edited.",
+  "archive": {
+    "gzipVerified": 134,
+    "rawShaVerified": 134,
+    "byteEqualToLocal": 134,
+    "inventoryExact": true,
+    "rawBytes": 1979062,
+    "gzipBytes": 565733
+  },
+  "selectedSuites": [
+    {
+      "id": "2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6",
+      "mode": "api-successor",
+      "pass": 15,
+      "skip": 0,
+      "fail": 0,
+      "files": [
+        "apps/api/dist/run-execution-test-grant.test.js",
+        "apps/api/dist/run-supplement-test-adoption.pg.test.js",
+        "apps/api/dist/run-supplement-test-adoption-race.pg.test.js"
+      ],
+      "skipped": [],
+      "started": "2026-10-26T23:37:43.669Z",
+      "finished": "2026-10-26T23:38:48.879Z"
+    },
+    {
+      "id": "2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204",
+      "mode": "successor-regression",
+      "pass": 151,
+      "skip": 0,
+      "fail": 0,
+      "files": [
+        "apps/api/dist/run-execution-projection.test.js",
+        "apps/api/dist/run-execution-input.test.js",
+        "apps/api/dist/run-execution.pg.integration.test.js",
+        "apps/api/dist/run-execution-checkpoint.test.js",
+        "apps/api/dist/run-supplement-input.test.js",
+        "apps/api/dist/run-supplement-processing-plan.pg.test.js",
+        "apps/api/dist/run-supplement-preparation.pg.test.js",
+        "apps/api/dist/run-supplement-file-preparation.pg.test.js",
+        "apps/api/dist/material-purge-barrier.pg.test.js"
+      ],
+      "skipped": [],
+      "started": "2026-10-26T23:30:05.162Z",
+      "finished": "2026-10-26T23:34:40.074Z"
+    },
+    {
+      "id": "2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1",
+      "mode": "worker-grant",
+      "pass": 83,
+      "skip": 2,
+      "fail": 0,
+      "files": [
+        "apps/worker/dist/historical-test-rule-authorization.test.js",
+        "apps/worker/dist/sse-private-test-rule-capability.test.js",
+        "apps/worker/dist/sse-private-test-rule-capability.pg.integration.test.js",
+        "apps/worker/dist/historical-model-stage.test.js",
+        "apps/worker/dist/fact-candidate-producer.test.js",
+        "apps/worker/dist/fact-candidate-producer.execution-test-grant.test.js"
+      ],
+      "skipped": [
+        "﹣ authorized Renqiu September DOCX parses into complete bounded model chunks without editing the original (0.1079ms) # Set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 and BONDBUDDY_TEST_PYTHON for the read-only authorized sample check",
+        "﹣ four pending audit facts deliver complete original Python Word with quality and owner authorization (0.5099ms) # SKIP"
+      ],
+      "started": "2026-10-26T23:29:07.151Z",
+      "finished": "2026-10-26T23:30:04.615Z"
+    }
+  ],
+  "totals": {
+    "pass": 249,
+    "skip": 2,
+    "fail": 0
+  },
+  "testFileCount": 18,
+  "testFilesUnique": true,
+  "historicalOrFailedRunCountsAdded": false,
+  "frozenPairs": [
+    {
+      "before": "2026-10-26T23-28-33-263Z-source-before-33556-c9cbe36b",
+      "after": "2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f",
+      "entries": 2471,
+      "sha256": "e5a5709d427ccda94b4bc91ef413bc07444b60dabcbd57955b93e2c2d8616edc",
+      "beforeFinished": "2026-10-26T23:28:48.941Z",
+      "afterFinished": "2026-10-26T23:36:35.862Z",
+      "scope": [
+        "successor-regression",
+        "worker-grant",
+        "failed api-successor"
+      ]
+    },
+    {
+      "before": "2026-10-26T23-37-28-240Z-source-before-3980-015ee43b",
+      "after": "2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6",
+      "entries": 2471,
+      "sha256": "7dd42fe906f85e5436662702a0895dd8ed088dbcba6b34b65203afc384a2583d",
+      "beforeFinished": "2026-10-26T23:37:31.537Z",
+      "afterFinished": "2026-10-26T23:39:15.290Z",
+      "scope": [
+        "api-successor"
+      ]
+    }
+  ],
+  "betweenPairsChangedOnly": [
+    "apps/api/dist/run-supplement-test-adoption.js",
+    "apps/api/src/run-supplement-test-adoption.ts"
+  ],
+  "currentFinalFreeze": {
+    "entries": 2471,
+    "allBytesAndHashesMatch": true,
+    "inventoryExact": true,
+    "sha256": "7dd42fe906f85e5436662702a0895dd8ed088dbcba6b34b65203afc384a2583d"
+  },
+  "builds": [
+    {
+      "id": "2026-10-26T23-19-27-354Z-contracts-build-50256-23918a9c",
+      "mode": "contracts-build",
+      "status": 0,
+      "finished": "2026-10-26T23:19:34.728Z"
+    },
+    {
+      "id": "2026-10-26T23-20-02-061Z-api-build-47012-b94382a1",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T23:20:20.817Z"
+    },
+    {
+      "id": "2026-10-26T23-21-05-997Z-worker-build-48776-5eb3955c",
+      "mode": "worker-build",
+      "status": 1,
+      "finished": "2026-10-26T23:21:23.009Z"
+    },
+    {
+      "id": "2026-10-26T23-22-11-182Z-api-build-6748-6648c1ed",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T23:22:28.863Z"
+    },
+    {
+      "id": "2026-10-26T23-23-46-362Z-worker-build-13564-595743aa",
+      "mode": "worker-build",
+      "status": 0,
+      "finished": "2026-10-26T23:24:02.580Z"
+    },
+    {
+      "id": "2026-10-26T23-28-02-921Z-api-build-42356-5daacaf9",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T23:28:22.259Z"
+    },
+    {
+      "id": "2026-10-26T23-36-54-055Z-api-build-51180-c5c9abd1",
+      "mode": "api-build",
+      "status": 0,
+      "finished": "2026-10-26T23:37:11.260Z"
+    }
+  ],
+  "postgres": {
+    "stopRun": "2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec",
+    "stopStarted": "2026-10-26T23:39:30.493Z",
+    "stopFinished": "2026-10-26T23:39:32.170Z",
+    "finalSourceAfterFinished": "2026-10-26T23:39:15.290Z",
+    "postmasterPid": 32636,
+    "port": 15542,
+    "stoppedAfterFinalSourceAfter": true,
+    "clones": [],
+    "other_clients": [],
+    "onlyPlatformSeedRemaining": true,
+    "pidFileExists": false,
+    "originalPidExists": false,
+    "tcpOutcome": "ECONNREFUSED"
+  },
+  "stagedGitAudit": {
+    "checkedFiles": 165,
+    "allGitFilteredOidsMatch": true,
+    "files": [
+      {
+        "path": "apps/api/package.json",
+        "oid": "9c469279e338c645d742d146ce10e27aed6383d4"
+      },
+      {
+        "path": "apps/api/src/queue.ts",
+        "oid": "9e53b4ccf1c3870765f1bd94693ecd03cff21ff9"
+      },
+      {
+        "path": "apps/api/src/run-execution-input.test.ts",
+        "oid": "eaac2531f4617aa06098d823c68b7d17ddae5d07"
+      },
+      {
+        "path": "apps/api/src/run-execution-test-grant.test.ts",
+        "oid": "7d083f243e2c82337549549b75fdb400a4c07223"
+      },
+      {
+        "path": "apps/api/src/run-execution-test-grant.ts",
+        "oid": "bfef6fab58cf1a05a7509fcf205f2ddfeb5bcf4b"
+      },
+      {
+        "path": "apps/api/src/run-execution.ts",
+        "oid": "989846d6663726e19dab5c709b3a73c55fc64423"
+      },
+      {
+        "path": "apps/api/src/run-supplement-draft.pg.test.ts",
+        "oid": "6edf8fc0b6970fb6d8860d4fd18cc7ccda7f1760"
+      },
+      {
+        "path": "apps/api/src/run-supplement-draft.ts",
+        "oid": "3274bf1896a556832e369cd05d9e1fa50e7ef411"
+      },
+      {
+        "path": "apps/api/src/run-supplement-file-preparation-test-fixture.ts",
+        "oid": "da3a8bbc37cad0c505a6367d40513a7414e08626"
+      },
+      {
+        "path": "apps/api/src/run-supplement-input.test.ts",
+        "oid": "86aace7b4343f89a7b0f0a4efdad68eb5a146c4c"
+      },
+      {
+        "path": "apps/api/src/run-supplement-input.ts",
+        "oid": "1a41ff3192e3d488377996cddb2227cd516f4f7d"
+      },
+      {
+        "path": "apps/api/src/run-supplement-preparation-test-fixture.ts",
+        "oid": "e14faa18770ff2fc202d20ff339cd0b8ee439039"
+      },
+      {
+        "path": "apps/api/src/run-supplement-processing-plan.ts",
+        "oid": "cccf89faae087deb820ccc0d3ed91e3e602d9e76"
+      },
+      {
+        "path": "apps/api/src/run-supplement-test-adoption-race.pg.test.ts",
+        "oid": "1e8837b372b99a260c3ccc1eb8088eb80731d3f0"
+      },
+      {
+        "path": "apps/api/src/run-supplement-test-adoption.pg.test.ts",
+        "oid": "98ed197b2e8c6a3028a54987b2bb21c47599922b"
+      },
+      {
+        "path": "apps/api/src/run-supplement-test-adoption.ts",
+        "oid": "49a11d0ed4c80e73865a7cd681da51d985f85c52"
+      },
+      {
+        "path": "apps/worker/src/fact-candidate-producer.execution-test-grant.test.ts",
+        "oid": "2982fcb11c044e71069cca9ce038d38cee993396"
+      },
+      {
+        "path": "apps/worker/src/fact-candidate-producer.ts",
+        "oid": "f5dc39f96ed4c8e409f5584bae67e5b42cfe868e"
+      },
+      {
+        "path": "apps/worker/src/historical-model-stage.test.ts",
+        "oid": "ff262e3c07ee029f18efb49d8553e8f54b41da7b"
+      },
+      {
+        "path": "apps/worker/src/historical-test-rule-authorization.test.ts",
+        "oid": "5b2c383671c3ca977fdb10cf3ffe9611c4eddc73"
+      },
+      {
+        "path": "apps/worker/src/historical-test-rule-authorization.ts",
+        "oid": "c73a50bccd8e79eccc2af86cd44bb403464004c6"
+      },
+      {
+        "path": "apps/worker/src/run-pipeline.ts",
+        "oid": "f791e90cb5bd057ce1e753397146023bd47d7bbe"
+      },
+      {
+        "path": "apps/worker/src/sse-private-test-rule-capability.pg.integration.test.ts",
+        "oid": "0774c5a53f197bf38b2cf94daedc88c578ab2abe"
+      },
+      {
+        "path": "apps/worker/src/sse-private-test-rule-capability.test.ts",
+        "oid": "a02a350543b4a76dd2030136c0c272894c65f86f"
+      },
+      {
+        "path": "apps/worker/src/sse-private-test-rule-capability.ts",
+        "oid": "36d299cb585dd571e7243a5c877397e86c4c8372"
+      },
+      {
+        "path": "db/migrations/0135_run_test_successor_execution.sql",
+        "oid": "a94b2050878d7ea2e1ad0d5da980646defa3fc56"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/README.md",
+        "oid": "157ab4a2289298afdbcbb3edc5df4616e410b1fe"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/.gitattributes",
+        "oid": "fa1385d99a319b43c06f5309d1aae9fdd3adea46"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/README.md",
+        "oid": "7f01077e7f1af209c70eca82f7f82ad4fa856802"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/archive.mjs.gz",
+        "oid": "ea49ae98ba62d1ee0a6005694d1c9ba3d208ed30"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/final-source-check.json.gz",
+        "oid": "8daa8c5c945004b1744a3c04bbc763113a03f0f9"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/playwright.config.mjs.gz",
+        "oid": "9df7fe7d4ccf7395b9e0f2912b730a2bdafcb892"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-16-30-848Z-initdb-32356-5e581e67/command-1-result.json.gz",
+        "oid": "12ba94f49b9ccfedec443fd35b876f46e43679d2"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-16-30-848Z-initdb-32356-5e581e67/command-1-start.json.gz",
+        "oid": "dc5bd2a23f97718a20239af92bd4c048debd7774"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-16-30-848Z-initdb-32356-5e581e67/result.json.gz",
+        "oid": "9ee78d8642627766c43a381086420fb7d88d8ff6"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-16-30-848Z-initdb-32356-5e581e67/run.log.gz",
+        "oid": "abc7293b8ae75aeede052f099a8037293fe4d11c"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-16-30-848Z-initdb-32356-5e581e67/start.json.gz",
+        "oid": "245eb4025843d3ba6869038fe20d01c9aff3f9d7"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-17-02-542Z-initdb-49468-5316e740/command-1-result.json.gz",
+        "oid": "b901a23b3b2c577a76f0296eee8fc47326fda9b8"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-17-02-542Z-initdb-49468-5316e740/command-1-start.json.gz",
+        "oid": "153adcd390e4824a58d7a3a5a79a709f9e54cbca"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-17-02-542Z-initdb-49468-5316e740/result.json.gz",
+        "oid": "7cac69ee2b61c0edaa06853c906887100f8f95a7"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-17-02-542Z-initdb-49468-5316e740/run.log.gz",
+        "oid": "1d870bece375e3730e091ba7e3506875b244521d"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-17-02-542Z-initdb-49468-5316e740/start.json.gz",
+        "oid": "342dc67796368f5f680139958ed51c8f9f32c898"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/command-1-result.json.gz",
+        "oid": "af58809c3d352858cad1cc0ec5f440aea7b735ec"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/command-1-start.json.gz",
+        "oid": "951500ea9940b969bea84cb383f784e8e52b7e3b"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/direct-child.json.gz",
+        "oid": "cd1923acd73d9276728367bd9b740bb38ab2a87d"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/postgres-stderr.log.gz",
+        "oid": "1744a276053459b93036c1798d1b20f487a8236d"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/postgres-stdout.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/result.json.gz",
+        "oid": "a66392ed88a70f002ef0e033b18c562610a2973f"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/run.log.gz",
+        "oid": "8d581aaac80f5d5fa264699f534f08a66c7a55ca"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-12-355Z-pg-start-direct-17228-a024dfcd/start.json.gz",
+        "oid": "5541d8bce8e1ea5507eb684bcb64afe69ef56214"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-37-557Z-database-create-28908-78b77b34/result.json.gz",
+        "oid": "17b53679d38928b2746cf41952cf8402aeab57b2"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-37-557Z-database-create-28908-78b77b34/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-18-37-557Z-database-create-28908-78b77b34/start.json.gz",
+        "oid": "3bc90fb901f78b7d6c55ff60089252574f683e03"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-19-27-354Z-contracts-build-50256-23918a9c/command-1-result.json.gz",
+        "oid": "b53ba1f1012a5be67becb3b2b300957e863a5e17"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-19-27-354Z-contracts-build-50256-23918a9c/command-1-start.json.gz",
+        "oid": "80a26f08df6eb659317788edb5e7b1ec73694e3e"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-19-27-354Z-contracts-build-50256-23918a9c/result.json.gz",
+        "oid": "2ac39cc1895fc07ba32522b1bf00ae02518609e5"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-19-27-354Z-contracts-build-50256-23918a9c/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-19-27-354Z-contracts-build-50256-23918a9c/start.json.gz",
+        "oid": "78a11119fcb1db724abe5671062c88dabd8de30d"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-02-061Z-api-build-47012-b94382a1/command-1-result.json.gz",
+        "oid": "5ba2a38e58674bc14a60b1185ec734ecf9c6adb7"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-02-061Z-api-build-47012-b94382a1/command-1-start.json.gz",
+        "oid": "0adf9901e1597b6d062c3c1b8e26c4b7d54a4262"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-02-061Z-api-build-47012-b94382a1/result.json.gz",
+        "oid": "a3af8ae6f3df7c61ce4b9dfc53d201a669ade034"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-02-061Z-api-build-47012-b94382a1/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-02-061Z-api-build-47012-b94382a1/start.json.gz",
+        "oid": "15fcb5487a3acf01db94e4b006554abf57334bee"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-23-234Z-migrate-50400-b3841903/command-1-result.json.gz",
+        "oid": "721b0e8080710db877755bfb0b283e1b8a7b2bac"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-23-234Z-migrate-50400-b3841903/command-1-start.json.gz",
+        "oid": "5c24e7478233b0930c4ce8e0a3a3335fa835f201"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-23-234Z-migrate-50400-b3841903/result.json.gz",
+        "oid": "1d0d6086d03e465f2d5c399ddd22f2c2c16c9afd"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-23-234Z-migrate-50400-b3841903/run.log.gz",
+        "oid": "6ad8ce4aacf9863471c9cfde8c7b8b7d88ce00fe"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-23-234Z-migrate-50400-b3841903/start.json.gz",
+        "oid": "512bce735e953ef34430cb0d10d194b1e8ab47cd"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-43-397Z-api-successor-3056-9157c7c5/command-1-result.json.gz",
+        "oid": "9fee0d17898d7de27a98fdf94258cbcf365df02f"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-43-397Z-api-successor-3056-9157c7c5/command-1-start.json.gz",
+        "oid": "5890554b2a9ffb6b672f9d544064739f55e33967"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-43-397Z-api-successor-3056-9157c7c5/result.json.gz",
+        "oid": "052691bcdf8fa067b5cde7cecd4396bbd1ef82a5"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-43-397Z-api-successor-3056-9157c7c5/run.log.gz",
+        "oid": "76d2eb36a4b93f403e83c32af046a18f88c2dbd7"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-20-43-397Z-api-successor-3056-9157c7c5/start.json.gz",
+        "oid": "613c4c4293a911c1a960f9b9d35972c86d7f6efc"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-21-05-997Z-worker-build-48776-5eb3955c/command-1-result.json.gz",
+        "oid": "e31676f9a2c2fcd02bb5347d33ab8ced7fd1efd3"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-21-05-997Z-worker-build-48776-5eb3955c/command-1-start.json.gz",
+        "oid": "e2825e31caee3dfe0e55447922b12c029138dee5"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-21-05-997Z-worker-build-48776-5eb3955c/result.json.gz",
+        "oid": "5e0c5c03d8bc8cc9d46bdd356df671905f2b1f3d"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-21-05-997Z-worker-build-48776-5eb3955c/run.log.gz",
+        "oid": "c4ad3b969a130b7214e1954dc4911277ae19d27a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-21-05-997Z-worker-build-48776-5eb3955c/start.json.gz",
+        "oid": "c72eec3bedaeb5abd707dcdaf7a1ff2428928b02"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-22-11-182Z-api-build-6748-6648c1ed/command-1-result.json.gz",
+        "oid": "a3f198d03d8171cd036045b9e93ce6236c499610"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-22-11-182Z-api-build-6748-6648c1ed/command-1-start.json.gz",
+        "oid": "6a4914f3e4d6ab019439c3b9d2254ca4216adbcc"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-22-11-182Z-api-build-6748-6648c1ed/result.json.gz",
+        "oid": "453a357d27e89dd365e0f042aebb0a17e658fe12"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-22-11-182Z-api-build-6748-6648c1ed/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-22-11-182Z-api-build-6748-6648c1ed/start.json.gz",
+        "oid": "61d8cab496ebffeb1733cd3a717b38d3f3e1c1f3"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-23-46-362Z-worker-build-13564-595743aa/command-1-result.json.gz",
+        "oid": "0c3e934b8818df20f876f18346379b1d58736453"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-23-46-362Z-worker-build-13564-595743aa/command-1-start.json.gz",
+        "oid": "365cc1213b3683bf881646360e53a56f7b96c48c"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-23-46-362Z-worker-build-13564-595743aa/result.json.gz",
+        "oid": "ffdc01b439a2d28b81fc08295eb78ff769c6b40a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-23-46-362Z-worker-build-13564-595743aa/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-23-46-362Z-worker-build-13564-595743aa/start.json.gz",
+        "oid": "bf07ad94a82f7f3305714225e8a847bb29ceba48"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-24-59-230Z-worker-grant-41652-51b8442e/command-1-result.json.gz",
+        "oid": "dd4fe7545f25418ab7459403af7819cda910b6b8"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-24-59-230Z-worker-grant-41652-51b8442e/command-1-start.json.gz",
+        "oid": "65a2a197b1fb2c9c26d9fee2bac16417991e8865"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-24-59-230Z-worker-grant-41652-51b8442e/result.json.gz",
+        "oid": "2de199670f584188483222443e92e2f60608ec8f"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-24-59-230Z-worker-grant-41652-51b8442e/run.log.gz",
+        "oid": "16b7d84400a848f0fd741b79f2af57db995fc108"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-24-59-230Z-worker-grant-41652-51b8442e/start.json.gz",
+        "oid": "4a17b2023219ff6bda9058c30a89939d4ca42d78"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-42-038Z-database-reset-23448-ba881f46/database-audit.json.gz",
+        "oid": "9ab6758f51bdafb3fff08853cb6f44d2b57d9528"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-42-038Z-database-reset-23448-ba881f46/result.json.gz",
+        "oid": "412c720b4aeae33a18c5e2a246739619ca2ca864"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-42-038Z-database-reset-23448-ba881f46/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-42-038Z-database-reset-23448-ba881f46/start.json.gz",
+        "oid": "4a2969fc368a0a6193ec7f068116ac086743199c"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-53-842Z-migrate-29904-b716777b/command-1-result.json.gz",
+        "oid": "12a3e983464a4b2c677bb26003e730dec0d14e4a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-53-842Z-migrate-29904-b716777b/command-1-start.json.gz",
+        "oid": "a9442887b67a4998628697feaa116ab7db3eb931"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-53-842Z-migrate-29904-b716777b/result.json.gz",
+        "oid": "392f3fab13b3af641fce619c1e6ff5e624be0723"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-53-842Z-migrate-29904-b716777b/run.log.gz",
+        "oid": "6ad8ce4aacf9863471c9cfde8c7b8b7d88ce00fe"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-27-53-842Z-migrate-29904-b716777b/start.json.gz",
+        "oid": "ac348f71c2be7a378df08c56fc35355e64ac4fe2"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-02-921Z-api-build-42356-5daacaf9/command-1-result.json.gz",
+        "oid": "bb798282ace06339f28c78f317e0166ecb50354f"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-02-921Z-api-build-42356-5daacaf9/command-1-start.json.gz",
+        "oid": "120ce3974b5c954264945b7d187f4073a992ed79"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-02-921Z-api-build-42356-5daacaf9/result.json.gz",
+        "oid": "c7cd2a10b49ac8bb4e1c6cf904dd19bbc22026fb"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-02-921Z-api-build-42356-5daacaf9/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-02-921Z-api-build-42356-5daacaf9/start.json.gz",
+        "oid": "cf173d4186a910fcec86759ae6f06374f54c4977"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-33-263Z-source-before-33556-c9cbe36b/result.json.gz",
+        "oid": "33faa60dcda7617b42e21938d87aa50827f861fb"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-33-263Z-source-before-33556-c9cbe36b/run.log.gz",
+        "oid": "0aba076c9baf57cc7f1358989ac6d1a28c96a779"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-33-263Z-source-before-33556-c9cbe36b/snapshot.json.gz",
+        "oid": "ac570cfd1ceb98148c4ef3e4bc7f54361568e113"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-28-33-263Z-source-before-33556-c9cbe36b/start.json.gz",
+        "oid": "33fa91590ce83e16a30dd852592c451d327a85d8"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1/command-1-result.json.gz",
+        "oid": "c03638d84c4e3a190a17ef757144e1b4298d03fa"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1/command-1-start.json.gz",
+        "oid": "76357e910d18941e432b158cbb3a1777a25bb8f7"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1/result.json.gz",
+        "oid": "b6b8ce2579ea19cb624708354826390b5f2dc258"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1/run.log.gz",
+        "oid": "32ceaf16dcb3332372ca7b7d7ef1dc5922bc673e"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-29-07-143Z-worker-grant-28544-0536c9b1/start.json.gz",
+        "oid": "a20ee21827f23a2ec55726c93abf663d6e975294"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204/command-1-result.json.gz",
+        "oid": "bd1d97e7de5c396c4bcdb496bc4b0c88b71e4b36"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204/command-1-start.json.gz",
+        "oid": "8c74bf9b3f93e19c556f0202671ed23186822926"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204/result.json.gz",
+        "oid": "d30320c38e813efaf0f64321af609da97608d571"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204/run.log.gz",
+        "oid": "52560248e2a81e008e2390db0057700d0df3813a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-30-05-154Z-successor-regression-48892-2bfe4204/start.json.gz",
+        "oid": "bae6605f10334f0086c54d19e2af8f004cc90697"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-34-44-811Z-api-successor-42492-d0a4fd81/command-1-result.json.gz",
+        "oid": "b7753792f1c7b92793a734b054584adf062f0dba"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-34-44-811Z-api-successor-42492-d0a4fd81/command-1-start.json.gz",
+        "oid": "159b2ea9d73d8d5834dbcb19494ce4c4f5a89277"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-34-44-811Z-api-successor-42492-d0a4fd81/result.json.gz",
+        "oid": "d359ad73937ada169b39e6c8d111e780a4673c3e"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-34-44-811Z-api-successor-42492-d0a4fd81/run.log.gz",
+        "oid": "6c8f1976f4599ab2b39ad06ce6a95bb0753a7b49"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-34-44-811Z-api-successor-42492-d0a4fd81/start.json.gz",
+        "oid": "5b3ccbba7da402d643b02115c1461b4bd8d46c38"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f/comparison.json.gz",
+        "oid": "390feaddc0ce61d383c330fdef2f2b7cda2f83ad"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f/result.json.gz",
+        "oid": "43c309fda4105edd46313334edac742a56ceb792"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f/run.log.gz",
+        "oid": "cd054f867507e3351c364ff59dfdbda9c4407574"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f/snapshot.json.gz",
+        "oid": "ac570cfd1ceb98148c4ef3e4bc7f54361568e113"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-32-453Z-source-after-26092-57b0ee0f/start.json.gz",
+        "oid": "e4026b418eb2839833a653aac3e58ced821f4321"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-54-055Z-api-build-51180-c5c9abd1/command-1-result.json.gz",
+        "oid": "5fd3e7cb394c87f5ad738984057558b4242e04bc"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-54-055Z-api-build-51180-c5c9abd1/command-1-start.json.gz",
+        "oid": "908125a97390ec18c46ae6af9d6d4e2e81872318"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-54-055Z-api-build-51180-c5c9abd1/result.json.gz",
+        "oid": "c1231c442e66470351fd795a2285f27bdd5595ec"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-54-055Z-api-build-51180-c5c9abd1/run.log.gz",
+        "oid": "ae211a2cb77f6830fe3b183a87963fc514435a29"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-36-54-055Z-api-build-51180-c5c9abd1/start.json.gz",
+        "oid": "e0deb644af6d81b769c3c8345327dc554723daa4"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-28-240Z-source-before-3980-015ee43b/result.json.gz",
+        "oid": "fa12162078aa6b775af151e97ee113a2b98d7dcc"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-28-240Z-source-before-3980-015ee43b/run.log.gz",
+        "oid": "e25bb4354584894c2d9463338b1c1b8548c52af0"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-28-240Z-source-before-3980-015ee43b/snapshot.json.gz",
+        "oid": "ad335ca9f89d1b2a904875adae856f75b5135614"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-28-240Z-source-before-3980-015ee43b/start.json.gz",
+        "oid": "9a1c886d4129dbe6062c5fd640b9e60bdffb85e4"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6/command-1-result.json.gz",
+        "oid": "4d0d84c4221a60c7700e270deebc01e2a05ffc02"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6/command-1-start.json.gz",
+        "oid": "1fe03bfe64b6b86db1bbae3bef0bd15545a9adde"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6/result.json.gz",
+        "oid": "f5b95682d84615a71afeae9528357cc168781749"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6/run.log.gz",
+        "oid": "74433d233306748c5c29a5a75b869c6e0d5f564c"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-37-43-662Z-api-successor-11636-96c164b6/start.json.gz",
+        "oid": "c5dbd1aff04273a8fba093a5dfcf347ab8421fd1"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6/comparison.json.gz",
+        "oid": "5a99e77f42d03d941cc411b787924a8ad24cf559"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6/result.json.gz",
+        "oid": "cc3a2d106ff4d1e5bf91b91fe95f50f6afb7e02a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6/run.log.gz",
+        "oid": "9c30702098c98febec6af4f8d6a0329af9362054"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6/snapshot.json.gz",
+        "oid": "ad335ca9f89d1b2a904875adae856f75b5135614"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-11-851Z-source-after-15104-56aa55c6/start.json.gz",
+        "oid": "cb50c832ca11978da36a08ef21dcd9eb2ac9ca5a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/command-1-result.json.gz",
+        "oid": "f875381b298b5042a40479bfba3155db22192e32"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/command-1-start.json.gz",
+        "oid": "9e00e002993d9d87ff2db9bc93e4d5cc80d636c3"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/command-2-result.json.gz",
+        "oid": "d75e399467611daab33bf8b63eca9dd7cb3a040a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/command-2-start.json.gz",
+        "oid": "a9da125801ae0170694c4f817f5401fb36d2d792"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/database-audit.json.gz",
+        "oid": "aae385456879d760a1bb91aaff13e782650fce90"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/result.json.gz",
+        "oid": "327ab732fd3220c3ba7354410793e6bceeedcf2c"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/run.log.gz",
+        "oid": "5549274bd54d4f277ed496b7c0319536c2bd0051"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/runs/2026-10-26T23-39-30-487Z-pg-stop-36348-a6914aec/start.json.gz",
+        "oid": "150e5c98a24c356f5b82a39d836ef20245566f50"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/startup-note.json.gz",
+        "oid": "55abebb43c605121b8239667991c17bb489e0c55"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/verify.mjs.gz",
+        "oid": "af9e7cbbf5417c8718826fe9ccd970a10fe3e80b"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/versions/2d66103be5e5daca2f97497ce27c953cbf8c0d67b5c49abbec20a1ed001ba69f.mjs.gz",
+        "oid": "af9e7cbbf5417c8718826fe9ccd970a10fe3e80b"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/versions/a42c3663a5cace60e6863dbfd439f0d22d9b7cdb103e789cfecdc2bed5ddd6f5.mjs.gz",
+        "oid": "262c0b9e62e1abf939c43eeb0ac302142a9ee41f"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/evidence/versions/effa8f535213984b9971077b6005539fd5d695054601efd6ce1d56f9fa6788df.mjs.gz",
+        "oid": "09e187b13d052b523c5357eda2e39e0bd07af884"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/manifest.json",
+        "oid": "cb71a12793a73d219a427cea26ad02d6bd1a283a"
+      },
+      {
+        "path": "docs/acceptance/desktop-ux-coverage-20261026/test-successor-adoption/selection.json",
+        "oid": "7be1c8b9d219c21ad720ee2756c24de85fc2453f"
+      }
+    ],
+    "note": "Independent audit file itself is not part of this 165-file staged snapshot; root will stage it after creation."
+  },
+  "limits": [
+    "No V2 Word delivery or actual successor model call",
+    "No production/paid adoption",
+    "No full G03 or coverage completion claim"
+  ]
+}

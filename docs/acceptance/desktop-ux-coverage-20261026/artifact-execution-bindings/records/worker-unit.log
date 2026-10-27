@@ -1,0 +1,97 @@
+✔ M4 loader resolves the exact execution input and retains scoped source-material checks (5.5914ms)
+✔ M4 loader rejects stale run/lease identity before reading inputs (1.7687ms)
+✔ M4 loader retains V1-only, persisted project/task and immutable M4 snapshot checks (3.9534ms)
+✔ M4 supplied snapshots are checked directly and explicit absence never falls back to a database snapshot (1.7762ms)
+✔ M4 standalone gate keeps its execution database check and supplied snapshots retain live scope/subtype checks (1.8361ms)
+✔ M4 loader and standalone gate reject absent or mismatched versioned snapshots without reading legacy state (2.7469ms)
+✔ supplied M4 snapshots must match every field of the expected execution identity (0.9638ms)
+✔ supplied M4 snapshots and a forged successor identity cannot bypass the persisted V1 execution (0.4619ms)
+✔ global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text (278.4097ms)
+✔ M4 sse/private_summary single CLI file task receives knowledge/requirements and delivers editable Word (2564.1353ms)
+✔ M4 szse/private_summary single CLI file task receives knowledge/requirements and delivers editable Word (2227.8271ms)
+✔ M4 sse/underwriter single CLI file task receives knowledge/requirements and delivers editable Word (1822.8327ms)
+✔ M4 szse/underwriter single CLI file task receives knowledge/requirements and delivers editable Word (1900.0627ms)
+✔ M4 sse/legal single CLI file task receives knowledge/requirements and delivers editable Word (1953.4769ms)
+✔ M4 szse/legal single CLI file task receives knowledge/requirements and delivers editable Word (1819.0137ms)
+✔ M4 missing output is honest, readonly input tampering fails and changed pinned method does not call CLI (209.5838ms)
+✔ M4 QA reads fixed history and host recomputes operands; fabricated CLI numerical text is replaced (513.4545ms)
+✔ M4 QA missing calculation asks for inputs, invalid/cross-owner references are rejected (113.2003ms)
+✔ M4 QA receives exact execution proposal and reading context but returns intent without creating Word or mutating input (104.2719ms)
+✔ M4 Q04 financial comparison requires a host receipt while concept methods and textual comparison remain usable (463.8011ms)
+✔ M4 Q04 two-period numerical result and difference come from the host receipt instead of model text (373.0232ms)
+✔ M4 semantic guard distinguishes whole-action denial, method questions and local limits; unavailable work cannot execute (1.6628ms)
+✔ new opinion types preserve explicit execution and local restrictions, but whole-action denial still wins (0.4554ms)
+✔ M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable (0.5767ms)
+✔ M4 router requires explicit input-lock marker; ordinary M1 generation retains its route (6.1304ms)
+✔ M4 input gate checks topic, subtype, scope and exact owned source hash (6.7714ms)
+✖ M4 template registry and edit-base kind are explicit; retiring the exact old version does not silently change it (10.5695ms)
+✔ M4 file reads reject traversal and hardlinks, and progress exposes safe reasons only (9.9979ms)
+﹣ M4 output symlink never publishes external bytes (0.3816ms) # SKIP
+✔ CLI Word is delivered without a structured report, JSON response, or second call (87.0921ms)
+✔ missing output is recorded without inventing a report; immutable input tampering fails (86.6032ms)
+﹣ report symlinks cannot publish outside files (0.3379ms) # SKIP
+✔ pinned DOCX produces source comments and the same canonical report; missing comment bytes block delivery (1519.8562ms)
+✔ correction delivery rejects absent and retains diagnostics without publishing an unchanged pair (43.896ms)
+✔ correction delivery rejects progress-markdown and retains diagnostics without publishing an unchanged pair (47.91ms)
+✔ correction delivery rejects invalid-word and retains diagnostics without publishing an unchanged pair (695.2495ms)
+✔ correction delivery reads actual Word report fields when Markdown is absent and preserves final response (2484.8813ms)
+✔ review loader consumes the resolved V1 input and keeps the original run creation time (7.116ms)
+✔ another revision with identical bytes cannot fall back to the original run input (1.3787ms)
+▶ review context and lease identity must agree before loading evidence
+  ✔ context run (0.6059ms)
+  ✔ context owner (0.4462ms)
+  ✔ context project (0.8894ms)
+  ✔ context revision (0.4426ms)
+  ✔ context hash (0.8089ms)
+  ✔ lease run (0.9126ms)
+  ✔ lease owner (0.7059ms)
+  ✔ lease revision (0.6433ms)
+  ✔ lease hash (0.6374ms)
+  ✔ successor execution (0.5792ms)
+✔ review context and lease identity must agree before loading evidence (8.9898ms)
+✔ missing execution identity never falls back to an otherwise valid origin snapshot (0.7002ms)
+✔ missing exact input never selects another revision with the same hash (0.5911ms)
+✔ tampered fixed manifest is rejected before material evidence is read (0.4613ms)
+✔ resolved input still passes the existing immutable review snapshot gate (0.6897ms)
+✔ an explicitly missing or differently scoped resolved review snapshot cannot reload the origin (0.5167ms)
+✔ direct review gate callers resolve the exact versioned database snapshot (1.0791ms)
+✔ malformed review snapshot objects fail explicitly for resolved and direct database gates (2.4548ms)
+✔ review loader and standalone gate reject missing or mismatched execution snapshots without a legacy fallback (4.9733ms)
+✔ supplied review snapshots must match every field of the expected execution identity (0.8479ms)
+✔ supplied review snapshots and a forged successor identity cannot bypass the persisted V1 execution (0.4597ms)
+✔ unified original-file loader uses the resolved exact input before reading material bytes (4.2271ms)
+✔ unified loader rejects stale run/lease identity before any material or input read (1.5734ms)
+✔ unified loader rejects another persisted project or task and corrupted frozen input before material access (1.7968ms)
+✔ optional absent and partial source context does not gate an uploaded-source-only run; ownership/hash checks remain (7.2517ms)
+ℹ tests 64
+ℹ suites 0
+ℹ pass 61
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 42668.9876
+
+✖ failing tests:
+
+test at apps\worker\dist\m4-stages.test.js:459:1
+✖ M4 template registry and edit-base kind are explicit; retiring the exact old version does not silently change it (10.5695ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + {
+  +   code: 'INPUT_REVISION_CONFLICT',
+  +   kind: 'fail'
+  + }
+  - null
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/m4-stages.test.js:494:16)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' },
+    expected: null,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,824 @@
+{
+  "version": "supplement-processing-plan-evidence-v1",
+  "scope": "Immutable processing plans and actual M1/M3/M4 workspace preparation for early pauses or complete captured work, with a strict V1 active execution head. No adoption, executable V2, quote, provider call or supplemental charge.",
+  "adopted": {
+    "tests": {
+      "api-plan": {
+        "id": "2026-10-26T21-12-59-346Z-api-plan-7312-c4809ef5",
+        "status": 0,
+        "tests": 50,
+        "suites": 0,
+        "pass": 50,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 82452.8295
+      },
+      "api-plan-regression": {
+        "id": "2026-10-26T21-14-22-638Z-api-plan-regression-20032-eb149847",
+        "status": 0,
+        "tests": 223,
+        "suites": 0,
+        "pass": 223,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 194153.6983
+      },
+      "worker-plan": {
+        "id": "2026-10-26T21-11-36-137Z-worker-plan-16520-72e33a96",
+        "status": 0,
+        "tests": 17,
+        "suites": 0,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 82279.8984
+      },
+      "worker-preparation": {
+        "id": "2026-10-26T21-17-37-663Z-worker-preparation-15336-13cad406",
+        "status": 0,
+        "tests": 31,
+        "suites": 0,
+        "pass": 31,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 92985.078
+      },
+      "worker-authoring-regression": {
+        "id": "2026-10-26T21-19-11-511Z-worker-authoring-regression-48704-95a7bdf6",
+        "status": 0,
+        "tests": 87,
+        "suites": 0,
+        "pass": 82,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 5,
+        "todo": 0,
+        "duration_ms": 75129.6507
+      }
+    },
+    "builds": {
+      "contracts-build": {
+        "id": "2026-10-26T21-03-25-940Z-contracts-build-35248-3f5b4b52",
+        "status": 0
+      },
+      "api-build": {
+        "id": "2026-10-26T21-09-03-820Z-api-build-44832-877776c9",
+        "status": 0
+      },
+      "worker-build": {
+        "id": "2026-10-26T21-10-31-360Z-worker-build-34996-d0cc665a",
+        "status": 0
+      },
+      "web-typecheck": {
+        "id": "2026-10-26T21-03-33-328Z-web-typecheck-39252-382c398d",
+        "status": 0
+      }
+    },
+    "source": {
+      "before": "2026-10-26T21-11-13-153Z-source-before-32136-d67a8d5a",
+      "after": "2026-10-26T21-21-00-193Z-source-after-7016-c1fb326f",
+      "entries": 2425,
+      "sha256": "71dbc9c9c7a1f1493a5840d70cb637c03df4e071f16e1b99a382abee9d808eec",
+      "roots": [
+        "apps/api/src",
+        "apps/api/dist",
+        "apps/worker/src",
+        "apps/worker/dist",
+        "apps/worker/skills",
+        "knowledge/material-drafting",
+        "apps/web/src",
+        "apps/web/tests",
+        "packages/contracts/src",
+        "packages/contracts/dist",
+        "packages/contracts/examples",
+        "apps/web/dist-test",
+        "db/migrations",
+        "python"
+      ],
+      "staged_source_count": 25,
+      "staged_sources": [
+        "apps/api/package.json",
+        "apps/api/src/artifact-execution.pg.test.ts",
+        "apps/api/src/prompt-execution-boundary.pg.integration.test.ts",
+        "apps/api/src/run-execution-business-snapshots.pg.test.ts",
+        "apps/api/src/run-execution-head-migration.pg.test.ts",
+        "apps/api/src/run-execution.pg.integration.test.ts",
+        "apps/api/src/run-execution.ts",
+        "apps/api/src/run-supplement-file-preparation-test-fixture.ts",
+        "apps/api/src/run-supplement-preparation-test-fixture.ts",
+        "apps/api/src/run-supplement-preparation.ts",
+        "apps/api/src/run-supplement-processing-plan.pg.test.ts",
+        "apps/api/src/run-supplement-processing-plan.ts",
+        "apps/worker/src/file-authoring-request.test.ts",
+        "apps/worker/src/file-authoring-request.ts",
+        "apps/worker/src/m4-document-request.test.ts",
+        "apps/worker/src/m4-document-request.ts",
+        "apps/worker/src/review-file-request.test.ts",
+        "apps/worker/src/review-file-request.ts",
+        "apps/worker/src/run-supplement-authoring-request.ts",
+        "apps/worker/src/run-supplement-m4-request.ts",
+        "apps/worker/src/run-supplement-processing-request.pg.test.ts",
+        "apps/worker/src/run-supplement-processing-request.ts",
+        "apps/worker/src/run-supplement-review-request.ts",
+        "db/migrations/0131_run_supplement_processing_plans.sql",
+        "db/migrations/0132_run_execution_heads.sql"
+      ]
+    },
+    "pg_stop": {
+      "id": "2026-10-26T21-21-14-048Z-pg-stop-21168-52ff77a0",
+      "status": 0,
+      "stopped": true,
+      "pid": 40128,
+      "server_started_at": "2026-10-26T20:59:30.901Z",
+      "database_audit": "runs/2026-10-26T21-21-14-048Z-pg-stop-21168-52ff77a0/database-audit.json.gz"
+    }
+  },
+  "preserved_failures": [
+    {
+      "id": "2026-10-26T21-02-42-495Z-migrate-43096-ed72a343",
+      "mode": "migrate",
+      "status": 1,
+      "error": {
+        "name": "AssertionError",
+        "message": "C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-processing-plan-20261027\\runs\\2026-10-26T21-02-42-495Z-migrate-43096-ed72a343\\run.log\n\n1 !== 0\n"
+      },
+      "note": "Independent failed controlled invocation; retained separately and excluded from adopted pass counts."
+    },
+    {
+      "id": "2026-10-26T21-06-33-628Z-api-plan-regression-8160-d629522e",
+      "mode": "api-plan-regression",
+      "status": 1,
+      "error": {
+        "name": "AssertionError",
+        "message": "C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-processing-plan-20261027\\runs\\2026-10-26T21-06-33-628Z-api-plan-regression-8160-d629522e\\run.log\n\n1 !== 0\n"
+      },
+      "note": "Independent failed controlled invocation; retained separately and excluded from adopted pass counts."
+    }
+  ],
+  "limitations": [
+    "This archive preserves controlled verifier invocations and does not claim to record every editing or read-only audit command.",
+    "No chapter/finding dependency graph or arbitrary scratch recovery is implemented; conservative plans require full candidate review.",
+    "Synthetic bytes, model intents and private database fixtures are test evidence; no real provider run, production data or supplemental billing execution is represented."
+  ],
+  "counting": "Each controlled invocation retains its own commands and test_summaries. Superseded failures and reruns are never summed into adopted counts.",
+  "selection": "selection.json",
+  "runs": [
+    {
+      "id": "2026-10-26T20-59-30-196Z-pg-start-direct-42972-8f6e44f8",
+      "mode": "pg-start-direct",
+      "status": 0,
+      "started": "2026-10-26T20:59:30.203Z",
+      "finished": "2026-10-26T20:59:32.007Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T20-59-30-196Z-pg-start-direct-42972-8f6e44f8/command-1-result.json",
+          "started": "2026-10-26T20:59:30.205Z",
+          "finished": "2026-10-26T20:59:30.363Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "status"
+          ],
+          "status": 3,
+          "signal": null,
+          "pid": 14412
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-02-42-495Z-migrate-43096-ed72a343",
+      "mode": "migrate",
+      "status": 1,
+      "started": "2026-10-26T21:02:42.502Z",
+      "finished": "2026-10-26T21:02:43.483Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-02-42-495Z-migrate-43096-ed72a343/command-1-result.json",
+          "started": "2026-10-26T21:02:42.676Z",
+          "finished": "2026-10-26T21:02:43.480Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "db/migrate.mjs"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 26812
+        }
+      ],
+      "test_summaries": [],
+      "error": {
+        "name": "AssertionError",
+        "message": "C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-processing-plan-20261027\\runs\\2026-10-26T21-02-42-495Z-migrate-43096-ed72a343\\run.log\n\n1 !== 0\n"
+      }
+    },
+    {
+      "id": "2026-10-26T21-03-25-940Z-contracts-build-35248-3f5b4b52",
+      "mode": "contracts-build",
+      "status": 0,
+      "started": "2026-10-26T21:03:25.945Z",
+      "finished": "2026-10-26T21:03:32.793Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-03-25-940Z-contracts-build-35248-3f5b4b52/command-1-result.json",
+          "started": "2026-10-26T21:03:25.947Z",
+          "finished": "2026-10-26T21:03:32.791Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "packages/contracts/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 24420
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-03-33-328Z-web-typecheck-39252-382c398d",
+      "mode": "web-typecheck",
+      "status": 0,
+      "started": "2026-10-26T21:03:33.335Z",
+      "finished": "2026-10-26T21:03:52.750Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-03-33-328Z-web-typecheck-39252-382c398d/command-1-result.json",
+          "started": "2026-10-26T21:03:33.337Z",
+          "finished": "2026-10-26T21:03:52.748Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/web/tsconfig.json",
+            "--noEmit"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 35744
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-04-36-634Z-migrate-49604-e0b6d2cf",
+      "mode": "migrate",
+      "status": 0,
+      "started": "2026-10-26T21:04:36.640Z",
+      "finished": "2026-10-26T21:04:37.492Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-04-36-634Z-migrate-49604-e0b6d2cf/command-1-result.json",
+          "started": "2026-10-26T21:04:36.831Z",
+          "finished": "2026-10-26T21:04:37.491Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "db/migrate.mjs"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 23608
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-05-18-602Z-api-build-26260-eeaff1ae",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T21:05:18.609Z",
+      "finished": "2026-10-26T21:05:35.239Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-05-18-602Z-api-build-26260-eeaff1ae/command-1-result.json",
+          "started": "2026-10-26T21:05:18.611Z",
+          "finished": "2026-10-26T21:05:35.238Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 46800
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-05-43-739Z-worker-build-35804-ecbe9d03",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T21:05:43.745Z",
+      "finished": "2026-10-26T21:05:58.706Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-05-43-739Z-worker-build-35804-ecbe9d03/command-1-result.json",
+          "started": "2026-10-26T21:05:43.747Z",
+          "finished": "2026-10-26T21:05:58.704Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 24516
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-06-17-962Z-source-before-50988-a572705d",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T21:06:17.968Z",
+      "finished": "2026-10-26T21:06:23.031Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-06-32-650Z-api-plan-50960-b9e99496",
+      "mode": "api-plan",
+      "status": 0,
+      "started": "2026-10-26T21:06:32.657Z",
+      "finished": "2026-10-26T21:08:32.525Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-06-32-650Z-api-plan-50960-b9e99496/command-1-result.json",
+          "started": "2026-10-26T21:06:32.885Z",
+          "finished": "2026-10-26T21:08:32.523Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/run-supplement-processing-plan.pg.test.js",
+            "apps/api/dist/run-execution-head-migration.pg.test.js",
+            "apps/api/dist/run-execution.pg.integration.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 11332
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 50,
+          "suites": 0,
+          "pass": 50,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 119496.1453
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-06-32-654Z-worker-plan-33332-18538cb9",
+      "mode": "worker-plan",
+      "status": 0,
+      "started": "2026-10-26T21:06:32.661Z",
+      "finished": "2026-10-26T21:08:08.064Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-06-32-654Z-worker-plan-33332-18538cb9/command-1-result.json",
+          "started": "2026-10-26T21:06:32.916Z",
+          "finished": "2026-10-26T21:08:08.063Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/run-supplement-processing-request.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 10776
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 17,
+          "suites": 0,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 95013.3636
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-06-33-628Z-api-plan-regression-8160-d629522e",
+      "mode": "api-plan-regression",
+      "status": 1,
+      "started": "2026-10-26T21:06:33.633Z",
+      "finished": "2026-10-26T21:10:17.662Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-06-33-628Z-api-plan-regression-8160-d629522e/command-1-result.json",
+          "started": "2026-10-26T21:06:33.823Z",
+          "finished": "2026-10-26T21:10:17.660Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/run-supplement-file-preparation.pg.test.js",
+            "apps/api/dist/run-supplement-preparation.pg.test.js",
+            "apps/api/dist/run-supplement-input.test.js",
+            "apps/api/dist/run-supplement-draft.pg.test.js",
+            "apps/api/dist/run-supplement-files.pg.test.js",
+            "apps/api/dist/run-supplement-work.pg.test.js",
+            "apps/api/dist/run-execution-input.test.js",
+            "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+            "apps/api/dist/artifact-execution.pg.test.js",
+            "apps/api/dist/prompt-execution-boundary.pg.integration.test.js"
+          ],
+          "status": 1,
+          "signal": null,
+          "pid": 18120
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 223,
+          "suites": 0,
+          "pass": 216,
+          "fail": 7,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 223724.4439
+        }
+      ],
+      "error": {
+        "name": "AssertionError",
+        "message": "C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-processing-plan-20261027\\runs\\2026-10-26T21-06-33-628Z-api-plan-regression-8160-d629522e\\run.log\n\n1 !== 0\n"
+      }
+    },
+    {
+      "id": "2026-10-26T21-09-03-820Z-api-build-44832-877776c9",
+      "mode": "api-build",
+      "status": 0,
+      "started": "2026-10-26T21:09:03.826Z",
+      "finished": "2026-10-26T21:09:20.842Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-09-03-820Z-api-build-44832-877776c9/command-1-result.json",
+          "started": "2026-10-26T21:09:03.828Z",
+          "finished": "2026-10-26T21:09:20.841Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/api/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 44956
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-10-31-360Z-worker-build-34996-d0cc665a",
+      "mode": "worker-build",
+      "status": 0,
+      "started": "2026-10-26T21:10:31.367Z",
+      "finished": "2026-10-26T21:10:47.991Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-10-31-360Z-worker-build-34996-d0cc665a/command-1-result.json",
+          "started": "2026-10-26T21:10:31.369Z",
+          "finished": "2026-10-26T21:10:47.989Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+            "-p",
+            "apps/worker/tsconfig.json"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 45152
+        }
+      ],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-11-13-153Z-source-before-32136-d67a8d5a",
+      "mode": "source-before",
+      "status": 0,
+      "started": "2026-10-26T21:11:13.162Z",
+      "finished": "2026-10-26T21:11:26.367Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-11-36-137Z-worker-plan-16520-72e33a96",
+      "mode": "worker-plan",
+      "status": 0,
+      "started": "2026-10-26T21:11:36.145Z",
+      "finished": "2026-10-26T21:12:58.827Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-11-36-137Z-worker-plan-16520-72e33a96/command-1-result.json",
+          "started": "2026-10-26T21:11:36.409Z",
+          "finished": "2026-10-26T21:12:58.825Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/run-supplement-processing-request.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 42436
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 17,
+          "suites": 0,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 82279.8984
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-12-59-346Z-api-plan-7312-c4809ef5",
+      "mode": "api-plan",
+      "status": 0,
+      "started": "2026-10-26T21:12:59.353Z",
+      "finished": "2026-10-26T21:14:22.136Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-12-59-346Z-api-plan-7312-c4809ef5/command-1-result.json",
+          "started": "2026-10-26T21:12:59.564Z",
+          "finished": "2026-10-26T21:14:22.135Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/run-supplement-processing-plan.pg.test.js",
+            "apps/api/dist/run-execution-head-migration.pg.test.js",
+            "apps/api/dist/run-execution.pg.integration.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 13396
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 50,
+          "suites": 0,
+          "pass": 50,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 82452.8295
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-14-22-638Z-api-plan-regression-20032-eb149847",
+      "mode": "api-plan-regression",
+      "status": 0,
+      "started": "2026-10-26T21:14:22.645Z",
+      "finished": "2026-10-26T21:17:37.122Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-14-22-638Z-api-plan-regression-20032-eb149847/command-1-result.json",
+          "started": "2026-10-26T21:14:22.856Z",
+          "finished": "2026-10-26T21:17:37.120Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/run-supplement-file-preparation.pg.test.js",
+            "apps/api/dist/run-supplement-preparation.pg.test.js",
+            "apps/api/dist/run-supplement-input.test.js",
+            "apps/api/dist/run-supplement-draft.pg.test.js",
+            "apps/api/dist/run-supplement-files.pg.test.js",
+            "apps/api/dist/run-supplement-work.pg.test.js",
+            "apps/api/dist/run-execution-input.test.js",
+            "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+            "apps/api/dist/artifact-execution.pg.test.js",
+            "apps/api/dist/prompt-execution-boundary.pg.integration.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 26192
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 223,
+          "suites": 0,
+          "pass": 223,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 194153.6983
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-17-37-663Z-worker-preparation-15336-13cad406",
+      "mode": "worker-preparation",
+      "status": 0,
+      "started": "2026-10-26T21:17:37.670Z",
+      "finished": "2026-10-26T21:19:10.994Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-17-37-663Z-worker-preparation-15336-13cad406/command-1-result.json",
+          "started": "2026-10-26T21:17:37.898Z",
+          "finished": "2026-10-26T21:19:10.993Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/file-authoring-request.test.js",
+            "apps/worker/dist/run-supplement-authoring-request.pg.test.js",
+            "apps/worker/dist/review-file-request.test.js",
+            "apps/worker/dist/run-supplement-review-request.pg.test.js",
+            "apps/worker/dist/m4-document-request.test.js",
+            "apps/worker/dist/run-supplement-m4-request.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 26212
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 31,
+          "suites": 0,
+          "pass": 31,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 92985.078
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-19-11-511Z-worker-authoring-regression-48704-95a7bdf6",
+      "mode": "worker-authoring-regression",
+      "status": 0,
+      "started": "2026-10-26T21:19:11.517Z",
+      "finished": "2026-10-26T21:20:26.967Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-19-11-511Z-worker-authoring-regression-48704-95a7bdf6/command-1-result.json",
+          "started": "2026-10-26T21:19:11.730Z",
+          "finished": "2026-10-26T21:20:26.965Z",
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "--test",
+            "--test-concurrency=1",
+            "apps/worker/dist/m4-input.test.js",
+            "apps/worker/dist/m4-stages.test.js",
+            "apps/worker/dist/m4-runtime-skills.test.js",
+            "apps/worker/dist/m4-pipeline.pg.test.js",
+            "apps/worker/dist/review-file-stage.test.js",
+            "apps/worker/dist/review-file-delivery.pg.test.js",
+            "apps/worker/dist/review-input-execution.test.js",
+            "apps/worker/dist/unified-input.test.js",
+            "apps/worker/dist/file-authoring-delivery.test.js",
+            "apps/worker/dist/execution-input-loaders.pg.test.js",
+            "apps/worker/dist/authoring-pause.pg.test.js",
+            "apps/worker/dist/run-execution-consumers.pg.test.js"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 48124
+        }
+      ],
+      "test_summaries": [
+        {
+          "tests": 87,
+          "suites": 0,
+          "pass": 82,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 5,
+          "todo": 0,
+          "duration_ms": 75129.6507
+        }
+      ]
+    },
+    {
+      "id": "2026-10-26T21-21-00-193Z-source-after-7016-c1fb326f",
+      "mode": "source-after",
+      "status": 0,
+      "started": "2026-10-26T21:21:00.199Z",
+      "finished": "2026-10-26T21:21:02.989Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [],
+      "test_summaries": []
+    },
+    {
+      "id": "2026-10-26T21-21-14-048Z-pg-stop-21168-52ff77a0",
+      "mode": "pg-stop",
+      "status": 0,
+      "started": "2026-10-26T21:21:14.054Z",
+      "finished": "2026-10-26T21:21:15.050Z",
+      "script_sha256": "515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799",
+      "script_version": "versions/515d4f03c0bca24fc6fe690bb89768e949634ebe2c92e839f17dafdbd93c0799.mjs",
+      "commands": [
+        {
+          "path": "runs/2026-10-26T21-21-14-048Z-pg-stop-21168-52ff77a0/command-1-result.json",
+          "started": "2026-10-26T21:21:14.718Z",
+          "finished": "2026-10-26T21:21:14.994Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "-w",
+            "stop",
+            "-m",
+            "fast"
+          ],
+          "status": 0,
+          "signal": null,
+          "pid": 51088
+        },
+        {
+          "path": "runs/2026-10-26T21-21-14-048Z-pg-stop-21168-52ff77a0/command-2-result.json",
+          "started": "2026-10-26T21:21:14.995Z",
+          "finished": "2026-10-26T21:21:15.048Z",
+          "exe": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+          "args": [
+            "-D",
+            "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\report-postgres\\data",
+            "status"
+          ],
+          "status": 3,
+          "signal": null,
+          "pid": 48032
+        }
+      ],
+      "test_summaries": []
+    }
+  ]
+}

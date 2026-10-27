@@ -1,0 +1,666 @@
+2026-10-27 08:48:07.747 CST [15704] LOG:  starting PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit
+2026-10-27 08:48:07.749 CST [15704] LOG:  listening on IPv4 address "127.0.0.1", port 15542
+2026-10-27 08:48:07.877 CST [22648] LOG:  database system was shut down at 2026-10-27 08:30:34 CST
+2026-10-27 08:48:07.961 CST [15704] LOG:  database system is ready to accept connections
+2026-10-27 08:53:07.850 CST [43828] LOG:  checkpoint starting: time
+2026-10-27 08:53:07.886 CST [43828] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.007 s, total=0.036 s; sync files=3, longest=0.003 s, average=0.003 s; distance=0 kB, estimate=0 kB; lsn=0/4C4CA190, redo lsn=0/4C4CA158
+2026-10-27 08:56:19.767 CST [38624] ERROR:  synthetic outbox fault
+2026-10-27 08:56:19.767 CST [38624] CONTEXT:  PL/pgSQL function synthetic_m2_outbox_fault() line 1 at RAISE
+2026-10-27 08:56:19.767 CST [38624] STATEMENT:  INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:56:23.507 CST [44192] ERROR:  Credit history is append only
+2026-10-27 08:56:23.507 CST [44192] CONTEXT:  PL/pgSQL function bb_credit_immutable() line 2 at RAISE
+2026-10-27 08:56:23.507 CST [44192] STATEMENT:  UPDATE bb_credit_events SET reason='changed' WHERE owner_user_id=$1
+2026-10-27 08:56:23.624 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:56:31.738 CST [43828] LOG:  checkpoint complete: wrote 5167 buffers (31.5%); 0 WAL file(s) added, 0 removed, 2 recycled; write=2.974 s, sync=5.096 s, total=8.114 s; sync files=3305, longest=0.034 s, average=0.002 s; distance=41978 kB, estimate=41978 kB; lsn=0/4EECBD90, redo lsn=0/4EDC8CE8
+2026-10-27 08:56:37.670 CST [13516] ERROR:  synthetic B1 quote outbox failure
+2026-10-27 08:56:37.670 CST [13516] CONTEXT:  PL/pgSQL function bb_test_b1_outbox_5472bbc00aee4ce4ab4b9f1336bc66c7() line 2 at RAISE
+2026-10-27 08:56:37.670 CST [13516] STATEMENT:  INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+	      VALUES($1,$2,'run_supplement_quote',$3,'run.supplement_quote_created',$4::jsonb)
+2026-10-27 08:56:40.047 CST [10464] ERROR:  Credit history is append only
+2026-10-27 08:56:40.047 CST [10464] CONTEXT:  PL/pgSQL function bb_credit_immutable() line 2 at RAISE
+2026-10-27 08:56:40.047 CST [10464] STATEMENT:  UPDATE bb_m4_quotes SET reserve_points=1 WHERE id=$1
+2026-10-27 08:56:40.250 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:56:40.780 CST [43828] LOG:  checkpoint complete: wrote 378 buffers (2.3%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.428 s, sync=0.075 s, total=0.531 s; sync files=239, longest=0.003 s, average=0.001 s; distance=12611 kB, estimate=39042 kB; lsn=0/4FA3FB78, redo lsn=0/4FA19A30
+2026-10-27 08:56:41.371 CST [50428] ERROR:  synthetic B1 quote outbox failure
+2026-10-27 08:56:41.371 CST [50428] CONTEXT:  PL/pgSQL function bb_test_b1_outbox_82c693b5887f4d599b008518d10ea42a() line 2 at RAISE
+2026-10-27 08:56:41.371 CST [50428] STATEMENT:  INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+	      VALUES($1,$2,'run_supplement_quote',$3,'run.supplement_quote_confirmed',$4::jsonb)
+2026-10-27 08:56:51.522 CST [8484] ERROR:  Delivered review report required for settlement
+2026-10-27 08:56:51.522 CST [8484] CONTEXT:  PL/pgSQL function bb_credit_finalize_run() line 17 at RAISE
+2026-10-27 08:56:51.522 CST [8484] STATEMENT:  UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1
+2026-10-27 08:56:53.507 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:56:53.940 CST [43828] LOG:  checkpoint complete: wrote 295 buffers (1.8%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.287 s, sync=0.115 s, total=0.433 s; sync files=180, longest=0.010 s, average=0.001 s; distance=12686 kB, estimate=36406 kB; lsn=0/5068AD90, redo lsn=0/5067D438
+2026-10-27 08:57:10.421 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:57:12.146 CST [50316] WARNING:  you don't own a lock of type ExclusiveLock
+2026-10-27 08:57:14.333 CST [43828] LOG:  checkpoint complete: wrote 3027 buffers (18.5%); 0 WAL file(s) added, 0 removed, 1 recycled; write=2.049 s, sync=1.838 s, total=3.913 s; sync files=1652, longest=0.072 s, average=0.002 s; distance=13853 kB, estimate=34151 kB; lsn=0/51448170, redo lsn=0/51404980
+2026-10-27 08:57:17.714 CST [25280] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:17.714 CST [25280] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:17.714 CST [25280] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:18.204 CST [40160] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:18.204 CST [40160] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:18.204 CST [40160] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:18.639 CST [49828] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:18.639 CST [49828] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:18.639 CST [49828] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:19.106 CST [47728] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:19.106 CST [47728] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:19.106 CST [47728] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:19.615 CST [39596] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:19.615 CST [39596] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:19.615 CST [39596] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:20.094 CST [38364] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:20.094 CST [38364] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:20.094 CST [38364] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:20.578 CST [45096] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:20.578 CST [45096] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:20.578 CST [45096] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:21.070 CST [18604] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:21.070 CST [18604] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:21.070 CST [18604] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:21.516 CST [44052] ERROR:  review snapshot must match its exact execution input
+2026-10-27 08:57:21.516 CST [44052] CONTEXT:  PL/pgSQL function bb_check_review_execution_snapshot() line 50 at RAISE
+	SQL statement "INSERT INTO bb_review_execution_snapshots(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,
+	    version,operation,source_report_id,snapshot,created_at)
+	  VALUES(NEW.owner_user_id,NEW.project_id,NEW.run_id,execution.execution_version,execution.input_revision,execution.input_hash,
+	    NEW.version,NEW.operation,NEW.source_report_id,NEW.snapshot,NEW.created_at)"
+	PL/pgSQL function bb_bridge_review_execution_snapshot() line 6 at SQL statement
+2026-10-27 08:57:21.516 CST [44052] STATEMENT:  INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,snapshot)
+	        VALUES($1,$2,$3,$4,$5,$6)
+2026-10-27 08:57:22.163 CST [42296] ERROR:  synthetic outbox failure
+2026-10-27 08:57:22.163 CST [42296] CONTEXT:  PL/pgSQL function bb_test_supplement_outbox_fail() line 2 at RAISE
+2026-10-27 08:57:22.163 CST [42296] STATEMENT:  INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+	        VALUES($1,$2,'run_supplement_draft',$3,'run.supplement_draft_saved',$4)
+2026-10-27 08:57:22.240 CST [42296] ERROR:  immutable input revision
+2026-10-27 08:57:22.240 CST [42296] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-27 08:57:22.240 CST [42296] STATEMENT:  UPDATE bb_run_supplement_drafts SET changes='[]' WHERE run_id=$1
+2026-10-27 08:57:26.149 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:57:30.204 CST [43828] LOG:  checkpoint complete: wrote 2896 buffers (17.7%); 0 WAL file(s) added, 0 removed, 1 recycled; write=2.022 s, sync=2.005 s, total=4.055 s; sync files=1644, longest=0.022 s, average=0.002 s; distance=12788 kB, estimate=32014 kB; lsn=0/520A5170, redo lsn=0/52081C88
+2026-10-27 08:58:14.957 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:58:15.432 CST [43828] LOG:  checkpoint complete: wrote 577 buffers (3.5%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.315 s, sync=0.126 s, total=0.476 s; sync files=189, longest=0.006 s, average=0.001 s; distance=18482 kB, estimate=30661 kB; lsn=0/53295BC0, redo lsn=0/5328E690
+2026-10-27 08:58:24.501 CST [44424] ERROR:  processing plan requires the fixed conservative recipe
+2026-10-27 08:58:24.501 CST [44424] CONTEXT:  PL/pgSQL function bb_check_supplement_processing_plan() line 70 at RAISE
+2026-10-27 08:58:24.501 CST [44424] STATEMENT:  INSERT INTO bb_run_supplement_processing_plans(id,owner_user_id,project_id,run_id,supplement_revision,job_id,kind,request_id,receipt_request_id,receipt_request_hash,execution_version,input_revision,input_hash,checkpoint_hash,candidate_input_hash,basis_hash,plan_hash,body) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+2026-10-27 08:58:24.839 CST [24940] ERROR:  processing plan must match the exact safe receipt and execution
+2026-10-27 08:58:24.839 CST [24940] CONTEXT:  PL/pgSQL function bb_check_supplement_processing_plan() line 41 at RAISE
+2026-10-27 08:58:24.839 CST [24940] STATEMENT:  INSERT INTO bb_run_supplement_processing_plans(id,owner_user_id,project_id,run_id,supplement_revision,job_id,kind,request_id,receipt_request_id,receipt_request_hash,execution_version,input_revision,input_hash,checkpoint_hash,candidate_input_hash,basis_hash,plan_hash,body) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+2026-10-27 08:58:25.003 CST [34140] ERROR:  processing plan requires the fixed conservative recipe
+2026-10-27 08:58:25.003 CST [34140] CONTEXT:  PL/pgSQL function bb_check_supplement_processing_plan() line 70 at RAISE
+2026-10-27 08:58:25.003 CST [34140] STATEMENT:  INSERT INTO bb_run_supplement_processing_plans(id,owner_user_id,project_id,run_id,supplement_revision,job_id,kind,request_id,receipt_request_id,receipt_request_hash,execution_version,input_revision,input_hash,checkpoint_hash,candidate_input_hash,basis_hash,plan_hash,body) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+2026-10-27 08:58:25.378 CST [46248] ERROR:  immutable input revision
+2026-10-27 08:58:25.378 CST [46248] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-27 08:58:25.378 CST [46248] STATEMENT:  UPDATE bb_run_supplement_processing_plans SET body=body WHERE id=$1
+2026-10-27 08:58:25.770 CST [21988] ERROR:  immutable input revision
+2026-10-27 08:58:25.770 CST [21988] CONTEXT:  PL/pgSQL function bb_reject_snapshot_change() line 2 at RAISE
+2026-10-27 08:58:25.770 CST [21988] STATEMENT:  DELETE FROM bb_run_supplement_processing_plans WHERE id=$1
+2026-10-27 08:58:26.330 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:58:30.725 CST [43828] LOG:  checkpoint complete: wrote 2895 buffers (17.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.982 s, sync=2.395 s, total=4.395 s; sync files=1646, longest=0.039 s, average=0.002 s; distance=12604 kB, estimate=28856 kB; lsn=0/53F2ED40, redo lsn=0/53EDD7F0
+2026-10-27 08:58:37.369 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 08:58:37.391 CST [43828] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.003 s, total=0.023 s; sync files=2, longest=0.003 s, average=0.002 s; distance=793 kB, estimate=26049 kB; lsn=0/53FA3F58, redo lsn=0/53FA3F20
+2026-10-27 08:58:54.616 CST [35848] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:58:54.616 CST [35848] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:58:54.616 CST [35848] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:58:54.939 CST [49784] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:58:54.939 CST [49784] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:58:54.939 CST [49784] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:58:55.347 CST [10756] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:58:55.347 CST [10756] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:58:55.347 CST [10756] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:58:58.663 CST [35712] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:58:58.663 CST [35712] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:58:58.663 CST [35712] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:58:58.876 CST [25440] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:58:58.876 CST [25440] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:58:58.876 CST [25440] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:58:59.334 CST [43916] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:58:59.334 CST [43916] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:58:59.334 CST [43916] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:03.650 CST [34304] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:59:03.650 CST [34304] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:03.650 CST [34304] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:03.867 CST [40160] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:59:03.867 CST [40160] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:59:03.867 CST [40160] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:04.372 CST [31376] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:59:04.372 CST [31376] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:59:04.372 CST [31376] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:07.911 CST [31756] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:59:07.911 CST [31756] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:07.911 CST [31756] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:08.207 CST [40912] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:59:08.207 CST [40912] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:59:08.207 CST [40912] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:08.785 CST [50620] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 08:59:08.785 CST [50620] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 08:59:08.785 CST [50620] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:11.046 CST [23404] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:59:11.046 CST [23404] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:11.046 CST [23404] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:11.406 CST [49344] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 08:59:11.406 CST [49344] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:11.406 CST [49344] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:13.748 CST [49408] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:59:13.748 CST [49408] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:13.748 CST [49408] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:14.017 CST [39780] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 08:59:14.017 CST [39780] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:14.017 CST [39780] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:16.315 CST [38604] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 08:59:16.315 CST [38604] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:16.315 CST [38604] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:16.753 CST [38076] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 08:59:16.753 CST [38076] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:16.753 CST [38076] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:19.715 CST [50212] ERROR:  supplement quote requires a live owned project
+2026-10-27 08:59:19.715 CST [50212] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 14 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:19.715 CST [50212] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:19.861 CST [10988] ERROR:  supplement quote requires a live owned project
+2026-10-27 08:59:19.861 CST [10988] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 14 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:19.861 CST [10988] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:20.276 CST [20804] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:20.276 CST [20804] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:20.276 CST [20804] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:20.698 CST [14992] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:20.698 CST [14992] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:20.698 CST [14992] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:21.161 CST [47160] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:21.161 CST [47160] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:21.161 CST [47160] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:21.605 CST [24456] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:21.605 CST [24456] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:21.605 CST [24456] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:22.036 CST [36804] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:22.036 CST [36804] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:22.036 CST [36804] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:22.480 CST [24996] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:22.480 CST [24996] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:22.480 CST [24996] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:22.947 CST [43020] ERROR:  captured work requires its exact retained result and a full-document rework price
+2026-10-27 08:59:22.947 CST [43020] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 163 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:22.947 CST [43020] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:23.424 CST [34964] ERROR:  B1 quotes one business document, never its individual delivery variants
+2026-10-27 08:59:23.424 CST [34964] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 76 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:23.424 CST [34964] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:23.887 CST [44124] ERROR:  B1 item must retain its exact typed target, billing unit and price terms
+2026-10-27 08:59:23.887 CST [44124] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 92 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:23.887 CST [44124] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:24.376 CST [40076] ERROR:  B1 item must retain its exact typed target, billing unit and price terms
+2026-10-27 08:59:24.376 CST [40076] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 92 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:24.376 CST [40076] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:24.791 CST [41292] ERROR:  B1 total must equal the exact item amount
+2026-10-27 08:59:24.791 CST [41292] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 95 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:24.791 CST [41292] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:25.275 CST [24192] ERROR:  B1 snapshot and hash must match the exact quoted scope and amount
+2026-10-27 08:59:25.275 CST [24192] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 233 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:25.275 CST [24192] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:25.760 CST [40224] ERROR:  B1 snapshot and hash must match the exact quoted scope and amount
+2026-10-27 08:59:25.760 CST [40224] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 233 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:25.760 CST [40224] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:26.220 CST [49360] ERROR:  an unreserved source cannot claim an original paid quote
+2026-10-27 08:59:26.220 CST [49360] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 119 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:26.220 CST [49360] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:26.626 CST [48300] ERROR:  duplicate key value violates unique constraint "bb_supplement_quote_confirmation_quote_unique"
+2026-10-27 08:59:26.626 CST [48300] DETAIL:  Key (quote_id)=(2e679492-65d6-4461-a2e1-b2a3b04be336) already exists.
+2026-10-27 08:59:26.626 CST [48300] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:29.815 CST [39768] ERROR:  B1 task must match the original owned paid quote
+2026-10-27 08:59:29.815 CST [39768] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 116 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:29.815 CST [39768] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:30.023 CST [13452] ERROR:  B1 rework requires the current immutable whole-document catalog price
+2026-10-27 08:59:30.023 CST [13452] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 183 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 08:59:30.023 CST [13452] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:30.505 CST [42208] ERROR:  B1 rework requires the current immutable whole-document catalog price
+2026-10-27 08:59:30.505 CST [42208] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 183 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 08:59:30.505 CST [42208] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 08:59:34.080 CST [37316] ERROR:  B1 quote expired; obtain and confirm a fresh quotation
+2026-10-27 08:59:34.080 CST [37316] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 235 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 08:59:34.080 CST [37316] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:34.288 CST [40696] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 08:59:34.288 CST [40696] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 08:59:34.288 CST [40696] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 08:59:34.669 CST [14044] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 08:59:34.669 CST [14044] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 08:59:34.669 CST [14044] STATEMENT:  UPDATE bb_run_supplement_quotes SET request_id=request_id WHERE id=$1
+2026-10-27 08:59:35.043 CST [21928] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 08:59:35.043 CST [21928] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 08:59:35.043 CST [21928] STATEMENT:  DELETE FROM bb_run_supplement_quotes WHERE id=$1
+2026-10-27 08:59:35.405 CST [44140] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 08:59:35.405 CST [44140] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 08:59:35.405 CST [44140] STATEMENT:  TRUNCATE bb_run_supplement_quotes CASCADE
+2026-10-27 08:59:35.793 CST [4112] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 08:59:35.793 CST [4112] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 08:59:35.793 CST [4112] STATEMENT:  UPDATE bb_run_supplement_quote_confirmations SET request_id=request_id WHERE id=$1
+2026-10-27 08:59:36.115 CST [12816] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+	
+2026-10-27 08:59:36.115 CST [36480] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+	
+2026-10-27 09:02:20.997 CST [4420] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:20.997 CST [4420] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:20.997 CST [4420] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:21.153 CST [17628] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:21.153 CST [17628] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:21.153 CST [17628] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:21.524 CST [47316] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:21.524 CST [47316] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:21.524 CST [47316] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:25.114 CST [8548] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:25.114 CST [8548] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:25.114 CST [8548] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:25.325 CST [40116] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:25.325 CST [40116] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:25.325 CST [40116] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:25.811 CST [21988] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:25.811 CST [21988] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:25.811 CST [21988] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:30.334 CST [17172] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:30.334 CST [17172] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:30.334 CST [17172] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:30.556 CST [20584] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:30.556 CST [20584] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:30.556 CST [20584] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:31.065 CST [39900] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:31.065 CST [39900] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:31.065 CST [39900] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:34.459 CST [45792] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:34.459 CST [45792] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:34.459 CST [45792] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:34.704 CST [46172] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:34.704 CST [46172] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:34.704 CST [46172] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:35.202 CST [40656] ERROR:  confirmation must accept the exact owned B1 quotation
+2026-10-27 09:02:35.202 CST [40656] CONTEXT:  PL/pgSQL function bb_check_supplement_quote_confirmation() line 7 at RAISE
+2026-10-27 09:02:35.202 CST [40656] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:37.230 CST [46452] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:37.230 CST [46452] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:37.230 CST [46452] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:37.407 CST [47960] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 09:02:37.407 CST [47960] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:37.407 CST [47960] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:39.652 CST [42748] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:39.652 CST [42748] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:39.652 CST [42748] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:39.926 CST [31904] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 09:02:39.926 CST [31904] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:39.926 CST [31904] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:42.368 CST [10980] ERROR:  B1 must retain the original owned reservation quote
+2026-10-27 09:02:42.368 CST [10980] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 103 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:42.368 CST [10980] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:42.888 CST [41200] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 09:02:42.888 CST [41200] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:42.888 CST [41200] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:46.094 CST [36500] ERROR:  supplement quote requires a live owned project
+2026-10-27 09:02:46.094 CST [36500] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 14 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:46.094 CST [36500] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:46.256 CST [13880] ERROR:  supplement quote requires a live owned project
+2026-10-27 09:02:46.256 CST [13880] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 14 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:46.256 CST [13880] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:46.695 CST [45548] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:02:46.695 CST [45548] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:46.695 CST [45548] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:47.124 CST [12552] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:02:47.124 CST [12552] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:47.124 CST [12552] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:47.535 CST [46608] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:02:47.535 CST [46608] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:47.535 CST [46608] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:48.007 CST [15008] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:02:48.007 CST [15008] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:48.007 CST [15008] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:48.437 CST [35424] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:02:48.437 CST [35424] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:48.437 CST [35424] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:48.903 CST [4544] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:02:48.903 CST [4544] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:48.903 CST [4544] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:49.377 CST [35876] ERROR:  captured work requires its exact retained result and a full-document rework price
+2026-10-27 09:02:49.377 CST [35876] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 163 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:49.377 CST [35876] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:49.877 CST [50296] ERROR:  B1 quotes one business document, never its individual delivery variants
+2026-10-27 09:02:49.877 CST [50296] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 76 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:49.877 CST [50296] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:50.334 CST [50432] ERROR:  B1 item must retain its exact typed target, billing unit and price terms
+2026-10-27 09:02:50.334 CST [50432] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 92 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:50.334 CST [50432] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:50.816 CST [26652] ERROR:  B1 item must retain its exact typed target, billing unit and price terms
+2026-10-27 09:02:50.816 CST [26652] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 92 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:50.816 CST [26652] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:51.311 CST [30476] ERROR:  B1 total must equal the exact item amount
+2026-10-27 09:02:51.311 CST [30476] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 95 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:51.311 CST [30476] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:51.864 CST [41400] ERROR:  B1 snapshot and hash must match the exact quoted scope and amount
+2026-10-27 09:02:51.864 CST [41400] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 233 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:51.864 CST [41400] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:52.376 CST [42328] ERROR:  B1 snapshot and hash must match the exact quoted scope and amount
+2026-10-27 09:02:52.376 CST [42328] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 233 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:52.376 CST [42328] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:52.822 CST [15792] ERROR:  an unreserved source cannot claim an original paid quote
+2026-10-27 09:02:52.822 CST [15792] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 119 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:52.822 CST [15792] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:53.227 CST [51176] ERROR:  duplicate key value violates unique constraint "bb_supplement_quote_confirmation_quote_unique"
+2026-10-27 09:02:53.227 CST [51176] DETAIL:  Key (quote_id)=(0f5be61f-bb4c-4d28-96e6-e33b4aedcd91) already exists.
+2026-10-27 09:02:53.227 CST [51176] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:56.381 CST [39704] ERROR:  B1 task must match the original owned paid quote
+2026-10-27 09:02:56.381 CST [39704] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 116 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:56.381 CST [39704] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:02:56.505 CST [24712] ERROR:  B1 rework requires the current immutable whole-document catalog price
+2026-10-27 09:02:56.505 CST [24712] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 183 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 09:02:56.505 CST [24712] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:02:56.943 CST [46564] ERROR:  B1 rework requires the current immutable whole-document catalog price
+2026-10-27 09:02:56.943 CST [46564] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 183 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:02:56.943 CST [46564] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:03:00.311 CST [37880] ERROR:  B1 quote expired; obtain and confirm a fresh quotation
+2026-10-27 09:03:00.311 CST [37880] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 235 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 09:03:00.311 CST [37880] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:03:00.747 CST [17476] ERROR:  supplement quote requires the latest exact receipt, plan and safe source execution
+2026-10-27 09:03:00.747 CST [17476] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 56 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 09:03:00.747 CST [17476] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:03:01.138 CST [41268] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 09:03:01.138 CST [41268] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 09:03:01.138 CST [41268] STATEMENT:  UPDATE bb_run_supplement_quotes SET request_id=request_id WHERE id=$1
+2026-10-27 09:03:01.560 CST [31704] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 09:03:01.560 CST [31704] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 09:03:01.560 CST [31704] STATEMENT:  DELETE FROM bb_run_supplement_quotes WHERE id=$1
+2026-10-27 09:03:01.945 CST [51124] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 09:03:01.945 CST [51124] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 09:03:01.945 CST [51124] STATEMENT:  TRUNCATE bb_run_supplement_quotes CASCADE
+2026-10-27 09:03:02.336 CST [37724] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 09:03:02.336 CST [37724] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 09:03:02.336 CST [37724] STATEMENT:  UPDATE bb_run_supplement_quote_confirmations SET request_id=request_id WHERE id=$1
+2026-10-27 09:03:02.738 CST [50568] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 09:03:02.738 CST [50568] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 09:03:02.738 CST [50568] STATEMENT:  DELETE FROM bb_run_supplement_quote_confirmations WHERE id=$1
+2026-10-27 09:03:03.169 CST [23296] ERROR:  supplement quote and confirmation history is append only
+2026-10-27 09:03:03.169 CST [23296] CONTEXT:  PL/pgSQL function bb_reject_supplement_quote_change() line 2 at RAISE
+2026-10-27 09:03:03.169 CST [23296] STATEMENT:  TRUNCATE bb_run_supplement_quote_confirmations CASCADE
+2026-10-27 09:03:05.600 CST [40076] ERROR:  could not obtain lock on row in relation "bb_material_versions"
+2026-10-27 09:03:05.600 CST [40076] CONTEXT:  SQL statement "SELECT *               FROM bb_material_versions WHERE owner_user_id=q.owner_user_id AND project_id=pin->>'source_project_id'
+	      AND id=pin->>'material_id' AND version=(pin->>'material_version')::integer FOR SHARE NOWAIT"
+	PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 210 at SQL statement
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 09:03:05.600 CST [40076] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:03:06.075 CST [33944] WARNING:  there is no transaction in progress
+2026-10-27 09:03:06.259 CST [33944] ERROR:  candidate material identity or byte availability changed
+2026-10-27 09:03:06.259 CST [33944] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 217 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(q)"
+	PL/pgSQL function bb_check_supplement_quote_confirmation() line 9 at PERFORM
+2026-10-27 09:03:06.259 CST [33944] STATEMENT:  INSERT INTO bb_run_supplement_quote_confirmations(id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+2026-10-27 09:03:06.753 CST [11160] ERROR:  candidate material identity or byte availability changed
+2026-10-27 09:03:06.753 CST [11160] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 217 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:03:06.753 CST [11160] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:03:08.973 CST [45616] ERROR:  duplicate key value violates unique constraint "bb_supplement_quote_request_unique"
+2026-10-27 09:03:08.973 CST [45616] DETAIL:  Key (owner_user_id, run_id, request_id)=(supp-preparation-c9baf003-ba7f-47fb-bf66-0a8ed03f2fa2, 15af8d65-b464-4ff0-acb3-8c6e6e07a27d, b3a10f26-fae6-4e7c-9fd1-d35e2cac6ab5) already exists.
+2026-10-27 09:03:08.973 CST [45616] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:03:09.134 CST [42416] ERROR:  zero additional work requires genuine zero-attempt history and a free quote
+2026-10-27 09:03:09.134 CST [42416] CONTEXT:  PL/pgSQL function bb_assert_supplement_quote_live(bb_run_supplement_quotes) line 148 at RAISE
+	SQL statement "SELECT bb_assert_supplement_quote_live(NEW)"
+	PL/pgSQL function bb_check_supplement_quote() line 5 at PERFORM
+2026-10-27 09:03:09.134 CST [42416] STATEMENT:  INSERT INTO bb_run_supplement_quotes(id,pricing_rule,owner_user_id,project_id,run_id,job_id,kind,source_execution_version,source_input_revision,source_input_hash,supplement_revision,receipt_request_id,receipt_request_hash,processing_plan_id,processing_plan_hash,checkpoint_hash,basis_hash,candidate_input_hash,source_quote_id,items,total_points,canonical_snapshot_text,quote_hash,request_id,request_hash,valid_for_seconds)
+	    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *
+2026-10-27 09:03:09.353 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 09:03:13.901 CST [43828] LOG:  checkpoint complete: wrote 3322 buffers (20.3%); 0 WAL file(s) added, 0 removed, 2 recycled; write=2.215 s, sync=2.299 s, total=4.548 s; sync files=1665, longest=0.032 s, average=0.002 s; distance=28720 kB, estimate=28720 kB; lsn=0/55BB0208, redo lsn=0/55BB01D0
+2026-10-27 09:03:46.622 CST [43828] LOG:  checkpoint starting: immediate force wait
+2026-10-27 09:03:46.642 CST [43828] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.003 s, total=0.020 s; sync files=2, longest=0.002 s, average=0.002 s; distance=2 kB, estimate=25848 kB; lsn=0/55BB0D88, redo lsn=0/55BB0D50
+2026-10-27 09:04:18.435 CST [15704] LOG:  received fast shutdown request
+2026-10-27 09:04:18.437 CST [15704] LOG:  aborting any active transactions
+2026-10-27 09:04:18.447 CST [15704] LOG:  background worker "logical replication launcher" (PID 22092) exited with exit code 1
+2026-10-27 09:04:18.453 CST [43828] LOG:  shutting down
+2026-10-27 09:04:18.455 CST [43828] LOG:  checkpoint starting: shutdown immediate
+2026-10-27 09:04:18.475 CST [43828] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.003 s, total=0.023 s; sync files=2, longest=0.002 s, average=0.002 s; distance=0 kB, estimate=23264 kB; lsn=0/55BB0F00, redo lsn=0/55BB0F00
+2026-10-27 09:04:18.505 CST [15704] LOG:  database system is shut down

@@ -1,0 +1,85 @@
+
+Running 14 tests using 1 worker
+
+
+(node:35860) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/14] tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[2/14] tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[3/14] tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[4/14] tests\run-supplement-draft.spec.ts:49:1 › replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving
+[5/14] tests\run-supplement-draft.spec.ts:64:1 › unsaved completed upload and add intent survive reload without silently creating a draft revision
+[6/14] tests\run-supplement-draft.spec.ts:70:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+  1) tests\run-supplement-draft.spec.ts:70:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-action="keep-local"]')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-action="keep-local"]') with timeout 5000ms
+      - waiting for locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-action="keep-local"]')
+
+
+      70 | test('CAS conflict preserves the local selection until the user chooses how to resolve it',async({page})=>{
+      71 |   const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+    > 72 |   s.revision=1;s.changes=[];await action(host,'save').click();await expect(action(host,'keep-local')).toBeVisible();
+         |                                                                                                       ^
+      73 |   await expect(host).toContainText('补充审计证据.txt');expect(s.saves).toHaveLength(1);expect(s.saves[0].expected_revision).toBe(0);expect(s.revision).toBe(1);
+      74 |   await action(host,'keep-local').click();expect(s.saves).toHaveLength(1);await expect(host).toContainText('补充审计证据.txt');
+      75 |   await action(host,'save').click();await expect.poll(()=>s.revision).toBe(2);expect(s.saves).toHaveLength(2);
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-draft.spec.ts:72:103
+
+    Error Context: ..\..\.local\supplement-preparation\browser-results\run-supplement-draft-CAS-c-ded50-r-chooses-how-to-resolve-it\error-context.md
+
+
+
+(node:24808) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[7/14] tests\run-supplement-draft.spec.ts:80:1 › CAS use-latest choice discards local choices only after explicit selection
+  2) tests\run-supplement-draft.spec.ts:80:1 › CAS use-latest choice discards local choices only after explicit selection
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-action="use-latest"]')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-action="use-latest"]') with timeout 5000ms
+      - waiting for locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-action="use-latest"]')
+
+
+      80 | test('CAS use-latest choice discards local choices only after explicit selection',async({page})=>{
+      81 |   const s=supplementFixture();await installSupplementHttp(page,s);await mountSupplementSurface(page,s);const host=await add(page);
+    > 82 |   s.revision=1;s.changes=[];await action(host,'save').click();await expect(action(host,'use-latest')).toBeVisible();await expect(host).toContainText('补充审计证据.txt');
+         |                                                                                                       ^
+      83 |   await action(host,'use-latest').click();await expect(host).not.toContainText('补充审计证据.txt');expect(s.saves).toHaveLength(1);expect(s.revision).toBe(1);expect(s.materials).toHaveLength(3);
+      84 |   const restored=await remount(page,s,'panel');await expect(restored).not.toContainText('补充审计证据.txt');expect(s.saves).toHaveLength(1);
+      85 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-draft.spec.ts:82:103
+
+    Error Context: ..\..\.local\supplement-preparation\browser-results\run-supplement-draft-CAS-u-a3a29-ly-after-explicit-selection\error-context.md
+
+
+(node:11164) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[8/14] tests\run-supplement-draft.spec.ts:87:1 › accepted PUT with a lost response is recovered by its exact receipt without a second save
+[9/14] tests\run-supplement-draft.spec.ts:94:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found
+[10/14] tests\run-supplement-draft.spec.ts:101:1 › unknown save persists through refresh and reads the original receipt even when a newer revision exists
+[11/14] tests\run-supplement-draft.spec.ts:109:1 › server can_save prevents a save while still showing the exact frozen base and explicit blocked reason
+[12/14] tests\run-supplement-draft.spec.ts:115:1 › a lost upload completion receipt is recovered before saving the preparation without resending bytes
+[13/14] tests\run-supplement-draft.spec.ts:123:1 › an upload completion after leaving its owner/run surface cannot attach or save to the new view
+[14/14] tests\run-supplement-draft.spec.ts:132:1 › mismatched exact receipt keeps the original request pending and prevents original-material resume until verified
+  2 failed
+    tests\run-supplement-draft.spec.ts:70:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+    tests\run-supplement-draft.spec.ts:80:1 › CAS use-latest choice discards local choices only after explicit selection
+  12 passed (45.0s)

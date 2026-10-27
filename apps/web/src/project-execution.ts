@@ -10,10 +10,11 @@ import { referencePin, selectedReference, type ReferenceSnapshotResolver, type U
 import type { ProjectConversation } from './project-conversation';
 import { date, esc } from './ui';
 import './project-execution.css';
-import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAuthoringEvents, authoringVisibleEvents } from './authoring-progress';
+import { authoringStatus, authoringEventLabel, authoringCreditReceipt, authoringNeedsRecharge, authoringRechargeContinuation, retainAuthoringEvents, authoringVisibleEvents } from './authoring-progress';
 import { taskProgress } from './task-progress';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { resolveContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
+import { RunSupplementDraftPanel } from './run-supplement-draft';
 
 type Input = Dto<'InputRevisionResponse'>;
 type Material = Dto<'MaterialResponse'>;
@@ -108,6 +109,8 @@ export function readinessMessage(reason: string): string {
 
 /** Stable across tabs/reloads; a new input revision is required for an intentional new run. */
 export class ProjectExecution {
+  private supplements=new Map<string,RunSupplementDraftPanel>();
+  private supplementOwner?:Promise<string>;
   private controller = new AbortController();
   private host!: HTMLElement;
   private actions!: HTMLElement;
@@ -182,7 +185,7 @@ export class ProjectExecution {
     private refreshPreparation?:()=>Promise<boolean>) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
-  get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
+  get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain)||[...this.supplements.values()].some(panel=>panel.blocksLeave); }
   get materialsEditable() {
     return this.active && !this.restoring && !this.inputReadUncertain && !this.pendingExecution && !this.starting && !this.busy && (!this.run || this.nextRequested);
   }
@@ -190,7 +193,7 @@ export class ProjectExecution {
   private get taskKind(): ExecutionTaskKind { return executionTaskKind(this.draft.project.kind); }
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
-    host.innerHTML = '<p id="execution-read-message" class="muted" role="status" hidden></p><details id="previous-execution" class="previous-execution" open><summary id="previous-execution-summary" hidden><span>上一轮任务与成果</span><small data-previous-execution-state></small></summary><section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div></details>';
+    host.innerHTML = '<p id="execution-read-message" class="muted" role="status" hidden></p><details id="previous-execution" class="previous-execution" open><summary id="previous-execution-summary" hidden><span>上一轮任务与成果</span><small data-previous-execution-state></small></summary><section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div><div id="execution-supplement"></div></section><div id="execution-delivery" class="embedded-artifact"></div></details>';
     actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="text-button" type="button" id="complete-source-information" aria-describedby="start-disabled-reason" hidden>补齐这份原稿信息</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('complete-source-information').addEventListener('click', () => { this.focusMissingSourceInformation(); });
@@ -447,7 +450,7 @@ export class ProjectExecution {
     const repeatedPause = run?.state === 'paused' && this.samePauseAfterResume(run);
     const needsAttention = run && ['paused', 'awaiting_input', 'failed', 'rejected', 'cancelled'].includes(run.state);
     // The current run stage is authoritative even when event history is late or unavailable.
-    const summary = run?.stage === 'user_paused' ? undefined : automaticPause
+    const summary = run?.stage === 'user_paused' || run?.state === 'paused' && this.charge?.progress?.pause_requested ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
       : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
       : needsAttention && this.reason ? readinessMessage(this.reason)
@@ -456,7 +459,11 @@ export class ProjectExecution {
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对编制服务响应；已保存材料会保留，无需重新上传。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
-    const needsRecharge = !!this.charge?.progress?.credit_exhausted && !!activeRun;
+    const needsRecharge = authoringNeedsRecharge(this.charge?.progress) && !!activeRun;
+    const rechargeContinuation = authoringRechargeContinuation(this.charge?.progress);
+    const progress = this.charge?.progress;
+    const canResumeRun = !!run && (run.state === 'running' && progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted') && (!progress?.credit_exhausted || run.state === 'paused' && (progress.available_points ?? 0) > 0);
+    const canPauseRun = !!run && ['queued','running'].includes(run.state) && !progress?.pause_requested && !progress?.credit_exhausted;
     if (!needsRecharge) { this.creditPromptShown = false; this.creditDialog?.close(); }
     if (needsRecharge && !this.creditPromptShown) {
       this.creditPromptShown = true;
@@ -464,20 +471,22 @@ export class ProjectExecution {
       const dialog = document.createElement('dialog');
       dialog.className = 'credit-recharge-dialog';
       dialog.setAttribute('aria-labelledby', 'credit-recharge-title');
-      dialog.innerHTML = `<h2 id="credit-recharge-title">积分已用完，充值后继续</h2><p>已完成的工作会保留，积分已停止扣减。当前处理保存后暂停，充值到账后自动继续本次任务。</p><div class="form-actions"><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a><button type="button" class="button secondary">稍后充值</button></div>`;
+      dialog.innerHTML = `<h2 id="credit-recharge-title">积分已用完，充值后继续</h2><p>已完成的工作会保留，积分已停止扣减。当前处理保存后暂停。</p><p data-credit-recharge-continuation></p><div class="form-actions"><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a><button type="button" class="button secondary">稍后充值</button></div>`;
       dialog.querySelector('button')!.addEventListener('click', () => dialog.close());
       document.body.append(dialog); this.creditDialog = dialog; dialog.showModal();
     }
+    const rechargeNotice = this.creditDialog?.querySelector('[data-credit-recharge-continuation]');
+    if (needsRecharge && rechargeNotice) rechargeNotice.textContent = rechargeContinuation;
     const executionProgressHost = this.host.querySelector<HTMLElement>('#execution-progress')!;
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
     executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress))}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
-      ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>充值到账后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a></div>` : ''}
+      ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>${esc(rechargeContinuation)}已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a></div>` : ''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{points:this.charge.quote.points,state:this.charge.state}:undefined,this.chargeError)}
       <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
-      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
+      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (canResumeRun ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : canPauseRun ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
           : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun && !this.nextRequested ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}?${esc(withProjectContext(new URLSearchParams()).toString())}">查看此前成功成果</a>` : ''}`;
@@ -489,6 +498,8 @@ export class ProjectExecution {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
       if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
     }
+    if(run&&(run.state==='paused'||this.supplements.has(run.run_id)))void this.showSupplement(run);
+    else this.host.querySelector<HTMLElement>('#execution-supplement')!.hidden=true;
     const recheckPaused = this.host.querySelector<HTMLButtonElement>('#recheck-paused');
     if (recheckPaused) { recheckPaused.disabled = this.busy; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
     const prepare=this.host.querySelector<HTMLButtonElement>('#prepare-next-version');
@@ -591,7 +602,12 @@ export class ProjectExecution {
   }
   private async changeRun(action: 'cancel' | 'resume' | 'pause') {
     if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
+    if (action === 'resume' && this.charge?.progress?.credit_exhausted && (this.run.state !== 'paused' || (this.charge.progress.available_points ?? 0) < 1)) return;
     const runId = this.run.run_id;
+    if(action==='resume'){
+      try{const panel=await this.supplementFor(this.run);if(!this.active||!await panel.confirmOriginalResume()||this.run?.run_id!==runId)return;}
+      catch(error){if(this.active){this.message=friendlyError(error,'read');this.render();}return;}
+    }
     const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
     await this.action(async () => {
@@ -601,6 +617,25 @@ export class ProjectExecution {
       if (action === 'resume') this.resumedPause = pause;
       this.acceptRun(run); void this.poll();
     });
+  }
+
+  private async supplementFor(run:Dto<'RunResponse'>){
+    const existing=this.supplements.get(run.run_id);if(existing)return existing;
+    this.supplementOwner??=this.api.me().then(me=>me.user_id).catch(error=>{this.supplementOwner=undefined;throw error;});
+    const owner=await this.supplementOwner;if(!this.active)throw new DOMException('页面已关闭','AbortError');
+    const found=this.supplements.get(run.run_id);if(found)return found;
+    const panel=new RunSupplementDraftPanel(this.api,owner,this.id,run.run_id,()=>this.active,()=>this.labelSupplementResume());
+    this.supplements.set(run.run_id,panel);panel.updateRun(run);return panel;
+  }
+  private labelSupplementResume(){
+    const panel=this.run&&this.supplements.get(this.run.run_id),button=this.host?.querySelector<HTMLButtonElement>('#resume-run');
+    if(button&&panel?.hasAdoptedSupplement)button.textContent='继续当前任务';
+    else if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮任务';
+  }
+  private async showSupplement(run:Dto<'RunResponse'>){
+    try{const panel=await this.supplementFor(run);if(!this.active||this.run?.run_id!==run.run_id)return;
+      const host=this.host.querySelector<HTMLElement>('#execution-supplement')!;host.hidden=false;if(host.firstElementChild!==panel.element)host.replaceChildren(panel.element);panel.updateRun(run);this.labelSupplementResume();
+    }catch(error){if(this.active){const host=this.host.querySelector<HTMLElement>('#execution-supplement');if(host){host.hidden=false;host.textContent=`补料准备暂不可读取。${friendlyError(error,'read')}`;}}}
   }
 
   private async action(work: () => Promise<void>, operation: 'preflight' | 'execute' | 'other' = 'other', feedback: 'read'|'save'|'download'|'submit'|'action' = operation === 'other' ? 'action' : 'submit') {
@@ -1016,5 +1051,5 @@ export class ProjectExecution {
       }
     }
   }
-  dispose() { this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
+  dispose() { this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose();for(const panel of this.supplements.values())panel.dispose(); }
 }

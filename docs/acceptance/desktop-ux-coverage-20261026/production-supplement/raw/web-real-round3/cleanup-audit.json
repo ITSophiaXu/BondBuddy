@@ -1,0 +1,139 @@
+{
+  "audited_at": "2026-10-27T02:26:39.960Z",
+  "rounds": {
+    "mock": {
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-mock-round3",
+      "source_files": 24,
+      "source_stable": true,
+      "stats": {
+        "startTime": "2026-10-27T02:21:45.636Z",
+        "duration": 70406.329,
+        "expected": 37,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      }
+    },
+    "real": {
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round3",
+      "source_files": 24,
+      "source_stable": true,
+      "stats": {
+        "startTime": "2026-10-27T02:22:57.474Z",
+        "duration": 196882.877,
+        "expected": 3,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      }
+    }
+  },
+  "cases": [
+    {
+      "kind": "authoring",
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round3\\authoring",
+      "execution_version": 2,
+      "additional_points": 4500,
+      "real_browser_http_pg_worker": true,
+      "synthetic_provider": true,
+      "synthetic_credit_lot": true,
+      "resumed_without_local_journal": true,
+      "word_paragraphs": 1,
+      "downloaded_sha256": "1d51b22c5b0ebd13b5fff6e12736048112a4ba789903ce2300a339baa004651f",
+      "browser_byte_route": "/api/v1/artifacts/word-9ac0881dab99284e46a6dc329c8dd0bb1136ff9ea3a6b0ea72bd6e7d2c545b0b/download",
+      "counts_before_resume": {
+        "quotes": 1,
+        "confirmations": 1,
+        "adoptions": 1,
+        "fees": 2
+      },
+      "screenshots": [
+        "adopted-before-worker.png",
+        "b1-quote-full.png",
+        "end-state-full.png",
+        "successor-word-downloaded-full.png"
+      ],
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t11616_2a7c7fd9",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "kind": "review",
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round3\\review",
+      "execution_version": 2,
+      "additional_points": 4500,
+      "real_browser_http_pg_worker": true,
+      "synthetic_provider": true,
+      "synthetic_credit_lot": true,
+      "resumed_without_local_journal": true,
+      "word_paragraphs": 22,
+      "downloaded_sha256": "ec9615fc0b07964151b262ff590210ff4b18f8750737ead49dabc9797f894847",
+      "browser_byte_route": "/api/v1/artifacts/word-3279e23ff1dc29506388ba6f21b60b268095943ab2823a291ebf4f79f477934e/download",
+      "counts_before_resume": {
+        "quotes": 1,
+        "confirmations": 1,
+        "adoptions": 1,
+        "fees": 2
+      },
+      "screenshots": [
+        "adopted-before-worker.png",
+        "b1-quote-full.png",
+        "end-state-full.png",
+        "successor-word-downloaded-full.png"
+      ],
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t11616_b0dcb8e3",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "kind": "m4",
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round3\\m4",
+      "execution_version": 2,
+      "additional_points": 4500,
+      "real_browser_http_pg_worker": true,
+      "synthetic_provider": true,
+      "synthetic_credit_lot": true,
+      "resumed_without_local_journal": true,
+      "word_paragraphs": 1,
+      "downloaded_sha256": "8b328843bbf0f6a3f6c28b893d240de6c6738d5e3fb08e7a2a90d8b756798b90",
+      "browser_byte_route": "/api/v1/m4/artifacts/word-46c3b1d1a7df0b44fd4fd543917c80a49299fe5a32bdd5eb67fce463c66d2bd7/versions/1/bytes",
+      "counts_before_resume": {
+        "quotes": 1,
+        "confirmations": 1,
+        "adoptions": 1,
+        "fees": 2
+      },
+      "screenshots": [
+        "adopted-before-worker.png",
+        "b1-quote-full.png",
+        "end-state-full.png",
+        "successor-word-downloaded-full.png"
+      ],
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t11616_ecc73ef8",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    }
+  ],
+  "owned_clones_remaining": [],
+  "http_ports_listening": {
+    "5187": false,
+    "5199": false
+  },
+  "mock_screenshot_count": 12,
+  "web_noemit_exit": 0,
+  "no_commits_or_pushes": true
+}

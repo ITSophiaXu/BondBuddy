@@ -1,0 +1,8 @@
+{
+  "finished_at_utc": "2026-10-26T12:06:30.7705218Z",
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "command": "& .\\node_modules\\.bin\\tsc.cmd --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck --rootDir apps/api/src --outDir apps/api/.run-file-reference-test apps/api/src/run-file-reference.ts apps/api/src/run-file-reference.test.ts",
+  "log": "run-file-reference-tsc.log",
+  "exit_code": 0,
+  "started_at_utc": "2026-10-26T12:06:27.6859312Z"
+}

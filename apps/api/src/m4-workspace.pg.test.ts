@@ -2,7 +2,7 @@ import {debitAuthoringCredits} from './authoring-credit-debit.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import type { M4AssistantReply, M4MaterialPin, M4DraftInput, M4HandoffBindRequest } from '@bondbuddy/contracts';
 import { M4_BILLING_TASKS } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
@@ -22,6 +22,16 @@ const connection=await isolatedTestDatabase(undefined,'m4-workspace');
 const fixedQaConnection=await isolatedTestDatabase(undefined,'m4-fixed-qa');
 const handoffConnection=await isolatedTestDatabase(undefined,'m4-handoff');
 const retentionConnection=await isolatedTestDatabase(undefined,'m4-retention');
+
+// For the explicit synthetic cost/DB-guard fixtures below. Callers hold the run
+// and then job locks; keep terminal ordering and chronology identical to queue.event.
+async function completeSyntheticDelivery(c:PoolClient,owner:string,runId:string,artifactId:string,artifactVersion:number){
+  await c.query("UPDATE bb_jobs SET state='succeeded',stage='succeeded',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE run_id=$1",[runId]);
+  const terminal=(await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=$3,state='succeeded',stage='succeeded',event_cursor=event_cursor+1,updated_at=now() WHERE id=$1 RETURNING event_cursor",[runId,artifactId,artifactVersion])).rows[0];
+  await c.query(`INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload)
+    VALUES($1,$2,$3,$4,$3,'run.state_changed','succeeded','succeeded',$5)`,
+    [randomUUID(),owner,runId,terminal.event_cursor,{reason:'synthetic_m4_delivery',channel:'production'}]);
+}
 
 test('missing material generation input returns all actionable fields without tasks, quotes or charges', {skip:!connection}, async()=>{
   const pool=new Pool({connectionString:connection}),user=`input-feedback-${randomUUID()}`;
@@ -444,7 +454,12 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     await pool.query(`INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,usage_status,model_id) VALUES($1,$2,$3,'synthetic-logical-call',1,'completed','measured','synthetic-codex')`,[attempt,user,job]);
     await pool.query(`INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens,cached_input_tokens) VALUES($1,$2,$3,'provider','synthetic-usage','measured',1000,100,0)`,[randomUUID(),user,attempt]);
     const metered=await settleM4Metering(pool,user,paid.run_id);assert.deepEqual(metered,{ready:true,charged_points:1});assert.ok(pq.quote.points>1);
-    await transaction(pool,async c=>{const artifact=await completeM4Qa(c,user,paid.run_id,reply);await c.query("UPDATE bb_jobs SET state='succeeded',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[paid.run_id]);await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=$3,state='succeeded' WHERE id=$1",[paid.run_id,artifact.artifactId,artifact.artifactVersion]);});
+    await transaction(pool,async c=>{
+      await c.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,paid.run_id]);
+      await c.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[user,paid.run_id]);
+      const artifact=await completeM4Qa(c,user,paid.run_id,reply);
+      await completeSyntheticDelivery(c,user,paid.run_id,artifact.artifactId,artifact.artifactVersion);
+    });
     const reservation=(await pool.query('SELECT state,points,charged_points FROM bb_credit_reservations WHERE run_id=$1',[paid.run_id])).rows[0];assert.equal(reservation.state,'settled');assert.equal(Number(reservation.charged_points),1);assert.equal((await creditBalance(pool,user)).frozen,0);
     const events=(await pool.query('SELECT kind,points FROM bb_credit_events WHERE run_id=$1 ORDER BY kind',[paid.run_id])).rows;assert.equal(events.filter(e=>e.kind==='settle').length,1);assert.equal(Number(events.find(e=>e.kind==='release').points),pq.quote.points-1);
     actor=other;assert.equal((await send('GET',`/api/v1/m4/artifacts/${qa.artifact_id}/versions/1/bytes`)).statusCode,404);actor=user;
@@ -553,9 +568,18 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
       await pool.query(`INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens,cached_input_tokens) VALUES($1,$2,$3,'provider','synthetic-doc-usage','measured',1000,100,0)`,[randomUUID(),user,measurementId]);
       await settleM4Metering(pool,user,r.run_id);
       // Exercise database delivery guards independently of supplier reconciliation (the cost is explicitly synthetic).
-      await assert.rejects(()=>transaction(pool,async c=>{await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);}),/document and preparation note must be delivered/);
+      await assert.rejects(()=>transaction(pool,async c=>{
+        await c.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,r.run_id]);
+        await c.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[user,r.run_id]);
+        await completeSyntheticDelivery(c,user,r.run_id,document.artifactId,1);
+      }),/document and preparation note must be delivered/);
       await transaction(pool,c=>registerM4Artifacts(c,user,r.run_id,[{kind:'preparation_note',artifact_id:note.artifactId,artifact_version:1,filename:'preparation-note.docx',byte_size:noteBytes.length,preview_content:`Synthetic notes ${number}`} ]));
-      await transaction(pool,async c=>{const row=(await c.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[r.run_id])).rows[0];await debitAuthoringCredits(c,row,4500);await c.query("UPDATE bb_jobs SET state='succeeded',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[r.run_id]);await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=1,state='succeeded' WHERE id=$1",[r.run_id,document.artifactId]);});
+      await transaction(pool,async c=>{
+        const row=(await c.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[r.run_id])).rows[0];
+        await c.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[user,r.run_id]);
+        await debitAuthoringCredits(c,row,4500);
+        await completeSyntheticDelivery(c,user,r.run_id,document.artifactId,1);
+      });
       await pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[r.run_id]);
       assert.equal(Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[r.run_id])).rows[0].charged_points),4500);
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[r.run_id])).rows[0].n,1);

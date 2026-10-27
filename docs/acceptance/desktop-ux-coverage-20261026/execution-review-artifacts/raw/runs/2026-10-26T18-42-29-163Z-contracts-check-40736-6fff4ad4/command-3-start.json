@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T18:42:35.407Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "packages/contracts/dist/ocr-v2.test.js",
+    "packages/contracts/dist/generation-issuer-binding.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

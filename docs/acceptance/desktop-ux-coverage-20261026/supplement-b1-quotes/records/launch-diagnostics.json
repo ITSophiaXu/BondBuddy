@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scope": "Launcher diagnostic only; not a failed build or test run",
+  "initialAttempt": {
+    "executable": "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\node.exe",
+    "exitCode": 1,
+    "outcome": "PowerShell could not find the executable; no runner or test child started",
+    "rawEvidence": "Tool transcript chunk d31fe9 only; no local raw stdout/stderr was captured for this initial invocation"
+  },
+  "correction": {
+    "executable": "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+    "verifiedBy": "Read-only Get-ChildItem node.exe inventory",
+    "completedRun": "api-20261027T005520845Z-19492",
+    "rawChildEvidence": "The completed run directory contains exact stdout/stderr logs for build-api, quote-pg and processing-plan-pg"
+  }
+}

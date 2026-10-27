@@ -1,0 +1,369 @@
+{
+  "synthetic": true,
+  "baseline_commit": "0f506703",
+  "goal_complete": false,
+  "g03_complete": false,
+  "source_declarations_prepared": true,
+  "old_file_reader": "service-internal exact pins and bounded bytes",
+  "new_adoption_executed": false,
+  "surcharge_decision": "B: necessary rework quoted separately; explicit surcharge confirmation before continuing",
+  "surcharge_formula": null,
+  "source_binding": {
+    "initial_baseline_files": 2041,
+    "final_unchanged_files": 2041,
+    "initial_to_final_changes": [
+      {
+        "path": "apps/api/dist/run-supplement-files.pg.test.js",
+        "before": "e4dc11f8f3a2bd783f52c39b184e3e504a66b8e7f8c7ad1734f6a0d7b26480b1",
+        "after": "28af00f45ce7f32e7145646b84c4f3aa27af833ad505c966aec132c3b4e6850e"
+      },
+      {
+        "path": "apps/api/src/run-supplement-files.pg.test.ts",
+        "before": "db930f747afddeee90d92980eec1854b7b06bcb0b1c38167dc34f9a375e6240d",
+        "after": "4868a774a2797629d5ec77924c58a13a8ec375b77e10a36b33db5cd44cd1be56"
+      },
+      {
+        "path": "apps/web/dist/assets/index-BtjsSH2Y.js",
+        "before": null,
+        "after": "418b375d855c3b5c906a6b6f7ee3af322bc99c1fe154b0c8b6ca64afcc4993a2"
+      },
+      {
+        "path": "apps/web/dist/assets/index-D2pRipyT.css",
+        "before": null,
+        "after": "717475247b687595e1d43d021a21de094c60c990b3c195d69b1dbed53474af69"
+      },
+      {
+        "path": "apps/web/dist/index.html",
+        "before": "153ba8b8eddfd1c79147b1c2a2b1b076089badb8652c848d913a8ad9501a2982",
+        "after": "01321ca345970496d03f30f4c19661b0db57e2f57f316b166c1d619375566e2f"
+      },
+      {
+        "path": "apps/web/src/run-supplement-draft.css",
+        "before": "967c2ea8984b73764a8a3e41226837e7b5c8a68c93fdfe5873419fe2f5583f71",
+        "after": "6110c8cd5b26b2916ad9fcb868bb0faa68dc63b8bc6662d751b801ce67bfc8e0"
+      },
+      {
+        "path": "apps/web/src/run-supplement-draft.ts",
+        "before": "a33f93d2ebe18b74ae63b61b68bffea18278cbd5f142b888fbd6b90e0d81a907",
+        "after": "54885c6b5b58db867d3a06a59e0c4ba27acb7033813518010eb63f21a147efac"
+      },
+      {
+        "path": "apps/web/tests/run-supplement-draft.spec.ts",
+        "before": "49663a33af95182ef65b0caa129b0479ffe3d1489d036298d037a410f29286e6",
+        "after": "2e46d3e64513697d4ec388a359b7555b8967a366e6d52e40a6b8a1fbed23becb"
+      },
+      {
+        "path": "apps/web/tests/run-supplement-real-main.spec.ts",
+        "before": "6879993f87404f4ae0dc4124461d5e3e09e5d4a049d74f2477f783030d28b3f9",
+        "after": "d5b0f6fe8a29fa7793a6df94bf60704e751a7f8d49894348a1885637788fbefc"
+      }
+    ],
+    "removed": [
+      {
+        "path": "apps/web/dist/assets/index-2hE5CCKV.js",
+        "sha256": "d504eb5dffe4177ab28860a0cafa33101a77b1677007683b2c5b56998ad77da9"
+      },
+      {
+        "path": "apps/web/dist/assets/index-DX3pc5dT.css",
+        "sha256": "65d7303559dd5b0089e1b56014cdfdb7cc68998258710879f8f5d23daf5afbae"
+      }
+    ]
+  },
+  "database": {
+    "server_version": "16.14",
+    "schema": [
+      {
+        "filename": "0121_run_supplement_saved_work.sql"
+      },
+      {
+        "filename": "0120_model_call_execution_bindings.sql"
+      }
+    ],
+    "runs": 0,
+    "executions": 0,
+    "clones": []
+  },
+  "infrastructure_cleanup": {
+    "audit": {
+      "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+      "port": "15526",
+      "server_version": "16.14",
+      "postmaster_pid": 41400,
+      "databases": [
+        {
+          "datname": "bb_g03_template_20261026"
+        }
+      ],
+      "other_client_sessions": [],
+      "template_runs": 0,
+      "template_executions": 0,
+      "checked_at": "2026-10-26T12:27:03.814Z"
+    },
+    "postgres": {
+      "cluster": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+      "pgctl": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\.m3-test-tools\\node_modules\\@embedded-postgres\\windows-x64\\native\\bin\\pg_ctl.exe",
+      "postmaster_pid": 41400,
+      "status_before": {
+        "args": [
+          "status"
+        ],
+        "status": 0,
+        "stdout": "pg_ctl: server is running (PID: 41400)\r\nC:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe \"-D\" \"C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data\" \"-h\" \"127.0.0.1\" \"-p\" \"15526\"\r\n",
+        "stderr": ""
+      },
+      "stop": {
+        "args": [
+          "-w",
+          "stop"
+        ],
+        "status": 0,
+        "stdout": "waiting for server to shut down.... done\r\nserver stopped\r\n",
+        "stderr": ""
+      },
+      "status_after": {
+        "args": [
+          "status"
+        ],
+        "status": 3,
+        "stdout": "pg_ctl: no server running\r\n",
+        "stderr": ""
+      },
+      "finished": "2026-10-26T12:27:04.298Z"
+    }
+  },
+  "builds": [
+    {
+      "name": "api-build-3.json",
+      "started": "2026-10-26T12:21:13.902Z",
+      "finished": "2026-10-26T12:21:29.898Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "worker-build.json",
+      "started": "2026-10-26T12:10:59.685Z",
+      "finished": "2026-10-26T12:11:14.962Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/worker/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "web-tsc-1.json",
+      "started": "2026-10-26T12:23:16.074Z",
+      "finished": "2026-10-26T12:23:37.042Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "--noEmit",
+        "-p",
+        "apps/web/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    {
+      "name": "web-build-1.json",
+      "started": "2026-10-26T12:23:16.074Z",
+      "finished": "2026-10-26T12:23:20.070Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\vite\\bin\\vite.js",
+        "build"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+      "status": 0
+    }
+  ],
+  "contracts": {
+    "build": {
+      "name": "contracts-build-1.json",
+      "started": "2026-10-26T12:04:01.224Z",
+      "finished": "2026-10-26T12:04:08.279Z",
+      "args": [
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "packages/contracts/tsconfig.json"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    "examples": {
+      "name": "contracts-check-1.json",
+      "started": "2026-10-26T12:04:18.639Z",
+      "finished": "2026-10-26T12:04:24.917Z",
+      "args": [
+        "packages/contracts/dist/check-examples.js"
+      ],
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "status": 0
+    },
+    "synthetic": 186,
+    "internal_library": 12
+  },
+  "api": {
+    "name": "api-test-2.json",
+    "started": "2026-10-26T12:23:54.356Z",
+    "finished": "2026-10-26T12:26:34.519Z",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "apps/api/dist/run-file-reference.test.js",
+      "apps/api/dist/run-supplement-files.pg.test.js",
+      "apps/api/dist/run-supplement-work-retention.pg.test.js",
+      "apps/api/dist/model-call-execution.test.js",
+      "apps/api/dist/model-call-execution.pg.integration.test.js",
+      "apps/api/dist/run-supplement-work.pg.test.js",
+      "apps/api/dist/provider-result-validation.test.js",
+      "apps/api/dist/provider-runtime-locks.pg.integration.test.js",
+      "apps/api/dist/queue.test.js",
+      "apps/api/dist/run-execution-input.test.js",
+      "apps/api/dist/run-supplement-input.test.js",
+      "apps/api/dist/run-supplement-draft.pg.test.js",
+      "apps/api/dist/run-execution.pg.integration.test.js",
+      "apps/api/dist/run-origin-immutability.pg.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 195,
+      "passed": 194,
+      "failed": 0,
+      "skipped": 1
+    }
+  },
+  "compiler_precheck": {
+    "name": "compiler-unit-tests-2.json",
+    "started": "2026-10-26T12:08:31.370Z",
+    "finished": "2026-10-26T12:08:33.501Z",
+    "args": [
+      "--test",
+      "apps/api/dist/run-supplement-input.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "source_helper_precheck": {
+    "name": "source-unit-tests-1.json",
+    "started": "2026-10-26T12:04:56.537Z",
+    "finished": "2026-10-26T12:04:57.648Z",
+    "args": [
+      "--test",
+      "apps/web/dist-test/source-prospectus.test.js"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+    "status": 0,
+    "counts": {
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "exact_file_reference": {
+    "tsc": {
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "started_at_utc": "2026-10-26T12:09:24.5032693Z",
+      "exit_code": 0,
+      "finished_at_utc": "2026-10-26T12:09:27.6419328Z",
+      "command": "& .\\node_modules\\.bin\\tsc.cmd --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck --rootDir apps/api/src --outDir apps/api/.run-file-reference-test apps/api/src/run-file-reference.ts apps/api/src/run-file-reference.test.ts",
+      "log": "run-file-reference-tsc-r2.log"
+    },
+    "tests": {
+      "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+      "started_at_utc": "2026-10-26T12:09:27.6761611Z",
+      "exit_code": 0,
+      "finished_at_utc": "2026-10-26T12:09:28.8826254Z",
+      "command": "node --test apps/api/.run-file-reference-test/run-file-reference.test.js",
+      "log": "run-file-reference-test-r2.log"
+    },
+    "cleanup": {
+      "resolved_output": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\.run-file-reference-test",
+      "removed": true,
+      "expected_output": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\api\\.run-file-reference-test",
+      "completed_at_utc": "2026-10-26T12:09:49.0273278Z"
+    }
+  },
+  "full_main": {
+    "name": "browser-real-1.json",
+    "started": "2026-10-26T12:23:54.292Z",
+    "finished": "2026-10-26T12:25:05.964Z",
+    "args": [
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-real-main.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-source-files\\browser-real-results-1",
+      "--reporter=line,json"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+    "status": 0,
+    "report": "browser-real-report-1.json",
+    "stats": {
+      "startTime": "2026-10-26T12:23:57.153Z",
+      "duration": 68778.092,
+      "expected": 8,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "synthetic_ui": {
+    "name": "browser-ui-1.json",
+    "started": "2026-10-26T12:24:00.033Z",
+    "finished": "2026-10-26T12:24:46.299Z",
+    "args": [
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.config.ts",
+      "run-supplement-draft.spec.ts",
+      "--workers",
+      "1",
+      "--output",
+      "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-source-files\\browser-ui-results-1",
+      "--reporter=line,json"
+    ],
+    "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+    "status": 0,
+    "report": "browser-ui-report-1.json",
+    "stats": {
+      "startTime": "2026-10-26T12:24:00.969Z",
+      "duration": 45291.188,
+      "expected": 22,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "historical_failures_retained": [
+    "source-precheck/api-build-1.log",
+    "source-precheck/compiler-unit-tests-1.log",
+    "api-test-1.log",
+    "browser-ui.log"
+  ],
+  "historical_visual_defect": "browser-real-evidence/m1-source-declaration-isolated-viewport.png; initial real-main passed functionality before visual review found oversized checkbox",
+  "limits": [
+    "V1 only; no adopted successor input or new execution",
+    "Project-file checkpoint formats do not imply HTTP supplement support",
+    "No complete raw-file write intent, inventory or tombstone lifecycle",
+    "No new provider/business generation, Azure or final supplemented Word acceptance",
+    "One pre-existing Azurite queue suite remains skipped"
+  ]
+}

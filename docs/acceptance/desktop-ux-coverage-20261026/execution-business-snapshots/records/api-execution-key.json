@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T14:19:06.151Z",
+  "finished": "2026-10-26T14:19:16.826Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "apps/api/dist/execution-key.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 1,
+  "signal": null,
+  "pid": 32880
+}

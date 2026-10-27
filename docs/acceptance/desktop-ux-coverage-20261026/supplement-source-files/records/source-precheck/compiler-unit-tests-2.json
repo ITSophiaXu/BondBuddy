@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T12:08:31.370Z",
+  "finished": "2026-10-26T12:08:33.501Z",
+  "args": [
+    "--test",
+    "apps/api/dist/run-supplement-input.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

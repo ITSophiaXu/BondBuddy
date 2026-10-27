@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "startedAt": "2026-10-27T00:55:20.998Z",
+  "scope": "B1 supplement quote API PostgreSQL and processing-plan regression",
+  "node": "v24.22.1",
+  "executable": "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+  "baseCommit": "e16e3ed79e103612b1ab5e7814cd1e32a66c7bb5",
+  "testTemplate": {
+    "host": "127.0.0.1",
+    "port": "15542",
+    "database": "bb_b1_template_20261027"
+  },
+  "sourceRoots": [
+    "apps/api/src",
+    "db/migrations",
+    "packages/contracts/src",
+    "packages/domain/src",
+    "packages/rule-pack-registry/src",
+    "packages/rule-applicability-context/src"
+  ],
+  "runtimeRoots": [
+    "apps/api/dist",
+    "packages/contracts/dist",
+    "packages/domain/dist",
+    "packages/rule-pack-registry/dist",
+    "packages/rule-applicability-context/dist"
+  ],
+  "sourceFiles": [
+    "package.json",
+    "package-lock.json",
+    "apps/api/package.json",
+    "apps/api/tsconfig.json"
+  ],
+  "invocations": [
+    {
+      "name": "build-api",
+      "command": [
+        "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\push-readiness-20261026\\integration\\node_modules\\typescript\\bin\\tsc",
+        "-p",
+        "apps/api/tsconfig.json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 17940,
+      "error": null,
+      "stdout": {
+        "path": "build-api.stdout.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "build-api.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "quote-pg",
+      "command": [
+        "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/run-supplement-quote.pg.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 91976,
+      "error": null,
+      "stdout": {
+        "path": "quote-pg.stdout.log",
+        "bytes": 6190,
+        "sha256": "966fd7ae6e1c44790b4557ea52e8ec7894d003c30b90e9226b2c62adec1a3ae9"
+      },
+      "stderr": {
+        "path": "quote-pg.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tap": {
+        "tests": 26,
+        "suites": 0,
+        "pass": 26,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 91812.1786
+      }
+    },
+    {
+      "name": "processing-plan-pg",
+      "command": [
+        "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "apps/api/dist/run-supplement-processing-plan.pg.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 76462,
+      "error": null,
+      "stdout": {
+        "path": "processing-plan-pg.stdout.log",
+        "bytes": 7935,
+        "sha256": "a23b9f091f0006a13f9a5b9270f3b9afd136750a78284cbc336b2bbcb024f240"
+      },
+      "stderr": {
+        "path": "processing-plan-pg.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tap": {
+        "tests": 41,
+        "suites": 0,
+        "pass": 41,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 76301.4821
+      }
+    }
+  ],
+  "sourceStable": false,
+  "runtimeStable": false,
+  "success": false,
+  "limitations": [
+    "Synthetic provider history and DOCX bytes; no model, supplier, production billing/adoption or browser acceptance is established."
+  ],
+  "completedAt": "2026-10-27T00:58:32.488Z"
+}

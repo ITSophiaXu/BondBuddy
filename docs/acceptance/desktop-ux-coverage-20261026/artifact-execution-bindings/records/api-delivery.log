@@ -1,0 +1,58 @@
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (142.272ms)
+✔ missing or non-file output cannot be labelled as available Word (0.3377ms)
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (8366.3841ms)
+✔ synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection (735.8582ms)
+✔ test submissions cannot reserve the exact browser update key (2698.0095ms)
+✔ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (5704.7437ms)
+✔ working draft admission defers parse and business gaps while retaining ownership, pin and revocation checks (1781.4432ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (6755.6717ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4763ms) # SKIP
+✔ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (2822.4451ms)
+✖ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (1964.1448ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (0.9209ms)
+✔ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (3452.746ms)
+✖ checked revision metadata exposes clean and baseline downloads with pending review summary (1105.7756ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 11
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 137713.0008
+
+✖ failing tests:
+
+test at apps\api\dist\review-dynamic-balance.pg.test.js:13:1
+✖ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (1964.1448ms)
+  AssertionError [ERR_ASSERTION]: {"code":"CAPABILITY_NOT_READY","message":"Capability is not connected","retryable":false,"field_errors":[],"correlation_id":"5a7e2020-5fe6-4306-b4e1-1c6a88ed4bf6"}
+      at ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-dynamic-balance.pg.test.js:20:32)
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-dynamic-balance.pg.test.js:55:9)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\word-delivery-artifact.test.js:6:1
+✖ checked revision metadata exposes clean and baseline downloads with pending review summary (1105.7756ms)
+  AssertionError [ERR_ASSERTION]: {"code":"DATA_UNAVAILABLE","message":"Internal error","retryable":true,"field_errors":[],"correlation_id":"85f375b7-4d1d-4bf8-bf3b-1859f01cb9fa"}
+  
+  500 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/word-delivery-artifact.test.js:41:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -54,6 +54,17 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
     return grantId;
   }
 
+  async function persistedRun(grantId: string) {
+    // This component reads capability only. A terminal fixture creates exact
+    // run/execution provenance without retaining materials for runtime work.
+    const row = { ...runBase, id: `sse-test-run-${randomUUID()}`, test_grant_id: grantId };
+    await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,
+      task_kind,request_hash,state,channel,test_grant_id)
+      VALUES($1,$2,$3,$4,$5,$6,'update',$5,'failed','non_production_test',$7)`,
+    [row.id, owner, project, row.input_revision, row.input_hash, randomUUID(), grantId]);
+    return row;
+  }
+
   try {
     const version = await pool.query<{ server_version_num: string }>("SELECT current_setting('server_version_num') AS server_version_num");
     assert.ok(Number(version.rows[0]!.server_version_num) >= 160000, 'integration database must be PostgreSQL 16 or newer');
@@ -76,8 +87,9 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
     [project, owner, inputHash, manifest, JSON.stringify(input.material_versions)]);
 
     const activeGrant = await createGrant('active');
+    const activeRun = await persistedRun(activeGrant);
     const loader = createSsePrivateTestRuleCapabilityLoader(pool);
-    const active = await loader({ ...runBase, test_grant_id: activeGrant }, input);
+    const active = await loader(activeRun, input);
     assert.deepEqual(active, { status: 'not_ready', reason: 'authorized_sample_sample_material_hash_mismatch' },
       'the registered sample grant remains limited to its fixed material set');
 
@@ -86,20 +98,24 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
       (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'preprod_service','controlled_working_draft:issuance:2026-09-29',now()+interval '1 hour')`,
     [ownerGrant,owner,project,inputHash,OWNER_MATERIAL_SCOPE_SHA256,pin.taxonomy.contentSha256,pin.rulePack.contentSha256]);
-    assert.equal((await loader({ ...runBase, test_grant_id: ownerGrant },input)).status,'ready',
+    const ownerRun = await persistedRun(ownerGrant);
+    assert.equal((await loader(ownerRun,input)).status,'ready',
       'a newly authorized, owner-persisted XLSX does not need fixed sample registration');
-    assert.deepEqual(await loader({ ...runBase, owner_user_id: `${owner}-other`, test_grant_id: ownerGrant },input),
+    assert.deepEqual(await loader({ ...ownerRun, owner_user_id: `${owner}-other` },input),
       {status:'not_ready',reason:'test_grant_inactive_or_scope_changed'});
-    assert.deepEqual(await loader({ ...runBase, project_id: `${project}-other`, test_grant_id: ownerGrant },input),
+    assert.deepEqual(await loader({ ...ownerRun, project_id: `${project}-other` },input),
       {status:'not_ready',reason:'test_grant_inactive_or_scope_changed'});
     const wrongHashGrant = await createGrant('wrong-taxonomy', '0'.repeat(64),pin.rulePack.contentSha256,true);
-    assert.deepEqual(await loader({ ...runBase, test_grant_id: wrongHashGrant }, input),
+    assert.equal((await loader({ ...ownerRun, test_grant_id: wrongHashGrant }, input)).status, 'ready',
+      'caller grant metadata cannot replace the persisted run grant');
+    assert.deepEqual(await loader(await persistedRun(wrongHashGrant), input),
       { status: 'not_ready', reason: 'test_candidate_hash_mismatch' });
 
     const revokedGrant = await createGrant('revoked');
+    const revokedRun = await persistedRun(revokedGrant);
     await pool.query(`UPDATE bb_non_production_test_grants SET revoked_at=now(),revoked_by='synthetic-operator',revoked_reason='fixture'
       WHERE grant_id=$1`, [revokedGrant]);
-    assert.deepEqual(await loader({ ...runBase, test_grant_id: revokedGrant }, input),
+    assert.deepEqual(await loader(revokedRun, input),
       { status: 'not_ready', reason: 'test_grant_inactive_or_scope_changed' });
 
     const concurrentPool = {
@@ -122,10 +138,10 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
         } as unknown as PoolClient;
       },
     } as unknown as Pool;
-    assert.deepEqual(await createSsePrivateTestRuleCapabilityLoader(concurrentPool)({ ...runBase, test_grant_id: activeGrant }, input),
+    assert.deepEqual(await createSsePrivateTestRuleCapabilityLoader(concurrentPool)(activeRun, input),
       { status: 'not_ready', reason: 'authorized_sample_locked_material_concurrent_change' });
     await pool.query("UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1",[materials[2]!.material_id]);
-    assert.deepEqual(await loader({ ...runBase, test_grant_id: ownerGrant },input),
+    assert.deepEqual(await loader(ownerRun,input),
       {status:'not_ready',reason:'test_material_locked_material_deleted_or_missing'});
   } finally {
     await pool.end();

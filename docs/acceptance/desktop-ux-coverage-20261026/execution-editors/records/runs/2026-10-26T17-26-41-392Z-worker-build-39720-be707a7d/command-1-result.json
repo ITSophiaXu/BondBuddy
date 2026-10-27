@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T17:26:41.401Z",
+  "finished": "2026-10-26T17:26:56.525Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\typescript\\bin\\tsc",
+    "-p",
+    "apps/worker/tsconfig.json"
+  ],
+  "status": 2,
+  "signal": null,
+  "pid": 41108
+}

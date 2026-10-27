@@ -1,0 +1,263 @@
+[
+  {
+    "id": "initdb-1",
+    "mode": "initdb",
+    "status": 1,
+    "started": "2026-10-26T15:21:21.176Z",
+    "pid": 42920,
+    "signal": null,
+    "finished": "2026-10-26T15:21:23.074Z"
+  },
+  {
+    "id": "api-build-2",
+    "mode": "api-build",
+    "status": 0,
+    "started": "2026-10-26T15:22:13.369Z",
+    "pid": 19740,
+    "signal": null,
+    "finished": "2026-10-26T15:22:30.626Z"
+  },
+  {
+    "id": "contracts-check-3",
+    "mode": "contracts-check",
+    "status": 0,
+    "started": "2026-10-26T15:22:13.380Z",
+    "pid": 34304,
+    "signal": null,
+    "finished": "2026-10-26T15:22:20.263Z"
+  },
+  {
+    "id": "worker-build-4",
+    "mode": "worker-build",
+    "status": 0,
+    "started": "2026-10-26T15:23:47.397Z",
+    "pid": 48752,
+    "signal": null,
+    "finished": "2026-10-26T15:24:02.419Z"
+  },
+  {
+    "id": "pg-start-direct-5",
+    "mode": "pg-start-direct",
+    "status": 0,
+    "started": "2026-10-26T15:23:47.409Z",
+    "pid": 10756,
+    "signal": null,
+    "finished": "2026-10-26T15:23:48.694Z"
+  },
+  {
+    "id": "database-create-6",
+    "mode": "database-create",
+    "status": 0,
+    "started": "2026-10-26T15:24:38.084Z",
+    "pid": 19836,
+    "signal": null,
+    "finished": "2026-10-26T15:24:39.121Z"
+  },
+  {
+    "id": "migrate-7",
+    "mode": "migrate",
+    "status": 0,
+    "started": "2026-10-26T15:24:58.171Z",
+    "pid": 5972,
+    "signal": null,
+    "finished": "2026-10-26T15:25:03.515Z"
+  },
+  {
+    "id": "source-before-8",
+    "mode": "source-before",
+    "status": 0,
+    "started": "2026-10-26T15:24:58.181Z",
+    "pid": 22084,
+    "signal": null,
+    "finished": "2026-10-26T15:25:00.412Z"
+  },
+  {
+    "id": "api-focused-9",
+    "mode": "api-focused",
+    "status": 0,
+    "started": "2026-10-26T15:25:40.869Z",
+    "pid": 13044,
+    "signal": null,
+    "finished": "2026-10-26T15:26:55.366Z"
+  },
+  {
+    "id": "api-consumers-10",
+    "mode": "api-consumers",
+    "status": 1,
+    "started": "2026-10-26T15:25:40.879Z",
+    "pid": 45904,
+    "signal": null,
+    "finished": "2026-10-26T15:29:11.717Z"
+  },
+  {
+    "id": "api-delivery-11",
+    "mode": "api-delivery",
+    "status": 1,
+    "started": "2026-10-26T15:25:40.889Z",
+    "pid": 3684,
+    "signal": null,
+    "finished": "2026-10-26T15:27:58.988Z"
+  },
+  {
+    "id": "worker-unit-12",
+    "mode": "worker-unit",
+    "status": 1,
+    "started": "2026-10-26T15:25:40.904Z",
+    "pid": 9824,
+    "signal": null,
+    "finished": "2026-10-26T15:26:23.969Z"
+  },
+  {
+    "id": "worker-pg-13",
+    "mode": "worker-pg",
+    "status": 0,
+    "started": "2026-10-26T15:25:40.914Z",
+    "pid": 49568,
+    "signal": null,
+    "finished": "2026-10-26T15:28:24.711Z"
+  },
+  {
+    "id": "api-build-14",
+    "mode": "api-build",
+    "status": 0,
+    "started": "2026-10-26T15:33:42.425Z",
+    "pid": 5164,
+    "signal": null,
+    "finished": "2026-10-26T15:33:58.043Z"
+  },
+  {
+    "id": "worker-build-15",
+    "mode": "worker-build",
+    "status": 0,
+    "started": "2026-10-26T15:34:20.803Z",
+    "pid": 50876,
+    "signal": null,
+    "finished": "2026-10-26T15:34:35.932Z"
+  },
+  {
+    "id": "contracts-check-16",
+    "mode": "contracts-check",
+    "status": 0,
+    "started": "2026-10-26T15:34:20.810Z",
+    "pid": 35564,
+    "signal": null,
+    "finished": "2026-10-26T15:34:23.358Z"
+  },
+  {
+    "id": "source-before-17",
+    "mode": "source-before",
+    "status": 0,
+    "started": "2026-10-26T15:34:59.893Z",
+    "pid": 47620,
+    "signal": null,
+    "finished": "2026-10-26T15:35:02.041Z"
+  },
+  {
+    "id": "api-focused-18",
+    "mode": "api-focused",
+    "status": 0,
+    "started": "2026-10-26T15:35:10.578Z",
+    "pid": 48044,
+    "signal": null,
+    "finished": "2026-10-26T15:36:18.793Z"
+  },
+  {
+    "id": "api-consumers-19",
+    "mode": "api-consumers",
+    "status": 0,
+    "started": "2026-10-26T15:35:10.585Z",
+    "pid": 37536,
+    "signal": null,
+    "finished": "2026-10-26T15:38:32.068Z"
+  },
+  {
+    "id": "api-delivery-20",
+    "mode": "api-delivery",
+    "status": 0,
+    "started": "2026-10-26T15:35:10.591Z",
+    "pid": 47256,
+    "signal": null,
+    "finished": "2026-10-26T15:37:23.396Z"
+  },
+  {
+    "id": "worker-unit-21",
+    "mode": "worker-unit",
+    "status": 0,
+    "started": "2026-10-26T15:35:10.598Z",
+    "pid": 28984,
+    "signal": null,
+    "finished": "2026-10-26T15:35:46.985Z"
+  },
+  {
+    "id": "worker-pg-22",
+    "mode": "worker-pg",
+    "status": 0,
+    "started": "2026-10-26T15:35:10.607Z",
+    "pid": 50600,
+    "signal": null,
+    "finished": "2026-10-26T15:38:02.342Z"
+  },
+  {
+    "id": "source-after-23",
+    "mode": "source-after",
+    "status": 0,
+    "started": "2026-10-26T15:39:11.785Z",
+    "pid": 9756,
+    "signal": null,
+    "finished": "2026-10-26T15:39:29.922Z"
+  },
+  {
+    "id": "worker-build-24",
+    "mode": "worker-build",
+    "status": 0,
+    "started": "2026-10-26T15:40:01.352Z",
+    "pid": 45088,
+    "signal": null,
+    "finished": "2026-10-26T15:40:17.264Z"
+  },
+  {
+    "id": "source-before-25",
+    "mode": "source-before",
+    "status": 0,
+    "started": "2026-10-26T15:41:04.511Z",
+    "pid": 50356,
+    "signal": null,
+    "finished": "2026-10-26T15:41:06.662Z"
+  },
+  {
+    "id": "worker-source-26",
+    "mode": "worker-source",
+    "status": 0,
+    "started": "2026-10-26T15:41:29.186Z",
+    "pid": 50744,
+    "signal": null,
+    "finished": "2026-10-26T15:41:46.855Z"
+  },
+  {
+    "id": "source-after-27",
+    "mode": "source-after",
+    "status": 0,
+    "started": "2026-10-26T15:42:19.511Z",
+    "pid": 9860,
+    "signal": null,
+    "finished": "2026-10-26T15:42:21.816Z"
+  },
+  {
+    "id": "database-audit-28",
+    "mode": "database-audit",
+    "status": 0,
+    "started": "2026-10-26T15:42:19.518Z",
+    "pid": 2072,
+    "signal": null,
+    "finished": "2026-10-26T15:42:19.991Z"
+  },
+  {
+    "id": "pg-stop-29",
+    "mode": "pg-stop",
+    "status": 0,
+    "started": "2026-10-26T15:42:42.303Z",
+    "pid": 30780,
+    "signal": null,
+    "finished": "2026-10-26T15:42:43.118Z"
+  }
+]

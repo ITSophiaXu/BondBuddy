@@ -1,0 +1,69 @@
+✔ malformed saved export pins cannot fall through to a model call or reuse a correction checkpoint (17.2464ms)
+✔ CLI Word is delivered without a structured report, JSON response, or second call (64.704ms)
+✔ missing output is recorded without inventing a report; immutable input tampering fails (79.0356ms)
+﹣ report symlinks cannot publish outside files (0.408ms) # SKIP
+✔ pinned DOCX produces source comments and the same canonical report; missing comment bytes block delivery (1383.9173ms)
+✔ correction delivery rejects absent and retains diagnostics without publishing an unchanged pair (41.1318ms)
+✔ correction delivery rejects progress-markdown and retains diagnostics without publishing an unchanged pair (43.4495ms)
+✔ correction delivery rejects invalid-word and retains diagnostics without publishing an unchanged pair (686.256ms)
+✖ correction delivery reads actual Word report fields when Markdown is absent and preserves final response (2444.7384ms)
+✔ review loader consumes the resolved V1 input and keeps the original run creation time (6.6633ms)
+✔ another revision with identical bytes cannot fall back to the original run input (1.2654ms)
+▶ review context and lease identity must agree before loading evidence
+  ✔ context run (0.5626ms)
+  ✔ context owner (0.3903ms)
+  ✔ context project (0.667ms)
+  ✔ context revision (0.3959ms)
+  ✔ context hash (0.3878ms)
+  ✔ lease run (0.4073ms)
+  ✔ lease owner (0.5412ms)
+  ✔ lease revision (0.4695ms)
+  ✔ lease hash (0.385ms)
+  ✔ successor execution (0.4093ms)
+✔ review context and lease identity must agree before loading evidence (6.324ms)
+✔ missing execution identity never falls back to an otherwise valid origin snapshot (0.4843ms)
+✔ missing exact input never selects another revision with the same hash (0.4114ms)
+✔ tampered fixed manifest is rejected before material evidence is read (0.3345ms)
+✔ resolved input still passes the existing immutable review snapshot gate (0.5667ms)
+✔ an explicitly missing or differently scoped resolved review snapshot cannot reload the origin (0.7309ms)
+✔ direct review gate callers resolve the exact versioned database snapshot (1.1311ms)
+✔ malformed review snapshot objects fail explicitly for resolved and direct database gates (2.3302ms)
+✔ review loader and standalone gate reject missing or mismatched execution snapshots without a legacy fallback (4.1183ms)
+✔ supplied review snapshots must match every field of the expected execution identity (0.6919ms)
+✔ supplied review snapshots and a forged successor identity cannot bypass the persisted V1 execution (0.3325ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (1417.7003ms)
+  ✔ live lease registers once and only exact report bytes replay (29.4568ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (99.7865ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (2184.3488ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (3734.9204ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (1059.9028ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (46.252ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (43.6624ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (31.834ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (63.3261ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (1248.34ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 41
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 39685.4714
+
+✖ failing tests:
+
+test at apps\worker\dist\review-file-stage.test.js:214:1
+✖ correction delivery reads actual Word report fields when Markdown is absent and preserves final response (2444.7384ms)
+  TypeError [Error]: pool.connect is not a function
+      at transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/data.js:65:31)
+      at registerReviewEditorSnapshot (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/review-editor.js:35:19)
+      at correctionFiles (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-correction-stage.js:67:15)
+      at async Object.collect (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-file-stage.js:184:36)
+      at async Object.run (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-file-stage.test.js:230:51)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/review-file-stage.test.js:232:24)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+{"name":"AssertionError","message":"C:\\Program Files\\nodejs\\node.exe exited 1; see C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-editors-20261027\\runs\\2026-10-26T17-36-14-988Z-worker-regression-46616-13f971a0\\run.log\n\n1 !== 0\n"}

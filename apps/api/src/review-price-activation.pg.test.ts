@@ -58,10 +58,13 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
   assert.equal(ok(await send('POST',`${base}/review-executions`,body)).run_id,run.run_id);
   const update={execution_request_id:uid(),source_run_id:run.run_id,requirements:'Independent revision'};
   assert.equal((await send('POST',`${base}/review-updates/quote`,update)).json().code,'BILLING_NOT_READY');
-  const report:ReviewReport={report_id:uid(),project_id:p.project_id,run_id:run.run_id,input_revision:run.input_revision,version:1,source_material:pin,scope:{mode:'full_review',finding_ids:[]},findings:[],coverage:[],limitations:['synthetic'],created_at:new Date().toISOString()};
+  const frozenReview=(await pool.query(`SELECT i.manifest->'review' AS review FROM bb_runs r JOIN bb_input_revisions i
+    ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision AND i.input_hash=r.input_hash
+    WHERE r.owner_user_id=$1 AND r.id=$2`,[owner,run.run_id])).rows[0].review;
+  const report:ReviewReport={report_id:frozenReview.report_id,project_id:p.project_id,run_id:run.run_id,input_revision:run.input_revision,version:frozenReview.version_number,source_material:pin,scope:{mode:'full_review',finding_ids:[]},findings:[],coverage:[],limitations:['synthetic'],created_at:new Date().toISOString()};
   const ref:ReviewEvidenceRef={material_id:material,material_version:1,material_sha256:sha,parse_snapshot_id:'synthetic',parse_response_sha256:digest('parse'),record_id:'synthetic',record_sha256:digest('record'),locator_type:'pdf_bbox',locator:{page:1},quote:'synthetic',extraction_method:'native_text',uncertainty:[]};
   report.findings=[{finding_id:'F1',report_id:report.report_id,dimension:'financial',conclusion:'error',severity:'P2',title:'Synthetic',description:'Synthetic',target_refs:[ref],evidence_refs:[ref],suggested_change:'Synthetic',limitations:[],repairability:{can_revise:true,reason:'Synthetic',allowed_record_ids:['synthetic']},origin_report_id:report.report_id,check_status:'rechecked'}];
-  await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)',[report.report_id,owner,p.project_id,run.run_id,inputManifestHash(report),report]);
+  await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,$5,$6,$7)',[report.report_id,owner,p.project_id,run.run_id,report.version,inputManifestHash(report),report]);
   await fund(1200,'local-review');
   for(const state of ['cancelled','failed']){
    const next={...fresh,execution_request_id:uid(),operation:'differential_review',source_report_id:report.report_id,finding_ids:['F1']};

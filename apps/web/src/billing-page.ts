@@ -43,7 +43,7 @@ export class BillingPage {
     if(path==='#consistency'||path==='#generate'&&!new URLSearchParams(this.returnTo?.split('?')[1]).has('topic'))return '已有文件、模板与检查记录保留。充值到账不会自动提交文件更新或生成，请返回原页面选择范围并重新确认费用。';
     if(path==='#integrity'||path==='#qa')return '已保存的材料、名单和历史记录保留。充值到账不会自动开始新一轮，请返回原页面核对范围与费用后开始。';
     if(this.reviewProject||path==='#generate')return '已保存的材料与要求保留。充值到账不会自动开始新任务；已暂停任务请返回原页面查看恢复状态。';
-    if(!this.returnTo||/^#\/projects\/[^/?]+(?:\?|$)/.test(this.returnTo))return '因积分用完而暂停的募集书更新任务将在到账后自动继续；未开始的新任务仍需返回项目点击开始。';
+    if(!this.returnTo||/^#\/projects\/[^/?]+(?:\?|$)/.test(this.returnTo))return '因积分用完而暂停、且未由你主动暂停的募集书更新任务将在到账后自动继续；主动暂停的任务仍需手动继续，未开始的新任务仍需返回项目点击开始。';
     return '已保存的项目文件与历史记录保留。充值到账不会自动开始新任务，请返回刚才的工作继续处理。';
   }
   private draw(){

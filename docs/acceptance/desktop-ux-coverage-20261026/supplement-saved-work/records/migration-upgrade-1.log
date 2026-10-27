@@ -1,0 +1,15 @@
+2026-10-26T11:44:58.982Z PASS private clone has expected owner, schema0121 and zero runs
+2026-10-26T11:44:59.034Z PASS only the verified private clone was restored to schema0119
+2026-10-26T11:45:00.216Z PASS schema0119 contains four historical call cases, an old receipt and a nonempty ledger
+2026-10-26T11:45:00.287Z PASS applied original 0120_model_call_execution_bindings.sql
+2026-10-26T11:45:00.321Z PASS applied original 0121_run_supplement_saved_work.sql
+2026-10-26T11:45:00.328Z PASS only the exact historical prompt call is backfilled with its original timestamp
+2026-10-26T11:45:00.336Z PASS old supplement receipt gains no fabricated saved work or result
+2026-10-26T11:45:00.457Z PASS every row in every preexisting public business table is unchanged
+2026-10-26T11:45:00.463Z PASS new intent rejects sameHashWrongRevision
+2026-10-26T11:45:00.466Z PASS new intent rejects missingInputMetadata
+2026-10-26T11:45:00.468Z PASS successor execution V2 is still rejected
+2026-10-26T11:45:00.470Z PASS bound attempt cannot switch prompt
+2026-10-26T11:45:00.580Z PASS rejected intents, V2 and identity update leave all historical rows and bindings unchanged
+2026-10-26T11:45:01.042Z PASS only this process-created clone was dropped after connection close
+2026-10-26T11:45:01.042Z PASS template identity is unchanged and no template data connection was opened

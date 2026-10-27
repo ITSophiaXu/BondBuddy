@@ -5,37 +5,62 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isReviewReport, type ReviewReport, type ReviewAction } from '@bondbuddy/contracts';
-import { digest, transaction } from '@bondbuddy/api/data';
+import { digest, Problem, transaction } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
+import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
 import { checkpointStage, recordReviewAction } from '@bondbuddy/api/queue';
 import type { RunStage, StageContext } from './run-pipeline.js';
+import {lockStageRunExecution} from './run-execution-lease.js';
 
 const runFile = promisify(execFile), repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 /** Shares the project lock with adoption/execution so a cancelled old writer cannot change the catalog behind a new acceptance. */
 export async function registerReviewReport(ctx:Pick<StageContext,'pool'|'run'|'lease'>,report:ReviewReport):Promise<boolean> {
   if(!isReviewReport(report)||report.run_id!==ctx.run.id||report.project_id!==ctx.run.project_id||report.input_revision!==ctx.run.input_revision
     ||ctx.lease.owner!==ctx.run.owner_user_id||ctx.lease.runId!==ctx.run.id)return false;
-  return transaction(ctx.pool,async client=>{
+  for(let attempt=0;attempt<3;attempt++)try{return await transaction(ctx.pool,async client=>{
     const project=(await client.query(`SELECT id FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL FOR UPDATE`,
       [ctx.run.project_id,ctx.run.owner_user_id])).rows[0];
     if(!project)return false;
-    const run=(await client.query(`SELECT state,input_hash,input_revision FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 FOR UPDATE`,
-      [ctx.run.id,ctx.run.owner_user_id,ctx.run.project_id])).rows[0];
     // The queue sets claimed and checkpointed jobs to running. Paused, stop/cancelled
     // and every terminal state must obtain a new normal claim before publication.
-    if(!run||run.state!=='running'||String(run.input_hash).trim()!==ctx.run.input_hash.trim()||run.input_revision!==report.input_revision)return false;
-    const job=(await client.query(`SELECT id FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running'
-      AND lease_token=$4 AND lease_until>clock_timestamp() FOR UPDATE`,[ctx.lease.jobId,ctx.run.owner_user_id,ctx.run.id,ctx.lease.token])).rows[0];
-    if(!job)return false;
-    const hash=inputManifestHash(report),saved=await client.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report)
-      VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id) DO NOTHING RETURNING id`,
-      [report.report_id,ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id,report.version,hash,report]);
-    if(saved.rowCount)return true;
-    const previous=(await client.query(`SELECT id,version,content_sha256,report FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3`,
-      [ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id])).rows[0];
-    return !!previous&&previous.id===report.report_id&&previous.version===report.version
-      &&String(previous.content_sha256).trim()===hash&&inputManifestHash(previous.report)===hash;
-  });
+    const run=await lockStageRunExecution(client,ctx);
+    if(!run||run.input_revision!==report.input_revision)return false;
+    const frozen=await readRunExecutionInput(client,ctx.run.owner_user_id,ctx.run.id,ctx.lease),execution=frozen.reviewExecution;
+    const manifest=frozen.input.manifest.review as Record<string,unknown>|undefined;
+    if(!execution||manifest?.report_id!==report.report_id||report.version!==execution.version||report.scope.mode!==execution.operation
+      ||inputManifestHash(report.source_material)!==inputManifestHash(execution.snapshot.input?.source_material_ref??null)
+      ||inputManifestHash(report.scope.finding_ids)!==inputManifestHash(execution.snapshot.finding_ids??null)
+      ||report.follow_up&&(report.follow_up.source_report_id!==execution.source_report_id
+        ||report.follow_up.source_report_sha256!==manifest.source_report_sha256))return false;
+    const hash=inputManifestHash(report),exact=[ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id,ctx.lease.executionVersion,ctx.lease.inputRevision,ctx.lease.inputHash];
+    const saved=await client.query(`INSERT INTO bb_review_execution_reports(owner_user_id,project_id,run_id,execution_version,input_revision,input_hash,id,version,content_sha256,report)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING RETURNING id`,[...exact,report.report_id,report.version,hash,report]);
+    const previous=await findReviewExecutionReport(client,ctx.run.owner_user_id,ctx.run.project_id,report.report_id);
+    if(!previous||previous.run_id!==ctx.run.id||previous.execution_version!==ctx.lease.executionVersion
+      ||previous.input_revision!==ctx.lease.inputRevision||previous.input_hash!==ctx.lease.inputHash
+      ||previous.version!==report.version||previous.content_sha256!==hash){
+      if(saved.rowCount)throw new Problem(409,'INPUT_REVISION_CONFLICT','Stored report does not match its execution');
+      return false; // ON CONFLICT wrote nothing; preserve the existing immutable report.
+    }
+    if(ctx.lease.executionVersion===1){
+      await client.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report,created_at)
+        SELECT id,owner_user_id,project_id,run_id,version,content_sha256,report,created_at FROM bb_review_execution_reports
+        WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 AND execution_version=$4 AND input_revision=$5 AND input_hash=$6
+        ON CONFLICT DO NOTHING`,exact);
+      const mirror=await client.query(`SELECT 1 FROM bb_review_reports l JOIN bb_review_execution_reports e
+        ON l.owner_user_id=e.owner_user_id AND l.project_id=e.project_id AND l.run_id=e.run_id AND l.id=e.id
+          AND l.version=e.version AND l.content_sha256=e.content_sha256 AND l.report=e.report AND l.created_at=e.created_at
+        WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.run_id=$3 AND e.execution_version=$4 AND e.input_revision=$5 AND e.input_hash=$6`,exact);
+      if(mirror.rowCount!==1)throw new Problem(409,'INPUT_REVISION_CONFLICT','Report mirror does not match its execution');
+    }
+    return true;
+  });}catch(error){
+    // Retry the complete idempotent registration, never model/Word work. A
+    // rolling legacy writer can hold its unique key while awaiting our parents.
+    if((error as {code?:string}).code!=='40P01'||attempt===2)throw error;
+  }
+  return false;
 }
 
 export function reviewWordDeliveryStage(): RunStage {

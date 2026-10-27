@@ -1,0 +1,11 @@
+{
+  "started": "2026-10-26T14:41:34.427Z",
+  "finished": "2026-10-26T14:41:34.583Z",
+  "status": 1,
+  "args": [
+    ".local/execution-business-snapshots/verify.mjs",
+    "api-upload-timeout"
+  ],
+  "phase": "completed",
+  "note": "Syntax failure occurred before test execution and before per-command receipt was created; no test counts adopted."
+}

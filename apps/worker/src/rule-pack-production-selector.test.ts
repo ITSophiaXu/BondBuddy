@@ -16,6 +16,7 @@ import {
 import { isolatedTestDatabase } from './test-database.js';
 import { inputManifestHash, lockProductionRulePack, type ReviewedContextResult } from '@bondbuddy/api/production-rule-pin';
 import { createServer } from '@bondbuddy/api';
+import { projectRunExecution, runExecutionOrigin } from '@bondbuddy/api/run-execution';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
 import {
   revalidateProductionRulePackPin,
@@ -413,6 +414,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
   const releaseEventId = `synthetic-release-${suffix}`;
   try {
     await client.query('BEGIN');
+    // Fixture publication dates come from UTC ISO strings; keep the SQL event date in the same timezone.
+    await client.query("SET LOCAL TIME ZONE 'UTC'");
     const now = new Date();
     const releaseAt = new Date(now.getTime() + 120_000).toISOString();
     const effectiveTo = new Date(Date.parse(releaseAt) + 86_400_000).toISOString().slice(0, 10);
@@ -714,7 +717,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         VALUES($1,2,$2,1,$3,$4,'[]','[]',$5,$6)`, [projectId, operator, inputHash, manifest, locked.pin.version, locked.pin.templateVersion]);
       const run = { id: `synthetic-rule-run-${suffix}`, owner_user_id: operator, project_id: projectId,
         input_revision: 2, input_hash: inputHash, task_kind: 'review' };
-      const ctx = { pool: client as never, blobs: {} as never, lease: {} as never, run,
+      const ctx = { pool: client as never, blobs: {} as never, lease: {} as never,
+        run: projectRunExecution(run, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }),
         signal: new AbortController().signal, checkpoint: {}, values: new Map(),
         reviewedContextLoader: async (_db, args) => {
           assert.equal(args.currentDraftRevision, 1);
@@ -774,7 +778,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       const tamperedManifest = { ...manifest, rule_pack_snapshot_refs: { ...snapshotRefs, pack_hash: '0'.repeat(64) } };
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
         VALUES($1,3,$2,1,$3,$4,'[]','[]',$5,$6)`, [projectId, operator, inputHash, tamperedManifest, locked.pin.version, locked.pin.templateVersion]);
-      assert.deepEqual(await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 3 } }),
+      assert.deepEqual(await inputLockStage.run({ ...ctx,
+        run: projectRunExecution({ ...run, input_revision: 3 }, { executionVersion: 1, inputRevision: 3, inputHash: run.input_hash }) }),
         { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
       assert.deepEqual(await inputLockStage.run({ ...ctx, reviewedContextLoader: undefined }),
         { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_loader_unavailable' });
@@ -789,7 +794,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         assert.equal(driftPreflight.statusCode, 409, driftPreflight.body);
         assert.equal(driftPreflight.json().code, 'INPUT_REVISION_CONFLICT', 'advisory business readiness cannot bypass the immutable draft pin');
       } finally { await driftApp.close(); }
-      const driftGate = await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 4 } });
+      const driftGate = await inputLockStage.run({ ...ctx,
+        run: projectRunExecution({ ...run, input_revision: 4 }, { executionVersion: 1, inputRevision: 4, inputHash: run.input_hash }) });
       assert.deepEqual(driftGate, { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
       let driftPromptBuilt = false;
       const driftModel = codexModelStage({ name: 'model_generation', logicalCallId: 'synthetic-rule-drift',
@@ -800,7 +806,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
         VALUES($1,5,$2,1,$3,$4,'[{"material_id":"synthetic-other","material_version":1}]'::jsonb,'[]',$5,$6)`,
       [projectId, operator, inputHash, manifest, locked.pin.version, locked.pin.templateVersion]);
-      assert.deepEqual(await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 5 } }),
+      assert.deepEqual(await inputLockStage.run({ ...ctx,
+        run: projectRunExecution({ ...run, input_revision: 5 }, { executionVersion: 1, inputRevision: 5, inputHash: run.input_hash }) }),
         { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
     }
     const expiredPin = { ...selected.pin, asOf: new Date(Date.parse(`${effectiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) };
@@ -827,8 +834,9 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       for (let retry = 0; retry < 2; retry++)
         assert.ok((await preflightRuleReasons(client, operator, projectId, expiredHash,
           expiredRequest, expiredContextPin, 6)).includes('rule_pack:production_rule_pack_not_effective'));
+      const expiredRawRun = { ...runExecutionOrigin(gateCtx.run), task_kind: gateCtx.run.task_kind, input_revision: 6, input_hash: expiredHash };
       const expiredCtx = { ...gateCtx,
-        run: { ...gateCtx.run, input_revision: 6, input_hash: expiredHash },
+        run: projectRunExecution(expiredRawRun, { executionVersion: 1, inputRevision: expiredRawRun.input_revision, inputHash: expiredRawRun.input_hash }),
         reviewedContextLoader: async () => approvedContext(expiredRequest, expiredContextPin) };
       const expiredGate = await inputLockStage.run(expiredCtx);
       assert.deepEqual(expiredGate,
@@ -908,6 +916,8 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
   const hash = 'b'.repeat(64);
   try {
     await client.query('BEGIN');
+    // Fixture publication dates come from UTC ISO strings; keep the SQL event date in the same timezone.
+    await client.query("SET LOCAL TIME ZONE 'UTC'");
     const rejectsWithSavepoint = async (sql: string, values: unknown[], pattern: RegExp, name: string) => {
       const safeName = name.replaceAll(/[^a-zA-Z0-9_]/g, '_');
       await client.query(`SAVEPOINT ${safeName}`);

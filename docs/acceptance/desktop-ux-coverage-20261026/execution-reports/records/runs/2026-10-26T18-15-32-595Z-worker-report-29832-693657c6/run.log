@@ -1,0 +1,21 @@
+✔ trusted report registration creates one exact execution body and V1 mirror; only identical bytes replay (1028.2352ms)
+✔ wrong or expired lease identity and mismatched frozen report pins cannot create either registry row (18787.9743ms)
+✔ a rolling old writer bridges V1 once and the trusted writer replays its exact persisted timestamp (2754.5929ms)
+✔ an incompatible V1 mirror rolls back a newly inserted canonical report rather than leaving partial storage (2382.9785ms)
+✔ registration waiting for the project catalog lock rechecks lease time after that lock is released (3462.2885ms)
+✔ a schema-valid undefined locator value cannot commit a partial report after JSONB serialization changes its body hash (1778.5381ms)
+✔ a differential report writer rejects a schema-valid wrong follow-up source digest before either registry is created (2036.2728ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (733.5779ms)
+  ✔ live lease registers once and only exact report bytes replay (70.3291ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (162.0366ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (767.4028ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (1737.2472ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57653.8304

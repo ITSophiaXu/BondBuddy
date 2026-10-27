@@ -1,0 +1,35 @@
+▶ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result
+  ✔ put (5341.4876ms)
+  ✔ readback (5435.0488ms)
+✔ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result (10778.6937ms)
+✔ working-file authority rejects wrong source, execution, owner, path and local lease before put (9837.288ms)
+✔ shared correction objects keep both real attempt claims and every report hash is inventoried (5925.2813ms)
+✔ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (9455.3549ms)
+✔ a newer exact attempt claim extends retention of a shared correction physical object (5126.2924ms)
+▶ old paused work is retained, terminal work is purged, and account/project deletion uses its own window
+  ✔ paused and terminal (6121.7654ms)
+  ✔ closed (5141.5547ms)
+  ✔ deleted (6127.888ms)
+✔ old paused work is retained, terminal work is purged, and account/project deletion uses its own window (17392.5668ms)
+▶ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes
+  ✔ delete (5736.495ms)
+  ✔ receipt (5556.7686ms)
+✔ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes (11294.2127ms)
+▶ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed
+  ✔ delete (5846.0456ms)
+  ✔ unknown-envelope (5646.7444ms)
+  ✔ wrong-hash (5805.0911ms)
+✔ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed (17299.1257ms)
+▶ real PG writer/purger serialization preserves intent then denies writes after purge starts
+  ✔ writer (6854.7619ms)
+  ✔ purger (6408.9507ms)
+✔ real PG writer/purger serialization preserves intent then denies writes after purge starts (13264.7779ms)
+✔ captured-file read holds its exact file lock through readback while real PG purge waits (6468.8253ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 169190.9215

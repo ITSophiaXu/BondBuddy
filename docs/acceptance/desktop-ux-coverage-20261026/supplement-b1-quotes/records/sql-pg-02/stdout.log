@@ -1,0 +1,75 @@
+TAP version 13
+# (node:49352) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring: genuine zero-attempt work quotes and confirms zero without any price catalog
+ok 1 - authoring: genuine zero-attempt work quotes and confirms zero without any price catalog
+  ---
+  duration_ms: 2712.0113
+  type: 'test'
+  ...
+# Subtest: review: genuine zero-attempt work quotes and confirms zero without any price catalog
+ok 2 - review: genuine zero-attempt work quotes and confirms zero without any price catalog
+  ---
+  duration_ms: 2238.5016
+  type: 'test'
+  ...
+# Subtest: m4: genuine zero-attempt work quotes and confirms zero without any price catalog
+ok 3 - m4: genuine zero-attempt work quotes and confirms zero without any price catalog
+  ---
+  duration_ms: 2124.0115
+  type: 'test'
+  ...
+# Subtest: authoring: captured work uses one whole-document price and retains original paid accounting
+ok 4 - authoring: captured work uses one whole-document price and retains original paid accounting
+  ---
+  duration_ms: 3810.3545
+  type: 'test'
+  ...
+# Subtest: review: captured work uses one whole-document price and retains original paid accounting
+ok 5 - review: captured work uses one whole-document price and retains original paid accounting
+  ---
+  duration_ms: 3990.975
+  type: 'test'
+  ...
+# Subtest: review differential: captured work uses one whole-document price and retains original paid accounting
+ok 6 - review differential: captured work uses one whole-document price and retains original paid accounting
+  ---
+  duration_ms: 5049.8498
+  type: 'test'
+  ...
+# Subtest: m4: captured work uses one whole-document price and retains original paid accounting
+ok 7 - m4: captured work uses one whole-document price and retains original paid accounting
+  ---
+  duration_ms: 4468.3512
+  type: 'test'
+  ...
+# Subtest: authoring: an existing paid zero-attempt source retains its real quote while confirming zero with a null task
+ok 8 - authoring: an existing paid zero-attempt source retains its real quote while confirming zero with a null task
+  ---
+  duration_ms: 2543.1447
+  type: 'test'
+  ...
+# Subtest: review: an existing paid zero-attempt source retains its real quote while confirming zero with a null task
+ok 9 - review: an existing paid zero-attempt source retains its real quote while confirming zero with a null task
+  ---
+  duration_ms: 2624.6105
+  type: 'test'
+  ...
+# Subtest: m4: an existing paid zero-attempt source retains its real quote while confirming zero with a null task
+ok 10 - m4: an existing paid zero-attempt source retains its real quote while confirming zero with a null task
+  ---
+  duration_ms: 2761.3166
+  type: 'test'
+  ...
+# Subtest: SQL rejects altered scope, invented free work, split delivery pricing and forged snapshot hashes
+ok 11 - SQL rejects altered scope, invented free work, split delivery pricing and forged snapshot hashes
+  ---
+  duration_ms: 9729.6213
+  type: 'test'
+  ...
+# Subtest: paid source classification and current price are both bound; a changed price needs a new quote
+ok 12 - paid source classification and current price are both bound; a changed price needs a new quote
+  ---
+  duration_ms: 4258.0224
+  type: 'test'
+  ...

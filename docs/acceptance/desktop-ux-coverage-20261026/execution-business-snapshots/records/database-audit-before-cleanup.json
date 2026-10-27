@@ -1,0 +1,10 @@
+{
+  "started": "2026-10-26T14:58:10.494Z",
+  "finished": "2026-10-26T14:58:10.974Z",
+  "status": 1,
+  "args": [
+    ".local/execution-business-snapshots/verify.mjs",
+    "database-audit"
+  ],
+  "note": "First cleanup check correctly refused19 inactive clones left by previously interrupted test invocations; corrected by separately validated exact owned-clone cleanup."
+}

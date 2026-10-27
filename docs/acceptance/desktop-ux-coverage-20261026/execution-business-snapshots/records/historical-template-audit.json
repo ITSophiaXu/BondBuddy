@@ -1,0 +1,12 @@
+{
+  "recorded_at": "2026-10-26T15:00:14.726Z",
+  "purpose": "Historical interim candidate template; not final SQL migration acceptance",
+  "database": "bb_g03_template_20261026",
+  "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/g03-postgres/data",
+  "counts": {
+    "runs": 0,
+    "executions": 0,
+    "reviews": 0,
+    "m4": 0
+  }
+}

@@ -182,7 +182,8 @@ test('PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and d
     assert.equal(await exists(cacheKey), true, 'parse cache is kept while another live material has the same bytes');
     assert.ok(await exists(kept.key), 'other material untouched');
     const again = await runDeletedContentPurge(pool, blobs, { deletedContentPurgeDays: 7, now: () => new Date(clock), ownerScope: owner });
-    assert.deepEqual(again, { materialsPurged: 0, projectsPurged: 0, objectsDeleted: 0, failed: 0 }, 'a repeat run is a no-op');
+    assert.deepEqual(again, { materialsPurged: 0, projectsPurged: 0, objectsDeleted: 0,
+      reviewBodies: { projectsPurged: 0, rowsPurged: 0, failed: 0 }, failed: 0 }, 'a repeat run is a no-op');
     const meta = await pool.query('SELECT sha256,deleted_at FROM bb_material_versions WHERE owner_user_id=$1 AND id=$2', [owner, doomed.material_id]);
     assert.equal(meta.rows[0].sha256.trim(), sha, 'hash metadata is retained for audit');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_parse_snapshots WHERE owner_user_id=$1 AND material_id=$2', [owner, doomed.material_id])).rows[0].n, 1, 'parse snapshot header retained');

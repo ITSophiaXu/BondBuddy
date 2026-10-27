@@ -1,0 +1,121 @@
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (471.7763ms)
+﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (1.0496ms) # SKIP
+✔ global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text (259.0922ms)
+✔ M4 sse/private_summary single CLI file task receives knowledge/requirements and delivers editable Word (2311.1714ms)
+✔ M4 szse/private_summary single CLI file task receives knowledge/requirements and delivers editable Word (2136.0308ms)
+✔ M4 sse/underwriter single CLI file task receives knowledge/requirements and delivers editable Word (1880.2244ms)
+✔ M4 szse/underwriter single CLI file task receives knowledge/requirements and delivers editable Word (1905.6413ms)
+✔ M4 sse/legal single CLI file task receives knowledge/requirements and delivers editable Word (1901.1111ms)
+✔ M4 szse/legal single CLI file task receives knowledge/requirements and delivers editable Word (1947.942ms)
+✔ M4 missing output is honest, readonly input tampering fails and changed pinned method does not call CLI (200.7162ms)
+✔ M4 QA reads fixed history and host recomputes operands; fabricated CLI numerical text is replaced (556.8948ms)
+✔ M4 QA missing calculation asks for inputs, invalid/cross-owner references are rejected (101.4415ms)
+✔ M4 QA receives exact execution proposal and reading context but returns intent without creating Word or mutating input (110.3164ms)
+✔ M4 Q04 financial comparison requires a host receipt while concept methods and textual comparison remain usable (391.5089ms)
+✔ M4 Q04 two-period numerical result and difference come from the host receipt instead of model text (375.8098ms)
+✔ M4 semantic guard distinguishes whole-action denial, method questions and local limits; unavailable work cannot execute (1.3885ms)
+✔ new opinion types preserve explicit execution and local restrictions, but whole-action denial still wins (0.2667ms)
+✔ M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable (0.2602ms)
+✔ M4 router requires explicit input-lock marker; ordinary M1 generation retains its route (3.2633ms)
+✔ M4 input gate checks topic, subtype, scope and exact owned source hash (4.5032ms)
+✔ M4 template registry and edit-base kind are explicit; retiring the exact old version does not silently change it (5.3244ms)
+✔ M4 file reads reject traversal and hardlinks, and progress exposes safe reasons only (7.2731ms)
+﹣ M4 output symlink never publishes external bytes (0.2469ms) # SKIP
+✔ v2 PostgreSQL physical-page resume, negative cache readback, retry and cost history (synthetic) (3836.5144ms)
+✔ v2 interrupted partial write preserves success, unknown consumption and only retries missing pages (synthetic) (604.9529ms)
+✔ v2 preflight attempts cannot evade the cumulative five-page budget via new request IDs (synthetic) (572.6935ms)
+▶ web evidence follows the run -> job order and cancellation fencing
+  ✔ a live token cannot write evidence under another input or execution version (365.5647ms)
+  ✔ renewal retains access to the job while evidence waits for its run (107.6245ms)
+  ✔ cancellation winning the run lock rejects late evidence (54.1128ms)
+  ✔ project binding and expired lease still reject evidence (15.799ms)
+✔ web evidence follows the run -> job order and cancellation fencing (546.7561ms)
+▶ report registration locks the project catalog and rejects expired or cancelled writers
+  ✔ publication refuses the wrong immutable execution despite a live original token (243.1605ms)
+  ✔ live lease registers once and only exact report bytes replay (31.3283ms)
+  ✔ expired token, cancelled run, paused run, wrong token and wrong project cannot publish (96.8328ms)
+  ✔ adoption/catalog lock serializes a cancelled old completion with a new execution (188.8833ms)
+✔ report registration locks the project catalog and rejects expired or cancelled writers (563.5406ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (304.0076ms)
+  ✖ pipeline rejects wrong hash at resolution before entering any stage (31.22ms)
+  ✖ pipeline rejects wrong revision at resolution before entering any stage (39.1895ms)
+  ✖ pipeline rejects wrong successor version at resolution before entering any stage (29.0968ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (63.9391ms)
+✖ worker consumers resolve only the exact initial execution and reject later identities before work or writes (470.8442ms)
+✔ pause reasons use a stable public machine code (1.0257ms)
+✔ unexpected run errors retain diagnostic identifiers without logging input text (1.0769ms)
+✔ direct authoring starts with the source update, even with large supporting files; no prereading barrier (128.2605ms)
+✔ direct no-source drafting uses uploaded materials without a prereading or reference-library prerequisite (9.1323ms)
+✔ unified update reads raw supporting records and requires complete baseline coverage and valid citations (synthetic) (6.0522ms)
+✔ pinned knowledge citations are accepted with exact hash provenance; invented paths still fail (4.0169ms)
+✔ no-source route writes chapters using issuer materials without a library or approved fact service (synthetic) (3.6507ms)
+✔ unknown provider outcome stops all following generation and delivery (synthetic) (2.8368ms)
+✔ chunking preserves each raw record exactly once without silent truncation (1.4973ms)
+✔ only a recovered timed-out reading batch splits; IDs and complete record coverage survive replay (54.8625ms)
+✔ prompt keeps layout coordinates without repeating private stable anchors (0.8947ms)
+✔ chunking bounds serialized UTF-8 including locator overhead without losing records (1.2277ms)
+✔ the input_lock stage re-verifies a pinned generation issuer binding from an injected loader (435.8992ms)
+✔ a producer failure is swallowed and never blocks the rest of the run (262.2513ms)
+✔ the producer call site skips inputs without financial materials and reads no rows for them (0.4734ms)
+ℹ tests 57
+ℹ suites 0
+ℹ pass 51
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 102673.1908
+
+✖ failing tests:
+
+test at apps\worker\dist\run-execution-consumers.pg.test.js:46:21
+✖ pipeline rejects wrong hash at resolution before entering any stage (31.22ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-execution-consumers.pg.test.js:50:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-execution-consumers.pg.test.js:46:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'INPUT_REVISION_CONFLICT' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\worker\dist\run-execution-consumers.pg.test.js:46:21
+✖ pipeline rejects wrong revision at resolution before entering any stage (39.1895ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-execution-consumers.pg.test.js:50:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-execution-consumers.pg.test.js:46:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'INPUT_REVISION_CONFLICT' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at apps\worker\dist\run-execution-consumers.pg.test.js:46:21
+✖ pipeline rejects wrong successor version at resolution before entering any stage (29.0968ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-execution-consumers.pg.test.js:50:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-execution-consumers.pg.test.js:46:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { code: 'INPUT_REVISION_CONFLICT' },
+    operator: 'rejects',
+    diff: 'simple'
+  }

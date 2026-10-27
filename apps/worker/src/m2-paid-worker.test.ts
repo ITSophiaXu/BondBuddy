@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, uid, transaction } from '@bondbuddy/api/data';
 import { claim, pauseRun } from '@bondbuddy/api/queue';
+import { resolveRunExecution } from '@bondbuddy/api/run-execution';
 import { INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
 import { grantCredits, publishPrices, reserveCredits } from '../../api/dist/billing.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -52,7 +53,7 @@ test('fixed-price worker completes and reuses a durable result with unknown usag
         await reserveCredits(c, owner, run, quoteId, locked, project);
       });
       const lease = await claim(pool); assert.ok(lease); assert.equal(lease.runId, runId);
-      const run = (await pool.query('SELECT * FROM bb_runs WHERE id=$1', [runId])).rows[0];
+      const run = await resolveRunExecution(pool, owner, runId, lease);
       const ctx: StageContext = { pool, blobs, lease, run, signal: new AbortController().signal, checkpoint: {}, values: new Map() };
       const stage = codexModelStage({ name: 'synthetic_m2_model', logicalCallId: 'synthetic-m2-call', config,
         buildPrompt: async () => 'SCENARIO:missing_usage', schema: { type: 'object' }, validate: v => (v as any)?.answer === 'OK', resultSchemaVersion: 'synthetic-v1' });

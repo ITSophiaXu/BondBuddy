@@ -1,0 +1,6 @@
+{
+  "files": 1988,
+  "identical": true,
+  "sha256": "1d960d2947f47b47226ba1d3e9984247889d99d938bf4452aabd60f06d055545",
+  "scope": "API/worker/web source and builds, web tests, contracts and migrations; final verification baseline after test synchronization fixes."
+}

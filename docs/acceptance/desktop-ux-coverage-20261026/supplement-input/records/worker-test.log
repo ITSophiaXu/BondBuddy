@@ -1,0 +1,65 @@
+✔ pipeline saves in-flight work, pauses before the next stage and resumes without repeating saved work (450.4583ms)
+✔ M4 loader resolves the exact execution input and retains scoped source-material checks (5.6685ms)
+✔ M4 loader rejects stale run/lease identity before reading inputs (2.5909ms)
+✔ M4 loader retains V1-only, persisted project/task and immutable M4 snapshot checks (4.214ms)
+✔ M4 supplied snapshots are checked directly and explicit absence never falls back to a database snapshot (1.3706ms)
+✔ M4 standalone gate keeps its execution database check and supplied snapshots retain live scope/subtype checks (1.2701ms)
+﹣ synthetic M4 document and QA pipeline: real deliveries/capped metering, crash reuse, unknown-usage reconciliation and semantic execution (0.9415ms) # SKIP
+✔ v2 context pins its own protocol and catalog while legacy messages keep v1 (4.9554ms)
+✔ typed proposals bind explicit selected, related and excluded scope and refuse model-authored authority (1.4529ms)
+✔ legacy result validation preserves 160-character finding identities without widening v2 model output (0.651ms)
+✔ host supplies source, input, material and citation pins; full review keeps conversation reference separate (2.3006ms)
+✔ adopted input is hash-locked and the worker actually consumes its accepted requirements (4.7223ms)
+✔ quick actions and immutable legacy manifests retain their own origin without adopting a discussion (0.6353ms)
+✔ review loader consumes the resolved V1 input and keeps the original run creation time (5.9ms)
+✔ another revision with identical bytes cannot fall back to the original run input (1.2007ms)
+▶ review context and lease identity must agree before loading evidence
+  ✔ context run (0.5378ms)
+  ✔ context owner (0.4367ms)
+  ✔ context project (0.6468ms)
+  ✔ context revision (0.3001ms)
+  ✔ context hash (0.3377ms)
+  ✔ lease run (0.4099ms)
+  ✔ lease owner (0.5283ms)
+  ✔ lease revision (0.4353ms)
+  ✔ lease hash (0.3746ms)
+  ✔ successor execution (0.3724ms)
+✔ review context and lease identity must agree before loading evidence (6.0128ms)
+✔ missing execution identity never falls back to an otherwise valid origin snapshot (0.304ms)
+✔ missing exact input never selects another revision with the same hash (0.3576ms)
+✔ tampered fixed manifest is rejected before material evidence is read (0.4849ms)
+✔ resolved input still passes the existing immutable review snapshot gate (0.4398ms)
+✔ an explicitly missing or differently scoped resolved review snapshot cannot reload the origin (0.4476ms)
+✔ direct review gate callers retain the original exact database snapshot check (0.3749ms)
+✔ malformed review snapshot objects fail explicitly for resolved and direct database gates (1.2143ms)
+✔ missing market, offering or date remains uncovered and never supplies fabricated defaults (28.8809ms)
+✔ actual published ledger sources are pinned as unknown applicability when context is unreviewed (5.7553ms)
+✔ replay rechecks the exact pinned release and never silently selects a newer replacement (6.5355ms)
+✔ withdrawn, expired, unpublished, tampered and cross-market sources never enter the prompt (18.1319ms)
+✔ reviewed-context selection and exact production revalidation supply eligible rules (synthetic) (6.0039ms)
+✔ withdrawn approved pin does not fall back to a reference or another rule release (5.0387ms)
+✔ public-all and DFI lookups retain exact offering without substituting private/public (8.7591ms)
+✔ hash/owner/material mismatches fail before rule queries (4.2774ms)
+▶ worker consumers resolve only the exact initial execution and reject later identities before work or writes
+  ✔ real pipeline stage receives the resolved V1 identity (292.0575ms)
+  ✔ pipeline rejects wrong hash at resolution before entering any stage (36.9971ms)
+  ✔ pipeline rejects wrong revision at resolution before entering any stage (40.3854ms)
+  ✔ pipeline rejects wrong successor version at resolution before entering any stage (39.4616ms)
+  ✔ independent M4/integrity writers fence the supplied identity without changing durable state (64.7409ms)
+✔ worker consumers resolve only the exact initial execution and reject later identities before work or writes (476.8716ms)
+﹣ legacy record authoring with explicit parse fixtures → synthetic model → real Word pair, immutable requirements, previous output and owner isolation (1.2046ms) # SKIP
+✔ unified original-file loader uses the resolved exact input before reading material bytes (3.7561ms)
+✔ unified loader rejects stale run/lease identity before any material or input read (1.6551ms)
+✔ unified loader rejects another persisted project or task and corrupted frozen input before material access (1.267ms)
+✔ optional absent and partial source context does not gate an uploaded-source-only run; ownership/hash checks remain (6.6886ms)
+✔ the input_lock stage re-verifies a pinned generation issuer binding from an injected loader (525.4351ms)
+✔ a producer failure is swallowed and never blocks the rest of the run (341.8938ms)
+✔ the producer call site skips inputs without financial materials and reads no rows for them (0.5486ms)
+ℹ tests 55
+ℹ suites 0
+ℹ pass 53
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 55942.7228

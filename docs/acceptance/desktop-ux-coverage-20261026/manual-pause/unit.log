@@ -1,0 +1,15 @@
+✔ bounded retention keeps model summaries and failures through a burst and replay (3.3596ms)
+✔ ordinary operations cannot crowd out six recent meaningful history entries (0.5707ms)
+✔ public summary remains the main status after generic tools, even while tools keep arriving (0.5655ms)
+✔ without a public summary report its absence instead of inventing progress (0.2114ms)
+✔ old stages, other runs, future events and summaries before resume cannot become current progress (0.3848ms)
+✔ failure, connection, pause, queue and terminal states take precedence over old summaries (0.425ms)
+✔ manual pause takes precedence over automatic recharge continuation while work saves or is paused (19.0165ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1048.5518

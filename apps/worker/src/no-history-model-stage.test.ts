@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { Pool } from 'pg';
 import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
 import { scrubSecrets } from '@bondbuddy/api/log-ops';
@@ -65,9 +66,10 @@ function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { 
   };
 }
 
-function context(): StageContext {
+function context(taskKind = 'generation'): StageContext {
+  const rawRun = { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: scope.inputHash, task_kind: taskKind };
   return { pool: {} as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
-    run: { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: scope.inputHash, task_kind: 'generation' },
+    run: projectRunExecution(rawRun, { executionVersion: 1, inputRevision: rawRun.input_revision, inputHash: rawRun.input_hash }),
     signal: new AbortController().signal, checkpoint: {}, values: new Map() };
 }
 
@@ -208,8 +210,7 @@ test('a v1-labelled or mismatched lock cannot authorize a v1.1 no-history model 
 test('stage cannot process an update run through the no-history generation path', async () => {
   const counts = { config: 0, rules: 0, select: 0, facts: 0 };
   const stage = noHistoryModelGenerationStage(adapters({}, counts));
-  const ctx = context();
-  ctx.run.task_kind = 'update';
+  const ctx = context('update');
   assert.deepEqual(await stage.run(ctx), { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:task_kind_not_no_history_generation' });
   assert.deepEqual(counts, { config: 0, rules: 0, select: 0, facts: 0 });
 });

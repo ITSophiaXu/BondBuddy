@@ -1,0 +1,10 @@
+
+Running 2 tests using 1 worker
+
+(node:36164) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/2] tests\run-supplement-draft.spec.ts:72:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+[2/2] tests\run-supplement-draft.spec.ts:82:1 › CAS use-latest choice discards local choices only after explicit selection
+  2 passed (8.3s)

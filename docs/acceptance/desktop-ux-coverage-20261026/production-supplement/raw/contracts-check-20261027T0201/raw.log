@@ -1,0 +1,71 @@
+
+> @bondbuddy/contracts@0.1.0 check:examples
+> node dist/check-examples.js && node dist/check-data-lifecycle.js && npm run check:ocr-v2 && npm run check:generation-issuer-binding
+
+validated 45 review editor execution synthetic examples
+validated 189 synthetic examples + 12 internal library examples and recovery/conflict/usage invariants
+Validated 4 synthetic data-lifecycle examples
+
+> @bondbuddy/contracts@0.1.0 check:ocr-v2
+> node --test dist/ocr-v2.test.js
+
+✔ synthetic JSON example has strict schemas and a reproducible image/hash domain (35.0694ms)
+✔ 70 physical pages require bounded batches, then exact verified contiguous aggregation (448.4024ms)
+✔ 74 physical pages require bounded batches, then exact verified contiguous aggregation (641.7551ms)
+✔ failed physical page retries alone; prior successful pages reuse without counting them again (17.6317ms)
+✔ unknown, not-started and measured failed attempts remain distinct from successful checkpoints (2.242ms)
+✔ checkpoint and reuse identity bind owner (2.5279ms)
+✔ checkpoint and reuse identity bind project (2.8396ms)
+✔ checkpoint and reuse identity bind material ID (3.6229ms)
+✔ checkpoint and reuse identity bind material version (7.242ms)
+✔ checkpoint and reuse identity bind material hash (10.7614ms)
+✔ checkpoint and reuse identity bind physical page count (6.4958ms)
+✔ checkpoint and reuse identity bind processor (5.0003ms)
+✔ checkpoint and reuse identity bind engine (8.7993ms)
+✔ checkpoint and reuse identity bind engine version (27.4803ms)
+✔ checkpoint and reuse identity bind language (6.4137ms)
+✔ checkpoint and reuse identity bind language data (8.7606ms)
+✔ checkpoint and reuse identity bind orientation model (22.5189ms)
+✔ checkpoint and reuse identity bind OCR options (18.0346ms)
+✔ checkpoint and reuse identity bind renderer (10.2045ms)
+✔ checkpoint and reuse identity bind renderer version (3.9507ms)
+✔ checkpoint and reuse identity bind DPI (5.7317ms)
+✔ checkpoint and reuse identity bind pixel budget (5.8092ms)
+✔ checkpoint and reuse identity bind render options (6.0242ms)
+✔ single-page identity cannot be relabelled or referenced by a different result/request hash (19.8155ms)
+✔ page records, table/box provenance, uncertainty and image bytes are checked before reuse (19.9304ms)
+✔ batch validation rejects missing, duplicate, extra outcomes and mismatched request/context (12.3291ms)
+✔ bounded requests reject unsupported, malformed and scope-bypassing inputs (9.0244ms)
+✔ platform source preflight stays within first five physical pages; full OCR still needs explicit run pins (9.8561ms)
+✔ v1 shape, 50-page ceiling, optional consumption and user-asserted correction remain unchanged (54.3315ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3161.0873
+
+> @bondbuddy/contracts@0.1.0 check:generation-issuer-binding
+> node --test dist/generation-issuer-binding.test.js
+
+✔ same legal issuer may compile consolidated and parent statements; accounting scopes remain separate (3.5876ms)
+✔ subsidiaries cited in issuer notes are localized and excluded without an issuer verification review (0.3343ms)
+✔ a subsidiary-only report cannot determine the legal issuer (0.5791ms)
+✔ same display name with distinct verified legal entity IDs is a conflict, never majority-resolved (0.4687ms)
+✔ every selected issuer-role material needs exactly one explicit disposition (0.6801ms)
+✔ missing subject or unresolved OCR/parser doubt stays pending (0.7349ms)
+✔ a new material or parse pin cannot reuse observations from an old snapshot (0.4605ms)
+✔ withdrawal blocks reuse and cannot be reversed on the same binding version (0.4703ms)
+✔ approval checks the whole same-version review history, not only its last event (4.6607ms)
+✔ the authoritative selected input manifest detects omitted materials even if the snapshot omits them too (0.8559ms)
+✔ owner/project/input revision/hash must match the authoritative server input ref (0.3473ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1105.6622

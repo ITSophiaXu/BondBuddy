@@ -1,0 +1,116 @@
+{
+  "recorded_at": "2026-10-27T02:18:34.6202331Z",
+  "scope": "0139 production successor TS authority and worker integration tests",
+  "changed_files": [
+    {
+      "path": "apps/api/package.json",
+      "sha256": "dea4e0ed376db5e975224991e06ab60f8204568cff6bcf9c57348f361fb578c9"
+    },
+    {
+      "path": "apps/api/src/artifact-execution.ts",
+      "sha256": "7fb3097a39add7c66f72073c88aaed268e47373664d1927246e3f308cc858373"
+    },
+    {
+      "path": "apps/api/src/m4-billing.ts",
+      "sha256": "41fcc69abd664a38e4c3686bc26173baac88b6568ee57720a3f43f52c2ae11ad"
+    },
+    {
+      "path": "apps/api/src/run-execution.ts",
+      "sha256": "9683d334d23522090dc122f47b5c57b6d7bbac8a713686f10dbd031d86346c77"
+    },
+    {
+      "path": "apps/api/src/run-supplement-adopted-scope.ts",
+      "sha256": "609916fd5ca94ffdc49d6131d446c9053749bd04e96c55b42d4a785b7acba2b2"
+    },
+    {
+      "path": "apps/api/src/run-working-files.ts",
+      "sha256": "815dcbeb66bbbf50b5f8e7d85a48d1d7e2b5700e234dce2b56cf2d48d6509f4d"
+    },
+    {
+      "path": "apps/worker/src/m4-method.ts",
+      "sha256": "1d5a7479ab1ba3bde6bacd2252ce1d0dafe3ac622f978c06dff2e6caa207b760"
+    },
+    {
+      "path": "apps/worker/src/run-pipeline.ts",
+      "sha256": "4b30364124ce783f0f78adff126e86c0d8edec359b2547a03a1dfe2f30da0e87"
+    },
+    {
+      "path": "apps/worker/src/run-supplement-execution-request.ts",
+      "sha256": "eb3ed415b72f249f60e1fa2d29faf957cfe26bd35986a2b6595e1a43fdc75ab0"
+    },
+    {
+      "path": "apps/worker/src/run-supplement-m4-request.ts",
+      "sha256": "47dcdbd86f5c3657208e7694b559add3025aa5cfb136bb0b3d067d3bef0d15bc"
+    },
+    {
+      "path": "apps/worker/src/run-supplement-production-execution.pg.test.ts",
+      "sha256": "b579d809a0d303bcdd1b73e22b3415d725036aadf2acf450b6689c89c93b8161"
+    }
+  ],
+  "verification": {
+    "api_noEmit": "parent g03_next_slice reports final API noEmit exit 0 after its historical migration fixture edit; earlier migrationConnection diagnostics were transient during concurrent editing",
+    "worker_noEmit": "passed exit 0 including M4 charge/settlement consumers and all five cases",
+    "whitespace": "git diff --check passed for new worker file",
+    "postgres_execution": "Final unified root build verified: worker 5/5 pass, 0 fail/skip, exit 0; workerRegression 8 pass, 0 fail, 3 expected real Linux containment skips, exit 0; both source manifests stable across all 2121 entries",
+    "dist_build_by_child": false,
+    "worker_first_capture": ".local/production-supplement-20261027/worker-20261027T020024763Z-50980/summary.json",
+    "final_build_by_root": ".local/production-supplement-20261027/build-20261027T021032131Z-39180",
+    "worker_final_capture": ".local/production-supplement-20261027/worker-20261027T021247015Z-50152/summary.json",
+    "worker_regression_capture": ".local/production-supplement-20261027/workerRegression-20261027T021247073Z-40652/summary.json",
+    "first_failure_resolution": "Initial capture failed at test-only SYNTHETIC_PRODUCTION_CRASH; corrected to existing SYNTHETIC_CRASH sentinel before final unified build. Final production worker capture passes all five cases."
+  },
+  "authority": {
+    "static_history": "Exact production adoption origin authorizes historical execution/artifact/working provenance independently of head, quote expiry or fee settlement",
+    "active_writes": "Production V2 uses bb_assert_production_successor_execution_active; test branch keeps exact original grant helper",
+    "adoption_scope": "Exact owned job, retained V1 source, plan/hash/checkpoint/basis/candidate/receipt comparisons remain required",
+    "original_fee": "Original reserveCredits/reserveM4 run before first claim; original run input/mode/reservation unchanged after history",
+    "billing_consumers": "codexModelStage needs_reconcile consults exact current fee rather than original billing_mode; M4 model gate resolves exact current fee and its reservation quote, excluding retired original metered quote",
+    "m4_charge": "settleM4Metering and readM4CreditCharge resolve current exact fee; V2 quote fields derive from persisted supplement quotation and canonical M4 execution snapshot; legacy fee query is scoped to exact reservation"
+  },
+  "new_suite": {
+    "path": "apps/worker/src/run-supplement-production-execution.pg.test.ts",
+    "cases": [
+      "Paid-origin M1 authoring positive rework",
+      "Paid-origin M3 differential review positive rework",
+      "Paid-origin M4 document positive rework",
+      "Free-origin M1 positive rework with unknown usage recovery",
+      "Free-origin M4 positive rework with unknown usage recovery"
+    ],
+    "expected": [
+      "Actual ordinary input/material/model/delivery stages",
+      "Public HTTP quote, confirmation and idempotent adoption",
+      "Fresh V2 provider attempt/prompt/workspace with new materials and exact private historical files",
+      "Completed-result crash replay causes no third synthetic provider call",
+      "Distinct V2 artifacts and production final delivery receipt",
+      "Original artifact rows and private bytes preserved",
+      "Old fee retirement preserved; independent 4500-point dynamic rework fee settles",
+      "Authenticated downloads and foreign-user rejection",
+      "Real codexModelStage receives pending_reconcile + MODEL_USAGE_PENDING + unknown provider usage and recovers durable V2 result by current exact fee",
+      "Original free mode and null reservation remain immutable; only additional fee is charged",
+      "Common credit-charge reads held and settled current fee",
+      "M4 charge DTO reads actual supplement quote and canonical current M4 manifest, preserving quote price version",
+      "M4 metering readiness returns current fixed cap without changing held reservation",
+      "M4 dedicated artifact bytes endpoint serves completed current paid output"
+    ],
+    "limitations": [
+      "Synthetic provider process and private Word/input bytes",
+      "No real supplier/payment/sandbox/production acceptance claim",
+      "Python docx/lxml required",
+      "Windows provider seam is injected at internal runContainedCall boundary; real Linux containment is not claimed"
+    ],
+    "regression_suite": "apps/worker/dist/run-supplement-execution-request.pg.test.js"
+  },
+  "sql_review": {
+    "source": "db/migrations/0139_run_supplement_production_adoption.sql",
+    "reviewed_at_source_sha256": "c622e5dc41847258201aa5aee880968cab51f497045cd30a42bfdbde9e588821",
+    "conclusion": "No blocking canonical gate omissions found in read-only review; migration/runtime confirmation pending",
+    "coverage": [
+      "Initial execution and M3/M4 snapshots use immutable parallel authorization projection",
+      "11 canonical prompt/model/working/artifact/review/M4 functions dispatch through generic successor helpers",
+      "3 historical artifact views use static generic origin",
+      "Delivery plan retains test_completed+grant for test channel and succeeds+null grant for production",
+      "Production finalizer independently closes active assigned fee; V1 finalizers keep original branch",
+      "Test admission, exact origin and live-grant functions are not widened"
+    ]
+  }
+}

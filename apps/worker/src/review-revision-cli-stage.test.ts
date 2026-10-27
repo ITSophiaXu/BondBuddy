@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution, runExecutionOrigin } from '@bondbuddy/api/run-execution';
 import type { ReviewExecutionOrigin, ReviewProposalV2 } from '@bondbuddy/contracts';
 import type { ReviewManifest } from './review-input.js';
 import { reviewRevisionCliStage, reviewRevisionCliDeliveryStage, REVIEW_REVISION_CLI_CHECKPOINT,
@@ -34,8 +35,10 @@ test('revision consumes the explicitly adopted input and refuses lineage or unco
         input_version:2,input_sha256:inputManifestHash(draft),report_catalog_version:1,finding_ids:proposal.finding_ids,excluded_findings:proposal.excluded_findings,requirements:proposal.requirements}};
     const review:ReviewManifest['review']={version:'review_v1',operation:'revision',report_id:'next-report',version_number:2,input:draft,
       source_report_id:proposal.source_report_id,source_report_sha256:proposal.source_report_sha256,finding_ids:proposal.finding_ids,draft_version:2,origin};
-    f.input.manifest.review=review;f.input.requirements.push(adoptedRequirement);f.ctx.run.input_hash=inputManifestHash(f.input.manifest);
-    const stage=reviewRevisionCliStage({load:async()=>f.input,config,checkpoint:persist,model:options=>({name:options.name,run:async()=>{
+    f.input.manifest.review=review;f.input.requirements.push(adoptedRequirement);
+    const rawRun={...runExecutionOrigin(f.ctx.run),task_kind:f.ctx.run.task_kind,input_hash:inputManifestHash(f.input.manifest)};
+    f.ctx.run=projectRunExecution(rawRun,{executionVersion:1,inputRevision:rawRun.input_revision,inputHash:rawRun.input_hash});
+    const stage=reviewRevisionCliStage({load:async()=>f.input,config,checkpoint:persist,writer:f.writer,model:options=>({name:options.name,run:async()=>{
       calls++;const cwd=join(f.root,'accepted-model');await mkdir(cwd);await options.fileWorkspace!.prepare(cwd);
       const locked=JSON.parse(await readFile(join(cwd,'input.json'),'utf8'));assert.ok(locked.requirements.includes(adoptedRequirement));
       return {kind:'pause',stage:'provider_reconcile',reason:'synthetic_no_provider_send'};
@@ -54,7 +57,7 @@ test('revision consumes the explicitly adopted input and refuses lineage or unco
 test('one CLI owns revision generation; collector verifies and delivery only reads durable artifacts', async () => {
   const f = await fixture(); let calls = 0;
   try {
-    const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, model: options => ({ name: options.name, run: async ctx => {
+    const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, writer:f.writer, model: options => ({ name: options.name, run: async ctx => {
       calls++; assert.ok(ctx.checkpoint[REVIEW_REVISION_CLI_CHECKPOINT], 'method is persisted before the model send');
       assert.equal(options.logicalCallId, 'review-revision-cli-v1'); assert.ok(options.fileWorkspace);
       assert.match(await options.buildPrompt(ctx), /accepted revision/);
@@ -70,6 +73,8 @@ test('one CLI owns revision generation; collector verifies and delivery only rea
     if (result.kind !== 'done') throw Error('expected completed CLI');
     const value = result.value as ReviewRevisionCliResult;
     assert.equal(value.error, undefined); assert.ok(validReviewRevisionCliResult(value, f.ctx, f.pin));
+    assert.deepEqual(f.writes.map(write=>write.name),['tracked.docx','clean.docx','baseline.docx','handling.json','summary.json','proposal.json']);
+    for(const write of f.writes){assert.deepEqual(write.source,{kind:'provider',attemptId:'synthetic-call',resultSchemaVersion:'review-revision-cli-v1'});assert.equal(write.lease,f.ctx.lease);assert.equal(write.key,value.files[write.name]!.key);}
     assert.equal(value.handling?.items[0]?.status, 'modified'); assert.equal(value.handling?.items[1]?.status, 'not_modified');
     assert.equal(value.summary.method, 'review-revision-cli-v1');
     f.ctx.values.set('model_generation', value);
@@ -91,7 +96,7 @@ test('one CLI owns revision generation; collector verifies and delivery only rea
 test('post-tool mutation outside the accepted paragraph is durably rejected before any delivery', async () => {
   const f = await fixture();
   try {
-    const result = await reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, model: options => ({ name: options.name, run: async () => {
+    const result = await reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, writer:f.writer, model: options => ({ name: options.name, run: async () => {
       const cwd = join(f.root, 'model'); await mkdir(cwd); await options.fileWorkspace!.prepare(cwd);
       await writeFile(join(cwd, 'scratch/proposal.json'), JSON.stringify(f.proposal));
       await execute(python, ['-B', join(cwd, 'tools/revision_cli.py'), 'scratch/proposal.json'], { cwd, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
@@ -102,7 +107,7 @@ test('post-tool mutation outside the accepted paragraph is durably rejected befo
     } }) }).run(f.ctx);
     assert.equal(result.kind, 'done'); if (result.kind !== 'done') throw Error('expected settled rejection');
     const value = result.value as ReviewRevisionCliResult; assert.equal(value.error, 'WORD_QUALITY_REJECTED');
-    assert.deepEqual(value.files, {}); f.ctx.values.set('model_generation', value);
+    assert.deepEqual(value.files, {});assert.deepEqual(f.writes,[]); f.ctx.values.set('model_generation', value);
     assert.deepEqual(await reviewRevisionCliDeliveryStage().run(f.ctx), { kind: 'fail', code: 'WORD_QUALITY_REJECTED' });
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
@@ -110,7 +115,7 @@ test('post-tool mutation outside the accepted paragraph is durably rejected befo
 test('changed method pauses before another provider call and unknown result never reaches delivery', async () => {
   const f = await fixture(); let calls = 0;
   try {
-    const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, model: options => ({ name: options.name, run: async () => {
+    const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, writer:f.writer, model: options => ({ name: options.name, run: async () => {
       calls++; return { kind: 'pause', stage: 'provider_reconcile', reason: 'provider_result_pending' };
     } }) });
     assert.deepEqual(await stage.run(f.ctx), { kind: 'pause', stage: 'provider_reconcile', reason: 'provider_result_pending' });
@@ -131,7 +136,7 @@ test('storage and verifier startup outages remain infrastructure failures rather
   const priorPython = process.env.BONDBUDDY_WORD_PYTHON;
   try {
     if (mode === 'storage') f.ctx.blobs.put = async () => { throw Error('SYNTHETIC_BLOB_OUTAGE'); };
-    const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, model: options => ({ name: options.name, run: async () => {
+    const stage = reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, writer:f.writer, model: options => ({ name: options.name, run: async () => {
       const cwd = join(f.root, 'model'); await mkdir(cwd); await options.fileWorkspace!.prepare(cwd);
       await writeFile(join(cwd, 'scratch/proposal.json'), JSON.stringify(f.proposal));
       await execute(python, ['-B', join(cwd, 'tools/revision_cli.py'), 'scratch/proposal.json'], { cwd, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
@@ -154,7 +159,7 @@ test('no safe changes preserves actual handling and pauses instead of delivering
     f.proposal.edits = [];
     f.proposal.handling[0]!.status = 'needs_evidence';
     f.proposal.handling[0]!.reason = 'Original evidence does not establish the intended period.';
-    const result = await reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, model: options => ({ name: options.name, run: async () => {
+    const result = await reviewRevisionCliStage({ load: async () => f.input, config, checkpoint: persist, writer:f.writer, model: options => ({ name: options.name, run: async () => {
       const cwd = join(f.root, 'model'); await mkdir(cwd); await options.fileWorkspace!.prepare(cwd);
       await writeFile(join(cwd, 'scratch/proposal.json'), JSON.stringify(f.proposal));
       await execute(python, ['-B', join(cwd, 'tools/revision_cli.py'), 'scratch/proposal.json'], { cwd, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
@@ -164,6 +169,8 @@ test('no safe changes preserves actual handling and pauses instead of delivering
     assert.equal(result.kind, 'done'); if (result.kind !== 'done') throw Error('expected actual handling');
     const value = result.value as ReviewRevisionCliResult;
     assert.equal(value.error, undefined); assert.equal(value.summary.no_changes, true); assert.equal(value.files['tracked.docx'], undefined);
+    assert.deepEqual(f.writes.map(write=>write.name),['handling.json','summary.json','proposal.json']);
+    for(const write of f.writes)assert.deepEqual(write.source,{kind:'provider',attemptId:'synthetic-no-changes',resultSchemaVersion:'review-revision-cli-v1'});
     assert.equal(value.handling?.items[0]?.status, 'needs_evidence');
     f.ctx.values.set('model_generation', value);
     assert.deepEqual(await reviewRevisionCliDeliveryStage().run(f.ctx), { kind: 'pause', stage: 'capability_not_ready', reason: 'revision_no_verified_changes' });

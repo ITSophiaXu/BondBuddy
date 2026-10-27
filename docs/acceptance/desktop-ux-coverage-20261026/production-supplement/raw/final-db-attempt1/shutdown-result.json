@@ -1,0 +1,7 @@
+{
+  "stoppedAt": "2026-10-27T02:52:33.951Z",
+  "status": 1,
+  "signal": null,
+  "stdout": "",
+  "stderr": "pg_ctl: could not send stop signal (PID: 17984): Operation not permitted\r\n"
+}

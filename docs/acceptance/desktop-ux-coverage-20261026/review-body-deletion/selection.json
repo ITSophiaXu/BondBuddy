@@ -1,0 +1,24 @@
+{
+  "before": "2026-10-26T22-25-26-563Z-source-before-51000-217939ff",
+  "after": "2026-10-26T22-28-11-230Z-source-after-7896-6b539b72",
+  "pg_stop": "2026-10-26T22-28-22-704Z-pg-stop-34112-14edac8c",
+  "adopted_test_modes": {
+    "api-review-body": {"tests": 9, "pass": 9, "skipped": 0},
+    "api-review-body-migration": {"tests": 2, "pass": 2, "skipped": 0},
+    "api-review-body-regression": {"tests": 38, "pass": 37, "skipped": 1},
+    "worker-review-body-regression": {"tests": 33, "pass": 31, "skipped": 2},
+    "contracts-check": {"tests": 40, "pass": 40, "skipped": 0}
+  },
+  "adopted_build_modes": ["api-build", "worker-build"],
+  "staged_sources": [
+    "apps/api/src/deletion-lifecycle.ts",
+    "apps/api/src/deletion-lifecycle.test.ts",
+    "apps/api/src/review-editor-execution.pg.test.ts",
+    "apps/api/src/review-body-deletion.ts",
+    "apps/api/src/review-body-deletion-test-fixture.ts",
+    "apps/api/src/review-body-deletion.pg.test.ts",
+    "apps/api/src/review-body-deletion-migration-fixture.ts",
+    "apps/api/src/review-body-deletion-migration.pg.test.ts",
+    "db/migrations/0134_review_body_deletion.sql"
+  ]
+}

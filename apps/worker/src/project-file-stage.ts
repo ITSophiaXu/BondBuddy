@@ -6,6 +6,7 @@ import {promisify} from 'node:util';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckResultSchema,type ProjectFileAsset,type ProjectFileCheckResult} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
+import {writeRunWorkingFile} from '@bondbuddy/api/run-working-files';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
 import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js';
@@ -33,7 +34,8 @@ async function copyAsset(ctx:StageContext,asset:ProjectFileAsset,dir:string,name
 async function storeOutputs(ctx:StageContext,dir:string,names:string[]):Promise<Result>{
   const files:Result['files']={};
   for(const name of names){const bytes=await checkedM4File(dir,name),sha256=digest(bytes),key=prefix(ctx)+sha256+'/'+name;
-    await ctx.blobs.put(key,bytes,DOCX);const saved=await ctx.blobs.getIfExistsBounded(key,M4_FILE_MAX);
+    await writeRunWorkingFile({pool:ctx.pool,blobs:ctx.blobs,lease:ctx.lease,projectId:ctx.run.project_id,
+      source:{kind:'local_project_file'},name,key,bytes,mediaType:DOCX});const saved=await ctx.blobs.getIfExistsBounded(key,M4_FILE_MAX);
     if(!saved||digest(saved)!==sha256)throw Error('FILE_OUTPUT_STORE_FAILED');files[name]={key,sha256,byte_size:bytes.length};}
   return {version:'project-file-output-v1',input_hash:ctx.run.input_hash.trim(),files};
 }

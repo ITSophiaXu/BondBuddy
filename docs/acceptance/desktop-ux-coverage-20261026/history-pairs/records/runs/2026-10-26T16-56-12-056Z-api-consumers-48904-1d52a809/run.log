@@ -1,0 +1,15 @@
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.4961ms)
+✔ assistant baseline choices retain exact delivered names, pair and time after current run/job projections change (2550.7658ms)
+✔ global assistant persistence, owner isolation, no implicit execution and create retries (5141.3827ms)
+✔ project collection keeps the delivered names, file groups and exact members after mutable job/primary changes (2811.041ms)
+﹣ project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation (0.4507ms) # SKIP
+✔ #10 PostgreSQL global search, literal names, tied cursor pages, archive isolation and transaction rollback (3462.7184ms)
+✔ #10 actual run status and previous successful Word remain available after a newer failure and archive (3771.2921ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 66826.2234

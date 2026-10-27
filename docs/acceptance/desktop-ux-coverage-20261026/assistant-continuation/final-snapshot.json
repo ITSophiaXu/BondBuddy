@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-10-26T15:58:37+08:00",
+  "files": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "52D4B853C592737E4EC4B051A1E2B9010C96A1DD34D2ABFEBD0A5316B231F7F5",
+      "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\src\\project-assistant.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "37BD2A04CAE635E3777AEB3F9C2A9BBE6AD109ED2EF1A69BFECBCE558CFACAC9",
+      "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web\\tests\\assistant-continuation.spec.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "CC7479EAAECA0EDD217ED19B0F4A23A1506B91A3C1F7A7A45310A235634264D8",
+      "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\product-prototype\\public\\project-assistant-refined.html"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "CE2062E6507E6CD73A1F79A8DDD8242A99ADFCFA929CCEFEDD66D361F04157BD",
+      "Path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\docs\\product-decisions\\2026-10-08-global-project-assistant.md"
+    }
+  ]
+}

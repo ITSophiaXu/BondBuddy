@@ -1,0 +1,47 @@
+Command (read-only pure unit; before source fixture correction):
+node --test --test-name-pattern='all material/exchange combinations select actual source knowledge with distinct immutable bytes' apps/api/dist/m4-knowledge.test.js
+
+Exit code: 1
+Tests: 1; pass: 0; fail: 1; skipped: 0; cancelled: 0
+
+Captured failure output:
+Error: M4_KNOWLEDGE_UNAVAILABLE
+    at loadGuide (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-knowledge.js:22:15)
+    at loadM4Knowledge (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-knowledge.js:40:54)
+    at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/m4-knowledge.test.js:12:25)
+
+Source diagnosis:
+apps/api/src/m4-knowledge.test.ts:11 previously iterated M4_DOCUMENT_TYPES except application/recommendation.
+packages/contracts/src/m4-document-types.ts includes six additional project-file types, introduced by 169e0e740845aac3615c113ec7dc8ecf0bb1b124.
+The first unsupported standalone request is sse/annual; failure occurs in loadM4Knowledge before any knowledge assertions for that type or the final size=8 assertion.
+The bundled 2026-10-07 catalog intentionally contains only init/underwriter/legal/private_summary for sse/szse (eight packs).
+No production loader, shared enum, knowledge catalog or asset was changed in this run.
+The test source and relevant production/knowledge paths had no diff against HEAD at reproduction. The source fixture is now corrected to the four explicit standalone types; it has not been compiled or rerun after that edit.
+Reproduction HEAD: 25c390480883397ce0d7f05b992e10300881055f
+Node: v24.22.1
+[
+  {
+    "path": "apps/api/src/m4-knowledge.ts",
+    "current": "e45a58d5d86ef8b0546c3b31fc5f8650d98e35c6",
+    "head": "e45a58d5d86ef8b0546c3b31fc5f8650d98e35c6",
+    "equal": true
+  },
+  {
+    "path": "packages/contracts/src/m4-document-types.ts",
+    "current": "1d89819134d3a6f405fc0e86d06ae47553b25ca3",
+    "head": "1d89819134d3a6f405fc0e86d06ae47553b25ca3",
+    "equal": true
+  },
+  {
+    "path": "knowledge/material-drafting/2026-10-07/catalog.json",
+    "current": "4be72f47923fdb62dc95e9830f7ae29307813291",
+    "head": "4be72f47923fdb62dc95e9830f7ae29307813291",
+    "equal": true
+  },
+  {
+    "path": "knowledge/material-drafting/2026-10-15/catalog.json",
+    "current": "32d0d8cf2da9c7e3274d64302aee993d0b569e07",
+    "head": "32d0d8cf2da9c7e3274d64302aee993d0b569e07",
+    "equal": true
+  }
+]

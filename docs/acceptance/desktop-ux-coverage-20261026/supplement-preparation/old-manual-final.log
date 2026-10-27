@@ -1,0 +1,20 @@
+
+Running 11 tests using 2 workers
+
+(node:34072) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:49012) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\billing-navigation.spec.ts:37:1 › recharge order keeps execution ownership and returns to the exact mapped review (3.1s)
+  ok  3 tests\billing-navigation.spec.ts:52:1 › associated-file recharge retains the check and never claims automatic batch continuation (2.7s)
+  ok  2 tests\m4-workspace.spec.ts:608:72 › dynamic material progress, persistent tabs, pause/resume and wallet polling at 1440px (6.6s)
+  ok  4 tests\billing-navigation.spec.ts:64:1 › authoring recharge distinguishes a manual pause from automatic credit recovery (1.9s)
+  ok  5 tests\m4-workspace.spec.ts:637:1 › desktop funded material keeps a manual pause and offers explicit continuation after exhaustion (2.6s)
+  ok  6 tests\billing-navigation.spec.ts:81:1 › a topic-only wallet retains navigation without assigning the original project to its order (2.7s)
+  ok  8 tests\billing-navigation.spec.ts:95:1 › an external recharge return target is discarded (1.5s)
+  ok  7 tests\project-execution.spec.ts:1594:31 › dynamic balance: 1 point starts, exhaustion dialog, refresh and automatic same-run resume 1440 (7.8s)
+  ok  9 tests\review-workspace.spec.ts:963:1 › review live progress refreshes actual debit and activities, survives reload and exposes pause without another execution (7.5s)
+  ok 11 tests\review-workspace.spec.ts:987:1 › desktop review recharge updates an open dialog when manual pause arrives and keeps the same task paused after topup (8.7s)
+  ok 10 tests\project-execution.spec.ts:1617:1 › desktop manual pause remains explicit when credits exhaust and an open recharge dialog refreshes (12.1s)
+
+  11 passed (38.3s)

@@ -1,0 +1,25 @@
+{
+  "before": "2026-10-26T21-57-53-818Z-source-before-14648-85294bab",
+  "after": "2026-10-26T22-02-57-451Z-source-after-33248-20e199a8",
+  "pg_stop": "2026-10-26T22-02-59-119Z-pg-stop-25468-c56773c7",
+  "adopted_test_modes": {
+    "api-material-barrier": {"tests": 16, "pass": 16, "skipped": 0},
+    "api-material-regression": {"tests": 59, "pass": 56, "skipped": 3},
+    "api-material-identity": {"tests": 4, "pass": 4, "skipped": 0},
+    "worker-material-regression": {"tests": 34, "pass": 33, "skipped": 1},
+    "contracts-check": {"tests": 40, "pass": 40, "skipped": 0}
+  },
+  "adopted_build_modes": ["api-build", "worker-build"],
+  "staged_sources": [
+    "apps/api/src/data.ts",
+    "apps/api/src/storage-lifecycle.ts",
+    "apps/api/src/material-purge-barrier.pg.test.ts",
+    "apps/api/src/material-purge-migration.pg.test.ts",
+    "apps/api/src/non-production-test.test.ts",
+    "apps/api/src/working-draft-parse-admission.test.ts",
+    "apps/worker/src/authorized-sample-membership-loader.pg.integration.test.ts",
+    "apps/worker/src/issuer-identity-input-lock.test.ts",
+    "apps/worker/src/unified-timeout-recovery.test.ts",
+    "db/migrations/0133_material_purge_barrier.sql"
+  ]
+}

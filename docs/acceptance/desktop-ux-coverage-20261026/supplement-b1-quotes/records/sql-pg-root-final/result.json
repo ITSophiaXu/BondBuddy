@@ -1,0 +1,42 @@
+{
+  "startedAt": "2026-10-27T01:02:02.838Z",
+  "completedAt": "2026-10-27T01:03:14.541Z",
+  "exitCode": 0,
+  "signal": null,
+  "totals": {
+    "tests": 15,
+    "pass": 15,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "before": [
+    {
+      "path": "db/migrations/0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    },
+    {
+      "path": "apps/api/src/run-supplement-quotes-sql.pg.test.ts",
+      "sha256": "07a50fbec5bebdd56e5d3693e3e902bf4ec585b57e6b43fa81327e0ca96cd8f2"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-quotes-sql.pg.test.js",
+      "sha256": "c6d7cd3f0edbe6df5dd0ea718ba61d633983447fcfa335fd569af77cf9d4810f"
+    }
+  ],
+  "after": [
+    {
+      "path": "db/migrations/0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    },
+    {
+      "path": "apps/api/src/run-supplement-quotes-sql.pg.test.ts",
+      "sha256": "07a50fbec5bebdd56e5d3693e3e902bf4ec585b57e6b43fa81327e0ca96cd8f2"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-quotes-sql.pg.test.js",
+      "sha256": "c6d7cd3f0edbe6df5dd0ea718ba61d633983447fcfa335fd569af77cf9d4810f"
+    }
+  ],
+  "sourceStable": true
+}

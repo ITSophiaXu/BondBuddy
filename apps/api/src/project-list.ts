@@ -50,12 +50,14 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
       ORDER BY (state IN ('succeeded','test_completed','failed','cancelled','rejected')),created_at DESC,id DESC LIMIT 1
     ) r ON true
     LEFT JOIN LATERAL (
-      SELECT a.id,a.version,a.run_id,a.created_at FROM bb_runs completed
-      JOIN bb_artifact_versions a ON a.owner_user_id=completed.owner_user_id
-        AND a.id=completed.artifact_id AND a.version=completed.artifact_version AND a.run_id=completed.id
-      WHERE completed.owner_user_id=p.owner_user_id AND completed.project_id IN(p.id,w.update_project_id) AND completed.state='succeeded'
+      SELECT a.id,a.version,a.run_id,delivered_final.delivered_at AS created_at FROM bb_run_execution_deliveries delivered_final
+      JOIN bb_delivered_artifact_versions a ON a.owner_user_id=delivered_final.owner_user_id
+        AND a.id=delivered_final.primary_artifact_id AND a.version=delivered_final.primary_artifact_version AND a.run_id=delivered_final.run_id
+      WHERE delivered_final.owner_user_id=p.owner_user_id AND delivered_final.project_id IN(p.id,w.update_project_id)
+        AND delivered_final.delivery_phase='final' AND delivered_final.terminal_state='succeeded' AND delivered_final.channel='production'
+        AND bb_execution_delivery_phase_valid(delivered_final)
         AND a.quality_status='passed' AND a.delivery_status='available'
-      ORDER BY completed.created_at DESC,completed.id DESC LIMIT 1
+      ORDER BY delivered_final.delivered_at DESC,delivered_final.run_id DESC,delivered_final.execution_version DESC LIMIT 1
     ) a ON true
     WHERE p.owner_user_id=$1 AND p.deleted_at IS NULL
       AND NOT EXISTS(SELECT 1 FROM bb_update_workspaces child WHERE child.owner_user_id=p.owner_user_id AND child.update_project_id=p.id)

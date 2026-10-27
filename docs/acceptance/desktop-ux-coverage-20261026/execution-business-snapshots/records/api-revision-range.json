@@ -1,0 +1,13 @@
+{
+  "started": "2026-10-26T14:32:07.878Z",
+  "finished": "2026-10-26T14:32:20.252Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "apps/api/dist/revision-range.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0,
+  "signal": null,
+  "pid": 28888
+}

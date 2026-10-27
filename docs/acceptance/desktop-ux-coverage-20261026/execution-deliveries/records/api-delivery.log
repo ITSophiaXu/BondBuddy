@@ -1,0 +1,51 @@
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (158.3262ms)
+✔ missing or non-file output cannot be labelled as available Word (0.2953ms)
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (18410.3153ms)
+✔ synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection (760.3719ms)
+✔ test submissions cannot reserve the exact browser update key (2802.3524ms)
+✖ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (3078.1174ms)
+✔ working draft admission defers parse and business gaps while retaining ownership, pin and revocation checks (2143.2359ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (7684.4182ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.3655ms) # SKIP
+✔ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (3801.631ms)
+✔ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (4199.6539ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (1.3348ms)
+✔ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (4124.7441ms)
+✔ checked revision metadata exposes clean and baseline downloads with pending review summary (1119.3168ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 12
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 146424.0565
+
+✖ failing tests:
+
+test at apps\api\dist\non-production-test.test.js:108:1
+✖ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (3078.1174ms)
+  error: completed user delivery required
+      at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/non-production-test.test.js:206:13)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 468,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_run_execution_delivery_plan(text,text,text,text) line 35 at RAISE\nPL/pgSQL function bb_capture_run_execution_delivery(text,text,text,text) line 4 at assignment\nSQL statement "SELECT bb_capture_run_execution_delivery(NEW.owner_user_id,NEW.id)"\nPL/pgSQL function bb_capture_terminal_execution_delivery() line 5 at PERFORM',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_execution_delivery_terminal',
+    file: 'pl_exec.c',
+    line: '3911',
+    routine: 'exec_stmt_raise'
+  }

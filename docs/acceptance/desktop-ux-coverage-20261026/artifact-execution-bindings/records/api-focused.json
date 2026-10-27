@@ -1,0 +1,21 @@
+{
+  "started": "2026-10-26T15:25:41.123Z",
+  "finished": "2026-10-26T15:26:55.350Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/artifact-execution.test.js",
+    "apps/api/dist/artifact-execution.pg.test.js",
+    "apps/api/dist/run-execution-input.test.js",
+    "apps/api/dist/run-execution.pg.integration.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "environment": {
+    "BB_RUN_RUNTIME_ENABLED": null,
+    "BB_TEST_DATABASE_URL": "postgresql://bb_artifact_test@127.0.0.1:15527/bb_artifact_origin_template_20261026"
+  },
+  "status": 0,
+  "signal": null,
+  "pid": 2320
+}

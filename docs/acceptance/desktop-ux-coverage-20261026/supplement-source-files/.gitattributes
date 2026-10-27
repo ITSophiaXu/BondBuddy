@@ -1,0 +1,4 @@
+# Preserve exact recorded bytes and their manifest hashes.
+* -text
+records/** -diff
+*.png binary

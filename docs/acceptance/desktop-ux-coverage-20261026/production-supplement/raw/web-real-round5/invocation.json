@@ -1,0 +1,21 @@
+{
+  "command": "C:\\Users\\lezhai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+  "args": [
+    "../../node_modules/@playwright/test/cli.js",
+    "test",
+    "tests/run-supplement-production-real-main.spec.ts",
+    "--reporter=line,json",
+    "--output=C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round5\\test-results"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+  "env": {
+    "BB_E2E_BROWSER_CHANNEL": "msedge",
+    "BB_E2E_BASE_URL": "http://127.0.0.1:5199",
+    "BB_TEST_DATABASE_URL": "postgresql://bb_successor_test@127.0.0.1:15542/bb_prod_supplement02_20261027",
+    "BONDBUDDY_TEST_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "BONDBUDDY_WORD_PYTHON": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "BB_PYTHON_BIN": "C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "PLAYWRIGHT_JSON_OUTPUT_FILE": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round5\\results.json",
+    "BB_SUPPLEMENT_PRODUCTION_BROWSER_EVIDENCE_DIR": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round5"
+  }
+}

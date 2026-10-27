@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { inputLockStage, type StageContext } from './run-pipeline.js';
 
 const hash = 'a'.repeat(64);
 
 function stageContext(manifest: unknown, version: string | null): StageContext {
+  const rawRun = { id: 'synthetic-run', owner_user_id: 'synthetic-owner', project_id: 'synthetic-project', input_revision: 1,
+    input_hash: hash, task_kind: 'review' };
   const pool = {
     query: async () => ({ rows: [{ input_hash: hash, material_versions: [], rule_pack_version: version, manifest,
       template_version: null, reference_release: null }] }),
@@ -13,8 +16,7 @@ function stageContext(manifest: unknown, version: string | null): StageContext {
     pool: pool as never,
     blobs: {} as never,
     lease: {} as never,
-    run: { id: 'synthetic-run', owner_user_id: 'synthetic-owner', project_id: 'synthetic-project', input_revision: 1,
-      input_hash: hash, task_kind: 'review' },
+    run: projectRunExecution(rawRun, { executionVersion: 1, inputRevision: rawRun.input_revision, inputHash: rawRun.input_hash }),
     signal: new AbortController().signal,
     checkpoint: {},
     values: new Map(),

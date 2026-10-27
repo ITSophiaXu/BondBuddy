@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { assertTestGrant } from '@bondbuddy/api/non-production-test';
+import { assertRunExecutionTestGrant } from '@bondbuddy/api/run-execution-test-grant';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { isVerifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
@@ -39,12 +39,19 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
     if (!input.manifest || input.input_hash.trim() !== run.input_hash.trim() ||
         inputManifestHash(input.manifest) !== run.input_hash.trim()) return notReady('test_input_pin_mismatch');
 
-    let grant: Awaited<ReturnType<typeof assertTestGrant>>;
+    let grant: Awaited<ReturnType<typeof assertRunExecutionTestGrant>>['grant'];
     try {
       // This checks the current deployment tier/channel flag and the active grant
       // on every invocation, including every stage and pre-model-call gate.
-      grant = await assertTestGrant(pool, { grantId: run.test_grant_id, userId: run.owner_user_id,
-        projectId: run.project_id, inputRevision: run.input_revision, inputHash: run.input_hash.trim() });
+      const active = (await pool.query(`SELECT h.execution_version FROM bb_runs r JOIN bb_run_execution_heads h
+        ON h.owner_user_id=r.owner_user_id AND h.project_id=r.project_id AND h.run_id=r.id
+        WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.task_kind='update'
+          AND h.input_revision=$4 AND h.input_hash=$5`,
+      [run.owner_user_id, run.project_id, run.id, run.input_revision, run.input_hash.trim()])).rows;
+      if (active.length !== 1) return notReady('test_grant_inactive_or_scope_changed');
+      ({grant} = await assertRunExecutionTestGrant(pool, { owner: run.owner_user_id, projectId: run.project_id,
+        runId: run.id, executionVersion: active[0].execution_version,
+        inputRevision: run.input_revision, inputHash: run.input_hash.trim() }));
     } catch {
       return notReady('test_grant_inactive_or_scope_changed');
     }

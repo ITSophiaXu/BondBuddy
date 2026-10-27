@@ -1,0 +1,14 @@
+{
+  "server_version": "16.14",
+  "schema": [
+    {
+      "filename": "0119_initial_run_execution_identity.sql"
+    },
+    {
+      "filename": "0118_run_supplement_drafts.sql"
+    }
+  ],
+  "runs": 0,
+  "executions": 0,
+  "clones": []
+}

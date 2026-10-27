@@ -1,0 +1,12 @@
+✔ all eight fixed tiers and user-approved boundaries use one package (2.8749ms)
+✔ annual update includes interim, de-duplicates statements, and only charges newly covered annual periods (0.2088ms)
+✔ non-issuer references never reduce target periods; missing metadata never silently selects highest price (0.2245ms)
+✔ price configuration requires exactly eight bounded integer prices (0.4808ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2013.4678

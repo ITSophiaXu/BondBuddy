@@ -1,0 +1,5 @@
+apps/api/src/run-supplement-work.pg.test.ts(106,34): error TS2345: Argument of type '{ db: Db; blobs: PrivateBlobs; owner: string; projectId: string; runId: string; revision: number; resultId: any; resultSchemaVersion?: string | undefined; validate: (value: unknown) => boolean | Promise<boolean>; }' is not assignable to parameter of type '{ db: Db; blobs: PrivateBlobs; owner: string; projectId: string; runId: string; revision: number; resultId: string; resultSchemaVersion: string; validate: (value: unknown) => boolean | Promise<...>; }'.
+  Types of property 'resultSchemaVersion' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+apps/api/src/run-supplement-work.pg.test.ts(216,76): error TS2322: Type '""' is not assignable to type '`${string}-${string}-${string}-${string}-${string}`'.

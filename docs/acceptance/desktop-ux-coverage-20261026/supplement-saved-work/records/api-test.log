@@ -1,0 +1,163 @@
+▶ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions
+  ✔ the real intent INSERT atomically binds V1, runtime and completed-result reuse retain their exact source (912.107ms)
+  ✔ new attempts reject wrong revision with identical hash, wrong hash, missing input metadata and non-model prompts (595.8486ms)
+  ✔ missing or corrupted binding blocks real latest, reuse, runtime and observation paths without writes or Blob reads (345.5139ms)
+  ✔ historical unprompted attempts retain identity but never gain an invented provider input binding (43.0353ms)
+✔ real provider work is pinned to its exact execution input and cannot fall back across prompts or revisions (1900.157ms)
+✔ model work binding returns the exact immutable input and prompt without selecting latest (2.9001ms)
+✔ missing, duplicate, foreign, altered input and incomplete prompt bindings fail closed (2.4319ms)
+✔ actual provider lookups never turn an existing unbound prompted attempt into a new call (1.6698ms)
+✔ an asynchronous false verdict cannot persist a private result (6.0307ms)
+✔ private persistence waits for an asynchronous verdict and binds checked bytes (3.8556ms)
+✔ a rejected asynchronous validator never stores a result (1.8437ms)
+✔ synchronous validators remain compatible and malformed JSON is rejected first (1.1503ms)
+▶ runtime evidence shares run -> job lock order with renewal and cancellation
+  ✔ renewal keeps the job lock available while runtime waits for the run (588.0873ms)
+  ✔ cancellation wins before evidence locks and prevents a late runtime insert (73.9542ms)
+  ✔ owner, project, token and expired lease remain enforced (44.762ms)
+  ✔ every independent provider boundary rejects a different execution version or input under the same live token (110.98ms)
+✔ runtime evidence shares run -> job lock order with renewal and cancellation (822.8883ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (7569.7755ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.4466ms) # SKIP
+✔ execution input reader returns exact immutable input and scoped business snapshots without changing origin (3.1897ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (1.909ms)
+✔ business snapshots may be absent but never come from a different run, owner or project (1.3114ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (2659.208ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (140.34ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (696.2849ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (327.8918ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (3826.8335ms)
+▶ run origin rejects identity replacement while queue progress and original execution replay remain usable
+  ✔ business run id (151.2132ms)
+  ✔ owner (147.3812ms)
+  ✔ project (149.161ms)
+  ✔ input revision (146.2924ms)
+  ✔ input hash (167.2488ms)
+  ✔ execution request id (456.521ms)
+  ✔ request hash (178.9485ms)
+  ✔ valid successor input pair (155.4476ms)
+✔ run origin rejects identity replacement while queue progress and original execution replay remain usable (3277.7615ms)
+✔ real review-result update can prepare supplements and resume its original input (1961.6074ms)
+▶ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them
+  ✔ m1 (1574.7394ms)
+  ✔ m3 (156.4308ms)
+  ✔ m4 (244.5655ms)
+  ✔ new source declarations and bound M4 source replacements remain explicit (212.2964ms)
+✔ real supplement HTTP compiles exact frozen M1/M3/M4 candidates without adopting them (2333.2895ms)
+▶ supplement preparation persists on the original run without adopting, executing or charging
+  ✔ saved revision survives reload and a same-request retry (60.2296ms)
+  ✔ old request receipt survives a later save and explicit resume (108.1693ms)
+✔ supplement preparation persists on the original run without adopting, executing or charging (1333.1924ms)
+▶ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock
+  ✔ same request saves exactly one revision under concurrent retry (105.2059ms)
+  ✔ request receipt GET waits for a committing PUT holding the run lock (348.3102ms)
+✔ supplement saves serialize CAS, idempotency and uncertain receipt recovery on the run lock (1524.1118ms)
+▶ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins
+  ✔ unauthenticated, CSRF and cross-owner access are refused (586.0921ms)
+  ✔ wrong hash (118.0988ms)
+  ✔ wrong owner (16.0393ms)
+  ✔ wrong project (16.9726ms)
+  ✔ duplicate additions (16.5617ms)
+  ✔ unknown replacement (17.3534ms)
+  ✔ duplicate replacements (19.8376ms)
+  ✔ different role (15.8129ms)
+✔ supplement HTTP endpoints enforce real session/CSRF, owner isolation and exact material pins (1069.7501ms)
+▶ supplement preparation requires a durable manual pause and reconciled provider calls
+  ✔ running (819.6981ms)
+  ✔ saving (53.7297ms)
+  ✔ paused_lease (55.8642ms)
+  ✔ automatic_pause (78.9276ms)
+  ✔ pending_provider (115.8558ms)
+  ✔ completed_unknown (62.3224ms)
+  ✔ failed_unknown (58.1076ms)
+  ✔ terminal (63.3716ms)
+  ✔ archived (57.2313ms)
+  ✔ unsupported (57.8145ms)
+  ✔ manual pause while credits are exhausted remains usable without changing credits (129.818ms)
+  ✔ deleted project is owner-safe 404 (17.8903ms)
+  ✔ test-channel metadata obeys the deployment read gate (25.0798ms)
+✔ supplement preparation requires a durable manual pause and reconciled provider calls (1733.919ms)
+▶ supplement base and business snapshots remain frozen across M3 and cross-project M4
+  ✔ m1_generation (986.7233ms)
+  ✔ m3 (79.6564ms)
+  ✔ m4 (84.8548ms)
+  ✔ inconsistent M3 version is unavailable (50.1466ms)
+  ✔ inconsistent M3 operation is unavailable (43.9454ms)
+  ✔ inconsistent M3 origin is unavailable (68.8779ms)
+  ✔ inconsistent M3 missing_review is unavailable (48.3159ms)
+  ✔ inconsistent review-result update source_run is unavailable (52.2334ms)
+  ✔ inconsistent review-result update source_pin is unavailable (45.9898ms)
+  ✔ inconsistent review-result update materials is unavailable (47.3752ms)
+  ✔ inconsistent review-result update requirements is unavailable (45.2381ms)
+  ✔ inconsistent review-result update operation is unavailable (44.9021ms)
+  ✔ outbox failure rolls back the entire save and same request can retry (96.9273ms)
+✔ supplement base and business snapshots remain frozen across M3 and cross-project M4 (1824.0528ms)
+✔ ordinary authoring supplements preserve every frozen context and return independent candidate bytes (5.3153ms)
+✔ no changes do not produce an adoptable input; unavailable bytes do not produce a candidate hash (0.6361ms)
+✔ new historical/reference bytes never inherit a declaration from another version or current project data (4.2291ms)
+✔ M3 ordinary evidence and source replacements synchronize only material paths and the candidate snapshot (1.1188ms)
+✔ M3 unchanged evidence links preserve the exact original report, finding and material identity (0.981ms)
+✔ M3 replacing linked source or evidence requires explicit new evidence mapping without rewriting old links (1.3865ms)
+✔ M3 source replacements preserve the DOCX/PDF boundary while ordinary text evidence stays usable (1.0487ms)
+✔ M3 correction exports retain the original editor decisions and cannot be converted into new material processing (0.5921ms)
+✔ accepted M3 origin, finding revisions and report follow-ups retain their original authority and cannot be rewritten (1.9663ms)
+✔ M4 preserves cross-project source, duplicated source/template pins, edit base and all business context (3.4157ms)
+✔ material limits and malformed shared-schema inputs fail without partially changing any input (2.8219ms)
+✔ M4 source/template-only pins remain outside evidence, while its evidence limit is enforced independently (2.0835ms)
+✔ legacy M3 origin may remain absent and malformed or mismatched review snapshots cannot be guessed (1.4619ms)
+✔ a result material list cannot silently inject, omit or retarget materials outside the saved changes (0.7722ms)
+✖ safe HTTP supplement capture freezes exact work independently for each receipt and replays without charges (1281.2309ms)
+✖ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history (949.7329ms)
+✖ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes (800.1334ms)
+✖ legacy supplement receipts report not_captured and grant no access to later durable work (817.9238ms)
+ℹ tests 103
+ℹ suites 0
+ℹ pass 98
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 112898.2418
+
+✖ failing tests:
+
+test at apps\api\dist\run-supplement-work.pg.test.js:131:1
+✖ safe HTTP supplement capture freezes exact work independently for each receipt and replays without charges (1281.2309ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:74:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:134:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at apps\api\dist\run-supplement-work.pg.test.js:185:1
+✖ invalid, duplicate and missing checkpoint references reject capture atomically without changing call or billing history (949.7329ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:74:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:188:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-supplement-work.pg.test.js:214:1
+✖ captured-result reads enforce exact private bytes, schema and ownership without reconciliation or writes (800.1334ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:74:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:217:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at apps\api\dist\run-supplement-work.pg.test.js:280:1
+✖ legacy supplement receipts report not_captured and grant no access to later durable work (817.9238ms)
+  Error: Invalid private snapshot metadata
+      at saveSnapshotRef (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/observability.js:131:15)
+      at Object.fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:74:32)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-supplement-work.pg.test.js:283:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

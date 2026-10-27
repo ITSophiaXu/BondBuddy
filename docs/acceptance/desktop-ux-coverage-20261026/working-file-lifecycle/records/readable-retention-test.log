@@ -1,0 +1,19 @@
+✔ readable report keeps valid legacy files readable and accepts exact live registry metadata (595.7492ms)
+▶ readable report rechecks parent tombstones after waiting, before any private Blob read
+  ✔ prompt_snapshot (697.1676ms)
+  ✔ provider_result (700.2353ms)
+✔ readable report rechecks parent tombstones after waiting, before any private Blob read (1398.782ms)
+▶ readable report rechecks file state and account/project visibility after the file lock wait
+  ✔ purged_file (740.0694ms)
+  ✔ closed_account (702.9763ms)
+  ✔ deleted_project (739.2803ms)
+✔ readable report rechecks file state and account/project visibility after the file lock wait (2183.8813ms)
+✔ real working-file purge waits for readable report validation and denies the next raw read (966.3734ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11690.9581

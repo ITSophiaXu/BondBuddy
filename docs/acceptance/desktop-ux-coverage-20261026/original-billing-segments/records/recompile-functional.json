@@ -1,0 +1,10 @@
+{
+  "completedAt": "2026-10-27T01:25:04.025Z",
+  "source": "apps/api/src/run-billing-segments.pg.test.ts",
+  "sourceSha256": "6521b63d720d906bd8589060fbcb55be09652f80c1707f827a277fb399fdc555",
+  "target": "apps/api/dist/run-billing-segments.pg.test.js",
+  "previousTargetSha256": "ce3e2e98f914d7778b1005545d79035e2441a9ab6bf7e266cc874ea5f4511cf4",
+  "targetSha256": "29c54a77d30127ef9e313fa2f62d309cd093373ba5f8caeabe835e1d0ecb7b06",
+  "diagnosticErrors": 0,
+  "reason": "Only the corrected functional test is emitted while unrelated regression processes are running. No production module is rewritten. Final complete-source noEmit typecheck is separate."
+}

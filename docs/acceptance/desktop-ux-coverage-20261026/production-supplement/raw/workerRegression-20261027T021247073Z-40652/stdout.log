@@ -1,0 +1,78 @@
+TAP version 13
+# (node:47064) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring: adopted worker bundle retains builder metadata and prepares exact historical work plus candidate materials
+ok 1 - authoring: adopted worker bundle retains builder metadata and prepares exact historical work plus candidate materials
+  ---
+  duration_ms: 48447.6977
+  type: 'test'
+  ...
+# Subtest: review: adopted worker bundle retains builder metadata and prepares exact historical work plus candidate materials
+ok 2 - review: adopted worker bundle retains builder metadata and prepares exact historical work plus candidate materials
+  ---
+  duration_ms: 47293.3132
+  type: 'test'
+  ...
+# Subtest: m4: adopted worker bundle retains builder metadata and prepares exact historical work plus candidate materials
+ok 3 - m4: adopted worker bundle retains builder metadata and prepares exact historical work plus candidate materials
+  ---
+  duration_ms: 32167.1763
+  type: 'test'
+  ...
+# Subtest: M4 current method drift is rejected before V2 method checkpoint and provider intent, including no-prior-work receipts
+ok 4 - M4 current method drift is rejected before V2 method checkpoint and provider intent, including no-prior-work receipts
+  ---
+  duration_ms: 17335.9585
+  type: 'test'
+  ...
+# Subtest: legacy update still requires issuer identity in the per-stage test gate even when input_lock is omitted
+ok 5 - legacy update still requires issuer identity in the per-stage test gate even when input_lock is omitted
+  ---
+  duration_ms: 2222.7239
+  type: 'test'
+  ...
+# Subtest: authoring: synthetic provider with real worker V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+ok 6 - authoring: synthetic provider with real worker V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+  ---
+  duration_ms: 40164.9398
+  type: 'test'
+  ...
+# Subtest: authoring: real contained V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+ok 7 - authoring: real contained V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay # SKIP requires Linux, the real pinned /usr/local/bin/codex sandbox and Python Word modules
+  ---
+  duration_ms: 0.4482
+  type: 'test'
+  ...
+# Subtest: review: synthetic provider with real worker V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+ok 8 - review: synthetic provider with real worker V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+  ---
+  duration_ms: 60109.9568
+  type: 'test'
+  ...
+# Subtest: review: real contained V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+ok 9 - review: real contained V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay # SKIP requires Linux, the real pinned /usr/local/bin/codex sandbox and Python Word modules
+  ---
+  duration_ms: 0.5746
+  type: 'test'
+  ...
+# Subtest: m4: synthetic provider with real worker V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+ok 10 - m4: synthetic provider with real worker V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+  ---
+  duration_ms: 46611.3957
+  type: 'test'
+  ...
+# Subtest: m4: real contained V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay
+ok 11 - m4: real contained V1 Word → user pause → supplement receipt → adoption → V2 Word and crash replay # SKIP requires Linux, the real pinned /usr/local/bin/codex sandbox and Python Word modules
+  ---
+  duration_ms: 0.3688
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 3
+# todo 0
+# duration_ms 313230.8357

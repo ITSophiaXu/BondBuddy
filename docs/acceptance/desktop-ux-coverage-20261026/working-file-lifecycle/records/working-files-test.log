@@ -1,0 +1,370 @@
+▶ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result
+  ✔ put (1096.972ms)
+  ✔ readback (1084.7846ms)
+✔ working-file intent commits before Blob IO; failed writes/readback leave cleanup evidence without a provider result (2183.9253ms)
+✖ working-file authority rejects wrong source, execution, owner, path and local lease before put (1067.5462ms)
+✖ shared correction objects keep both real attempt claims and every report hash is inventoried (351.3821ms)
+✖ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (358.6725ms)
+✖ a newer exact attempt claim extends retention of a shared correction physical object (345.5892ms)
+▶ old paused work is retained, terminal work is purged, and account/project deletion uses its own window
+  ✖ paused and terminal (355.2484ms)
+  ✖ closed (333.0496ms)
+  ✖ deleted (343.8567ms)
+✖ old paused work is retained, terminal work is purged, and account/project deletion uses its own window (1033.7664ms)
+▶ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes
+  ✖ delete (338.9164ms)
+  ✖ receipt (334.786ms)
+✖ durable purge marker rejects late writes through delete/receipt failures; retry removes orphan bytes (674.6513ms)
+▶ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed
+  ✖ delete (312.6727ms)
+  ✖ unknown-envelope (330.9779ms)
+  ✖ wrong-hash (336.8445ms)
+✖ legacy collector children are inventoried before parent purge; child failure blocks parent, corrupt known schemas fail closed (981.7536ms)
+▶ real PG writer/purger serialization preserves intent then denies writes after purge starts
+  ✖ writer (350.4916ms)
+  ✖ purger (340.535ms)
+✖ real PG writer/purger serialization preserves intent then denies writes after purge starts (692.1708ms)
+✖ captured-file read holds its exact file lock through readback while real PG purge waits (353.7461ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 3
+ℹ fail 19
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15003.5707
+
+✖ failing tests:
+
+test at apps\api\dist\run-working-files.pg.test.js:202:1
+✖ working-file authority rejects wrong source, execution, owner, path and local lease before put (1067.5462ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(lease)
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:76:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:232:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:245:1
+✖ shared correction objects keep both real attempt claims and every report hash is inventoried (351.3821ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '2e5f3a65-61fb-41c3-9399-9a87d9087dd3'
+  - '32c57d0e-952e-4cc1-b42d-fd786af4f8c6'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:246:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '2e5f3a65-61fb-41c3-9399-9a87d9087dd3',
+    expected: '32c57d0e-952e-4cc1-b42d-fd786af4f8c6',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:268:1
+✖ database guards preserve exact source identity, immutable inventory and monotonic lifecycle receipts (358.6725ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '32c57d0e-952e-4cc1-b42d-fd786af4f8c6'
+  - 'ec0d1e22-ed1f-4d55-968f-4df045e19033'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:269:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '32c57d0e-952e-4cc1-b42d-fd786af4f8c6',
+    expected: 'ec0d1e22-ed1f-4d55-968f-4df045e19033',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:313:1
+✖ a newer exact attempt claim extends retention of a shared correction physical object (345.5892ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'ec0d1e22-ed1f-4d55-968f-4df045e19033'
+  - '5ce6fcde-2b26-4790-b1a7-d561cde90dba'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:314:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ec0d1e22-ed1f-4d55-968f-4df045e19033',
+    expected: '5ce6fcde-2b26-4790-b1a7-d561cde90dba',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:335:13
+✖ paused and terminal (355.2484ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '5ce6fcde-2b26-4790-b1a7-d561cde90dba'
+  - '68b07c28-8a74-4fac-b830-c25d39d96aed'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:336:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:335:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '5ce6fcde-2b26-4790-b1a7-d561cde90dba',
+    expected: '68b07c28-8a74-4fac-b830-c25d39d96aed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:356:17
+✖ closed (333.0496ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '68b07c28-8a74-4fac-b830-c25d39d96aed'
+  - '745962a6-4b3a-418c-a7a2-f8d3c7236fc9'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:357:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:356:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '68b07c28-8a74-4fac-b830-c25d39d96aed',
+    expected: '745962a6-4b3a-418c-a7a2-f8d3c7236fc9',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:356:17
+✖ deleted (343.8567ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '745962a6-4b3a-418c-a7a2-f8d3c7236fc9'
+  - '86d03554-dffe-432b-8ae8-28967275a97f'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:357:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:356:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '745962a6-4b3a-418c-a7a2-f8d3c7236fc9',
+    expected: '86d03554-dffe-432b-8ae8-28967275a97f',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:381:17
+✖ delete (338.9164ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '86d03554-dffe-432b-8ae8-28967275a97f'
+  - 'cfae8814-738b-4794-a4ef-5475ecf6eb78'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:382:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:381:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '86d03554-dffe-432b-8ae8-28967275a97f',
+    expected: 'cfae8814-738b-4794-a4ef-5475ecf6eb78',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:381:17
+✖ receipt (334.786ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'cfae8814-738b-4794-a4ef-5475ecf6eb78'
+  - '39edf309-e6fb-4bfd-bee3-e6d1ac803f33'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:382:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:381:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'cfae8814-738b-4794-a4ef-5475ecf6eb78',
+    expected: '39edf309-e6fb-4bfd-bee3-e6d1ac803f33',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:416:17
+✖ delete (312.6727ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '39edf309-e6fb-4bfd-bee3-e6d1ac803f33'
+  - '925c5774-18ef-4ace-8611-390b113f7c35'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:417:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:416:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '39edf309-e6fb-4bfd-bee3-e6d1ac803f33',
+    expected: '925c5774-18ef-4ace-8611-390b113f7c35',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:416:17
+✖ unknown-envelope (330.9779ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '925c5774-18ef-4ace-8611-390b113f7c35'
+  - '53f0c12c-f6bd-4e13-92a2-9155b07c3f2d'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:417:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:416:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '925c5774-18ef-4ace-8611-390b113f7c35',
+    expected: '53f0c12c-f6bd-4e13-92a2-9155b07c3f2d',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:416:17
+✖ wrong-hash (336.8445ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '53f0c12c-f6bd-4e13-92a2-9155b07c3f2d'
+  - '361afe79-7915-4e84-8a2f-e3a5cc7bfef3'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:417:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:416:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '53f0c12c-f6bd-4e13-92a2-9155b07c3f2d',
+    expected: '361afe79-7915-4e84-8a2f-e3a5cc7bfef3',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:463:17
+✖ writer (350.4916ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '361afe79-7915-4e84-8a2f-e3a5cc7bfef3'
+  - '0c7deed1-4edf-44b1-95ad-d87089f15910'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:464:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:463:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '361afe79-7915-4e84-8a2f-e3a5cc7bfef3',
+    expected: '0c7deed1-4edf-44b1-95ad-d87089f15910',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:463:17
+✖ purger (340.535ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '0c7deed1-4edf-44b1-95ad-d87089f15910'
+  - 'b5a06456-a327-4fef-89ed-6b8e64f79760'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:464:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:463:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '0c7deed1-4edf-44b1-95ad-d87089f15910',
+    expected: 'b5a06456-a327-4fef-89ed-6b8e64f79760',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\run-working-files.pg.test.js:513:1
+✖ captured-file read holds its exact file lock through readback while real PG purge waits (353.7461ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'b5a06456-a327-4fef-89ed-6b8e64f79760'
+  - 'f669d866-c78d-4255-953a-4f32e5526594'
+  
+      at context (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/api/dist/run-working-files.pg.test.js:514:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'b5a06456-a327-4fef-89ed-6b8e64f79760',
+    expected: 'f669d866-c78d-4255-953a-4f32e5526594',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

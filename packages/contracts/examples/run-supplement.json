@@ -1,0 +1,111 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "supplement preparation uses frozen origin with explicit replacement and CAS",
+      "schema": "RunSupplementDraftRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-save-1",
+        "expected_revision": 0,
+        "base_input_revision": 3,
+        "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "changes": [{
+          "material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+          "replaces": {"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+        }]
+      }
+    },
+    {
+      "name": "source declaration and explicit output discard are pinned preparation intent",
+      "schema": "RunSupplementChange", "valid": true,
+      "value": {
+        "material": {"material_id":"synthetic-source","material_version":2,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+        "replaces": {"material_id":"synthetic-source","material_version":1,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "source_prospectus": {"material_id":"synthetic-source","material_version":2,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","issuer_name":null,"relation":"parent","market":"sse","offering":"private","reporting_periods":[],"status":"user_asserted"},
+        "discard_previous_output": true
+      }
+    },
+    {
+      "name": "a false output choice cannot masquerade as an explicit discard",
+      "schema": "RunSupplementChange", "valid": false,
+      "value": {"material":{"material_id":"synthetic-source","material_version":2,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"replaces":null,"discard_previous_output":false}
+    },
+    {
+      "name": "supplement receipt lookup accepts original save identity",
+      "schema": "RunSupplementDraftQuery",
+      "valid": true,
+      "value": {"request_id": "synthetic-save-1"}
+    },
+    {
+      "name": "supplement saved receipt is explicitly unadopted",
+      "schema": "RunSupplementDraftResponse",
+      "valid": true,
+      "value": {
+        "run_id": "synthetic-run", "project_id": "synthetic-project",
+        "revision": 1, "latest_revision": 2, "request_id": "synthetic-save-1",
+        "saved_at": "2026-10-26T00:00:00.000Z", "base_input_revision": 3,
+        "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "base_materials": [{"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_project_id": "synthetic-project", "filename": "原材料.pdf", "role": "other", "media_type": "application/pdf", "available": true}],
+        "changes": [{"material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "replaces": null}],
+        "result_materials": [{"material_id": "synthetic-original", "material_version": 2, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_project_id": "synthetic-project", "filename": "原材料.pdf", "role": "other", "media_type": "application/pdf", "available": true}, {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "source_project_id": "synthetic-project", "filename": "补充材料.pdf", "role": "other", "media_type": "application/pdf", "available": false}],
+        "input_preview": {"compiler_version": "run-supplement-input-v1", "status": "needs_information", "candidate_input_hash": null, "issues": [{"code": "material_unavailable", "material_id": "synthetic-new", "message": "这份材料暂不可用，请恢复后再核对。"}]},
+        "saved_work": {"status": "captured", "stage_count": 3, "result_count": 1},
+        "can_save": false, "blocked_reason": "本次任务已继续，已保存的准备记录仍可查看。", "adopted": false
+      }
+    },
+    {
+      "name": "old preparation has no captured work counts",
+      "schema": "RunSupplementSavedWork", "valid": true,
+      "value": {"status": "not_captured", "stage_count": 0, "result_count": 0}
+    },
+    {
+      "name": "captured pause may have no completed provider result",
+      "schema": "RunSupplementSavedWork", "valid": true,
+      "value": {"status": "captured", "stage_count": 2, "result_count": 0}
+    },
+    {
+      "name": "changed pause boundary retains bounded historical reference counts",
+      "schema": "RunSupplementSavedWork", "valid": true,
+      "value": {"status": "stale_boundary", "stage_count": 10000, "result_count": 10000}
+    },
+    {
+      "name": "uncaptured work cannot claim a stored result",
+      "schema": "RunSupplementSavedWork", "valid": false,
+      "value": {"status": "not_captured", "stage_count": 0, "result_count": 1}
+    },
+    {
+      "name": "captured work counts cannot exceed their public bound",
+      "schema": "RunSupplementSavedWork", "valid": false,
+      "value": {"status": "captured", "stage_count": 10001, "result_count": 0}
+    },
+    {
+      "name": "saved work counts must be non-negative integers",
+      "schema": "RunSupplementSavedWork", "valid": false,
+      "value": {"status": "captured", "stage_count": -1, "result_count": 0.5}
+    },
+    {
+      "name": "saved work metadata does not publish private provider references",
+      "schema": "RunSupplementSavedWork", "valid": false,
+      "value": {"status": "captured", "stage_count": 1, "result_count": 1, "result_ids": ["private-result"]}
+    },
+    {
+      "name": "preparation cannot authorise adoption or surcharge",
+      "schema": "RunSupplementDraftRequest",
+      "valid": false,
+      "value": {"request_id": "synthetic-save", "expected_revision": 0, "base_input_revision": 1, "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "changes": [], "adopt": true, "confirmed_additional_credits": 900}
+    },
+    {
+      "name": "a supplement cannot replace an unpinned material",
+      "schema": "RunSupplementDraftRequest",
+      "valid": false,
+      "value": {"request_id": "synthetic-save", "expected_revision": 0, "base_input_revision": 1, "base_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "changes": [{"material": {"material_id": "synthetic-new", "material_version": 1, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "replaces": {"material_id": "synthetic-original", "material_version": 0}}]}
+    },
+    {
+      "name": "supplement receipt cannot select execution through query parameters",
+      "schema": "RunSupplementDraftQuery",
+      "valid": false,
+      "value": {"request_id": "synthetic-save", "resume": true}
+    }
+  ]
+}

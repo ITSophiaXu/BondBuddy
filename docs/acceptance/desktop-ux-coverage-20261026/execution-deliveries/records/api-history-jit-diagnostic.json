@@ -1,0 +1,17 @@
+{
+  "started": "2026-10-26T16:18:23.475Z",
+  "finished": "2026-10-26T16:20:19.375Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "apps/api/dist/artifact-history.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "environment": {
+    "BB_RUN_RUNTIME_ENABLED": null,
+    "BB_TEST_DATABASE_URL": "postgresql://bb_delivery_test@127.0.0.1:15528/bb_execution_delivery_template_20261027c"
+  },
+  "status": 0,
+  "signal": null,
+  "pid": 28908
+}

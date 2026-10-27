@@ -1,0 +1,19 @@
+{
+  "started": "2026-10-26T10:46:45.239Z",
+  "finished": "2026-10-26T10:47:13.314Z",
+  "args": [
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\node_modules\\@playwright\\test\\cli.js",
+    "test",
+    "--config",
+    "playwright.config.ts",
+    "run-supplement-inflight-main.spec.ts",
+    "--workers",
+    "1",
+    "--output",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\initial-execution\\inflight-results-1",
+    "--reporter=line,json"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\web",
+  "status": 0,
+  "signal": null
+}

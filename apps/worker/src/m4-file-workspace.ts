@@ -4,7 +4,7 @@ import { mkdir, writeFile, readFile, copyFile, lstat, realpath, chmod,mkdtemp,rm
 import { tmpdir } from 'node:os';
 import { join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { digest } from '@bondbuddy/api/data';
+import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import {validM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import type { StageContext } from './run-pipeline.js';
@@ -42,7 +42,10 @@ export async function checkedM4File(directory: string, name: string, max = M4_FI
   return readFile(path);
 }
 
-export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, skill: Skill, cwd: string, replySchema?: unknown) {
+export type M4FilePreparationContext = {blobs: PrivateBlobs; signal?: AbortSignal; inputHash: string};
+
+export async function prepareM4Files(ctx: M4FilePreparationContext, input: M4WorkerInput, skill: Skill, cwd: string,
+  replySchema?: unknown, continuation?: Record<string, unknown>) {
   for (const name of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, name), {mode: 0o700});
   const originals = new Map<string, string>();
   const material = [], artifacts = [];
@@ -96,11 +99,12 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     await writeFile(join(cwd,path),content,{mode:0o400});originals.set(path,pin.sha256);
     knowledge={...metadata,path,...(template?{template_id:template.id,template_version:template.version,template_sha256:template.sha256,template_path}:{})};
   }
-  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,
+  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.inputHash, task: input.manifest,knowledge,
     requirements: input.manifest.kind === 'document' ? [...input.manifest.input.requirements.map(r => r.text),
       ...(input.manifest.input.supplemental_requirements?.trim() ? [input.manifest.input.supplemental_requirements.trim()] : [])] : [],
     materials: material, artifacts, authorized_sources:m4AuthorizedSources(input), skill: {id: skill.id, version: skill.version, sha256: skill.sha256},
     ...(replySchema ? {reply_schema: replySchema} : {}),
+    ...(continuation ? {continuation} : {}),
     output: input.manifest.kind === 'document' ? {document: 'output/document.docx', preparation_note: 'output/preparation-note.docx'} : {reply: 'output/reply.json'}};
   await writeFile(join(cwd, 'input.json'), JSON.stringify(data, null, 2), {mode: 0o400});
   await writeFile(join(cwd, 'SKILL.md'), skill.content, {mode: 0o400});

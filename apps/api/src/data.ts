@@ -56,7 +56,16 @@ export const unavailable = () => new Problem(501, 'CAPABILITY_NOT_READY', 'Capab
 export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try { await client.query('BEGIN'); const result = await fn(client); await client.query('COMMIT'); return result; }
-  catch (error) { await client.query('ROLLBACK'); throw error; }
+  catch (error) {
+    await client.query('ROLLBACK');
+    // A deletion barrier can win after request validation but before this
+    // transaction publishes its material pin. Keep the entire submission or
+    // recovery rolled back and return the existing input-conflict contract.
+    if (error && typeof error === 'object' && 'code' in error && error.code === '23514'
+      && 'constraint' in error && error.constraint === 'bb_material_purge_barrier')
+      throw new Problem(409, 'INPUT_REVISION_CONFLICT', '本次任务引用的材料已进入清理，请补充材料并重新核对后继续。');
+    throw error;
+  }
   finally { client.release(); }
 }
 export const date = (value: Date | string) => new Date(value).toISOString();

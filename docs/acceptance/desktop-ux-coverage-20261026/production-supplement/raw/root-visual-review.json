@@ -1,0 +1,15 @@
+{
+  "reviewedAt": "2026-10-27T02:30:07.733Z",
+  "screenshot": "web-real-round3/authoring/b1-quote-full.png",
+  "sourceDimensions": {
+    "width": 1440,
+    "height": 3039
+  },
+  "observations": [
+    "人工暂停状态及继续原材料动作可见",
+    "补料保存、尚未采用和原任务材料清楚区分",
+    "重做文书范围、现行整份价4500、合计追加4500和明确确认按钮可见",
+    "未见横向溢出或交互遮挡"
+  ],
+  "scope": "Actual frozen local frontend with synthetic project and credits. Does not establish target-user understanding."
+}

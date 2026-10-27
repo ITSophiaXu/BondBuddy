@@ -1,0 +1,9 @@
+{
+  "started": "2026-10-26T12:57:28.450Z",
+  "finished": "2026-10-26T12:57:30.867Z",
+  "args": [
+    "packages/contracts/dist/check-examples.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 0
+}

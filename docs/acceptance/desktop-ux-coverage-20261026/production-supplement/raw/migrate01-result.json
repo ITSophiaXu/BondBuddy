@@ -1,0 +1,1124 @@
+{
+  "startedAt": "2026-10-27T01:46:03.862Z",
+  "database": "bb_prod_supplement01_20261027",
+  "source": "template0",
+  "success": false,
+  "clusterIdentity": {
+    "current_user": "bb_successor_test",
+    "address": "127.0.0.1/32",
+    "port": 15542,
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data"
+  },
+  "migrationsBefore": [
+    {
+      "path": "0001_m1_owner_data.sql",
+      "sha256": "1351ce896279ff9e8afe9ba015dd5cb8358faad0fa8471483d28d3b7dce97f8f"
+    },
+    {
+      "path": "0002_artifact_download_grants.sql",
+      "sha256": "c19a7dcb14bc451e2d7b3ce8ffd9f5c18c1af66eb3a669d24c422ab5ae217018"
+    },
+    {
+      "path": "0003_m1_auth_sessions.sql",
+      "sha256": "2268de41fc644a9feecfc74088d26ec43d98fafc93266560ef4f8946f04519ba"
+    },
+    {
+      "path": "0004_m1_durable_jobs.sql",
+      "sha256": "078ea1cdfdd54e7f70e460d94d4d38e4e3b123d7280fc152143a4a41f9f2d4aa"
+    },
+    {
+      "path": "0005_m1_observability.sql",
+      "sha256": "cc39334f3318eba2a60d10407a2367272e98051727b10dffe80e010bc4f10080"
+    },
+    {
+      "path": "0006_m1_storage_lifecycle.sql",
+      "sha256": "1f6072249d6bf625f57ff3f464e071d487f5acd2291d67f3fa794930ae0aaed9"
+    },
+    {
+      "path": "0007_m1_provider_result_reconciliation.sql",
+      "sha256": "3f044211291173287ec666376092bd6af32b1ff0b9282cabe5c027cefc479675"
+    },
+    {
+      "path": "0008_m1_username_password.sql",
+      "sha256": "c8b731a5ef5e2264e6f086ab2dd02e7f4ad898973895f6d3de5b90cd3e057f66"
+    },
+    {
+      "path": "0009_m1_account_lifecycle.sql",
+      "sha256": "003313542fce6559d91383f27a2478f9270d2bd0c586f9d687889ed159010351"
+    },
+    {
+      "path": "0010_m1_facts_parse_cache.sql",
+      "sha256": "858fa8571ff2682d08322379f9654c3c2606c0f2ec339a87e567dc002bb5ba47"
+    },
+    {
+      "path": "0010_m1_word_delivery_evidence.sql",
+      "sha256": "69d0241774cfd54b6a3dcd977af4a0534e76863a04fe72e3977ed4da0ed78bdc"
+    },
+    {
+      "path": "0011_m1_project_material_events.sql",
+      "sha256": "717f40adfce271cc87355471121905f84dbffcb4761f33648b62680c4fad44f2"
+    },
+    {
+      "path": "0012_m1_fact_decisions.sql",
+      "sha256": "e6cd6f004e7bd83ccfea9874ec5a2c0636aaf6e8e18b4471926037907b7bc024"
+    },
+    {
+      "path": "0013_m1_historical_profiles.sql",
+      "sha256": "350adfdb4179424c7f67a6af0e1557ffe3381bdd73debd176914e0e8a5b458cf"
+    },
+    {
+      "path": "0013_m1_update_project_details.sql",
+      "sha256": "c6da7e1f594d6537acb21a2c4979c892abcd272002f7b84b45b5e9f6c7243bba"
+    },
+    {
+      "path": "0014_m1_parse_evidence_snapshots.sql",
+      "sha256": "fcb53ce319ec4d66031848d3ed437cb2f43cd3f359cb11d5879f35c52b87b663"
+    },
+    {
+      "path": "0015_m1_credit_facility_supplements.sql",
+      "sha256": "f90d8aa803a1c286bae863b87f454b86d0af35cd3d5e7e964b166d667263146f"
+    },
+    {
+      "path": "0016_m1_update_difficulty_snapshots.sql",
+      "sha256": "8c870b3845913f86a787949388c7e080bf57631b720d36af17074c04480b4021"
+    },
+    {
+      "path": "0017_m1_ocr_review.sql",
+      "sha256": "f5c10b41e0dedb8c69130319dbb0555b7f737029fb0686937fe4d8f819ca2dfa"
+    },
+    {
+      "path": "0018_m1_rule_pack_release_ledger.sql",
+      "sha256": "c7533ff482e6754c3f56c4a00885f2058d475d00a5e20dcc24d9f6af1db11a4b"
+    },
+    {
+      "path": "0018_m1_upload_reuse.sql",
+      "sha256": "be15b8fc0104a559fd4cd35ffec200c5081fb58bf2212e85ac783b616e0f3989"
+    },
+    {
+      "path": "0019_m1_model_adapter_attempt_runtime.sql",
+      "sha256": "2947d38e4a65d61a37613722088511401ab438d34e78d9c4542075300f6a9a67"
+    },
+    {
+      "path": "0020_m1_material_parse_jobs.sql",
+      "sha256": "920664209fef4e3bd48660b97ff72eca0d581532d9450bf160ca268030eae2e7"
+    },
+    {
+      "path": "0021_m1_log_operations.sql",
+      "sha256": "3af587b14f3601edb795062d79ec3a70973151d8f08cf8c4c91853c11e6f031a"
+    },
+    {
+      "path": "0023_m1_reference_library.sql",
+      "sha256": "c6fa09848c7f44a83c4b40fb4ee8378dd2d82c698325938960a2ec65374abcfd"
+    },
+    {
+      "path": "0024_m1_worker_runtime.sql",
+      "sha256": "91aa13517bfc471e0624d8f00934c52d83666d28bb75ed885ff596d548378e5f"
+    },
+    {
+      "path": "0025_m1_trial_guard.sql",
+      "sha256": "8a18c5ed8956ecb19c35b7375ab960304cf6da7dec72aa2054860d5f15c029dd"
+    },
+    {
+      "path": "0026_m1_user_deletion_lifecycle.sql",
+      "sha256": "07816f43d984df3a75c56a5f620a22a8d0139aeb70fdff4ccb14886947e6a6d0"
+    },
+    {
+      "path": "0027_m1_platform_probe.sql",
+      "sha256": "1cfd11c047e3dbee3328ba9caabd5fca7e55f208cb278c6ce85f8d1126e772d0"
+    },
+    {
+      "path": "0028_m1_ops_scheduler.sql",
+      "sha256": "f1d1f446c47cfcb2a7c5ca4cd82a63dc96c6ea88572d9199c6310afe8541b9dd"
+    },
+    {
+      "path": "0030_m1_library_comparability.sql",
+      "sha256": "ae641b9ffec0848c9b24de5d31266fe0358f174efc43a37b3abce509ca63d4a9"
+    },
+    {
+      "path": "0031_m1_ops_last_success.sql",
+      "sha256": "ae03980d029db0c80c6a1a59e476f477bfa6f4edd841433bb3d2c7193b05ecab"
+    },
+    {
+      "path": "0032_m1_library_scheduled_sync.sql",
+      "sha256": "48d4f86e5e5ce0fd8d8ede9709ffe614b0a829fab56d8c13b7dcc8d677fa0372"
+    },
+    {
+      "path": "0033_m1_issuer_business_profiles.sql",
+      "sha256": "af9cdd6ffa59f9f46532fec5e3ebe0842d072f6e1bc9ba34e16342b89021cfd6"
+    },
+    {
+      "path": "0034_m1_v11_reference_selection_locks.sql",
+      "sha256": "a2a9382590061a94eed378346de11b94e148e6e8f00a8e932e8367638f893f03"
+    },
+    {
+      "path": "0035_m1_issuer_identity_source.sql",
+      "sha256": "4fba369d7ba2bb458a603c24404538cedf3726087f5160ba1475a46d34d050de"
+    },
+    {
+      "path": "0036_m1_production_rule_pack_registry.sql",
+      "sha256": "a3af80a8eb087e598ff4df55977a3f03a3a3887a63b5dfcc0e91b8dac534a8ec"
+    },
+    {
+      "path": "0037_m1_rule_pack_sample_expectation_binding.sql",
+      "sha256": "cbda45dc94059d783e9ee1bc5203260aa90a784597305a15060407efef400d44"
+    },
+    {
+      "path": "0038_m1_fact_extraction_runs.sql",
+      "sha256": "2059910cb693f89e502fed58ad3e73076ef2b36ce1ae76c8447b429923adfab2"
+    },
+    {
+      "path": "0039_m1_rule_applicability_context.sql",
+      "sha256": "7f6ccfb047b7cf36f0680e72babf5f2fb6553c8bddb6eb4a780213c234a57ef6"
+    },
+    {
+      "path": "0040_m1_preflight_logical_jobs.sql",
+      "sha256": "3e72aab1ce138a108b0fd178600c15d7dad0c0c9925df63d74a6dd4f588f1186"
+    },
+    {
+      "path": "0041_m1_log_blob_archive.sql",
+      "sha256": "6ea1ad3f4dc8919b876f766a6c2430f559c97dda5c123bf9c49372f3f6e26b52"
+    },
+    {
+      "path": "0042_m1_orphan_prompt_blobs.sql",
+      "sha256": "3528b5bf593390cb4fff834d76efa9bf3096bee22cced0375a7a3a930219a031"
+    },
+    {
+      "path": "0043_m1_project_archive.sql",
+      "sha256": "a7141c8adcb73b1b2cae053b7068248a76b1c307adc4367b694b83c11af8d66e"
+    },
+    {
+      "path": "0044_m1_account_recovery.sql",
+      "sha256": "6359e363ecb62d4d8bb707b587f31900245331ca59ee06793498dfa0439ff0c8"
+    },
+    {
+      "path": "0045_m1_issuer_reviewer_grant_audit.sql",
+      "sha256": "9f0e28d23d9f8ae4cc754556344d2621bee5627617a753b64c3a147270a62387"
+    },
+    {
+      "path": "0046_m1_user_reference_pins.sql",
+      "sha256": "ddb4d1c4c63719d6908c8d24ae8d012ceac1d0f3f4096c13bce4c4d49d5f39ec"
+    },
+    {
+      "path": "0047_m1_user_reference_review_evidence.sql",
+      "sha256": "d8d566dac1f5ba897a08c84c6319973ee05670eaef624d06f62a7f4c610884ef"
+    },
+    {
+      "path": "0048_m1_issuer_reviewer_read_scope.sql",
+      "sha256": "fa3accffe463a53a60c0ac1300a22654cf2b147c58d73da5a27a86819e993e44"
+    },
+    {
+      "path": "0049_m1_issuer_reviewer_project_grants.sql",
+      "sha256": "a9e30c113b5d9d635fec7c15c1b913d3a7d942fa102dc2ed75ad2b0b3a89cd75"
+    },
+    {
+      "path": "0050_m1_credit_facility_supplement_versions.sql",
+      "sha256": "cf8abdc55760b1ec90bc1bd5cbe4a3ebe357afd8ad7fa99fca9795c515dc47c1"
+    },
+    {
+      "path": "0051_m1_rule_applicability_reviewer_grants.sql",
+      "sha256": "abffd1d58ab18e26a6613dae96a1e7ca9df20a578048da3995a7d1c23d994dd1"
+    },
+    {
+      "path": "0052_m1_rule_applicability_field_reviews.sql",
+      "sha256": "e33aa0c15c4d92deb5167982545abc60a5ed95365b36669facc6e9b19c58608b"
+    },
+    {
+      "path": "0053_m1_input_revision_target_confirmations.sql",
+      "sha256": "82128be427d5b10267b4083791f0c843bf11f276fce021cef9c6d0854d60f806"
+    },
+    {
+      "path": "0054_m1_rule_applicability_overall_reviews.sql",
+      "sha256": "c3f583afc49c2cc502577a035351cab136c2fa8e9a3ec722e1b8ee9764fada76"
+    },
+    {
+      "path": "0055_m1_rule_applicability_feature_evidence_v2.sql",
+      "sha256": "8baeb861b65c19b95a1f6358741e51fd6ce52e2d538e786ee7693a81dc74ee1d"
+    },
+    {
+      "path": "0056_m1_non_production_test_grants.sql",
+      "sha256": "29ee8318102e4fef67fd1c7a3b057760ce24054cde79c1aa3bfc037c56412f4e"
+    },
+    {
+      "path": "0057_m1_target_period_evidence_decisions.sql",
+      "sha256": "e57a9e4bbed2e65b319759a409e71ef1aeea084a764a0c27ab08e9139a3e0ef1"
+    },
+    {
+      "path": "0058_m1_update_difficulty_evidence_identity.sql",
+      "sha256": "8a98f90a4de47a4e3306d01a7fbca6f675705abcf5c5be0e9fff66cf343ba822"
+    },
+    {
+      "path": "0059_m1_issuer_annual_profile_reviews.sql",
+      "sha256": "7fd25c5e6162dbff98235d59391f2ba8d50842721429e38ac15dfc97642a78d8"
+    },
+    {
+      "path": "0060_m1_fact_evidence_context_sets.sql",
+      "sha256": "926b712c7be83922c6fb98dc2fb526a293fd4bbbcd1ea428f4c138529cf0cb55"
+    },
+    {
+      "path": "0061_m1_model_cost_attribution.sql",
+      "sha256": "ef72163a51f02f90761217e30bd8b5db78bc05ec245c75609141e85cf4af958f"
+    },
+    {
+      "path": "0062_m1_user_submission_versions.sql",
+      "sha256": "53226f5de853822ebb27033af11e73630ea3afb617250eac013bf5cc833f3e33"
+    },
+    {
+      "path": "0063_m1_reference_revenue_rank_proof.sql",
+      "sha256": "5320c9dcf0bf36c87e29a494a1426d1560225ac31931813d110af0d29dadd060"
+    },
+    {
+      "path": "0064_m1_rule_source_legal_date_evidence.sql",
+      "sha256": "4ea0d749e8fd48cb8111c2e7df855a47ccdec35fa45b3f2f9528e6f62ed086bc"
+    },
+    {
+      "path": "0065_m1_fact_evidence_reviews.sql",
+      "sha256": "f83def54a68bc1775a53f1aa98d8bdd049389516a7edf74ba0633f24491d08ba"
+    },
+    {
+      "path": "0066_m1_target_period_candidate_snapshots.sql",
+      "sha256": "818b8473c299288849bbd47ee710aaf00c037fb32c6625ecc8d1b5aa05af9439"
+    },
+    {
+      "path": "0068_m1_browser_error_reports.sql",
+      "sha256": "11246a8181120e25427a878ce0ed609572d192056a98cc08a086b9dc695cc58f"
+    },
+    {
+      "path": "0069_m1_log_archive_retention.sql",
+      "sha256": "dd68a0387ffb02441e107b2f2d57910109e01d1e4bcf91e192e17b9b145bb53a"
+    },
+    {
+      "path": "0070_m1_error_diagnosis.sql",
+      "sha256": "d8b26091ee6858defefd39ecb52b011317b3e1cd00d343ca7af92403197315ca"
+    },
+    {
+      "path": "0071_m1_production_review_attestation_ledger.sql",
+      "sha256": "eb565d9ae445cd55663bacfa919ae58ec03d30ea5c7b6b25e50499c891f847a7"
+    },
+    {
+      "path": "0072_m1_production_component_snapshots.sql",
+      "sha256": "c3cb1f5415036da6a79f2723cf5dc22410725b55825c1a60b765d1bcae5ad7a1"
+    },
+    {
+      "path": "0073_m1_production_release_attestation_binding.sql",
+      "sha256": "df280f44d354fcdd4a899420b870683ec33749db5bdc4684664294f735511ec3"
+    },
+    {
+      "path": "0074_m1_storage_inventory.sql",
+      "sha256": "ba4004fe6b9b644720acea1ba5027a73ba8e25dd45956298b8a679fd5f060c10"
+    },
+    {
+      "path": "0075_m1_generation_issuer_bindings.sql",
+      "sha256": "22ece32fb756f7ac7cb5ae4fbc77ed021a6fefd0b5c73bee3521d7e73d445136"
+    },
+    {
+      "path": "0076_m1_signed_pdf_assessment.sql",
+      "sha256": "f7e392f85596bd02365a32474cc960748c1a3dacd38a45bfe6e1a189af2184da"
+    },
+    {
+      "path": "0077_m1_project_message_revisions.sql",
+      "sha256": "fd9b447ec0c8bf27c38a9802ba3bfb4319d97bdc0b718139bf3a4251ef8df7de"
+    },
+    {
+      "path": "0080_m1_ocr_v2_checkpoints.sql",
+      "sha256": "f60917c8143a05187006f26179b1851c0f9cd415661dc63726904faaa53a05b9"
+    },
+    {
+      "path": "0081_m1_project_kind_conversion.sql",
+      "sha256": "1e01df98e81227369203337f095c8af425e5a76476260783f2150bf5d14656cf"
+    },
+    {
+      "path": "0082_m1_material_role_copy.sql",
+      "sha256": "0304aee1f5d274e8b14a5ca1420d9503ba636dddb7fed81f87906707924f4bc3"
+    },
+    {
+      "path": "0083_m1_test_execute_rejection_without_grant.sql",
+      "sha256": "71e4386ca270fefc8f665b3c6c0244520b6ed9a6cbf2628fce4ee68c13e157bc"
+    },
+    {
+      "path": "0084_m3_review_workspace.sql",
+      "sha256": "0510aa3fc1f11265daafdba956f122c6b00b6b4cdd725577ae7696a02c5404dd"
+    },
+    {
+      "path": "0085_m3_review_assistant.sql",
+      "sha256": "975d5110a2f7dfafc7ef8701cb66577b875521f49dd88cfd948034459e0ab4ba"
+    },
+    {
+      "path": "0086_m3_project_run_mutex.sql",
+      "sha256": "9f8e0749213970ecb45ee59351d5c4cb1c657956f671dbda26f726b04d4d93b8"
+    },
+    {
+      "path": "0087_m2_fixed_credits.sql",
+      "sha256": "62aa1c4cf96eb3e9486a7e784d1cbd8b0a14a1824d0fef183436d269e3b1dcb1"
+    },
+    {
+      "path": "0088_m3_linked_assistant.sql",
+      "sha256": "fc1fb860287a23ce33d55c9aea428d815fb69a96a48fe2bcf0bada12e1db53ea"
+    },
+    {
+      "path": "0089_paid_review_credits.sql",
+      "sha256": "f2bd966582fc415a312dbf32aba3368b7680b06ccdf9a273bc5547fab15a7a63"
+    },
+    {
+      "path": "0090_multipage_signed_pdf_assessment.sql",
+      "sha256": "1f38693a941021b9ba96914e6a4ddd8271e33f089c9a65e96b9a722a9278c971"
+    },
+    {
+      "path": "0091_m4_workspace.sql",
+      "sha256": "7dae47ede7ff1882b36b56a9f33d8573bbcdadbcfa585493814cf9ee7303352b"
+    },
+    {
+      "path": "0092_m4_pending_requirements.sql",
+      "sha256": "a721a1d7bd12b8ba9b5c1c4c6f6abe2f4e5205e3513aaaabb0013eadedf4a033"
+    },
+    {
+      "path": "0093_m4_qa_text_delivery.sql",
+      "sha256": "20268d707ada0d7699a36c071cba2fcb5982bb196433a21392f9b5b45a985453"
+    },
+    {
+      "path": "0094_m4_settlement_allocation_variable.sql",
+      "sha256": "167412046310fb35e80f18d84240d654e3b9e2fadfccea6b94914e29097cf95a"
+    },
+    {
+      "path": "0095_m4_artifact_revision_number.sql",
+      "sha256": "8901bc61c1a572c53b18f3f72b0efd79b654219a7b25bcbf8fe139b86274e159"
+    },
+    {
+      "path": "0096_m4_message_template_identity.sql",
+      "sha256": "0feea24722e28581af6249ced91df81865336a82aa0b9e855b7be849d7ab8b71"
+    },
+    {
+      "path": "0097_m4_cross_project_material_retention.sql",
+      "sha256": "4f38ae8906c1fcb06cfdb73fc44c14f5b605be26826c23794d616b48f129e43b"
+    },
+    {
+      "path": "0098_m4_material_knowledge.sql",
+      "sha256": "d999b421b030caa6f279e126fa896d76f04b497e62a5515d39d3434c9d37567a"
+    },
+    {
+      "path": "0099_m4_fixed_document_credits.sql",
+      "sha256": "dd0287c9a81fe78994bafb7bee2ef38e2b2d8986570740016f5d560be1850bcd"
+    },
+    {
+      "path": "0100_global_project_assistant.sql",
+      "sha256": "2f7d95ef576b231de0b18923773bf95b86d006ef662aaf58ab89e56aca41d4eb"
+    },
+    {
+      "path": "0101_m4_fixed_qa_prices.sql",
+      "sha256": "e84a6636945a7388058bae9e60d79657b052cb055a8d96bcdccd2daf12d12035"
+    },
+    {
+      "path": "0102_credit_history_indexes.sql",
+      "sha256": "fd4b1842fea7bc323765bb8fb8f1e47c109a85cf0960e83fb860760a0e502bee"
+    },
+    {
+      "path": "0103_authoring_progress.sql",
+      "sha256": "74cee637f1a3b240e59ecf30b172c904965270e8c020579f9511579a47bae8d3"
+    },
+    {
+      "path": "0103_review_pdf_delivery_evidence.sql",
+      "sha256": "25552b503a966b38c5ede4d0faefe87ba05eda56798f5906924d54a11b09ba54"
+    },
+    {
+      "path": "0104_authoring_dynamic_balance.sql",
+      "sha256": "610d6a359db88b9110264481c4d602e9dfdff17d3c02e409c7f490fb326b6d3b"
+    },
+    {
+      "path": "0105_m4_dynamic_balance.sql",
+      "sha256": "2f216d774411c31d044ed0b108be7557819815d01b81e373aa015f813e0552c9"
+    },
+    {
+      "path": "0106_m4_case_templates.sql",
+      "sha256": "d0d59454af153b7c5bfa0f507d4214b52133356de56165ab1ed1c5b78bc9775d"
+    },
+    {
+      "path": "0107_update_project_prospectus_versions.sql",
+      "sha256": "02ec23e8aa34a6bb59dceec680ae8335565a8a8fbcf7ffe275f63280cd905d4f"
+    },
+    {
+      "path": "0108_backfill_prospectus_versions.sql",
+      "sha256": "6abb16f4426ea89b7a61a8e74c95bf9af42d65c38c60a96b9b748f9d42dad9a1"
+    },
+    {
+      "path": "0109_review_editor.sql",
+      "sha256": "657e06b99c49b1ad16b0455a63d4b74a24905f08b160981f68435b4d106c032b"
+    },
+    {
+      "path": "0110_review_dual_word_settlement.sql",
+      "sha256": "af7d54e2a9dc69943e8b4508bca5bcedd2bc6d4006d27404dc4e24ccb7348b71"
+    },
+    {
+      "path": "0111_project_file_workspace.sql",
+      "sha256": "05b0a512be6405b344b32cb0173a428c3ff7a66f5bc4812386e5ad7a156aa155"
+    },
+    {
+      "path": "0112_project_file_update_credits.sql",
+      "sha256": "4e9883d17c13afbd6969b4a091f069457465122ef4fbe26f74efa0e0f7e17741"
+    },
+    {
+      "path": "0113_integrity_rounds.sql",
+      "sha256": "9b4d7bbcce6dc6482749ca0806d6af2f41bdd29eb9cc410cc9df452af1013efa"
+    },
+    {
+      "path": "0114_integrity_workpapers.sql",
+      "sha256": "1d893f1cbf4f202b7f26348d9105ed01dfc51d75299e038a593da41876c13609"
+    },
+    {
+      "path": "0115_project_qa.sql",
+      "sha256": "4824c4196fd3554dabb7149e25bc5391579fa96c7f5f45d53f4bf75d5addbb6e"
+    },
+    {
+      "path": "0116_integrity_browser_evidence.sql",
+      "sha256": "b30e83bc331fea67c4e675f11548d776b7505bf75f053b4e0a37316efe4fa839"
+    },
+    {
+      "path": "0117_run_origin_input_immutable.sql",
+      "sha256": "7dc6b34974a2e84b96a20567dca03e86ae76fa0b27ac08324c6e8be5442f5551"
+    },
+    {
+      "path": "0118_run_supplement_drafts.sql",
+      "sha256": "4f664be240c8d8fde3366a444eb2d0d7dc9bf08ac1f4fbd6234950756037ecb4"
+    },
+    {
+      "path": "0119_initial_run_execution_identity.sql",
+      "sha256": "4b24c02e31d253481307f9b2978a478dbbfdaa6dd2e055e331f0e6b377b5f20c"
+    },
+    {
+      "path": "0120_model_call_execution_bindings.sql",
+      "sha256": "7799121cc285ee44fe439bdbcf146043ac0d68e10f3b6c7ff4428e4b7605e739"
+    },
+    {
+      "path": "0121_run_supplement_saved_work.sql",
+      "sha256": "ed03edc1373c78ec4cffe2dfd6cce9dcd2dea5e1601c39983ba2d85e5cdc038e"
+    },
+    {
+      "path": "0122_run_working_file_lifecycle.sql",
+      "sha256": "f16585530b6a35586f85f622df20c0f92ed185fa61f600ba19a869df2a4a86b2"
+    },
+    {
+      "path": "0123_run_working_file_result_claims.sql",
+      "sha256": "d92ebf2cfc4c6091ee4c38cbc149dd967bb54c15e95b2744f5d28e2df78f249e"
+    },
+    {
+      "path": "0124_run_execution_business_snapshots.sql",
+      "sha256": "552851b900bc403cb95fe22993555ac890cdee2a9cc78f99b85385d5dbe0be75"
+    },
+    {
+      "path": "0125_artifact_execution_bindings.sql",
+      "sha256": "c7bd8c48264a8c61c6180f2ba0e58e9de4740c8eb27434109b5878c344579dff"
+    },
+    {
+      "path": "0126_run_execution_deliveries.sql",
+      "sha256": "6176959e943235fa037768399246e8bb7a5eedbca355f92939be9d2e8e061ff8"
+    },
+    {
+      "path": "0127_review_execution_editors.sql",
+      "sha256": "606e8f2773b57f1beb2a85147a5469d8ce32bf9cc1f6643615a59a58351311d6"
+    },
+    {
+      "path": "0128_review_execution_reports.sql",
+      "sha256": "1fb8e0ed7580e435c02735b30f70240b51c282c3a3fb03b3beedb3a3746a3e3d"
+    },
+    {
+      "path": "0129_review_execution_artifacts.sql",
+      "sha256": "60a24b17267fe76996c6329bac3155706473d81425e470627ba7a06be4bee948"
+    },
+    {
+      "path": "0130_m4_execution_artifacts.sql",
+      "sha256": "a6674a45f25770f155112163fde67f495e178ffb2d1e3bc5dbcca483b4b5d40b"
+    },
+    {
+      "path": "0131_run_supplement_processing_plans.sql",
+      "sha256": "c4408dcf78e9d0936def9bfcb84c112dc69e61da4ac2af7d8e72886a761080f5"
+    },
+    {
+      "path": "0132_run_execution_heads.sql",
+      "sha256": "08c5de4c7c038159af6671d66c1a2535e9dbbad3016321a882e56e417425852d"
+    },
+    {
+      "path": "0133_material_purge_barrier.sql",
+      "sha256": "568fd5d49a5174f331d22af0a4d5cb8dcf610cdc7382038c45a9f0a108d24944"
+    },
+    {
+      "path": "0134_review_body_deletion.sql",
+      "sha256": "1c7f9047ebfa698a6c6760d46e23a4f2a70b830c144329eeedb23da8c59d7b4b"
+    },
+    {
+      "path": "0135_run_test_successor_execution.sql",
+      "sha256": "49d4da078b13a457e4a985e5530eef4208b793236eaa82eb6cf2b6d837c8bccc"
+    },
+    {
+      "path": "0136_test_successor_word_delivery.sql",
+      "sha256": "de66ed52a73121fb2f701504264af7f6d265b5600bcffdad1257830e206df3dd"
+    },
+    {
+      "path": "0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    },
+    {
+      "path": "0138_run_billing_segments.sql",
+      "sha256": "493beab981f86c178c34a913744958451900709a128a4a598e5082bd31531b30"
+    },
+    {
+      "path": "0139_run_supplement_production_adoption.sql",
+      "sha256": "c622e5dc41847258201aa5aee880968cab51f497045cd30a42bfdbde9e588821"
+    }
+  ],
+  "exitCode": 1,
+  "error": null,
+  "migrationsAfter": [
+    {
+      "path": "0001_m1_owner_data.sql",
+      "sha256": "1351ce896279ff9e8afe9ba015dd5cb8358faad0fa8471483d28d3b7dce97f8f"
+    },
+    {
+      "path": "0002_artifact_download_grants.sql",
+      "sha256": "c19a7dcb14bc451e2d7b3ce8ffd9f5c18c1af66eb3a669d24c422ab5ae217018"
+    },
+    {
+      "path": "0003_m1_auth_sessions.sql",
+      "sha256": "2268de41fc644a9feecfc74088d26ec43d98fafc93266560ef4f8946f04519ba"
+    },
+    {
+      "path": "0004_m1_durable_jobs.sql",
+      "sha256": "078ea1cdfdd54e7f70e460d94d4d38e4e3b123d7280fc152143a4a41f9f2d4aa"
+    },
+    {
+      "path": "0005_m1_observability.sql",
+      "sha256": "cc39334f3318eba2a60d10407a2367272e98051727b10dffe80e010bc4f10080"
+    },
+    {
+      "path": "0006_m1_storage_lifecycle.sql",
+      "sha256": "1f6072249d6bf625f57ff3f464e071d487f5acd2291d67f3fa794930ae0aaed9"
+    },
+    {
+      "path": "0007_m1_provider_result_reconciliation.sql",
+      "sha256": "3f044211291173287ec666376092bd6af32b1ff0b9282cabe5c027cefc479675"
+    },
+    {
+      "path": "0008_m1_username_password.sql",
+      "sha256": "c8b731a5ef5e2264e6f086ab2dd02e7f4ad898973895f6d3de5b90cd3e057f66"
+    },
+    {
+      "path": "0009_m1_account_lifecycle.sql",
+      "sha256": "003313542fce6559d91383f27a2478f9270d2bd0c586f9d687889ed159010351"
+    },
+    {
+      "path": "0010_m1_facts_parse_cache.sql",
+      "sha256": "858fa8571ff2682d08322379f9654c3c2606c0f2ec339a87e567dc002bb5ba47"
+    },
+    {
+      "path": "0010_m1_word_delivery_evidence.sql",
+      "sha256": "69d0241774cfd54b6a3dcd977af4a0534e76863a04fe72e3977ed4da0ed78bdc"
+    },
+    {
+      "path": "0011_m1_project_material_events.sql",
+      "sha256": "717f40adfce271cc87355471121905f84dbffcb4761f33648b62680c4fad44f2"
+    },
+    {
+      "path": "0012_m1_fact_decisions.sql",
+      "sha256": "e6cd6f004e7bd83ccfea9874ec5a2c0636aaf6e8e18b4471926037907b7bc024"
+    },
+    {
+      "path": "0013_m1_historical_profiles.sql",
+      "sha256": "350adfdb4179424c7f67a6af0e1557ffe3381bdd73debd176914e0e8a5b458cf"
+    },
+    {
+      "path": "0013_m1_update_project_details.sql",
+      "sha256": "c6da7e1f594d6537acb21a2c4979c892abcd272002f7b84b45b5e9f6c7243bba"
+    },
+    {
+      "path": "0014_m1_parse_evidence_snapshots.sql",
+      "sha256": "fcb53ce319ec4d66031848d3ed437cb2f43cd3f359cb11d5879f35c52b87b663"
+    },
+    {
+      "path": "0015_m1_credit_facility_supplements.sql",
+      "sha256": "f90d8aa803a1c286bae863b87f454b86d0af35cd3d5e7e964b166d667263146f"
+    },
+    {
+      "path": "0016_m1_update_difficulty_snapshots.sql",
+      "sha256": "8c870b3845913f86a787949388c7e080bf57631b720d36af17074c04480b4021"
+    },
+    {
+      "path": "0017_m1_ocr_review.sql",
+      "sha256": "f5c10b41e0dedb8c69130319dbb0555b7f737029fb0686937fe4d8f819ca2dfa"
+    },
+    {
+      "path": "0018_m1_rule_pack_release_ledger.sql",
+      "sha256": "c7533ff482e6754c3f56c4a00885f2058d475d00a5e20dcc24d9f6af1db11a4b"
+    },
+    {
+      "path": "0018_m1_upload_reuse.sql",
+      "sha256": "be15b8fc0104a559fd4cd35ffec200c5081fb58bf2212e85ac783b616e0f3989"
+    },
+    {
+      "path": "0019_m1_model_adapter_attempt_runtime.sql",
+      "sha256": "2947d38e4a65d61a37613722088511401ab438d34e78d9c4542075300f6a9a67"
+    },
+    {
+      "path": "0020_m1_material_parse_jobs.sql",
+      "sha256": "920664209fef4e3bd48660b97ff72eca0d581532d9450bf160ca268030eae2e7"
+    },
+    {
+      "path": "0021_m1_log_operations.sql",
+      "sha256": "3af587b14f3601edb795062d79ec3a70973151d8f08cf8c4c91853c11e6f031a"
+    },
+    {
+      "path": "0023_m1_reference_library.sql",
+      "sha256": "c6fa09848c7f44a83c4b40fb4ee8378dd2d82c698325938960a2ec65374abcfd"
+    },
+    {
+      "path": "0024_m1_worker_runtime.sql",
+      "sha256": "91aa13517bfc471e0624d8f00934c52d83666d28bb75ed885ff596d548378e5f"
+    },
+    {
+      "path": "0025_m1_trial_guard.sql",
+      "sha256": "8a18c5ed8956ecb19c35b7375ab960304cf6da7dec72aa2054860d5f15c029dd"
+    },
+    {
+      "path": "0026_m1_user_deletion_lifecycle.sql",
+      "sha256": "07816f43d984df3a75c56a5f620a22a8d0139aeb70fdff4ccb14886947e6a6d0"
+    },
+    {
+      "path": "0027_m1_platform_probe.sql",
+      "sha256": "1cfd11c047e3dbee3328ba9caabd5fca7e55f208cb278c6ce85f8d1126e772d0"
+    },
+    {
+      "path": "0028_m1_ops_scheduler.sql",
+      "sha256": "f1d1f446c47cfcb2a7c5ca4cd82a63dc96c6ea88572d9199c6310afe8541b9dd"
+    },
+    {
+      "path": "0030_m1_library_comparability.sql",
+      "sha256": "ae641b9ffec0848c9b24de5d31266fe0358f174efc43a37b3abce509ca63d4a9"
+    },
+    {
+      "path": "0031_m1_ops_last_success.sql",
+      "sha256": "ae03980d029db0c80c6a1a59e476f477bfa6f4edd841433bb3d2c7193b05ecab"
+    },
+    {
+      "path": "0032_m1_library_scheduled_sync.sql",
+      "sha256": "48d4f86e5e5ce0fd8d8ede9709ffe614b0a829fab56d8c13b7dcc8d677fa0372"
+    },
+    {
+      "path": "0033_m1_issuer_business_profiles.sql",
+      "sha256": "af9cdd6ffa59f9f46532fec5e3ebe0842d072f6e1bc9ba34e16342b89021cfd6"
+    },
+    {
+      "path": "0034_m1_v11_reference_selection_locks.sql",
+      "sha256": "a2a9382590061a94eed378346de11b94e148e6e8f00a8e932e8367638f893f03"
+    },
+    {
+      "path": "0035_m1_issuer_identity_source.sql",
+      "sha256": "4fba369d7ba2bb458a603c24404538cedf3726087f5160ba1475a46d34d050de"
+    },
+    {
+      "path": "0036_m1_production_rule_pack_registry.sql",
+      "sha256": "a3af80a8eb087e598ff4df55977a3f03a3a3887a63b5dfcc0e91b8dac534a8ec"
+    },
+    {
+      "path": "0037_m1_rule_pack_sample_expectation_binding.sql",
+      "sha256": "cbda45dc94059d783e9ee1bc5203260aa90a784597305a15060407efef400d44"
+    },
+    {
+      "path": "0038_m1_fact_extraction_runs.sql",
+      "sha256": "2059910cb693f89e502fed58ad3e73076ef2b36ce1ae76c8447b429923adfab2"
+    },
+    {
+      "path": "0039_m1_rule_applicability_context.sql",
+      "sha256": "7f6ccfb047b7cf36f0680e72babf5f2fb6553c8bddb6eb4a780213c234a57ef6"
+    },
+    {
+      "path": "0040_m1_preflight_logical_jobs.sql",
+      "sha256": "3e72aab1ce138a108b0fd178600c15d7dad0c0c9925df63d74a6dd4f588f1186"
+    },
+    {
+      "path": "0041_m1_log_blob_archive.sql",
+      "sha256": "6ea1ad3f4dc8919b876f766a6c2430f559c97dda5c123bf9c49372f3f6e26b52"
+    },
+    {
+      "path": "0042_m1_orphan_prompt_blobs.sql",
+      "sha256": "3528b5bf593390cb4fff834d76efa9bf3096bee22cced0375a7a3a930219a031"
+    },
+    {
+      "path": "0043_m1_project_archive.sql",
+      "sha256": "a7141c8adcb73b1b2cae053b7068248a76b1c307adc4367b694b83c11af8d66e"
+    },
+    {
+      "path": "0044_m1_account_recovery.sql",
+      "sha256": "6359e363ecb62d4d8bb707b587f31900245331ca59ee06793498dfa0439ff0c8"
+    },
+    {
+      "path": "0045_m1_issuer_reviewer_grant_audit.sql",
+      "sha256": "9f0e28d23d9f8ae4cc754556344d2621bee5627617a753b64c3a147270a62387"
+    },
+    {
+      "path": "0046_m1_user_reference_pins.sql",
+      "sha256": "ddb4d1c4c63719d6908c8d24ae8d012ceac1d0f3f4096c13bce4c4d49d5f39ec"
+    },
+    {
+      "path": "0047_m1_user_reference_review_evidence.sql",
+      "sha256": "d8d566dac1f5ba897a08c84c6319973ee05670eaef624d06f62a7f4c610884ef"
+    },
+    {
+      "path": "0048_m1_issuer_reviewer_read_scope.sql",
+      "sha256": "fa3accffe463a53a60c0ac1300a22654cf2b147c58d73da5a27a86819e993e44"
+    },
+    {
+      "path": "0049_m1_issuer_reviewer_project_grants.sql",
+      "sha256": "a9e30c113b5d9d635fec7c15c1b913d3a7d942fa102dc2ed75ad2b0b3a89cd75"
+    },
+    {
+      "path": "0050_m1_credit_facility_supplement_versions.sql",
+      "sha256": "cf8abdc55760b1ec90bc1bd5cbe4a3ebe357afd8ad7fa99fca9795c515dc47c1"
+    },
+    {
+      "path": "0051_m1_rule_applicability_reviewer_grants.sql",
+      "sha256": "abffd1d58ab18e26a6613dae96a1e7ca9df20a578048da3995a7d1c23d994dd1"
+    },
+    {
+      "path": "0052_m1_rule_applicability_field_reviews.sql",
+      "sha256": "e33aa0c15c4d92deb5167982545abc60a5ed95365b36669facc6e9b19c58608b"
+    },
+    {
+      "path": "0053_m1_input_revision_target_confirmations.sql",
+      "sha256": "82128be427d5b10267b4083791f0c843bf11f276fce021cef9c6d0854d60f806"
+    },
+    {
+      "path": "0054_m1_rule_applicability_overall_reviews.sql",
+      "sha256": "c3f583afc49c2cc502577a035351cab136c2fa8e9a3ec722e1b8ee9764fada76"
+    },
+    {
+      "path": "0055_m1_rule_applicability_feature_evidence_v2.sql",
+      "sha256": "8baeb861b65c19b95a1f6358741e51fd6ce52e2d538e786ee7693a81dc74ee1d"
+    },
+    {
+      "path": "0056_m1_non_production_test_grants.sql",
+      "sha256": "29ee8318102e4fef67fd1c7a3b057760ce24054cde79c1aa3bfc037c56412f4e"
+    },
+    {
+      "path": "0057_m1_target_period_evidence_decisions.sql",
+      "sha256": "e57a9e4bbed2e65b319759a409e71ef1aeea084a764a0c27ab08e9139a3e0ef1"
+    },
+    {
+      "path": "0058_m1_update_difficulty_evidence_identity.sql",
+      "sha256": "8a98f90a4de47a4e3306d01a7fbca6f675705abcf5c5be0e9fff66cf343ba822"
+    },
+    {
+      "path": "0059_m1_issuer_annual_profile_reviews.sql",
+      "sha256": "7fd25c5e6162dbff98235d59391f2ba8d50842721429e38ac15dfc97642a78d8"
+    },
+    {
+      "path": "0060_m1_fact_evidence_context_sets.sql",
+      "sha256": "926b712c7be83922c6fb98dc2fb526a293fd4bbbcd1ea428f4c138529cf0cb55"
+    },
+    {
+      "path": "0061_m1_model_cost_attribution.sql",
+      "sha256": "ef72163a51f02f90761217e30bd8b5db78bc05ec245c75609141e85cf4af958f"
+    },
+    {
+      "path": "0062_m1_user_submission_versions.sql",
+      "sha256": "53226f5de853822ebb27033af11e73630ea3afb617250eac013bf5cc833f3e33"
+    },
+    {
+      "path": "0063_m1_reference_revenue_rank_proof.sql",
+      "sha256": "5320c9dcf0bf36c87e29a494a1426d1560225ac31931813d110af0d29dadd060"
+    },
+    {
+      "path": "0064_m1_rule_source_legal_date_evidence.sql",
+      "sha256": "4ea0d749e8fd48cb8111c2e7df855a47ccdec35fa45b3f2f9528e6f62ed086bc"
+    },
+    {
+      "path": "0065_m1_fact_evidence_reviews.sql",
+      "sha256": "f83def54a68bc1775a53f1aa98d8bdd049389516a7edf74ba0633f24491d08ba"
+    },
+    {
+      "path": "0066_m1_target_period_candidate_snapshots.sql",
+      "sha256": "818b8473c299288849bbd47ee710aaf00c037fb32c6625ecc8d1b5aa05af9439"
+    },
+    {
+      "path": "0068_m1_browser_error_reports.sql",
+      "sha256": "11246a8181120e25427a878ce0ed609572d192056a98cc08a086b9dc695cc58f"
+    },
+    {
+      "path": "0069_m1_log_archive_retention.sql",
+      "sha256": "dd68a0387ffb02441e107b2f2d57910109e01d1e4bcf91e192e17b9b145bb53a"
+    },
+    {
+      "path": "0070_m1_error_diagnosis.sql",
+      "sha256": "d8b26091ee6858defefd39ecb52b011317b3e1cd00d343ca7af92403197315ca"
+    },
+    {
+      "path": "0071_m1_production_review_attestation_ledger.sql",
+      "sha256": "eb565d9ae445cd55663bacfa919ae58ec03d30ea5c7b6b25e50499c891f847a7"
+    },
+    {
+      "path": "0072_m1_production_component_snapshots.sql",
+      "sha256": "c3cb1f5415036da6a79f2723cf5dc22410725b55825c1a60b765d1bcae5ad7a1"
+    },
+    {
+      "path": "0073_m1_production_release_attestation_binding.sql",
+      "sha256": "df280f44d354fcdd4a899420b870683ec33749db5bdc4684664294f735511ec3"
+    },
+    {
+      "path": "0074_m1_storage_inventory.sql",
+      "sha256": "ba4004fe6b9b644720acea1ba5027a73ba8e25dd45956298b8a679fd5f060c10"
+    },
+    {
+      "path": "0075_m1_generation_issuer_bindings.sql",
+      "sha256": "22ece32fb756f7ac7cb5ae4fbc77ed021a6fefd0b5c73bee3521d7e73d445136"
+    },
+    {
+      "path": "0076_m1_signed_pdf_assessment.sql",
+      "sha256": "f7e392f85596bd02365a32474cc960748c1a3dacd38a45bfe6e1a189af2184da"
+    },
+    {
+      "path": "0077_m1_project_message_revisions.sql",
+      "sha256": "fd9b447ec0c8bf27c38a9802ba3bfb4319d97bdc0b718139bf3a4251ef8df7de"
+    },
+    {
+      "path": "0080_m1_ocr_v2_checkpoints.sql",
+      "sha256": "f60917c8143a05187006f26179b1851c0f9cd415661dc63726904faaa53a05b9"
+    },
+    {
+      "path": "0081_m1_project_kind_conversion.sql",
+      "sha256": "1e01df98e81227369203337f095c8af425e5a76476260783f2150bf5d14656cf"
+    },
+    {
+      "path": "0082_m1_material_role_copy.sql",
+      "sha256": "0304aee1f5d274e8b14a5ca1420d9503ba636dddb7fed81f87906707924f4bc3"
+    },
+    {
+      "path": "0083_m1_test_execute_rejection_without_grant.sql",
+      "sha256": "71e4386ca270fefc8f665b3c6c0244520b6ed9a6cbf2628fce4ee68c13e157bc"
+    },
+    {
+      "path": "0084_m3_review_workspace.sql",
+      "sha256": "0510aa3fc1f11265daafdba956f122c6b00b6b4cdd725577ae7696a02c5404dd"
+    },
+    {
+      "path": "0085_m3_review_assistant.sql",
+      "sha256": "975d5110a2f7dfafc7ef8701cb66577b875521f49dd88cfd948034459e0ab4ba"
+    },
+    {
+      "path": "0086_m3_project_run_mutex.sql",
+      "sha256": "9f8e0749213970ecb45ee59351d5c4cb1c657956f671dbda26f726b04d4d93b8"
+    },
+    {
+      "path": "0087_m2_fixed_credits.sql",
+      "sha256": "62aa1c4cf96eb3e9486a7e784d1cbd8b0a14a1824d0fef183436d269e3b1dcb1"
+    },
+    {
+      "path": "0088_m3_linked_assistant.sql",
+      "sha256": "fc1fb860287a23ce33d55c9aea428d815fb69a96a48fe2bcf0bada12e1db53ea"
+    },
+    {
+      "path": "0089_paid_review_credits.sql",
+      "sha256": "f2bd966582fc415a312dbf32aba3368b7680b06ccdf9a273bc5547fab15a7a63"
+    },
+    {
+      "path": "0090_multipage_signed_pdf_assessment.sql",
+      "sha256": "1f38693a941021b9ba96914e6a4ddd8271e33f089c9a65e96b9a722a9278c971"
+    },
+    {
+      "path": "0091_m4_workspace.sql",
+      "sha256": "7dae47ede7ff1882b36b56a9f33d8573bbcdadbcfa585493814cf9ee7303352b"
+    },
+    {
+      "path": "0092_m4_pending_requirements.sql",
+      "sha256": "a721a1d7bd12b8ba9b5c1c4c6f6abe2f4e5205e3513aaaabb0013eadedf4a033"
+    },
+    {
+      "path": "0093_m4_qa_text_delivery.sql",
+      "sha256": "20268d707ada0d7699a36c071cba2fcb5982bb196433a21392f9b5b45a985453"
+    },
+    {
+      "path": "0094_m4_settlement_allocation_variable.sql",
+      "sha256": "167412046310fb35e80f18d84240d654e3b9e2fadfccea6b94914e29097cf95a"
+    },
+    {
+      "path": "0095_m4_artifact_revision_number.sql",
+      "sha256": "8901bc61c1a572c53b18f3f72b0efd79b654219a7b25bcbf8fe139b86274e159"
+    },
+    {
+      "path": "0096_m4_message_template_identity.sql",
+      "sha256": "0feea24722e28581af6249ced91df81865336a82aa0b9e855b7be849d7ab8b71"
+    },
+    {
+      "path": "0097_m4_cross_project_material_retention.sql",
+      "sha256": "4f38ae8906c1fcb06cfdb73fc44c14f5b605be26826c23794d616b48f129e43b"
+    },
+    {
+      "path": "0098_m4_material_knowledge.sql",
+      "sha256": "d999b421b030caa6f279e126fa896d76f04b497e62a5515d39d3434c9d37567a"
+    },
+    {
+      "path": "0099_m4_fixed_document_credits.sql",
+      "sha256": "dd0287c9a81fe78994bafb7bee2ef38e2b2d8986570740016f5d560be1850bcd"
+    },
+    {
+      "path": "0100_global_project_assistant.sql",
+      "sha256": "2f7d95ef576b231de0b18923773bf95b86d006ef662aaf58ab89e56aca41d4eb"
+    },
+    {
+      "path": "0101_m4_fixed_qa_prices.sql",
+      "sha256": "e84a6636945a7388058bae9e60d79657b052cb055a8d96bcdccd2daf12d12035"
+    },
+    {
+      "path": "0102_credit_history_indexes.sql",
+      "sha256": "fd4b1842fea7bc323765bb8fb8f1e47c109a85cf0960e83fb860760a0e502bee"
+    },
+    {
+      "path": "0103_authoring_progress.sql",
+      "sha256": "74cee637f1a3b240e59ecf30b172c904965270e8c020579f9511579a47bae8d3"
+    },
+    {
+      "path": "0103_review_pdf_delivery_evidence.sql",
+      "sha256": "25552b503a966b38c5ede4d0faefe87ba05eda56798f5906924d54a11b09ba54"
+    },
+    {
+      "path": "0104_authoring_dynamic_balance.sql",
+      "sha256": "610d6a359db88b9110264481c4d602e9dfdff17d3c02e409c7f490fb326b6d3b"
+    },
+    {
+      "path": "0105_m4_dynamic_balance.sql",
+      "sha256": "2f216d774411c31d044ed0b108be7557819815d01b81e373aa015f813e0552c9"
+    },
+    {
+      "path": "0106_m4_case_templates.sql",
+      "sha256": "d0d59454af153b7c5bfa0f507d4214b52133356de56165ab1ed1c5b78bc9775d"
+    },
+    {
+      "path": "0107_update_project_prospectus_versions.sql",
+      "sha256": "02ec23e8aa34a6bb59dceec680ae8335565a8a8fbcf7ffe275f63280cd905d4f"
+    },
+    {
+      "path": "0108_backfill_prospectus_versions.sql",
+      "sha256": "6abb16f4426ea89b7a61a8e74c95bf9af42d65c38c60a96b9b748f9d42dad9a1"
+    },
+    {
+      "path": "0109_review_editor.sql",
+      "sha256": "657e06b99c49b1ad16b0455a63d4b74a24905f08b160981f68435b4d106c032b"
+    },
+    {
+      "path": "0110_review_dual_word_settlement.sql",
+      "sha256": "af7d54e2a9dc69943e8b4508bca5bcedd2bc6d4006d27404dc4e24ccb7348b71"
+    },
+    {
+      "path": "0111_project_file_workspace.sql",
+      "sha256": "05b0a512be6405b344b32cb0173a428c3ff7a66f5bc4812386e5ad7a156aa155"
+    },
+    {
+      "path": "0112_project_file_update_credits.sql",
+      "sha256": "4e9883d17c13afbd6969b4a091f069457465122ef4fbe26f74efa0e0f7e17741"
+    },
+    {
+      "path": "0113_integrity_rounds.sql",
+      "sha256": "9b4d7bbcce6dc6482749ca0806d6af2f41bdd29eb9cc410cc9df452af1013efa"
+    },
+    {
+      "path": "0114_integrity_workpapers.sql",
+      "sha256": "1d893f1cbf4f202b7f26348d9105ed01dfc51d75299e038a593da41876c13609"
+    },
+    {
+      "path": "0115_project_qa.sql",
+      "sha256": "4824c4196fd3554dabb7149e25bc5391579fa96c7f5f45d53f4bf75d5addbb6e"
+    },
+    {
+      "path": "0116_integrity_browser_evidence.sql",
+      "sha256": "b30e83bc331fea67c4e675f11548d776b7505bf75f053b4e0a37316efe4fa839"
+    },
+    {
+      "path": "0117_run_origin_input_immutable.sql",
+      "sha256": "7dc6b34974a2e84b96a20567dca03e86ae76fa0b27ac08324c6e8be5442f5551"
+    },
+    {
+      "path": "0118_run_supplement_drafts.sql",
+      "sha256": "4f664be240c8d8fde3366a444eb2d0d7dc9bf08ac1f4fbd6234950756037ecb4"
+    },
+    {
+      "path": "0119_initial_run_execution_identity.sql",
+      "sha256": "4b24c02e31d253481307f9b2978a478dbbfdaa6dd2e055e331f0e6b377b5f20c"
+    },
+    {
+      "path": "0120_model_call_execution_bindings.sql",
+      "sha256": "7799121cc285ee44fe439bdbcf146043ac0d68e10f3b6c7ff4428e4b7605e739"
+    },
+    {
+      "path": "0121_run_supplement_saved_work.sql",
+      "sha256": "ed03edc1373c78ec4cffe2dfd6cce9dcd2dea5e1601c39983ba2d85e5cdc038e"
+    },
+    {
+      "path": "0122_run_working_file_lifecycle.sql",
+      "sha256": "f16585530b6a35586f85f622df20c0f92ed185fa61f600ba19a869df2a4a86b2"
+    },
+    {
+      "path": "0123_run_working_file_result_claims.sql",
+      "sha256": "d92ebf2cfc4c6091ee4c38cbc149dd967bb54c15e95b2744f5d28e2df78f249e"
+    },
+    {
+      "path": "0124_run_execution_business_snapshots.sql",
+      "sha256": "552851b900bc403cb95fe22993555ac890cdee2a9cc78f99b85385d5dbe0be75"
+    },
+    {
+      "path": "0125_artifact_execution_bindings.sql",
+      "sha256": "c7bd8c48264a8c61c6180f2ba0e58e9de4740c8eb27434109b5878c344579dff"
+    },
+    {
+      "path": "0126_run_execution_deliveries.sql",
+      "sha256": "6176959e943235fa037768399246e8bb7a5eedbca355f92939be9d2e8e061ff8"
+    },
+    {
+      "path": "0127_review_execution_editors.sql",
+      "sha256": "606e8f2773b57f1beb2a85147a5469d8ce32bf9cc1f6643615a59a58351311d6"
+    },
+    {
+      "path": "0128_review_execution_reports.sql",
+      "sha256": "1fb8e0ed7580e435c02735b30f70240b51c282c3a3fb03b3beedb3a3746a3e3d"
+    },
+    {
+      "path": "0129_review_execution_artifacts.sql",
+      "sha256": "60a24b17267fe76996c6329bac3155706473d81425e470627ba7a06be4bee948"
+    },
+    {
+      "path": "0130_m4_execution_artifacts.sql",
+      "sha256": "a6674a45f25770f155112163fde67f495e178ffb2d1e3bc5dbcca483b4b5d40b"
+    },
+    {
+      "path": "0131_run_supplement_processing_plans.sql",
+      "sha256": "c4408dcf78e9d0936def9bfcb84c112dc69e61da4ac2af7d8e72886a761080f5"
+    },
+    {
+      "path": "0132_run_execution_heads.sql",
+      "sha256": "08c5de4c7c038159af6671d66c1a2535e9dbbad3016321a882e56e417425852d"
+    },
+    {
+      "path": "0133_material_purge_barrier.sql",
+      "sha256": "568fd5d49a5174f331d22af0a4d5cb8dcf610cdc7382038c45a9f0a108d24944"
+    },
+    {
+      "path": "0134_review_body_deletion.sql",
+      "sha256": "1c7f9047ebfa698a6c6760d46e23a4f2a70b830c144329eeedb23da8c59d7b4b"
+    },
+    {
+      "path": "0135_run_test_successor_execution.sql",
+      "sha256": "49d4da078b13a457e4a985e5530eef4208b793236eaa82eb6cf2b6d837c8bccc"
+    },
+    {
+      "path": "0136_test_successor_word_delivery.sql",
+      "sha256": "de66ed52a73121fb2f701504264af7f6d265b5600bcffdad1257830e206df3dd"
+    },
+    {
+      "path": "0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    },
+    {
+      "path": "0138_run_billing_segments.sql",
+      "sha256": "493beab981f86c178c34a913744958451900709a128a4a598e5082bd31531b30"
+    },
+    {
+      "path": "0139_run_supplement_production_adoption.sql",
+      "sha256": "c622e5dc41847258201aa5aee880968cab51f497045cd30a42bfdbde9e588821"
+    }
+  ],
+  "sourcesStable": true,
+  "completedAt": "2026-10-27T01:46:12.172Z"
+}

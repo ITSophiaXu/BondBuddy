@@ -1,0 +1,101 @@
+{
+  "synthetic": true,
+  "started": "2026-10-26T10:36:21.474Z",
+  "status": "passed",
+  "clone": "bb_g03_migration_lock_20152_a94a515f1d",
+  "migration": "0119_initial_run_execution_identity.sql",
+  "migration_sha256": "4b24c02e31d253481307f9b2978a478dbbfdaa6dd2e055e331f0e6b377b5f20c",
+  "observations": {
+    "waiting": {
+      "writer_pid": 41636,
+      "migration_pid": 34668,
+      "locks": [
+        {
+          "relname": "bb_input_revisions",
+          "mode": "ShareRowExclusiveLock",
+          "granted": false,
+          "blocking_pids": [
+            41636
+          ]
+        }
+      ],
+      "inputWait": {
+        "relname": "bb_input_revisions",
+        "mode": "ShareRowExclusiveLock",
+        "granted": false,
+        "blocking_pids": [
+          41636
+        ]
+      },
+      "writerLocks": [
+        {
+          "relname": "bb_input_revisions",
+          "mode": "RowExclusiveLock",
+          "granted": true
+        }
+      ]
+    },
+    "concurrent_backfill": {
+      "original": {
+        "id": "db3bf2bc-19f5-485a-b42e-c9ed7800f421",
+        "owner_user_id": "synthetic-lock-4bdbc46e-9870-4908-a92c-fe051a1157be",
+        "project_id": "9a7968c4-8446-4379-a560-5db13614a235",
+        "input_revision": 1,
+        "input_hash": "c0de0e6a5e169dae91f223ab6d9ed93775809261fe2a2497e856bc7e66e4299b",
+        "execution_request_id": "f43841c7-ae1c-4220-8b22-a12756ce08b0",
+        "task_kind": "update",
+        "request_hash": "b17f1b868be0b0d10636d4f39a79504c76d8f58b845470587770351d52eaec15",
+        "state": "queued",
+        "stage": "queued",
+        "event_cursor": 0,
+        "artifact_id": null,
+        "prompt_snapshot_ref": null,
+        "created_at": "2026-10-26T10:36:25.573Z",
+        "updated_at": "2026-10-26T10:36:25.573Z",
+        "artifact_version": null,
+        "channel": "production",
+        "test_grant_id": null,
+        "uncovered_items": [],
+        "billing_mode": "platform_trial",
+        "reservation_id": null,
+        "billing_exemption": null
+      },
+      "execution": {
+        "owner_user_id": "synthetic-lock-4bdbc46e-9870-4908-a92c-fe051a1157be",
+        "project_id": "9a7968c4-8446-4379-a560-5db13614a235",
+        "run_id": "db3bf2bc-19f5-485a-b42e-c9ed7800f421",
+        "execution_version": 1,
+        "input_revision": 1,
+        "input_hash": "c0de0e6a5e169dae91f223ab6d9ed93775809261fe2a2497e856bc7e66e4299b",
+        "created_at": "2026-10-26T10:36:25.573Z"
+      }
+    },
+    "new_transaction": {
+      "uncommitted_execution": {
+        "owner_user_id": "synthetic-lock-4bdbc46e-9870-4908-a92c-fe051a1157be",
+        "project_id": "9a7968c4-8446-4379-a560-5db13614a235",
+        "run_id": "0f9bb514-35fd-493b-b780-18be45b0ba79",
+        "execution_version": 1,
+        "input_revision": 2,
+        "input_hash": "e894fcb9eb83ce9c50e8e5bf22e40efd9295e324df1420442194a7a95770ff63",
+        "created_at": "2026-10-26T10:36:25.719Z"
+      },
+      "rollback_removed_run_and_input": true,
+      "committed_execution": {
+        "owner_user_id": "synthetic-lock-4bdbc46e-9870-4908-a92c-fe051a1157be",
+        "project_id": "9a7968c4-8446-4379-a560-5db13614a235",
+        "run_id": "0f9bb514-35fd-493b-b780-18be45b0ba79",
+        "execution_version": 1,
+        "input_revision": 2,
+        "input_hash": "e894fcb9eb83ce9c50e8e5bf22e40efd9295e324df1420442194a7a95770ff63",
+        "created_at": "2026-10-26T10:36:25.745Z"
+      }
+    }
+  },
+  "cleanup": {
+    "dropped": true,
+    "remaining_clone_count": 0
+  },
+  "finished": "2026-10-26T10:36:26.216Z",
+  "migration_committed": true
+}

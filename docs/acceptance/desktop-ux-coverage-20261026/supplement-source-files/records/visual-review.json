@@ -1,0 +1,37 @@
+{
+  "synthetic": true,
+  "viewport": {
+    "width": 1440,
+    "height": 960
+  },
+  "initial": {
+    "file": "browser-real-evidence/m1-source-declaration-isolated-viewport.png",
+    "finding": "Oversized checkbox and vertically compressed label found after functional pass"
+  },
+  "final": {
+    "file": "browser-real-evidence-1/m1-source-declaration-isolated-viewport.png",
+    "visually_reviewed": true,
+    "finding": "Compact checkbox and readable horizontal text; source fields and controls remain visible",
+    "geometry": {
+      "checkbox": {
+        "x": 326,
+        "y": 1697.796875,
+        "width": 18,
+        "height": 18
+      },
+      "text": {
+        "x": 352,
+        "y": 1695.796875,
+        "width": 903,
+        "height": 21.4375
+      },
+      "label": {
+        "x": 326,
+        "y": 1695.796875,
+        "width": 929,
+        "height": 21.4375
+      }
+    }
+  },
+  "reviewed_at": "2026-10-26T12:26:39.861Z"
+}

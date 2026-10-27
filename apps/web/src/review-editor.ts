@@ -46,11 +46,11 @@ export class ReviewEditor {
     try{
       const [state,history]=await Promise.all([this.api.request<ReviewEditorResponse>('GET',this.path(`review-executions/${encodeURIComponent(run)}/editor`),undefined,{},this.signal),this.api.request<{items:ReviewHistoryEntry[]}>('GET',this.path('review-history'),undefined,{},this.signal)]);
       if(!this.live()||generation!==this.generation)return;
-      if(!Value.Check(ReviewEditorResponseSchema,state)||state.run_id!==run||new Set(state.snapshot.issues.map(i=>i.id)).size!==state.snapshot.issues.length)throw new EditorReadError('复核编辑器版本与所选任务不一致，请重新选择历史版本。');
+      if(!Value.Check(ReviewEditorResponseSchema,state)||state.run_id!==run||(state.execution&&state.execution.execution_version!==1)||new Set(state.snapshot.issues.map(i=>i.id)).size!==state.snapshot.issues.length)throw new EditorReadError('复核编辑器版本与所选任务不一致，请重新选择历史版本。');
       if(!this.validArtifacts(artifacts))throw new EditorReadError('复核成果文件版本无法核实，请重新读取。');
       this.state=state;this.artifacts=artifacts.map(a=>({...a}));this.history=(Array.isArray(history.items)?history.items:[]).filter(h=>h?.run?.project_id===this.project&&typeof h.run.run_id==='string'&&['succeeded','test_completed'].includes(h.run.state)&&h.operation!=='revision'&&this.validArtifacts(h.artifacts)&&h.artifacts.some(a=>a.kind==='clean'));this.dirty=false;this.pending=undefined;this.recoveryBlocked=false;this.cacheWriteUnconfirmed=false;
       this.baseline=this.decisions();
-      this.cache=new ReviewEditorCache(this.owner,this.project,run);const saved=this.cache.read(state.sha256,this.issueIds());
+      this.cache=new ReviewEditorCache(this.owner,this.project,run,undefined,state.execution);const saved=this.cache.read(state.sha256,this.issueIds());
       if(saved.status==='valid'){this.restore(saved.value);if(this.pending)this.notice='新版导出回执尚未确认。处理选择已锁定，请显式重试确认；重新打开页面不会自动提交。';}
       else if(saved.status==='invalid'||saved.status==='unavailable'){this.recoveryBlocked=true;this.notice=saved.status==='invalid'?'浏览器中的复核恢复记录无法校验，已暂停修改和导出。请保留页面并联系支持，避免重复生成。':'浏览器暂时无法读取恢复记录，已暂停修改和导出。请恢复浏览器存储后重试读取。';}
       this.paint();
@@ -175,7 +175,7 @@ export class ReviewEditor {
     if(prior?.status==='valid'&&this.conflictingPending(prior.value.pending)){this.paint();return;}
     if(prior?.status==='invalid'||prior?.status==='unavailable'){this.recoveryBlocked=true;this.status('浏览器恢复记录尚未核实，本次尚未提交。请保留页面后重试读取。');this.paint();return;}
     if(prior?.status==='valid'&&prior.value.pending&&!this.pending){this.restore(prior.value);this.status('另一页面存在尚未确认的新版导出。已恢复原处理选择，请点击“重试确认新版导出”。');this.paint();return;}
-    const pending=this.pending??{request_id:crypto.randomUUID(),source_run_id:this.state.run_id,expected_editor_sha256:this.state.sha256,decisions:this.decisions()};
+    const pending=this.pending??{request_id:crypto.randomUUID(),source_run_id:this.state.run_id,expected_editor_sha256:this.state.sha256,...(this.state.execution?{source_execution:{...this.state.execution}}:{}),decisions:this.decisions()};
     // Persist and read back the entire immutable retry body before the first POST.
     if(!this.cache?.save({sha256:this.state.sha256,decisions:pending.decisions,pending},this.issueIds())){this.status('浏览器未能保存并校验恢复记录，本次尚未提交。请恢复浏览器存储后重试；离开前请保留人工修改。');return;}
     this.pending=this.cache.read(this.state.sha256,this.issueIds()).value?.pending;

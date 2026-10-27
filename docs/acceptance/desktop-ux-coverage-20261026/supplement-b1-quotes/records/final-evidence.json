@@ -1,0 +1,114 @@
+{
+  "recordedAt": "2026-10-27T01:03:42.116Z",
+  "baseCommit": "e16e3ed79e103612b1ab5e7814cd1e32a66c7bb5",
+  "scope": "Immutable authenticated B1 quote and explicit consent; no adoption, billing segment, debit or UI flow",
+  "migration": {
+    "from": "template0",
+    "count": 136,
+    "latest": "0137_run_supplement_quotes.sql",
+    "sourcesStable": true
+  },
+  "adopted": {
+    "api": [
+      {
+        "name": "build-api",
+        "exitCode": 0
+      },
+      {
+        "name": "quote-pg",
+        "exitCode": 0,
+        "tap": {
+          "tests": 26,
+          "suites": 0,
+          "pass": 26,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 91812.1786
+        }
+      },
+      {
+        "name": "processing-plan-pg",
+        "exitCode": 0,
+        "tap": {
+          "tests": 41,
+          "suites": 0,
+          "pass": 41,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 76301.4821
+        }
+      }
+    ],
+    "regression": [
+      {
+        "name": "classification",
+        "exitCode": 0,
+        "totals": {
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "pg",
+        "exitCode": 0,
+        "totals": {
+          "tests": 109,
+          "pass": 109,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    ],
+    "sql": {
+      "directory": "sql-pg-root-final",
+      "exitCode": 0,
+      "totals": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "sourceStable": true
+    },
+    "finalTypecheck": {
+      "completedAt": "2026-10-27T00:59:37.3297617Z",
+      "exitCode": 0,
+      "command": "node node_modules/typescript/bin/tsc -p apps/api/tsconfig.json --noEmit"
+    },
+    "contracts": "contracts-results.json (tool-session-only raw output limitation retained)"
+  },
+  "stability": {
+    "apiRunnerExit": 1,
+    "apiSourceChanges": [
+      "apps/api/src/run-supplement-quotes-sql.pg.test.ts"
+    ],
+    "apiRuntimeChanges": [
+      "apps/api/dist/run-supplement-quotes-sql.pg.test.js"
+    ],
+    "interpretation": "Parallel SQL test fixture changes only. All API implementation and executed quote/processing-plan dependencies remained identical; final SQL file passed dedicated complete PG run and final TypeScript check.",
+    "finalEntries": 1417,
+    "finalChangesFromApiAfter": [
+      "apps/api/dist/run-supplement-quotes-sql.pg.test.js"
+    ],
+    "finalImplementationEqualToAcceptedAfter": true,
+    "finalSqlTestCoveredByDedicatedRun": true
+  },
+  "preservedNonAdopted": [
+    "sql-pg-01: ESM/CJS runner startup failure; no SQL cases executed",
+    "sql-pg-02: tool timeout interrupted process; 12 emitted ok results are not added to final counts"
+  ],
+  "limitations": [
+    "No browser journey, production successor, additional charge, real model, supplier or production deployment is established.",
+    "G03/UX-A03 and the original goal remain active; historic 15/15 and 662 desktop counters are unchanged."
+  ],
+  "success": true
+}

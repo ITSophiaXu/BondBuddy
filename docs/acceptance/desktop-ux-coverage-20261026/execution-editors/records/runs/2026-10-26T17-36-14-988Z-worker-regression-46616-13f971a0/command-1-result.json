@@ -1,0 +1,16 @@
+{
+  "started": "2026-10-26T17:36:15.816Z",
+  "finished": "2026-10-26T17:36:55.615Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/worker/dist/review-word-registration.pg.integration.test.js",
+    "apps/worker/dist/review-input-execution.test.js",
+    "apps/worker/dist/review-file-stage.test.js",
+    "apps/worker/dist/run-execution-consumers.pg.test.js"
+  ],
+  "status": 1,
+  "signal": null,
+  "pid": 41184
+}

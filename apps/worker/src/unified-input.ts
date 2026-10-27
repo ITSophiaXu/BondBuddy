@@ -2,7 +2,7 @@ import { ReviewResultPinSchema, type ReviewResultPin } from '@bondbuddy/contract
 import { Value } from '@sinclair/typebox/value';
 import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
   type ReviewRevisionPin, type ReviewEvidenceRef, type UnifiedAuthoringInput, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { digest } from '@bondbuddy/api/data';
+import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { ownerProjectMessageBody } from '@bondbuddy/api/log-ops';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { runDocumentParser } from './document-parser.js';
 import { processOcrV2 } from './ocr-v2.js';
 import { readOcrV2Checkpoint } from '@bondbuddy/api/ocr-v2';
+import { readRunExecutionInput } from '@bondbuddy/api/run-execution-input';
+import { findReviewExecutionReport } from '@bondbuddy/api/review-report-execution';
 
 export type UnifiedManifest = Record<string, unknown> & { issuer_name: string; market: Market; offering: Offering;
   update_details: UpdateDetails; authoring: UnifiedAuthoringInput;
@@ -33,14 +35,12 @@ export function revisionEvidenceRefs(pin: ReviewRevisionPin): ReviewEvidenceRef[
 /** A revision can only consume the immutable report and explicitly accepted plan from its owner/project. */
 export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: ReviewRevisionPin): Promise<boolean> {
   if (!isReviewRevisionPin(pin) || pin.owner_user_id !== run.owner_user_id || pin.project_id !== run.project_id) return false;
-  const reportRow = (await pool.query(`SELECT run_id,version,content_sha256,report FROM bb_review_reports
-    WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND version=$4`,
-  [pin.source_report.report_id, run.owner_user_id, run.project_id, pin.source_report.version])).rows[0];
+  const reportRow = await findReviewExecutionReport(pool, run.owner_user_id, run.project_id, pin.source_report.report_id);
   const report = reportRow?.report;
   if (!reportRow || !isReviewReport(report) || String(reportRow.content_sha256).trim() !== pin.source_report.sha256
       || inputManifestHash(report) !== pin.source_report.sha256 || reportRow.run_id !== pin.source_report.run_id
       || report.run_id !== pin.source_report.run_id || report.report_id !== pin.source_report.report_id
-      || report.version !== pin.source_report.version || report.input_revision !== pin.source_report.input_revision
+      || reportRow.version !== pin.source_report.version || report.version !== pin.source_report.version || report.input_revision !== pin.source_report.input_revision
       || report.project_id !== run.project_id || inputManifestHash(report.source_material) !== inputManifestHash(pin.source_material)
       || pin.selected_findings.some(finding => inputManifestHash(finding) !== inputManifestHash(report.findings.find(item => item.finding_id === finding.finding_id) ?? null))
       || pin.excluded_findings.some(finding => !report.findings.some(item => item.finding_id === finding.finding_id))) return false;
@@ -66,13 +66,12 @@ export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: Revi
 /** Reload the exact successful report and its immutable source input on every recovery. */
 export async function reviewResultArtifact(pool:Pool,run:RunRow,pin:ReviewResultPin){
   if(!Value.Check(ReviewResultPinSchema,pin))return null;
-  const row=(await pool.query(`SELECT a.object_key,a.sha256,i.input_hash,i.manifest,e.snapshot FROM bb_artifact_versions a
-    JOIN bb_review_artifacts ra ON ra.artifact_id=a.id AND ra.artifact_version=a.version AND ra.owner_user_id=a.owner_user_id AND ra.run_id=a.run_id AND ra.kind='report'
+  const row=(await pool.query(`SELECT a.object_key,a.sha256,ra.input_hash,ra.manifest,ra.execution_snapshot AS snapshot FROM bb_delivered_artifact_versions a
+    JOIN bb_review_execution_artifact_versions ra ON ra.artifact_id=a.id AND ra.artifact_version=a.version AND ra.owner_user_id=a.owner_user_id AND ra.run_id=a.run_id AND ra.kind='report'
     JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id AND r.project_id=ra.project_id
-    JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
-    JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
-    WHERE a.id=$1 AND a.version=$2 AND r.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND r.input_revision=$6
-      AND r.state='succeeded' AND r.channel='production' AND e.operation IN ('full_review','differential_review')
+    WHERE a.id=$1 AND a.version=$2 AND r.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND ra.input_revision=$6
+      AND ra.execution_version=1 AND ra.input_hash=r.input_hash AND ra.input_revision=r.input_revision
+      AND r.state='succeeded' AND r.channel='production' AND ra.operation IN ('full_review','differential_review')
       AND a.quality_status='passed' AND a.delivery_status='available'`,[pin.artifact_id,pin.artifact_version,run.owner_user_id,run.project_id,pin.run_id,pin.input_revision])).rows[0];
   return row&&row.sha256.trim()===pin.sha256&&row.input_hash.trim()===pin.input_hash&&inputManifestHash(row.manifest)===pin.input_hash
     && inputManifestHash(row.snapshot.input?.source_material_ref??null)===inputManifestHash(pin.source_material)?row:null;
@@ -115,15 +114,27 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
 }
 
 async function previousArtifact(pool: Pool, run: RunRow, pin: NonNullable<UnifiedAuthoringInput['previous_output']>) {
-  const row = (await pool.query(`SELECT a.object_key,a.sha256 FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
-    WHERE a.id=$1 AND a.version=$2 AND a.owner_user_id=$3 AND r.project_id=$4 AND r.id=$5 AND r.input_revision=$6
-      AND r.state='succeeded' AND a.quality_status='passed' AND a.delivery_status='available'`,
+  const row = (await pool.query(`SELECT a.object_key,a.sha256 FROM bb_delivered_artifact_versions a
+    JOIN bb_run_execution_delivery_artifact_details d ON d.owner_user_id=a.owner_user_id AND d.run_id=a.run_id
+      AND d.artifact_id=a.id AND d.artifact_version=a.version
+    WHERE a.id=$1 AND a.version=$2 AND a.owner_user_id=$3 AND d.project_id=$4 AND d.run_id=$5 AND d.input_revision=$6
+      AND d.delivery_phase='final' AND d.terminal_state='succeeded' AND d.channel='production'
+      AND a.quality_status='passed' AND a.delivery_status='available'`,
   [pin.artifact_id,pin.version,run.owner_user_id,run.project_id,pin.run_id,pin.input_revision])).rows[0];
   return row && String(row.sha256).trim() === pin.sha256 ? row : null;
 }
 
 export async function loadUnifiedInput(ctx: StageContext, options: { originalFiles?: boolean } = {}): Promise<UnifiedInput> {
-  const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
+  if (!ctx.lease || ctx.run.id !== ctx.lease.runId || ctx.run.owner_user_id !== ctx.lease.owner
+    || ctx.run.executionVersion !== ctx.lease.executionVersion || ctx.run.inputRevision !== ctx.lease.inputRevision
+    || ctx.run.inputHash !== ctx.lease.inputHash
+    || ctx.run.input_revision !== ctx.lease.inputRevision || ctx.run.input_hash.trim() !== ctx.lease.inputHash)
+    throw new Error('INPUT_REVISION_CONFLICT');
+  const resolved = await readRunExecutionInput(ctx.pool, ctx.lease.owner, ctx.lease.runId, ctx.lease);
+  if (resolved.run.project_id !== ctx.run.project_id || resolved.run.task_kind !== ctx.run.task_kind
+    || resolved.run.input_revision !== ctx.run.input_revision || resolved.run.input_hash.trim() !== ctx.run.input_hash.trim())
+    throw new Error('INPUT_REVISION_CONFLICT');
+  const row = resolved.input;
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
   const revision = manifest.authoring.review_revision;
@@ -162,7 +173,7 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     if (!revision && (result.checkpoint?.stages?.ocr_evidence || ['image/png','image/jpeg'].includes(result.media_type) ||
         snapshot?.response.warnings.some(w => ['PDF_PAGES_WITHOUT_TEXT','PDF_IMAGES_NOT_OCRD'].includes(w.code)))) {
       const ocrScope = { owner: ctx.run.owner_user_id, projectId: ctx.run.project_id, materialId: pin.material_id,
-        version: pin.material_version, purpose: 'full_ocr' as const, runId: ctx.run.id, leaseToken: ctx.lease.token };
+        version: pin.material_version, purpose: 'full_ocr' as const, runId: ctx.run.id, leaseToken: ctx.lease.token,executionIdentity:ctx.lease };
       const { aggregate } = await processOcrV2(ctx.pool,ctx.blobs,ocrScope);
       if (aggregate.coverage !== 'complete') throw new UnifiedInputPending('authoring_ocr_incomplete');
       records = [];
@@ -208,6 +219,17 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     if(!stored||inputManifestHash(stored.manifest.materials)!==inputManifestHash(manifest.materials))throw Error('INPUT_REVISION_CONFLICT');
     materials.push({pin:{material_id:reviewResult.artifact_id,material_version:reviewResult.artifact_version,sha256:reviewResult.sha256,role:'review_report'},filename:'本次复核报告.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:stored.object_key,records:[]});
   }
+  const requirements = await loadUnifiedRequirements({ pool: ctx.pool, blobs: ctx.blobs,
+    owner: ctx.run.owner_user_id, projectId: ctx.run.project_id, manifest, signal: ctx.signal });
+  return { manifest, materials, requirements };
+}
+
+/** Resolve only immutable requirement pins, also for an internal candidate request.
+ * This reader does not grant execution authority or read the latest project messages. */
+export async function loadUnifiedRequirements(input: { pool: Pool; blobs: PrivateBlobs; owner: string;
+  projectId: string; manifest: UnifiedManifest; signal?: AbortSignal }): Promise<string[]> {
+  const { manifest } = input;
+  const reviewResult = manifest.authoring.review_result, revision = manifest.authoring.review_revision;
   const requirements: string[] = reviewResult ? ["根据所附复核报告，结合本轮原募集书与证据材料更新文稿。有充分依据的建议才应用；待确认或缺证事项保留，不将未执行的检查写为通过。保留原稿结构，输出修订版和清洁版。",reviewResult.requirements].filter(Boolean) : [];
   // The review input's requirements and the accepted plan remain separately pinned.
   // Neither later chat messages nor the project's current mutable draft are loaded here.
@@ -219,11 +241,11 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     }
   }
   for (const pin of manifest.authoring.requirements) {
-    const row = (await ctx.pool.query(`SELECT snapshot_id,content_sha256 FROM bb_user_submission_versions
+    const row = (await input.pool.query(`SELECT snapshot_id,content_sha256 FROM bb_user_submission_versions
       WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND message_id=$4 AND message_version=$5 AND submission_kind='project_message'`,
-    [pin.submission_id, ctx.run.owner_user_id, ctx.run.project_id, pin.message_id, pin.message_version])).rows[0];
+    [pin.submission_id, input.owner, input.projectId, pin.message_id, pin.message_version])).rows[0];
     if (!row || String(row.content_sha256).trim() !== pin.content_sha256) throw new Error('INPUT_REVISION_CONFLICT');
-    requirements.push(await ownerProjectMessageBody(ctx.pool, ctx.blobs, ctx.run.owner_user_id, ctx.run.project_id, row.snapshot_id, pin.content_sha256, ctx.signal));
+    requirements.push(await ownerProjectMessageBody(input.pool, input.blobs, input.owner, input.projectId, row.snapshot_id, pin.content_sha256, input.signal));
   }
-  return { manifest, materials, requirements };
+  return requirements;
 }

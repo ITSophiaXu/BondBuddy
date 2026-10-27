@@ -1,0 +1,12 @@
+{
+  "id": "2026-10-26T18-48-37-518Z-api-profile-1932-e2f42370",
+  "mode": "api-profile",
+  "status": 1,
+  "diagnostic_only": true,
+  "finished": "2026-10-26T18:48:37.744Z",
+  "command_result": {
+    "status": 1,
+    "signal": null,
+    "pid": 22524
+  }
+}

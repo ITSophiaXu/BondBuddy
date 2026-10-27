@@ -1,0 +1,22 @@
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (171.9977ms)
+✔ missing or non-file output cannot be labelled as available Word (0.307ms)
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (10485.4724ms)
+✔ synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection (703.9369ms)
+✔ test submissions cannot reserve the exact browser update key (2808.6706ms)
+✔ scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs (6890.2743ms)
+✔ working draft admission defers parse and business gaps while retaining ownership, pin and revocation checks (1968.6389ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (6686.6383ms)
+﹣ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (0.3827ms) # SKIP
+✔ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (2952.8176ms)
+✔ review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund (3853.3927ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (0.9694ms)
+✔ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (3680.5039ms)
+✔ checked revision metadata exposes clean and baseline downloads with pending review summary (1070.2178ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 160870.2462

@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "baseline_commit": "25c39048",
+  "goal_complete": false,
+  "g03_complete": false,
+  "notes": "The full API exploration remains failed (610 tests:484 passed,50 failed,3 cancelled,73 skipped); it used a session-recorded global runtime override and a60000ms per-test limit, whose original effective process environment was not captured. Final affected files are recompiled and verified in separate groups. Only six API test sources and their compiled JS changed between broad and final freezes; production, contracts, migrations and worker compiled files did not change. Synthetic snapshot/worker evidence is separate from authorized sample upload inspection. No full default all-green rerun, current browser journey, new-input adoption, surcharge authority, real model/Azure/payment, or new Word acceptance is claimed.",
+  "broad": {
+    "before": "source-before-2.json",
+    "freeze": "broad-freeze.json",
+    "command": "api-all-stream.json"
+  },
+  "final": {
+    "before": "source-before-3.json",
+    "freeze": "current-freeze.json",
+    "after": "source-after.json"
+  },
+  "selected": [
+    {
+      "label": "Exploratory broad API collection",
+      "phase": "broad",
+      "kind": "node_test",
+      "receipt": "api-all-stream.json",
+      "expected_status": 1,
+      "acceptance": false
+    },
+    {
+      "label": "Exact execution input, business snapshot and migration gates",
+      "phase": "final",
+      "kind": "node_test",
+      "receipt": "api-focused-1.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "expected_counts": {
+        "tests": 21,
+        "passed": 21,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "label": "Entire affected supplement, retention and business regression files",
+      "phase": "final",
+      "kind": "node_test",
+      "receipt": "api-regression.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "expected_counts": {
+        "tests": 186,
+        "passed": 186,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "label": "Corrected standalone catalog, dynamic wallet and default runtime assertions",
+      "phase": "final",
+      "kind": "node_test",
+      "receipt": "api-corrective.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "expected_counts": {
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "label": "Default runtime configuration regression",
+      "phase": "broad",
+      "kind": "node_test",
+      "receipt": "api-config-regression.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "note": "The selected compiled test files and all production files remain byte-identical at the final freeze; this earlier corrected-environment run is reported separately.",
+      "expected_counts": {
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "label": "Worker snapshot and identity unit regression",
+      "phase": "broad",
+      "kind": "node_test",
+      "receipt": "worker-unit-1.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "note": "Worker source/compiled bytes and all production bytes are unchanged at final freeze; two Linux-only symlink checks skipped on Windows.",
+      "expected_counts": {
+        "tests": 64,
+        "passed": 62,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0
+      }
+    },
+    {
+      "label": "Real PostgreSQL worker input loaders and execution boundaries",
+      "phase": "broad",
+      "kind": "node_test",
+      "receipt": "worker-pg-2.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "note": "Worker source/compiled bytes and all production bytes are unchanged at final freeze; four Azurite-dependent cases skipped.",
+      "expected_counts": {
+        "tests": 41,
+        "passed": 37,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 4,
+        "todo": 0
+      }
+    },
+    {
+      "label": "Four exact upload checks with sufficient isolated test budget",
+      "phase": "broad",
+      "kind": "node_test",
+      "receipt": "api-upload-timeout.json",
+      "expected_status": 0,
+      "acceptance": true,
+      "note": "Only four exact titles reran with240000ms runner budget; the complete upload file did not rerun. Its source/compiled file and production bytes remain unchanged at final freeze.",
+      "expected_counts": {
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    }
+  ],
+  "allowed_test_changes": [
+    "apps/api/dist/m4-knowledge.test.js",
+    "apps/api/dist/project-assistant.pg.test.js",
+    "apps/api/dist/review-readable-retention.pg.test.js",
+    "apps/api/dist/run-supplement-draft.pg.test.js",
+    "apps/api/dist/run-supplement-files.pg.test.js",
+    "apps/api/dist/run-working-files.pg.test.js",
+    "apps/api/src/m4-knowledge.test.ts",
+    "apps/api/src/project-assistant.pg.test.ts",
+    "apps/api/src/review-readable-retention.pg.test.ts",
+    "apps/api/src/run-supplement-draft.pg.test.ts",
+    "apps/api/src/run-supplement-files.pg.test.ts",
+    "apps/api/src/run-working-files.pg.test.ts"
+  ],
+  "runtime_environment_record": "runtime-env-history.json",
+  "migration_replay": {
+    "receipt": "migrate-1.json",
+    "minimum_applied": 100,
+    "required_migrations": [
+      "0119_initial_run_execution_identity.sql",
+      "0120_model_call_execution_bindings.sql",
+      "0121_run_supplement_saved_work.sql",
+      "0122_run_working_file_lifecycle.sql",
+      "0123_run_working_file_result_claims.sql",
+      "0124_run_execution_business_snapshots.sql"
+    ]
+  },
+  "cleanup": {
+    "audit": "database-audit.json",
+    "stop_audit": "pg-stop.json",
+    "stop_command": "pg-stop-command.json",
+    "stopped_status": "pg-stopped-status.json",
+    "start_record": "pg-start-direct.json"
+  },
+  "aborted_running_receipts": []
+}

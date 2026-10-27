@@ -1,0 +1,7 @@
+{
+  "started": "2026-10-26T16:04:25.261Z",
+  "cluster": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/delivery-postgres/data",
+  "role": "bb_delivery_test",
+  "port": 15528,
+  "note": "Using the previously verified Windows initdb elevation requirement; no prior cluster is overwritten."
+}

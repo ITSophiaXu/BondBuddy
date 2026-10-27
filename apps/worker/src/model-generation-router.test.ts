@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import { modelGenerationRouter } from './model-generation-router.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import type { RunStage, StageContext } from './run-pipeline.js';
 
 function context(taskKind: string): StageContext {
+  const rawRun = { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: 'a'.repeat(64), task_kind: taskKind };
   return {
     pool: {} as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
-    run: { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: 'a'.repeat(64), task_kind: taskKind },
+    run: projectRunExecution(rawRun, { executionVersion: 1, inputRevision: rawRun.input_revision, inputHash: rawRun.input_hash }),
     signal: new AbortController().signal, checkpoint: {}, values: new Map(),
   };
 }

@@ -1,0 +1,15 @@
+{
+  "started": "2026-10-26T13:47:09.312Z",
+  "finished": "2026-10-26T13:47:09.666Z",
+  "exe": "C:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/pg_ctl.exe",
+  "args": [
+    "-D",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\g03-postgres\\data",
+    "-l",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\execution-business-snapshots\\postgres-server.log",
+    "-w",
+    "start"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026",
+  "status": 1
+}

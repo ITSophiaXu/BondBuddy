@@ -1,0 +1,50 @@
+✔ artifact inserts bind all statuses, media and artifact versions to the original V1 input rather than the newest draft (388.2723ms)
+✔ real Word rejection/pending/readback transitions, review PDF and M4 text writers retain their first exact binding (971.3321ms)
+✔ bindings reject foreign ownership, run, input, artifact identity, timestamp and V2; both source and file identity are immutable (4415.5317ms)
+✔ a missing initial execution aborts artifact insertion; a missing binding is invisible to provenance readers (359.4663ms)
+✔ actual migration backfills every legacy artifact without changing files and fails on missing or mismatched execution evidence (5828.527ms)
+✔ migration drains run/job promoters before artifact locks and does not invert a topic/input creator (6778.0863ms)
+✔ artifact execution returns the exact V1 identity without confusing artifact and execution versions (3.8413ms)
+✔ artifact execution checks optional project and registered content metadata when supplied (1.8291ms)
+✔ missing and duplicate artifact bindings fail without registry or latest fallback (0.5056ms)
+✔ every artifact binding scope component must match the requested owned artifact version (1.1107ms)
+✔ artifact execution refuses successors and incomplete or changed original run inputs (1.5182ms)
+✔ a supplied worker execution must match version, revision and hash independently (0.7127ms)
+✔ registered metadata corruption cannot satisfy a caller carrying the exact content pin (0.6473ms)
+✔ authoring names use pinned input and variant, not mutable project fields or artifact version 1 (20.927ms)
+✔ review and material names agree across metadata and list row shapes (1.0358ms)
+✔ real finish publishes only its exact selected files and freezes pair, input and completion metadata (1522.9632ms)
+✔ manual pause and an exhausted dynamic reservation save candidate work without publishing a final delivery (853.5217ms)
+✔ an outbox failure after the terminal UPDATE rolls back its receipt, members, run and job together (1070.2338ms)
+✔ receipts and members are immutable; missing or altered members hide the whole delivery (1975.1959ms)
+✔ pair members without versions must resolve uniquely; a second verified version cannot be guessed away (946.0933ms)
+✔ M4 QA durable publication preserves a nonterminal readable result, while real finish adds a distinct final receipt without duplicate public rows (908.669ms)
+✔ an invalid final QA phase falls back only to its independently valid durable receipt (790.6905ms)
+✔ M4 document durable publication waits for the registered document and note and never publishes a dynamic unpaid pair (1165.6954ms)
+✔ concurrent exact replay serializes on the run and cannot add another receipt or member set (1491.6926ms)
+✔ UTC publication stays readable and exactly replayable from an Asia/Shanghai session (1468.1732ms)
+✔ a missing nonprimary provenance binding hides the complete phase even while its immutable member list is unchanged (994.5223ms)
+✔ actual migration uses the exact terminal event time and records unreconstructable history without a public fallback (6042.5563ms)
+✔ migration drains run writers before job/file/execution locks and does not invert a topic/input creator (6457.6097ms)
+✔ execution input reader consumes exact versioned business snapshots without changing origin or business versions (7.2343ms)
+✔ execution input reader retains V1-only resolution and rejects a changed input manifest or identity (2.0005ms)
+✔ ordinary M1 has no business snapshots; every component of a business snapshot identity is checked (3.6982ms)
+✔ required snapshots reject absence and duplicates without legacy or latest fallback (1.209ms)
+✔ review snapshots reject invalid shapes and changed input, business version, operation, source, origin or findings (2.7036ms)
+✔ review result revisions keep exact source, materials and saved requirements (2.353ms)
+✔ M4 snapshots require shared manifest schema, exact topic/content and task kind (2.1764ms)
+✔ an ordinary M1 manifest cannot consume an unrelated business snapshot (0.538ms)
+▶ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries
+  ✔ every inserted run automatically receives one immutable V1 for the exact original input (3287.5671ms)
+  ✔ claim carries V1/revision/hash and the resolver reads the original input rather than the latest project draft (129.586ms)
+  ✔ same live token with wrong version, revision or hash cannot mutate any queue/evidence/accounting state (675.1657ms)
+  ✔ missing execution identity fails closed in claim, resolver and queue writes without repairing or publishing state (351.8602ms)
+✔ initial execution identity is automatic, immutable, exact and enforced at queue/input boundaries (4448.6089ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 41
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 104316.6008

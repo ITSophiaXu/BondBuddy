@@ -1,12 +1,13 @@
 import type { Pool } from 'pg';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
-import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
+import { latestProviderAttempt, loadProviderAttemptState, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
 import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { Problem, transaction, run as getRun } from '@bondbuddy/api/data';
 import { guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
+import { assertRunExecution } from '@bondbuddy/api/run-execution';
 
 // This is an internal worker seam. It never accepts a browser principal and is not
 // installed by the production worker entry point until the live release gates pass.
@@ -65,6 +66,7 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
         AND a.id=$6 AND a.logical_call_id=$7 AND a.attempt_no=$8 FOR UPDATE OF j,a`,
       [intent.job_id,intent.owner_user_id,intent.run_id,intent.project_id,lease.token,intent.call_id,intent.logical_call_id,intent.attempt_no]);
       if(!active.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Web search evidence lease or attempt is no longer valid');
+      await assertRunExecution(client,run,lease);
       const hash=inputManifestHash(events);
       await client.query(`INSERT INTO bb_model_web_search_evidence(call_id,owner_user_id,project_id,run_id,job_id,logical_call_id,content_sha256,events)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(call_id) DO NOTHING`,
@@ -81,6 +83,10 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
   async latestAttempt(logicalCallId: string): Promise<PriorAttempt | null> {
     const row=await latestProviderAttempt(this.codexInput.pool,this.codexInput.lease,logicalCallId);
     return row?{call_id:row.call_id,attempt_no:row.attempt_no,status:row.status,observed:row.observed,operator_retry:row.operator_retry}:null;
+  }
+
+  async attemptState(logicalCallId: string) {
+    return loadProviderAttemptState(this.codexInput.pool,this.codexInput.lease,logicalCallId);
   }
 
   async readCompleted(logicalCallId: string, attemptNo: number) {

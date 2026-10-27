@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool, type PoolClient } from 'pg';
 import { createServer } from '@bondbuddy/api';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
 import type { IssuerIdentitySourcePool } from '@bondbuddy/api/issuer-identity-source';
 import {
   appendIssuerIdentitySourceRecord,
@@ -142,13 +143,23 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       const v2Lock = { ...sourceLock, materials: [{ ...sourceLock.materials[0]!, material_version: 2, sha256: v2Sha }] };
       assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef, v2Lock),
         'rule_applicability_source_material_mismatch');
-      await connection.query('SAVEPOINT changed_rule_material_sha');
-      await connection.query('UPDATE bb_material_versions SET sha256=$1 WHERE owner_user_id=$2 AND project_id=$3 AND id=$4 AND version=1',
-        ['f'.repeat(64), owner, projectId, materialId]);
-      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef, sourceLock),
+      await connection.query('SAVEPOINT inconsistent_rule_material_sha');
+      // Synthetic corruption fixture: an internally consistent locked input
+      // names a different hash from the existing immutable material version.
+      // Seed that input instead of disabling or bypassing byte-identity guards.
+      const staleMaterials = sourceLock.materials.map(material => ({ ...material, sha256: 'f'.repeat(64) }));
+      const staleManifest = { ...firstManifest, materials: staleMaterials };
+      const staleInputHash = inputManifestHash(staleManifest), staleInputRevision = Number(input.input_revision) + 1;
+      await connection.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,$2,$3,1,$4,$5,$6,'[]')`,
+      [projectId, staleInputRevision, owner, staleInputHash, staleManifest,
+        JSON.stringify(staleMaterials.map(({ material_id, material_version }) => ({ material_id, material_version })))]);
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId,
+        { ...contextRef, source_input_revision: staleInputRevision, source_input_hash: staleInputHash },
+        { ...sourceLock, materials: staleMaterials }),
         'rule_applicability_source_material_stale');
-      await connection.query('ROLLBACK TO SAVEPOINT changed_rule_material_sha');
-      await connection.query('RELEASE SAVEPOINT changed_rule_material_sha');
+      await connection.query('ROLLBACK TO SAVEPOINT inconsistent_rule_material_sha');
+      await connection.query('RELEASE SAVEPOINT inconsistent_rule_material_sha');
       assert.equal(await verifyRuleApplicabilitySourceLock(connection, 'foreign-owner', projectId, contextRef, sourceLock),
         'rule_applicability_source_input_mismatch');
       const request: ProductionRulePackRequest = { market: 'sse', offering: 'private', instrument: 'synthetic-corporate-bond',
@@ -229,7 +240,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       assert.ok(preflight.json().missing_inputs.includes('rule_pack:rule_applicability_reference_missing'));
       const run = { id: `run-${suffix}`, owner_user_id: owner, project_id: projectId, input_revision: input.input_revision,
         input_hash: input.input_hash, task_kind: 'update' };
-      const ctx = { pool: scopedPool, blobs: {} as never, lease: {} as never, run, signal: new AbortController().signal,
+      const ctx = { pool: scopedPool, blobs: {} as never, lease: {} as never,
+        run: projectRunExecution(run, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }), signal: new AbortController().signal,
         checkpoint: {}, values: new Map() } as StageContext;
       const trusted = await inputLockStage.run(ctx);
       assert.deepEqual(trusted, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
@@ -245,7 +257,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       const deleted = await inputLockStage.run(ctx);
       assert.deepEqual(deleted, { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' }, 'a deleted historical version cannot reach model generation');
 
-      const otherTask = await inputLockStage.run({ ...ctx, run: { ...run, task_kind: 'review' } });
+      const otherTask = await inputLockStage.run({ ...ctx,
+        run: projectRunExecution({ ...run, task_kind: 'review' }, { executionVersion: 1, inputRevision: run.input_revision, inputHash: run.input_hash }) });
       assert.deepEqual(otherTask, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
         'non-update task kinds retain their existing input-lock path');
     } finally {

@@ -1,0 +1,17 @@
+{
+  "started": "2026-10-26T18:50:53.765Z",
+  "exe": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/run-supplement-files.pg.test.js",
+    "apps/api/dist/review-workspace.test.js",
+    "apps/api/dist/review-linked-workspace.test.js",
+    "apps/api/dist/review-price-activation.pg.test.js",
+    "apps/api/dist/review-readable-retention.pg.test.js",
+    "apps/api/dist/run-execution-business-snapshots.pg.test.js",
+    "apps/api/dist/artifact-execution.pg.test.js",
+    "apps/api/dist/run-execution-delivery.pg.test.js"
+  ],
+  "cwd": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026"
+}

@@ -43,7 +43,7 @@ export async function registerGeneratedProspectus(c:PoolClient,r:any,pair:any) {
   if(!['update','review'].includes(r.task_kind)||r.channel!=='production'||!pair?.clean_artifact_id||!pair?.revision_artifact_id)return;
   await project(c,r.owner_user_id,r.project_id,true);
   if((await c.query('SELECT 1 FROM bb_prospectus_versions WHERE project_id=$1 AND run_id=$2',[r.project_id,r.id])).rowCount)return;
-  const a=(await c.query(`SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3
+  const a=(await c.query(`SELECT * FROM bb_delivered_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3
     AND quality_status='passed' AND delivery_status='available' ORDER BY version DESC LIMIT 1`,[r.owner_user_id,r.id,pair.clean_artifact_id])).rows[0];
   if(!a)return;
   const v=(await c.query(`INSERT INTO bb_prospectus_versions(id,owner_user_id,project_id,sequence,origin,filename,sha256,artifact_id,artifact_version,revision_artifact_id,run_id)
@@ -82,7 +82,7 @@ export function registerProspectusRoutes(app:FastifyInstance,db:()=>Pool,owner:(
         if(!v)throw missing();
         const available=v.material_id
           ? await c.query('SELECT 1 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,projectId,v.material_id,v.material_version])
-          : await c.query("SELECT 1 FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND version=$3 AND delivery_status='available'",[user,v.artifact_id,v.artifact_version]);
+          : await c.query("SELECT 1 FROM bb_delivered_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND version=$3 AND delivery_status='available'",[user,v.artifact_id,v.artifact_version]);
         if(!available.rowCount)throw missing();
       }
       if(v.origin==='generated'&&p.kind!=='update')await importProspectusMaterial(c,blobs(),user,projectId,v.id);

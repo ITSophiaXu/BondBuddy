@@ -1,0 +1,13 @@
+﻿{
+    "startedAt":  "2026-10-27T01:41:39.0435879Z",
+    "observedAt":  "2026-10-27T01:41:39.3612592Z",
+    "controllerPid":  47432,
+    "controllerEnded":  true,
+    "controllerExit":  null,
+    "postmaster":  {
+
+                   },
+    "dataDirectory":  "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data",
+    "port":  15542,
+    "success":  false
+}

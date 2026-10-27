@@ -1,0 +1,51 @@
+validated 45 review editor execution synthetic examples
+validated 189 synthetic examples + 12 internal library examples and recovery/conflict/usage invariants
+Validated 4 synthetic data-lifecycle examples
+✔ same legal issuer may compile consolidated and parent statements; accounting scopes remain separate (2.6492ms)
+✔ subsidiaries cited in issuer notes are localized and excluded without an issuer verification review (0.2702ms)
+✔ a subsidiary-only report cannot determine the legal issuer (0.4571ms)
+✔ same display name with distinct verified legal entity IDs is a conflict, never majority-resolved (0.5984ms)
+✔ every selected issuer-role material needs exactly one explicit disposition (0.649ms)
+✔ missing subject or unresolved OCR/parser doubt stays pending (0.513ms)
+✔ a new material or parse pin cannot reuse observations from an old snapshot (0.3338ms)
+✔ withdrawal blocks reuse and cannot be reversed on the same binding version (0.3481ms)
+✔ approval checks the whole same-version review history, not only its last event (3.0188ms)
+✔ the authoritative selected input manifest detects omitted materials even if the snapshot omits them too (0.7358ms)
+✔ owner/project/input revision/hash must match the authoritative server input ref (0.4447ms)
+✔ synthetic JSON example has strict schemas and a reproducible image/hash domain (26.3618ms)
+✔ 70 physical pages require bounded batches, then exact verified contiguous aggregation (217.3367ms)
+✔ 74 physical pages require bounded batches, then exact verified contiguous aggregation (216.6317ms)
+✔ failed physical page retries alone; prior successful pages reuse without counting them again (14.3736ms)
+✔ unknown, not-started and measured failed attempts remain distinct from successful checkpoints (2.1362ms)
+✔ checkpoint and reuse identity bind owner (2.9804ms)
+✔ checkpoint and reuse identity bind project (2.1682ms)
+✔ checkpoint and reuse identity bind material ID (2.1023ms)
+✔ checkpoint and reuse identity bind material version (1.769ms)
+✔ checkpoint and reuse identity bind material hash (1.7784ms)
+✔ checkpoint and reuse identity bind physical page count (2.7539ms)
+✔ checkpoint and reuse identity bind processor (3.2817ms)
+✔ checkpoint and reuse identity bind engine (2.6533ms)
+✔ checkpoint and reuse identity bind engine version (2.4788ms)
+✔ checkpoint and reuse identity bind language (2.7665ms)
+✔ checkpoint and reuse identity bind language data (2.966ms)
+✔ checkpoint and reuse identity bind orientation model (2.7227ms)
+✔ checkpoint and reuse identity bind OCR options (2.7183ms)
+✔ checkpoint and reuse identity bind renderer (2.711ms)
+✔ checkpoint and reuse identity bind renderer version (3.7701ms)
+✔ checkpoint and reuse identity bind DPI (3.1673ms)
+✔ checkpoint and reuse identity bind pixel budget (2.627ms)
+✔ checkpoint and reuse identity bind render options (7.0475ms)
+✔ single-page identity cannot be relabelled or referenced by a different result/request hash (7.9598ms)
+✔ page records, table/box provenance, uncertainty and image bytes are checked before reuse (9.6609ms)
+✔ batch validation rejects missing, duplicate, extra outcomes and mismatched request/context (9.8959ms)
+✔ bounded requests reject unsupported, malformed and scope-bypassing inputs (2.9761ms)
+✔ platform source preflight stays within first five physical pages; full OCR still needs explicit run pins (13.2181ms)
+✔ v1 shape, 50-page ceiling, optional consumption and user-asserted correction remain unchanged (28.9357ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1951.2158

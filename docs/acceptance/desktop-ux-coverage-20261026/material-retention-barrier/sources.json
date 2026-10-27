@@ -1,0 +1,140 @@
+{
+  "version": "material-retention-barrier-sources-v1",
+  "head": "b28c62624472ee610666259e695a68ab73334b42",
+  "snapshot": "runs/2026-10-26T22-02-57-451Z-source-after-33248-20e199a8/snapshot.json.gz",
+  "snapshot_sha256": "76eb628499113d6da6cb24770b205c781b867bbb4cae3cf9145de9a27bfacd57",
+  "source_count": 10,
+  "normalization": "Index identity is compared with git hash-object --path using actual repository attributes/filters. Raw working bytes separately match the explicit final tested snapshot.",
+  "sources": [
+    {
+      "path": "apps/api/src/data.ts",
+      "working": {
+        "bytes": 23561,
+        "sha256": "1d1402be3b7ecfafb2547eae1de8b74526f0fc4c1916ab280fc6e618830bab22"
+      },
+      "index": {
+        "bytes": 23245,
+        "sha256": "50ec09ba1d5d2e213e7b8d99670493d8ecacad2f06d9700f8bbbb7aeb7028153",
+        "git_object": "11c7ddf561e4f823dd2049aff311c36464a75250"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/material-purge-barrier.pg.test.ts",
+      "working": {
+        "bytes": 42869,
+        "sha256": "674d5aaf8172fe527e048547c8e73fe1f9b72252f816eebc1a0d41084c20a4fc"
+      },
+      "index": {
+        "bytes": 42869,
+        "sha256": "674d5aaf8172fe527e048547c8e73fe1f9b72252f816eebc1a0d41084c20a4fc",
+        "git_object": "3049717ea2323d70f3eb6d588c802c47148d2d3f"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/material-purge-migration.pg.test.ts",
+      "working": {
+        "bytes": 18681,
+        "sha256": "06168d10b0a2d3ce89409c37172f5e8e5acc2f76ac7852dd0a970f9507214b42"
+      },
+      "index": {
+        "bytes": 18681,
+        "sha256": "06168d10b0a2d3ce89409c37172f5e8e5acc2f76ac7852dd0a970f9507214b42",
+        "git_object": "21a112e28c6005605a3d028a9f25e9e4999cac7a"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/non-production-test.test.ts",
+      "working": {
+        "bytes": 36078,
+        "sha256": "fb4357bed2f8e370aed9e2eb17ebc929ca7c1b6e6544557a2f20a76021cc68de"
+      },
+      "index": {
+        "bytes": 35640,
+        "sha256": "c852a75decec8c134f5bc49b1cece4800f272cbf825085f94c00231c703024ca",
+        "git_object": "cd5698929d31b1a64314268205d1ef5b1ec7480b"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/storage-lifecycle.ts",
+      "working": {
+        "bytes": 19595,
+        "sha256": "5c12c07cc65fa56755f20fecc19bee0dba4d3a3bd2443f75697a933a58226b99"
+      },
+      "index": {
+        "bytes": 19187,
+        "sha256": "8dc84d1189b5ef011398aa56eeeaf8b56f944f26fcc26837e27cd5c79bf0a2f3",
+        "git_object": "738f7c46acfdbd9e394f1a7f03045f90761d0a78"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/api/src/working-draft-parse-admission.test.ts",
+      "working": {
+        "bytes": 24062,
+        "sha256": "62e4eea2a936fc38ea429f403777acab4fd3902392897fbce81139e4ee2abfbe"
+      },
+      "index": {
+        "bytes": 23721,
+        "sha256": "d3db5cc841b285be50027ec8f7c70bcade4ed7e115a12b2a69f54a9acde5ebb5",
+        "git_object": "aea2951f36b97f0d1a42dceee031121fa2c444bb"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/authorized-sample-membership-loader.pg.integration.test.ts",
+      "working": {
+        "bytes": 10944,
+        "sha256": "6201aa18883fb2583f227ac847abb25456819764eea629b68dd95e8911281cf4"
+      },
+      "index": {
+        "bytes": 10762,
+        "sha256": "0523e25930d8c3dd2cad425519312305648bb12820d748510cd86ad2a25835fc",
+        "git_object": "36aee39fd9df5c357fdfc78bb2ed5346ed6553ea"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/issuer-identity-input-lock.test.ts",
+      "working": {
+        "bytes": 22293,
+        "sha256": "2648ce682dd3eaa8b52c87b68261903ea564f186b29ad784715cbcd2b1690c2e"
+      },
+      "index": {
+        "bytes": 22026,
+        "sha256": "44f9492c4d12715a8bbc66c204a61a301c1fa14ed57d2b0c7e92cdc9b48077cf",
+        "git_object": "59a67c40819f0737b53459581ba3429c21f9ade6"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "apps/worker/src/unified-timeout-recovery.test.ts",
+      "working": {
+        "bytes": 13618,
+        "sha256": "d46e675791944126fb5b3ab4030ba8214d10e3b547595e6c8d751bd4caf7b0e8"
+      },
+      "index": {
+        "bytes": 13488,
+        "sha256": "b17e7533065daeab16af26059f39dd13b5e0254a7c1bf615969761f8aed2b559",
+        "git_object": "54610299e00c25ba95bbc7f4afc63ebaf60fe6e1"
+      },
+      "git_filtered_working_matches_index": true
+    },
+    {
+      "path": "db/migrations/0133_material_purge_barrier.sql",
+      "working": {
+        "bytes": 17677,
+        "sha256": "568fd5d49a5174f331d22af0a4d5cb8dcf610cdc7382038c45a9f0a108d24944"
+      },
+      "index": {
+        "bytes": 17677,
+        "sha256": "568fd5d49a5174f331d22af0a4d5cb8dcf610cdc7382038c45a9f0a108d24944",
+        "git_object": "26621b17c93bce063a25895527345b5bdf66fabf"
+      },
+      "git_filtered_working_matches_index": true
+    }
+  ]
+}

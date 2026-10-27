@@ -1,0 +1,30 @@
+{
+  "mode": "functional",
+  "startedAt": "2026-10-27T01:22:27.267Z",
+  "completedAt": "2026-10-27T01:23:22.045Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "apps/api/dist/run-billing-segments.pg.test.js"
+  ],
+  "template": "/bb_segments_final02_20261027",
+  "exitCode": 1,
+  "signal": null,
+  "totals": {
+    "tests": 12,
+    "pass": 1,
+    "fail": 11,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "sourcesStable": true,
+  "sourceEntries": 1429,
+  "stdout": {
+    "bytes": 14195,
+    "sha256": "ca92508c1efadc72c21be3373ce065e13e95c0a5f19c580286fa0e91efa21810"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

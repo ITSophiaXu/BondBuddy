@@ -1,0 +1,679 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/pause",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-draft",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/materials/uploads",
+    "status": 201
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/materials/uploads/e12b7f35-6fb5-4f0f-bf6c-9f06e956a1f2/bytes",
+    "status": 204
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/materials/uploads/e12b7f35-6fb5-4f0f-bf6c-9f06e956a1f2/complete",
+    "status": 200
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-draft",
+    "status": 200,
+    "body": {
+      "request_id": "823e1ec7-a71d-4867-b7eb-a39a77b0383d",
+      "expected_revision": 1,
+      "base_input_revision": 1,
+      "base_input_hash": "0648d7535143f58254d0b3ada02a90aa4ebdba7580fe7b7af9664f213dd6252c",
+      "changes": [
+        {
+          "material": {
+            "material_id": "93159122-e8b1-45cf-83d8-b6aaf31a2af6",
+            "material_version": 1,
+            "sha256": "0388731e175d2715a886b3cb060b11966dc2a2318980eb62d02057cc18fc6fc6"
+          },
+          "replaces": null
+        },
+        {
+          "material": {
+            "material_id": "a91d2e9e-ec18-48cc-8a84-f4ba6163185a",
+            "material_version": 2,
+            "sha256": "0f6b036bc8677c95d6f90939dae18df442e32d60d80a757aa959e06e50caa7b3"
+          },
+          "replaces": {
+            "material_id": "a91d2e9e-ec18-48cc-8a84-f4ba6163185a",
+            "material_version": 1,
+            "sha256": "be55eeeb3ebceeb94eba47ef3b3e4478a11e9da801faaae629a7b93612b3cf73"
+          }
+        },
+        {
+          "material": {
+            "material_id": "8f1528ab-8c14-4b97-be78-d1758ae8ea17",
+            "material_version": 1,
+            "sha256": "84adce767280a2c418fcb4fb75e5434c95198df0262fe1171ffe8eded786f974"
+          },
+          "replaces": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-quotes",
+    "status": 200,
+    "body": {
+      "request_id": "ec6c457b-d603-48b1-a6fc-9f8eea61508f",
+      "supplement_revision": 2,
+      "saved_request_id": "823e1ec7-a71d-4867-b7eb-a39a77b0383d",
+      "candidate_input_hash": "4c46520aa763bc2b99ef66f055a87b7252c9371114657891dac8a65adb54cab2"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-quotes/c894043c-967a-421e-b726-2f5b36f1884e",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-draft",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-quotes/c894043c-967a-421e-b726-2f5b36f1884e/confirm",
+    "status": 200,
+    "body": {
+      "request_id": "8e5b54e4-8699-4e6a-91d6-f78f442a456e",
+      "quote_hash": "1bc36b2cba530ba47a0743f95759c68495de472c2863189ae048b0d93a0eb7b0"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-adoptions",
+    "status": 200,
+    "body": {
+      "request_id": "d8c8acc3-767d-468b-a167-f8642b7f80a3",
+      "quote_id": "c894043c-967a-421e-b726-2f5b36f1884e",
+      "confirmation_id": "91cf960b-7ddf-4ec5-a291-3c7804949a15",
+      "quote_hash": "1bc36b2cba530ba47a0743f95759c68495de472c2863189ae048b0d93a0eb7b0"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/supplement-draft",
+    "status": 503
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-workspace",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/0cfec461-2045-4c2e-b79a-e2555a956334/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/8a87ea3f-e8fd-4bfc-95fa-11a1fa151b54/review-executions/0cfec461-2045-4c2e-b79a-e2555a956334/readable-report",
+    "status": 404
+  }
+]

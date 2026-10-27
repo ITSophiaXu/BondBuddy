@@ -1,0 +1,30 @@
+{
+  "mode": "worker",
+  "startedAt": "2026-10-27T02:31:15.797Z",
+  "completedAt": "2026-10-27T02:35:04.305Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "apps/worker/dist/run-supplement-production-execution.pg.test.js"
+  ],
+  "template": "/bb_prod_supplement02_20261027",
+  "exitCode": 0,
+  "signal": null,
+  "totals": {
+    "tests": 5,
+    "pass": 5,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "sourcesStable": true,
+  "sourceEntries": 2153,
+  "stdout": {
+    "bytes": 1987,
+    "sha256": "28d6a6203c6c364fe560103d50a3acb5f9765967381465678cf39132eeaf7fc0"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

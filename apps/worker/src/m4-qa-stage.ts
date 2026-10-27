@@ -99,7 +99,7 @@ export function m4QaStage(options:{model?:typeof codexModelStage;load?:typeof lo
     const gate=await m4ModelGate(ctx,config);if(gate)return gate;
     const pinned=await m4PinnedMethod(ctx,'qa',skill,config);if(pinned.gate)return pinned.gate;
     let originals=new Map<string,string>();const observer=m4ActionObserver(ctx,'qa');
-    const prepare=async(cwd:string)=>{await recordM4Progress(ctx,'m4_reading_materials');originals=await prepareM4Files(ctx,input,skill,cwd,M4AssistantReplySchema);};
+    const prepare=async(cwd:string)=>{await recordM4Progress(ctx,'m4_reading_materials');originals=await prepareM4Files({blobs:ctx.blobs,signal:ctx.signal,inputHash:ctx.run.input_hash.trim()},input,skill,cwd,M4AssistantReplySchema);};
     const collect=async(cwd:string):Promise<M4QaResult>=>{
       await verifyM4Originals(cwd,originals);
       const raw=JSON.parse((await checkedM4File(join(cwd,'output'),'reply.json',1024*1024)).toString('utf8'));

@@ -1,4 +1,4 @@
-import { taskPage } from './collection-fixtures';
+import { emptySupplementPreparation, taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
@@ -187,6 +187,13 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
+      if(path.endsWith('/supplement-draft')){
+        if(method!=='GET'||url.searchParams.has('request_id'))return json(route,404,{code:'NOT_FOUND'});
+        const frozen=state.snapshots.get(run.input_revision)?.material_versions??[];
+        const base=frozen.map(pin=>state.materials.find(m=>m.material_id===pin.material_id&&m.material_version===pin.material_version)).filter((m):m is Dto<'MaterialResponse'>=>!!m)
+          .map(m=>({material_id:m.material_id,material_version:m.material_version,sha256:m.sha256,source_project_id:run.project_id,filename:m.filename,role:m.role,media_type:m.media_type,available:true}));
+        return json(route,200,emptySupplementPreparation(run,base,run.state==='paused'&&(run.stage==='user_paused'||state.liveProgress?.pause_requested===true)));
+      }
       if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState,...(state.liveProgress?{progress:state.liveProgress}:{})});
       if (path.endsWith('/stream'))return route.fulfill({status:200,contentType:'text/event-stream',body:': synthetic stream; polling exercises refresh\n\n'});
       if (method === 'POST' && ['/cancel','/resume','/pause'].some(a=>path.endsWith(a))) {
@@ -234,8 +241,16 @@ async function prepare(page: Page) {
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
 }
 async function continueAuthoring(page: Page) {
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();
-  await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
+  const continuationSummary=page.locator('[data-next-authoring-summary] .continuation-summary');
+  const continueButton=page.getByRole('button',{name:'继续修改',exact:true});
+  await expect.poll(async()=>await continuationSummary.isVisible()||await continueButton.isVisible()).toBe(true);
+  if(!await continuationSummary.isVisible())await continueButton.click();
+  await expect(continuationSummary).toBeVisible();
+  // Reload restores preparation from its URL; open the native material group
+  // just as the explicit continue action does before inspecting saved files.
+  const materials=page.locator('#project-materials-details');
+  if(!await materials.evaluate(element=>(element as HTMLDetailsElement).open))await materials.locator(':scope > summary').click();
+  await expect(materials).toHaveAttribute('open','');
 }
 async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
   expect(run.project_id).toBe(id);
@@ -425,7 +440,8 @@ test('blocked preflight keeps backend gates and does not turn five diagnostics i
 test('lost execute response retries the same key; reload restores the actual task', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.dropExecute=true;
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('连接中断');
+  await expect(page.locator('#execution-message')).toContainText('提交结果暂未确认');
+  await expect(page.locator('#execution-message')).toContainText('核对会沿用原请求');
   await expect(page.locator('#execute-input')).toBeDisabled();
   await page.locator('#retry-execution').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
@@ -1101,7 +1117,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       const request = route.request(), path = new URL(request.url()).pathname;
       if (path.endsWith('/uploads')) {
         creates++;
-        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:now, max_bytes:100_000_000 });
+        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:'2099-01-01T00:00:00Z', max_bytes:100_000_000 });
       }
       if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
       if (path.endsWith('/complete')) {
@@ -1141,7 +1157,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/materials/uploads')) {
         const uploadId = `synthetic-upload-${uploads.size + 1}`;
         uploads.set(uploadId, request.postDataJSON());
-        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
+        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 100_000_000 });
       }
       if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
       if (path.endsWith('/complete')) {
@@ -1197,7 +1213,8 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('same_issuer');
     await source.getByLabel('原发行市场',{exact:true}).selectOption('sse');
     await source.getByLabel('原品种',{exact:true}).selectOption('private');
-    await source.getByRole('radio',{name:'年末',exact:true}).check();
+    await source.locator('label.quarter').filter({hasText:'年末'}).click();
+    await expect(source.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
     await page.getByRole('button', { name: '开始更新', exact: true }).click();
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await expect(page.locator('#execution-preflight')).toBeHidden();
@@ -1420,7 +1437,8 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await correct.locator('[data-source-field="market"]').selectOption('sse');
   await correct.locator('[data-source-field="offering"]').selectOption('private');
   await correct.locator('[data-source-field="year"]').selectOption('2024');
-  await correct.locator('[data-source-field="quarter"][value="12-31"]').check();
+  await correct.locator('label.quarter').filter({hasText:'年末'}).click();
+  await expect(correct.locator('[data-source-field="quarter"][value="12-31"]')).toBeChecked();
   await expect(page.locator('#execute-input')).toBeEnabled();
   await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.reporting_periods.length).toBeGreaterThan(0);
   const evidence=process.env.BB_UX_EVIDENCE_DIR;
@@ -1594,4 +1612,33 @@ for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion 
  await expect(page.getByRole('dialog')).not.toBeVisible();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
  if(evidence)await page.screenshot({path:join(evidence,'dynamic-resumed-'+width+'.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('desktop manual pause remains explicit when credits exhaust and an open recharge dialog refreshes',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=1;state.runState='running';state.runStage='model_generation';
+ state.liveProgress={policy:'authoring_balance_v2',accrued_points:0,charged_points:0,released_points:0,active_ms:0,pause_requested:false,credit_exhausted:false,available_points:1,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:true};
+ await page.setViewportSize({width:1440,height:960});await setup(page,state);await page.locator('#execute-input').click();
+ await expect.poll(()=>state.runs.size).toBe(1);const run=[...state.runs.values()][0],inputBefore=structuredClone(state.inputs[0]);
+ state.liveProgress={...state.liveProgress,accrued_points:1,charged_points:1,available_points:0,credit_exhausted:true,clock_running:false};state.available=0;
+ run.state='paused';run.stage='credits_exhausted';state.eventSeq++;
+ const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog).toContainText('自动继续本次任务');
+ // Another page may request a manual pause after this page opened its recharge dialog.
+ state.liveProgress.pause_requested=true;state.eventSeq++;
+ await expect(dialog).toContainText('充值后仍保持暂停');await expect(dialog).not.toContainText('自动继续');
+ await expect(page.locator('#execution-progress')).toContainText('手动继续');
+ await page.getByRole('button',{name:'稍后充值',exact:true}).click();await page.reload();
+ await expect(dialog).toBeVisible();await expect(dialog).toContainText('充值后仍保持暂停');
+ await page.getByRole('button',{name:'稍后充值',exact:true}).click();
+ state.available=20000;state.liveProgress={...state.liveProgress,available_points:20000};state.eventSeq++;
+ run.state='running';
+ await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 20,000 积分');
+ await expect(page.locator('.task-progress-heading')).toContainText('正在保存进度后暂停');await expect(page.locator('#resume-run')).toHaveCount(0);
+ run.state='paused';state.eventSeq++;
+ await expect(page.locator('.task-progress-heading')).toContainText('任务已暂停');
+ await expect(dialog).not.toBeVisible();await expect(page.locator('#execution-progress').getByRole('link',{name:'充值积分',exact:true})).toHaveCount(0);
+ await expect(page.locator('#resume-run')).toBeVisible();expect(state.runActions).toEqual([]);
+ expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect(state.inputs).toEqual([inputBefore]);
+ const evidence=process.env.BB_MANUAL_PAUSE_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#execution-progress').screenshot({path:join(evidence,'authoring-manual-after-topup.png')});}
+ await page.locator('#resume-run').click();await expect.poll(()=>state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
+ expect(state.executes).toHaveLength(1);expect(state.inputs).toEqual([inputBefore]);
 });

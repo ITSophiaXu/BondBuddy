@@ -1,0 +1,49 @@
+{
+  "before": "2026-10-26T21-11-13-153Z-source-before-32136-d67a8d5a",
+  "after": "2026-10-26T21-21-00-193Z-source-after-7016-c1fb326f",
+  "pg_stop": "2026-10-26T21-21-14-048Z-pg-stop-21168-52ff77a0",
+  "adopted_test_modes": {
+    "api-plan": 50,
+    "api-plan-regression": 223,
+    "worker-plan": 17,
+    "worker-preparation": 31,
+    "worker-authoring-regression": {
+      "tests": 87,
+      "pass": 82,
+      "skipped": 5
+    }
+  },
+  "adopted_build_modes": [
+    "contracts-build",
+    "api-build",
+    "worker-build",
+    "web-typecheck"
+  ],
+  "staged_sources": [
+    "apps/api/package.json",
+    "apps/api/src/artifact-execution.pg.test.ts",
+    "apps/api/src/prompt-execution-boundary.pg.integration.test.ts",
+    "apps/api/src/run-execution-business-snapshots.pg.test.ts",
+    "apps/api/src/run-execution-head-migration.pg.test.ts",
+    "apps/api/src/run-execution.pg.integration.test.ts",
+    "apps/api/src/run-execution.ts",
+    "apps/api/src/run-supplement-file-preparation-test-fixture.ts",
+    "apps/api/src/run-supplement-preparation-test-fixture.ts",
+    "apps/api/src/run-supplement-preparation.ts",
+    "apps/api/src/run-supplement-processing-plan.pg.test.ts",
+    "apps/api/src/run-supplement-processing-plan.ts",
+    "apps/worker/src/file-authoring-request.test.ts",
+    "apps/worker/src/file-authoring-request.ts",
+    "apps/worker/src/m4-document-request.test.ts",
+    "apps/worker/src/m4-document-request.ts",
+    "apps/worker/src/review-file-request.test.ts",
+    "apps/worker/src/review-file-request.ts",
+    "apps/worker/src/run-supplement-authoring-request.ts",
+    "apps/worker/src/run-supplement-m4-request.ts",
+    "apps/worker/src/run-supplement-processing-request.pg.test.ts",
+    "apps/worker/src/run-supplement-processing-request.ts",
+    "apps/worker/src/run-supplement-review-request.ts",
+    "db/migrations/0131_run_supplement_processing_plans.sql",
+    "db/migrations/0132_run_execution_heads.sql"
+  ]
+}
