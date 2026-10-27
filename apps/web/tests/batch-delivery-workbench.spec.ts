@@ -28,8 +28,7 @@ function addDecoy(s:State){
 
 for(const width of [1440,390])test(`batch delivery: explicit three-file package, stopped later work, exact paired Word and next preparation at ${width}px`,async({page})=>{
   test.setTimeout(60000);await page.setViewportSize({width,height:900});const s=await deliveryFixture(page),w=workspace(s),before=structuredClone(w.workspace.drafts),source=structuredClone(w.source!);
-  await entry(page,'init');await documents(page);const directory=page.locator('#pf-document-directory');
-  if(!await directory.evaluate(node=>(node as HTMLDetailsElement).open))await directory.locator('summary').click();
+  await entry(page,'init');await documents(page);
   await choose(page,types);await expect(page.locator('#pf-price')).toContainText((3*M4_DOCUMENT_FIXED_PRICE.points).toLocaleString());
   await page.locator('#pf-generate').click();await expect(page.locator('.pf-confirm-files li')).toHaveCount(3);expect(batches(s)).toEqual([]);
   await page.locator('#pf-confirm-generation').click();await expect(page.getByRole('heading',{name:'文件生成任务',exact:true})).toBeVisible();

@@ -1,6 +1,7 @@
+import {documentChoice,clearRows,addDocuments,selectedRows} from './file-generation-rows';
 import {expect,test,type Page,type Route} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {join,resolve} from 'node:path';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_FIXED_PRICE,m4Schemas,projectFileSchemas,
   type M4DocumentType,type M4Draft,type M4DraftRequest,type M4Template,
@@ -15,7 +16,6 @@ const now='2026-10-25T04:00:00Z',sha='a'.repeat(64),templateSha='b'.repeat(64);
 type Call={method:string;path:string;body:unknown};
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const href=(project=apiProject,extra:Record<string,string>={})=>'#generate?'+new URLSearchParams({project,return_project:navigationProject,...extra});
-const checked=(page:Page,type:M4DocumentType)=>page.locator(`[data-pf-type="${type}"]`);
 const batchPath=(project=apiProject)=>`/projects/${project}/project-files/batches`;
 const draftPath=(type:M4DocumentType)=>`/m4/topics/${topic}/drafts/${type}`;
 const draftWrites=(calls:Call[])=>calls.filter(c=>c.method==='PUT'&&c.path.startsWith(`/m4/topics/${topic}/drafts/`));
@@ -120,7 +120,7 @@ async function open(page:Page,project=apiProject,extra:Record<string,string>={})
   await page.goto('/'+href(project,extra));
   await expect(page.locator('#pf-generate')).toBeVisible();
 }
-async function choose(page:Page,types:M4DocumentType[]){for(const type of types)await checked(page,type).check();}
+async function choose(page:Page,types:M4DocumentType[]){await addDocuments(page,types);}
 async function confirm(page:Page){await page.locator('#pf-generate').click();await expect(page.locator('#pf-confirm-generation')).toBeVisible();}
 const supportFile={name:'合成补充依据.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 synthetic test content')};
 
@@ -128,8 +128,8 @@ test('prepared source opens document selection without preparation or initial bu
   const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.setViewportSize({width:1440,height:1000});
   const s=await fixture(page);await open(page);
   await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
-  await expect(page.locator('[data-pf-type]')).toHaveCount(12);
-  await expect(page.locator('[data-pf-type]:checked')).toHaveCount(0);
+  await expect(page.locator('select[data-pf-document]')).toHaveCount(1);
+  await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);
   await expect(page.locator('#pf-requirements')).toHaveValue('');
   await expect(page.locator('#pf-generate')).toBeDisabled();
   await expect(page.locator('#pf-source-summary')).toContainText('募集说明书_V3.docx');
@@ -186,9 +186,9 @@ test('missing templates explain why only the selected package cannot run',async(
   await expect(page.locator('#pf-generate')).toBeDisabled();
   await expect(page.locator('#pf-package-readiness')).toContainText(/模板/);
   await expect(page.locator('#pf-template-list')).toContainText('法律意见书');
-  await expect(page.locator('#pf-footer-template')).toHaveText('添加 1 份模板');await page.locator('#pf-footer-template').click();
+  await expect(page.locator('[data-pf-template=legal]')).toHaveText('添加模板');await page.locator('[data-pf-template=legal]').click();
   await expect(page.locator('dialog')).toContainText('法律意见书');await page.locator('dialog [data-close]').click();
-  await page.locator('#pf-select-none').click();await choose(page,['init']);
+  await clearRows(page);await choose(page,['init']);
   await expect(page.locator('#pf-footer-template')).toBeHidden();
   await expect(page.locator('#pf-generate')).toBeEnabled();
   expect(batches(s.calls)).toHaveLength(0);
@@ -240,7 +240,7 @@ test('common requirements append only to selected files and confirmation capture
 test('unsaved common note survives reopening and is appended before confirmation',async({page})=>{
   const s=await fixture(page);await open(page);await choose(page,['credit']);
   await page.locator('#pf-requirements').fill('刷新后仍需保留的补充要求');await page.reload();
-  await expect(checked(page,'credit')).toBeChecked();
+  await expect(documentChoice(page,'credit')).toHaveValue('credit');
   await expect(page.locator('#pf-requirements')).toHaveValue('刷新后仍需保留的补充要求');
   expect(draftWrites(s.calls)).toHaveLength(0);
   await confirm(page);
@@ -256,8 +256,8 @@ test('a partially saved note resumes its original document scope after reselecti
   await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
   await expect(page.locator('#pf-save-requirements')).toBeEnabled();
   expect(draftWrites(s.calls).map(c=>c.path)).toEqual([draftPath('init'),draftPath('underwriter')]);
-  await page.locator('#pf-select-none').click();await choose(page,['credit']);await page.reload();
-  await expect(checked(page,'credit')).toBeChecked();await expect(checked(page,'init')).not.toBeChecked();
+  await clearRows(page);await choose(page,['credit']);await page.reload();
+  await expect(documentChoice(page,'credit')).toHaveValue('credit');await expect(documentChoice(page,'init')).toHaveCount(0);
   await expect(page.locator('#pf-stop-note')).toBeVisible();
   expect(draftWrites(s.calls)).toHaveLength(2);
   await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeHidden();
@@ -297,7 +297,7 @@ test('stopping a partial note operation preserves saved requirements and never a
   await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
   await expect(page.locator('#pf-save-requirements')).toBeEnabled();
   await page.locator('#pf-stop-note').click();await expect(page.locator('#pf-stop-note')).toBeHidden();
-  await page.locator('#pf-select-none').click();await choose(page,['credit']);await page.reload();
+  await clearRows(page);await choose(page,['credit']);await page.reload();
   await expect(page.locator('#pf-stop-note')).toBeHidden();await expect(page.locator('#pf-requirements')).toHaveValue('');
   expect(s.workspaces.get(apiProject)!.workspace.drafts.init.supplemental_requirements).toBe(before.init.supplemental_requirements+'\n\n'+note);
   expect(s.workspaces.get(apiProject)!.workspace.drafts.underwriter).toEqual(before.underwriter);
@@ -318,7 +318,7 @@ test('support save retry retains frozen document scope and never repeats accepte
   const s=await fixture(page);s.failDraft='underwriter';await open(page);await choose(page,['init','underwriter']);
   await page.locator('#pf-support').setInputFiles(supportFile);
   await expect(page.locator('#pf-retry-support')).toBeVisible();
-  await page.locator('#pf-select-none').click();await choose(page,['credit']);
+  await clearRows(page);await choose(page,['credit']);
   await expect(page.locator('#pf-support-list')).toContainText('立项报告');
   await expect(page.locator('#pf-support-list')).toContainText('主承销商核查意见');
   await page.locator('#pf-retry-support').click();
@@ -344,7 +344,7 @@ test('uncertain upload completion reconciles the original session while selectio
   try{
     await expect.poll(()=>s.calls.filter(c=>c.path.endsWith('/complete')).length).toBe(1);
     expect(await page.locator('.pf-generation-grid').evaluate(n=>(n as HTMLElement).inert)).toBe(true);
-    await page.evaluate(()=>{const input=document.querySelector<HTMLInputElement>('[data-pf-type="credit"]')!;input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));});
+    await page.evaluate(()=>{const input=document.querySelector<HTMLSelectElement>('select[data-pf-document]')!;input.value='credit';input.dispatchEvent(new Event('change',{bubbles:true}));});
   }finally{release();s.holdComplete=undefined;}
   await expect(page.locator('#pf-retry-support')).toBeVisible();
   await page.locator('#pf-retry-support').click();await expect(page.locator('#pf-retry-support')).toBeHidden();
@@ -407,7 +407,7 @@ for(const failure of [408,429,'network'] as const){
     expect(batches(s.calls)).toHaveLength(1);const originalBody=structuredClone(batches(s.calls)[0].body);
     expect((originalBody as FileGenerationBatchRequest).documents.every(d=>d.draft_version===2)).toBe(true);
     await expect(page.locator('#pf-support')).toHaveCount(0);await expect(page.locator('#pf-generate')).toHaveCount(0);
-    await expect(page.locator('[data-pf-type]')).toHaveCount(0);await expect(page.locator('#pf-save-requirements')).toHaveCount(0);
+    await expect(page.locator('select[data-pf-document]')).toHaveCount(0);await expect(page.locator('#pf-save-requirements')).toHaveCount(0);
     const w=s.workspaces.get(apiProject)!;w.source={...w.source!,version_id:'source-v4',selection_revision:8,sequence:4,filename:'募集说明书_V4.docx'};
     for(const draft of Object.values(w.workspace.drafts)){draft.version=9;draft.project_file={project_id:apiProject,source_version_id:'source-v4',source_selection_revision:8};}
     const writesBefore=draftWrites(s.calls).length;await page.reload();
@@ -492,22 +492,22 @@ test('the task-list entry opens an existing running batch with the API and navig
 
 test('latest batch can seed scope while an explicit cached empty choice wins',async({page})=>{
   const s=await fixture(page);s.workspaces.get(apiProject)!.batches=[{batch_id:'previous-complete',state:'complete',items:[{document_type:'annual',run_id:null,state:'succeeded',error:null}]}];
-  await open(page);await expect(checked(page,'annual')).toBeChecked();
-  await page.locator('#pf-select-none').click();await page.reload();
-  await expect(page.locator('[data-pf-type]:checked')).toHaveCount(0);
+  await open(page);await expect(documentChoice(page,'annual')).toHaveValue('annual');
+  await clearRows(page);await page.reload();
+  await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);
   await expect(page.locator('#pf-generate')).toBeDisabled();
 });
 
 test('selection and requirements cache isolate account owners and actual API projects sharing navigation',async({page})=>{
   const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill('仅属于 P 与当前账号');
   await open(page,otherApiProject);
-  await expect(page.locator('[data-pf-type]:checked')).toHaveCount(0);await expect(page.locator('#pf-requirements')).toHaveValue('');
+  await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);await expect(page.locator('#pf-requirements')).toHaveValue('');
   await choose(page,['legal']);await open(page);
-  await expect(checked(page,'init')).toBeChecked();await expect(checked(page,'legal')).not.toBeChecked();
+  await expect(documentChoice(page,'init')).toHaveValue('init');await expect(documentChoice(page,'legal')).toHaveCount(0);
   await expect(page.locator('#pf-requirements')).toHaveValue('仅属于 P 与当前账号');
   s.owner='synthetic-other-owner';await page.reload();
-  await expect(page.locator('[data-pf-type]:checked')).toHaveCount(0);await expect(page.locator('#pf-requirements')).toHaveValue('');
-  s.owner=owner;await page.reload();await expect(checked(page,'init')).toBeChecked();
+  await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);await expect(page.locator('#pf-requirements')).toHaveValue('');
+  s.owner=owner;await page.reload();await expect(documentChoice(page,'init')).toHaveValue('init');
   expect(batches(s.calls)).toHaveLength(0);
 });
 
@@ -562,39 +562,53 @@ for(const width of [1440,390,320])test(`source upload has one obvious entry and 
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
-test('source to directory preserves the exact version and presents selection beside template actions',async({page})=>{
+test('source to file rows preserves the exact version and keeps choices beside template actions',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});const s=await fixture(page);
   await page.goto('/'+href(apiProject,{step:'source'}));
   await expect(page.locator('#pf-source-next')).toBeEnabled();
   const dir=process.env.BB_UX_EVIDENCE_DIR;
   if(dir){await page.screenshot({path:join(dir,'source-current-1440.png'),fullPage:true});await writeFile(join(dir,'source-current.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-source-workspace')!.outerHTML));}
-  await page.locator('#pf-source-next').click();await expect(page.locator('#pf-document-directory')).toBeVisible();
+  await page.locator('#pf-source-next').click();await expect(page.locator('.pf-file-builder')).toBeVisible();
   expect(s.calls.find(c=>c.method==='POST'&&c.path.endsWith('/project-files/source'))?.body).toEqual({source_version_id:'source-v3',expected_selection_revision:7});
   await choose(page,['init','underwriter']);
-  const directory=await page.locator('#pf-document-directory').boundingBox(),side=await page.locator('.pf-selection-side').boundingBox();
-  expect(directory!.width).toBeGreaterThan(380);expect(side!.width).toBeGreaterThan(290);
-  expect(directory!.height).toBeLessThan(660);
-  expect(side!.height).toBeLessThan(directory!.height+120);
-  expect(Math.abs(directory!.y-side!.y)).toBeLessThan(3);expect(side!.x).toBeGreaterThan(directory!.x+directory!.width);
-  for(const panel of await page.locator('.pf-selection-side > *').all()){
-    const box=(await panel.boundingBox())!;expect(Math.abs(box.x-side!.x)).toBeLessThan(2);expect(Math.abs(box.width-side!.width)).toBeLessThan(2);
-  }
-  const optional=await page.locator('.pf-optional-grid').boundingBox(),requirements=await page.locator('#pf-requirements-details').boundingBox(),support=await page.locator('#pf-support-details').boundingBox();
-  expect(optional!.y).toBeGreaterThanOrEqual(Math.max(directory!.y+directory!.height,side!.y+side!.height));
-  expect(Math.abs(optional!.x-directory!.x)).toBeLessThan(2);
-  expect(Math.abs(optional!.x+optional!.width-side!.x-side!.width)).toBeLessThan(2);
-  expect(Math.abs(requirements!.y-support!.y)).toBeLessThan(2);
-  expect(support!.x).toBeGreaterThan(requirements!.x+requirements!.width);
-  expect(Math.abs(requirements!.width-support!.width)).toBeLessThan(2);
-  await expect(page.locator('.pf-document-option')).toHaveCount(12);
-  for(const row of await page.locator('.pf-document-option').all()){
-    const box=(await row.boundingBox())!;expect(box.height).toBeGreaterThanOrEqual(44);expect(box.height).toBeLessThan(50);
-  }
-  await checked(page,'legal').focus();await page.keyboard.press('Space');await expect(checked(page,'legal')).toBeChecked();
-  await page.keyboard.press('Space');await expect(checked(page,'legal')).not.toBeChecked();
-  await checked(page,'legal').blur();
-  for(const button of await page.locator('[data-pf-template]').all())expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+  const table=page.getByRole('table',{name:'文件与模板清单'}),box=(await table.boundingBox())!;
+  expect(box.width).toBeGreaterThan(800);await expect(table.locator('tbody tr')).toHaveCount(2);
+  for(const row of await table.locator('tbody tr').all()){const b=(await row.boundingBox())!;expect(b.height).toBeLessThan(110);expect(b.height).toBeGreaterThanOrEqual(64);await expect(row.locator('select')).toBeVisible();await expect(row.locator('[data-pf-template]')).toBeVisible();}
+  await expect(page.locator('.pf-selection-side')).toHaveCount(0);await expect(table.getByRole('checkbox')).toHaveCount(0);
+  await page.locator('#pf-add-row').click();const blank=page.locator('select[data-pf-document=""]');await expect(blank).toBeFocused();await blank.selectOption('legal');await expect(documentChoice(page,'legal')).toBeFocused();
+  await page.locator('[data-pf-remove="legal"]').click();await expect(documentChoice(page,'legal')).toHaveCount(0);
+  for(const button of await page.locator('[data-pf-template]').all())expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect(batches(s.calls)).toHaveLength(0);
   if(dir){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:join(dir,'documents-1440.png'),fullPage:true});await writeFile(join(dir,'documents.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-generation-source')!.outerHTML+document.querySelector('.pf-documents-layout')!.outerHTML));}
+});
+
+for(const width of [1440,390])test('file rows: add, replace, duplicate prevention, removal and refresh at '+width+'px',async({page})=>{
+ await page.setViewportSize({width,height:960});const s=await fixture(page);await open(page);
+ await expect(page.locator('select[data-pf-document=""]')).toBeVisible();await addDocuments(page,['legal','init','credit']);
+ await page.locator('#pf-add-row').click();await page.locator('#pf-add-row').click();await expect(page.locator('select[data-pf-document=""]')).toHaveCount(1);
+ await expect(page.locator('select[data-pf-document=""] option[value="init"]')).toBeDisabled();
+ await documentChoice(page,'init').selectOption('underwriter');expect(await selectedRows(page)).toEqual(['legal','underwriter','credit']);
+ await expect(page.locator('select[data-pf-document=""] option[value="init"]')).toBeEnabled();
+ await page.locator('[data-pf-remove=""]').click();await expect(page.locator('select[data-pf-document=""]')).toHaveCount(0);
+ await page.locator('[data-pf-remove="legal"]').click();expect(await selectedRows(page)).toEqual(['underwriter','credit']);
+ await page.reload();await expect(documentChoice(page,'underwriter')).toBeVisible();expect(await selectedRows(page)).toEqual(['underwriter','credit']);
+ await addDocuments(page,['legal']);await expect(page.locator('[data-pf-template="legal"]')).toHaveText('更换模板');
+ await addDocuments(page,PROJECT_DOCUMENT_CATALOG.map(d=>d.id));await expect(page.locator('#pf-add-row')).toBeDisabled();await expect(page.locator('select[data-pf-document]')).toHaveCount(12);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ if(width===1440)expect((await page.locator('.pf-file-table-wrap').boundingBox())!.height).toBeLessThanOrEqual(522);
+ expect(draftWrites(s.calls)).toEqual([]);expect(batches(s.calls)).toEqual([]);
+});
+
+for(const width of [1440,390])test('file row prototype and implementation comparison at '+width+'px',async({page})=>{
+ await page.setViewportSize({width,height:960});await fixture(page);await open(page);await choose(page,['init','underwriter']);
+ const dir=process.env.BB_ROW_EVIDENCE_DIR??test.info().outputPath('rows');await mkdir(dir,{recursive:true});
+ const implementation=page.locator('.pf-file-builder');await implementation.screenshot({path:join(dir,'implementation-'+width+'.png')});
+ const file=resolve(process.cwd(),'../../product-prototype/public/file-generation.html').replaceAll('\\','/');
+ await page.goto('/@fs/'+file+'?scene=documents');await expect(page.locator('select[data-pf-document]')).toHaveCount(2);
+ await page.locator('.pf-file-builder').screenshot({path:join(dir,'prototype-'+width+'.png')});
+ await page.locator('#pf-add-row').click();await expect(page.locator('select[data-pf-document=""] option[value="init"]')).toBeDisabled();
+ await page.locator('select[data-pf-document=""]').selectOption('legal');await expect(page.locator('select[data-pf-document]')).toHaveCount(3);
+ await page.getByRole('button',{name:'移除第 3 行',exact:true}).click();await expect(page.locator('select[data-pf-document]')).toHaveCount(2);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });

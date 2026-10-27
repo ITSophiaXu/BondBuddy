@@ -25,29 +25,26 @@ function show(scene) {
   host.querySelectorAll('a').forEach(link=>link.addEventListener('click',e=>{e.preventDefault();if(link.textContent.includes('管理募集说明书'))show('source-current');else message('这是界面预览。项目导航与生成记录将在实际工作区打开。');}));
   host.querySelectorAll('[data-download-version],[data-pf-template]').forEach(button=>button.addEventListener('click',()=>message(button.hasAttribute('data-pf-template')?'实际工作区将在此打开模板选择与上传窗口。':'示例文件不可下载；实际工作区可在此下载对应版本。')));
   host.querySelector('#pf-generate')?.addEventListener('click',()=>message('实际工作区将在此核对所选文件、募集书版本和费用，明确确认后开始生成。'));
-  host.querySelector('#pf-change-documents')?.addEventListener('click',()=>{const directory=host.querySelector('#pf-document-directory');directory.open=true;directory.scrollIntoView({block:'start'});});
-  const checks=[...host.querySelectorAll('[data-pf-type]')];
-  const sync=()=>{
-    const selected=checks.filter(c=>c.checked),count=selected.length;
-    host.querySelector('#pf-count').innerHTML=count+'<small> 份文件</small>';
-    host.querySelector('#pf-directory-summary').textContent='已选 '+count+' / 12 类';
-    host.querySelector('#pf-price').textContent=count?count+' 份全部完成共 '+(count*4500).toLocaleString()+' 积分':'请选择需要生成的文件';
-    host.querySelector('#pf-generate').disabled=!count;
-    host.querySelector('#pf-prepared').textContent=count+' / '+count+' 已准备';
-    host.querySelector('#pf-package-readiness').textContent=count?'预览中所选文件均采用示例模板。':'从文件目录中勾选需要生成的文件。';
-    host.querySelector('.pf-template-preparation').hidden=!count;
-    host.querySelector('#pf-template-list').replaceChildren(...selected.map(c=>{
-      const row=document.createElement('article');row.className='pf-prepared-file';
-      const layout=document.createElement('div');layout.className='pf-template-row';
-      const info=document.createElement('div');
-      const title=document.createElement('strong');title.textContent=c.closest('label').querySelector('strong').textContent;
-      const detail=document.createElement('small');detail.textContent='已复用示例模板 · V1';info.append(title,detail);
-      const chip=document.createElement('span');chip.className='pf-chip';chip.textContent='可复用';
-      const button=document.createElement('button');button.className='btn secondary';button.textContent='更换模板';button.onclick=()=>message('实际工作区将在此打开模板选择与上传窗口。');layout.append(info,chip,button);row.append(layout);return row;
-    }));
-  };
-  checks.forEach(c=>c.addEventListener('change',sync));
-  for(const [id,value] of [['pf-select-all',true],['pf-select-none',false]])host.querySelector('#'+id)?.addEventListener('click',()=>{checks.forEach(c=>c.checked=value);sync();});
+  if(scene==='documents'){
+    const catalog=[{"id":"init","name":"立项报告"},{"id":"underwriter","name":"主承销商核查意见"},{"id":"legal","name":"法律意见书"},{"id":"application","name":"挂牌 / 发行申请书"},{"id":"recommendation","name":"推荐函"},{"id":"private_summary","name":"募集说明书摘要"},{"id":"annual","name":"年度报告"},{"id":"semiannual","name":"半年度报告"},{"id":"issuer","name":"发行人基本情况说明"},{"id":"financial","name":"主要财务情况说明"},{"id":"credit","name":"授信情况说明"},{"id":"proceeds","name":"募集资金使用情况说明"}],rows=['init','underwriter'];let blank=false;
+    const sync=()=>{
+      const count=rows.length;
+      host.querySelector('#pf-count').textContent=count+' 份';
+      host.querySelector('#pf-price').textContent=count?count+' 份全部完成共 '+(count*4500).toLocaleString()+' 积分':'请选择需要生成的文件';
+      host.querySelector('#pf-generate').disabled=!count;
+      host.querySelector('#pf-prepared').textContent=count+' / '+count+' 已准备';
+      host.querySelector('#pf-package-readiness').textContent=count?'已复用 '+count+' 份模板，可以核对文件包。':'选择文件类型，开始准备本次清单。';
+      host.querySelector('#pf-add-row').disabled=count===catalog.length;
+      host.querySelector('#pf-template-list').innerHTML=[...rows,...(blank||!count?['']:[])].map((type,index)=>{
+        const name=catalog.find(d=>d.id===type)?.name;
+        return `<tr data-pf-row="${type}"><td class="pf-row-number">${String(index+1).padStart(2,'0')}</td><td class="pf-row-type"><select data-pf-document="${type}" aria-label="第 ${index+1} 行文件类型"><option value="" disabled ${type?'':'selected'}>选择要生成的文件</option>${catalog.map(d=>`<option value="${d.id}" ${d.id===type?'selected':rows.includes(d.id)?'disabled':''}>${d.name}${d.id!==type&&rows.includes(d.id)?'（已添加）':''}</option>`).join('')}</select></td><td class="pf-row-template">${name?`<div class="pf-row-template-name"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7ZM14 2v5h5"/></svg><span>合成${name}模板 <small>V1</small></span></div><details class="pf-reused-inputs"><summary>已保存的要求与依据 · 0 份资料 · 有要求</summary><p>合成要求：保留待核实事项。</p><ul><li>直接使用募集书和模板，可按需补充依据。</li></ul></details>`:'<span class="pf-row-placeholder">选择文件类型后添加模板</span>'}</td><td class="pf-row-actions">${name?'<button class="btn secondary" data-template>更换模板</button>':''}<button class="text-button" data-remove="${index}" aria-label="移除第 ${index+1} 行" ${!type&&!count?'disabled':''}>移除</button></td></tr>`;
+      }).join('');
+      host.querySelectorAll('[data-pf-document]').forEach((el,index)=>el.onchange=()=>{if(index<rows.length)rows[index]=el.value;else{rows.push(el.value);blank=false;}sync();host.querySelectorAll('[data-pf-document]')[index]?.focus();});
+      host.querySelectorAll('[data-remove]').forEach(el=>el.onclick=()=>{const i=Number(el.dataset.remove);if(i<rows.length)rows.splice(i,1);else blank=false;sync();host.querySelector('#pf-add-row').focus();});
+      host.querySelectorAll('[data-template]').forEach(el=>el.onclick=()=>message('实际工作区将在此打开模板选择与上传窗口。'));
+    };
+    host.querySelector('#pf-add-row').onclick=()=>{blank=true;sync();host.querySelector('[data-pf-document=""]').focus();};sync();
+  }
 }
 document.querySelectorAll('[data-scene]').forEach(button=>button.addEventListener('click',()=>show(button.dataset.scene)));
 const scene=new URLSearchParams(location.search).get('scene');
