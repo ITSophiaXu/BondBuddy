@@ -23,4 +23,5 @@ product-prototype
 !product-prototype/public/optional-materials.css
 !product-prototype/public/duplicate-upload-feedback.css
 !product-prototype/public/prospectus-panel.css
+!product-prototype/public/file-generation-ux.css
 !product-prototype/knowledge/*-review.md
