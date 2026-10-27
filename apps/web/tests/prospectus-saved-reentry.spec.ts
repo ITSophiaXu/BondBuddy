@@ -94,9 +94,9 @@ test.describe('prospectus saved reentry native desktop journeys',()=>{
 
   test('saved prospectus reentry: the native generation source step discovers the same retained candidate without preparing drafts or starting generation',async({page})=>{
     const s=await open(page,fixture({candidate:true})),fixed=fixedSnapshot(s),before=projection(s);await page.locator('.pw-actions').getByRole('link',{name:'生成文件',exact:true}).click();
-    await expect(page.locator('#pf-prospectus .prospectus-panel')).toBeVisible();await expect(page.locator('.pf-steps a[aria-current="step"]')).toHaveAttribute('href',/step=source/);await expect(page.locator('#pf-source-next')).toBeEnabled();
+    await expect(page.locator('#pf-prospectus .prospectus-panel')).toBeVisible();await expect(page.locator('.pf-workspace-heading h1')).toHaveText('文件生成');await expect(page.locator('#pf-source-next')).toBeEnabled();
     await expect(notice(page)).toBeVisible();await review(page);await exactReference(page,s.candidate);await cancelAdoption(page,s);expect(writes(s)).toEqual([]);expect(projection(s)).toEqual(before);fixedUnchanged(s,fixed);
-    await page.getByRole('link',{name:'项目文件 →',exact:true}).click();await ready(page);await expect(notice(page)).toBeVisible();expect(writes(s)).toEqual([]);fixedUnchanged(s,fixed);
+    await page.getByRole('link',{name:'项目文件',exact:true}).click();await ready(page);await expect(notice(page)).toBeVisible();expect(writes(s)).toEqual([]);fixedUnchanged(s,fixed);
   });
 
   test('saved prospectus reentry: unchanged native scheduled refresh retains history, exact reference disclosure and its keyboard focus',async({page})=>{

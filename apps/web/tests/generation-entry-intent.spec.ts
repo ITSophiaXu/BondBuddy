@@ -48,7 +48,7 @@ for(const action of ['keep','transfer','clear'] as const)test(`generation entry:
   await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');
   const card=page.getByRole('region',{name:'准备生成所选文种'});await expect(card).toContainText(note);
   await expect(card.getByRole('button')).toHaveCount(3);expect((await query(page)).prepare_document).toBe('credit');expect((await query(page)).prepare_wait).toBe('1');
-  for(const anchor of await page.locator('.pf-steps a[href*="project="]').evaluateAll(nodes=>nodes.map(n=>(n as HTMLAnchorElement).getAttribute('href')!))){const q=new URLSearchParams(anchor.split('?')[1]);expect(q.get('prepare_document')).toBe('credit');expect(q.get('prepare_wait')).toBe('1');}
+  for(const anchor of await page.locator('.pf-workspace-actions a[href*="project="]').evaluateAll(nodes=>nodes.map(n=>(n as HTMLAnchorElement).getAttribute('href')!))){const q=new URLSearchParams(anchor.split('?')[1]);expect(q.get('prepare_document')).toBe('credit');expect(q.get('prepare_wait')).toBe('1');}
   expect(writes(s)).toEqual([]);await documents(page);expect(await selected(page)).toEqual(['init','underwriter']);
   await page.locator('#pf-entry-'+action).click();await expect(card.locator('#pf-entry-'+action)).toHaveCount(0);
   const expected=action==='keep'?['init','underwriter']:['credit'];
@@ -90,11 +90,11 @@ test('generation entry: note clear succeeds before a failed selection save, leav
   await page.locator('#pf-entry-continue').click();expect(await selected(page)).toEqual(['credit']);expect((await query(page)).prepare_document).toBeUndefined();expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);
 });
 
-test('generation entry: ordinary adoption saves first and a failed save retains intent through refresh and step links',async({page})=>{
+test('generation entry: ordinary adoption saves first and a failed save retains intent through refresh and workspace navigation',async({page})=>{
   await installStorageControl(page);const s=await fixture(page);await open(page);await choose(page,['init']);const selection=await raw(page,'selection');
   await openFiles(page);await fault(page,{selection:true,trace:[]});await clickEntry(page,'credit');await expect(page.locator('#pf-entry-continue')).toBeVisible();
   expect(await raw(page,'selection')).toBe(selection);expect((await query(page)).prepare_document).toBe('credit');expect((await query(page)).prepare_wait).toBe('1');expect(writes(s)).toEqual([]);
-  await page.getByRole('link',{name:'3 生成关联文件',exact:true}).click();await expect(page.locator('#pf-generate')).toBeDisabled();expect(await selected(page)).toEqual(['init']);
+  await page.getByRole('link',{name:/^生成记录/}).click();await page.getByRole('link',{name:'准备文件',exact:true}).click();await expect(page.locator('#pf-generate')).toBeDisabled();expect(await selected(page)).toEqual(['init']);
   await page.reload();await expect(page.locator('#pf-entry-continue')).toBeVisible();expect(await selected(page)).toEqual(['init']);expect(await raw(page,'selection')).toBe(selection);
   await page.locator('#pf-entry-continue').click();expect(await selected(page)).toEqual(['credit']);expect((await query(page)).prepare_document).toBeUndefined();expect((await query(page)).return_project).toBe(ids.api);expect(drafts(s)).toEqual([]);assertFixture(s);
 });
@@ -183,7 +183,7 @@ for(const width of [1440,390])test(`generation entry component comparison at ${w
   const ordinary=reference?['init','underwriter']:['credit'];expect(await selected(page)).toEqual(ordinary);
   const directory=process.env.BB_GENERATION_ENTRY_EVIDENCE_DIR??test.info().outputPath('component-capture');await mkdir(directory,{recursive:true});
   const capture=async(name:string)=>{await page.evaluate(()=>scrollTo(0,0));const layout=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,text:document.body.innerText}));expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width+1);await page.screenshot({path:join(directory!,`generation-entry-${name}-${width}.png`),fullPage:true});await writeFile(join(directory!,`generation-entry-${name}-${width}.json`),JSON.stringify({...layout,reference,selection:await selected(page),query:await query(page)},null,2));};
-  await capture('ordinary');await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);expect(await selected(page)).toEqual(['init','underwriter']);
+  await capture('ordinary');await choose(page,['init','underwriter']);if(!await page.locator('#pf-requirements').isVisible())await page.locator('#pf-requirements-details > summary').click();await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);expect(await selected(page)).toEqual(['init','underwriter']);
   if(reference)await expect(page.locator('#pf-entry-intent')).toHaveCount(0);else {await expect(page.locator('#pf-entry-transfer')).toBeVisible();await expect(page.locator('#pf-entry-intent')).toContainText(note);}
   await capture('note-conflict');expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);if(verify)await writeFile(join(directory!,`generation-entry-reference-${width}.json`),JSON.stringify(await verify(),null,2));
 });
