@@ -1,4 +1,5 @@
 import {resolveCreditChinaCaptcha,IntegrityCaptchaInterruption,type IntegrityCaptchaRecognizer,type IntegrityCaptchaSession} from './integrity-captcha.js';
+import {observeCaptchaImages} from './integrity-captcha-image.js';
 import {chromium,type BrowserContext,type Page,type Frame,type Response,type Request} from 'playwright';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -99,7 +100,7 @@ export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signa
 export async function collectInContext(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits=collectionLimits):Promise<BrowserCollection>{
  let result:BrowserCollection|undefined;
  const started=Date.now();
- const captchaSession:IntegrityCaptchaSession={recognize:limits.captchaRecognizer,attempts:0};
+ const captchaSession:IntegrityCaptchaSession={recognize:limits.captchaRecognizer,attempts:0,imageRefreshes:0};
  const attempts=limits.attempts??collectionLimits.attempts;
  for(let attempt=0;attempt<attempts;attempt++){
   // Official credit search entry observed from the portal's search button (2026-10-26).
@@ -130,14 +131,19 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
  const onNavigation=(response:Response)=>{try{const frame=response.frame();if(response.request().isNavigationRequest()&&frame===frame.page().mainFrame())navigationStatuses.set(frame.page(),response.status());}catch{/* Popup navigation can precede creation of its frame. */}};
  const mark=(d:IntegrityDiagnostic,outcome:BrowserCollection['outcome']='failed',explanation='未取得可确认的查询结果。')=>{result.diagnostic=d;result.outcome=outcome;result.reason=`${integrityDiagnosticLabel(d)}。${explanation} 无需补充信息或上传证据。`;};
  context.on('response',onNavigation);
+ const captchaImages=observeCaptchaImages(context);
  const diagnostic=async()=>{try{result.captures.push(await capturePage(page,'blocker',1));}catch{/* A blank/error document is never fabricated as evidence. */}};
  const styleFailure=()=>mark({code:'network_error',phase,detail:'OFFICIAL_STYLESHEET_LOAD_FAILED'},'failed','官网样式资源未能加载，页面及查询状态无法确认。');
  let captchaWaitMs=0;
  const stopForVerification=async()=>{
   const started=Date.now();
-  const verification=await resolveCreditChinaCaptcha(page,captchaSession,signal,limits.waitMs);
-  if(verification==='passed')captchaWaitMs+=Date.now()-started;
-  if(verification!=='blocked')return false;
+  const verification=await resolveCreditChinaCaptcha(page,captchaSession,signal,limits.waitMs,captchaImages);
+  if(verification.status==='passed')captchaWaitMs+=Date.now()-started;
+  if(verification.status==='image_failed'){
+   mark({code:'captcha_required',phase,detail:verification.detail,...(verification.http_status?{http_status:verification.http_status}:{})},verification.retryable?'failed':'blocked','验证码图片未能正常显示，本项未完成查询。');
+   return true;
+  }
+  if(verification.status!=='blocked')return false;
   mark({code:'captcha_required',phase,...(captchaSession.attempts?{detail:'CAPTCHA_NOT_ACCEPTED_AFTER_BOUNDED_ATTEMPTS'}:{})},'blocked',captchaSession.attempts?'已尝试自动验证，仍未通过网站验证，本项未完成查询。':'官网要求验证后才能继续，其他网站继续。');
   return true;
  };
@@ -244,5 +250,5 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   if(status>=400||errors.test(text))mark(pageFailure(text,status,phase));
   else mark({code:network?'network_error':error instanceof Error&&error.name==='TimeoutError'?(!text.trim()?'blank_page_timeout':phase==='open'?'page_load_timeout':phase==='results'?'result_load_timeout':'operation_failed'):'operation_failed',phase,...(network?{detail:network}:{})});
   await diagnostic();return result;}
- finally{context.off('request',scriptStarted);context.off('requestfinished',scriptFinished);context.off('requestfailed',resourceFailed);context.off('response',resourceResponse);context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);if(onRequestFailed)context.off('requestfailed',onRequestFailed);if(onRequest)context.off('request',onRequest);if(onRequestFinished){context.off('requestfinished',onRequestFinished);context.off('requestfailed',onRequestFinished);}await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));}
+ finally{captchaImages.close();context.off('request',scriptStarted);context.off('requestfinished',scriptFinished);context.off('requestfailed',resourceFailed);context.off('response',resourceResponse);context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);if(onRequestFailed)context.off('requestfailed',onRequestFailed);if(onRequest)context.off('request',onRequest);if(onRequestFinished){context.off('requestfinished',onRequestFinished);context.off('requestfailed',onRequestFinished);}await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));}
 }

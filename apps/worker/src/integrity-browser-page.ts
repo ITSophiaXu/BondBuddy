@@ -36,7 +36,7 @@ export async function creditChinaVerificationControls(page:Page){
   if(await popup.count()!==1)continue;
   if(!await popup.evaluate(e=>{const style=getComputedStyle(e);return style.position==='fixed'&&Number(style.zIndex)>0;}))continue;
   if(!await popup.locator('#vcodeimg:visible').count()||!await popup.locator('.buttongroup .confirm:visible').filter({hasText:/^验证$/}).count())continue;
-  return {popup,input:popup.locator('input#vcode'),image:popup.locator('#vcodeimg'),submit:popup.locator('.buttongroup .confirm').filter({hasText:/^验证$/}),refresh:popup.locator('.vcodeimgbox span').filter({hasText:/换一张/}),error:popup.locator('.errortip:visible')};
+  return {frame,popup,input:popup.locator('input#vcode'),image:popup.locator('#vcodeimg'),submit:popup.locator('.buttongroup .confirm').filter({hasText:/^验证$/}),refresh:popup.locator('.vcodeimgbox span').filter({hasText:/换一张/}),error:popup.locator('.errortip:visible')};
  }
  return undefined;
 }

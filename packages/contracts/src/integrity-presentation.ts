@@ -5,8 +5,16 @@ const diagnosticLabels:Record<IntegrityDiagnostic['code'],string>={
  access_denied:'网站拒绝访问',http_error:'网站响应错误',blank_page_timeout:'页面空白（加载超时）',page_load_timeout:'页面加载超时',
  result_load_timeout:'查询结果加载超时',query_form_unavailable:'查询页面尚未就绪',result_unverified:'本次查询结果未确认',network_error:'网络连接失败',page_error:'网站页面报错',operation_failed:'查询操作未完成'
 };
+const captchaImageDescriptions:Record<string,{label:string;description:string}>={
+ CAPTCHA_IMAGE_LOAD_FAILED:{label:'验证码图片加载失败',description:'网站验证码图片未能正常显示，本次查询未完成。'},
+ CAPTCHA_IMAGE_LOAD_TIMEOUT:{label:'验证码图片加载超时',description:'等待后验证码图片仍未加载完成，本次查询未完成。'},
+ CAPTCHA_IMAGE_ACCESS_DENIED:{label:'网站拒绝访问',description:'网站拒绝提供验证码图片，本次查询未完成。'},
+ CAPTCHA_IMAGE_RATE_LIMITED:{label:'网站限制访问频率',description:'网站限制访问频率，暂时无法获取验证码，本次查询未完成。'},
+ CAPTCHA_IMAGE_REFRESH_FAILED:{label:'验证码刷新未完成',description:'网站未返回更新后的验证码，本次查询未完成。'},
+};
+const captchaImagePresentation=(d:IntegrityDiagnostic)=>d.code==='captcha_required'&&d.detail&&Object.hasOwn(captchaImageDescriptions,d.detail)?captchaImageDescriptions[d.detail]:undefined;
 export function integrityDiagnosticLabel(d:IntegrityDiagnostic){
- return diagnosticLabels[d.code];
+ return captchaImagePresentation(d)?.label??diagnosticLabels[d.code];
 }
 const diagnosticDescriptions:Record<IntegrityDiagnostic['code'],string>={
  results:'官网搜索返回结果，具体事项及主体关联以本次查询记录为准。',
@@ -53,7 +61,7 @@ export function integrityRecordPresentation(record:IntegrityRecord):IntegrityPre
  }
  if(record.status==='no_public_results')return view('搜索无返回结果','no_results');
  // Derive customer copy from the cause; raw reason/detail/status remain available for diagnosis only.
- if(d){const phase={open:'加载官网',query:'提交查询',results:'等待查询结果'}[d.phase];return view(integrityDiagnosticLabel(d),'incomplete','warning',`${diagnosticDescriptions[d.code]}\n发生阶段：${phase}${d.attempts?` · 已尝试 ${d.attempts} 次`:''}${d.elapsed_ms!==undefined?` · 总耗时 ${Math.ceil(d.elapsed_ms/1000)} 秒`:''}`);}
+ if(d){const phase={open:'加载官网',query:'提交查询',results:'等待查询结果'}[d.phase];return view(integrityDiagnosticLabel(d),'incomplete','warning',`${captchaImagePresentation(d)?.description??diagnosticDescriptions[d.code]}\n发生阶段：${phase}${d.attempts?` · 已尝试 ${d.attempts} 次`:''}${d.elapsed_ms!==undefined?` · 总耗时 ${Math.ceil(d.elapsed_ms/1000)} 秒`:''}`);}
  // Historical free text can only support causes it explicitly records; do not guess a phase or status code.
  const http=reason.match(/\bHTTP\s*(4\d{2}|5\d{2})\b/i)??reason.match(/\b(403)\s*Forbidden\b/i);
  if(http?.[1]==='403'||/拒绝访问|访问已被拦截|访问受限|Forbidden|GeoBL/i.test(reason))return failure('access_denied');
