@@ -3,6 +3,7 @@ const host = document.querySelector('#preview');
 const message = text => { document.querySelector('#preview-message').textContent = text; };
 function show(scene) {
   host.replaceChildren(document.querySelector('#'+scene).content.cloneNode(true));
+  if(matchMedia('(max-width:760px)').matches)host.querySelectorAll('.pf-optional').forEach(panel=>panel.open=false);
   message('');
   document.querySelectorAll('[data-scene]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.scene === scene)));
   host.querySelector('#pf-source-next')?.addEventListener('click',()=>show('documents'));

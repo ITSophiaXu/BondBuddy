@@ -574,10 +574,18 @@ test('source to directory preserves the exact version and presents selection bes
   const directory=await page.locator('#pf-document-directory').boundingBox(),side=await page.locator('.pf-selection-side').boundingBox();
   expect(directory!.width).toBeGreaterThan(380);expect(side!.width).toBeGreaterThan(290);
   expect(directory!.height).toBeLessThan(660);
+  expect(side!.height).toBeLessThan(directory!.height+120);
   expect(Math.abs(directory!.y-side!.y)).toBeLessThan(3);expect(side!.x).toBeGreaterThan(directory!.x+directory!.width);
   for(const panel of await page.locator('.pf-selection-side > *').all()){
     const box=(await panel.boundingBox())!;expect(Math.abs(box.x-side!.x)).toBeLessThan(2);expect(Math.abs(box.width-side!.width)).toBeLessThan(2);
   }
+  const optional=await page.locator('.pf-optional-grid').boundingBox(),requirements=await page.locator('#pf-requirements-details').boundingBox(),support=await page.locator('#pf-support-details').boundingBox();
+  expect(optional!.y).toBeGreaterThanOrEqual(Math.max(directory!.y+directory!.height,side!.y+side!.height));
+  expect(Math.abs(optional!.x-directory!.x)).toBeLessThan(2);
+  expect(Math.abs(optional!.x+optional!.width-side!.x-side!.width)).toBeLessThan(2);
+  expect(Math.abs(requirements!.y-support!.y)).toBeLessThan(2);
+  expect(support!.x).toBeGreaterThan(requirements!.x+requirements!.width);
+  expect(Math.abs(requirements!.width-support!.width)).toBeLessThan(2);
   await expect(page.locator('.pf-document-option')).toHaveCount(12);
   for(const row of await page.locator('.pf-document-option').all()){
     const box=(await row.boundingBox())!;expect(box.height).toBeGreaterThanOrEqual(44);expect(box.height).toBeLessThan(50);

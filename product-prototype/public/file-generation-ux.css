@@ -72,8 +72,7 @@
 .pf-selection-side .pf-chip { justify-self: start; align-self: center; }
 .pf-selection-side .pf-reused-inputs { font-size: 12px; }
 .pf-selection-side .pf-template-preparation[hidden] { display: none; }
-.pf-documents-layout .pf-optional-grid { display: grid; grid-template-columns: 1fr 1fr; margin-top: 22px; gap: 22px; }
-.pf-documents-layout .pf-selection-side .pf-optional-grid { grid-template-columns: minmax(0,1fr); margin: 0; gap: 16px; }
+.pf-documents-layout .pf-optional-grid { display: grid; grid-area: auto; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; margin-top: 22px; gap: 22px; }
 .pf-documents-layout .pf-optional { box-shadow: none; margin: 0; }
 .pf-documents-layout .pf-documents-next { position: sticky; bottom: 12px; z-index: 4; margin: 22px 0 0; padding: 16px 20px; background: #fff; box-shadow: 0 4px 24px #243a2312; }
 .pf-documents-next #pf-price { font-size: 13px; }
