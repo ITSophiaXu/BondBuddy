@@ -603,10 +603,11 @@ for(const width of [1440,390])test('file rows: add, replace, duplicate preventio
 for(const width of [1440,390])test('file row prototype and implementation comparison at '+width+'px',async({page})=>{
  await page.setViewportSize({width,height:960});await fixture(page);await open(page);await choose(page,['init','underwriter']);
  const dir=process.env.BB_ROW_EVIDENCE_DIR??test.info().outputPath('rows');await mkdir(dir,{recursive:true});
+ const position=async()=>page.locator('.pf-file-builder').evaluate(n=>scrollTo(0,n.getBoundingClientRect().top+scrollY-80));await position();
  const implementation=page.locator('.pf-file-builder');await implementation.screenshot({path:join(dir,'implementation-'+width+'.png')});
  const file=resolve(process.cwd(),'../../product-prototype/public/file-generation.html').replaceAll('\\','/');
  await page.goto('/@fs/'+file+'?scene=documents');await expect(page.locator('select[data-pf-document]')).toHaveCount(2);
- await page.locator('.pf-file-builder').screenshot({path:join(dir,'prototype-'+width+'.png')});
+ await position();await page.locator('.pf-file-builder').screenshot({path:join(dir,'prototype-'+width+'.png')});
  await page.locator('#pf-add-row').click();await expect(page.locator('select[data-pf-document=""] option[value="init"]')).toBeDisabled();
  await page.locator('select[data-pf-document=""]').selectOption('legal');await expect(page.locator('select[data-pf-document]')).toHaveCount(3);
  await page.getByRole('button',{name:'移除第 3 行',exact:true}).click();await expect(page.locator('select[data-pf-document]')).toHaveCount(2);
