@@ -1,9 +1,10 @@
+import {documentChoice,clearRows,addDocuments,selectedRows} from './file-generation-rows';
 import {expect,test} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {PROJECT_DOCUMENT_CATALOG,type M4DocumentType} from '@bondbuddy/contracts';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
-import {assertFixture,batches,checked,choose,clickEntry,confirm,documents,drafts,entry,fault,file,fixture,href,ids,installStorageControl,key,note,open,openFiles,query,raw,selected,templateWrites,trace,writes} from './generation-entry-fixtures';
+import {assertFixture,batches,choose,clickEntry,confirm,documents,drafts,entry,fault,file,fixture,href,ids,installStorageControl,key,note,open,openFiles,query,raw,selected,templateWrites,trace,writes} from './generation-entry-fixtures';
 import {installGenerationEntryReference} from './generation-entry-reference';
 
 test('generation entry: the real missing-document row preserves its target through the source step without a business write',async({page})=>{
@@ -19,7 +20,7 @@ test('generation entry: the real missing-document row preserves its target throu
   await documents(page);expect(await selected(page)).toEqual(['credit']);
   expect(writes(s).map(c=>c.path)).toEqual([`/projects/${ids.api}/project-files/source`]);
   expect(s.workspaces.get(ids.api)!.workspace.drafts).toEqual(before);
-  await page.reload();await expect(checked(page,'credit')).toBeChecked();expect(await selected(page)).toEqual(['credit']);assertFixture(s);
+  await page.reload();await expect(documentChoice(page,'credit')).toHaveValue('credit');expect(await selected(page)).toEqual(['credit']);assertFixture(s);
 });
 
 test('generation entry: invalid intent does not replace a cached choice and plain explicit empty selection still wins over the latest batch',async({page})=>{
@@ -27,7 +28,7 @@ test('generation entry: invalid intent does not replace a cached choice and plai
   await open(page);await choose(page,['init']);await open(page,{prepare_document:'unknown-document'});
   expect(await selected(page)).toEqual(['init']);await expect(page.locator('#pf-entry-continue')).toHaveCount(0);
   await page.goto('/'+href({step:'documents',prepare_document:'credit'})+'&prepare_document=legal');await expect(page.locator('#pf-generate')).toBeVisible();expect(await selected(page)).toEqual(['init']);await expect(page.locator('#pf-entry-continue')).toHaveCount(0);
-  await page.locator('#pf-select-none').click();await open(page);expect(await selected(page)).toEqual([]);await expect(page.locator('#pf-generate')).toBeDisabled();
+  await clearRows(page);await open(page);expect(await selected(page)).toEqual([]);await expect(page.locator('#pf-generate')).toBeDisabled();
   expect(writes(s)).toEqual([]);assertFixture(s);
 });
 
@@ -35,10 +36,10 @@ test('generation entry: cache adoption belongs to the owner and actual API proje
   const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill(note);
   const oldSelection=await raw(page,'selection'),oldNote=await raw(page,'note');
   await page.goto('/'+href({step:'documents',prepare_document:'credit'},ids.other,ids.navigation));
-  await expect(checked(page,'credit')).toBeChecked();expect(await selected(page)).toEqual(['credit']);await expect(page.locator('#pf-requirements')).toHaveValue('');
+  await expect(documentChoice(page,'credit')).toHaveValue('credit');expect(await selected(page)).toEqual(['credit']);await expect(page.locator('#pf-requirements')).toHaveValue('');
   expect(await raw(page,'selection')).toBe(oldSelection);expect(await raw(page,'note')).toBe(oldNote);expect(await raw(page,'selection',ids.navigation)).toBeNull();
   s.owner='generation-entry-other-owner';await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();await page.goto('/'+href({step:'documents',prepare_document:'legal'},ids.api,ids.navigation));
-  await expect(checked(page,'legal')).toBeChecked();await expect(page.locator('#pf-requirements')).toHaveValue('');
+  await expect(documentChoice(page,'legal')).toHaveValue('legal');await expect(page.locator('#pf-requirements')).toHaveValue('');
   expect(await raw(page,'selection')).toBe(oldSelection);expect(await raw(page,'note')).toBe(oldNote);
   expect(JSON.parse((await raw(page,'selection',ids.api,s.owner))!).value).toEqual(['legal']);expect(writes(s)).toEqual([]);assertFixture(s);
 });
@@ -110,10 +111,10 @@ for(const mode of ['corrupt','throw'] as const)test(`generation entry: ${mode} c
   await documents(page);expect(await selected(page)).toEqual(['credit']);expect((await query(page)).prepare_document).toBeUndefined();expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);
 });
 
-for(const action of ['checkbox','all','none'] as const)test(`generation entry: a manual ${action} choice cancels waiting intent and survives refresh`,async({page})=>{
+for(const action of ['add','replace','remove'] as const)test(`generation entry: a manual ${action} choice cancels waiting intent and survives refresh`,async({page})=>{
   const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
-  if(action==='checkbox')await checked(page,'legal').check();else await page.locator(action==='all'?'#pf-select-all':'#pf-select-none').click();
-  const choice=await selected(page);expect(choice).toEqual(action==='checkbox'?['init','legal']:action==='all'?PROJECT_DOCUMENT_CATALOG.map(d=>d.id):[]);
+  if(action==='add')await addDocuments(page,['legal']);else if(action==='replace')await documentChoice(page,'init').selectOption('legal');else await clearRows(page);
+  const choice=await selected(page);expect(choice).toEqual(action==='add'?['init','legal']:action==='replace'?['legal']:[]);
   expect((await query(page)).prepare_document).toBeUndefined();expect((await query(page)).prepare_wait).toBeUndefined();
   await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();expect(await selected(page)).toEqual(choice);await expect(page.locator('#pf-requirements')).toHaveValue(note);expect(drafts(s)).toEqual([]);assertFixture(s);
 });

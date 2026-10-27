@@ -1,7 +1,7 @@
 import {expect,type Page,type Route} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {M4_DOCUMENT_BILLING_TASKS,M4DocumentManifestSchema,PROJECT_DOCUMENT_CATALOG,ProjectFileBatchSchema,ProjectFileVersionSchema,projectFileSchemas,schemas,
-  type M4Artifact,type M4DocumentType,type M4Task,type ProjectFileBatch,type ProjectFileVersion,type ProjectFileWorkspace,type Run} from '@bondbuddy/contracts';
+  type M4Artifact,type ProjectDocumentType as M4DocumentType,type M4Task,type ProjectFileBatch,type ProjectFileVersion,type ProjectFileWorkspace,type Run} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
 import {assertFixture,fixture,ids,mime,now,type State as EntryState} from './generation-entry-fixtures';

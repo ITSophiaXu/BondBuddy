@@ -526,6 +526,26 @@ function validateContentTypes(xml: ParsedXml, entries: ZipEntry[]) {
   }
 }
 
+/** Bounded Office ZIP reader shared by the catalogue importer. Does not execute workbook content. */
+export function readBoundedOfficeParts(bytes:Buffer):Map<string,Buffer> {
+  const report=inspectGeneratedWord(bytes),entries=parseZipDirectory(bytes,report),parts=new Map<string,Buffer>();
+  let total=0;
+  for(const entry of entries){
+    if(entry.directory||!isXmlPart(entry.name))continue;
+    if(entry.uncompressedSize>DOCX_LIMITS.xmlPartBytes||(total+=entry.uncompressedSize)>DOCX_LIMITS.totalXmlBytes)fail('DOCX_XML_SIZE_LIMIT');
+    const compressed=bytes.subarray(entry.dataOffset,entry.dataOffset+entry.compressedSize);
+    let content:Buffer;
+    if(entry.method===0)content=Buffer.from(compressed);
+    else {
+      const result=inflateRawSync(compressed,{maxOutputLength:Math.max(1,entry.uncompressedSize+1),info:true}) as unknown as {buffer:Buffer;engine:{bytesWritten:number}};
+      if(result.engine.bytesWritten!==compressed.length)fail('DOCX_DEFLATE_TRAILING_DATA');content=result.buffer;
+    }
+    if(content.length!==entry.uncompressedSize||crc32(content)!==entry.crc32)fail('DOCX_CRC_MISMATCH');
+    parts.set(entry.name,content);
+  }
+  return parts;
+}
+
 function unpackAndValidate(bytes: Buffer, report: DocxInspection) {
   const entries = parseZipDirectory(bytes, report);
   const parts = new Set(entries.filter(entry => !entry.directory).map(entry => canonicalPartName(entry.name)));

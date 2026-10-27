@@ -7,6 +7,11 @@ import {M4KnowledgeSnapshotSchema,m4DocumentScopeSupported,PROJECT_DOCUMENT_CATA
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..');
 const sha=(content:string)=>createHash('sha256').update(content,'utf8').digest('hex');
+export function loadWorkpaperKnowledge(market:Market,offering:Offering):M4KnowledgeSnapshot {
+  if(!m4DocumentScopeSupported('workpaper',market,offering))throw Error('M4_KNOWLEDGE_UNAVAILABLE');
+  const content='按本次上传目录的单一条目编制尽职调查底稿工作稿。募集说明书只提供披露事实，不替代独立核查证据。每项数据记明来源章节、期间、主体与单位；未披露信息标为待补充。原件收集项生成归档准备页，访谈和函证生成待执行提纲，不伪造证照、回复、签名、印章、核查程序或结论。分别交付底稿正文和编制说明。';
+  return {version:'workpaper-guide-20261027-v1',document_type:'workpaper',market,offering,title:'尽职调查底稿',content,sha256:sha(content),source_ids:['workpaper-catalogue-v1']};
+}
 /** User-selected historical/template files supply structure; this guide supplies provenance rules only. */
 export function loadProjectFileKnowledge(market:Market,type:M4DocumentType,offering:Offering):M4KnowledgeSnapshot {
   if(!m4DocumentScopeSupported(type,market,offering,true))throw Error('M4_KNOWLEDGE_UNAVAILABLE');

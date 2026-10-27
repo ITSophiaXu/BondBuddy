@@ -1,0 +1,184 @@
+{
+  "startedAt": "2026-10-27T09:55:09.200Z",
+  "syntheticInput": true,
+  "realModel": true,
+  "mockAPI": false,
+  "passed": true,
+  "phases": [
+    {
+      "name": "login_verified",
+      "at": "2026-10-27T09:55:10.589Z"
+    },
+    {
+      "name": "prospectus_uploaded_and_selected",
+      "at": "2026-10-27T09:55:16.396Z"
+    },
+    {
+      "name": "catalogue_uploaded",
+      "at": "2026-10-27T09:55:20.791Z",
+      "items": 4
+    },
+    {
+      "name": "assessment_state",
+      "at": "2026-10-27T09:55:23.913Z",
+      "state": "running"
+    },
+    {
+      "name": "assessment_state",
+      "at": "2026-10-27T09:55:45.125Z",
+      "state": "succeeded"
+    },
+    {
+      "name": "real_assessment_and_confirmation_gate_verified",
+      "at": "2026-10-27T09:55:46.739Z",
+      "counts": {
+        "generate": 1,
+        "not_applicable": 1,
+        "external_evidence": 1,
+        "missing_information": 1
+      }
+    },
+    {
+      "name": "generation_state",
+      "at": "2026-10-27T09:55:50.002Z",
+      "batch": "running",
+      "items": [
+        {
+          "title": "财务概况与资产负债率分析",
+          "state": "running",
+          "error": null
+        },
+        {
+          "title": "境外投资情况分析",
+          "state": "succeeded",
+          "error": null
+        },
+        {
+          "title": "营业执照原件",
+          "state": "succeeded",
+          "error": null
+        },
+        {
+          "title": "应收账款账龄分析",
+          "state": "succeeded",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "generation_state",
+      "at": "2026-10-27T10:03:05.015Z",
+      "batch": "complete",
+      "items": [
+        {
+          "title": "财务概况与资产负债率分析",
+          "state": "succeeded",
+          "error": null
+        },
+        {
+          "title": "境外投资情况分析",
+          "state": "succeeded",
+          "error": null
+        },
+        {
+          "title": "营业执照原件",
+          "state": "succeeded",
+          "error": null
+        },
+        {
+          "title": "应收账款账龄分析",
+          "state": "succeeded",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "real_generation_and_download_verified",
+      "at": "2026-10-27T10:03:07.298Z",
+      "projectURL": "http://localhost:5211/#generate?project=f5cf3d46-1312-430f-befd-ce63ee6a2d8b&step=workpapers",
+      "downloads": [
+        {
+          "filename": "验收底稿包.zip",
+          "bytes": 84847,
+          "sha256": "ff1ceae1232790f8ad5274fe64f56d0895b8be757ad8df4b28cfad63dbaff387"
+        }
+      ]
+    }
+  ],
+  "projectId": "f5cf3d46-1312-430f-befd-ce63ee6a2d8b",
+  "projectURL": "http://localhost:5211/#generate?project=f5cf3d46-1312-430f-befd-ce63ee6a2d8b&step=workpapers",
+  "assessmentId": "2ef611f0-ef97-46c3-9227-d7a7af7de2d6",
+  "decisions": [
+    {
+      "reason": "已披露2025年末总资产100亿元、总负债60亿元、所有者权益40亿元，以及2025年度收入、净利润和经营活动现金流量净额；据此可计算资产负债率为60%。可编制披露数据分析稿，但须注明数据为合成数据、未经独立核查，并经人工复核。",
+      "status": "generate",
+      "item_id": "s1-r2",
+      "citations": [
+        {
+          "quote": "截至2025年末，发行人总资产100亿元，总负债60亿元，所有者权益40亿元；2025年度营业收入8亿元，净利润1.5亿元，经营活动现金流量净额5亿元。上述数值均为合成验收数据。总负债占总资产的比例可以据此计算，不代表已独立核查。",
+          "span_id": "p5",
+          "location": "第二节 简要财务信息 / 段落 6"
+        }
+      ],
+      "missing_materials": []
+    },
+    {
+      "reason": "募集书明确披露报告期内不存在境外投资、境外子公司或境外经营业务，募集资金也不用于境外投资，因此该业务分析项不适用；这不代表已完成独立核查。",
+      "status": "not_applicable",
+      "item_id": "s1-r3",
+      "citations": [
+        {
+          "quote": "报告期内发行人不存在境外投资、境外子公司或境外经营业务，本期募集资金亦不用于境外投资。",
+          "span_id": "p7",
+          "location": "第三节 境外业务及原始证据 / 段落 8"
+        }
+      ],
+      "missing_materials": []
+    },
+    {
+      "reason": "该项须归档营业执照原件或签章复制件；募集书不是原件，且明确称尚未取得相关外部原始证据，不能以披露文字替代证照或声称已核查。",
+      "status": "external_evidence",
+      "item_id": "s1-r4",
+      "citations": [
+        {
+          "quote": "本募集说明书不是营业执照原件，不包含签章营业执照、银行流水、合同原件或访谈记录。本地验收中尚未取得这些外部原始证据，也未执行相关独立核查程序。",
+          "span_id": "p8",
+          "location": "第三节 境外业务及原始证据 / 段落 9"
+        }
+      ],
+      "missing_materials": [
+        "发行人营业执照原件或签章复制件"
+      ]
+    },
+    {
+      "reason": "披露材料未提供应收账款余额、客户明细、账龄分布、坏账准备和期后回款资料，无法编制有依据的账龄分析；资料缺失不能推定不存在应收账款。",
+      "status": "missing_information",
+      "item_id": "s1-r5",
+      "citations": [
+        {
+          "quote": "本合成稿未提供应收账款余额、客户明细、账龄分布、坏账准备及期后回款资料，因此不能据此完成应收账款账龄分析。缺少上述资料不能推定发行人不存在应收账款。",
+          "span_id": "p10",
+          "location": "第四节 披露边界 / 段落 11"
+        }
+      ],
+      "missing_materials": [
+        "应收账款余额",
+        "客户明细",
+        "账龄分布",
+        "坏账准备资料",
+        "期后回款资料"
+      ]
+    }
+  ],
+  "batchId": "c0e8e3fd-ec5f-4c2f-b81b-21a0acd99c51",
+  "totalPoints": 4500,
+  "chargedPoints": 4500,
+  "downloads": [
+    {
+      "filename": "验收底稿包.zip",
+      "bytes": 84847,
+      "sha256": "ff1ceae1232790f8ad5274fe64f56d0895b8be757ad8df4b28cfad63dbaff387"
+    }
+  ],
+  "completedAt": "2026-10-27T10:03:07.298Z"
+}
