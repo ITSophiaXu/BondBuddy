@@ -120,8 +120,10 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
     await publishM4QaPrice(pool,{...price,id:'synthetic-qa-future',points:999,effective_at:'2999-01-01T00:00:00.000Z'});
     const current=(await quote()).quote;assert.equal(current.points,90);
     const cancelled=(await ok('POST',`${path}/messages`,{...request,submission_request_id:randomUUID(),quote_id:current.quote_id})).run;
-    await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[cancelled.run_id]);
-    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[cancelled.run_id]);
+    await ok('POST',`/api/v1/runs/${cancelled.run_id}/cancel`,{reason:'user_cancelled'});
+    const stopped=await ok('GET',`${path}/workspace`);
+    assert.equal(stopped.tasks.find((t:any)=>t.run.run_id===cancelled.run_id).run.state,'cancelled');
+    assert.equal(stopped.messages.find((m:any)=>m.run_id===cancelled.run_id).reply_status,'failed');
     assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:0});
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[user])).rows[0].n,1);
   }finally{await app.close();await pool.end();}

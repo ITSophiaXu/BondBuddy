@@ -153,7 +153,7 @@ test('page readiness, query conditions, retries and honest results in real Chrom
   for(const mode of ['abort','http-error'])await t.test(`failed stylesheet does not turn an unstyled feedback form into a captcha gate (${mode})`,async()=>{
    const context=await browser.newContext();
    await context.route('**/*',route=>new URL(route.request().url()).pathname==='/style.css'?(mode==='abort'?route.abort():route.fulfill({status:503,body:''})):route.fulfill({contentType:'text/html; charset=utf-8',body:html('<link rel="stylesheet" href="/style.css">'+form+'<aside class="feedback"><input placeholder="请输入验证码"></aside>',submit)}));
-   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.outcome,'failed');assert.equal(r.diagnostic?.code,'network_error');assert.equal(r.diagnostic?.detail,'OFFICIAL_STYLESHEET_LOAD_FAILED');assert.equal(r.search_performed,false);}finally{await context.close();}
+   try{const r=await collectInContext(context,site,subject,new AbortController().signal,options);assert.equal(r.outcome,'failed');assert.equal(r.diagnostic?.code,'network_error');assert.match(r.diagnostic?.detail??'',/^OFFICIAL_STYLESHEET_LOAD_FAILED/);assert.equal(r.search_performed,false);}finally{await context.close();}
   });
   await t.test('unchanged stale zero is never accepted as this query',async()=>{
    const r=await run(url=>url.pathname==='/query'?'ok':html(form.replace('请输入名称','共0条'),`document.querySelector('#submit').onclick=()=>fetch('/query?q='+encodeURIComponent(document.querySelector('input').value));`));assert.equal(r.outcome,'unverified');

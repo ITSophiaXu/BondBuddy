@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // SYNTHETIC stand-in for `codex exec --json`. See README.md.
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,8 @@ const sentinel = pick(/SENTINEL:(\S+)/);
 const out = (v) => process.stdout.write(JSON.stringify(v) + '\n');
 const cwd = process.cwd();
 out({ type: 'fake.trace', synthetic: true, argv, cwd_entries: readdirSync(cwd), env_keys: Object.keys(process.env).sort(), codex_home_exists: !!process.env.CODEX_HOME && existsSync(process.env.CODEX_HOME), auth_link: !!process.env.CODEX_HOME && existsSync(join(process.env.CODEX_HOME, 'auth.json')) });
+const imageAt=argv.indexOf('--image');
+if(imageAt>=0)out({type:'fake.image',sha256:createHash('sha256').update(readFileSync(argv[imageAt+1])).digest('hex')});
 const resumeAt = argv.indexOf('resume');
 const lines = readFileSync(join(here, `${name}.jsonl`), 'utf8').split('\n').filter(Boolean);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));

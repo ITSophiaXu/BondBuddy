@@ -532,3 +532,36 @@ test('multi-turn: start keeps a session home, resume passes the thread id, dispo
     assert.equal(existsSync(first.codex_home!), false);
   } finally { await cleanup(); }
 });
+
+test('host image input is attached as pixels with tools disabled and removed after the call',async()=>{
+ const {config,cleanup}=await setup({max_schema_reasks:0});
+ try{
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=','base64');
+  const {createHash}=await import('node:crypto');
+  const imageInput={png,sha256:createHash('sha256').update(png).digest('hex')};
+  const events:Record<string,unknown>[]=[];
+  const journal=new MemoryCodexJournal();
+  const result=await runContainedModelCall(call('SCENARIO:structured',{imageInput,onEvent:e=>events.push(e)}),journal,config);
+  assert.equal(result.status,'completed');assert.equal(result.attempts[0].adapter_version,'codex-image-input-1');
+  assert.equal(events.find(e=>e.type==='fake.image')?.sha256,imageInput.sha256);
+  const trace=events.find(e=>e.type==='fake.trace')!;
+  const argv=trace.argv as string[];const imageFile=argv[argv.indexOf('--image')+1];
+  assert.ok(imageFile.endsWith('input.png'));assert.equal(existsSync(imageFile),false);
+  const commandConfig={...config,credential:{kind:'command' as const,path:'/usr/local/bin/bb-copilot-token',oauth_file:'/run/secrets/bb-copilot-oauth'}};
+  const imageArgs=buildCodexArgs(commandConfig,{cwd:join(config.work_root,'cwd'),imageFile:join(config.work_root,'input.png'),schemaFile:null,ephemeral:true,resumeThreadId:null});
+  assert.equal(imageArgs.filter(a=>a.startsWith('model_catalog_json=')).at(-1),'model_catalog_json="/opt/bondbuddy/codex-image-model-catalog.json"');
+  const catalog=JSON.parse(await readFile(new URL('../../../deploy/m1/codex-image-model-catalog.json',import.meta.url),'utf8'));
+  assert.deepEqual(catalog.models[0].input_modalities,['text','image']);assert.equal(catalog.models[0].slug,'gpt-6-sol');assert.deepEqual(catalog.models[0].experimental_supported_tools,[]);
+  assert.equal(catalog.models[0].supports_search_tool,false);
+  assert.match(await readFile(new URL('../../../deploy/m1/Dockerfile',import.meta.url),'utf8'),/COPY .*codex-image-model-catalog.json \/opt\/bondbuddy\/codex-image-model-catalog.json/);
+  assert.deepEqual(trace.cwd_entries,[]);assert.ok(argv.join(' ').includes('--disable view_image'));assert.ok(argv.join(' ').includes('--disable shell_tool'));
+  assert.equal(journal.intents.length,1);assert.equal(result.attempts[0].usage.status,'measured');
+  for(const patch of [{imageInput:{...imageInput,sha256:'0'.repeat(64)}},{imageInput:{...imageInput,png:Buffer.alloc(1024*1024+1)}}]){
+   const j=new MemoryCodexJournal();await assert.rejects(runContainedModelCall(call('SCENARIO:structured',patch),j,config));assert.equal(j.intents.length,0);
+  }
+  await assert.rejects(runContainedModelCall(call('SCENARIO:structured',{imageInput,session:{mode:'start'}}),new MemoryCodexJournal(),config));
+  assert.throws(()=>buildCodexArgs(config,{cwd:config.work_root,schemaFile:null,ephemeral:true,resumeThreadId:null,imageFile:'/etc/private.png'}));
+  const pending=new MemoryCodexJournal();pending.prior={call_id:'call-unknown-image',attempt_no:1,status:'pending_reconcile',observed:true};
+  assert.equal((await runContainedModelCall(call('SCENARIO:structured',{imageInput}),pending,config)).status,'needs_reconcile');assert.equal(pending.intents.length,0);
+ }finally{await cleanup();}
+});

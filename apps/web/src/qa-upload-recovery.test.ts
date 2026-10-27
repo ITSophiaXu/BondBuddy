@@ -28,7 +28,8 @@ test('QA upload uses a new strict v1 envelope and leaves the existing QA cache s
 });
 test('QA upload declarations preserve DOC and reject unsupported source types or non-other roles',()=>{
  assert.equal(qaUploadEnvelope('owner','project','source',base(),[declaration()]).items[0].declaration.media_type,'application/msword');
- for(const d of [{...declaration(),role:'audit'},{...declaration(),filename:'questions.pdf',media_type:'application/pdf'},{...declaration(),filename:'questions.docx'},{...declaration(),byte_size:0}])assert.throws(()=>qaUploadEnvelope('owner','project','source',base(),[d as Dto<'UploadCreateRequest'>]));
+ assert.equal(qaUploadEnvelope('owner','project','source',base(),[{...declaration(),filename:'questions.PDF',media_type:'application/pdf'}]).items[0].declaration.media_type,'application/pdf');
+ for(const d of [{...declaration(),role:'audit'},{...declaration(),filename:'questions.xlsx',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},{...declaration(),filename:'questions.docx'},{...declaration(),byte_size:0}])assert.throws(()=>qaUploadEnvelope('owner','project','source',base(),[d as Dto<'UploadCreateRequest'>]));
  assert.throws(()=>qaUploadEnvelope('owner','project','supplement',{...base(),pending:{kind:'prepare',request:{request_id:'pending',source:{kind:'material',pin:{source_project_id:'project',material_id:'old',material_version:1,sha256:'b'.repeat(64)}}}}},[declaration()]));
 });
 test('QA envelopes bind ordered operations and their original immutable preparation digest',()=>{

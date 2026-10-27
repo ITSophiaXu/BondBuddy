@@ -1,3 +1,5 @@
+import {IntegrityCaptchaInterruption} from './integrity-captcha.js';
+import {integrityCaptchaRecognizer} from './integrity-captcha-model.js';
 import {randomUUID} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
 import {IntegrityBrowserInterpretationSchema,IntegrityBrowserAssessmentSchema,IntegrityBrowserSchema,type IntegrityBrowserAssessment,type IntegrityBrowserInterpretation,type IntegrityCapture,type IntegrityRecord,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
@@ -14,6 +16,7 @@ export type IntegrityBrowserOptions={collector?:IntegrityCollector;model?:typeof
 export async function collectIntegritySite(collector:IntegrityCollector,site:IntegritySite,subject:Parameters<IntegrityCollector>[1],signal:AbortSignal):Promise<BrowserCollection>{
  try{return await collector(site,subject,signal);}catch(error){
   signal.throwIfAborted();
+  if(error instanceof IntegrityCaptchaInterruption)throw error;
   const code=error instanceof Error&&/^(?:INTEGRITY_[A-Z_]+|INVALID_INTEGRITY_EGRESS_PROXY|E[A-Z]+)$/.test(error.message)?error.message:'INTEGRITY_BROWSER_RUNTIME_FAILED';
   return {query:integritySearchQuery(site,subject),search_performed:false,outcome:'failed',scope:`${site.name}官网查询`,limitation:'浏览器采集未完成，本项不能作为已查询或无记录的依据。',reason:'浏览器采集未完成，已记录本项失败并继续其他网站；无需上传补充证据。',captures:[],diagnostic:{code:'operation_failed',phase:'open',detail:code}};
  }
@@ -54,7 +57,12 @@ export async function officialIntegrityRecord(ctx:StageContext,site:IntegritySit
  if(subject.kind==='person'&&site.companyOnly)return {...base,status:'not_applicable',reason:'此网站查询范围仅适用于企业。'};
  if(!site.links.length)return {...base,status:'query_failed',reason:'未能自动确定属地官网，本项未完成查询；无需上传补充证据。'};
  // Deliberately omit both corporate and personal identifiers from the public browser interface.
- const batch=await loadBatch(ctx,subject.id,site.id)??await saveBatch(ctx,subject,site,await collectIntegritySite(options.collector??collectIntegrityWebsite,site,{name:subject.name,kind:subject.kind,province:subject.province,city:subject.city},ctx.signal));
+ let batch=await loadBatch(ctx,subject.id,site.id);
+ if(!batch)try{
+  const captchaRecognizer=await integrityCaptchaRecognizer(ctx,subject.id,site.id,options);
+  const collector:IntegrityCollector=(s,q,signal)=>(options.collector??collectIntegrityWebsite)(s,q,signal,{captchaRecognizer});
+  batch=await saveBatch(ctx,subject,site,await collectIntegritySite(collector,site,{name:subject.name,kind:subject.kind,province:subject.province,city:subject.city},ctx.signal));
+ }catch(error){if(error instanceof IntegrityCaptchaInterruption)return error.outcome;throw error;}
  const browser={version:'official-browser-v1' as const,outcome:batch.outcome,scope:batch.scope,limitation:batch.limitation,captures:batch.captures.map(c=>c.metadata),...(batch.diagnostic?{diagnostic:batch.diagnostic}:{})};
  if(!Value.Check(IntegrityBrowserSchema,browser))throw Error('INVALID_BROWSER_CAPTURE');
  const record:IntegrityRecord={...base,query:batch.query,status:batch.outcome==='results'?'public_matches':batch.outcome==='no_results'?'no_public_results':batch.outcome==='blocked'?'needs_manual':'query_failed',reason:batch.reason,checked_at:batch.captures[0]?.metadata.captured_at??base.checked_at,search_performed:batch.search_performed,browser};

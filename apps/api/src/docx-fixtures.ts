@@ -25,7 +25,7 @@ export function makeSyntheticDocxFixture(options:{text?:string;stored?:boolean}=
   const local:Buffer[]=[],central:Buffer[]=[];
   let offset=0;
   for(const [filename,content] of files){
-    const name=Buffer.from(filename),bytes=Buffer.from(filename==='word/document.xml'&&options.text?content.replace('Synthetic Word delivery fixture',options.text):content),compressed=options.stored?bytes:deflateRawSync(bytes),crc=crc32(bytes);
+    const name=Buffer.from(filename),bytes=Buffer.from(filename==='word/document.xml'&&options.text!==undefined?content.replace('Synthetic Word delivery fixture',options.text):content),compressed=options.stored?bytes:deflateRawSync(bytes),crc=crc32(bytes);
     const header=Buffer.alloc(30);
     header.writeUInt32LE(0x04034b50,0);header.writeUInt16LE(20,4);header.writeUInt16LE(0x0800,6);header.writeUInt16LE(options.stored?0:8,8);
     header.writeUInt32LE(crc,14);header.writeUInt32LE(compressed.length,18);header.writeUInt32LE(bytes.length,22);header.writeUInt16LE(name.length,26);

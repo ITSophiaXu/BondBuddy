@@ -3,7 +3,7 @@ import { artifactFilename } from './artifact-download';
 import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,M4_DOCUMENT_MARKETS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
   sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
   type AssistantAction,type AssistantCard,type AssistantCardRequest,type AssistantResult,type M4Workspace,type M4Topic,
-  type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
+  type M4Message,type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
 import { ApiClient,ApiError,friendlyError,type Dto } from './api';
 import { UserFacingError, type ErrorOperation } from './user-facing-error';
 import { M4Api } from './m4-api';
@@ -504,6 +504,15 @@ export class ProjectAssistant {
       if(a==='new')await this.newConversation(this.embeddedProject);
       if(a==='select'&&(!this.embeddedProject||this.topics.some(t=>t.topic_id===el.dataset.id&&t.source_project_id===this.embeddedProject)))await this.select(el.dataset.id!);
       if(a==='send')await this.send();
+      if(a==='refresh-reply')await this.poll();
+      if(a==='cancel-reply'){
+        const message=this.workspace?.messages.find(m=>m.message_id===el.dataset.id&&m.role==='user');
+        const task=this.workspace?.tasks.find(t=>t.run.run_id===message?.run_id&&t.manifest.kind==='qa');
+        if(message&&task&&!finished(task.run.state)){
+          await this.api.runAction(task.run.run_id,'cancel',this.controller.signal);
+          await this.poll();this.status='已停止本次回答，消息与材料保留。';
+        }
+      }
       if(a==='current-project'){const id=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];if(id)await this.newConversation(decodeURIComponent(id));}
       if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;this.projectPicker=true;}
       if(a==='action'){const message=this.workspace?.messages.find(m=>m.message_id===el.dataset.id);if(message?.reply?.assistant_action)await this.useAction(message.reply.assistant_action);}
@@ -587,9 +596,21 @@ export class ProjectAssistant {
       ${r?`${this.taskLink(c)}${r.state==='succeeded'?` <button data-a="continue" data-id="${esc(c.card_id)}">继续修改</button><div data-delivery="${esc(r.run_id)}"></div>`:''}${['failed','paused'].includes(r.state)?'<p>原材料和要求已保留，可在原任务中查看原因与恢复状态。</p>':''}`:
         `<div class="ba-card-actions"><button data-a="edit">修改信息</button>${stale?'<span>输入已变化，请重新核对任务。</span>':insufficient?`<a href="#/account?project=${encodeURIComponent(c.project_id)}" class="ba-primary">积分不足，去充值</a>`:`<button class="ba-primary" data-a="execute" data-id="${esc(c.card_id)}"${this.busy?' disabled':''}>${c.operation==='update'?'开始更新':'确认并开始'}</button>`}</div><small>成功交付后扣费；失败或取消释放预留积分。</small>`}</section>`;
   }
+  private replyProgress(message:M4Message){
+    if(message.role!=='user'||message.reply_status==='completed')return '';
+    const task=this.workspace?.tasks.find(t=>t.run.run_id===message.run_id&&t.manifest.kind==='qa');
+    if(task&&finished(task.run.state))return task.run.state==='cancelled'?'<p class="ba-thinking">本次回答已停止，消息与材料保留。</p>':'';
+    if(!task&&message.reply_status==='failed')return '';
+    const state=task?.run.state,stage=task?.run.stage;
+    const delayed=state==='queued'&&Date.now()-Date.parse(task!.created_at)>120000;
+    const text=state==='paused'?(stage==='provider_reconcile'?'回复处理中断，正在核对本次调用状态。':stage==='credits_exhausted'?'任务已暂停，请核对可用积分。':'回复任务已暂停。')
+      :state==='queued'?(delayed?'排队时间较长，尚未开始回答。无需重复发送，可继续等待或停止本次回答。':'已收到，排队等待处理。')
+      :state==='awaiting_input'?'回复任务等待补充信息。':state==='settlement_pending'?'正在核对本次回复与费用。':message.reply_status==='running'?'正在阅读并整理回复…':'已收到，正在读取任务状态…';
+    return `<div class="ba-reply-progress"><p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
+  }
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
-    const messages=this.workspace?.messages??[];const entries=[...messages.map(m=>({time:m.created_at,html:`<article class="ba-message ${m.role}"><small>${m.role==='user'?'你':'BondBuddy'}</small><div class="ba-text">${esc(m.content)}</div>${m.error?`<p role="alert">${esc(m.error)}</p>`:''}${m.role==='user'&&!['completed','failed'].includes(m.reply_status)?`<p class="ba-thinking">${m.reply_status==='running'?'正在阅读并整理回复…':'已收到，等待处理…'}</p>`:''}${m.reply?.assistant_action?`<button class="ba-suggestion" data-a="action" data-id="${esc(m.message_id)}">核对${businessName(m.reply.assistant_action.business)}的信息与要求 →</button>`:''}</article>`})),...this.cards.map(c=>({time:c.created_at,html:this.card(c)}))].sort((a,b)=>a.time.localeCompare(b.time));
+    const messages=this.workspace?.messages??[];const entries=[...messages.map(m=>({time:m.created_at,html:`<article class="ba-message ${m.role}"><small>${m.role==='user'?'你':'BondBuddy'}</small><div class="ba-text">${esc(m.content)}</div>${m.error?`<p role="alert">${esc(m.error)}</p>`:''}${this.replyProgress(m)}${m.reply?.assistant_action?`<button class="ba-suggestion" data-a="action" data-id="${esc(m.message_id)}">核对${businessName(m.reply.assistant_action.business)}的信息与要求 →</button>`:''}</article>`})),...this.cards.map(c=>({time:c.created_at,html:this.card(c)}))].sort((a,b)=>a.time.localeCompare(b.time));
     box.hidden=this.formOpen&&!entries.length;
     box.classList.toggle('ba-empty',!entries.length);
     box.innerHTML=entries.map(e=>e.html).join('')||`<div class="ba-welcome"><span class="ba-welcome-mark">${icon('buddy')}</span><h2>有什么可以帮你？</h2><p>讨论项目、完善文稿，或开始一项新任务。</p><div class="ba-shortcuts"><button data-a="shortcut" data-kind="update"${this.busy||!this.workspace?' disabled':''}><span class="ba-shortcut-icon">${icon('update')}</span><span><strong>更新募集书</strong><small>更新内容，或继续修改已有成果</small></span>${icon('arrow')}</button><button data-a="shortcut" data-kind="review"${this.busy||!this.workspace?' disabled':''}><span class="ba-shortcut-icon">${icon('review')}</span><span><strong>复核募集书</strong><small>检查内容，梳理需要完善的地方</small></span>${icon('arrow')}</button><button data-a="shortcut" data-kind="generation"${this.busy||!this.workspace?' disabled':''}><span class="ba-shortcut-icon">${icon('generation')}</span><span><strong>生成项目材料</strong><small>根据材料和要求，编制所需文书</small></span>${icon('arrow')}</button></div></div>`;

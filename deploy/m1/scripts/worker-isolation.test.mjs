@@ -18,6 +18,7 @@ test('effective production compose reserves three separate, contained worker pro
   assert.deepEqual(workers.map(w => w.environment.BB_WORKER_JOB_KINDS), ['run', 'run', 'parse']);
   assert.equal(workers[0].environment.BB_WORKER_RUN_KINDS, 'update,generation,qa');
   assert.equal(workers[1].environment.BB_WORKER_RUN_KINDS, 'review');
+  assert.deepEqual(workers.map(w => w.environment.BB_WORKER_INTERACTIVE_SLOTS), ['1', '0', '0']);
   assert.equal(new Set(workers.map(w => w.volumes.find(v => v.target.includes('parse-staging')).source)).size, 3);
   for (const w of workers) {
     assert.equal(w.environment.BB_WORKER_CONCURRENCY, '1');

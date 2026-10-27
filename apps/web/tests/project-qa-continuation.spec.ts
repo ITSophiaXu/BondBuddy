@@ -17,8 +17,8 @@ const route=(run:string|null=answerId,project=projectId)=>`/#qa?project=${projec
 
 test.beforeEach(async({page})=>{page.on('dialog',dialog=>void dialog.accept());});
 test.afterEach(async({page})=>{await assertFixture(page);});
-async function open(page:Page,state=fixture(),run:string|null=answerId){await install(page,state);await page.goto(route(run));await expect(page.locator('#qa-history')).toBeVisible();return state;}
-async function adopt(page:Page){await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();}
+async function open(page:Page,state=fixture(),run:string|null=answerId){await install(page,state);await page.goto(route(run));await expect(page.locator('#qa-history')).toBeVisible();if(await page.locator('.qa-followup').count())await page.locator('.qa-followup>summary').click();return state;}
+async function adopt(page:Page){if(await page.locator('.qa-followup').getAttribute('open')===null)await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();}
 async function chooseKnowledge(page:Page,value=false){await knowledge(page,value).check();await expect(page.locator('#qa-save')).toBeEnabled();await expect(page.locator('#qa-start')).toBeEnabled();}
 async function expectLocal(page:Page,ids=['q2','q7'],requirements=originalRequirements){
   await expect.poll(()=>selectedIds(page)).toEqual(ids);await expect(page.locator('#qa-requirements')).toHaveValue(requirements);
@@ -157,7 +157,7 @@ test('unknown draft readback requires exactly expected revision plus one and eve
 });
 
 test('local continuation recovery is isolated by project',async({page})=>{
-  const state=await open(page);await adopt(page);await expectLocal(page);await page.goto(route(null,otherProjectId));await expect(page.locator('#qa-history')).toBeVisible();
+  const state=await open(page);await adopt(page);await expectLocal(page);await page.goto(route(null,otherProjectId));await expect(page.getByRole('heading',{name:'上传问题清单',exact:true})).toBeVisible();await expect(page.locator('#qa-history')).toBeHidden();
   await expect(page.locator('#qa-requirements')).toHaveCount(0);await expect(page.locator('#qa-retry-pending')).toHaveCount(0);expect(writes(state)).toEqual([]);
   await page.goto(route(null));await expectLocal(page);expect(writes(state)).toEqual([]);
 });
