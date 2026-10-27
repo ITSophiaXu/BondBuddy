@@ -84,7 +84,7 @@ export type RunStage = {
 export type RunPipelineOutcome = 'idle' | 'succeeded' | 'test_completed' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
 export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
-  runKinds?: readonly RunKind[];
+  runKinds?: readonly RunKind[]; interactiveOnly?: boolean;
   signal?: AbortSignal; reviewedContextLoader?: ReviewedContextLoader;
   testRuleCapabilityLoader?: TestRuleCapabilityLoader;
   /** #33 pinned issuer binding re-verification call point; absent = unchanged. */
@@ -588,7 +588,7 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' | 
 export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
   const { pool, blobs } = deps;
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
-  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds });
+  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
   deps.onLease?.(lease);
   if (!lease) return 'idle';
   const abort = new AbortController();

@@ -73,6 +73,13 @@ export class ReadableReview {
   }
   private draw() {
     const host = this.currentHost; if (!host?.isConnected) return;
+    if (this.cache?.status === 'invalid_content') {
+      const result = host.closest('.review-readable-result');
+      const heading = result?.querySelector('h2'); if (heading) heading.textContent = '历史复核成果异常';
+      result?.querySelectorAll<HTMLButtonElement>('[data-review-action="download"]').forEach(button => { button.textContent = '下载原文件（异常成果）'; });
+      host.innerHTML = '<div class="readable-notice" role="alert">此报告只有内部进度信息或空正文，不能作为有效复核成果。历史任务曾登记为完成；原文件与原结算记录保留，费用需另行核对。</div>';
+      return;
+    }
     if (!this.doc) {
       const unavailable = this.failed === this.currentRun || this.cache?.status === 'unavailable';
       host.innerHTML = `<div class="readable-notice" role="status">${unavailable ? '页面正文暂时无法读取，已生成的 Word 仍可下载。' : '正在读取复核报告…'}${unavailable ? '<button class="text-btn" data-readable-retry>重新读取</button>' : ''}</div>`; return;

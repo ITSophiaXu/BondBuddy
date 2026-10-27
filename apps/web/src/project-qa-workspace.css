@@ -1,5 +1,7 @@
 
-.qa-layout{display:grid;grid-template-columns:minmax(240px,.65fr) minmax(0,1.65fr);gap:24px;align-items:start}
+.qa-page{container-type:inline-size;container-name:qa-workspace}
+.qa-layout{display:grid;grid-template-columns:minmax(320px,.85fr) minmax(0,1.65fr);gap:24px;align-items:start}
+@container qa-workspace (max-width:900px){.qa-layout{grid-template-columns:minmax(0,1fr)}.qa-document{grid-row:1}.qa-left{grid-template-columns:minmax(0,1fr)}}
 .qa-left{min-width:0;display:grid;gap:16px}
 .qa-document,.qa-upload,.qa-assistant{padding:24px;min-width:0}
 .qa-upload input[type=file],.qa-materials input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
