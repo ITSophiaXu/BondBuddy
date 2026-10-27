@@ -1,15 +1,15 @@
+import {documentChoice,clearRows,addDocuments,selectedRows} from './file-generation-rows';
 import {expect,test,type Locator,type Page} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {M4_DOCUMENT_FIXED_PRICE,PROJECT_DOCUMENT_CATALOG,type M4DocumentType,type M4DraftRequest} from '@bondbuddy/contracts';
-import {assertFixture,batches,checked,choose,documents,drafts,entry,file,fixture,ids,note,open,query,raw,selected,templateWrites,writes} from './generation-entry-fixtures';
+import {assertFixture,batches,choose,documents,drafts,entry,file,fixture,ids,note,open,query,raw,selected,templateWrites,writes} from './generation-entry-fixtures';
 import {installGenerationMobileReference} from './generation-mobile-reference';
 
 // A bounded R20 layout/interaction slice. The sealed R19 fixture, recovery
 // protocol and pending/unknown matrix remain in their original test files.
 const label=(type:M4DocumentType)=>PROJECT_DOCUMENT_CATALOG.find(d=>d.id===type)!.name;
 const cost=(count:number)=>(count*M4_DOCUMENT_FIXED_PRICE.points).toLocaleString();
-const directory=(page:Page)=>page.locator('#pf-document-directory');
 const requirements=(page:Page)=>page.locator('#pf-requirements-details');
 const support=(page:Page)=>page.locator('#pf-support-details');
 async function isOpen(group:Locator){return group.evaluate(node=>(node as HTMLDetailsElement).open);}
@@ -19,22 +19,21 @@ async function disclosure(group:Locator,opened:boolean){
   if(await isOpen(group)!==opened)await group.locator(':scope > summary').click();
   await expect.poll(()=>isOpen(group)).toBe(opened);
 }
-async function chooseDocuments(page:Page,types:M4DocumentType[]){await disclosure(directory(page),true);await choose(page,types);}
-async function closeOptionalGroups(page:Page){for(const group of [directory(page),requirements(page),support(page)])await disclosure(group,false);}
+async function chooseDocuments(page:Page,types:M4DocumentType[]){await choose(page,types);}
+async function closeOptionalGroups(page:Page){for(const group of [requirements(page),support(page)])await disclosure(group,false);}
 async function outsideDisclosure(locator:Locator){await expect(locator).toBeVisible();expect(await locator.evaluate(node=>node.closest('details')===null)).toBe(true);}
 async function precedes(first:Locator,second:Locator){const a=await first.boundingBox(),b=await second.boundingBox();expect(a).not.toBeNull();expect(b).not.toBeNull();expect(a!.y+a!.height).toBeLessThanOrEqual(b!.y+1);}
 async function noOverflow(page:Page){expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual((await page.viewportSize())!.width+1);}
 async function mobile(page:Page,width=390){await page.setViewportSize({width,height:900});}
 
-test('generation mobile: a real selected-document entry puts preparation, price and one next action before the collapsed directory',async({page})=>{
+test('generation mobile: a selected-document entry exposes its row, template and one next action',async({page})=>{
   await mobile(page);const s=await fixture(page),before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);
   await entry(page,'credit');expect(writes(s)).toEqual([]);await documents(page);
-  expect(await selected(page)).toEqual(['credit']);await expect(page.locator('#pf-selected-documents')).toContainText(label('credit'));
-  expect(await isOpen(directory(page))).toBe(false);expect(await isOpen(requirements(page))).toBe(false);expect(await isOpen(support(page))).toBe(false);
+  expect(await selected(page)).toEqual(['credit']);await expect(documentChoice(page,'credit')).toHaveValue('credit');
+  expect(await isOpen(requirements(page))).toBe(false);expect(await isOpen(support(page))).toBe(false);
   await expect(page.locator('#pf-prepared')).toHaveText('1 / 1 已准备');await expect(page.locator('#pf-price')).toContainText(cost(1));
   await expect(page.locator('#pf-generate')).toHaveCount(1);await expect(page.getByRole('button',{name:'核对文件包与费用',exact:true})).toHaveCount(1);await expect(page.locator('#pf-generate')).toBeEnabled();
-  await precedes(page.locator('#pf-package-overview'),directory(page));await precedes(page.locator('#pf-template-list'),directory(page));await precedes(page.locator('.pf-documents-next'),directory(page));
-  await precedes(page.locator('.pf-documents-next'),requirements(page));await precedes(page.locator('.pf-documents-next'),support(page));await noOverflow(page);
+  await precedes(page.locator('.pf-file-builder'),requirements(page));await expect(page.locator('#pf-generate')).toBeVisible();await noOverflow(page);
   expect(writes(s).map(call=>call.path)).toEqual([`/projects/${ids.api}/project-files/source`]);expect(s.workspaces.get(ids.api)!.workspace.drafts).toEqual(before);
   await page.locator('#pf-generate').click();await expect(page.locator('#pf-confirm-generation')).toBeVisible();await expect(page.locator('.pf-confirm-files li')).toHaveCount(1);await expect(page.locator('.pf-confirm-files')).toContainText(label('credit'));
   const source=s.workspaces.get(ids.api)!.source!;await expect(page.locator('dialog')).toContainText(source.filename);await expect(page.locator('.pf-confirm-total')).toContainText(cost(1));expect(batches(s)).toEqual([]);expect(drafts(s)).toEqual([]);
@@ -42,35 +41,35 @@ test('generation mobile: a real selected-document entry puts preparation, price 
   expect(batches(s)[0].body).toEqual({request_id:expect.any(String),source_version_id:source.version_id,expected_selection_revision:source.selection_revision,documents:[{document_type:'credit',draft_version:before.credit.version}]});expect(drafts(s)).toEqual([]);assertFixture(s);
 });
 
-test('generation mobile: an empty package opens the directory and native edits preserve the users open directory at 320px',async({page})=>{
-  await mobile(page,320);const s=await fixture(page);await open(page);expect(await selected(page)).toEqual([]);expect(await isOpen(directory(page))).toBe(true);await expect(page.locator('#pf-generate')).toBeDisabled();
-  await disclosure(directory(page),false);await disclosure(directory(page),true);await checked(page,'init').check();await checked(page,'underwriter').check();
-  expect(await isOpen(directory(page))).toBe(true);expect(await selected(page)).toEqual(['init','underwriter']);await expect(page.locator('#pf-price')).toContainText(cost(2));await expect(page.locator('#pf-selected-documents')).toContainText(label('underwriter'));
-  await page.locator('#pf-select-none').click();expect(await selected(page)).toEqual([]);expect(await isOpen(directory(page))).toBe(true);await expect(page.locator('#pf-generate')).toBeDisabled();
-  await checked(page,'legal').check();await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();expect(await selected(page)).toEqual(['legal']);expect(await isOpen(directory(page))).toBe(false);
-  await disclosure(directory(page),true);await expect(checked(page,'legal')).toBeChecked();await page.locator('#pf-select-none').click();expect(await isOpen(directory(page))).toBe(true);await expect(page.locator('#pf-generate')).toBeDisabled();
+test('generation mobile: an empty package starts with a blank row and native edits persist at 320px',async({page})=>{
+  await mobile(page,320);const s=await fixture(page);await open(page);expect(await selected(page)).toEqual([]);await expect(page.locator('#pf-generate')).toBeDisabled();
+  await addDocuments(page,['init']);await addDocuments(page,['underwriter']);
+  expect(await selected(page)).toEqual(['init','underwriter']);await expect(page.locator('#pf-price')).toContainText(cost(2));await expect(documentChoice(page,'underwriter')).toHaveValue('underwriter');
+  await clearRows(page);expect(await selected(page)).toEqual([]);await expect(page.locator('#pf-generate')).toBeDisabled();
+  await addDocuments(page,['legal']);await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();expect(await selected(page)).toEqual(['legal']);
+  await expect(documentChoice(page,'legal')).toHaveValue('legal');await clearRows(page);await expect(page.locator('#pf-generate')).toBeDisabled();
   await noOverflow(page);expect(writes(s)).toEqual([]);assertFixture(s);
 });
 
-test('generation mobile: a selected missing template stays actionable outside the directory and only its draft is prepared',async({page})=>{
+test('generation mobile: a selected missing template stays actionable in its row and only its draft is prepared',async({page})=>{
   await mobile(page,320);const s=await fixture(page);s.workspaces.get(ids.api)!.workspace.drafts.legal.template=null;
-  const before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);await entry(page,'legal');await documents(page);expect(await isOpen(directory(page))).toBe(false);
+  const before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);await entry(page,'legal');await documents(page);
   await expect(page.locator('#pf-package-readiness')).toContainText(/1.*模板|模板.*1/);await expect(page.locator('#pf-prepared')).toHaveText('0 / 1 已准备');await expect(page.locator('#pf-generate')).toBeDisabled();
   await page.locator('#pf-go-template').click();await expect(page.locator('#pf-template-list')).toBeFocused();const reused=page.locator('[data-pf-reused="legal"]');await disclosure(reused,true);
   const add=page.locator('[data-pf-template="legal"]');await outsideDisclosure(add);await add.click();await expect(page.locator('dialog')).toBeVisible();await page.locator('[data-use-template="template-legal"]').click();
   await expect(page.locator('dialog')).toHaveCount(0);await expect(page.locator('#pf-prepared')).toHaveText('1 / 1 已准备');await expect(page.locator('#pf-generate')).toBeEnabled();
   expect(await isOpen(reused)).toBe(true);await expect(reused).toContainText(before.legal.supplemental_requirements!);
   expect(drafts(s).map(call=>(call.body as M4DraftRequest).input.document_type)).toEqual(['legal']);expect((drafts(s)[0].body as M4DraftRequest).expected_version).toBe(1);expect(s.workspaces.get(ids.api)!.workspace.drafts.init).toEqual(before.init);
-  expect(await isOpen(directory(page))).toBe(false);expect(await isOpen(requirements(page))).toBe(false);expect(batches(s)).toEqual([]);await noOverflow(page);assertFixture(s);
+  expect(await isOpen(requirements(page))).toBe(false);expect(batches(s)).toEqual([]);await noOverflow(page);assertFixture(s);
 });
 
 test('generation mobile: unsaved requirements reopen after refresh and disclosure choices survive preparation repaint',async({page})=>{
   await mobile(page);const s=await fixture(page);await open(page);await chooseDocuments(page,['init']);await disclosure(requirements(page),true);await page.locator('#pf-requirements').fill(note);
   const saved=await raw(page,'note');await disclosure(requirements(page),false);await expect(page.locator('#pf-note-summary')).toContainText('未保存');expect(await raw(page,'note')).toBe(saved);expect(writes(s)).toEqual([]);
-  await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(directory(page))).toBe(false);await expect(page.locator('#pf-requirements')).toHaveValue(note);await expect(page.locator('#pf-note-summary')).toContainText('未保存');
-  await disclosure(directory(page),true);await disclosure(support(page),true);const reused=page.locator('[data-pf-reused="init"]');await disclosure(reused,true);await expect(reused).toContainText('已有专业要求');
-  await checked(page,'underwriter').check();expect(await isOpen(directory(page))).toBe(true);expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(support(page))).toBe(true);expect(await isOpen(reused)).toBe(true);
-  await disclosure(requirements(page),false);await disclosure(support(page),false);await checked(page,'legal').check();expect(await isOpen(requirements(page))).toBe(false);expect(await isOpen(support(page))).toBe(false);expect(await isOpen(reused)).toBe(true);
+  await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();expect(await isOpen(requirements(page))).toBe(true);await expect(page.locator('#pf-requirements')).toHaveValue(note);await expect(page.locator('#pf-note-summary')).toContainText('未保存');
+  await disclosure(support(page),true);const reused=page.locator('[data-pf-reused="init"]');await disclosure(reused,true);await expect(reused).toContainText('已有专业要求');
+  await addDocuments(page,['underwriter']);expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(support(page))).toBe(true);expect(await isOpen(reused)).toBe(true);
+  await disclosure(requirements(page),false);await disclosure(support(page),false);await addDocuments(page,['legal']);expect(await isOpen(requirements(page))).toBe(false);expect(await isOpen(support(page))).toBe(false);expect(await isOpen(reused)).toBe(true);
   await expect(page.locator('#pf-note-summary')).toContainText('未保存');await disclosure(requirements(page),true);await expect(page.locator('#pf-requirements')).toHaveValue(note);
   expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);expect(await raw(page,'note')).toBe(saved);await noOverflow(page);assertFixture(s);
 });
@@ -104,7 +103,7 @@ test('generation mobile: folding does not consume an unresolved entry conflict o
   await mobile(page,320);const s=await fixture(page),before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);await open(page);await chooseDocuments(page,['init']);await disclosure(requirements(page),true);await page.locator('#pf-requirements').fill(note);
   await entry(page,'credit');await documents(page);await closeOptionalGroups(page);const card=page.getByRole('region',{name:'准备生成所选文种'});await outsideDisclosure(card);await expect(card.getByRole('button')).toHaveCount(3);await expect(page.locator('#pf-entry-transfer')).toBeVisible();await expect(page.locator('#pf-generate')).toBeDisabled();
   expect((await query(page)).prepare_document).toBe('credit');expect((await query(page)).prepare_wait).toBe('1');expect(await selected(page)).toEqual(['init']);expect(drafts(s)).toEqual([]);
-  await page.locator('#pf-entry-transfer').click();await expect(page.locator('#pf-entry-transfer')).toHaveCount(0);expect(await selected(page)).toEqual(['credit']);await expect(page.locator('#pf-selected-documents')).toContainText(label('credit'));expect((await query(page)).prepare_document).toBeUndefined();
+  await page.locator('#pf-entry-transfer').click();await expect(page.locator('#pf-entry-transfer')).toHaveCount(0);expect(await selected(page)).toEqual(['credit']);await expect(documentChoice(page,'credit')).toHaveValue('credit');expect((await query(page)).prepare_document).toBeUndefined();
   await expect(page.locator('#pf-note-summary')).toContainText('未保存');await disclosure(requirements(page),true);await expect(page.locator('#pf-requirements')).toHaveValue(note);expect(s.workspaces.get(ids.api)!.workspace.drafts).toEqual(before);expect(batches(s)).toEqual([]);await noOverflow(page);assertFixture(s);
 });
 
@@ -115,13 +114,13 @@ for(const width of [1440,390,320])test(`generation mobile component comparison a
   const capture=async(name:string)=>{
     await page.evaluate(()=>scrollTo(0,0));await noOverflow(page);
     const layout=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,text:document.body.innerText,
-      disclosures:Object.fromEntries(['pf-document-directory','pf-requirements-details','pf-support-details'].map(id=>[id,(document.getElementById(id) as HTMLDetailsElement|null)?.open??null])),
+      disclosures:Object.fromEntries(['pf-requirements-details','pf-support-details'].map(id=>[id,(document.getElementById(id) as HTMLDetailsElement|null)?.open??null])),
       nextButtons:document.querySelectorAll('#pf-generate').length}));
     await page.screenshot({path:join(dir!,`generation-mobile-${name}-${width}.png`),fullPage:true});await writeFile(join(dir!,`generation-mobile-${name}-${width}.json`),JSON.stringify({...layout,reference,selection:await selected(page),query:await query(page)},null,2));
   };
-  if(!reference){expect(await isOpen(directory(page))).toBe(width>760);expect(await isOpen(requirements(page))).toBe(width>760);expect(await isOpen(support(page))).toBe(width>760);}
+  if(!reference){expect(await isOpen(requirements(page))).toBe(width>760);expect(await isOpen(support(page))).toBe(width>760);}
   await capture('ready');await chooseDocuments(page,['init','legal']);await disclosure(requirements(page),true);await page.locator('#pf-requirements').fill(note);await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();
   expect(await selected(page)).toEqual(['init','legal']);await expect(page.locator('#pf-requirements')).toHaveValue(note);await expect(page.locator('#pf-generate')).toBeDisabled();await expect(page.locator('#pf-prepared')).toHaveText('1 / 2 已准备');
-  if(!reference){expect(await isOpen(directory(page))).toBe(width>760);expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(support(page))).toBe(width>760);}
+  if(!reference){expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(support(page))).toBe(width>760);}
   await capture('note-missing-template');expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);if(verify)await writeFile(join(dir!,`generation-mobile-reference-${width}.json`),JSON.stringify(await verify(),null,2));
 });

@@ -36,6 +36,10 @@
     "m4-project-file": {
       "path": "apps/worker/skills/m4-project-file/SKILL.md",
       "sha256": "7d59d2a534255577e50957c3f84afde03e6222173167af7da53bcf8ed5af76b7"
+    },
+    "m4-workpaper": {
+      "path": "apps/worker/skills/m4-workpaper/SKILL.md",
+      "sha256": "9237292967c85dc0920755a46a32e4f5b739d0b6ff5b5498ca74ce1c0bea85fb"
     }
   }
 }

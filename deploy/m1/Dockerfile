@@ -30,6 +30,7 @@ COPY knowledge/material-drafting/2026-10-07/catalog.json knowledge/material-draf
 COPY knowledge/material-drafting/2026-10-07/packs/ knowledge/material-drafting/2026-10-07/packs/
 COPY knowledge/material-drafting/2026-10-15/catalog.json knowledge/material-drafting/2026-10-15/catalog.json
 COPY knowledge/material-drafting/2026-10-15/templates/ knowledge/material-drafting/2026-10-15/templates/
+COPY knowledge/workpaper-templates/2026-10-27/ knowledge/workpaper-templates/2026-10-27/
 RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
  && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src

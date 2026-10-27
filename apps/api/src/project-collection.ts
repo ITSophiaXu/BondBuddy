@@ -67,6 +67,7 @@ export const collectionFilesSql = `
  FROM bb_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
  ${artifactNameJoins('a')}
  WHERE a.owner_user_id=$1 AND r.project_id IN(SELECT id FROM members) AND r.state='succeeded'
+ AND NOT coalesce(n_m4.document_type='workpaper' AND n_m4.kind='preparation_note',false)
  AND a.quality_status='passed' AND a.delivery_status='available' AND NOT coalesce(n_input.manifest->>'version'='project-qa-v1' AND n_input.manifest->>'operation'='prepare',false)
  AND NOT EXISTS(SELECT 1 FROM bb_project_file_versions fv JOIN bb_project_files ff ON ff.owner_user_id=fv.owner_user_id AND ff.id=fv.file_id WHERE fv.owner_user_id=a.owner_user_id AND ff.project_id IN(SELECT id FROM members)
    AND ((fv.asset#>>'{pin,artifact_id}'=a.id AND (fv.asset#>>'{pin,artifact_version}')::int=a.version) OR (fv.revision_asset#>>'{pin,artifact_id}'=a.id AND (fv.revision_asset#>>'{pin,artifact_version}')::int=a.version)))

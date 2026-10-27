@@ -1,3 +1,4 @@
+import {clearRows,addDocuments,selectedRows} from './file-generation-rows';
 import {expect,type Page,type Route} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
@@ -17,14 +18,13 @@ const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export type Call={method:string;path:string;body:unknown};
 type Session={project:string;declaration:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>};
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
-export const checked=(page:Page,type:M4DocumentType)=>page.locator(`[data-pf-type="${type}"]`);
 export const key=(kind:string,project=ids.api,owner=ids.owner)=>`bondbuddy:file-generation:${encodeURIComponent(owner)}:${encodeURIComponent(project)}:${kind}`;
 export const href=(extra:Record<string,string>={},project=ids.api,navigation=ids.api)=>'#generate?'+new URLSearchParams({project,return_project:navigation,...extra});
 export const writes=(s:State)=>s.calls.filter(c=>c.method!=='GET');
 export const drafts=(s:State)=>s.calls.filter(c=>c.method==='PUT'&&c.path.startsWith(`/m4/topics/${ids.topic}/drafts/`));
 export const batches=(s:State,project=ids.api)=>s.calls.filter(c=>c.method==='POST'&&c.path===`/projects/${project}/project-files/batches`);
 export const templateWrites=(s:State)=>s.calls.filter(c=>c.method==='POST'&&c.path==='/m4/templates');
-export const selected=(page:Page)=>page.locator('[data-pf-type]:checked').evaluateAll(nodes=>nodes.map(node=>(node as HTMLInputElement).dataset.pfType));
+export const selected=selectedRows;
 export const query=(page:Page)=>page.evaluate(()=>Object.fromEntries(new URLSearchParams(location.hash.split('?')[1])));
 export async function raw(page:Page,kind:string,project=ids.api,owner=ids.owner){return page.evaluate(k=>sessionStorage.getItem(k),key(kind,project,owner));}
 
@@ -68,6 +68,7 @@ export async function fixture(page:Page){
     if(/^\/projects\/[^/]+\/tasks$/.test(path))return json(route,200,{project_id:path.split('/')[2],items:[],page:{has_more:false,next_cursor:null}});
     if(/^\/projects\/[^/]+\/files$/.test(path))return json(route,200,{project_id:path.split('/')[2],items:[]});
     if(/^\/projects\/[^/]+\/project-files$/.test(path)&&method==='GET')return json(route,200,{files:[]});
+    if(method==='GET'&&[ids.api,ids.other].some(p=>path===`/projects/${p}/workpapers/library`))return json(route,200,{items:[],total:0,offset:0,limit:30,source:null,checks:[]});
     const work=path.match(/^\/projects\/([^/]+)\/project-files\/workspace$/);
     if(work){if(method==='GET'&&state.workspaceMissing){state.workspaceMissing=false;return json(route,404,{code:'NOT_FOUND'});}return json(route,200,state.workspaces.get(work[1]));}
     if(path===`/projects/${ids.source}/prospectus-versions`){
@@ -114,7 +115,7 @@ export async function fixture(page:Page){
 }
 export type State=Awaited<ReturnType<typeof fixture>>;
 export async function open(page:Page,extra:Record<string,string>={}){await page.goto('/'+href({step:'documents',...extra}));await expect(page.locator('#pf-generate')).toBeVisible();}
-export async function choose(page:Page,types:M4DocumentType[]){await page.locator('#pf-select-none').click();for(const type of types)await checked(page,type).check();}
+export async function choose(page:Page,types:M4DocumentType[]){await clearRows(page);await addDocuments(page,types);}
 export async function confirm(page:Page){await page.locator('#pf-generate').click();await expect(page.locator('#pf-confirm-generation')).toBeVisible();}
 export async function openFiles(page:Page){await page.goto(`/#/projects/${ids.api}/files`);await expect(page.locator('#file-list')).toBeVisible();}
 export async function entry(page:Page,type:M4DocumentType){

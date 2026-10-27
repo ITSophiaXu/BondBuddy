@@ -7,6 +7,7 @@ import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
 import { registerProjectCollection } from './project-collection.js';
 import { registerProjectFileWorkspace } from './project-file-workspace.js';
+import { registerWorkpapers } from './workpapers.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
@@ -317,6 +318,7 @@ export function createServer(settings: Settings = {}) {
   registerProspectusRoutes(app,db,owner,blob);
   registerProjectCollection(app,db,owner);
   registerProjectFileWorkspace(app,db,owner,blob);
+  registerWorkpapers(app,db,owner,blob);
   registerProjectFileConsistency(app,db,owner);
   registerIntegrity(app,db,owner,blob);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);

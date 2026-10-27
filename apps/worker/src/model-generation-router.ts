@@ -1,3 +1,5 @@
+import {workpaperChangeStage} from './workpaper-change-stage.js';
+import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 import { projectQaModelStage } from './project-qa-stage.js';
 import { integrityModelStage } from './integrity-stage.js';
 /** Routes the shared model_generation stage by the immutable run task kind. */
@@ -65,6 +67,8 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
+      if((ctx.values.get('input_lock') as {workpaper_change?:boolean})?.workpaper_change)return workpaperChangeStage().run(ctx);
+    if((ctx.values.get('input_lock') as {workpaper_assessment?:boolean})?.workpaper_assessment)return workpaperAssessmentStage().run(ctx);
       if((ctx.values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return projectQaModelStage().run(ctx);
       if((ctx.values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return integrityModelStage().run(ctx);
     if((ctx.values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return projectFileModelStage().run(ctx);

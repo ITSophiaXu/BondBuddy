@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Value} from '@sinclair/typebox/value';
 import {M4_DOCUMENT_TYPES,M4DraftInputSchema,M4KnowledgeSnapshotSchema} from '@bondbuddy/contracts';
-import {loadM4Knowledge,validM4Knowledge} from './m4-knowledge.js';
+import {loadM4Knowledge,loadWorkpaperKnowledge,validM4Knowledge} from './m4-knowledge.js';
 import {emptyM4Draft,m4UnavailableDocument} from './m4-workspace.js';
 import {M4_MULTIPLIERS,validateM4BillingConfig} from './m4-billing.js';
 
 test('all material/exchange combinations select actual source knowledge with distinct immutable bytes',()=>{
   const hashes=new Set<string>();
-  for(const market of ['sse','szse'] as const)for(const type of M4_DOCUMENT_TYPES.filter(t=>!['application','recommendation'].includes(t))){
+  for(const market of ['sse','szse'] as const)for(const type of ['init','underwriter','legal','private_summary'] as const){
     const pin=loadM4Knowledge(market,type);hashes.add(pin.sha256);
     assert.equal(Value.Check(M4KnowledgeSnapshotSchema,pin),true);
     assert.ok(validM4Knowledge(pin,market,type));
@@ -22,6 +22,16 @@ test('all material/exchange combinations select actual source knowledge with dis
   }
   assert.equal(hashes.size,8);
   assert.throws(()=>loadM4Knowledge('sse','../legal' as never),/M4_KNOWLEDGE_UNAVAILABLE/);
+});
+test('workpaper guide pins the selected scope and distinguishes disclosures from independent evidence',()=>{
+  for(const [market,offering] of [['sse','public'],['szse','private'],['nafmii','ppn']] as const){
+    const pin=loadWorkpaperKnowledge(market,offering);
+    assert.ok(validM4Knowledge(pin,market,'workpaper',offering));assert.match(pin.content,/不替代独立核查证据/);
+    assert.match(pin.content,/采用本项固定格式模板/);
+    assert.match(pin.content,/内部映射和编制说明不得进入交付文件包/);
+    assert.equal(validM4Knowledge({...pin,content:'changed'},market,'workpaper',offering),false);
+  }
+  assert.throws(()=>loadWorkpaperKnowledge('sse','ppn'),/M4_KNOWLEDGE_UNAVAILABLE/);
 });
 test('readable SSE opinion replaces missing case layout while historical guide evidence remains unchanged',()=>{
   const knowledge=loadM4Knowledge('sse','underwriter');

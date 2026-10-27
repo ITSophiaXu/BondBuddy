@@ -1,3 +1,4 @@
+import {WorkpaperTaskSchema} from './workpaper-entry.js';
 import { AssistantActionSchema, AssistantViewSchema } from './project-assistant.js';
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -29,6 +30,7 @@ export type M4TemplateRef = Static<typeof M4TemplateRefSchema>;
 export const M4RequirementSchema = obj({ requirement_id: id, text: nonempty, message_id: id, message_version: version });
 export type M4Requirement = Static<typeof M4RequirementSchema>;
 export const M4DraftInputSchema = obj({ document_type: M4DocumentTypeSchema,
+  workpaper:Type.Optional(WorkpaperTaskSchema),
   project_file: Type.Optional(obj({project_id:id,source_version_id:id,source_selection_revision:Type.Integer({minimum:0}),expected_file_version_id:Type.Optional(Type.Union([id,Type.Null()]))})),
   source_material: nullable(M4MaterialPinSchema), materials: Type.Array(M4MaterialPinSchema, { maxItems: 60 }),
   template: nullable(M4TemplateRefSchema), edit_base: nullable(M4ArtifactPinSchema), scope: Type.Literal('whole'),
@@ -82,7 +84,7 @@ export type M4QuoteRequest = Static<typeof M4QuoteRequestSchema>;
 export const M4ExecuteRequestSchema = obj({ execution_request_id: id, document_type: M4DocumentTypeSchema,
   expected_draft_version: version, quote_id: id, entrypoint: Type.Union([Type.Literal('workspace'), Type.Literal('assistant')]) });
 export type M4ExecuteRequest = Static<typeof M4ExecuteRequestSchema>;
-export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_G04:'推荐函', m4_application:'申请书', m4_annual:'年度报告', m4_semiannual:'半年度报告', m4_issuer:'发行人基本情况说明', m4_financial:'主要财务情况说明', m4_credit:'授信情况说明', m4_proceeds:'募集资金使用情况说明', m4_Q01: '通用解释',
+export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商核查意见', m4_G03: '法律意见书', m4_G05: '募集说明书摘要', m4_G04:'推荐函', m4_application:'申请书', m4_annual:'年度报告', m4_semiannual:'半年度报告', m4_issuer:'发行人基本情况说明', m4_financial:'主要财务情况说明', m4_credit:'授信情况说明', m4_proceeds:'募集资金使用情况说明', m4_workpaper:'尽职调查底稿', m4_Q01: '通用解释',
   m4_Q02: '授权资料定位', m4_Q03: '确定性计算', m4_Q04: '基础资料比较', m4_Q05: '基础资料解读' } as const;
 export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
 export const M4_DOCUMENT_FIXED_PRICE = { version: 'm4-document-fixed-20261008-v1', points: 4500 } as const;

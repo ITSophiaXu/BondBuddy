@@ -1,3 +1,4 @@
+import {WorkpaperLibraryPanel} from './workpaper-library';
 import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from '@bondbuddy/contracts';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
@@ -31,6 +32,7 @@ const fileViewFocus=(kind:string,key?:string)=>JSON.stringify(key===undefined?[k
 export function clearProjectFileViews(){projectFileViews.clear();}
 
 export class ProjectFiles {
+  private workpapers?:WorkpaperLibraryPanel;
   private controller=new AbortController();private downloads=new ArtifactDownloads();private files:ProjectFile[]=[];private disposed=false;
   private dialog?:HTMLDialogElement;private q='';private folder='all';private name='';private statusFilter:FileStatusGroup='all';
   private timer?:ReturnType<typeof setTimeout>;private refreshing=false;
@@ -69,7 +71,7 @@ export class ProjectFiles {
     for(const status of [this.dialog?.querySelector('[role=status]'),document.querySelector('#pw-prospectus [role=status]'),document.querySelector('dialog[open] [role=status]')])if(status)status.textContent=message;
     return false;
   }
-  dispose(){if(!this.disposed)this.rememberFileView();this.disposed=true;this.loadRevision++;clearTimeout(this.timer);this.folderMedia.removeEventListener('change',this.syncFolderLayout);this.controller.abort();this.panel?.dispose();this.downloads.dispose();this.dialog?.remove();}
+  dispose(){this.workpapers?.dispose();if(!this.disposed)this.rememberFileView();this.disposed=true;this.loadRevision++;clearTimeout(this.timer);this.folderMedia.removeEventListener('change',this.syncFolderLayout);this.controller.abort();this.panel?.dispose();this.downloads.dispose();this.dialog?.remove();}
   private href(section:string,extra:Record<string,string>={}){return '#'+section+'?'+new URLSearchParams({project:this.id,return_project:this.id,...extra});}
   private status(message:string){const node=document.querySelector('#file-action-status');if(node)node.textContent=message;}
   private parseFileContext(query:URLSearchParams){
@@ -170,12 +172,13 @@ export class ProjectFiles {
       const [project]=await Promise.all([this.api.project(this.id,this.controller.signal),this.loadData()]);
       if(!this.live())return;this.name=project.name;
       this.shell(`<div class="project-workbench"><a class="back-link" href="#tasks">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">项目工作台</div><h1>${esc(project.name)}</h1><p>${esc(project.issuer_name??'发行人待填写')} · 募集书、项目文件与任务归在一起</p></div></div>
-        <nav class="pw-actions" aria-label="本项目业务"><a class="btn secondary" href="${this.href('update',{from:'projects'})}">更新募集书</a><a class="btn secondary" href="${this.href('review',{from:'projects'})}">复核募集书</a><a class="btn secondary" href="${this.href('generate')}">生成文件</a><a class="btn secondary" href="${this.href('integrity')}">诚信核查</a><a class="btn secondary" href="${this.href('qa')}">项目问答</a></nav>
+        <nav class="pw-actions" aria-label="本项目业务"><a class="btn secondary" href="${this.href('update',{from:'projects'})}">更新募集书</a><a class="btn secondary" href="${this.href('review',{from:'projects'})}">复核募集书</a><a class="btn secondary" href="${this.href('generate')}">生成文件</a><a class="btn primary" href="${this.href('generate',{step:'workpapers'})}">批量生成底稿</a><a class="btn secondary" href="${this.href('integrity')}">诚信核查</a><a class="btn secondary" href="${this.href('qa')}">项目问答</a></nav>
         <section class="pw-source" aria-labelledby="pw-source-heading"><div class="pw-section-title"><div><h2 id="pw-source-heading">当前募集说明书</h2><p>关联文件检查与生成以明确采用的募集书为依据。</p></div><span class="pw-saved">旧版本保留</span></div><div id="pw-current-source" role="status"></div><div id="pw-prospectus"><p>正在读取募集书版本…</p></div></section>
         <section class="pw-check" aria-labelledby="pw-check-heading"><div><h2 id="pw-check-heading">先检查，再决定更新哪些文件</h2><p id="pw-check-note"></p><small>检查免费。更新关联文件每份 4,500 积分，确认后执行，交付修订版和清洁版。</small></div><a class="btn primary" id="pw-check-link" href="${this.href('consistency')}">免费检查文件一致性</a></section>
-        <section id="pw-task-summary" class="pw-tasks" aria-label="本项目最近任务"></section>
+        <section id="pw-workpaper-library" class="workpaper-library" aria-label="尽职调查底稿文件"></section><section id="pw-task-summary" class="pw-tasks" aria-label="本项目最近任务"></section>
         <div class="pw-files-head"><div><h2>项目文件</h2><p>先查看已有文件，需要时再准备其他文件。</p></div><button class="btn secondary" id="import-project-file">上传关联文件</button></div><div id="pw-import-recovery" role="status"></div><div id="pw-import-result"></div><section id="pw-file-context" class="pw-file-context" aria-labelledby="pw-file-context-heading" hidden></section><p id="file-action-status" role="status"></p><div class="collection-file-workspace"><details class="pw-folder-picker" id="pw-folder-picker" ${this.folderMedia.matches?'':'open'}><summary><span>查看文件目录 / 筛选</span><small id="pw-folder-selection"></small></summary><nav id="file-folders" class="collection-folders" aria-label="项目文件目录"></nav></details><section class="collection-panel collection-file-panel"><header class="collection-heading"><h2 id="folder-title" tabindex="-1" data-file-view-focus="${esc(fileViewFocus('title'))}"></h2><div><span id="folder-count"></span><button class="text-button" id="refresh-files" data-file-view-focus="${esc(fileViewFocus('refresh'))}">刷新文件</button></div></header>
         <div class="collection-search">${ico('search')}<input id="file-search" type="search" maxlength="${fileSearchLimit}" data-file-view-focus="${esc(fileViewFocus('search'))}" aria-label="搜索项目文件" placeholder="搜索文件名称" value="${esc(this.q)}"/></div><div id="pw-file-status" class="collection-filters" role="group" aria-label="按处理状态筛选文件" aria-describedby="pw-file-status-note"></div><div id="pw-file-status-note" class="collection-muted" role="status"></div><div id="file-list"></div></section></div></div>`,'projects');
+      this.workpapers?.dispose();this.workpapers=new WorkpaperLibraryPanel(this.api,document.querySelector('#pw-workpaper-library')!,this.id);void this.workpapers.render();
       this.fileViewHost=document.querySelector<HTMLElement>('.project-workbench')??undefined;
       const search=document.querySelector<HTMLInputElement>('#file-search')!,filter=()=>{this.q=search.value.slice(0,fileSearchLimit);this.writeFileViewUrl();this.paintFiles();this.rememberFileView();};
       search.addEventListener('compositionstart',()=>{this.searchComposing=true;});search.addEventListener('compositionend',()=>{this.searchComposing=false;filter();});search.addEventListener('input',event=>{if(!this.searchComposing&&!(event as InputEvent).isComposing)filter();});
@@ -277,7 +280,7 @@ export class ProjectFiles {
     if(replace){this.panel?.dispose();this.panel=undefined;}
     if(!this.panel){
       const panel=new ProspectusPanel(this.api,id,host,async()=>!this.uploading&&!this.pendingImport?.uncertain,async()=>{
-        this.sourceChanged=true;await this.refresh(true);
+        this.sourceChanged=true;await this.refresh(true);void this.workpapers?.refresh();
       },()=>{if(this.live())this.paintSummary();},'update',this.owner);this.panel=panel;
     }
     const panel=this.panel;

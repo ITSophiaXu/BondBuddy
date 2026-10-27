@@ -6,12 +6,17 @@ export function fileAnchor(text:ProjectFileText,id:unknown,quote:unknown){
   return span&&span.text.split(quote).length===2?span:null;
 }
 /** Persist host-verified quotations; a model cannot fabricate a paragraph or replace its hash. */
-export function verifiedFileLinks(source:ProjectFileText,target:ProjectFileText,proposals:unknown):ProjectFileLink[]{
+export function verifiedFileLinks(source:ProjectFileText,target:ProjectFileText,proposals:unknown,maxLinks=10000):ProjectFileLink[]{
   if(!Array.isArray(proposals))return [];
+  const sources=new Map(source.spans.map(s=>[s.id,s])),targets=new Map(target.spans.map(s=>[s.id,s]));
+  const anchor=(index:typeof sources,id:unknown,quote:unknown)=>{
+    if(typeof id!=='string'||typeof quote!=='string'||!quote.trim())return null;
+    const span=index.get(id);return span&&span.text.split(quote).length===2?span:null;
+  };
   const result:ProjectFileLink[]=[];
-  for(const p of proposals.slice(0,10000)){
+  for(const p of proposals.slice(0,maxLinks)){
     if(!p||typeof p!=='object')continue;
-    const from=fileAnchor(source,p.source_span_id,p.source_quote),to=fileAnchor(target,p.target_span_id,p.target_quote);
+    const from=anchor(sources,p.source_span_id,p.source_quote),to=anchor(targets,p.target_span_id,p.target_quote);
     if(!from||!to)continue;
     result.push({source_span_id:from.id,source_quote:p.source_quote,target_span_id:to.id,target_quote:p.target_quote,
       field:typeof p.field==='string'?p.field.slice(0,200):'',period:typeof p.period==='string'?p.period.slice(0,200):'',unit:typeof p.unit==='string'?p.unit.slice(0,200):'',
