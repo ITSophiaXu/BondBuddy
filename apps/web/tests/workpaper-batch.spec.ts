@@ -28,8 +28,10 @@ async function setup(page:import('@playwright/test').Page,count=350){
 }
 test('first visit with no catalogue presents the upload control',async({page})=>{
   const state=await setup(page);state.data.catalogues=[];
-  await page.goto('/'+href({step:'workpapers'}));
-  await expect(page.getByRole('heading',{name:'按底稿目录批量生成'})).toBeVisible();
+  await page.goto('/'+href({step:'documents'}));
+  await page.getByRole('link',{name:'批量生成底稿',exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`project=${ids.api}&step=workpapers`));
+  await expect(page.getByRole('heading',{name:'上传底稿目录',exact:true})).toBeVisible();
   await expect(page.locator('#wp-upload')).toBeEnabled();
   await expect(page.getByText('底稿记录暂时无法读取。原记录已保留，请刷新重试。')).toHaveCount(0);
   await page.reload();await expect(page.locator('#wp-upload')).toBeEnabled();
@@ -37,12 +39,14 @@ test('first visit with no catalogue presents the upload control',async({page})=>
 
 for(const width of [1440,390])test(`workpapers ${width}: 350-row preview, selection, cost, existing source and batch progress`,async({page})=>{
   const state=await setup(page);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));
-  await expect(page.getByRole('heading',{name:'按底稿目录批量生成'})).toBeVisible();await expect(page.locator('[data-wp-item]')).toHaveCount(350);
+  await expect(page.getByRole('heading',{name:'上传底稿目录',exact:true})).toBeVisible();await expect(page.locator('[data-wp-item]')).toHaveCount(350);
   await expect(page.locator('#wp-start')).toHaveCount(0);expect(state.requests).toHaveLength(0);
   await page.locator('#wp-filter').fill('核查 350');await expect(page.locator('[data-wp-item]')).toHaveCount(1);
   await page.locator('[data-wp-item]').uncheck();await expect(page.locator('#wp-confirm')).toContainText('349 份底稿');
   await page.locator('#wp-filter').fill('');await page.locator('#wp-requirements').fill('访谈只准备提纲，缺原件处标记待补充');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  // Leave the textarea before a full-page capture restores the narrow viewport.
+  await page.locator('#wp-requirements').press('Tab');
   await mkdir('test-evidence/workpaper-batch',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-batch/preparation-${width}.png`,fullPage:true});
   await page.locator('#wp-assess').click();await expect(page.locator('#wp-confirm')).toContainText('不生成 3 份');
   await expect(page.locator('#wp-start')).toBeDisabled();expect(state.requests).toHaveLength(0);
@@ -66,6 +70,7 @@ for(const width of [1440,390])test(`workpaper prototype companion ${width}: sele
   await page.locator('#wp-filter').fill('核查 350');await page.locator('#entries input').uncheck();await page.locator('#wp-filter').fill('');
   await page.locator('#wp-requirements').fill('访谈只准备提纲，缺原件处标记待补充');await expect(page.locator('#wp-confirm')).toContainText('349 份底稿');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.locator('#wp-requirements').press('Tab');
   await page.screenshot({path:`test-evidence/workpaper-batch/prototype-preparation-${width}.png`,fullPage:true});
   await page.locator('#wp-assess').click();await expect(page.locator('#wp-confirm')).toContainText('不生成 3 份');
   await expect(page.locator('#wp-start')).toBeDisabled();
