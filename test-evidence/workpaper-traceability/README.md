@@ -2,6 +2,8 @@
 
 独立开发分支：`feat/workpaper-traceability-20261027`。不连接生产，未部署。前置 PR #762。
 
+代码固定于 `4245cdf8`，依赖 #762 的 `dce0a78d`。整合后web类型检查、Vite正式构建和12项Playwright回归再次通过；本目录后续证据提交只变更文档与截图。
+
 已运行：
 
 - TypeScript：contracts、API、worker 编译及 web `--noEmit` 通过；Vite正式构建通过，仅有既有大包体积提示。
