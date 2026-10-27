@@ -1,3 +1,4 @@
+import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
 // is merged into checkpoint.stages under the lease, so a restarted worker skips it. Model stages
 // go through the #16 contained Codex adapter with the PostgreSQL journal: a completed call is
@@ -312,6 +313,7 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    if(isWorkpaperAssessment(manifest))return (await workpaperAssessmentGate(pool,run,input))??{kind:'done',value:{workpaper_assessment:true}};
     if(isProjectQaInput(manifest))return (await projectQaInputGate(pool,run,input))??{kind:'done',value:{project_qa_mode:manifest.operation}};
     if(isIntegrityInput(manifest))return (await integrityInputGate(pool,run,input))??{kind:'done',value:{integrity_mode:manifest.operation}};
     if(isProjectFileInput(manifest))return (await projectFileInputGate(pool,run,input))??{kind:'done',value:{project_file_mode:manifest.operation}};
@@ -407,6 +409,7 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   name: 'materials_ready',
   replay: true,
   run: async ({ pool, run, checkpoint, values }) => {
+    if((values.get('input_lock') as {workpaper_assessment?:boolean})?.workpaper_assessment)return {kind:'done',checkpoint:{workpaper_assessment:true}};
     if ((values.get('input_lock') as {project_qa_mode?:string})?.project_qa_mode)return {kind:'done',checkpoint:{project_qa:true}};
     if ((values.get('input_lock') as {integrity_mode?:string})?.integrity_mode)return {kind:'done',checkpoint:{integrity:true}};
     if ((values.get('input_lock') as {project_file_mode?:string})?.project_file_mode)return {kind:'done',checkpoint:{original_files:true,project_file:true}};
@@ -608,6 +611,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if(isWorkpaperAssessment(input.manifest))return workpaperAssessmentGate(pool,run,input);
       if(isProjectQaInput(input.manifest))return projectQaInputGate(pool,run,input);
       if(isIntegrityInput(input.manifest))return integrityInputGate(pool,run,input);
       if(isProjectFileInput(input.manifest))return projectFileInputGate(pool,run,input);

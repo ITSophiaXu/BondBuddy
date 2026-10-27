@@ -120,11 +120,11 @@ test('workpaper CLI receives its exact catalogue entry and public prospectus sco
   try{
     const m=f.input.manifest as M4DocumentManifest;
     m.offering='public';m.billing_task='m4_workpaper';m.input.document_type='workpaper';
-    m.input.workpaper={batch_id:'batch',catalogue_id:'catalogue',entry:{id:'s1-r2',code:'1.1',title:'访谈记录',folder:'主体',path:'主体/1.1 访谈记录.docx',sheet:'目录',row:2,instructions:'准备提纲，尚未访谈',kind:'file'}};
+    m.input.workpaper={batch_id:'batch',catalogue_id:'catalogue',entry:{id:'s1-r2',code:'1.1',title:'财务分析',folder:'主体',path:'主体/1.1 财务分析.docx',sheet:'目录',row:2,instructions:'基于披露编制分析稿',kind:'file'},decision:{item_id:'s1-r2',status:'generate',reason:'披露支持分析',missing_materials:[],citations:[{span_id:'p0',quote:'合成披露'}]}};
     m.knowledge=loadWorkpaperKnowledge('sse','public');f.ctx.run.input_hash=inputManifestHash(m);
     let calls=0;
     const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
-      calls++;const prompt=await options.buildPrompt(f.ctx);assert.match(prompt,/不能伪造/);assert.match(prompt,/归档准备页/);
+      calls++;const prompt=await options.buildPrompt(f.ctx);assert.match(prompt,/不能伪造/);assert.match(prompt,/仅当 status=generate/);
       await options.fileWorkspace!.prepare(f.directory);
       const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
       assert.equal(input.skill.id,'m4-workpaper');assert.deepEqual(input.task.input.workpaper,m.input.workpaper);assert.equal(input.task.offering,'public');
