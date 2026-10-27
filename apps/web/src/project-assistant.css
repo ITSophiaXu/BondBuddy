@@ -38,7 +38,7 @@ body:has(.bb-assistant:not(.ba-open)) .prototype-app main{padding-bottom:108px}
 @media(min-width:961px){
 /* A small launcher gutter keeps even fixed-height/edge actions clear of the icon. */
 body:has(.bb-assistant) .prototype-app{margin-right:var(--ba-dock-space)}
-body:has(.bb-assistant.ba-open) .prototype-app{margin-right:var(--ba-panel-width)}
+body:has(.bb-assistant.ba-open:not(.ba-embedded)) .prototype-app{margin-right:var(--ba-panel-width)}
 body:has(.bb-assistant) .prototype-app .shell{container-type:inline-size;container-name:assistant-page;min-width:0}
 }
 @container assistant-page (max-width:880px){
@@ -172,8 +172,8 @@ body:has(.bb-assistant) .prototype-app .shell{container-type:inline-size;contain
 }
 
 @media(max-width:960px){
-html:has(.bb-assistant.ba-open){overflow:hidden;scrollbar-gutter:auto}
-body:has(.bb-assistant.ba-open){overflow:hidden}
+html:has(.bb-assistant.ba-open:not(.ba-embedded)){overflow:hidden;scrollbar-gutter:auto}
+body:has(.bb-assistant.ba-open:not(.ba-embedded)){overflow:hidden}
 .bb-assistant{width:100%;inset:0}
 .ba-panel{border:0}
 .ba-toolbar [data-a=wide]{display:none}
@@ -201,11 +201,14 @@ body:has(.bb-assistant.ba-open){overflow:hidden}
 .bb-assistant .ba-shortcuts button{padding:10px;gap:9px}
 }
 
-.ba-message{margin-bottom:22px}
+.bb-assistant .ba-message{display:block;min-width:0;margin-bottom:22px}
 .ba-message>small{font-size:11px;color:#7a8d80;display:block;margin-bottom:7px}
 .ba-message.user{margin-left:38px;background:#eff5f0;padding:12px 15px;border-radius:14px 14px 3px 14px}
 .ba-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .ba-thinking{font-size:12px;color:#6c8076}
+.ba-reply-progress{margin-top:12px;min-width:0}
+.ba-reply-progress small{display:block;font-size:11px;margin-top:8px;color:#6c8076}
+.ba-reply-progress button{margin:4px 8px 0 0;font-size:12px}
 .ba-message .ba-suggestion{font-size:12px;margin-top:12px;border-color:#b5cfbe;background:#f5faf7}
 
 .ba-form,.ba-task{border:1px solid #d9e5dc;border-radius:13px;margin:8px 0 20px;background:#fff;padding:16px}

@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
-import type { ReviewReadableReport } from '@bondbuddy/contracts';
+import { hasReviewReportBody, type ReviewReadableReport } from '@bondbuddy/contracts';
 import { digest, missing, project, type PrivateBlobs } from './data.js';
+import { readDocxBodyText, DOCX_LIMITS } from './docx-inspector.js';
 
 const MAX = 4 * 1024 * 1024;
 /** Public reads use only completed, owner-bound file reports, never prompts/final chatter. */
@@ -49,10 +50,22 @@ export function registerReadableReview(app: FastifyInstance, db: () => Pool,
     const rows = (await db().query(`SELECT owner_user_id,project_id,run_id,call_id,result_ref,result_sha256,byte_size
       FROM bb_provider_result_refs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3
       AND logical_call_id='review-file-v1' AND result_schema_version='codex-review-file-v1'`, [user, project_id, run_id])).rows;
-    if (rows.length !== 1) return result;
+    // Historical file-only reports may have no Markdown companion. Inspect the
+    // exact delivered bytes without rewriting the task, artifact or credit ledger.
+    const artifact = (await db().query(`SELECT v.object_key,v.sha256 FROM bb_review_artifacts a
+      JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
+      WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3 AND a.kind='report'
+      AND v.delivery_status='available' AND v.quality_status='passed'`, [user, project_id, run_id])).rows[0];
+    if (artifact) try {
+      const bytes = await blobs().getIfExistsBounded(artifact.object_key, DOCX_LIMITS.archiveBytes);
+      if (bytes && digest(bytes) === artifact.sha256.trim()) {
+        const body = readDocxBodyText(bytes);
+        if (body !== null && !hasReviewReportBody(body)) return { ...result, status: 'invalid_content' };
+      }
+    } catch { /* An unreadable file is not proof of an empty report. */ }
     // Storage/format issues affect this optional view only; no state writes or model re-execution.
-    try { const text = await readReviewMarkdown(blobs(), { ...rows[0], input_hash: run.input_hash });
-      if (text) return { ...result, status: 'available', ...text };
+    if (rows.length === 1) try { const text = await readReviewMarkdown(blobs(), { ...rows[0], input_hash: run.input_hash });
+      if (text && hasReviewReportBody(text.markdown)) return { ...result, status: 'available', ...text };
     } catch { /* Keep the successful Word delivery and retryable read independent. */ }
     return result;
   });

@@ -261,3 +261,19 @@ test('desktop pages reflow beside the assistant at standard and wide widths',asy
   }
  }
 });
+
+for(const state of ['queued','paused'])test(`ordinary QA ${state} exposes status and cancellation without resending`,async({page})=>{
+  const s=await setup(page,{fixed:true});const created=new Date(Date.now()-10*60000).toISOString();
+  const message={message_id:'pending-qa',role:'user',version:1,content:'合成验收消息，请回复测试收到。',created_at:created,reply_status:'queued',run_id:'pending-run',reply:null,error:null};
+  s.w.messages=[message];s.w.tasks=[{run:{run_id:'pending-run',project_id:'scope',state,stage:state==='paused'?'provider_reconcile':'queued'},manifest:{kind:'qa',topic_id:'topic'},created_at:created,events:[],artifacts:[]}];
+  let cancellations=0;
+  await page.route('**/api/v1/runs/pending-run/cancel',async route=>{cancellations++;s.w.tasks[0].run.state='cancelled';message.reply_status='failed';await route.fulfill({json:s.w.tasks[0].run});});
+  await page.setViewportSize({width:1108,height:771});await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+  await expect(page.locator('.ba-reply-progress')).toContainText(state==='queued'?'排队时间较长':'核对本次调用状态');
+  await expect(page.locator('.ba-message')).toHaveCSS('display','block');
+  expect((await page.locator('.ba-text').boundingBox())!.width).toBeGreaterThan(200);
+  await page.getByRole('button',{name:'停止本次回答',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止本次回答',exact:true})).toHaveCount(0);
+  await expect(page.locator('.ba-message')).toContainText('本次回答已停止');
+  expect(cancellations).toBe(1);expect(s.messages).toHaveLength(0);
+});

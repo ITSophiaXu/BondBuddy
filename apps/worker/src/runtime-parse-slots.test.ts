@@ -100,10 +100,10 @@ test('dedicated parse slot finishes an upload before a blocked run, and zero res
           assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [runId])).rows[0].state, 'running');
         } else {
           await new Promise(resolve => setTimeout(resolve, 500));
-          assert.equal(await jobState(next.material_id), 'queued', 'without dedicated slots, the blocked run owns the only claim loop');
+          assert.equal(await jobState(next.material_id), 'queued', 'without a parse slot, the blocked run owns the only parse-capable loop');
         }
         const heartbeat = await waitFor(async () => (await pool.query('SELECT concurrency FROM bb_worker_heartbeats WHERE worker_id=$1', [workerId])).rows[0]);
-        assert.equal(heartbeat.concurrency, 1 + parseSlots);
+        assert.equal(heartbeat.concurrency, 2 + parseSlots, 'heartbeat includes the default interactive reservation');
         release();
         await waitFor(async () => (await jobState(next.material_id)) === 'succeeded');
       } finally { release(); await runtime.stop(); }
@@ -124,7 +124,7 @@ test('parse-only workers keep their configured capacity and never claim runs; in
         pollMs: 100, sweepMs: 60000, parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, parser: async request => syntheticParse(request) } } }).start();
       try {
         const beat = await waitFor(async () => (await pool.query('SELECT concurrency,kinds FROM bb_worker_heartbeats WHERE worker_id=$1', [workerId])).rows[0]);
-        assert.equal(beat.concurrency, 1);
+        assert.equal(beat.concurrency, kind === 'run' ? 2 : 1, 'parse-only workers receive no extra interactive slot');
         assert.deepEqual(beat.kinds, [kind]);
         if (kind === 'parse') assert.equal(runtime.counters.run, 0);
       } finally { await runtime.stop(); }

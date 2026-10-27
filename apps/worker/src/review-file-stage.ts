@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile, readFile, copyFile, lstat, realpath } fr
 import { join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { isReviewReport } from '@bondbuddy/contracts';
+import { isReviewReport, hasReviewReportBody } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
+import { readDocxBodyText } from '@bondbuddy/api/docx-inspector';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
@@ -18,7 +19,7 @@ const MAX = 100 * 1024 * 1024, TEXT_MAX = 4 * 1024 * 1024;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 // A completed provider turn can contain only a progress event. It is never a report.
 function hasReviewReportText(bytes: Buffer | undefined): bytes is Buffer {
-  return !!bytes?.toString('utf8').replace(/^.*BB_REVIEW_PROGRESS:[^\r\n]*$/gm, '').replace(/[\s\uFEFF#*`~>-]/g, '');
+  return !!bytes && hasReviewReportBody(bytes.toString('utf8'));
 }
 type FileRef = { key: string; sha256: string; byte_size: number };
 export type ReviewFileResult = { version: 'codex-review-file-v1'; input_hash: string; files: Record<string, FileRef>; error?: 'WORD_DELIVERY_UNAVAILABLE' };
@@ -29,7 +30,7 @@ const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/
 export function validReviewFileResult(value: unknown, ctx: StageContext): value is ReviewFileResult {
   const result = value as ReviewFileResult | null;
   return !!result && result.version === 'codex-review-file-v1' && result.input_hash === ctx.run.input_hash.trim()
-    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'model-report.docx', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json','revision.docx','clean.docx','baseline.docx','editor.json'].includes(name)
+    && !!result.files && Object.entries(result.files).every(([name, file]) => ['report.docx', 'model-report.docx', 'model-report.md', 'report.md', 'final-response.md', 'comments.docx', 'comments.pdf', 'annotations.json','revision.docx','clean.docx','baseline.docx','editor.json'].includes(name)
       && file.key.startsWith(prefix(ctx)) && !file.key.includes('..') && file.key.endsWith(`/${file.sha256}/${name}`)
       && /^[a-f0-9]{64}$/.test(file.sha256) && Number.isSafeInteger(file.byte_size) && file.byte_size > 0 && file.byte_size <= MAX)
     && (result.error === 'WORD_DELIVERY_UNAVAILABLE' || !!result.files['report.docx']);
@@ -125,7 +126,11 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       if (response.text.trim()) await retain('final-response.md', Buffer.from(response.text));
       let reportText: Buffer | undefined, word: Buffer | undefined;
       try { reportText = await checkedFile(output, 'report.md', TEXT_MAX); } catch { /* Optional text companion. */ }
-      if (reportText) await retain('report.md', reportText);
+      if (reportText) {
+        const usable=hasReviewReportText(reportText);
+        await retain(usable?'report.md':'model-report.md',reportText);
+        if(!usable)reportText=undefined;
+      }
       if(correction){
         // A final "files saved" message is not the report. Prefer the actual Word
         // report when its Markdown companion is absent; never export that message
@@ -163,6 +168,13 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
             word = await checkedFile(exportDir, 'returned-report.docx');
           } catch { /* Saved text remains available for delivery-only recovery. */ }
           finally { await rm(exportDir, { recursive: true, force: true }); }
+        }
+      }
+      if(word){
+        const body=readDocxBodyText(word);
+        if(body===null||!hasReviewReportBody(body)){
+          await retain('model-report.docx',word);
+          return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
         }
       }
       // A trusted local writer adds native comments to the pinned source. The model's
@@ -221,6 +233,8 @@ export function reviewFileDeliveryStage(): RunStage {
         if(!bytes||bytes.length!==ref.byte_size||digest(bytes)!==ref.sha256)return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
         files[name]=bytes;
       }
+      const body=readDocxBodyText(files['report.docx']);
+      if(body===null||!hasReviewReportBody(body))return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
       const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
       return {kind:'deliver',bytes:files['revision.docx'],cleanBytes:files['clean.docx'],attachments:[{kind:'report',bytes:files['report.docx']}],deliveryPolicy:'generated_pair_v1',wordSummary:{writer_version:'review-correction-v2',delivery_policy:'generated_pair_v1',content_review:'not_performed'}};
     }
@@ -229,6 +243,8 @@ export function reviewFileDeliveryStage(): RunStage {
     const gate = await ctx.validateBeforeModelCall?.(); if (gate) return gate;
     const bytes = await ctx.blobs.getIfExistsBounded(file.key, MAX);
     if (!bytes || bytes.length !== file.byte_size || digest(bytes) !== file.sha256) return { kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE' };
+    const body=readDocxBodyText(bytes);
+    if(body===null||!hasReviewReportBody(body))return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
     const attachments: {kind:'comments';bytes:Buffer;mediaType?:'application/pdf'}[] = [];
     for (const name of ['comments.docx', 'comments.pdf']) {
       const annotation = result.files[name]; if (!annotation) continue;
