@@ -11,7 +11,10 @@ test('default QA entry retains active recognition and its exact run across navig
   await expect(page.locator('#qa-history option')).toHaveCount(2);
   await page.getByRole('link',{name:'查看进度与操作'}).click();await expect(page).toHaveURL(new RegExp('run='+prepareId));
   await expect(page.locator('#qa-document-body')).toContainText('排队');
-  await page.goto('/#projects');await page.goto(url);await page.reload();
+  await page.getByRole('link',{name:'全部项目',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
+  await page.goto(url);await expect(page.getByRole('region',{name:'进行中的问答任务'})).toBeVisible();
+  await page.reload();
   await expect(page.getByRole('link',{name:'查看进度与操作'})).toBeVisible();expect(writes(state)).toEqual([]);
 });
 
