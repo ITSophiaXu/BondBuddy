@@ -184,7 +184,7 @@ export class FileWorkspace {
   }
   private status(s:string){this.message=s;if(!this.live())return;const node=document.querySelector('#pf-status');if(node)node.textContent=s;}
   private syncSourceAction(){const button=document.querySelector<HTMLButtonElement>('#pf-source-next');if(button)button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;}
-  private lockPreparation(){this.syncSourceAction();document.querySelectorAll<HTMLElement>('.pf-generation-grid,.pf-optional-grid,.pf-original-operations').forEach(n=>n.inert=this.busy);const b=document.querySelector<HTMLButtonElement>('#pf-generate');if(b&&this.busy)b.disabled=true;document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel],[data-pf-download]').forEach(button=>button.disabled=this.busy);const refresh=document.querySelector<HTMLButtonElement>('#pf-refresh-results');if(refresh){refresh.disabled=this.busy||this.resultsReading!==undefined;refresh.textContent=this.resultsReading!==undefined?'正在刷新…':'刷新生成状态';}}
+  private lockPreparation(){this.syncSourceAction();this.paintSupportUpload();document.querySelectorAll<HTMLElement>('.pf-generation-grid,.pf-optional-grid,.pf-original-operations').forEach(n=>n.inert=this.busy);const b=document.querySelector<HTMLButtonElement>('#pf-generate');if(b&&this.busy)b.disabled=true;document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel],[data-pf-download]').forEach(button=>button.disabled=this.busy);const refresh=document.querySelector<HTMLButtonElement>('#pf-refresh-results');if(refresh){refresh.disabled=this.busy||this.resultsReading!==undefined;refresh.textContent=this.resultsReading!==undefined?'正在刷新…':'刷新生成状态';}}
   private async act(fn:()=>Promise<void>,operation:'read'|'save'|'download'|'submit'|'action'='save'){if(this.busy)return;if(this.panel&&!await this.panel.beforeLeave())return;this.busy=true;clearTimeout(this.timer);this.resultsRequest++;this.resultsReading=undefined;this.lockPreparation();this.paintEntryIntent();this.status('正在保存…');try{await fn();}catch(e){if(this.live())this.status(friendlyError(e,operation));}finally{this.busy=false;if(this.live()){if(document.querySelector('#pf-template-list'))this.paintTemplates();this.lockPreparation();this.paintEntryIntent();this.scheduleResults();}}}
   private prepared(){const source=this.state?.source;if(!source)return false;const matches=(id:M4DocumentType)=>{const pin=this.state!.workspace.drafts[id].project_file;return !!pin&&pin.project_id===this.id&&pin.source_version_id===source.version_id&&pin.source_selection_revision===source.selection_revision;};return this.selected.size?[...this.selected].every(matches):PROJECT_DOCUMENT_CATALOG.some(d=>matches(d.id));}
   private saveSelection(){if(this.cache&&!this.cache.saveSelection([...this.selected]))this.status('本次文件选择暂未保存到浏览器会话，刷新后请重新核对。');}
@@ -241,14 +241,19 @@ export class FileWorkspace {
       <div class="pf-file-table-wrap"><table class="pf-file-table" aria-label="文件与模板清单"><thead><tr><th scope="col">序号</th><th scope="col">文件类型</th><th scope="col">采用的模板 / 已保存依据</th><th scope="col">操作</th></tr></thead><tbody id="pf-template-list"></tbody></table></div>
       <div class="pf-builder-bottom"><button class="btn secondary" id="pf-add-row">添加一行</button><div id="pf-package-readiness" role="status"></div></div><p class="pf-builder-note">完成后自动归入项目，旧版本保留。诚信核查底稿请<a href="${esc('#integrity?'+withProjectContext(new URLSearchParams({project:this.id!})))}">前往诚信核查</a>准备。</p></section></div>
       <div class="pf-optional-grid"><details class="panel pf-optional" id="pf-requirements-details" ${requirementsOpen?'open':''}><summary>补充要求（选填） <span id="pf-note-summary"></span></summary><div class="pf-optional-content"><label for="pf-requirements">本轮统一补充要求</label><textarea id="pf-requirements" rows="4" maxlength="12000" placeholder="例如保留待补充标记，供项目组逐项核实">${esc(this.note)}</textarea><p>保存时只追加到当前所选文件；各文件已有要求保留。</p><div id="pf-note-actions-slot"><div id="pf-note-actions"><button class="btn secondary" id="pf-save-requirements">保存到所选文件</button><p id="pf-note-status" role="status">${this.note?'未保存的补充要求已从本浏览器会话恢复。':''}</p></div></div></div></details>
-      <details class="panel pf-optional" id="pf-support-details" ${supportOpen?'open':''}><summary>补充依据（选填） <span id="pf-support-summary"></span></summary><div class="pf-optional-content"><label>为所选文件补充依据<input id="pf-support" type="file" multiple accept=".docx,.pdf,.xlsx"/></label><p class="muted">仅需补充募集书之外的财务报告、核查依据或履职材料。</p><div id="pf-support-actions-slot"><div id="pf-support-actions"><div id="pf-support-list"></div><button class="btn secondary" id="pf-retry-support" hidden>重试保存补充资料</button></div></div></div></details></div><footer class="pf-footer pf-documents-next"><a class="btn secondary" href="${esc(this.filesHref())}">返回项目文件</a><div><span id="pf-price"></span><button class="btn primary" id="pf-generate" disabled>核对文件包与费用</button></div></footer></div>`,'generate');
+      <details class="panel pf-optional" id="pf-support-details" ${supportOpen?'open':''}><summary>补充依据（选填） <span id="pf-support-summary"></span></summary><div class="pf-optional-content"><input id="pf-support" type="file" multiple accept=".docx,.pdf,.xlsx" aria-label="为所选文件补充依据" hidden/><button type="button" class="pf-support-dropzone" id="pf-support-upload" aria-label="上传补充依据" aria-describedby="pf-support-upload-hint pf-support-formats"><span class="pf-support-upload-icon" aria-hidden="true">${ico('upload')}</span><span class="pf-support-upload-copy"><strong>上传补充依据</strong><span id="pf-support-upload-hint">点击选择，或将文件拖到此处</span></span></button><p class="pf-support-formats" id="pf-support-formats"><span>DOCX、PDF、XLSX</span><span>支持多选 · 单份不超过 100 MB</span></p><p class="pf-support-purpose">可补充财务报告、核查依据或履职材料，用于当前所选文件。</p><p id="pf-support-feedback" role="status" aria-live="polite"></p><div id="pf-support-actions-slot"><div id="pf-support-actions"><div id="pf-support-list"></div><button class="btn secondary" id="pf-retry-support" hidden>重试保存补充资料</button></div></div></div></details></div><footer class="pf-footer pf-documents-next"><a class="btn secondary" href="${esc(this.filesHref())}">返回项目文件</a><div><span id="pf-price"></span><button class="btn primary" id="pf-generate" disabled>核对文件包与费用</button></div></footer></div>`,'generate');
     this.bindPreparationView();
     document.querySelector('#pf-add-row')!.addEventListener('click',()=>{if(this.busy||this.selected.size===PROJECT_DOCUMENT_CATALOG.length)return;this.blankRow=true;this.paintTemplates();document.querySelector<HTMLSelectElement>('[data-pf-document=""]')?.focus();});
     document.querySelector<HTMLTextAreaElement>('#pf-requirements')!.addEventListener('input',e=>{this.note=(e.target as HTMLTextAreaElement).value;this.noteStored=this.cache?.saveNote(this.note)??false;document.querySelector('#pf-note-status')!.textContent=this.noteStored?'补充要求草稿已保存在当前浏览器会话，保存或核对文件包时加入所选文件。':'草稿暂未保存在浏览器，请先保存到所选文件。';document.querySelector<HTMLButtonElement>('#pf-save-requirements')!.disabled=!this.selected.size||!this.note.trim()||this.busy;this.paintPreparationView();this.paintEntryIntent();});
     document.querySelector('#pf-save-requirements')!.addEventListener('click',()=>void this.act(async()=>{await this.saveRequirements();this.status('补充要求已加入所选文件，各文件原有要求保留。');}));
     document.querySelector('#pf-save-requirements')!.insertAdjacentHTML('afterend','<button class="text-button" id="pf-stop-note" hidden>停止继续保存要求</button>');
     document.querySelector('#pf-stop-note')!.addEventListener('click',()=>{if(this.busy)return;this.noteOperation=undefined;this.noteOperationStored=true;this.note='';this.noteStored=true;this.cache?.clearNoteOperation();this.cache?.clearNote();document.querySelector<HTMLTextAreaElement>('#pf-requirements')!.value='';document.querySelector('#pf-note-status')!.textContent='已停止继续保存。此前已保存的要求会保留。';this.status('已停止本次补充要求的后续保存，各文件原有和已保存内容保留。');this.paintTemplates();});
-    document.querySelector('#pf-support')!.addEventListener('change',e=>void this.addSupport([...((e.target as HTMLInputElement).files??[])]));
+    const supportInput=document.querySelector<HTMLInputElement>('#pf-support')!,supportUpload=document.querySelector<HTMLButtonElement>('#pf-support-upload')!;
+    supportInput.addEventListener('change',()=>{const files=[...(supportInput.files??[])];supportInput.value='';if(files.length)void this.addSupport(files);});
+    supportUpload.addEventListener('click',()=>{if(!supportInput.disabled)supportInput.click();});
+    supportUpload.addEventListener('dragover',e=>{e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect=supportInput.disabled?'none':'copy';if(!supportInput.disabled)supportUpload.classList.add('is-dragging');});
+    supportUpload.addEventListener('dragleave',e=>{if(!(e.relatedTarget instanceof Node)||!supportUpload.contains(e.relatedTarget))supportUpload.classList.remove('is-dragging');});
+    supportUpload.addEventListener('drop',e=>{e.preventDefault();supportUpload.classList.remove('is-dragging');if(!supportInput.disabled&&e.dataTransfer?.files.length)void this.addSupport([...e.dataTransfer.files]);});
     document.querySelector('#pf-retry-support')!.addEventListener('click',()=>void this.addSupport([]));
     document.querySelector('#pf-retry-support')!.insertAdjacentHTML('afterend','<button class="text-button" id="pf-stop-support" hidden>停止继续补充</button>');
     document.querySelector('#pf-stop-support')!.addEventListener('click',()=>{void this.act(async()=>{const recovery=this.uploadRecovery('generation-support'),ids=new Set(this.support?.files.map(item=>item.state.operationId));for(const r of recovery.list())if(ids.has(r.id))await recovery.forget(r.id);this.support=undefined;this.status('已停止继续补充。已上传或已保存的资料会保留，下一次读取项目时可核对。');this.paintSupport();},'action');});
@@ -307,7 +312,7 @@ export class FileWorkspace {
     document.querySelector<HTMLButtonElement>('#pf-stop-note')!.hidden=!this.noteOperation;
     document.querySelector<HTMLTextAreaElement>('#pf-requirements')!.disabled=!!this.noteOperation;
     if(this.noteOperation)document.querySelector('#pf-note-status')!.textContent='仍需确认上次补充要求，保存范围固定为：'+this.noteOperation.documents.map(item=>PROJECT_DOCUMENT_CATALOG.find(d=>d.id===item.document_type)!.name).join('、')+'。';
-    document.querySelector<HTMLInputElement>('#pf-support')!.disabled=!selected.length||!!this.support||this.busy;
+    this.paintSupportUpload();
     document.querySelector<HTMLButtonElement>('#pf-retry-support')!.hidden=!this.support;
     document.querySelector<HTMLButtonElement>('#pf-stop-support')!.hidden=!this.support;
     const source=this.state!.source;if(source)document.querySelector('#pf-source-summary')!.innerHTML=`<strong>${esc(source.filename)}</strong><small>项目当前稿 · V${source.sequence} · ${esc(this.project!.name)}</small>`;
@@ -333,11 +338,20 @@ export class FileWorkspace {
   }
   private materialName(pin:M4MaterialPin){return this.state!.workspace.material_details.find(m=>m.source_project_id===pin.source_project_id&&m.material_id===pin.material_id&&m.material_version===pin.material_version&&m.sha256===pin.sha256)?.filename??'已保存的补充资料';}
   private paintSupport(){if(!this.live())return;const node=document.querySelector('#pf-support-list');if(!node)return;const types=this.support?.types??[...this.selected],materials=[...new Map(types.flatMap(type=>this.state!.workspace.drafts[type].materials).map(m=>[[m.source_project_id,m.material_id,m.material_version,m.sha256].join(':'),m])).values()];node.textContent=this.support?`仍需确认 ${this.support.files.length} 份补充资料，保存范围固定为：${this.support.types.map(type=>PROJECT_DOCUMENT_CATALOG.find(d=>d.id===type)!.name).join('、')}。`:types.length?`所选文件已采用 ${materials.length} 份补充资料；各文件的具体依据可展开对应行查看。`:'先选择文件，再按需补充依据。';this.paintPreparationView();}
+  private paintSupportUpload(){
+    const input=document.querySelector<HTMLInputElement>('#pf-support'),button=document.querySelector<HTMLButtonElement>('#pf-support-upload'),hint=document.querySelector('#pf-support-upload-hint');if(!input||!button||!hint)return;
+    input.disabled=button.disabled=!this.selected.size||!!this.support||this.busy;
+    if(this.busy){const feedback=document.querySelector('#pf-support-feedback');if(feedback)feedback.textContent='';}
+    button.setAttribute('aria-busy',String(this.busy&&!!this.support));if(button.disabled)button.classList.remove('is-dragging');
+    hint.textContent=this.busy?'正在处理，请稍候':this.support?'请先处理上方待确认的资料':!this.selected.size?'先在上方添加要生成的文件':'点击选择，或将文件拖到此处';
+  }
   private async addSupport(files:File[]){
     if(this.busy||this.pendingBatch)return;
-    if(files.length){if(this.support){this.status('请先确认上次补充资料的保存结果。');return;}if(!this.selected.size)return;try{files.forEach(fileMaterialMime);}catch(e){this.status(friendlyError(e,'save'));return;}this.support={files:files.map(file=>({file,state:{}})),types:[...this.selected]};}
+    const report=(message:string,isError=false)=>{this.status(message);if(!this.live())return;const feedback=document.querySelector('#pf-support-feedback');if(feedback){feedback.textContent=message;feedback.classList.toggle('is-error',isError);}};
+    if(files.length){if(this.support){report('请先确认上次补充资料的保存结果。',true);return;}if(!this.selected.size)return;try{files.forEach(fileMaterialMime);}catch(e){report(friendlyError(e,'save'),true);return;}this.support={files:files.map(file=>({file,state:{}})),types:[...this.selected]};}
     if(!this.support)return;
     await this.act(async()=>{
+      report(`正在上传并保存 ${this.support!.files.length} 份补充依据…`);
       this.state=await this.request<Workspace>('GET','/workspace');
       const supportBases:GenerationUploadContext['supportBases']={};for(const type of this.support!.types){const {version,sha256:_sha,updated_at:_at,...input}=structuredClone(this.state.workspace.drafts[type]);supportBases[type]={expected_version:version,input};}
       const context:GenerationUploadContext={kind:'support',topic:this.state.workspace.topic.topic_id,types:[...this.support!.types],supportBases};
@@ -345,10 +359,10 @@ export class FileWorkspace {
       for(const item of this.support!.files)await prepareFileMaterial(this.api,this.id!,item.file,this.controller.signal,item.state,this.owner??'','generation-support',uploadJson(context),()=>this.live());
       for(const item of this.support!.files){
         if(item.pin)continue;
-        item.pin=await this.continueGenerationUpload('generation-support',item.state.operationId!,item.file,s=>this.status(s),item.state);
+        item.pin=await this.continueGenerationUpload('generation-support',item.state.operationId!,item.file,report,item.state);
       }
-      this.support=undefined;this.status('补充资料已保存到本次所选文件，可在下方核对。');
-    });this.paintSupport();this.paintUploadRecovery();
+      this.support=undefined;report('补充依据已保存，可在上方对应文件行查看。');
+    });report(this.message,!!this.support);this.paintSupport();this.paintUploadRecovery();
   }
   private paintUploadRecovery(){
     if(!this.live()||!document.querySelector('#pf-template-list'))return;

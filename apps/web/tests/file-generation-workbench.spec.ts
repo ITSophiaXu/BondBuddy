@@ -124,6 +124,35 @@ async function choose(page:Page,types:M4DocumentType[]){await addDocuments(page,
 async function confirm(page:Page){await page.locator('#pf-generate').click();await expect(page.locator('#pf-confirm-generation')).toBeVisible();}
 const supportFile={name:'合成补充依据.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 synthetic test content')};
 
+for(const width of [1440,390])test(`support upload opens a multiple-file chooser from the keyboard at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:960});const s=await fixture(page);await open(page);
+  const details=page.locator('#pf-support-details');if(await details.getAttribute('open')===null)await details.locator('summary').click();
+  const upload=page.getByRole('button',{name:'上传补充依据',exact:true});
+  await expect(upload).toBeDisabled();await expect(page.locator('#pf-support-upload-hint')).toContainText('先在上方添加');
+  await choose(page,['init']);await expect(upload).toBeEnabled();await expect(page.locator('#pf-support-formats')).toContainText('100 MB');
+  const chooser=page.waitForEvent('filechooser');await upload.press('Enter');const dialog=await chooser;expect(dialog.isMultiple()).toBe(true);await dialog.setFiles(supportFile);
+  await expect(page.locator('#pf-support-feedback')).toContainText('补充依据已保存');
+  expect(s.workspaces.get(apiProject)!.workspace.drafts.init.materials).toHaveLength(1);
+  await expect(upload).toBeEnabled();expect(batches(s.calls)).toEqual([]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('support drop validates every file and cannot bypass selection or an active upload',async({page})=>{
+  const s=await fixture(page);await open(page);
+  const drop=async(names:string[])=>page.locator('#pf-support-upload').evaluate((node,names)=>{const transfer=new DataTransfer();for(const name of names)transfer.items.add(new File(['%PDF-1.4 synthetic upload'],name,{type:'application/pdf'}));const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer});node.dispatchEvent(event);return event.defaultPrevented;},names);
+  expect(await drop(['忽略.pdf'])).toBe(true);expect(s.calls.filter(c=>c.method==='POST')).toEqual([]);
+  await choose(page,['init','underwriter']);await drop(['有效.pdf','不支持.txt']);
+  await expect(page.locator('#pf-support-feedback')).toContainText('DOCX、PDF 或 XLSX');expect(s.calls.filter(c=>c.method==='POST')).toEqual([]);
+  let release!:()=>void;s.holdComplete=new Promise<void>(resolve=>{release=resolve;});
+  await drop(['拖拽依据.pdf']);await expect(page.locator('#pf-support-upload')).toBeDisabled();await expect(page.locator('#pf-support-upload')).toHaveAttribute('aria-busy','true');
+  await expect.poll(()=>s.calls.filter(c=>c.path.endsWith('/complete')).length).toBe(1);
+  await drop(['重复提交.pdf']);release();
+  await expect(page.locator('#pf-support-feedback')).toContainText('补充依据已保存');
+  expect(s.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);
+  expect(s.workspaces.get(apiProject)!.workspace.drafts.init.materials).toHaveLength(1);expect(s.workspaces.get(apiProject)!.workspace.drafts.underwriter.materials).toHaveLength(1);
+  await expect(page.locator('#pf-support-upload')).toBeEnabled();expect(batches(s.calls)).toEqual([]);
+});
+
 test('prepared source opens document selection without preparation or initial bulk selection',async({page})=>{
   const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.setViewportSize({width:1440,height:1000});
   const s=await fixture(page);await open(page);
@@ -387,6 +416,7 @@ test('stopping a partially saved support package releases preparation and preser
   const accepted=structuredClone(s.workspaces.get(apiProject)!.workspace.drafts.init.materials);
   expect(accepted).toHaveLength(1);expect(s.workspaces.get(apiProject)!.workspace.drafts.underwriter.materials).toEqual([]);
   await page.locator('#pf-stop-support').click();
+  await expect(page.locator('#pf-support-feedback')).toBeEmpty();
   await expect(page.locator('#pf-retry-support')).toBeHidden();
   await expect(page.locator('#pf-stop-support')).toBeHidden();
   await expect(page.locator('#pf-support')).toBeEnabled();await expect(page.locator('#pf-generate')).toBeEnabled();

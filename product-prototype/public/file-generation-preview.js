@@ -26,12 +26,21 @@ function show(scene) {
   host.querySelectorAll('[data-download-version],[data-pf-template]').forEach(button=>button.addEventListener('click',()=>message(button.hasAttribute('data-pf-template')?'实际工作区将在此打开模板选择与上传窗口。':'示例文件不可下载；实际工作区可在此下载对应版本。')));
   host.querySelector('#pf-generate')?.addEventListener('click',()=>message('实际工作区将在此核对所选文件、募集书版本和费用，明确确认后开始生成。'));
   if(scene==='documents'){
+    const supportInput=host.querySelector('#pf-support'),supportUpload=host.querySelector('#pf-support-upload');
+    const previewSupport=files=>{if(!files.length||supportInput.disabled)return;const feedback=host.querySelector('#pf-support-feedback');feedback.classList.remove('is-error');if(files.some(f=>!f.size||f.size>100*1024*1024||! /\.(docx|pdf|xlsx)$/i.test(f.name))){feedback.classList.add('is-error');feedback.textContent='请上传不超过 100 MB 的 DOCX、PDF 或 XLSX 文件。';return;}feedback.textContent='预览已选择 '+files.length+' 份：'+files.map(f=>f.name).join('、')+'。仅展示文件，不上传或保存。';};
+    supportUpload.addEventListener('click',()=>supportInput.click());
+    supportInput.addEventListener('change',()=>{previewSupport([...supportInput.files]);supportInput.value='';});
+    supportUpload.addEventListener('dragover',e=>{e.preventDefault();if(!supportInput.disabled)supportUpload.classList.add('is-dragging');});
+    supportUpload.addEventListener('dragleave',e=>{if(!(e.relatedTarget instanceof Node)||!supportUpload.contains(e.relatedTarget))supportUpload.classList.remove('is-dragging');});
+    supportUpload.addEventListener('drop',e=>{e.preventDefault();supportUpload.classList.remove('is-dragging');previewSupport([...e.dataTransfer.files]);});
     const catalog=[{"id":"init","name":"立项报告"},{"id":"underwriter","name":"主承销商核查意见"},{"id":"legal","name":"法律意见书"},{"id":"application","name":"挂牌 / 发行申请书"},{"id":"recommendation","name":"推荐函"},{"id":"private_summary","name":"募集说明书摘要"},{"id":"annual","name":"年度报告"},{"id":"semiannual","name":"半年度报告"},{"id":"issuer","name":"发行人基本情况说明"},{"id":"financial","name":"主要财务情况说明"},{"id":"credit","name":"授信情况说明"},{"id":"proceeds","name":"募集资金使用情况说明"}],rows=['init','underwriter'];let blank=false;
     const sync=()=>{
       const count=rows.length;
       host.querySelector('#pf-count').textContent=count+' 份';
       host.querySelector('#pf-price').textContent=count?count+' 份全部完成共 '+(count*4500).toLocaleString()+' 积分':'请选择需要生成的文件';
       host.querySelector('#pf-generate').disabled=!count;
+      supportInput.disabled=supportUpload.disabled=!count;
+      host.querySelector('#pf-support-upload-hint').textContent=count?'点击选择，或将文件拖到此处':'先在上方添加要生成的文件';
       host.querySelector('#pf-prepared').textContent=count+' / '+count+' 已准备';
       host.querySelector('#pf-package-readiness').textContent=count?'已复用 '+count+' 份模板，可以核对文件包。':'选择文件类型，开始准备本次清单。';
       host.querySelector('#pf-add-row').disabled=count===catalog.length;

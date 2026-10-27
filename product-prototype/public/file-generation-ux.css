@@ -35,6 +35,21 @@
 .pf-generation-source .btn { min-height: 44px; }
 .pf-documents-layout .pf-optional-grid { display: grid; grid-area: auto; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: stretch; margin-top: 22px; gap: 22px; }
 .pf-documents-layout .pf-optional { box-shadow: none; margin: 0; }
+.pf-optional #pf-support[hidden] { display: none; }
+.pf-optional .pf-support-dropzone { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 112px; box-sizing: border-box; margin: 0; padding: 20px; border: 1.5px dashed #a9bca1; border-radius: 9px; background: #f8faf5; color: #355b45; font: inherit; text-align: left; cursor: pointer; }
+.pf-support-dropzone:not(:disabled):hover,.pf-support-dropzone.is-dragging { border-color: #52774a; background: #eef4e7; }
+.pf-support-dropzone:focus-visible { outline: 3px solid #729747; outline-offset: 3px; }
+.pf-support-dropzone:disabled { cursor: not-allowed; background: #f6f7f3; border-color: #d3dbcd; color: #6b7965; opacity: 1; }
+.pf-support-upload-icon { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border: 1px solid #dfe8d6; border-radius: 9px; background: #edf3e6; }
+.pf-support-upload-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.pf-support-upload-copy { display: flex; flex-direction: column; min-width: 0; gap: 5px; }
+.pf-support-upload-copy strong { font-size: 15px; line-height: 24px; font-weight: 600; }
+.pf-support-upload-copy > span { font-size: 13px; line-height: 21px; color: #697963; overflow-wrap: anywhere; }
+.pf-optional .pf-support-formats { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 10px 0 0; font-size: 12px; line-height: 20px; color: #6b7965; }
+.pf-optional .pf-support-purpose { margin: 14px 0 0; font-size: 13px; line-height: 22px; color: #69766c; }
+.pf-optional #pf-support-feedback { margin: 12px 0 0; padding: 10px 12px; border-radius: 7px; background: #f0f5e9; color: #395c48; }
+.pf-optional #pf-support-feedback:empty { display: none; }
+.pf-optional #pf-support-feedback.is-error { background: #fff7e8; color: #885818; }
 .pf-documents-layout .pf-documents-next { position: sticky; bottom: 12px; z-index: 4; margin: 22px 0 0; padding: 16px 20px; background: #fff; box-shadow: 0 4px 24px #243a2312; }
 .pf-documents-next #pf-price { font-size: 13px; }
 .pf-documents-next .btn { min-height: 44px; }
@@ -44,6 +59,7 @@
   .pf-document-directory .pf-category { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 760px) {
+  .pf-optional .pf-support-dropzone { padding: 16px; gap: 12px; }
   .pf-workspace-heading { margin-bottom: 20px; }
   .pf-title-row { align-items: stretch; flex-direction: column; gap: 16px; margin-top: 12px; }
   .pf-title-row h1 { font-size: 26px; }
