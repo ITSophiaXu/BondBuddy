@@ -119,3 +119,27 @@ test('precise result states and adverse facts are visible without an evidence up
  await expect(page.locator('dialog input[type=file]')).toHaveCount(0);
  await page.screenshot({path:resolve(out,'adverse-record-1440.png')});
 });
+
+for(const width of [1440,390])test(`captcha image failures remain specific in the result and detail at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:960});
+ const f=await fixture(page),round=f.state.rounds[0],record=round.records[1];
+ record.site_id='credit-china';record.site_name='信用中国';record.urls=['https://www.creditchina.gov.cn/'];record.status='query_failed';
+ record.browser!.scope='信用中国官网查询：合成企业';
+ round.manifest.draft.site_ids=['tax','credit-china'];
+ for(const [detail,label] of Object.entries({CAPTCHA_IMAGE_LOAD_FAILED:'验证码图片加载失败',CAPTCHA_IMAGE_LOAD_TIMEOUT:'验证码图片加载超时',CAPTCHA_IMAGE_ACCESS_DENIED:'网站拒绝访问',CAPTCHA_IMAGE_RATE_LIMITED:'网站限制访问频率',CAPTCHA_IMAGE_REFRESH_FAILED:'验证码刷新未完成'})){
+  record.reason='HTTP 503 CAPTCHA_IMAGE_LOAD_FAILED';
+  record.browser!.diagnostic={code:'captcha_required',phase:'results',detail,http_status:503,attempts:2,elapsed_ms:30000};
+  await page.goto('/#integrity?project=project&run=round');await page.reload();
+  await expect(page.getByText(label,{exact:true})).toBeVisible();
+  await expect(page.locator('#integrity-records')).not.toContainText(/HTTP|503|CAPTCHA_|已尝试自动验证/);
+  await page.getByRole('button',{name:'查看查询记录'}).nth(1).click();
+  await expect(page.locator('dialog')).toContainText(label);await expect(page.locator('dialog')).toContainText('本次查询未完成');
+  await expect(page.locator('dialog input[type=file]')).toHaveCount(0);
+  await expect(page.locator('dialog')).not.toContainText(/HTTP|503|CAPTCHA_|已尝试自动验证/);
+  if(detail==='CAPTCHA_IMAGE_LOAD_FAILED'&&process.env.BB_CAPTCHA_SCREENSHOT_DIR){
+   await mkdir(process.env.BB_CAPTCHA_SCREENSHOT_DIR,{recursive:true});
+   await page.screenshot({path:resolve(process.env.BB_CAPTCHA_SCREENSHOT_DIR,`image-failure-${width}.png`),fullPage:false});
+  }
+  await page.locator('dialog').press('Escape');
+ }
+});
