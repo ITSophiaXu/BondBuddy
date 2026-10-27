@@ -156,3 +156,23 @@ test('correction delivery reads actual Word report fields when Markdown is absen
     f.ctx.values.set('model_generation',result.value);assert.equal((await reviewFileDeliveryStage().run(f.ctx)).kind,'deliver');
   }finally{await rm(f.directory,{recursive:true,force:true});}
 });
+
+for(const text of ['', 'BB_REVIEW_PROGRESS:read_materials:started'])test(`Word report rejects empty/progress content before delivery: ${text||'empty'}`,async()=>{
+  const f=await fixture();
+  try{
+    const word=makeWorkerDocxFixture({externalLink:false,text});
+    const stage=reviewFileStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+      await options.fileWorkspace!.prepare(f.directory);
+      await writeFile(join(f.directory,'output/report.docx'),word);
+      return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'empty-word'} as never,{text:'文件已保存'})};
+    }})});
+    const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('result');
+    assert.ok(validReviewFileResult(result.value,f.ctx));assert.equal(result.value.error,'WORD_DELIVERY_UNAVAILABLE');
+    assert.ok(result.value.files['model-report.docx'],'preserve the actual bad output for diagnosis');
+    assert.equal(result.value.files['report.docx'],undefined);
+    // Historical/replayed collection metadata must not bypass the delivery guard.
+    const replay={...result.value,error:undefined,files:{'report.docx':{...result.value.files['model-report.docx'],key:result.value.files['model-report.docx'].key.replace('model-report.docx','report.docx')}}};
+    f.store.set(replay.files['report.docx'].key,word);f.ctx.values.set('model_generation',replay);
+    assert.deepEqual(await reviewFileDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'});
+  }finally{await rm(f.directory,{recursive:true,force:true});}
+});

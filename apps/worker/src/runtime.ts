@@ -47,7 +47,7 @@ export const codexNoLookupReconciler: ProviderCallReconciler = { name: 'codex_no
 
 export type WorkerRuntimeOptions = {
   pool: Pool; blobs: PrivateBlobs;
-  concurrency?: number; parseSlots?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
+  concurrency?: number; parseSlots?: number; interactiveSlots?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   /** Private scheduling filter; task kinds come from the shared contract. */
   runKinds?: readonly RunKind[];
@@ -104,7 +104,7 @@ export class WorkerRuntime {
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
-    this.o = { concurrency: 2, parseSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
+    this.o = { concurrency: 2, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
@@ -121,6 +121,7 @@ export class WorkerRuntime {
         ? createMaterialsReadyStage(options.factCandidateProducer) : stage);
     }
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
+    if (!Number.isInteger(this.o.interactiveSlots) || this.o.interactiveSlots < 0 || this.o.interactiveSlots > 4) throw new Error('Invalid worker interactive slots');
     if (!Number.isInteger(this.o.parseSlots) || this.o.parseSlots < 0 || this.o.parseSlots > 4) throw new Error('Invalid worker parse slots');
   }
 
@@ -129,9 +130,15 @@ export class WorkerRuntime {
     return this.o.parse && this.o.kinds.includes('run') && this.o.kinds.includes('parse') ? this.o.parseSlots : 0;
   }
 
+  private get dedicatedInteractiveSlots() {
+    return this.o.kinds.includes('run') && this.o.runKinds.some(kind=>kind==='qa'||kind==='generation') ? this.o.interactiveSlots : 0;
+  }
+
   start() {
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
+    const interactiveStart=this.o.concurrency+this.dedicatedParseSlots;
+    for(let slot=interactiveStart;slot<interactiveStart+this.dedicatedInteractiveSlots;slot++)this.loops.push(this.slotLoop(slot,['run'],true));
     this.loops.push(this.sweepLoop());
     this.loops.push(this.heartbeatLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
@@ -142,21 +149,21 @@ export class WorkerRuntime {
 
   private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event }); }
 
-  /** A general slot alternates claims; a dedicated slot claims only parse jobs. */
-  private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds) {
+  /** General slots alternate claims; dedicated slots claim only their assigned work. */
+  private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds, interactiveOnly=false) {
     let turn = slot;
     while (!this.stopping) {
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
         try {
-          if(kind==='run'&&this.o.runKinds.includes('generation')){
+          if(kind==='run'&&!interactiveOnly&&this.o.runKinds.includes('generation')){
             for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates])try{await advance(this.o.pool);}
             catch(error){this.emit({slot,kind:'file_batch',outcome:'scheduler_error',message:error instanceof Error?error.message:'Unknown error'});}
           }
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
-              runKinds: this.o.runKinds, reviewedContextLoader: this.o.reviewedContextLoader,
+              runKinds: this.o.runKinds, interactiveOnly, reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
@@ -216,7 +223,7 @@ export class WorkerRuntime {
   private readonly startedAt = new Date();
   /** Upserts this process's heartbeat; a failed write only counts as an error (readiness will show it stale). */
   async heartbeat(stopped = false) {
-    try { await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency + this.dedicatedParseSlots, stopped }); }
+    try { await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency + this.dedicatedParseSlots + this.dedicatedInteractiveSlots, stopped }); }
     catch { this.counters.errors++; }
   }
 
@@ -347,6 +354,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
       { await produceTargetPeriodCandidateSnapshot({ pool, blobs }, request); } } : {}),
     ...(testChannelEnabled ? { testRuleCapabilityLoader: createSsePrivateTestRuleCapabilityLoader(pool) } : {}),
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
+    interactiveSlots: intEnv(env, 'BB_WORKER_INTERACTIVE_SLOTS', 1, 0, 4),
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
@@ -366,13 +374,15 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const generalSlots = intEnv(process.env, 'BB_WORKER_CONCURRENCY', 2, 1, 16);
   const parseSlots = intEnv(process.env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4);
   const kinds = (process.env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(kind => kind.trim());
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: generalSlots + (kinds.includes('run') && kinds.includes('parse') ? parseSlots : 0) + 4 });
+  const runKinds=checkedRunKinds(process.env.BB_WORKER_RUN_KINDS?.split(',').map(kind=>kind.trim()) as RunKind[]|undefined);
+  const interactiveSlots=kinds.includes('run')&&runKinds.some(kind=>kind==='qa'||kind==='generation')?intEnv(process.env,'BB_WORKER_INTERACTIVE_SLOTS',1,0,4):0;
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: generalSlots + interactiveSlots + (kinds.includes('run') && kinds.includes('parse') ? parseSlots : 0) + 4 });
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
   const { processOcrMaterial } = await import('./ocr.js');
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;

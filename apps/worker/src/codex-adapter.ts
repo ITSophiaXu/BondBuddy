@@ -17,6 +17,8 @@ import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelA
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
 
+import {validateModelImage,type ModelImageInput} from './model-image-input.js';
+
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
 export const REVIEW_TOOL_ADAPTER_VERSION = 'codex-review-tools-1';
 
@@ -215,7 +217,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; imageFile?: string }): string[] {
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -226,6 +228,11 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
     args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec','--enable','view_image',
       '-c',`shell_environment_policy.set={PATH="/opt/venv/bin:/usr/local/bin:/usr/bin:/bin",HOME=${JSON.stringify(join(o.cwd,'scratch'))},TMPDIR=${JSON.stringify(join(o.cwd,'scratch'))},PYTHONPATH="/app/python",PYTHONDONTWRITEBYTECODE="1",LANG="C.UTF-8"}`);
     if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"');
+  }
+  if (o.imageFile) {
+    if(resolve(o.imageFile)!==resolve(o.cwd,'..','input.png')||!o.ephemeral||o.fileAuthoring||o.materialDataFile||o.reviewDataFile||c.web_search==='live')throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+    args.push('--image',o.imageFile);
+    if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-image-model-catalog.json"');
   }
   if (o.ephemeral) args.push('--ephemeral');
   if (o.materialDataFile) {
@@ -298,7 +305,7 @@ export type CodexProcessResult = {
 
 // One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
 // private buffer for status markers, then discarded. It is never logged or persisted.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -328,7 +335,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
           // Restricted Windows jobs can launch taskkill successfully but receive exit 1.
           // Waiting only for a spawn error leaves the provider and this promise alive forever.
           const forceChild = () => { try { child.kill('SIGKILL'); } catch { /* already gone */ } };
-          const fallback = setTimeout(forceChild, 1000); fallback.unref();
+          // Stop a rejected tool attempt promptly even if Windows delays its tree-kill helper.
+          const fallback = setTimeout(forceChild, sig === 'SIGKILL' ? 100 : 1000); fallback.unref();
           killer.once('error', forceChild);
           killer.once('close', code => { clearTimeout(fallback); if (code !== 0) forceChild(); });
           child.once('close', () => clearTimeout(fallback));
@@ -447,6 +455,7 @@ export type ContainedCallInput = {
   owner_user_id: string; project_id: string; job_id: string; run_id: string; trace_id: string; logical_call_id: string;
   prompt_snapshot_ref: string; prompt: string; output: { kind: 'json'; schema: Record<string, unknown>; validate: (v: unknown) => boolean;
     normalize?: (value: unknown, context: CodexOutputNormalizationContext) => unknown } | { kind: 'text' };
+  imageInput?: ModelImageInput;
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
   onEvent?: (event: Record<string, unknown>) => void;
   /** Host activity observer after tool containment; separate from existing diagnostic/cancellation hooks. */
@@ -510,6 +519,10 @@ export function attemptRecord(intent: ProviderCallIntent, c: CodexAdapterConfig,
 // before spawn, and re-asks only after a settled schema-invalid answer with measured usage.
 export async function runContainedModelCall(input: ContainedCallInput, journal: CodexJournal, c: CodexAdapterConfig): Promise<ContainedCallResult> {
   assertCodexConfig(c);
+  if(input.imageInput){
+    validateModelImage(input.imageInput);
+    if(input.fileWorkspace||input.materialTools||input.reviewTools||c.web_search==='live'||input.session&&input.session.mode!=='ephemeral'||input.output.kind!=='json')throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  }
   if (input.fileWorkspace && (input.materialTools || input.reviewTools)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (input.materialTools && c.web_search==='live') throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (input.materialTools && input.reviewTools || input.reviewTools && (input.output.kind!=='json' || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -580,6 +593,8 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         let schemaFile: string | null = null;
         if (input.output.kind === 'json') { schemaFile = join(attemptDir, 'output-schema.json'); await writeFile(schemaFile, JSON.stringify(normalizeCodexOutputSchema(input.output.schema)), { mode: 0o600 }); }
         if ((await readdir(cwd)).length) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+        const imageFile=input.imageInput?join(attemptDir,'input.png'):undefined;
+        if(imageFile)await writeFile(imageFile,input.imageInput!.png,{mode:0o600,flag:'wx'});
         const materialDataFile=input.materialTools?join(cwd,'materials.json'):undefined;
         if(materialDataFile)await writeFile(materialDataFile,JSON.stringify(input.materialTools),{mode:0o600});
         const materialTraceFile=input.materialToolsTrace?join(attemptDir,'materials-trace.json'):undefined;
@@ -603,7 +618,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, signal: input.signal, onEvent: input.onEvent,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, signal: input.signal, onEvent: input.onEvent,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         if (!input.fileWorkspace && c.web_search === 'live') await journal.recordWebSearchEvents!(intent, raw.web_search_events ?? []);
         if (raw.thread_id) threadId = raw.thread_id;
@@ -652,7 +667,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
         if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
-        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? 'codex-file-authoring-1' : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
+        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? 'codex-file-authoring-1' : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });

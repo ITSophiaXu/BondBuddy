@@ -1,6 +1,7 @@
 import { inflateRawSync } from 'node:zlib';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { digest } from './data.js';
+import { SaxesParser } from 'saxes';
 
 export const WORD_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const WORD_DELIVERY_VALIDATOR_VERSION = 'ooxml-docx-v1';
@@ -62,6 +63,34 @@ export function inspectGeneratedWord(bytes: Buffer): DocxInspection {
     checks: { zip_structure: 'not_run', entry_integrity: 'not_run', xml_well_formedness: 'not_run', ooxml_relationships: 'not_run', word_document: 'not_run' },
     required_parts: [], relationship_count: 0, failure_codes: valid ? [] : ['WORD_FILE_UNAVAILABLE']
   };
+}
+
+/** Bounded text read for review-output checks. Does not change M1 delivery policy. */
+export function readDocxBodyText(bytes: Buffer): string | null {
+  try {
+    if (bytes.length > DOCX_LIMITS.archiveBytes) return null;
+    const entry = parseZipDirectory(bytes, inspectGeneratedWord(bytes)).find(part => part.name === 'word/document.xml');
+    if (!entry || entry.uncompressedSize > DOCX_LIMITS.xmlPartBytes) return null;
+    const compressed = bytes.subarray(entry.dataOffset, entry.dataOffset + entry.compressedSize);
+    const content = entry.method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: Math.max(1, entry.uncompressedSize + 1) });
+    if (content.length !== entry.uncompressedSize || crc32(content) !== entry.crc32) return null;
+    const parser = new SaxesParser({ xmlns: true });
+    let body = false, sawBody = false, inText = false, text = '';
+    parser.on('doctype', () => { throw Error('DTD not allowed'); });
+    parser.on('opentag', tag => {
+      if (tag.uri === WORD_NS && tag.local === 'body') body = sawBody = true;
+      if (body && tag.uri === WORD_NS && tag.local === 't') inText = true;
+    });
+    parser.on('text', value => { if (inText) text += value; });
+    parser.on('closetag', tag => {
+      if (tag.uri !== WORD_NS) return;
+      if (tag.local === 't') inText = false;
+      if (body && tag.local === 'p') text += '\n';
+      if (tag.local === 'body') body = false;
+    });
+    parser.write(new TextDecoder('utf-8', { fatal: true }).decode(content)).close();
+    return sawBody ? text : null;
+  } catch { return null; }
 }
 
 type ZipEntry = {

@@ -22,9 +22,44 @@ export async function visibleText(page:Page){
  const text=[];for(const frame of await visibleFrames(page))text.push(await frame.locator('body').innerText({timeout:1000}).catch(()=>''));
  return text.join('\n').slice(0,120000);
 }
+/** Includes @import dependencies; an empty CSSStyleSheet does not prove a load succeeded. */
+export async function activeStylesheet(frame:Frame,url:string){
+ return frame.evaluate(url=>{
+  const active=(media:string)=>!media||matchMedia(media).matches;
+  if([...document.querySelectorAll<HTMLLinkElement>('link[rel~=stylesheet]')].some(link=>link.href===url&&!link.disabled&&active(link.media)))return true;
+  const seen=new Set<CSSStyleSheet>();
+  const visit=(sheet:CSSStyleSheet):boolean=>{
+   if(seen.has(sheet)||sheet.disabled||!active(sheet.media.mediaText))return false;seen.add(sheet);
+   if(sheet.href===url)return true;
+   try{return [...sheet.cssRules].some(rule=>rule instanceof CSSImportRule&&active(rule.media.mediaText)&&(rule.href===url||!!rule.styleSheet&&visit(rule.styleSheet)));}
+   catch{return true;} // An opaque active sheet may import the failed resource; do not assume it is optional.
+  };
+  return [...document.styleSheets,...document.adoptedStyleSheets].some(visit);
+ },url).catch(()=>true);
+}
 export async function firstVisible(locator:Locator){
  for(let i=0;i<Math.min(await locator.count(),40);i++){const item=locator.nth(i);if(await item.isVisible()&&await item.isEnabled())return item;}
  return undefined;
+}
+/** Observed official modal: strong enough to identify before unrelated resources finish.
+ * A bare/unstyled verification field (for example a feedback form) is not sufficient. */
+export async function creditChinaVerificationControls(page:Page){
+ for(const frame of await visibleFrames(page)){
+  let host='';try{host=new URL(frame.url()).hostname;}catch{continue;}
+  if(!['www.creditchina.gov.cn','creditchina.gov.cn'].includes(host))continue;
+  const popup=frame.locator('.vcodepop:visible').filter({has:frame.locator('input#vcode:visible')});
+  if(await popup.count()!==1)continue;
+  if(!await popup.evaluate(e=>{const style=getComputedStyle(e);return style.position==='fixed'&&Number(style.zIndex)>0;}))continue;
+  if(!await popup.locator('#vcodeimg:visible').count()||!await popup.locator('.buttongroup .confirm:visible').filter({hasText:/^验证$/}).count())continue;
+  return {frame,popup,input:popup.locator('input#vcode'),image:popup.locator('#vcodeimg'),submit:popup.locator('.buttongroup .confirm').filter({hasText:/^验证$/}),refresh:popup.locator('.vcodeimgbox span').filter({hasText:/换一张/}),error:popup.locator('.errortip:visible')};
+ }
+ return undefined;
+}
+export async function creditChinaVerification(page:Page){return !!await creditChinaVerificationControls(page);}
+/** Poll readiness so a visible verification gate can interrupt a stalled deferred script. */
+export async function domReady(frame:Page|Frame){
+ try{await frame.waitForLoadState('domcontentloaded',{timeout:50});return true;}
+ catch(error){if(error instanceof Error&&error.name==='TimeoutError')return false;throw error;}
 }
 export async function challenge(page:Page,text:string){
  // A footer login link, a help article mentioning captcha, or a WAF error is not an authentication gate.

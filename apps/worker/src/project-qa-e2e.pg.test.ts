@@ -54,7 +54,7 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   const p=await ok('POST','/api/v1/projects',{kind:'generation',name:'合成问答测试项目',issuer_name:'合成发行人',market:'sse',offering:'public'}),path='/api/v1/projects/'+p.project_id,base=path+'/qa';
   const dir=process.env.BB_QA_TEST_OUTPUT_DIRECTORY!;await mkdir(dir,{recursive:true});
   execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','from pathlib import Path; import sys; import runpy; runpy.run_path("python/tests/test_project_qa.py")["fixtures"](Path(sys.argv[1]))',dir],{cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONIOENCODING:'utf-8'}});
-  const upload=async(filename:string)=>{const bytes=await readFile(join(dir,filename)),decl={byte_size:bytes.length,sha256:digest(bytes)},u=await ok('POST',path+'/materials/uploads',{...decl,filename,role:'other',media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});await ok('PUT',u.upload_url,bytes);const m=await ok('POST',path+'/materials/uploads/'+u.upload_id+'/complete',decl);return {kind:'material' as const,pin:{source_project_id:p.project_id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256}};};
+  const upload=async(filename:string)=>{const bytes=await readFile(join(dir,filename)),decl={byte_size:bytes.length,sha256:digest(bytes)},u=await ok('POST',path+'/materials/uploads',{...decl,filename,role:'other',media_type:filename.endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});await ok('PUT',u.upload_url,bytes);const m=await ok('POST',path+'/materials/uploads/'+u.upload_id+'/complete',decl);return {kind:'material' as const,pin:{source_project_id:p.project_id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256}};};
   const source=await upload('synthetic-questions.docx'),material=await upload('synthetic-materials.docx'),request={request_id:randomUUID(),source};
   const prep=await ok('POST',base+'/prepare',request);assert.equal((await ok('POST',base+'/prepare',request)).run_id,prep.run_id);assert.equal(await execute(),'succeeded');assert.equal(calls,0);assert.deepEqual(await creditBalance(pool,owner),{available:1000,frozen:0});
   let w=await ok('GET',base) as QaWorkspace,prepared=w.runs[0];assert.equal(prepared.result!.questions.length,3);
@@ -90,5 +90,21 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   const cancel=await ok('POST',base+'/runs',{...submit,request_id:randomUUID()});await ok('POST','/api/v1/runs/'+cancel.run_id+'/cancel',{reason:'synthetic cancellation'});assert.deepEqual(await creditBalance(pool,owner),{available:760,frozen:0});
   fail=true;await ok('POST',base+'/runs',{...submit,request_id:randomUUID()});assert.equal(await execute(),'failed');assert.deepEqual(await creditBalance(pool,owner),{available:760,frozen:0});
   await assert.rejects(pool.query("UPDATE bb_project_qa_runs SET manifest='{}' WHERE run_id=$1",[run.run_id]),/immutable/);
+  // PDF follows the same real upload -> free preparation -> pinned draft ->
+  // wallet/worker -> private Word download pipeline. Only model replies are synthetic.
+  fail=false;const callsBeforePdf=calls;
+  execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','from pathlib import Path; import sys,runpy; runpy.run_path("python/tests/test_project_qa.py")["pdf_fixture"](Path(sys.argv[1]),["1. What is the funding purpose?", ""])',join(dir,'synthetic-questions.pdf')],{cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python')}});
+  const pdf=await upload('synthetic-questions.pdf'),pdfPrep=await ok('POST',base+'/prepare',{request_id:randomUUID(),source:pdf});
+  assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforePdf);assert.deepEqual(await creditBalance(pool,owner),{available:760,frozen:0});
+  w=await ok('GET',base);const pdfPrepared=w.runs.find(r=>r.run_id===pdfPrep.run_id)!;
+  assert.equal(pdfPrepared.manifest.source.asset.pin.sha256,pdf.pin.sha256);assert.equal(pdfPrepared.result!.questions.length,1);
+  assert.ok(pdfPrepared.result!.warnings.some(w=>w.includes('第 2 页无法提取文字')));
+  w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{preparation_id:pdfPrep.run_id,questions:pdfPrepared.result!.questions,materials:[material],requirements:'合成 PDF 测试',use_knowledge:false}});
+  const pdfRun=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:60,price_version:PROJECT_QA_PRICE.version});
+  assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforePdf+1);assert.deepEqual(await creditBalance(pool,owner),{available:700,frozen:0});
+  w=await ok('GET',base);const pdfAnswer=w.runs.find(r=>r.run_id===pdfRun.run_id)!,pdfArtifact=await ok('GET','/api/v1/artifacts/'+pdfAnswer.artifact_id),pdfWord=(await send('GET',pdfArtifact.download_url)).rawPayload;
+  assert.equal(digest(pdfWord),pdfArtifact.sha256);await writeFile(join(dir,'synthetic-pdf-answered.docx'),pdfWord);
+  const pdfText=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import io,sys; from docx import Document; print("\\n".join(p.text for p in Document(io.BytesIO(sys.stdin.buffer.read())).paragraphs))'],{input:pdfWord,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});
+  assert.match(pdfText,/What is the funding purpose/);assert.match(pdfText,/回答依据/);assert.match(pdfText,/第 2 页无法提取文字/);
  }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
 });

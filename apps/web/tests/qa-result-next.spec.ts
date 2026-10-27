@@ -18,7 +18,7 @@ const knowledge=(page:Page,value=false)=>page.locator(`[data-qa-knowledge-choice
 test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:900});page.on('dialog',dialog=>void dialog.accept());});
 test.afterEach(async({page})=>{await assertFixture(page);});
 
-async function open(page:Page,s=fixture(),run=answerId){await install(page,s);await page.goto(route(run));await expect(page.locator('#qa-history')).toHaveValue(run);return s;}
+async function open(page:Page,s=fixture(),run=answerId){await install(page,s);await page.goto(route(run));await expect(page.locator('#qa-history')).toHaveValue(run);if(await page.locator('.qa-followup').count())await page.locator('.qa-followup>summary').click();return s;}
 async function cache(page:Page){return page.evaluate(()=>({
   local:Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>{const key=localStorage.key(i)!;return [key,localStorage.getItem(key)];})),
   session:Object.fromEntries(Array.from({length:sessionStorage.length},(_,i)=>{const key=sessionStorage.key(i)!;return [key,sessionStorage.getItem(key)];}))
@@ -27,7 +27,7 @@ async function navigationSnapshot(page:Page,s:State){return {hash:await page.eva
   draft:structuredClone(s.workspace.draft),revision:s.workspace.revision,writes:structuredClone(writes(s))};}
 async function withinViewport(locator:Locator){await expect.poll(()=>locator.evaluate(node=>{const r=node.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})).toBe(true);}
 async function isOpen(locator:Locator){return locator.evaluate(node=>(node as HTMLDetailsElement).open);}
-async function adopt(page:Page){await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();}
+async function adopt(page:Page){if(await page.locator('.qa-followup').getAttribute('open')===null)await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();}
 async function start(page:Page){await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toBeVisible();await page.locator('#qa-confirm').click();}
 async function download(page:Page){const pending=page.waitForEvent('download');await page.locator('#qa-download').click();const receipt=await pending;return {filename:receipt.suggestedFilename(),bytes:await downloadBytes(receipt)};}
 async function exactWord(page:Page,s:State,runId:string){

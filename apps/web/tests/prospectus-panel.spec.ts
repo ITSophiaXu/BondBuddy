@@ -87,8 +87,31 @@ test('current version downloads, history disclosure survives refresh, and adopti
 });
 
 test('generation guidance and same-size visual evidence',async({page})=>{
-  await setup(page,{purpose:'generation'});await expect(page.getByText('上传募集说明书后，即可选择需要生成的文件。')).toBeVisible();await expect(page.locator('.prospectus-upload-hint')).toContainText('不启动生成或扣费');
+  await setup(page,{purpose:'generation'});await expect(page.locator('.pf-prospectus-dropzone')).toBeVisible();await expect(history(page)).toBeHidden();await expect(page.getByText('上传募集书新版本',{exact:true})).toHaveCount(0);await expect(page.locator('.prospectus-upload-hint')).toContainText('不启动生成或扣费');
   const out=process.env.BB_PANEL_EVIDENCE;if(!out)return;await mkdir(out,{recursive:true});
   for(const state of ['empty','current'])for(const width of [1440,390]){await page.setViewportSize({width,height:960});await setup(page,{versions:state==='current'});await page.locator('.prospectus-panel').screenshot({path:`${out}/implementation-${state}-${width}.png`});await page.goto(prototypeRoot+'prospectus-panel.html?state='+state);await page.locator('.prospectus-panel').screenshot({path:`${out}/prototype-${state}-${width}.png`});}
+});
+
+test('generation drop zone validates files and retains the pending choice across refresh',async({page})=>{
+  const f=await setup(page,{purpose:'generation'});
+  const drop=async(names:string[])=>{const data=await page.evaluateHandle(names=>{const data=new DataTransfer();for(const name of names)data.items.add(new File(['synthetic'],name,{type:'application/pdf'}));return data;},names);await page.locator('.pf-prospectus-dropzone').dispatchEvent('drop',{dataTransfer:data});await data.dispose();};
+  await drop(['a.pdf','b.pdf']);await expect(page.locator('#prospectus-status')).toContainText('每次请选择一份');
+  await drop(['错误.txt']);await expect(page.locator('#save-prospectus-version')).toBeDisabled();
+  await page.locator('#cancel-prospectus-version').click();await drop(['拖放募集书.pdf']);
+  await page.evaluate(()=>window.panelFixture.refresh());
+  await expect(page.locator('.prospectus-selected-file')).toContainText('拖放募集书.pdf');
+  await expect(page.locator('.pf-prospectus-dropzone')).toBeHidden();
+  await expect(page.locator('#save-prospectus-version')).toBeEnabled();
+  expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+test('generation upload recovery and explicit adoption still use the original receipt',async({page})=>{
+  const f=await setup(page,{purpose:'generation',retry:true});await selectFile(page);
+  await page.locator('#save-prospectus-version').click();await expect(page.locator('[data-resume-prospectus]')).toBeVisible();
+  await page.locator('[data-resume-prospectus]').click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);
+  expect(f.state.current_version_id).toBeNull();expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  await adopt(page,'v3');await page.locator('#confirm-prospectus-selection').click();
+  await expect(page.locator('.prospectus-current-file')).toContainText('当前版本 · V3');
+  expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(1);
 });
 declare global{interface Window{panelFixture:{refresh:()=>Promise<void>}}}

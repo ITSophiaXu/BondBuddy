@@ -40,7 +40,7 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
   try{
    let result:QaResult;
    if(input.operation==='prepare'){
-    const source=await sourceBytes(ctx,input.source.asset),path=join(dir,source.media==='application/msword'?'source.doc':'source.docx');await writeFile(path,source.bytes,{mode:0o600});
+    const source=await sourceBytes(ctx,input.source.asset),path=join(dir,source.media==='application/pdf'?'source.pdf':source.media==='application/msword'?'source.doc':'source.docx');await writeFile(path,source.bytes,{mode:0o600});
     await python(ctx,['prepare',path,join(dir,'prepared.docx'),join(dir,'prepared.json')]);
     const parsed=JSON.parse(await readFile(join(dir,'prepared.json'),'utf8'));
     result={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'prepared.docx')),snapshot:parsed.snapshot,questions:parsed.questions,answers:[],warnings:parsed.warnings,evidence:[]};

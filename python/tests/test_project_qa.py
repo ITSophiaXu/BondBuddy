@@ -31,7 +31,61 @@ def fixtures(directory):
     return source
 
 
+def pdf_fixture(path, pages):
+    # Small real text/blank PDF pages without adding a test or runtime dependency.
+    objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'']
+    objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+    kids = []
+    for text in pages:
+        page_id = len(objects) + 1
+        kids.append(f'{page_id} 0 R')
+        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents {page_id+1} 0 R >>'.encode())
+        stream = f'BT /F1 12 Tf 50 700 Td ({text}) Tj ET'.encode()
+        objects.append(f'<< /Length {len(stream)} >>\nstream\n'.encode() + stream + b'\nendstream')
+    objects[1] = f'<< /Type /Pages /Kids [{" ".join(kids)}] /Count {len(kids)} >>'.encode()
+    data = b'%PDF-1.4\n'; offsets = [0]
+    for index, obj in enumerate(objects, 1):
+        offsets.append(len(data)); data += f'{index} 0 obj\n'.encode() + obj + b'\nendobj\n'
+    xref = len(data)
+    data += f'xref\n0 {len(offsets)}\n0000000000 65535 f \n'.encode()
+    data += b''.join(f'{offset:010d} 00000 n \n'.encode() for offset in offsets[1:])
+    data += f'trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF'.encode()
+    path.write_bytes(data)
+
+
 class ProjectQaTests(unittest.TestCase):
+    def test_pdf_questions_generate_word_and_keep_unreadable_page_warning(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); source = root/'questions.pdf'
+            pdf_fixture(source, ['1. What evidence supports repayment?', ''])
+            original = source.read_bytes()
+            prepared, meta = root/'prepared.docx', root/'prepared.json'
+            prepare(source, prepared, meta)
+            parsed = json.loads(meta.read_text(encoding='utf8'))
+            self.assertEqual(len(parsed['questions']), 1)
+            self.assertEqual(parsed['questions'][0]['question'], '1. What evidence supports repayment?')
+            self.assertTrue(any('PDF' in w and 'Word' in w for w in parsed['warnings']))
+            self.assertTrue(any('第 2 页无法提取文字' in w for w in parsed['warnings']))
+            answer = dict(question_id=parsed['questions'][0]['id'], status='missing', answer='缺少偿债依据。',
+                          missing_materials=['请补充偿债资金安排及回款凭证。'], citations=[], case_ids=[], approach='')
+            output = root/'answered.docx'
+            fill(prepared, dict(source_sha256=hashlib.sha256(prepared.read_bytes()).hexdigest(),
+                                questions=parsed['questions'], answers=[answer], evidence=[], cases=[], warnings=parsed['warnings']), output)
+            text = '\n'.join(p.text for p in Document(output).paragraphs)
+            self.assertIn('What evidence supports repayment?', text)
+            self.assertIn('请补充偿债资金安排及回款凭证。', text)
+            self.assertIn('第 2 页无法提取文字', text)
+            self.assertEqual(source.read_bytes(), original)
+
+    def test_scanned_pdf_does_not_invent_questions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); source = root/'scan.pdf'
+            pdf_fixture(source, ['', ''])
+            prepare(source, root/'prepared.docx', root/'prepared.json')
+            parsed = json.loads((root/'prepared.json').read_text(encoding='utf8'))
+            self.assertEqual(parsed['questions'], [])
+            self.assertTrue(any('第 1 页无法提取文字' in w for w in parsed['warnings']))
+
     @unittest.skipUnless(shutil.which('libreoffice'), 'LibreOffice is required for legacy DOC conversion')
     def test_legacy_doc_conversion_keeps_questions(self):
         with tempfile.TemporaryDirectory() as td:

@@ -28,8 +28,8 @@ def prepare(source, output, result):
                            check=True, capture_output=True, timeout=90)
             source = Path(tmp) / (source.stem + '.docx')
             warnings.append('原稿为 DOC，已转换为 DOCX；请核对转换后的表格、编号和分页。')
-        if source.suffix.lower() != '.docx':
-            raise ValueError('QA_WORD_REQUIRED')
+        if source.suffix.lower() not in ('.docx', '.pdf'):
+            raise ValueError('QA_DOCUMENT_REQUIRED')
         parts, root, extra = package(source, Path(tmp))
         # package() reports any accepted historical revisions; preserve that warning below.
         write(output, parts)

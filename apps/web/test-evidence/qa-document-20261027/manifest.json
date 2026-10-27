@@ -1,0 +1,70 @@
+{
+  "source_commit": "db30a93f79776a9093fec758b8ea27d82f49b017",
+  "synthetic": true,
+  "screenshots": [
+    {
+      "file": "qa-result-1440.png",
+      "size": [
+        1440,
+        1776
+      ],
+      "sha256": "bb9f0a37c7b5a343377957f6c2a46d2dd47d1db6f97bb7de878fb620ba7cec07"
+    },
+    {
+      "file": "qa-result-390.png",
+      "size": [
+        390,
+        2036
+      ],
+      "sha256": "0108c94e41ab03e025bfd9876613dac6c8039cf78e2a247b3562921865853e78"
+    },
+    {
+      "file": "qa-upload-1440.png",
+      "size": [
+        1440,
+        960
+      ],
+      "sha256": "9fd191ca31dbdc1677c063ae0e343dbebdbb04638e621991575f7a2001b3119d"
+    },
+    {
+      "file": "qa-upload-390.png",
+      "size": [
+        390,
+        928
+      ],
+      "sha256": "a1e2b0cb4f51937353211ac28177d583396fca33dc1d608024073dc0db4efac0"
+    },
+    {
+      "file": "qa-upload-component-1440.png",
+      "size": [
+        1025,
+        602
+      ],
+      "sha256": "580aac57e3d9b0912bd0dd783afdae379bdec69ffdc3801ae8003349279d67f3"
+    },
+    {
+      "file": "qa-upload-component-390.png",
+      "size": [
+        339,
+        643
+      ],
+      "sha256": "39def509a46514c26144b225ca823f6d752a04b7aa08584138570634f7d41dfd"
+    },
+    {
+      "file": "qa-upload-prototype-1440.png",
+      "size": [
+        1025,
+        602
+      ],
+      "sha256": "34cbea3060bf48a0cfa58229c559690de4eb8c4d1899504d144658bb7e3c3ca7"
+    },
+    {
+      "file": "qa-upload-prototype-390.png",
+      "size": [
+        339,
+        643
+      ],
+      "sha256": "cc51ad7b3c52135c106e6f3b5e4f8ac02fe940db3fa6e326239c5ee7fec9786f"
+    }
+  ]
+}
