@@ -94,7 +94,9 @@ export function m4DocumentDeliveryStage(): RunStage {
       await publishProjectFileLinks(ctx.pool,ctx.run.owner_user_id,ctx.run.id,result.project_file_links);
     }
     const [documentPreview,notePreview]=await Promise.all([m4ArtifactPreview(ctx,document),m4ArtifactPreview(ctx,note)]);
-    return {kind: 'deliver', bytes:document, namedArtifacts: result.internal_note?[]:[{kind: 'preparation_note', filename: 'preparation-note.docx', bytes:note,
+    // Both files remain required for durable registration and settlement. Workpaper
+    // notes are excluded by workspace/collection queries and the batch ZIP builder.
+    return {kind: 'deliver', bytes:document, namedArtifacts: [{kind: 'preparation_note', filename: 'preparation-note.docx', bytes:note,
       ...(notePreview?{previewContent:notePreview}:{})}],
       deliveryPolicy: 'generated_review_v1', wordSummary: {writer_version: result.version, content_review: 'not_performed',...(documentPreview?{preview_content:documentPreview}:{})}};
   }};
