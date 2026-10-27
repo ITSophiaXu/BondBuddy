@@ -34,7 +34,7 @@ export function validateQaQuestions(questions:QaQuestion[],result:QaResult){
 async function preparation(db:Db,owner:string,id:string,run:string|null){
  const row=(await db.query(`SELECT q.* FROM bb_project_qa_runs q JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='prepare' AND r.state='succeeded'`,[owner,id,run])).rows[0];
- if(!row?.result||inputManifestHash(row.result)!==row.result_hash?.trim())throw new Problem(422,'INPUT_REQUIRED','请先完成 Word 问题清单解析。');return row as {manifest:QaInput;result:QaResult};
+ if(!row?.result||inputManifestHash(row.result)!==row.result_hash?.trim())throw new Problem(422,'INPUT_REQUIRED','请先完成问题清单解析。');return row as {manifest:QaInput;result:QaResult};
 }
 async function validateDraft(db:Db,owner:string,id:string,d:QaDraft,starting=false){
  const p=await preparation(db,owner,id,d.preparation_id);if(d.questions.length||starting)validateQaQuestions(d.questions,p.result);
@@ -90,9 +90,9 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
  app.post(base+'/prepare',{schema:{body:qaSchemas.QaPrepareRequest,response:{200:qaSchemas.QaRunResponse}}},async r=>{
   const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaPrepareRequest>;
   const run_id=await transaction(db(),async c=>{const p=await project(c,user,pid,true),hash=inputManifestHash({pid,...b}),key='qa-prepare:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
-   if(b.source.kind!=='material'||b.source.pin.source_project_id!==pid)throw new Problem(422,'VALIDATION_FAILED','请上传本项目的 Word 问题清单。');
+   if(b.source.kind!=='material'||b.source.pin.source_project_id!==pid)throw new Problem(422,'VALIDATION_FAILED','请上传本项目的问题清单。');
    const source=await readProjectFileAsset(c,user,b.source);
-   if(!['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword'].includes(source.media_type))throw new Problem(422,'VALIDATION_FAILED','请上传 DOCX 或 DOC 问题清单。');
+   if(!['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/pdf'].includes(source.media_type))throw new Problem(422,'VALIDATION_FAILED','请上传 DOCX、DOC 或 PDF 问题清单。');
    return createRun(c,user,p,key,hash,{version:'project-qa-v1',operation:'prepare',project_name:p.name,source:{filename:source.filename,asset:b.source},preparation_id:null,questions:[],materials:[],requirements:'',cases:[],price_version:PROJECT_QA_PRICE.version,points:0});
   });return {run_id};
  });
