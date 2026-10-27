@@ -4,6 +4,8 @@
 
 分支 `feat/workpaper-traceability-20261027`，在 PR #762 上补充。本批仅本地隔离开发，不修改统一测试入口或生产。详细实现和验收边界见 `docs/WORKPAPER-LIBRARY-ARCHITECTURE.md`。
 
+交付 PR： https://github.com/ITSophiaXu/BondBuddy/pull/763 ，base为develop，尚未合并。没有向其他chat自动发送消息。
+
 代码实现 commit `4245cdf8`，基于 #762 的 `dce0a78d`；rebase无冲突。整合后重新执行web类型检查、Vite正式构建和12项浏览器回归，全部通过。后续证据提交仅更新截图与交接，不改变实现。
 
 集成顺序：#762（迁移0117/0118）→ 本分支（迁移0119），同步API/worker/contracts/web/中性模板库/运行时skill。无新npm/Python依赖。不要把本机的源募集说明书、原始样例和临时测试数据库作为运行依赖。
@@ -15,3 +17,5 @@
 自动化证据见 `test-evidence/workpaper-traceability/README.md`：首轮Node45项全过（含300份队列压力）；最终定向Node14项及生成工作区1项全过；Python5项；浏览器9项批量生成和3项文件库；contracts 171合成示例及12内部示例；TypeScript与Vite构建通过。文件库采用新增区域供视觉验收，尚无旧版该区域原型；未将实现自行认定为用户视觉验收。
 
 本机专用测试资源：`bb-workpaper-trace-db-20261027`（PostgreSQL 15479）及本chat Vite 5297；仅供开发测试，不是实际连接全后端的验收版。停止时只操作这两个专用资源，不停止其他chat的测试环境。重新运行按证据README和web的Vite命令启动；数据库从迁移重建，无生产数据。
+
+验证结束后已停止上述专用Vite和PostgreSQL容器；数据库容器保留，可用 `docker start bb-workpaper-trace-db-20261027` 恢复。当前没有运行中的本批统一验收入口。
