@@ -1,0 +1,211 @@
+{
+  "startedAt": "2026-10-27T00:56:03.995Z",
+  "template": "/bb_b1_template_20261027",
+  "invocations": [
+    {
+      "name": "classification",
+      "args": [
+        "--test",
+        "apps/api/dist/billing-classification.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "durationMs": 2173,
+      "totals": {}
+    },
+    {
+      "name": "pg",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "apps/api/dist/run-supplement-draft.pg.test.js",
+        "apps/api/dist/run-supplement-preparation.pg.test.js",
+        "apps/api/dist/run-supplement-file-preparation.pg.test.js",
+        "apps/api/dist/billing.pg.test.js",
+        "apps/api/dist/review-billing.pg.test.js",
+        "apps/api/dist/m4-fixed-billing.pg.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "durationMs": 151770,
+      "totals": {}
+    }
+  ],
+  "before": [
+    {
+      "path": "apps/api/src/run-supplement-processing-plan.ts",
+      "sha256": "3406f7fc083889aae800efefe0cf46cb224fb33c4d6b408bfa5dec7691628fdf"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-processing-plan.js",
+      "sha256": "d386b312e6e5df643211a295626719f2f391e2afebe3c36f96a71f2a9255ad1e"
+    },
+    {
+      "path": "apps/api/src/run-supplement-quote.ts",
+      "sha256": "a7c24561fd7e16a1673b8d9aa86b1834379e140bd4f6f262cf192484256d059a"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-quote.js",
+      "sha256": "2c4d1668ef43be885acefa49b734b90b224028878509979898757accad382024"
+    },
+    {
+      "path": "apps/api/src/server.ts",
+      "sha256": "f17f2ce2512791cf218f3e9866bc22e85e1091e0415eec2ee0738839a9a96855"
+    },
+    {
+      "path": "apps/api/dist/server.js",
+      "sha256": "94d8befcf11bf679b5bba5a6de13613d9aca70ffa443c3f586c3f978bf271a80"
+    },
+    {
+      "path": "db/migrations/0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    },
+    {
+      "path": "packages/contracts/src/run-supplement-quote.ts",
+      "sha256": "90b3f2b1cf57bfaeef392915bdf3d06d117b643d719f4966c875515039737a42"
+    },
+    {
+      "path": "packages/contracts/dist/run-supplement-quote.js",
+      "sha256": "f961a47fd32420a9b87e162db8bda1a84f2ecc93019320751ba55f4aca90df87"
+    },
+    {
+      "path": "apps/api/src/run-supplement-draft.pg.test.ts",
+      "sha256": "3e389fd6ca27097a6d67f9c267de23a046c3701ba745d2f665ff2dfd4520df0b"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-draft.pg.test.js",
+      "sha256": "ccae4743f7a3ba34ca1bcb3d72ba867d4550dbb524ccba8971ebd3fe01d27830"
+    },
+    {
+      "path": "apps/api/src/run-supplement-preparation.pg.test.ts",
+      "sha256": "7c4a5e31d313396ead77abe507404bd4ac8d43d91d242c0a17455fe7609e0a52"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-preparation.pg.test.js",
+      "sha256": "572dcdcc22021268f09e6a404c82bb6d15722a5325ba0ffe5e8edefb8a6c13b7"
+    },
+    {
+      "path": "apps/api/src/run-supplement-file-preparation.pg.test.ts",
+      "sha256": "78330edd65268f0b83c3b2352c8a1fc43a91e2b7419b97970630a064a8a5c5df"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-file-preparation.pg.test.js",
+      "sha256": "d498393d96f8dfa55d0b8be564514fe51ff813dec885fe6c779ac2bc5a62c227"
+    },
+    {
+      "path": "apps/api/src/billing.pg.test.ts",
+      "sha256": "6a13e6a1764568abcb2d1e0118df5159123120680c128102968b8fa9889df460"
+    },
+    {
+      "path": "apps/api/dist/billing.pg.test.js",
+      "sha256": "0c0bb8a135ed3e8c2b430de3057b4cda97161e8a5a5b5164c9d3daa7f36aa50e"
+    },
+    {
+      "path": "apps/api/src/review-billing.pg.test.ts",
+      "sha256": "07fbe5c140076d04310cf3ce7b89cd7e11478ad7725153b78250c9cad32ec264"
+    },
+    {
+      "path": "apps/api/dist/review-billing.pg.test.js",
+      "sha256": "3e0354f6b461575010fb7c73c5885496e37931ecac158cdbd08a7318f18f3e23"
+    },
+    {
+      "path": "apps/api/src/m4-fixed-billing.pg.test.ts",
+      "sha256": "3086a8ad775f3805d28284c40562dd47dad2783f2cee117100b103839e2d6a1f"
+    },
+    {
+      "path": "apps/api/dist/m4-fixed-billing.pg.test.js",
+      "sha256": "174e5bf6c609dc1a9f0d33edd38cbec4196590a716ba6151204efd5f63c03e56"
+    }
+  ],
+  "success": true,
+  "after": [
+    {
+      "path": "apps/api/src/run-supplement-processing-plan.ts",
+      "sha256": "3406f7fc083889aae800efefe0cf46cb224fb33c4d6b408bfa5dec7691628fdf"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-processing-plan.js",
+      "sha256": "d386b312e6e5df643211a295626719f2f391e2afebe3c36f96a71f2a9255ad1e"
+    },
+    {
+      "path": "apps/api/src/run-supplement-quote.ts",
+      "sha256": "a7c24561fd7e16a1673b8d9aa86b1834379e140bd4f6f262cf192484256d059a"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-quote.js",
+      "sha256": "2c4d1668ef43be885acefa49b734b90b224028878509979898757accad382024"
+    },
+    {
+      "path": "apps/api/src/server.ts",
+      "sha256": "f17f2ce2512791cf218f3e9866bc22e85e1091e0415eec2ee0738839a9a96855"
+    },
+    {
+      "path": "apps/api/dist/server.js",
+      "sha256": "94d8befcf11bf679b5bba5a6de13613d9aca70ffa443c3f586c3f978bf271a80"
+    },
+    {
+      "path": "db/migrations/0137_run_supplement_quotes.sql",
+      "sha256": "ccffa714335a7f5f119351976fff7446c0cf160e9bad7eaf833e661c39d1b203"
+    },
+    {
+      "path": "packages/contracts/src/run-supplement-quote.ts",
+      "sha256": "90b3f2b1cf57bfaeef392915bdf3d06d117b643d719f4966c875515039737a42"
+    },
+    {
+      "path": "packages/contracts/dist/run-supplement-quote.js",
+      "sha256": "f961a47fd32420a9b87e162db8bda1a84f2ecc93019320751ba55f4aca90df87"
+    },
+    {
+      "path": "apps/api/src/run-supplement-draft.pg.test.ts",
+      "sha256": "3e389fd6ca27097a6d67f9c267de23a046c3701ba745d2f665ff2dfd4520df0b"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-draft.pg.test.js",
+      "sha256": "ccae4743f7a3ba34ca1bcb3d72ba867d4550dbb524ccba8971ebd3fe01d27830"
+    },
+    {
+      "path": "apps/api/src/run-supplement-preparation.pg.test.ts",
+      "sha256": "7c4a5e31d313396ead77abe507404bd4ac8d43d91d242c0a17455fe7609e0a52"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-preparation.pg.test.js",
+      "sha256": "572dcdcc22021268f09e6a404c82bb6d15722a5325ba0ffe5e8edefb8a6c13b7"
+    },
+    {
+      "path": "apps/api/src/run-supplement-file-preparation.pg.test.ts",
+      "sha256": "78330edd65268f0b83c3b2352c8a1fc43a91e2b7419b97970630a064a8a5c5df"
+    },
+    {
+      "path": "apps/api/dist/run-supplement-file-preparation.pg.test.js",
+      "sha256": "d498393d96f8dfa55d0b8be564514fe51ff813dec885fe6c779ac2bc5a62c227"
+    },
+    {
+      "path": "apps/api/src/billing.pg.test.ts",
+      "sha256": "6a13e6a1764568abcb2d1e0118df5159123120680c128102968b8fa9889df460"
+    },
+    {
+      "path": "apps/api/dist/billing.pg.test.js",
+      "sha256": "0c0bb8a135ed3e8c2b430de3057b4cda97161e8a5a5b5164c9d3daa7f36aa50e"
+    },
+    {
+      "path": "apps/api/src/review-billing.pg.test.ts",
+      "sha256": "07fbe5c140076d04310cf3ce7b89cd7e11478ad7725153b78250c9cad32ec264"
+    },
+    {
+      "path": "apps/api/dist/review-billing.pg.test.js",
+      "sha256": "3e0354f6b461575010fb7c73c5885496e37931ecac158cdbd08a7318f18f3e23"
+    },
+    {
+      "path": "apps/api/src/m4-fixed-billing.pg.test.ts",
+      "sha256": "3086a8ad775f3805d28284c40562dd47dad2783f2cee117100b103839e2d6a1f"
+    },
+    {
+      "path": "apps/api/dist/m4-fixed-billing.pg.test.js",
+      "sha256": "174e5bf6c609dc1a9f0d33edd38cbec4196590a716ba6151204efd5f63c03e56"
+    }
+  ],
+  "sourcesStable": true,
+  "completedAt": "2026-10-27T00:58:37.975Z"
+}

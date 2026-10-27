@@ -1,0 +1,12 @@
+{
+  "startedAt": "2026-10-27T00:48:07.3245911Z",
+  "exitCode": 0,
+  "output": "waiting for server to start.... done\r\nserver started\r\n",
+  "previousStatus": "pg_ctl: no server running\r\n",
+  "postmasterPid": null,
+  "commandLine": null,
+  "creationDate": null,
+  "dataDirectory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data",
+  "port": 15542,
+  "log": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\supplement-b1-20261027\\postgres.log"
+}

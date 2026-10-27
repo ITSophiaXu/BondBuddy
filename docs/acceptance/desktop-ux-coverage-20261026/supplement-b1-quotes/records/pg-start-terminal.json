@@ -1,0 +1,6 @@
+{
+  "sessionId": 7603,
+  "exitCode": 1,
+  "error": "Start identity verification failed; see saved record",
+  "interpretation": "Startup output pipe returned only after verified graceful stop. Authoritative running identity is pg-start-observed.json. Startup pg_ctl exit was 0; final late identity check saw no process after shutdown."
+}

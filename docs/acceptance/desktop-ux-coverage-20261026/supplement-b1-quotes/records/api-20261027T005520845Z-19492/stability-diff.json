@@ -1,0 +1,34 @@
+{
+  "recordedAt": "2026-10-27T00:58:52.1212452Z",
+  "sourceChanges": [
+    {
+      "path": "apps/api/src/run-supplement-quotes-sql.pg.test.ts",
+      "before": {
+        "path": "apps/api/src/run-supplement-quotes-sql.pg.test.ts",
+        "bytes": 21508,
+        "sha256": "c60fbac28bdb9c3420569e618bed40b23d4d8dbc9f71806ff8e52c4b4688a252"
+      },
+      "after": {
+        "path": "apps/api/src/run-supplement-quotes-sql.pg.test.ts",
+        "bytes": 41637,
+        "sha256": "07a50fbec5bebdd56e5d3693e3e902bf4ec585b57e6b43fa81327e0ca96cd8f2"
+      }
+    }
+  ],
+  "runtimeChanges": [
+    {
+      "path": "apps/api/dist/run-supplement-quotes-sql.pg.test.js",
+      "before": {
+        "path": "apps/api/dist/run-supplement-quotes-sql.pg.test.js",
+        "bytes": 21666,
+        "sha256": "15c738a07d6bd5af61b720852351e2f690135752859670b790f9bb36b56b117d"
+      },
+      "after": {
+        "path": "apps/api/dist/run-supplement-quotes-sql.pg.test.js",
+        "bytes": 46122,
+        "sha256": "d89e90d98863368e61cb8a635336a358fbc0b8f672f2657eb42757d24e7dadf4"
+      }
+    }
+  ],
+  "evidenceInterpretation": "All three child invocations exited zero; runner exit one preserves source/runtime drift. Scope of drift is recorded rather than rerunning passed suites."
+}

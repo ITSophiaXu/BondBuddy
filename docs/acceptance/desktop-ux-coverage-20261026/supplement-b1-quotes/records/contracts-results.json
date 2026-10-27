@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "recordedAt": "2026-10-27T00:50:10.0000364Z",
+  "scope": "Shared B1 quote contracts only; results transcribed from completed tool sessions, not rerun.",
+  "rawEvidence": {
+    "location": "Tool session outputs only; no local raw log was captured for these invocations.",
+    "sessions": [
+      80150,
+      66388
+    ],
+    "fabricatedRawLogs": false
+  },
+  "results": [
+    {
+      "command": "npm run build --workspace @bondbuddy/contracts",
+      "exitCode": 0,
+      "session": 80150
+    },
+    {
+      "command": "node --test packages/contracts/dist/run-supplement-quote.test.js",
+      "exitCode": 0,
+      "session": 80150,
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    {
+      "command": "git diff --check -- packages/contracts/src/index.ts packages/contracts/src/run-supplement-quote.ts packages/contracts/src/run-supplement-quote.test.ts",
+      "exitCode": 0,
+      "session": 80150
+    },
+    {
+      "command": "npm run check:examples --workspace @bondbuddy/contracts",
+      "exitCode": 0,
+      "session": 66388,
+      "components": [
+        {
+          "check": "review editor execution synthetic examples",
+          "validated": 45
+        },
+        {
+          "check": "synthetic examples and recovery/conflict/usage invariants",
+          "syntheticExamples": 189,
+          "internalLibraryExamples": 12
+        },
+        {
+          "check": "synthetic data lifecycle examples",
+          "validated": 4
+        },
+        {
+          "check": "ocr-v2.test.js",
+          "pass": 29,
+          "fail": 0,
+          "skip": 0
+        },
+        {
+          "check": "generation-issuer-binding.test.js",
+          "pass": 11,
+          "fail": 0,
+          "skip": 0
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "packages/contracts/src/run-supplement-quote.ts",
+      "sha256": "90b3f2b1cf57bfaeef392915bdf3d06d117b643d719f4966c875515039737a42"
+    },
+    {
+      "path": "packages/contracts/src/run-supplement-quote.test.ts",
+      "sha256": "eb1a792bd5704c4ca8c785b4e07da8b049253a47fab618614ee92a5f5a21cbcb"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "d78200b8e01e1808d57f1fa82b67ad154c58c329f626c3d89dc3ff44fac4a56a"
+    }
+  ],
+  "limitations": [
+    "No PostgreSQL, API or browser acceptance is established by these contract checks.",
+    "These counters are separate checks and are not accumulated into user scenario coverage."
+  ]
+}

@@ -1,0 +1,169 @@
+TAP version 13
+# (node:46616) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: all three genuine early pauses quote zero without any published price and preserve the original fee
+    # Subtest: authoring: before_prompt
+    ok 1 - authoring: before_prompt
+      ---
+      duration_ms: 2870.0091
+      type: 'test'
+      ...
+    # Subtest: authoring: after_prompt
+    ok 2 - authoring: after_prompt
+      ---
+      duration_ms: 2304.8424
+      type: 'test'
+      ...
+    # Subtest: review: before_prompt
+    ok 3 - review: before_prompt
+      ---
+      duration_ms: 1866.701
+      type: 'test'
+      ...
+    # Subtest: review: after_prompt
+    ok 4 - review: after_prompt
+      ---
+      duration_ms: 2033.6503
+      type: 'test'
+      ...
+    # Subtest: m4: before_prompt
+    ok 5 - m4: before_prompt
+      ---
+      duration_ms: 2734.2216
+      type: 'test'
+      ...
+    # Subtest: m4: after_prompt
+    ok 6 - m4: after_prompt
+      ---
+      duration_ms: 2396.0982
+      type: 'test'
+      ...
+    1..6
+ok 1 - all three genuine early pauses quote zero without any published price and preserve the original fee
+  ---
+  duration_ms: 14322.0418
+  type: 'test'
+  ...
+# Subtest: authoring: captured work quotes and confirms one exact document package
+ok 2 - authoring: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 2960.407
+  type: 'test'
+  ...
+# Subtest: review: captured work quotes and confirms one exact document package
+ok 3 - review: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 3124.9578
+  type: 'test'
+  ...
+# Subtest: review differential: captured work quotes and confirms one exact document package
+ok 4 - review differential: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 3777.6128
+  type: 'test'
+  ...
+# Subtest: m4: captured work quotes and confirms one exact document package
+ok 5 - m4: captured work quotes and confirms one exact document package
+  ---
+  duration_ms: 3062.4235
+  type: 'test'
+  ...
+# Subtest: a zero-work supplement does not replace or waive an existing paid source reservation
+ok 6 - a zero-work supplement does not replace or waive an existing paid source reservation
+  ---
+  duration_ms: 2214.4159
+  type: 'test'
+  ...
+# Subtest: an original paid category uses its current price even when candidate source information would classify differently
+ok 7 - an original paid category uses its current price even when candidate source information would classify differently
+  ---
+  duration_ms: 3402.2089
+  type: 'test'
+  ...
+# Subtest: an owned reservation cannot make a quote for a different original input authoritative
+ok 8 - an owned reservation cannot make a quote for a different original input authoritative
+  ---
+  duration_ms: 2728.2498
+  type: 'test'
+  ...
+# Subtest: concurrent exact quote and confirmation requests persist one receipt, while reused keys reject changed payloads
+ok 9 - concurrent exact quote and confirmation requests persist one receipt, while reused keys reject changed payloads
+  ---
+  duration_ms: 4763.6415
+  type: 'test'
+  ...
+# Subtest: run.supplement_quote_created: outbox failure rolls back the immutable receipt and the same request can retry
+ok 10 - run.supplement_quote_created: outbox failure rolls back the immutable receipt and the same request can retry
+  ---
+  duration_ms: 3519.3287
+  type: 'test'
+  ...
+# Subtest: run.supplement_quote_confirmed: outbox failure rolls back the immutable receipt and the same request can retry
+ok 11 - run.supplement_quote_confirmed: outbox failure rolls back the immutable receipt and the same request can retry
+  ---
+  duration_ms: 3870.6079
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects new_draft changes without advancing the run or touching its fee
+ok 12 - unconfirmed quote rejects new_draft changes without advancing the run or touching its fee
+  ---
+  duration_ms: 3182.8848
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects checkpoint changes without advancing the run or touching its fee
+ok 13 - unconfirmed quote rejects checkpoint changes without advancing the run or touching its fee
+  ---
+  duration_ms: 3044.643
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects price_version changes without advancing the run or touching its fee
+ok 14 - unconfirmed quote rejects price_version changes without advancing the run or touching its fee
+  ---
+  duration_ms: 2813.3463
+  type: 'test'
+  ...
+# Subtest: unconfirmed quote rejects expired changes without advancing the run or touching its fee
+ok 15 - unconfirmed quote rejects expired changes without advancing the run or touching its fee
+  ---
+  duration_ms: 4489.3194
+  type: 'test'
+  ...
+# Subtest: a confirmed historical receipt remains exact after a new draft, price update and quotation expiry
+ok 16 - a confirmed historical receipt remains exact after a new draft, price update and quotation expiry
+  ---
+  duration_ms: 5440.2883
+  type: 'test'
+  ...
+# Subtest: authenticated HTTP quote/read/confirm uses shared contracts and rejects CSRF, arbitrary prices and foreign owners
+ok 17 - authenticated HTTP quote/read/confirm uses shared contracts and rejects CSRF, arbitrary prices and foreign owners
+  ---
+  duration_ms: 3500.0981
+  type: 'test'
+  ...
+# Subtest: revoked archived access cannot read or confirm a saved quote
+ok 18 - revoked archived access cannot read or confirm a saved quote
+  ---
+  duration_ms: 1854.1709
+  type: 'test'
+  ...
+# Subtest: revoked deleted access cannot read or confirm a saved quote
+ok 19 - revoked deleted access cannot read or confirm a saved quote
+  ---
+  duration_ms: 1902.7111
+  type: 'test'
+  ...
+# Subtest: revoked closed_account access cannot read or confirm a saved quote
+ok 20 - revoked closed_account access cannot read or confirm a saved quote
+  ---
+  duration_ms: 1946.1955
+  type: 'test'
+  ...
+1..20
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 91812.1786

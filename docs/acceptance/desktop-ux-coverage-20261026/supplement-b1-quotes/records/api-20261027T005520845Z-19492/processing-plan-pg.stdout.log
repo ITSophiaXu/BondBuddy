@@ -1,0 +1,262 @@
+TAP version 13
+# (node:35460) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring persists and reloads the exact complete-work processing plan without changing run, input, queue or accounting
+ok 1 - authoring persists and reloads the exact complete-work processing plan without changing run, input, queue or accounting
+  ---
+  duration_ms: 3755.7058
+  type: 'test'
+  ...
+# Subtest: authoring before_prompt is genuine zero-attempt work and can persist a conservative plan
+ok 2 - authoring before_prompt is genuine zero-attempt work and can persist a conservative plan
+  ---
+  duration_ms: 2291.2977
+  type: 'test'
+  ...
+# Subtest: authoring after_prompt is genuine zero-attempt work and can persist a conservative plan
+ok 3 - authoring after_prompt is genuine zero-attempt work and can persist a conservative plan
+  ---
+  duration_ms: 2634.8936
+  type: 'test'
+  ...
+# Subtest: review persists and reloads the exact complete-work processing plan without changing run, input, queue or accounting
+ok 4 - review persists and reloads the exact complete-work processing plan without changing run, input, queue or accounting
+  ---
+  duration_ms: 2969.733
+  type: 'test'
+  ...
+# Subtest: review before_prompt is genuine zero-attempt work and can persist a conservative plan
+ok 5 - review before_prompt is genuine zero-attempt work and can persist a conservative plan
+  ---
+  duration_ms: 2200.9697
+  type: 'test'
+  ...
+# Subtest: review after_prompt is genuine zero-attempt work and can persist a conservative plan
+ok 6 - review after_prompt is genuine zero-attempt work and can persist a conservative plan
+  ---
+  duration_ms: 2356.4493
+  type: 'test'
+  ...
+# Subtest: m4 persists and reloads the exact complete-work processing plan without changing run, input, queue or accounting
+ok 7 - m4 persists and reloads the exact complete-work processing plan without changing run, input, queue or accounting
+  ---
+  duration_ms: 3486.6698
+  type: 'test'
+  ...
+# Subtest: m4 before_prompt is genuine zero-attempt work and can persist a conservative plan
+ok 8 - m4 before_prompt is genuine zero-attempt work and can persist a conservative plan
+  ---
+  duration_ms: 2346.9854
+  type: 'test'
+  ...
+# Subtest: m4 after_prompt is genuine zero-attempt work and can persist a conservative plan
+ok 9 - m4 after_prompt is genuine zero-attempt work and can persist a conservative plan
+  ---
+  duration_ms: 2632.1625
+  type: 'test'
+  ...
+# Subtest: concurrent identical requests return one immutable plan; an idempotency key cannot name a different receipt or basis
+ok 10 - concurrent identical requests return one immutable plan; an idempotency key cannot name a different receipt or basis
+  ---
+  duration_ms: 4636.4823
+  type: 'test'
+  ...
+# Subtest: processing plan reads reject wrong owner, project, run, receipt, kind, identity and live checkpoint
+    # Subtest: owner
+    ok 1 - owner
+      ---
+      duration_ms: 179.6911
+      type: 'test'
+      ...
+    # Subtest: project
+    ok 2 - project
+      ---
+      duration_ms: 72.3769
+      type: 'test'
+      ...
+    # Subtest: run
+    ok 3 - run
+      ---
+      duration_ms: 61.1984
+      type: 'test'
+      ...
+    # Subtest: receipt
+    ok 4 - receipt
+      ---
+      duration_ms: 60.7322
+      type: 'test'
+      ...
+    # Subtest: kind
+    ok 5 - kind
+      ---
+      duration_ms: 70.7786
+      type: 'test'
+      ...
+    # Subtest: id
+    ok 6 - id
+      ---
+      duration_ms: 68.985
+      type: 'test'
+      ...
+    # Subtest: checkpoint
+    ok 7 - checkpoint
+      ---
+      duration_ms: 66.4774
+      type: 'test'
+      ...
+    # Subtest: candidate
+    ok 8 - candidate
+      ---
+      duration_ms: 151.8228
+      type: 'test'
+      ...
+    1..8
+ok 11 - processing plan reads reject wrong owner, project, run, receipt, kind, identity and live checkpoint
+  ---
+  duration_ms: 3570.1499
+  type: 'test'
+  ...
+# Subtest: authoring cannot reload purged, corrupt, partial or missing old work as an empty-work plan
+    # Subtest: prior tracked.docx
+    ok 1 - prior tracked.docx
+      ---
+      duration_ms: 273.4658
+      type: 'test'
+      ...
+    # Subtest: prior clean.docx
+    ok 2 - prior clean.docx
+      ---
+      duration_ms: 144.4845
+      type: 'test'
+      ...
+    # Subtest: prior baseline.docx
+    ok 3 - prior baseline.docx
+      ---
+      duration_ms: 174.9868
+      type: 'test'
+      ...
+    # Subtest: prior delivery.md
+    ok 4 - prior delivery.md
+      ---
+      duration_ms: 510.3555
+      type: 'test'
+      ...
+    # Subtest: unchanged candidate
+    ok 5 - unchanged candidate
+      ---
+      duration_ms: 177.8852
+      type: 'test'
+      ...
+    # Subtest: added candidate
+    ok 6 - added candidate
+      ---
+      duration_ms: 191.8549
+      type: 'test'
+      ...
+    1..6
+ok 12 - authoring cannot reload purged, corrupt, partial or missing old work as an empty-work plan
+  ---
+  duration_ms: 6660.0364
+  type: 'test'
+  ...
+# Subtest: review cannot reload purged, corrupt, partial or missing old work as an empty-work plan
+    # Subtest: prior report.docx
+    ok 1 - prior report.docx
+      ---
+      duration_ms: 517.9358
+      type: 'test'
+      ...
+    # Subtest: prior model-report.docx
+    ok 2 - prior model-report.docx
+      ---
+      duration_ms: 291.5653
+      type: 'test'
+      ...
+    # Subtest: prior report.md
+    ok 3 - prior report.md
+      ---
+      duration_ms: 191.9348
+      type: 'test'
+      ...
+    # Subtest: prior annotations.json
+    ok 4 - prior annotations.json
+      ---
+      duration_ms: 252.03
+      type: 'test'
+      ...
+    # Subtest: unchanged candidate
+    ok 5 - unchanged candidate
+      ---
+      duration_ms: 216.5105
+      type: 'test'
+      ...
+    # Subtest: added candidate
+    ok 6 - added candidate
+      ---
+      duration_ms: 232.6087
+      type: 'test'
+      ...
+    1..6
+ok 13 - review cannot reload purged, corrupt, partial or missing old work as an empty-work plan
+  ---
+  duration_ms: 7086.7866
+  type: 'test'
+  ...
+# Subtest: m4 cannot reload purged, corrupt, partial or missing old work as an empty-work plan
+    # Subtest: prior document.docx
+    ok 1 - prior document.docx
+      ---
+      duration_ms: 499.0821
+      type: 'test'
+      ...
+    # Subtest: prior preparation-note.docx
+    ok 2 - prior preparation-note.docx
+      ---
+      duration_ms: 276.5533
+      type: 'test'
+      ...
+    # Subtest: unchanged candidate
+    ok 3 - unchanged candidate
+      ---
+      duration_ms: 297.1719
+      type: 'test'
+      ...
+    # Subtest: added candidate
+    ok 4 - added candidate
+      ---
+      duration_ms: 271.1604
+      type: 'test'
+      ...
+    1..4
+ok 14 - m4 cannot reload purged, corrupt, partial or missing old work as an empty-work plan
+  ---
+  duration_ms: 7292.2938
+  type: 'test'
+  ...
+# Subtest: an early pause with any durable attempt history cannot claim no prior work even when no call was sent
+ok 15 - an early pause with any durable attempt history cannot claim no prior work even when no call was sent
+  ---
+  duration_ms: 1949.552
+  type: 'test'
+  ...
+# Subtest: Blob I/O holds no project/run/job locks and a boundary change while reading prevents a plan commit
+ok 16 - Blob I/O holds no project/run/job locks and a boundary change while reading prevents a plan commit
+  ---
+  duration_ms: 2914.9279
+  type: 'test'
+  ...
+# Subtest: SQL plans reject arbitrary recipes, wrong source identity and edits or deletion; persisted metadata grants no retention pin
+ok 17 - SQL plans reject arbitrary recipes, wrong source identity and edits or deletion; persisted metadata grants no retention pin
+  ---
+  duration_ms: 3616.7226
+  type: 'test'
+  ...
+1..17
+# tests 41
+# suites 0
+# pass 41
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 76301.4821

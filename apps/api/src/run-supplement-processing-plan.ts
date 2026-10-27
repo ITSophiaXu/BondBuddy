@@ -143,13 +143,13 @@ function result(row:any):RunSupplementProcessingPlan{
 
 /** Persist only a fixed conservative recipe and exact provenance, never content.
  * A plan is not an accepted input, a material retention pin or an execution grant. */
-export async function createRunSupplementProcessingPlan(raw:CreateRunSupplementProcessingPlanInput):Promise<RunSupplementProcessingPlan>{
+export async function createRunSupplementProcessingPlanWithBasis(raw:Omit<CreateRunSupplementProcessingPlanInput,'expectedBasisHash'> & {expectedBasisHash?:string}):Promise<{plan:RunSupplementProcessingPlan;basis:RunSupplementProcessingBasis}>{
   const input={...raw};
-  if(!key(input.requestId)||!hash(input.expectedBasisHash))throw unavailable();
+  if(!key(input.requestId)||input.expectedBasisHash!==undefined&&!hash(input.expectedBasisHash))throw unavailable();
   const basis=await loadRunSupplementProcessingBasis(input,input.kind);
-  if(basis.basisHash!==input.expectedBasisHash)throw unavailable();
+  if(input.expectedBasisHash!==undefined&&basis.basisHash!==input.expectedBasisHash)throw unavailable();
   const planned=body(basis,input.requestId),planHash=inputManifestHash(planned);
-  return transaction(input.db,async db=>{
+  const plan=await transaction(input.db,async db=>{
     const jobId=await recheckRunSupplementProcessingBasis(db,input,basis);
     const existing=(await db.query(`SELECT * FROM bb_run_supplement_processing_plans
       WHERE owner_user_id=$1 AND run_id=$2 AND request_id=$3`,[input.owner,input.runId,input.requestId])).rows[0];
@@ -167,6 +167,12 @@ export async function createRunSupplementProcessingPlan(raw:CreateRunSupplementP
         source.executionVersion,source.inputRevision,source.inputHash,basis.checkpointHash,basis.candidateInputHash,basis.basisHash,planHash,planned])).rows[0];
     return result(row);
   });
+  return {plan,basis};
+}
+
+export async function createRunSupplementProcessingPlan(raw:CreateRunSupplementProcessingPlanInput):Promise<RunSupplementProcessingPlan>{
+  if(!hash(raw.expectedBasisHash))throw unavailable();
+  return (await createRunSupplementProcessingPlanWithBasis(raw)).plan;
 }
 
 /** Internal consumption always reloads the byte-verified current basis and fixed

@@ -958,3 +958,11 @@ M1/M3/M4 的实际 stage 与 collector 共用完整 request bundle，将已授�
 M4 测试交付先给 Word 加测试标记，再登记实际成品的字节数；主文书与编制说明均与本执行的 Word 交付证据一致，生产通道仍使用原字节。
 
 此切片没有新增 HTTP 补料采用或追加报价入口。用户本轮已选 B1：需重做的每份文件按该文种现行整份价格追加，未受影响文件不收费，确认金额后继续；积分系统后续另行重设计，详见[产品决定](product-decisions/2026-10-27-supplement-rework-b1.md)。报价确认及追加账务仍待实施；不据合成 Word、内部 PG 或跳过的 Linux adapter 测试关闭 G03。验证范围及剩余限制见[内部 V2 Word 验证记录](acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)。未推送、创建 PR 或部署。
+
+## 2026-10-27：B1 追加报价与明确确认（0137）
+
+`bb_run_supplement_quotes` 保存一份业务文书的不可变 B1 报价，绑定原执行、最新补料保存回执、字节核对后的处理计划和候选 hash。M1 双 Word、M3 复核成果、M4 正文与编制说明各为一个计价单位。需要重做时沿用原冻结收费类别并取现行整份价；原报价仅用于证明类别和来源，不复用旧金额。M3 保留原 full/differential operation，M4 按公共文种映射使用现行固定价。真正零 attempt 早停没有重做，追加为 0，收费类别/价格版本/整份价均为空，不依赖已发布价表，也不减免原任务费用。
+
+认证 HTTP 提供创建、准确读取和明确确认三个端点；客户端只提交保存回执、候选 hash 和请求 key，不能指定价格、类别或内部计划。确认另存 `bb_run_supplement_quote_confirmations`；报价和确认分别与对应 outbox 事件同事务提交。SQL 按 project→run→job 锁重查暂停、无租约/待对账调用、准确 V1/head、最新补料与计划、来源报价、现价、材料删除屏障。报价有效期由 DB 实时时钟设置，HTTP 不接受 TTL。确认前再次核对当前依据；历史精确回执与同 key 重放不因边界后来变化而重算金额，归档/删除/关闭账号仍撤销读取和确认权限。两表拒绝修改、删除和 TRUNCATE。
+
+处理计划新增内部 bundle 返回同一次字节核对的 basis，报价无需重复读取大文件；原要求 expectedBasisHash 的调用入口保持。此切片没有采用新输入、创建 reservation、扣款、pin 材料或启动模型。生产续做仍须按 execution segment 隔离费用上限、meter、扣款和退款，再接独立生产采用授权及完整桌面流程；不能仅放开 0135/0136 的付费限制。专项验证与限制见[B1 报价记录](acceptance/desktop-ux-coverage-20261026/supplement-b1-quotes/README.md)。G03 / UX-A03 与完整 goal 保持 active，未推送、创建 PR 或部署。

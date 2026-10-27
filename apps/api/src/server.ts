@@ -19,6 +19,7 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import { registerReviewRoutes } from './review-workspace.js';
 import { registerM4Routes } from './m4-workspace.js';
 import { registerRunSupplementDraftRoutes } from './run-supplement-draft.js';
+import { registerRunSupplementQuoteRoutes } from './run-supplement-quote.js';
 import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
@@ -187,6 +188,7 @@ export function createServer(settings: Settings = {}) {
   registerReviewRoutes(app, db, owner, paidReview);
   registerM4Routes(app, db, owner, blob, queueEnabled);
   registerRunSupplementDraftRoutes(app, db, owner);
+  registerRunSupplementQuoteRoutes(app, db, blob, owner);
   registerProjectAssistant(app, db, owner);
   registerProjectQa(app, db, owner);
   registerQaKnowledge(app, db, owner);
