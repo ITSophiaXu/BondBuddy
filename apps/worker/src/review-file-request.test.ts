@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import type { RunSupplementFilePreparation } from '@bondbuddy/api/run-supplement-preparation';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
+import type { Lease } from '@bondbuddy/api/queue';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { buildReviewFileRequest, type ReviewFileInput } from './review-file-request.js';
 import { reviewFileStage } from './review-file-stage.js';
@@ -103,7 +105,13 @@ test('production V1 uses the extracted writer with its exact original prompt and
     });
     return { kind: 'done', value: 'prepared-only' } as const;
   } })) as typeof codexModelStage;
-  const ctx = { run: { input_hash: ` ${'a'.repeat(64)} ` }, blobs: f.blobs } as StageContext;
+  // Preserve the frozen pre-extraction prompt lock while supplying the real V1
+  // execution namespace required by every stage, including builder-only tests.
+  const identity = { executionVersion: 1, inputRevision: 1, inputHash: 'a'.repeat(64) };
+  const run = projectRunExecution({ id: 'run', owner_user_id: 'owner', project_id: 'project', task_kind: 'review',
+    channel: 'production' as const, input_revision: 1, input_hash: ` ${identity.inputHash} ` }, identity);
+  const lease = { owner: 'owner', runId: 'run', jobId: 'job', token: 'synthetic-v1-lease', attempts: 1, checkpoint: {}, ...identity } satisfies Lease;
+  const ctx = { run, lease, checkpoint: {}, values: new Map(), signal: new AbortController().signal, blobs: f.blobs } as StageContext;
   assert.deepEqual(await reviewFileStage({ model, config, load: async () => f.input }).run(ctx), { kind: 'done', value: 'prepared-only' });
   assert.equal(calls, 1);
 });

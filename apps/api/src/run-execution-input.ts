@@ -3,7 +3,8 @@ import { Value } from '@sinclair/typebox/value';
 import { isM4Manifest, ReviewDraftInputSchema, ReviewExecutionOriginSchema, ReviewOperationSchema, ReviewResultPinSchema } from '@bondbuddy/contracts';
 import { Problem } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import { resolveRunExecution, type RunExecutionIdentity } from './run-execution.js';
+import { projectRunExecution, resolveRunExecution, type RunExecutionIdentity } from './run-execution.js';
+import { assertAdoptedRunSupplementScope, type AdoptedRunSupplementAuthority } from './run-supplement-adopted-scope.js';
 
 export type RunExecutionInputRow = {
   owner_user_id: string; project_id: string; revision: number; input_hash: string;
@@ -58,6 +59,21 @@ export async function readRunExecutionInput(db: Pool | PoolClient, owner: string
   expected: RunExecutionIdentity): Promise<RunExecutionInput> {
   const run = await resolveRunExecution(db, owner, runId, expected);
   if (run.id !== runId || run.owner_user_id !== owner) throw unavailable();
+  return readResolvedInput(db, run);
+}
+
+/** Only the current successor lease can read the original input as a historical
+ * supplement source. The ordinary reader above still refuses historical input. */
+export async function readAdoptedRunSupplementSourceInput(db: Pool | PoolClient,
+  authority: AdoptedRunSupplementAuthority): Promise<RunExecutionInput> {
+  const scope = await assertAdoptedRunSupplementScope(db, authority);
+  const source = await readResolvedInput(db, projectRunExecution(scope.run, scope.sourceExecution));
+  await assertAdoptedRunSupplementScope(db, { ...authority, authorizationId: scope.adoption.id });
+  return source;
+}
+
+async function readResolvedInput(db: Pool | PoolClient, run: RunExecutionInput['run']): Promise<RunExecutionInput> {
+  const owner = run.owner_user_id, runId = run.id;
   const inputs = (await db.query(`SELECT * FROM bb_input_revisions
     WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [owner, run.project_id, run.inputRevision])).rows;
   const input = inputs[0] as RunExecutionInputRow | undefined;

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
+import type { Lease } from '@bondbuddy/api/queue';
 import type { ReviewEditorSnapshot } from '@bondbuddy/contracts';
 import type { writeRunWorkingFile } from '@bondbuddy/api/run-working-files';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -23,7 +25,11 @@ async function fixture() {
     review: { operation: 'full_review', source_report_id: null, input: { source_material_ref: pin, requirements: ['Synthetic requirement'], as_of: null },
       file_delivery: { version: 'review-file-v1', knowledge: [{ path: 'synthetic.md', markdown: 'Synthetic method', sha256: digest('Synthetic method') }] } } },
     materials: [{ pin, object_key: 'source', media_type: 'text/plain', filename: 'synthetic.txt' }], selected_findings: [] } as unknown as ReviewFileInput;
-  const ctx = { run: { id: 'run', owner_user_id: 'owner', project_id: 'project', input_hash: 'a'.repeat(64) }, checkpoint: {}, values: new Map(),
+  const identity = { executionVersion: 1, inputRevision: 1, inputHash: inputManifestHash(input.manifest) };
+  const run = projectRunExecution({ id: 'run', owner_user_id: 'owner', project_id: 'project', task_kind: 'review',
+    channel: 'production' as const, input_revision: identity.inputRevision, input_hash: identity.inputHash }, identity);
+  const lease = { owner: 'owner', runId: 'run', jobId: 'job', token: 'synthetic-v1-lease', attempts: 1, checkpoint: {}, ...identity } satisfies Lease;
+  const ctx = { run, lease, checkpoint: {}, values: new Map(),
     signal: new AbortController().signal, blobs: { put: async (key: string, bytes: Buffer) => { store.set(key, bytes); },
       getIfExistsBounded: async (key: string) => store.get(key) ?? null } } as unknown as StageContext;
   const writes:Parameters<typeof writeRunWorkingFile>[0][]=[];

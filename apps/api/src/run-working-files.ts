@@ -2,6 +2,7 @@ import type {Pool,PoolClient} from 'pg';
 import {digest,Problem,transaction,type PrivateBlobs} from './data.js';
 import type {Lease} from './queue.js';
 import {assertRunExecution} from './run-execution.js';
+import {assertRunExecutionTestGrant} from './run-execution-test-grant.js';
 import {assertModelCallExecution} from './model-call-execution.js';
 import {validateRunFileReference,extractRunFileReferences,type RunFileReference} from './run-file-reference.js';
 
@@ -19,13 +20,38 @@ const schema=(source:RunWorkingFileSource)=>source.kind==='provider'?source.resu
 const workLock=(db:PoolClient,runId:string)=>db.query("SELECT pg_advisory_xact_lock(hashtext('run_work_files'),hashtext($1::text))",[runId]);
 const fileLock=(db:PoolClient,key:string)=>db.query("SELECT pg_advisory_xact_lock(hashtext('run_file_object'),hashtext($1::text))",[key]);
 
+/** Cleanup may rediscover exact old results after adoption or revocation. It
+ * records references to existing bytes; it cannot authorize a worker write. */
+async function historicalExecution(db:PoolClient,row:any,s:Scope){
+ const entries=(await db.query(`SELECT e.execution_version,e.input_revision,e.input_hash,a.id AS authorization_id
+  FROM bb_run_execution_versions e
+  JOIN bb_runs r ON r.owner_user_id=e.owner_user_id AND r.project_id=e.project_id AND r.id=e.run_id
+  LEFT JOIN bb_run_test_successor_authorizations a ON a.owner_user_id=e.owner_user_id AND a.project_id=e.project_id
+    AND a.run_id=e.run_id AND a.execution_version=e.execution_version AND a.input_revision=e.input_revision
+    AND a.input_hash=e.input_hash AND a.created_at=e.created_at AND a.job_id=$7
+    AND a.source_execution_version=1 AND a.source_input_revision=r.input_revision AND a.source_input_hash=r.input_hash
+  WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.run_id=$3
+    AND e.execution_version=$4 AND e.input_revision=$5 AND e.input_hash=$6`,
+ [s.owner,s.projectId,s.runId,s.executionVersion,s.inputRevision,s.inputHash,s.jobId])).rows;
+ const entry=entries[0];
+ if(entries.length!==1||!entry||entry.execution_version!==s.executionVersion||entry.input_revision!==s.inputRevision
+  ||entry.input_hash?.trim()!==s.inputHash
+  ||!(s.executionVersion===1&&row.input_revision===s.inputRevision&&row.input_hash?.trim()===s.inputHash
+   ||s.executionVersion===2&&row.channel==='non_production_test'&&row.job_channel==='non_production_test'
+    &&typeof entry.authorization_id==='string'&&entry.authorization_id.length>0))throw failure();
+}
+
 async function scope(db:PoolClient,s:Scope,source:RunWorkingFileSource,hidden=false){
- const row=(await db.query(`SELECT r.*,j.state job_state,j.lease_token,j.lease_until,p.deleted_at,u.status user_status,u.closed_at
+ const row=(await db.query(`SELECT r.*,j.state job_state,j.channel job_channel,j.lease_token,j.lease_until,p.deleted_at,u.status user_status,u.closed_at
   FROM bb_runs r JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
   JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id JOIN bb_users u ON u.id=r.owner_user_id
   WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND j.id=$4`,[s.owner,s.projectId,s.runId,s.jobId])).rows[0];
  if(!row||!hidden&&(row.deleted_at||row.closed_at||row.user_status==='closed'))throw failure();
- await assertRunExecution(db,row,s);
+ if(hidden)await historicalExecution(db,row,s);
+ else{
+  await assertRunExecution(db,row,s);
+  if(s.executionVersion===2)await assertRunExecutionTestGrant(db,{...s});
+ }
  let prompt:string|undefined;
  if(source.kind==='provider'){
   if(!providerSchemas.includes(source.resultSchemaVersion))throw failure();
@@ -113,6 +139,9 @@ export async function writeRunWorkingFile(input:WriteInput):Promise<void>{
   await blobs.put(ref.key,bytes,ref.mediaType);
   const stored=await blobs.getIfExistsBounded(ref.key,ref.byteSize);
   if(!stored||stored.length!==ref.byteSize||digest(stored)!==ref.sha256)throw failure();
+  // The live successor grant can be revoked while the independent bytes are
+  // written. Preserve the committed intent, but do not acknowledge that write.
+  if(s.executionVersion===2)await scope(db,s,source);
   if(!state.stored_at)await db.query('UPDATE bb_run_working_object_state SET stored_at=now() WHERE object_key=$1',[ref.key]);
  });
 }

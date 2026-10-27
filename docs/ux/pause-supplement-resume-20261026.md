@@ -2,7 +2,7 @@
 
 日期：2026-10-26。审计基准：`50bd3dfb`，本地产品修复提交：`4cd1c39a`。
 
-**状态：需求已确认；用户已选择 B——重做部分另行报价，确认追加金额后继续；具体报价公式待确定。补料准备的保存/读取协议已在本地实现，采用新输入并续做的协议仍未实现或通过验收。** 用户无需再次决定是否需要这项能力或是否另行报价。本文不改变现行计费、不宣称发布，也不将原任务换成新业务 run。
+**状态：需求已确认；用户已选择 B——重做部分另行报价，确认追加金额后继续，并决定先按 [B1 规则](../product-decisions/2026-10-27-supplement-rework-b1.md)执行：需重做的每份文件按该文种现行整份价格追加，未受影响文件不收费，确认金额后继续；积分系统后续另行重新设计。0135/0136 已在精确非生产测试授权下实现同一任务采用新输入、三类 worker 续做请求及新版 Word 绑定/交付，并分别定向跑通；最终定向回归已完成，分轮采用结果见 0136 专项记录。公开采用入口、B1 报价确认与追加账务、完整桌面连续旅程仍未完成，G03 保持开放。** 用户无需再次决定是否需要这项能力或是否另行报价。本文不改变现行计费、不宣称发布，也不将原任务换成新业务 run。
 
 ## 已确认的目标与当前证据
 
@@ -15,11 +15,11 @@
 | 不把新上传材料偷偷用于旧任务 | `apps/web/src/project-execution.ts:386`；[10/20 项目更新计划](../plans/2026-10-20-update-project-e2e.md)，第 22–24 行 | 当前保护是正确的；它不能替代新增的明确采用协议 |
 | 旧输入、已完成调用和账本可追溯 | UX-A03 第 253–254 行；`AGENTS.md` 公共契约约定 | 必须保留，不得覆盖旧 snapshot、删除调用或重置消耗来假装续做 |
 
-源码核对：`packages/contracts/src/index.ts:298` 的 `RunActionRequest` 仅包含 `reason`；第 441–443 行的 cancel/pause/resume 共用该请求。`apps/api/src/server.ts:1536` 将这三类请求交给 queue；`queue.ts:255–314` 的 resume 只恢复原 job，没有新输入采用步骤。`apps/worker/src/run-pipeline.ts:592` 从 run 读取同一个输入，`:593` 从单一 stage 检查点恢复；`file-authoring-stage.ts:26` 按该 input_hash 验证已保存模型结果。仅把新 input_hash 换入 run 会破坏这些关联，不能作为实现方案。
+初始基准源码核对（以下行号与行为对应本文最初审计，不代表后续 0135/0136 的内部实现）：`packages/contracts/src/index.ts:298` 的 `RunActionRequest` 仅包含 `reason`；第 441–443 行的 cancel/pause/resume 共用该请求。`apps/api/src/server.ts:1536` 将这三类请求交给 queue；`queue.ts:255–314` 的 resume 只恢复原 job，没有新输入采用步骤。`apps/worker/src/run-pipeline.ts:592` 从 run 读取同一个输入，`:593` 从单一 stage 检查点恢复；`file-authoring-stage.ts:26` 按该 input_hash 验证已保存模型结果。仅把新 input_hash 换入 run 会破坏这些关联，不能作为实现方案。
 
 最初审计时，`apps/worker/src/authoring-pause.pg.test.ts` 的单条测试只验证“保存当前处理后暂停，继续时不重复已保存步骤”；没有补料或新输入。后续[初始执行身份专项](../acceptance/desktop-ux-coverage-20261026/initial-execution-identity/README.md)已增加完整 main 下受控本地 adapter 在途调用保存、暂停、补料准备和原结果复用证据。它证明固定输入恢复的真实 worker 机制，仍没有采用新输入，也不能证明 UX-A03 已完成。最初的源码缺口没有被伪报为一次运行失败。
 
-因此：FG-001 历史暂停入口缺口已被后续能力覆盖；FG-002“新材料明确进入同一业务任务”仍为 `functional_gap`；补料后的输入/执行版本与必要重做费用仍有 `design_gap`。UX-A03 新协议验收为 `not_run`。既有 15/15 旅程和 662 个浏览器 pass 保留其原始证据范围，完整 goal 尚未达到主要功能全部覆盖。
+当前结论：FG-001 历史暂停入口缺口已被后续能力覆盖。0135 的内部同任务采用与 0136 的实际续做/交付已分别获得定向证据，见[内部采用](../acceptance/desktop-ux-coverage-20261026/test-successor-adoption/README.md)及[内部 V2 Word 验证](../acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)，不再将整个版本化协议称为未实现。FG-002 的公开产品链仍为 `functional_gap`；B1 已选，公开报价确认与追加账务仍待完成，完整桌面 UX-A03 验收仍为 `not_run`。既有 15/15 旅程和 662 个浏览器 pass 保留其原始证据范围，内部测试不增加用户旅程覆盖率，完整 goal 尚未达到主要功能全部覆盖。
 
 ## 桌面操作提案
 
@@ -35,7 +35,7 @@
 
 ## 输入与执行协议提案
 
-以下执行版本和采用协议仍是实现前可审阅的设计；已经实现的准备协议单独列在下节，不代表采用能力。
+以下保留原设计与分阶段实施记录；0135/0136 已实现的内部非生产采用、执行与交付范围以文末专项和对应验收记录为准。公开采用、B1 报价确认及追加账务仍待落实，不能把内部链路视为完整 UX-A03 验收。
 
 已落实一个独立前提：新增迁移 `0117_run_origin_input_immutable.sql` 保护已有任务的原 run/owner/project、原 input revision/hash 和原执行请求身份，正常状态、积分与成果更新仍可执行。隔离 PostgreSQL 回归为 34 pass / 0 fail / 1 skip；[验证范围与原始记录](../acceptance/desktop-ux-coverage-20261026/run-origin/README.md)单独列明。该保护没有增加活动执行版本、新材料采用、追加费率或续做能力，以下新协议仍为 proposed，G03 不关闭。
 
@@ -259,3 +259,11 @@ M4 共用真实文书 writer，准备时按原执行核对来源项目、主文�
 四表只允许准确已删除项目策略下的真实 DELETE，并在同事务保存来源、hash、原 PostgreSQL 微秒时间与政策回执；UPDATE 和 TRUNCATE 仍拒绝。所有 legacy/canonical INSERT、桥接和幂等重放先核对项目；`SHARE NOWAIT` 同时阻止普通 `deleted_at` 更新越过在途写入，并避免旧 run-first writer 与清理形成锁反转。原全局 immutable、输入、执行及账本保护不放宽。
 
 这只关闭四表副本，不是整个项目正文清理。未新增采用、后继执行、追加报价、模型调用或 Word；B 已确定，B1/B2 公式仍待选择。验证证据单独见[四表清理专项](../acceptance/desktop-ux-coverage-20261026/review-body-deletion/README.md)，不增加 G03 用户旅程通过数，完整 goal 保持 active。
+
+### 2026-10-27：内部测试采用与同任务新版 Word
+
+0135/0136 已将精确内部测试授权的 V1→V2 采用接到三类实际 worker：固定原输入、保存工作、补料回执与处理计划重新核对后，当前 V2 请求读取旧 Word 并结合完整候选材料重核。新 prompt、调用、成果与最终交付绑定完整执行身份；旧工作保留为历史，不能因同名阶段或相同文件字节冒用旧成果。模型完成后的崩溃重放由持久 journal 恢复，调用编号沿整个 job 递增。
+
+这一入口仍限内部非生产测试，没有公开的补料采用/追加报价确认流程。用户本轮已选择 [B1](../product-decisions/2026-10-27-supplement-rework-b1.md)：需重做的每份文件按该文种现行整份价格追加，未受影响文件不收费，确认金额后继续；积分系统后续另行重新设计。本轮没有增加扣款。旧 clean 作为新修订基线、旧报告/文书作为参考，不等于已有可靠章节依赖图或实证局部复用收益。
+
+最终选集、冻结、失败修正与 Linux 环境限制见[内部 V2 Word 验证记录](../acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)。内部合成 provider 路径和授权下载证据不代替真实外部模型、Linux containment、专业内容审阅或完整桌面 G03 旅程；G03 / UX-A03 与整体 goal 继续 active，不增加历史用户旅程通过数。

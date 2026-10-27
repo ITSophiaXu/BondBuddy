@@ -945,3 +945,16 @@ SQL 验证基础 envelope、固定身份/来源和 hash 格式，旧摘要精确
 没有公开采用路由或自动新 grant。生产、付费 reservation/meter/accrued-points 路径和 V3 仍拒绝；V2 artifact 的旧自动绑定也明确拒绝。后继 working/artifact、receipt 授权的历史工作读取、三类实际生成 stage 和 Word delivery 尚待接通。逻辑调用名保持稳定，既有 execution binding 区分调用历史。用户选定 B 另行报价，具体追加计价公式/确认与账务尚未完成。
 
 真实 PG 的同 run 采用/claim、并发、撤销、材料保留、直接 SQL 拒绝及跨项目删除竞态见[专项验收](acceptance/desktop-ux-coverage-20261026/test-successor-adoption/README.md)：本轮分选集 249 pass/2 skip，源码两对冻结各 2,471 项，原始失败保留，独立 PG 已停止。没有 V2 模型/Word 或完整浏览器 G03 验收，不增加用户旅程通过数，完整 UX goal 继续 active。
+## 2026-10-27：内部补料采用后的 Word 执行与交付（0136）
+
+在 0135 精确测试授权采用记录之上，`run-supplement-execution` 为当前 V2 worker 租约读取固定原输入、保存检查点及旧 Word。每次核对当前 head、准确新授权、租约 token/实时时钟、采用记录/处理计划/补料回执；由原输入重新编译候选并与已采用输入及业务快照对比，再重建相同 basis hash。旧文件仍使用 prompt/result/工作文件内容锁及删除屏障，字节 I/O 后重验权限和材料；普通当前输入 reader 继续拒绝历史 V1。首次模型调用前暂停的依据与已有完整 Word 两种情况分别处理，新 V2 阶段或调用不会制造原执行的已有工作。
+
+M1/M3/M4 的实际 stage 与 collector 共用完整 request bundle，将已授权的 prior work 交给既有请求构建器；M1 的 source/hash/baselineKind 和 M4 的 linkedSource accessor 随请求保留。三个逻辑调用 ID 不变，调用编号沿 job 历史递增。M4 先将当前模型/skill 方法与原保存方法核对，再写新执行的 method checkpoint。专用输入路径沿各自的输入 gate，旧历史更新仍要求发行人身份绑定，所有测试路径均核验准确活动授权。
+
+0136 新增 prompt 的显式 execution_version 和 artifact 的显式 execution/input 三元组；V2 不从当前 head 给旧 writer 补默认值。新写入要求准确采用记录、活动 head、有效新授权及无付费账务；原 V1 桥接保留。V2 Word/PDF artifact ID 另外包含执行身份，避免同一 run 生成相同字节时撞用 V1 成果。复核和 M4 的 canonical 登记接受准确内部 V2，V2 不镜像覆盖 V1 legacy 行。最终 test_completed 回执按完整 stage_execution 和成员绑定检查，并记录新授权；M4 原生产 durable/结算路径保持。历史来源 view 按不可变执行/采用记录读取，不依赖当前 head 或实时授权，下载另查其准确交付授权。
+
+工作文件清理的历史发现仅登记已有 provider result 的准确来源，使用不可变原执行/采用记录，不因 head 切换、授权撤销、项目删除或账号关闭而停住清理；普通新写入仍要求活动输入及 V2 实时授权，purge_started 屏障保持。
+
+M4 测试交付先给 Word 加测试标记，再登记实际成品的字节数；主文书与编制说明均与本执行的 Word 交付证据一致，生产通道仍使用原字节。
+
+此切片没有新增 HTTP 补料采用或追加报价入口。用户本轮已选 B1：需重做的每份文件按该文种现行整份价格追加，未受影响文件不收费，确认金额后继续；积分系统后续另行重设计，详见[产品决定](product-decisions/2026-10-27-supplement-rework-b1.md)。报价确认及追加账务仍待实施；不据合成 Word、内部 PG 或跳过的 Linux adapter 测试关闭 G03。验证范围及剩余限制见[内部 V2 Word 验证记录](acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)。未推送、创建 PR 或部署。

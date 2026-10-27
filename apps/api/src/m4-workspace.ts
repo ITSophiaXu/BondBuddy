@@ -20,6 +20,7 @@ import {loadM4Knowledge,loadProjectFileKnowledge} from './m4-knowledge.js';
 import { MARKETS, MARKET_OFFERINGS } from '@bondbuddy/contracts';
 import {assertRunExecution,type RunExecutionIdentity} from './run-execution.js';
 import {readRunExecutionInput} from './run-execution-input.js';
+import {assertArtifactExecution} from './artifact-execution.js';
 export { settleM4Metering } from './m4-billing.js';
 
 type Db = Pool | PoolClient;
@@ -304,8 +305,10 @@ export async function registerM4Artifacts(db:Db,owner:string,runId:string,entrie
   for(const a of entries){const row=(await db.query(`SELECT v.*,e.byte_size AS delivered_bytes FROM bb_execution_artifact_versions v JOIN bb_word_delivery_evidence e
     ON e.id=v.word_delivery_evidence_id AND e.owner_user_id=v.owner_user_id AND e.run_id=v.run_id
     WHERE v.owner_user_id=$1 AND v.run_id=$2 AND v.id=$3 AND v.version=$4
-    AND v.delivery_status='available' AND v.quality_status='passed' AND e.delivery_code='readback_verified' AND e.readback_sha256=v.sha256`,[owner,runId,a.artifact_id,a.artifact_version])).rows[0];
+    AND v.delivery_status=$5 AND v.quality_status='passed' AND e.delivery_code='readback_verified' AND e.readback_sha256=v.sha256`,
+    [owner,runId,a.artifact_id,a.artifact_version,run.channel==='non_production_test'?'test_only':'available'])).rows[0];
     if(!row || row.media_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document' || !Number.isSafeInteger(a.byte_size) || a.byte_size<1 || Number(row.delivered_bytes)!==a.byte_size)throw new Problem(422,'DELIVERY_FAILED','M4 Word unavailable');
+    await assertArtifactExecution(db,row,identity);
     const filename=`${M4_DOCUMENT_LABELS[manifest.input.document_type as M4DocumentType]} 第${revisionNumber}稿${a.kind==='preparation_note'?' 编制说明':''}.docx`;
     // Compare nullable metadata in SQL; no JS timestamp round-trip or partial replay may change a registration.
     const prior=(await db.query(`SELECT ROW(owner_user_id,project_id,topic_id,input_revision,input_hash,artifact_id,artifact_version,

@@ -366,7 +366,8 @@ async function recordWordEvidence(client:PoolClient,lease:Lease,artifactId:strin
 }
 
 function wordArtifactIdentity(lease:Lease,inspection:DocxInspection) {
-  const artifactId=`word-${digest(`${lease.owner}\n${lease.runId}\n${inspection.validator_version}\n${inspection.sha256}`)}`;
+  const execution=lease.executionVersion===1?'':`\nexecution:${lease.executionVersion}:${lease.inputRevision}:${lease.inputHash}`;
+  const artifactId=`word-${digest(`${lease.owner}\n${lease.runId}\n${inspection.validator_version}\n${inspection.sha256}${execution}`)}`;
   const objectKey=`users/${lease.owner}/runs/${lease.runId}/artifacts/${artifactId}/v1.docx`;
   return {artifactId,artifactVersion:1,objectKey};
 }
@@ -385,9 +386,9 @@ async function persistRejectedWord(pool:Pool,lease:Lease,inspection:DocxInspecti
     await assertLockedWordLease(client,lease);
     const id=await recordWordEvidence(client,lease,identity.artifactId,identity.artifactVersion,inspection,'failed','not_attempted','not_attempted');
     await client.query(`INSERT INTO bb_artifact_versions
-      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'failed','revoked',$8) ON CONFLICT(id,version) DO NOTHING`,
-    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,id]);
+      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id,execution_version,input_revision,input_hash)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'failed','revoked',$8,$9,$10,$11) ON CONFLICT(id,version) DO NOTHING`,
+    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,id,lease.executionVersion,lease.inputRevision,lease.inputHash]);
     const artifact=await ensureWordArtifact(client,lease,inspection,identity);
     if(artifact.quality_status!=='failed' || artifact.delivery_status!=='revoked')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Rejected Word artifact changed');
     await client.query('UPDATE bb_artifact_versions SET word_delivery_evidence_id=$3 WHERE id=$1 AND version=$2',[identity.artifactId,identity.artifactVersion,id]);
@@ -439,9 +440,9 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
   await transaction(pool,async client=>{
     await assertLockedWordLease(client,lease);
     await client.query(`INSERT INTO bb_artifact_versions
-      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'passed','pending') ON CONFLICT(id,version) DO NOTHING`,
-    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey]);
+      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,execution_version,input_revision,input_hash)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'passed','pending',$8,$9,$10) ON CONFLICT(id,version) DO NOTHING`,
+    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,lease.executionVersion,lease.inputRevision,lease.inputHash]);
     const artifact=await ensureWordArtifact(client,lease,inspection,identity);
     if(artifact.quality_status==='failed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact has a prior quality rejection');
   });
@@ -466,11 +467,12 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
   {status:'available';artifactId:string;artifactVersion:number} | {status:'unavailable';failureCode:'WORD_DELIVERY_UNAVAILABLE'}> {
   const unavailable = {status:'unavailable' as const,failureCode:'WORD_DELIVERY_UNAVAILABLE' as const};
   if(bytes.length < 8 || bytes.length > 100*1024*1024 || bytes.subarray(0,5).toString() !== '%PDF-')return unavailable;
-  const sha=digest(bytes),artifactId=`review-pdf-${digest(`${lease.owner}\n${lease.runId}\n${sha}`)}`;
+  const execution=lease.executionVersion===1?'':`\nexecution:${lease.executionVersion}:${lease.inputRevision}:${lease.inputHash}`;
+  const sha=digest(bytes),artifactId=`review-pdf-${digest(`${lease.owner}\n${lease.runId}\n${sha}${execution}`)}`;
   const key=`users/${lease.owner}/runs/${lease.runId}/artifacts/${artifactId}/v1.pdf`;
   const check=async(client:PoolClient)=>{
     const run=await assertLockedWordLease(client,lease);
-    if(!(await client.query("SELECT 1 FROM bb_review_executions WHERE owner_user_id=$1 AND run_id=$2 AND operation IN ('full_review','differential_review')",[lease.owner,lease.runId])).rowCount)
+    if(!(await client.query("SELECT 1 FROM bb_review_execution_snapshots WHERE owner_user_id=$1 AND run_id=$2 AND execution_version=$3 AND input_revision=$4 AND input_hash=$5 AND operation IN ('full_review','differential_review')",[lease.owner,lease.runId,lease.executionVersion,lease.inputRevision,lease.inputHash])).rowCount)
       throw new Problem(409,'INPUT_REVISION_CONFLICT','PDF annotation requires a review execution');
     return run;
   };
@@ -482,10 +484,10 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
   } catch {return unavailable;}
   await transaction(pool,async client=>{
     const run=await check(client),status=run.channel==='non_production_test'?'test_only':'available';
-    const input=(await client.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[lease.owner,run.project_id,run.input_revision])).rows[0];
+    const input=(await client.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[lease.owner,run.project_id,lease.inputRevision,lease.inputHash])).rows[0];
     const source=input?.manifest?.review?.input?.source_material_ref;
     if(!source)throw new Problem(409,'INPUT_REVISION_CONFLICT','Missing reviewed source');
-    const evidenceId=`pdf-delivery-${digest(`${lease.owner}\n${lease.runId}\n${sha}`)}`;
+    const evidenceId=`pdf-delivery-${digest(`${lease.owner}\n${lease.runId}\n${sha}${execution}`)}`;
     await client.query(`INSERT INTO bb_review_pdf_delivery_evidence(id,owner_user_id,run_id,artifact_id,artifact_version,sha256,byte_size,object_key,source_material_id,source_material_version,source_sha256)
       VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO NOTHING`,[evidenceId,lease.owner,lease.runId,artifactId,sha,bytes.length,key,source.material_id,source.material_version,source.sha256]);
     const evidence=(await client.query('SELECT * FROM bb_review_pdf_delivery_evidence WHERE id=$1',[evidenceId])).rows[0];
@@ -493,8 +495,8 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
       || evidence.sha256.trim()!==sha || Number(evidence.byte_size)!==bytes.length || evidence.object_key!==key
       || evidence.source_material_id!==source.material_id || evidence.source_material_version!==source.material_version || evidence.source_sha256.trim()!==source.sha256)
       throw new Problem(409,'IDEMPOTENCY_CONFLICT','PDF delivery evidence changed');
-    await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,review_pdf_delivery_evidence_id)
-      VALUES($1,1,$2,$3,'application/pdf',$4,$5,'passed',$6,$7) ON CONFLICT(id,version) DO NOTHING`,[artifactId,lease.owner,lease.runId,sha,key,status,evidenceId]);
+    await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,review_pdf_delivery_evidence_id,execution_version,input_revision,input_hash)
+      VALUES($1,1,$2,$3,'application/pdf',$4,$5,'passed',$6,$7,$8,$9,$10) ON CONFLICT(id,version) DO NOTHING`,[artifactId,lease.owner,lease.runId,sha,key,status,evidenceId,lease.executionVersion,lease.inputRevision,lease.inputHash]);
     const a=(await client.query('SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=1 FOR UPDATE',[artifactId])).rows[0];
     if(a.owner_user_id!==lease.owner || a.run_id!==lease.runId || a.sha256.trim()!==sha || a.object_key!==key || a.media_type!=='application/pdf' || a.quality_status!=='passed' || a.delivery_status!==status || a.review_pdf_delivery_evidence_id!==evidenceId)
       throw new Problem(409,'IDEMPOTENCY_CONFLICT','PDF annotation identity changed');

@@ -4,6 +4,9 @@ import { mkdtemp, readFile, writeFile, chmod, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { projectRunExecution } from '@bondbuddy/api/run-execution';
+import type { Lease } from '@bondbuddy/api/queue';
 import type { RunSupplementAuthoringPreparation } from '@bondbuddy/api/run-supplement-preparation';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { buildFileAuthoringRequest } from './file-authoring-request.js';
@@ -49,10 +52,11 @@ async function workspace(visit: (cwd: string) => Promise<void>) {
 
 test('production V1 stage uses the shared request writer and retains its original baseline and prompt', async () => {
   const { input, blobs, bytes } = fixture();
+  const identity = { executionVersion: 1, inputRevision: 1, inputHash: inputManifestHash(input.manifest) };
   let calls = 0;
   const model = ((options: Parameters<typeof codexModelStage>[0]) => ({ name: 'fixture', run: async () => {
     calls++;
-    assert.match(await options.buildPrompt({} as StageContext), /输入锁：old-hash。$/);
+    assert.ok((await options.buildPrompt({} as StageContext)).endsWith(`输入锁：${identity.inputHash}。`));
     assert.doesNotMatch(await options.buildPrompt({} as StageContext), /previous_work|continuation/);
     await workspace(async cwd => {
       await options.fileWorkspace!.prepare(cwd);
@@ -66,7 +70,10 @@ test('production V1 stage uses the shared request writer and retains its origina
     });
     return { kind: 'done', value: 'prepared-only' } as const;
   } })) as typeof codexModelStage;
-  const ctx = { run: { input_hash: 'old-hash' }, lease: { checkpoint: {} }, blobs } as unknown as StageContext;
+  const run = projectRunExecution({ id: 'run', owner_user_id: 'owner', project_id: 'project', task_kind: 'update',
+    channel: 'production' as const, input_revision: identity.inputRevision, input_hash: identity.inputHash }, identity);
+  const lease = { owner: 'owner', runId: 'run', jobId: 'job', token: 'synthetic-v1-lease', attempts: 1, checkpoint: {}, ...identity } satisfies Lease;
+  const ctx = { run, lease, checkpoint: {}, values: new Map(), signal: new AbortController().signal, blobs } as unknown as StageContext;
   assert.deepEqual(await fileAuthoringStage({ model, load: async () => input }).run(ctx), { kind: 'done', value: 'prepared-only' });
   assert.equal(calls, 1);
 });

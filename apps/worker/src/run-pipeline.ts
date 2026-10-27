@@ -514,7 +514,8 @@ export function codexModelStage(options: {
         for (let tries = 0; !snapshotId; tries++) {
           try {
             snapshotId = await savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
-              version: await nextSnapshotVersion(pool, run.owner_user_id, run.project_id), body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
+              version: await nextSnapshotVersion(pool, run.owner_user_id, run.project_id), body, executionVersion: lease.executionVersion,
+              inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
           } catch (error) { if ((error as { code?: string }).code !== '23505' || tries >= 3) throw error; }
         }
         await checkpointStage(pool, lease, promptStage, { snapshot_id: snapshotId });
@@ -623,9 +624,15 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       currentStage = stage.name;
       if(run.channel==='non_production_test' && stage.name!=='input_lock'){
         const input=await currentRunInput(pool,run);
+        // Match input_lock's dispatch: unified authoring, review and M4 have
+        // their own pinned-input gates. The legacy issuer binder applies only
+        // to the older generation/update paths, including synthetic mechanics
+        // stages that intentionally omit input_lock.
+        const specialized=input&&(isProjectQaInput(input.manifest)||isIntegrityInput(input.manifest)||isProjectFileInput(input.manifest)
+          ||hasM4Manifest(input.manifest)||isUnifiedInput(input.manifest)||isReviewInput(input.manifest));
         const gate=input
-          ? (await verifyGenerationIssuerBinding(run,input.manifest,deps.loadGenerationIssuerBinding)) ??
-            (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
+          ? (!specialized ? (await verifyGenerationIssuerBinding(run,input.manifest,deps.loadGenerationIssuerBinding)) ??
+            (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) : null) ??
             await verifyTestRuleCapability(pool,run,input,lease,deps.testRuleCapabilityLoader)
           : {kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
         if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return 'paused';}
@@ -695,16 +702,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         reviewArtifacts.push({ id: extra.artifactId, version: extra.artifactVersion, kind: attachment.kind });
       }
       for (const extra of outcome.namedArtifacts??[]) {
-        const promoted=await promoteWordArtifact(pool,lease,await wordBytes(extra.bytes),blobs,outcome.deliveryPolicy);
+        const promotedBytes=await wordBytes(extra.bytes);
+        const promoted=await promoteWordArtifact(pool,lease,promotedBytes,blobs,outcome.deliveryPolicy);
         if (promoted.status!=='available') {await finish(pool,lease,'failed',{errorCode:promoted.failureCode,failedStage:stage.name});return 'failed';}
-        m4Artifacts.push({kind:extra.kind,artifact_id:promoted.artifactId,artifact_version:promoted.artifactVersion,filename:extra.filename,byte_size:extra.bytes.length,
+        m4Artifacts.push({kind:extra.kind,artifact_id:promoted.artifactId,artifact_version:promoted.artifactVersion,filename:extra.filename,byte_size:promotedBytes.length,
           ...(extra.previewContent?{preview_content:extra.previewContent}:{})});
       }
-      const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs, outcome.deliveryPolicy);
+      const deliveredBytes=await wordBytes(outcome.bytes);
+      const delivered = await promoteWordArtifact(pool, lease, deliveredBytes, blobs, outcome.deliveryPolicy);
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
       if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document') {
-        m4Artifacts.push({kind:'document',artifact_id:delivered.artifactId,artifact_version:delivered.artifactVersion,filename:'document.docx',byte_size:outcome.bytes.length,
+        m4Artifacts.push({kind:'document',artifact_id:delivered.artifactId,artifact_version:delivered.artifactVersion,filename:'document.docx',byte_size:deliveredBytes.length,
           ...(typeof outcome.wordSummary?.preview_content==='string'?{preview_content:outcome.wordSummary.preview_content}:{})});
         if(m4Artifacts.length!==2 || !m4Artifacts.some(a=>a.kind==='preparation_note')) {await finish(pool,lease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE',failedStage:stage.name});return 'failed';}
         const settled=await transaction(pool,async client=>{

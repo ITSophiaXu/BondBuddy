@@ -6,6 +6,7 @@ import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput } from './unified-input.js';
 import { buildFileAuthoringRequest, checkedAuthoringFile as checkedFile } from './file-authoring-request.js';
+import { adoptedFileAuthoringRequest } from './run-supplement-execution-request.js';
 export { editingSource } from './file-authoring-request.js';
 
 const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -36,8 +37,10 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       if(!saved)return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
       return {kind:'done',value:saved.value,checkpoint:{logical_call_id:'file-authoring-v1'}};
     }
-    const input=await (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
-    const request=buildFileAuthoringRequest({input,inputHash:ctx.run.input_hash.trim(),blobs:ctx.blobs});
+    const load=()=> (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
+    const loaded=await load();
+    const {input,request}=ctx.lease.executionVersion===2 ? await adoptedFileAuthoringRequest(ctx,loaded,load)
+      : {input:loaded,request:buildFileAuthoringRequest({input:loaded,inputHash:ctx.run.input_hash.trim(),blobs:ctx.blobs})};
     const {source,prepare}=request;
     const collect=async(cwd:string,intent:{call_id:string})=>{
       await request.verifyOriginals(cwd);

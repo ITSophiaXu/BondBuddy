@@ -171,7 +171,8 @@ test('bindings reject foreign ownership, run, input, artifact identity, timestam
     for (const [index, value] of [[0, uid()], [1, 2], [2, foreign.owner], [3, foreign.projectId], [4, foreign.runId],
       [5, 2], [6, 3], [7, 'f'.repeat(64)], [8, '2026-10-20T01:02:04.000Z']] as const) {
       const changed = [...values]; changed[index] = value;
-      await assert.rejects(pool.query(insert, changed), { code: '23514', constraint: 'bb_artifact_execution_exact' });
+      await assert.rejects(pool.query(insert, changed), { code: '23514',
+        constraint: index === 5 ? 'bb_test_successor_write_authority' : 'bb_artifact_execution_exact' });
     }
     for (const sql of ['UPDATE bb_artifact_execution_bindings SET input_hash=input_hash WHERE artifact_id=$1',
       'DELETE FROM bb_artifact_execution_bindings WHERE artifact_id=$1']) await assert.rejects(pool.query(sql, [a.artifactId]), rejectedWrite);

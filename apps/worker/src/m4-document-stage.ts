@@ -9,6 +9,7 @@ import { buildM4DocumentRequest, loadM4DocumentSkill } from './m4-document-reque
 import { m4ActionObserver, recordM4Progress } from './m4-action-progress.js';
 import { m4ModelGate,m4PinnedMethod } from './m4-method.js';
 import {saveGenerationLinks,publishProjectFileLinks} from './project-file-tools.js';
+import { adoptedM4DocumentRequest } from './run-supplement-execution-request.js';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export type M4DocumentResult = {version: 'codex-m4-document-v1'; input_hash: string; skill_sha256: string; method_hash: string;
@@ -31,15 +32,19 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   /** Internal test seam; production always uses the durable working-file writer. */
   writer?: typeof writeRunWorkingFile} = {}): RunStage {
   return {name: 'model_generation', replay: true, run: async ctx => {
-    const input = await (options.load ?? loadM4WorkerInput)(ctx);
-    if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    const skill = loadM4DocumentSkill(input.manifest);
+    const load = () => (options.load ?? loadM4WorkerInput)(ctx);
+    const loaded = await load();
+    if (loaded.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
+    const skill = loadM4DocumentSkill(loaded.manifest);
     const config = options.config ?? loadCodexAdapterConfig();
     const modelGate=await m4ModelGate(ctx,config); if(modelGate)return modelGate;
+    // Validate the receipt's original method before stamping any V2 checkpoint.
+    const adopted=ctx.lease.executionVersion===2 ? await adoptedM4DocumentRequest(ctx,loaded,load,skill,config) : null;
     const pinned=await m4PinnedMethod(ctx,'document',skill,config);if(pinned.gate)return pinned.gate;
     const methodHash=pinned.hash;
-    const request=buildM4DocumentRequest({context:{blobs:ctx.blobs,signal:ctx.signal,inputHash:ctx.run.input_hash.trim()},
-      input,skill,methodHash});
+    if(adopted&&adopted.methodHash!==methodHash)throw Error('m4_document_method_changed');
+    const {input,request}=adopted??{input:loaded,request:buildM4DocumentRequest({context:{blobs:ctx.blobs,signal:ctx.signal,inputHash:ctx.run.input_hash.trim()},
+      input:loaded,skill,methodHash})};
     const observer = m4ActionObserver(ctx, 'document');
     const prepare = async (cwd: string) => { await recordM4Progress(ctx, 'm4_reading_materials'); await request.prepare(cwd); };
     const collect = async (cwd: string, intent: {call_id: string}): Promise<M4DocumentResult> => {

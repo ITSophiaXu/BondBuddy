@@ -682,7 +682,7 @@ export function scrubSecrets(text: string) {
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */
-export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
+export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; executionVersion?: number; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
   const scrubbed = scrubSecrets(input.body);
   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
   const intentId = uid();

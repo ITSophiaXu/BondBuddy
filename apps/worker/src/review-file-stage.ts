@@ -12,6 +12,7 @@ import { codexModelStage, type RunStage, type StageContext } from './run-pipelin
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { correctionFiles, correctionExport, validCorrectionExportPin } from './review-correction-stage.js';
 import { buildReviewFileRequest, checkedReviewFile as checkedFile, loadReviewSelectedFindings, type ReviewFileInput } from './review-file-request.js';
+import { adoptedReviewFileRequest } from './run-supplement-execution-request.js';
 export type { ReviewFileInput } from './review-file-request.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -71,13 +72,16 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
   /** Internal conversion-test seam; production always uses the trusted registrar. */
   registerEditor?:typeof registerReviewEditorSnapshot } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
-    const input = await (options.load ?? loadReviewFileInput)(ctx), { manifest } = input;
+    const load = () => (options.load ?? loadReviewFileInput)(ctx);
+    const loaded = await load();
+    const { input, request } = ctx.lease.executionVersion === 2 ? await adoptedReviewFileRequest(ctx, loaded, load, options.config)
+      : { input: loaded, request: buildReviewFileRequest({ input: loaded, inputHash: ctx.run.input_hash.trim(), blobs: ctx.blobs, config: options.config }) };
+    const { manifest } = input;
     const correction=manifest.review.file_delivery?.version==='review-correction-v2';
     if(correction&&Object.hasOwn(manifest.review.file_delivery!,'export')){
       if(!validCorrectionExportPin(manifest.review.file_delivery!.export))throw Error('INPUT_REVISION_CONFLICT');
       return correctionExport(ctx,input,options.writer,options.registerEditor);
     }
-    const request = buildReviewFileRequest({ input, inputHash: ctx.run.input_hash.trim(), blobs: ctx.blobs, config: options.config });
     const collect = async (cwd: string, intent: { call_id: string }, response: { text: string } = { text: '' }): Promise<ReviewFileResult> => {
       await request.verifyOriginals(cwd);
       const files: Record<string, FileRef> = {}, output = join(cwd, 'output');

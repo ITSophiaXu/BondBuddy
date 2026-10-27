@@ -4,7 +4,8 @@ import { ProjectFileOperationSchema, ReviewDraftInputSchema, ReviewExecutionOrig
   ReviewExportRequestSchema, ReviewOperationSchema } from '@bondbuddy/contracts';
 import { Problem, digest, transaction, type PrivateBlobs } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import { readRunExecutionInput } from './run-execution-input.js';
+import { readAdoptedRunSupplementSourceInput, readRunExecutionInput } from './run-execution-input.js';
+import { assertAdoptedRunSupplementScope, type AdoptedRunSupplementAuthority } from './run-supplement-adopted-scope.js';
 import { readCapturedSupplementResult } from './run-supplement-work.js';
 import { readExecutionStages } from './run-execution.js';
 import { extractRunFileReferences, type RunFileReference } from './run-file-reference.js';
@@ -19,11 +20,16 @@ export type CapturedSupplementFilePin = RunFileReference & {
   source: CapturedSupplementFileSource;
 };
 type Input = { db: Pool; blobs: PrivateBlobs; owner: string; projectId: string; runId: string;
-  revision: number; source: CapturedSupplementFileSource };
+  revision: number; source: CapturedSupplementFileSource; adopted?: AdoptedRunSupplementAuthority };
 const unavailable = () => new Problem(409, 'INPUT_REVISION_CONFLICT', '已保存工作文件暂时无法核对，请保留补料并核对原任务。');
 const record = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 async function workScope(db: Pool | PoolClient, input: Input) {
+  if (input.adopted) {
+    const adopted = await assertAdoptedRunSupplementScope(db, input.adopted);
+    if (adopted.work.supplement_revision !== input.revision || adopted.run.owner_user_id !== input.owner
+      || adopted.run.id !== input.runId || adopted.run.project_id !== input.projectId) throw unavailable();
+  }
   const work = (await db.query(`SELECT w.* FROM bb_run_supplement_saved_work w
     JOIN bb_projects p ON p.owner_user_id=w.owner_user_id AND p.id=w.project_id AND p.deleted_at IS NULL
     JOIN bb_users u ON u.id=w.owner_user_id AND u.closed_at IS NULL AND u.status<>'closed'
@@ -33,10 +39,14 @@ async function workScope(db: Pool | PoolClient, input: Input) {
     || inputManifestHash(work.source_checkpoint) !== work.checkpoint_hash.trim()) throw unavailable();
   const stages = readExecutionStages(work.source_checkpoint, { executionVersion: work.execution_version,
     inputRevision: work.input_revision, inputHash: work.input_hash.trim() });
-  const frozen = await readRunExecutionInput(db, input.owner, input.runId, {
+  const frozen = input.adopted ? await readAdoptedRunSupplementSourceInput(db, input.adopted)
+    : await readRunExecutionInput(db, input.owner, input.runId, {
     executionVersion: work.execution_version, inputRevision: work.input_revision, inputHash: work.input_hash.trim(),
   });
   if (frozen.run.project_id !== input.projectId || !record(frozen.input.manifest)) throw unavailable();
+  if (frozen.run.id !== input.runId || frozen.run.owner_user_id !== input.owner
+    || frozen.run.executionVersion !== work.execution_version || frozen.run.inputRevision !== work.input_revision
+    || frozen.run.inputHash !== work.input_hash.trim()) throw unavailable();
   return { work, manifest: frozen.input.manifest as Record<string, any>, frozen, stages };
 }
 
@@ -151,6 +161,8 @@ export async function readCapturedSupplementFile(input: Input & { pin: CapturedS
     let bytes: Buffer | null;
     try { bytes = await input.blobs.getIfExistsBounded(pin.key, pin.byteSize); } catch { throw unavailable(); }
     if (!bytes || bytes.length !== pin.byteSize || digest(bytes) !== pin.sha256) throw unavailable();
+    // A successor lease, grant or account can change during Blob I/O.
+    if (input.adopted) await workScope(db, input);
     return bytes;
   });
 }

@@ -20,7 +20,7 @@ function fixture() {
     execution_version: 1, input_revision: 3, input_hash: inputHash,
     artifact_media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     artifact_sha256: artifactHash, artifact_object_key: 'users/owner/runs/run/artifacts/artifact/v7.docx',
-    run_input_revision: 3, run_input_hash: inputHash,
+    run_input_revision: 3, run_input_hash: inputHash, run_channel: 'production', successor_authorization_id: null,
   };
   const rows: Record<string, unknown>[] = [row];
   const calls: { sql: string; args: unknown[] }[] = [];
@@ -28,6 +28,7 @@ function fixture() {
     calls.push({ sql, args });
     assert.deepEqual(args, ['owner', 'run', 'artifact', 7], 'lookup pins the business artifact version');
     assert.doesNotMatch(sql, /\blatest\b|\bmax\s*\(|ORDER BY|\bINSERT\b|\bUPDATE\b|\bDELETE\b/i);
+    assert.doesNotMatch(sql, /bb_run_execution_heads/, 'historical artifacts do not depend on the active head');
     return { rows };
   } } as unknown as Pool;
   return { ref, expected, row, rows, calls, db };
@@ -75,7 +76,7 @@ test('every artifact binding scope component must match the requested owned arti
   }
 });
 
-test('artifact execution refuses successors and incomplete or changed original run inputs', async () => {
+test('artifact execution refuses unauthorized successors and incomplete or changed original run inputs', async () => {
   for (const [field, value] of [
     ['execution_version', 2], ['execution_version', 0], ['execution_version', '1'],
     ['input_revision', 4], ['input_hash', 'c'.repeat(64)],
@@ -94,6 +95,42 @@ test('artifact execution refuses successors and incomplete or changed original r
     const f = fixture(); f.row.input_hash = f.row.run_input_hash = hash;
     await assert.rejects(assertArtifactExecution(f.db, f.ref), unavailable, 'invalid matching input hashes');
   }
+});
+
+test('an exact internal successor artifact retains its own input independently of the original request', async () => {
+  const f = fixture();
+  f.row.execution_version = 2; f.row.input_revision = 8; f.row.input_hash = 'c'.repeat(64);
+  f.row.run_channel = 'non_production_test'; f.row.successor_authorization_id = 'exact-successor-receipt';
+  const successor = { executionVersion: 2, inputRevision: 8, inputHash: 'c'.repeat(64) };
+  assert.deepEqual(await assertArtifactExecution(f.db, f.ref, successor), { ...successor, projectId: 'project' });
+  await assert.rejects(assertArtifactExecution(f.db, f.ref, f.expected), unavailable,
+    'the original lease cannot authorize a successor artifact');
+});
+
+test('successor artifacts require the internal channel, exact receipt and a distinct valid revision', async () => {
+  for (const change of [
+    { run_channel: 'production' }, { run_channel: null },
+    { successor_authorization_id: null }, { successor_authorization_id: '' },
+    { successor_authorization_id: 1 }, { execution_version: 3 }, { execution_version: '2' },
+    { input_revision: 3 }, { run_input_revision: 0 }, { run_input_hash: null },
+  ]) {
+    const f = fixture();
+    Object.assign(f.row, { execution_version: 2, input_revision: 8, input_hash: 'c'.repeat(64),
+      run_channel: 'non_production_test', successor_authorization_id: 'exact-successor-receipt' }, change);
+    await assert.rejects(assertArtifactExecution(f.db, f.ref), unavailable, JSON.stringify(change));
+  }
+});
+
+test('historical original artifacts remain bound to V1 after a successor has been adopted', async () => {
+  const f = fixture();
+  f.row.run_channel = 'non_production_test';
+  // The current head and original test grant are not authority for this artifact.
+  Object.assign(f.row, { active_execution_version: 2, active_input_revision: 8, active_input_hash: 'c'.repeat(64),
+    test_grant_id: 'original-grant' });
+  assert.deepEqual(await assertArtifactExecution(f.db, f.ref), { ...f.expected, projectId: 'project' });
+  f.row.input_revision = 8; f.row.input_hash = 'c'.repeat(64);
+  await assert.rejects(assertArtifactExecution(f.db, f.ref), unavailable,
+    'an original artifact cannot silently acquire the active successor input');
 });
 
 test('a supplied worker execution must match version, revision and hash independently', async () => {
