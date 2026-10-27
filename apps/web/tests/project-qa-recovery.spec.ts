@@ -13,8 +13,8 @@ const selectedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes
 test.beforeEach(async({page})=>{page.on('dialog',dialog=>void dialog.accept());});
 test.afterEach(async({page})=>{await assertFixture(page);});
 
-async function open(page:Page,state=fixture(),run:string|null=answerId){await install(page,state);await page.goto(url(run));await expect(page.locator('#qa-history')).toBeVisible();return state;}
-async function adopt(page:Page){await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();await choice(page).check();await expect(page.locator('#qa-save')).toBeEnabled();}
+async function open(page:Page,state=fixture(),run:string|null=answerId){await install(page,state);await page.goto(url(run));await expect(page.locator('#qa-history')).toBeVisible();if(await page.locator('.qa-followup').count())await page.locator('.qa-followup>summary').click();return state;}
+async function adopt(page:Page){if(await page.locator('.qa-followup').getAttribute('open')===null)await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();await choice(page).check();await expect(page.locator('#qa-save')).toBeEnabled();}
 async function start(page:Page){await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toBeVisible();await page.locator('#qa-confirm').click();}
 async function frozen(page:Page){
   // Check the native fieldset property and actual inherited control behavior.

@@ -1085,3 +1085,17 @@ for(const width of [1440,390])test('review setup explains scope and generates a 
  }
  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
 });
+
+test('historical progress-only report is flagged without changing its ledger or losing original download',async({page})=>{
+  const state=fixture();state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.plan=null;
+  state.workspace.artifact_run={run_id:'run-1',version:1,operation:'full_review',source_report_id:null};
+  state.history[0].report_id=null;
+  await setup(page,state);
+  await page.route('**/readable-report',route=>reply(route,200,{version:'review-readable-v1',project_id:id,run_id:'run-1',execution_version:1,status:'invalid_content',markdown:'',content_sha256:null}));
+  await page.goto('/#/projects/'+id+'/review');
+  await expect(page.getByRole('heading',{name:'历史复核成果异常'})).toBeVisible();
+  await expect(page.locator('[data-readable-report]')).toContainText('原结算记录保留');
+  await expect(page.locator('[data-readable-report]')).not.toContainText('BB_REVIEW_PROGRESS');
+  await expect(page.getByRole('button',{name:'下载原文件（异常成果）'})).toBeEnabled();
+  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
+});

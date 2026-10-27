@@ -1,9 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Value} from '@sinclair/typebox/value';
-import {IntegrityRecordSchema,integrityRecordPresentation as present,type IntegrityRecord,type IntegrityDiagnostic,type IntegrityFinding} from './integrity.js';
+import {IntegrityRecordSchema,integrityRecordPresentation as present,integrityDiagnosticLabel,type IntegrityRecord,type IntegrityDiagnostic,type IntegrityFinding} from './integrity.js';
 const record:IntegrityRecord={subject_id:'s',site_id:'tax',site_name:'测试官网',urls:[],query:'合成企业',status:'query_failed',reason:'官网加载或查询超时，未取得可确认结果，待人工补证。',checked_at:'2026-10-26T00:00:00Z',sources:[],search_performed:false};
 const withDiagnostic=(d:IntegrityDiagnostic):IntegrityRecord=>({...record,browser:{version:'official-browser-v1',outcome:'failed',scope:'测试范围',limitation:'合成',captures:[],diagnostic:d}});
+test('captcha image failures stay specific in shared web and export copy without exposing diagnostics',()=>{
+ for(const [detail,label] of Object.entries({CAPTCHA_IMAGE_LOAD_FAILED:'验证码图片加载失败',CAPTCHA_IMAGE_LOAD_TIMEOUT:'验证码图片加载超时',CAPTCHA_IMAGE_ACCESS_DENIED:'网站拒绝访问',CAPTCHA_IMAGE_RATE_LIMITED:'网站限制访问频率',CAPTCHA_IMAGE_REFRESH_FAILED:'验证码刷新未完成'})){
+  const d:IntegrityDiagnostic={code:'captcha_required',phase:'results',detail,http_status:403,attempts:2};
+  const r={...withDiagnostic(d),reason:'HTTP 403 Forbidden CAPTCHA_IMAGE_LOAD_FAILED'},before=JSON.stringify(r);
+  assert.equal(Value.Check(IntegrityRecordSchema,r),true);
+  assert.equal(integrityDiagnosticLabel(d),label);assert.equal(present(r).label,label);
+  assert.equal(present(r).group,'incomplete');assert.match(present(r).description,/本次查询未完成/);
+  assert.doesNotMatch(JSON.stringify(present(r)),/HTTP|403|Forbidden|CAPTCHA_|补充信息|上传证据/);
+  assert.equal(JSON.stringify(r),before);
+ }
+ assert.equal(present(withDiagnostic({code:'captcha_required',phase:'open',detail:'CAPTCHA_IMAGE_LOAD_FAILED extra untrusted text'})).label,'需要验证码');
+ assert.equal(present(withDiagnostic({code:'captcha_required',phase:'open',detail:'toString'})).label,'需要验证码');
+ assert.equal(present(withDiagnostic({code:'network_error',phase:'open',detail:'CAPTCHA_IMAGE_LOAD_FAILED'})).label,'网络连接失败');
+});
 test('diagnostics preserve exact failure causes and validate without breaking historical records',()=>{
  assert.equal(Value.Check(IntegrityRecordSchema,record),true);
  for(const [code,label] of Object.entries({blank_page_timeout:'页面空白（加载超时）',page_load_timeout:'页面加载超时',result_load_timeout:'查询结果加载超时',query_form_unavailable:'查询页面尚未就绪',result_unverified:'本次查询结果未确认',captcha_required:'需要验证码',login_required:'需要登录',authentication_required:'需要验证码和登录',network_error:'网络连接失败',page_error:'网站页面报错',operation_failed:'查询操作未完成'})){
@@ -30,6 +44,21 @@ test('historical unknown errors never acquire invented HTTP or authentication ca
   assert.equal(view.label,label);assert.doesNotMatch(view.description,/HTTP|403|503|Forbidden|GeoBL|net::|ERR_|INTERNAL_|TimeoutError/);assert.equal(JSON.stringify(r),before);
  }
  assert.equal(JSON.stringify(record),before);
+});
+
+test('certificate, required stylesheet and rate-limit failures are actionable without exposing raw diagnostics',()=>{
+ for(const [d,label] of [
+  [{code:'network_error',phase:'open',detail:'net::ERR_CERT_DATE_INVALID'},'网站证书有效期异常'],
+  [{code:'network_error',phase:'open',detail:'net::ERR_CERT_AUTHORITY_INVALID'},'网站证书校验失败'],
+  [{code:'network_error',phase:'results',detail:'OFFICIAL_STYLESHEET_LOAD_FAILED net::ERR_ABORTED https://example.test/style.css'},'查询页面样式加载失败'],
+  [{code:'http_error',phase:'open',http_status:429},'网站限制访问频率']
+ ] as [IntegrityDiagnostic,string][]){
+  const r=withDiagnostic({...d,attempts:1}),before=JSON.stringify(r),v=present(r);
+  assert.equal(v.label,label);assert.equal(v.group,'incomplete');assert.match(v.description,/本次查询未完成|尚不能确认/);
+  assert.doesNotMatch(v.label+v.description,/net::|ERR_|OFFICIAL_|example\.test|429/);assert.equal(JSON.stringify(r),before);
+ }
+ const historical={...record,reason:'官网连接失败 net::ERR_CERT_DATE_INVALID'},before=JSON.stringify(historical);
+ assert.equal(present(historical).label,'网站证书有效期异常');assert.equal(JSON.stringify(historical),before);
 });
 test('display limitations omit legacy collection diagnostics without changing original scope or evidence',()=>{
  const r=withDiagnostic({code:'results',phase:'results',detail:'net::ERR_CONNECTION_RESET'});

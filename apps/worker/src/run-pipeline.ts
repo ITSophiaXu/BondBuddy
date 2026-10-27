@@ -33,6 +33,7 @@ import { createReviewActionObserver, reviewActionMode } from './review-action-pr
 import type { MaterialToolData } from './authoring-material-tools.js';
 import { isMaterialModelEnvelope } from './material-tool-trace.js';
 import { reviewModelEnvelopeAsync, type ReviewToolData } from './review-tools.js';
+import {saveModelImage,loadModelImage,type ModelImageRef} from './model-image-input.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
 import { markTestWord } from './test-word-marking.js';
@@ -83,7 +84,7 @@ export type RunStage = {
 export type RunPipelineOutcome = 'idle' | 'succeeded' | 'test_completed' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
 export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
-  runKinds?: readonly RunKind[];
+  runKinds?: readonly RunKind[]; interactiveOnly?: boolean;
   signal?: AbortSignal; reviewedContextLoader?: ReviewedContextLoader;
   testRuleCapabilityLoader?: TestRuleCapabilityLoader;
   /** #33 pinned issuer binding re-verification call point; absent = unchanged. */
@@ -487,6 +488,7 @@ export function codexModelStage(options: {
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
   normalize?: Extract<ContainedCallInput['output'], { kind: 'json' }>['normalize'];
+  imageInput?: ContainedCallInput['imageInput'];
   materialTools?: MaterialToolData;
   materialToolsTrace?: true;
   fileWorkspace?: ContainedCallInput['fileWorkspace'];
@@ -504,21 +506,28 @@ export function codexModelStage(options: {
       const initialGate = await ctx.validateBeforeModelCall?.();
       if (initialGate) return initialGate;
       let snapshotId = ctx.checkpoint[promptStage]?.snapshot_id as string | undefined;
+      let imageRef=ctx.checkpoint[promptStage]?.image_input as ModelImageRef|undefined;
       if (!snapshotId) {
-        const body = await options.buildPrompt(ctx);
+        imageRef=options.imageInput?await saveModelImage(blobs,run,options.imageInput):undefined;
+        const body = await options.buildPrompt(ctx)+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
         for (let tries = 0; !snapshotId; tries++) {
           try {
             snapshotId = await savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
               version: await nextSnapshotVersion(pool, run.owner_user_id, run.project_id), body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
           } catch (error) { if ((error as { code?: string }).code !== '23505' || tries >= 3) throw error; }
         }
-        await checkpointStage(pool, lease, promptStage, { snapshot_id: snapshotId });
-        ctx.checkpoint[promptStage] = { snapshot_id: snapshotId };
+        const pinned={snapshot_id:snapshotId,...(imageRef?{image_input:imageRef}:{})};
+        await checkpointStage(pool, lease, promptStage, pinned);
+        ctx.checkpoint[promptStage] = pinned;
       }
       const ref = (await pool.query('SELECT object_key,content_sha256 FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4', [snapshotId, run.owner_user_id, run.project_id, run.id])).rows[0];
       if (!ref) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
       const bytes = await blobs.getIfExists(ref.object_key);
       if (!bytes || digest(bytes) !== ref.content_sha256.trim()) return { kind: 'fail', code: 'DATA_UNAVAILABLE' };
+      if(!imageRef&&/Attached PNG SHA-256: [a-f0-9]{64}$/.test(bytes.toString('utf8')))return {kind:'fail',code:'DATA_UNAVAILABLE'};
+      if(options.imageInput&&options.imageInput.sha256!==imageRef?.sha256)return {kind:'fail',code:'DATA_UNAVAILABLE'};
+      const imageInput=imageRef?await loadModelImage(blobs,run,imageRef):undefined;
+      if(imageInput&&!bytes.toString('utf8').endsWith('Attached PNG SHA-256: '+imageInput.sha256))return {kind:'fail',code:'DATA_UNAVAILABLE'};
       const config = typeof options.config === 'function' ? options.config() : options.config;
       const validateResult = options.reviewTools ? async (value:unknown) => {
         const envelope = await reviewModelEnvelopeAsync(value,options.reviewTools!,ctx.signal);
@@ -539,7 +548,7 @@ export function codexModelStage(options: {
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
+        imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
       } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
@@ -579,7 +588,7 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' | 
 export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
   const { pool, blobs } = deps;
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
-  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds });
+  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
   deps.onLease?.(lease);
   if (!lease) return 'idle';
   const abort = new AbortController();
