@@ -68,6 +68,7 @@ export async function fixture(page:Page){
     if(/^\/projects\/[^/]+\/tasks$/.test(path))return json(route,200,{project_id:path.split('/')[2],items:[],page:{has_more:false,next_cursor:null}});
     if(/^\/projects\/[^/]+\/files$/.test(path))return json(route,200,{project_id:path.split('/')[2],items:[]});
     if(/^\/projects\/[^/]+\/project-files$/.test(path)&&method==='GET')return json(route,200,{files:[]});
+    if(method==='GET'&&[ids.api,ids.other].some(p=>path===`/projects/${p}/workpapers/library`))return json(route,200,{items:[],total:0,offset:0,limit:30,source:null,checks:[]});
     const work=path.match(/^\/projects\/([^/]+)\/project-files\/workspace$/);
     if(work){if(method==='GET'&&state.workspaceMissing){state.workspaceMissing=false;return json(route,404,{code:'NOT_FOUND'});}return json(route,200,state.workspaces.get(work[1]));}
     if(path===`/projects/${ids.source}/prospectus-versions`){
