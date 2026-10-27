@@ -25,7 +25,7 @@ function normalizedBase(value:unknown,owner:string,project:string):QaRecoveryVal
  return result.status==='valid'&&!result.value.pending?copy(result.value):undefined;
 }
 const media={doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',pdf:'application/pdf',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'} as const;
-export function qaUploadMedia(filename:string,kind:QaUploadKind){const ext=filename.split('.').at(-1)?.toLowerCase() as keyof typeof media;return kind==='source'&&!['doc','docx'].includes(ext)?undefined:media[ext];}
+export function qaUploadMedia(filename:string,kind:QaUploadKind){const ext=filename.split('.').at(-1)?.toLowerCase() as keyof typeof media;return kind==='source'&&!['doc','docx','pdf'].includes(ext)?undefined:media[ext];}
 function declaration(value:unknown,kind:QaUploadKind):value is Dto<'UploadCreateRequest'>{
  return Value.Check(schemas.UploadCreateRequest,value)&&value.role==='other'&&value.byte_size>0&&value.byte_size<=100*1024*1024&&qaUploadMedia(value.filename,kind)===value.media_type;
 }
