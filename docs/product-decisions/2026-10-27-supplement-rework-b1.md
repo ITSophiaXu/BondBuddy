@@ -10,4 +10,4 @@
 
 积分系统重设计作为后续范围，当前补料续做先按上述暂行规则推进。原任务的已发生费用、输入、调用和交付记录保留可追溯；本决定没有发布新系统或改写既有账本。
 
-本记录的来源为本线程 `call_PN0ArBHQPERalSYNNvls8kT4` 的原始 B1 选项与本次答复。G03 / UX-A03 的公开报价确认、追加账务和完整桌面验收仍需完成；内部非生产 Word 执行的进展见[0136 验证记录](../acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)。
+本记录的来源为本线程 `call_PN0ArBHQPERalSYNNvls8kT4` 的原始 B1 选项与本次答复。公开报价确认、追加账务与完整桌面 G03 / UX-A03 已完成本地合成工程验收，见[0139 生产补料采用记录](../acceptance/desktop-ux-coverage-20261026/production-supplement/README.md)。当前支持 V1→V2 一次采用，未发布；真实供应商/支付、专业内容及真实用户效果仍待最终统一验收。此前内部非生产 Word 证据保留在[0136 验证记录](../acceptance/desktop-ux-coverage-20261026/test-successor-word/README.md)。

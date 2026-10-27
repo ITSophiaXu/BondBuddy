@@ -12,7 +12,7 @@ import { checkpointStage, claim, finish, pauseAtCheckpoint, promoteWordArtifact,
 import { persistProviderResultObject, recordProviderCallObservation, type ProviderCallIntent } from './provider-results.js';
 import { writeRunWorkingFile } from './run-working-files.js';
 import { createRunSupplementPreparationTestContext, grantSyntheticSupplementInput, type RunSupplementEarlyPause,
-  type RunSupplementFixtureBeforeCall, type RunSupplementFixtureWithSavedWork } from './run-supplement-preparation-test-fixture.js';
+  type RunSupplementBeforeClaim, type RunSupplementFixtureBeforeCall, type RunSupplementFixtureWithSavedWork } from './run-supplement-preparation-test-fixture.js';
 
 const origin='http://bondbuddy.test',docx='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const pin=(value:ReviewMaterialPin):ReviewMaterialPin=>({material_id:value.material_id,material_version:value.material_version,sha256:value.sha256});
@@ -21,7 +21,7 @@ const ok=(response:{statusCode:number;body:string;json():any})=>{
 };
 export type RunSupplementFilePreparationFixtureOptions={
   operation?:'full_review'|'differential_review';partial?:boolean;wrongCheckpointPrompt?:boolean;
-  wordBytes?:Buffer;method?:Record<string,unknown>;earlyPause?:RunSupplementEarlyPause;nonProduction?:boolean;
+  wordBytes?:Buffer;method?:Record<string,unknown>;earlyPause?:RunSupplementEarlyPause;nonProduction?:boolean;beforeClaim?:RunSupplementBeforeClaim;
 };
 
 /** Importing this helper never starts a service or creates a database. Worker
@@ -62,6 +62,7 @@ async function buildRunSupplementFilePreparationFixture(connectionString:string,
     const originPin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
     const reviewInput={source_material_ref:pin(original),material_versions:materials.map(pin),requirements:['Frozen review requirement'],as_of:'2026-09-30'};
     const reviewManifest=(operation:'full_review'|'differential_review',version:number,source:any=null)=>({
+      draft_revision:1,
       issuer_name:'Frozen issuer',market:'sse',offering:'private',materials:materials.map(value=>({...pin(value),role:value.role})),
       review:{version:'review_v1',operation,report_id:uid(),version_number:version,input:structuredClone(reviewInput),
         source_report_id:source?.id??null,source_report_sha256:source?.sha256??null,finding_ids:source?[source.findingId]:[],
@@ -138,6 +139,7 @@ async function buildRunSupplementFilePreparationFixture(connectionString:string,
     else await pool.query(`INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)`,[runId,owner,topic,manifest,hash]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id)
       VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)`,[jobId,owner,runId,task,kind==='m4'?M4_DOCUMENT_SUBTYPE:'default',channel,testGrant]);
+    await options.beforeClaim?.({pool,owner,projectId,runId,jobId,manifest});
     const claimed=await claim(pool,300,{runKinds:[task]});assert.ok(claimed);const lease:Lease=claimed;assert.equal(lease.runId,runId);
     const schema=kind==='review'?'codex-review-file-v1':'codex-m4-document-v1',logical=kind==='review'?'review-file-v1':'m4-document-v1';
     const method=structuredClone(options.method??{version:'m4-document-method-v1',skill_id:'m4-underwriter',skill_version:'synthetic-v1',

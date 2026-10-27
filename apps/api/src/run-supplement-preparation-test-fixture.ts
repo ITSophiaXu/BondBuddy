@@ -34,8 +34,9 @@ async function word(text:string):Promise<Buffer>{
 }
 
 export type RunSupplementEarlyPause='before_prompt'|'after_prompt';
+export type RunSupplementBeforeClaim=(scope:{pool:Pool;owner:string;projectId:string;runId:string;jobId:string;manifest:any})=>Promise<void>;
 export type RunSupplementPreparationFixtureOptions={partial?:boolean;wrongCheckpointPrompt?:boolean;wordBytes?:Buffer;requirementBody?:string;
-  earlyPause?:RunSupplementEarlyPause;nonProduction?:boolean};
+  earlyPause?:RunSupplementEarlyPause;nonProduction?:boolean;beforeClaim?:RunSupplementBeforeClaim};
 export async function grantSyntheticSupplementInput(pool:Pool,owner:string,projectId:string,revision:number,hash:string){
   const id=uid();
   await pool.query(`INSERT INTO bb_non_production_test_grants(grant_id,user_id,project_id,input_revision,input_hash,
@@ -117,6 +118,7 @@ export async function createRunSupplementPreparationTestContext(connectionString
       VALUES($1,$2,$3,1,$4,$5,'update',$6,'queued','queued',$7,$8)`,[runId,owner,projectId,hash,uid(),digest(uid()),channel,testGrant]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id)
       VALUES($1,$2,$3,'update','default','queued','queued',$4,$5)`,[jobId,owner,runId,channel,testGrant]);
+    await options.beforeClaim?.({pool,owner,projectId,runId,jobId,manifest});
     const claimed=await claim(pool,300,{runKinds:['update']});assert.ok(claimed);
     const lease:Lease=claimed;assert.equal(lease.runId,runId);
     let promptVersion=0;

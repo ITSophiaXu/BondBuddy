@@ -1,0 +1,30 @@
+{
+  "mode": "api",
+  "startedAt": "2026-10-27T02:00:27.306Z",
+  "completedAt": "2026-10-27T02:02:29.251Z",
+  "args": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "apps/api/dist/run-supplement-adoption.pg.test.js"
+  ],
+  "template": "/bb_prod_supplement02_20261027",
+  "exitCode": 0,
+  "signal": null,
+  "totals": {
+    "tests": 13,
+    "pass": 13,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "sourcesStable": true,
+  "sourceEntries": 2118,
+  "stdout": {
+    "bytes": 3733,
+    "sha256": "4eef323b091fc052921dd5f4cb947d4d119770e90118df34e1128b571affcbdb"
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

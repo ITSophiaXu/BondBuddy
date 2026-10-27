@@ -1,0 +1,177 @@
+TAP version 13
+# Subtest: authoring: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+not ok 1 - authoring: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+  ---
+  duration_ms: 31478.6807
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\worker\\dist\\run-supplement-production-execution.pg.test.js:179:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /SYNTHETIC_PRODUCTION_CRASH/. Input:
+    
+    'AssertionError [ERR_ASSERTION]: {"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: '{"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+  stack: |-
+    Object.onUnexpectedError (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:216:91)
+    runPipelineOnce (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-pipeline.js:782:33)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async waitForActual (node:assert:646:5)
+    async strict.rejects (node:assert:769:25)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# (node:31648) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: review: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+not ok 2 - review: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+  ---
+  duration_ms: 53206.6642
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\worker\\dist\\run-supplement-production-execution.pg.test.js:179:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /SYNTHETIC_PRODUCTION_CRASH/. Input:
+    
+    'AssertionError [ERR_ASSERTION]: {"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: '{"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+  stack: |-
+    Object.onUnexpectedError (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:216:91)
+    runPipelineOnce (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-pipeline.js:782:33)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async waitForActual (node:assert:646:5)
+    async strict.rejects (node:assert:769:25)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: m4: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+not ok 3 - m4: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+  ---
+  duration_ms: 34642.0047
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\worker\\dist\\run-supplement-production-execution.pg.test.js:179:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /SYNTHETIC_PRODUCTION_CRASH/. Input:
+    
+    'AssertionError [ERR_ASSERTION]: {"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: '{"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+  stack: |-
+    Object.onUnexpectedError (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:216:91)
+    runPipelineOnce (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-pipeline.js:782:33)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async waitForActual (node:assert:646:5)
+    async strict.rejects (node:assert:769:25)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: authoring: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+not ok 4 - authoring: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+  ---
+  duration_ms: 26235.5848
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\worker\\dist\\run-supplement-production-execution.pg.test.js:179:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /SYNTHETIC_PRODUCTION_CRASH/. Input:
+    
+    'AssertionError [ERR_ASSERTION]: {"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: '{"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+  stack: |-
+    Object.onUnexpectedError (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:216:91)
+    runPipelineOnce (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-pipeline.js:782:33)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async waitForActual (node:assert:646:5)
+    async strict.rejects (node:assert:769:25)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: m4: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+not ok 5 - m4: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+  ---
+  duration_ms: 34477.4135
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\apps\\worker\\dist\\run-supplement-production-execution.pg.test.js:179:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /SYNTHETIC_PRODUCTION_CRASH/. Input:
+    
+    'AssertionError [ERR_ASSERTION]: {"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: '{"stage":"model_generation","name":"Error","message":"redacted","code":null}'
+  stack: |-
+    Object.onUnexpectedError (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:216:91)
+    runPipelineOnce (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-pipeline.js:782:33)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async waitForActual (node:assert:646:5)
+    async strict.rejects (node:assert:769:25)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/apps/worker/dist/run-supplement-production-execution.pg.test.js:279:13)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 0
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 196130.4173

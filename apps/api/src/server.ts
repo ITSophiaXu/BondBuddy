@@ -3,6 +3,7 @@ import { registerProjectQa } from './project-qa.js';
 import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
 import { readAuthoringProgress } from './authoring-progress.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
 import { installCreditHistory } from './credit-history.js';
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
@@ -20,10 +21,11 @@ import { registerReviewRoutes } from './review-workspace.js';
 import { registerM4Routes } from './m4-workspace.js';
 import { registerRunSupplementDraftRoutes } from './run-supplement-draft.js';
 import { registerRunSupplementQuoteRoutes } from './run-supplement-quote.js';
+import { registerRunSupplementAdoptionRoutes } from './run-supplement-adoption.js';
 import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
-import { ReviewRevisionHandlingSchema, reportingWindow } from '@bondbuddy/contracts';
+import { BILLING_TASKS, ReviewRevisionHandlingSchema, reportingWindow } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
@@ -189,6 +191,7 @@ export function createServer(settings: Settings = {}) {
   registerM4Routes(app, db, owner, blob, queueEnabled);
   registerRunSupplementDraftRoutes(app, db, owner);
   registerRunSupplementQuoteRoutes(app, db, blob, owner);
+  registerRunSupplementAdoptionRoutes(app, db, blob, owner);
   registerProjectAssistant(app, db, owner);
   registerProjectQa(app, db, owner);
   registerQaKnowledge(app, db, owner);
@@ -1339,12 +1342,27 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request);return {enabled:paidAuthoring,...await creditBalance(db(),user)};
   });
   app.get('/api/v1/runs/:run_id/credit-charge',{schema:{response:{200:schemas.RunCreditChargeResponse}}},async request=>{
-    const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
-    const progress=await readAuthoringProgress(db(),user,r.id);
-    if(!r.reservation_id)return {quote:null,state:null,...(progress?{progress}:{})};
-    const row=(await db().query('SELECT q.*,r.state AS charge_state FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2',[user,r.reservation_id])).rows[0];
-    if(!row)throw missing();
-    return {quote:quoteDto(row),state:row.charge_state,...(progress?{progress}:{})};
+    const user=await owner(request);
+    return transaction(db(),async client=>{
+      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+      const r=await run(client,user,param(request,'run_id')),progress=await readAuthoringProgress(client,user,r.id);
+      const fee=await readRunBillingSegment(client,r),extra=progress?{progress}:{};
+      if(!fee)return {quote:null,state:null,...extra};
+      const charge=(await client.query('SELECT state FROM bb_credit_reservations WHERE owner_user_id=$1 AND id=$2',[user,fee.reservationId])).rows[0];
+      const supplemental=(await client.query('SELECT * FROM bb_run_supplement_quotes WHERE owner_user_id=$1 AND id=$2 AND run_id=$3',[user,fee.sourceQuoteId,r.id])).rows[0];
+      if(supplemental){
+        const item=supplemental.items[0];
+        // M4 retains its dedicated quotation DTO; this common endpoint still
+        // reports its exact current meter and settlement state.
+        if(!Object.hasOwn(BILLING_TASKS,item.task_type))return {quote:null,state:charge.state,...extra};
+        return {quote:quoteDto({id:supplemental.id,project_id:r.project_id,input_revision:fee.execution.inputRevision,
+          input_hash:fee.execution.inputHash,task_type:item.task_type,points:fee.points,price_version:item.price_version,
+          reason:'补料续做：需重做的文档按已确认的完整文档价格另行计费。',created_at:supplemental.created_at}),state:charge.state,...extra};
+      }
+      const row=(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND id=$2',[user,fee.sourceQuoteId])).rows[0];
+      if(!row){if(r.task_kind==='generation')return {quote:null,state:charge.state,...extra};throw missing();}
+      return {quote:quoteDto(row),state:charge.state,...extra};
+    });
   });
   app.post('/api/v1/projects/:project_id/credit-quote',{schema:{body:schemas.FixedQuoteRequest,response:{200:schemas.FixedQuoteResponse}}},async request=>{
     const user=await owner(request),id=param(request,'project_id');

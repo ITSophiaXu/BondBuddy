@@ -22,7 +22,8 @@ const same = (left: unknown, right: unknown) => inputManifestHash(left) === inpu
 
 function exactInput(ctx: StageContext, adopted: Adopted, input: LoadedInput) {
   const { basis } = adopted;
-  if (ctx.lease.executionVersion !== 2 || ctx.run.channel !== 'non_production_test'
+  if (ctx.lease.executionVersion !== 2 || !['production', 'non_production_test'].includes(ctx.run.channel ?? '')
+    || ctx.run.channel !== adopted.source.run.channel
     || basis.candidateInputHash !== ctx.lease.inputHash || !same(input.manifest, basis.manifest)
     || inputManifestHash(input.manifest) !== ctx.lease.inputHash
     || inputManifestHash(adopted.source.checkpoint) !== basis.checkpointHash) throw conflict();

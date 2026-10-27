@@ -1,0 +1,12 @@
+{
+  "status": 0,
+  "signal": null,
+  "output": [
+    null,
+    "{\r\n    \"Id\":  17984,\r\n    \"Path\":  \"C:\\\\Users\\\\lezhai\\\\Downloads\\\\Bondbuddy\\\\.m3-test-tools\\\\node_modules\\\\@embedded-postgres\\\\windows-x64\\\\native\\\\bin\\\\postgres.exe\",\r\n    \"StartTime\":  \"\\/Date(1793065351991)\\/\"\r\n}\r\n",
+    ""
+  ],
+  "pid": 52364,
+  "stdout": "{\r\n    \"Id\":  17984,\r\n    \"Path\":  \"C:\\\\Users\\\\lezhai\\\\Downloads\\\\Bondbuddy\\\\.m3-test-tools\\\\node_modules\\\\@embedded-postgres\\\\windows-x64\\\\native\\\\bin\\\\postgres.exe\",\r\n    \"StartTime\":  \"\\/Date(1793065351991)\\/\"\r\n}\r\n",
+  "stderr": ""
+}

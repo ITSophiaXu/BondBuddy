@@ -629,7 +629,8 @@ export class ProjectExecution {
   }
   private labelSupplementResume(){
     const panel=this.run&&this.supplements.get(this.run.run_id),button=this.host?.querySelector<HTMLButtonElement>('#resume-run');
-    if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮任务';
+    if(button&&panel?.hasAdoptedSupplement)button.textContent='继续当前任务';
+    else if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮任务';
   }
   private async showSupplement(run:Dto<'RunResponse'>){
     try{const panel=await this.supplementFor(run);if(!this.active||this.run?.run_id!==run.run_id)return;

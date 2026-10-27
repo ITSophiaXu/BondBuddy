@@ -1,0 +1,153 @@
+{
+  "recordedAt": "2026-10-27T02:52:15.260Z",
+  "status": "local_synthetic_engineering_pass",
+  "realSuite": "web-real-round6",
+  "stats": {
+    "startTime": "2026-10-27T02:47:48.985Z",
+    "duration": 197340.579,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "sourceStability": {
+    "stable": true,
+    "files": 27,
+    "exit": {
+      "code": 0,
+      "signal": null
+    }
+  },
+  "api": "api-20261027T022142158Z-32828",
+  "regression": "regression-20261027T021159870Z-25640",
+  "worker": "worker-20261027T023055916Z-39712",
+  "mock": "web-mock-round3",
+  "contract": "contracts-20261027T021252284Z-14584",
+  "cases": [
+    {
+      "kind": "authoring",
+      "checks": {
+        "pause_request_final_active_points": 2,
+        "no_new_reservation": true,
+        "paused_clock_stopped": true,
+        "one_additional_reservation": true,
+        "additional_ceiling": 4500,
+        "adoption_debit": 0,
+        "adoption_frozen": 0,
+        "original_charged_points": 907,
+        "paused_through_saving_and_quote_refresh_unchanged": true,
+        "successor_consumed_points": 4500,
+        "original_fee_preserved": true,
+        "ledger_append_only": true,
+        "all_http_wallets_match_rr_lots": true,
+        "all_lot_ledger_wallet_totals_conserved": true
+      },
+      "executionVersion": 2,
+      "additionalPoints": 4500,
+      "downloadedSha256": "020b5aa49c6484bc22540333ea0b8bd2388d6268b24d6b14098310f568a86262",
+      "wordCheck": {
+        "paragraphs": 2,
+        "text": "Synthetic worker upload fixture\nSYNTHETIC_AUTHORING_e70433f9a19e4932a43a806af1d1cfb3_ADOPTED"
+      },
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t45496_6dcc435e",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "kind": "review",
+      "checks": {
+        "pause_request_final_active_points": 2,
+        "no_new_reservation": true,
+        "paused_clock_stopped": true,
+        "one_additional_reservation": true,
+        "additional_ceiling": 4500,
+        "adoption_debit": 0,
+        "adoption_frozen": 0,
+        "original_charged_points": 912,
+        "paused_through_saving_and_quote_refresh_unchanged": true,
+        "successor_consumed_points": 4500,
+        "original_fee_preserved": true,
+        "ledger_append_only": true,
+        "all_http_wallets_match_rr_lots": true,
+        "all_lot_ledger_wallet_totals_conserved": true
+      },
+      "executionVersion": 2,
+      "additionalPoints": 4500,
+      "downloadedSha256": "455722ac2b0a41080074ce9928a4d64ee46ce2908705bf4bcd6b24f1422bfc0c",
+      "wordCheck": {
+        "paragraphs": 25,
+        "text": "Synthetic review 79c2432f46e7c85f25348ff233388015485ea7d6f9a4d16644b120dfb1040191\n\n财务核对\nR001 · Synthetic source check\n**复核类别：** 财务数据一致性\n**原文位置：** 第一段\n**原文披露：** Synthetic replacement version 2\n**核对依据：** Synthetic candidate materials\n**问题说明：** Synthetic review of the exact candidate source SYNTHETIC_REVIEW_66fa9d94052546cabaec83f3df176fe6_ADOPTED\n**处理方式：** 仅批注\n**替换文本：** 无\n**缺少材料：** 无\n\n公开信息核验\n公开检索未执行。\n\nAdopted material evidence\nSYNTHETIC_REVIEW_66fa9d94052546cabaec83f3df176fe6_ADOPTED\n\n原文批注与待确认定位\n\n底稿：replacement.docx · 上传版本 V2。正文未改写。\n本报告识别 1 项问题，已添加 1 处原文批注，0 处无法自动定位。\n批注中的“本轮复核”是本次添加的意见；“原稿批注”是上传文件已有的自动批注，保留原日期，不代表本轮已核验。人工批注保留原署名。\n各问题提供的原文片段已标注；缺失披露和未覆盖事项仍以报告说明为准。"
+      },
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t45496_4059b4ee",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "kind": "m4",
+      "checks": {
+        "pause_request_final_active_points": 4,
+        "no_new_reservation": true,
+        "paused_clock_stopped": true,
+        "one_additional_reservation": true,
+        "additional_ceiling": 4500,
+        "adoption_debit": 0,
+        "adoption_frozen": 0,
+        "original_charged_points": 913,
+        "paused_through_saving_and_quote_refresh_unchanged": true,
+        "successor_consumed_points": 4500,
+        "original_fee_preserved": true,
+        "ledger_append_only": true,
+        "all_http_wallets_match_rr_lots": true,
+        "all_lot_ledger_wallet_totals_conserved": true
+      },
+      "executionVersion": 2,
+      "additionalPoints": 4500,
+      "downloadedSha256": "f76b17a984c008f735a222fb40c3930c577b3ba75dbbedac47aca5a67542c926",
+      "wordCheck": {
+        "paragraphs": 2,
+        "text": "Synthetic M4 c48e5b1c81f58b836c9c5d1e2aa16f0ba180fcf5d92f73e72d16edb6c0eb5be7\nSYNTHETIC_M4_959aa6b3e650462b97b59d50975d4456_ADOPTED"
+      },
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t45496_26ab6158",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    }
+  ],
+  "coverage": {
+    "historicalJourneys": "15/15",
+    "major": "11/11",
+    "auxiliary": "4/4",
+    "gates": [
+      "G01",
+      "G02",
+      "G03"
+    ],
+    "old662Rerun": false,
+    "newScenarioDenominatorInvented": false,
+    "engineeringRequirementsMet": true,
+    "unmeasuredUserOutcomes": true
+  },
+  "limits": [
+    "V1 to V2 once only",
+    "Synthetic supplier and credit grant",
+    "No real payment/Azure/Word-WPS client/professional/user-outcome acceptance",
+    "No push/PR/merge/deployment"
+  ],
+  "cleanup": {
+    "postgres": {
+      "audited": true,
+      "exactIdentityVerified": true,
+      "postmasterPid": 17984,
+      "port": 15542,
+      "stopped": true,
+      "portListening": false,
+      "allDatabasesPreserved": true
+    },
+    "browserAudit": "web-real-round6/cleanup-audit.json"
+  }
+}

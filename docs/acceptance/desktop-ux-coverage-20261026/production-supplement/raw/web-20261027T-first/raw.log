@@ -1,0 +1,247 @@
+
+Running 31 tests using 1 worker
+
+
+
+(node:42040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/31] tests\run-supplement-adoption.spec.ts:64:48 › desktop m1: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+  1) tests\run-supplement-adoption.spec.ts:64:48 › desktop m1: B1 exact quote requires explicit consent, and refresh cannot authorize a charge 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-de-e2c53-h-cannot-authorize-a-charge\error-context.md
+
+
+(node:5920) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[2/31] tests\run-supplement-adoption.spec.ts:64:48 › desktop m3: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+  2) tests\run-supplement-adoption.spec.ts:64:48 › desktop m3: B1 exact quote requires explicit consent, and refresh cannot authorize a charge 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-de-5085c-h-cannot-authorize-a-charge\error-context.md
+
+
+(node:2888) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[3/31] tests\run-supplement-adoption.spec.ts:64:48 › desktop m4: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+  3) tests\run-supplement-adoption.spec.ts:64:48 › desktop m4: B1 exact quote requires explicit consent, and refresh cannot authorize a charge 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-de-446b7-h-cannot-authorize-a-charge\error-context.md
+
+
+
+
+(node:38640) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[4/31] tests\run-supplement-adoption.spec.ts:77:1 › zero additional quote explains continued original fees and still needs an explicit continue
+  4) tests\run-supplement-adoption.spec.ts:77:1 › zero additional quote explains continued original fees and still needs an explicit continue 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-ze-56d78--needs-an-explicit-continue\error-context.md
+
+
+(node:17996) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[5/31] tests\run-supplement-adoption.spec.ts:83:1 › accepted adoption with a lost response survives refresh and recovers GET by original request_id
+  5) tests\run-supplement-adoption.spec.ts:83:1 › accepted adoption with a lost response survives refresh and recovers GET by original request_id 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-ac-e1924--GET-by-original-request-id\error-context.md
+
+
+
+(node:51008) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[6/31] tests\run-supplement-adoption.spec.ts:91:1 › low balance retries the exact adoption request after recharge
+  6) tests\run-supplement-adoption.spec.ts:91:1 › low balance retries the exact adoption request after recharge 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-lo-6493c-tion-request-after-recharge\error-context.md
+
+
+
+(node:38380) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[7/31] tests\run-supplement-adoption.spec.ts:98:1 › lost quote and confirmation responses restore read-only and preserve their request IDs
+  7) tests\run-supplement-adoption.spec.ts:98:1 › lost quote and confirmation responses restore read-only and preserve their request IDs 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-lo-16a66--preserve-their-request-IDs\error-context.md
+
+
+
+
+(node:51016) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[8/31] tests\run-supplement-adoption.spec.ts:107:1 › changed or expired quotes require a new fee check while retaining saved drafts/uploads
+  8) tests\run-supplement-adoption.spec.ts:107:1 › changed or expired quotes require a new fee check while retaining saved drafts/uploads 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-ch-7b923-aining-saved-drafts-uploads\error-context.md
+
+
+(node:41884) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[9/31] tests\run-supplement-adoption.spec.ts:116:1 › a second tab changes consent journal; stale tab must explicitly reload before any charge
+  9) tests\run-supplement-adoption.spec.ts:116:1 › a second tab changes consent journal; stale tab must explicitly reload before any charge 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-adoption-a--dfe56-ly-reload-before-any-charge\error-context.md
+
+
+(node:47276) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[10/31] tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+  10) tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-draft-deskt-6030a-plements-on-original-resume\error-context.md
+
+
+(node:26388) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[11/31] tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+  11) tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-draft-deskt-e3486-plements-on-original-resume\error-context.md
+
+
+
+(node:24692) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[12/31] tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+  12) tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-first\test-results\run-supplement-draft-deskt-908dc-plements-on-original-resume\error-context.md
+
+
+(node:22104) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+
+(Use `node --trace-warnings ...` to show where the warning was created)
+

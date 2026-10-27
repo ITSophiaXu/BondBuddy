@@ -1,0 +1,90 @@
+TAP version 13
+# (node:18424) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: authoring: public B1 adoption closes the original fee, starts an independent meter and refunds only failed rework
+ok 1 - authoring: public B1 adoption closes the original fee, starts an independent meter and refunds only failed rework
+  ---
+  duration_ms: 10368.555
+  type: 'test'
+  ...
+# Subtest: review: public B1 adoption closes the original fee, starts an independent meter and refunds only failed rework
+ok 2 - review: public B1 adoption closes the original fee, starts an independent meter and refunds only failed rework
+  ---
+  duration_ms: 9901.7567
+  type: 'test'
+  ...
+# Subtest: m4: public B1 adoption closes the original fee, starts an independent meter and refunds only failed rework
+ok 3 - m4: public B1 adoption closes the original fee, starts an independent meter and refunds only failed rework
+  ---
+  duration_ms: 9862.9063
+  type: 'test'
+  ...
+# Subtest: authoring: genuine early pause carries the original fee with no additional charge
+ok 4 - authoring: genuine early pause carries the original fee with no additional charge
+  ---
+  duration_ms: 5908.1533
+  type: 'test'
+  ...
+# Subtest: authoring: genuine early pause stays unbilled with no additional charge
+ok 5 - authoring: genuine early pause stays unbilled with no additional charge
+  ---
+  duration_ms: 5425.1205
+  type: 'test'
+  ...
+# Subtest: review: genuine early pause carries the original fee with no additional charge
+ok 6 - review: genuine early pause carries the original fee with no additional charge
+  ---
+  duration_ms: 5699.9776
+  type: 'test'
+  ...
+# Subtest: review: genuine early pause stays unbilled with no additional charge
+ok 7 - review: genuine early pause stays unbilled with no additional charge
+  ---
+  duration_ms: 5687.1376
+  type: 'test'
+  ...
+# Subtest: m4: genuine early pause carries the original fee with no additional charge
+ok 8 - m4: genuine early pause carries the original fee with no additional charge
+  ---
+  duration_ms: 6113.542
+  type: 'test'
+  ...
+# Subtest: m4: genuine early pause stays unbilled with no additional charge
+ok 9 - m4: genuine early pause stays unbilled with no additional charge
+  ---
+  duration_ms: 4777.8067
+  type: 'test'
+  ...
+# Subtest: on_delivery: source retirement follows the original policy and rework failure never refunds the source
+ok 10 - on_delivery: source retirement follows the original policy and rework failure never refunds the source
+  ---
+  duration_ms: 8932.2471
+  type: 'test'
+  ...
+# Subtest: authoring_progress_v1: source retirement follows the original policy and rework failure never refunds the source
+ok 11 - authoring_progress_v1: source retirement follows the original policy and rework failure never refunds the source
+  ---
+  duration_ms: 9493.0992
+  type: 'test'
+  ...
+# Subtest: a free production origin can accept positive B1 without minting a false original reservation
+ok 12 - a free production origin can accept positive B1 without minting a false original reservation
+  ---
+  duration_ms: 8389.8038
+  type: 'test'
+  ...
+# Subtest: wrong confirmation, insufficient funds, stale price and competing adoption cannot partially allocate or move the head
+ok 13 - wrong confirmation, insufficient funds, stale price and competing adoption cannot partially allocate or move the head
+  ---
+  duration_ms: 11803.8606
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 119073.3903

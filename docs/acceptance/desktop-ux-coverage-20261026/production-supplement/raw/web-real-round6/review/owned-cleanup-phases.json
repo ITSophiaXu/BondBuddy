@@ -1,0 +1,200 @@
+[
+  {
+    "phase": "before_app_close",
+    "at": "2026-10-27T02:50:00.100Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 2,
+    "active_http": [],
+    "pool": {
+      "total": 3,
+      "idle": 3,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 16788,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:54.382Z",
+        "query": "SELECT * FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY sequence DESC"
+      },
+      {
+        "pid": 17440,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:59.959Z",
+        "query": "ROLLBACK"
+      },
+      {
+        "pid": 35240,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:54.648Z",
+        "query": "SELECT e.input_hash,e.version FROM bb_runs r JOIN bb_review_execution_snapshots e\n      ON e.run_id=r.id AND e.project_id=r.project_id AND e.owner_user_id=r.owner_user_id\n      AND e.execution_version=1 AND e.input_revision=r.input_revision AND e.input_hash=r.input_hash\n      WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state IN ('succeeded','test_completed')\n      AND e.operation IN ('full_review','differential_review') AND EXISTS (\n        SELECT 1 FROM bb_review_execution_artifact_versions a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id\n          AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id\n        WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id\n          AND a.execution_version=1 AND a.input_hash=r.input_hash AND a.input_revision=r.input_revision\n          AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_app_close",
+    "at": "2026-10-27T02:50:00.110Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 3,
+      "idle": 3,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 16788,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:54.382Z",
+        "query": "SELECT * FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY sequence DESC"
+      },
+      {
+        "pid": 17440,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:59.959Z",
+        "query": "ROLLBACK"
+      },
+      {
+        "pid": 35240,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:54.648Z",
+        "query": "SELECT e.input_hash,e.version FROM bb_runs r JOIN bb_review_execution_snapshots e\n      ON e.run_id=r.id AND e.project_id=r.project_id AND e.owner_user_id=r.owner_user_id\n      AND e.execution_version=1 AND e.input_revision=r.input_revision AND e.input_hash=r.input_hash\n      WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state IN ('succeeded','test_completed')\n      AND e.operation IN ('full_review','differential_review') AND EXISTS (\n        SELECT 1 FROM bb_review_execution_artifact_versions a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id\n          AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id\n        WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id\n          AND a.execution_version=1 AND a.input_hash=r.input_hash AND a.input_revision=r.input_revision\n          AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "before_fixture_cleanup",
+    "at": "2026-10-27T02:50:00.130Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 3,
+      "idle": 3,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 16788,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:54.382Z",
+        "query": "SELECT * FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY sequence DESC"
+      },
+      {
+        "pid": 17440,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:59.959Z",
+        "query": "ROLLBACK"
+      },
+      {
+        "pid": 35240,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:49:54.648Z",
+        "query": "SELECT e.input_hash,e.version FROM bb_runs r JOIN bb_review_execution_snapshots e\n      ON e.run_id=r.id AND e.project_id=r.project_id AND e.owner_user_id=r.owner_user_id\n      AND e.execution_version=1 AND e.input_revision=r.input_revision AND e.input_hash=r.input_hash\n      WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.state IN ('succeeded','test_completed')\n      AND e.operation IN ('full_review','differential_review') AND EXISTS (\n        SELECT 1 FROM bb_review_execution_artifact_versions a JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id\n          AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id\n        WHERE a.owner_user_id=r.owner_user_id AND a.project_id=r.project_id AND a.run_id=r.id\n          AND a.execution_version=1 AND a.input_hash=r.input_hash AND a.input_revision=r.input_revision\n          AND a.kind='report' AND v.delivery_status='available' AND v.quality_status='passed')"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_fixture_cleanup",
+    "at": "2026-10-27T02:50:00.149Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  },
+  {
+    "phase": "before_owned_drop",
+    "at": "2026-10-27T02:50:00.171Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_owned_drop",
+    "at": "2026-10-27T02:50:00.899Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  }
+]

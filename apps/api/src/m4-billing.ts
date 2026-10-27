@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { M4_BILLING_TASKS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_FIXED_PRICE, type M4BillingTask, type M4Quote } from '@bondbuddy/contracts';
 import { creditBalance, lockCreditAccount } from './billing.js';
 import { date, Problem, transaction, uid } from './data.js';
@@ -6,6 +6,8 @@ import { DYNAMIC_AUTHORING_POLICY } from './authoring-credit-debit.js';
 import { readAuthoringProgress } from './authoring-progress.js';
 import type { M4CreditCharge } from '@bondbuddy/contracts';
 import { inputManifestHash } from './production-rule-pin.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
+import { readRunExecutionInput } from './run-execution-input.js';
 
 type Db = Pool | PoolClient;
 const isDocumentTask = (task:string) => (Object.values(M4_DOCUMENT_BILLING_TASKS) as string[]).includes(task);
@@ -138,9 +140,14 @@ export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string
 export async function settleM4Metering(db:Db,owner:string,runId:string):Promise<{ready:boolean;charged_points:number|null}> {
   const run=(await db.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[owner,runId])).rows[0];
   if(!run)throw new Problem(404,'NOT_FOUND','Run unavailable');
+  const fee=await readRunBillingSegment(db,run);
+  // Every positive rework fee has its own fixed cap and dynamic meter. Its
+  // source run may still be free or metered; neither chooses this liability.
+  if(fee?.billingPolicy===DYNAMIC_AUTHORING_POLICY)return {ready:true,charged_points:fee.points};
+  if(!fee)return {ready:true,charged_points:0};
   if(run.billing_mode==='fixed_credits') {
     const q=(await db.query(`SELECT q.reserve_points FROM bb_credit_reservations r JOIN bb_m4_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id
-      WHERE r.owner_user_id=$1 AND r.run_id=$2 AND r.id=$3 AND q.billing_method='fixed'`,[owner,runId,run.reservation_id])).rows[0];
+      WHERE r.owner_user_id=$1 AND r.run_id=$2 AND r.id=$3 AND q.billing_method='fixed'`,[owner,runId,fee.reservationId])).rows[0];
     if(!q)throw new Problem(503,'BILLING_NOT_READY','M4 fixed quotation unavailable');
     return {ready:true,charged_points:Number(q.reserve_points)};
   }
@@ -148,7 +155,7 @@ export async function settleM4Metering(db:Db,owner:string,runId:string):Promise<
   const prior=(await db.query('SELECT * FROM bb_m4_metering WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rows[0];
   if(prior)return {ready:true,charged_points:Number(prior.charged_points)};
   const q=(await db.query(`SELECT q.*,c.config FROM bb_credit_reservations r JOIN bb_m4_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id
-    JOIN bb_m4_billing_configs c ON c.id=q.config_id WHERE r.owner_user_id=$1 AND r.run_id=$2`,[owner,runId])).rows[0];
+    JOIN bb_m4_billing_configs c ON c.id=q.config_id WHERE r.owner_user_id=$1 AND r.run_id=$2 AND r.id=$3`,[owner,runId,fee.reservationId])).rows[0];
   if(!q)throw new Problem(503,'BILLING_NOT_READY','M4 pinned metering configuration unavailable');
   const calls=(await db.query(`SELECT a.id,a.model_id,a.status,u.* FROM bb_model_call_attempts a JOIN bb_call_usage_effective u ON u.attempt_id=a.id
     JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id WHERE a.owner_user_id=$1 AND j.run_id=$2 AND a.status<>'confirmed_not_sent' ORDER BY a.id`,[owner,runId])).rows;
@@ -165,10 +172,41 @@ export async function settleM4Metering(db:Db,owner:string,runId:string):Promise<
 
 /** Workspace polling reads the immutable quote and authoritative ledger together. */
 export async function readM4CreditCharge(db:Db,owner:string,runId:string):Promise<M4CreditCharge>{
-  const q=(await db.query(`SELECT q.*,c.state AS charge_state FROM bb_runs r
-    JOIN bb_credit_reservations c ON c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id
-    JOIN bb_m4_quotes q ON q.id=c.quote_id AND q.owner_user_id=c.owner_user_id
-    WHERE r.id=$1 AND r.owner_user_id=$2`,[runId,owner])).rows[0];
+  if(db instanceof Pool)return transaction(db,async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+    return readM4CreditChargeSnapshot(client,owner,runId);
+  });
+  return readM4CreditChargeSnapshot(db,owner,runId);
+}
+// Transaction callers already own the snapshot/locks for their workspace read.
+async function readM4CreditChargeSnapshot(db:Db,owner:string,runId:string):Promise<M4CreditCharge>{
+  const run=(await db.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[owner,runId])).rows[0];
+  if(!run)return {quote:null,state:null};
+  const fee=await readRunBillingSegment(db,run);
   const progress=await readAuthoringProgress(db,owner,runId);
+  if(!fee)return {quote:null,state:null,...(progress?{progress}:{})};
+  const supplement=(await db.query(`SELECT q.*,c.state AS charge_state FROM bb_run_supplement_quotes q
+    JOIN bb_credit_reservations c ON c.quote_id=q.id AND c.owner_user_id=q.owner_user_id AND c.run_id=q.run_id
+    WHERE q.id=$1 AND q.owner_user_id=$2 AND q.run_id=$3 AND c.id=$4`,
+  [fee.sourceQuoteId,owner,runId,fee.reservationId])).rows[0];
+  if(supplement){
+    const frozen=await readRunExecutionInput(db,owner,runId,fee.execution),manifest=frozen.m4Execution?.manifest;
+    const item=Array.isArray(supplement.items)&&supplement.items.length===1?supplement.items[0]:null;
+    if(fee.execution.executionVersion!==2||fee.billingPolicy!==DYNAMIC_AUTHORING_POLICY
+      ||supplement.kind!=='m4'||supplement.candidate_input_hash?.trim()!==fee.execution.inputHash
+      ||Number(supplement.total_points)!==fee.points||!item?.needs_redo||Number(item.points)!==fee.points
+      ||!isDocumentTask(item.task_type)||!manifest||manifest.kind!=='document'||manifest.billing_task!==item.task_type
+      ||typeof manifest.topic_id!=='string'||typeof item.price_version!=='string')
+      throw new Problem(503,'BILLING_NOT_READY','M4追加费用依据暂时无法核对');
+    const quote:M4Quote={quote_id:supplement.id,topic_id:manifest.topic_id,input_hash:fee.execution.inputHash,
+      task_type:item.task_type,points:fee.points,price_version:item.price_version,billing_policy:'authoring_balance_v2',
+      reason:`本次补料重做追加 ${fee.points} 积分，包含正文 Word 和编制说明；按有效处理时间和已完成工作扣减，排队与暂停不扣。余额用完保存后暂停；主动结束保留已扣部分，平台失败退回本轮已扣积分。`,
+      created_at:date(supplement.created_at),expires_at:date(supplement.expires_at),billing_method:'fixed',multiplier:1,amount_semantics:'fixed_price'};
+    return {quote,state:supplement.charge_state,...(progress?{progress}:{})};
+  }
+  const q=(await db.query(`SELECT q.*,c.state AS charge_state FROM bb_credit_reservations c
+    JOIN bb_m4_quotes q ON q.id=c.quote_id AND q.owner_user_id=c.owner_user_id
+    WHERE c.id=$1 AND c.owner_user_id=$2 AND c.run_id=$3`,[fee.reservationId,owner,runId])).rows[0];
+  if(!q)throw new Problem(503,'BILLING_NOT_READY','M4收费依据暂时无法核对');
   return {quote:q?m4QuoteDto(q):null,state:q?.charge_state??null,...(progress?{progress}:{})};
 }

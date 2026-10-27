@@ -1,0 +1,107 @@
+
+Running 31 tests using 1 worker
+
+
+
+(node:50696) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/31] tests\run-supplement-adoption.spec.ts:64:48 › desktop m1: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+  1) tests\run-supplement-adoption.spec.ts:64:48 › desktop m1: B1 exact quote requires explicit consent, and refresh cannot authorize a charge 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]')
+    Expected substring: "补料已采用"
+    Received string:    "需重做的文档按该文档当前完整价格追加计费；不受影响的文档不追加费用。先核对报价，明确确认后采用补料并继续。本次追加费用本轮募集说明书：需要重做，按当前完整文档价格 · 4500 积分合计追加 4500 积分 · 报价有效至 2099年1月1日 08:00确认追加 4500 积分并继续核对追加费用无法访问这个项目，它可能已移除或不属于当前账号。"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]') with timeout 5000ms
+      - waiting for locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]')
+        14 × locator resolved to <div data-supplement-adoption="">…</div>
+           - unexpected value "需重做的文档按该文档当前完整价格追加计费；不受影响的文档不追加费用。先核对报价，明确确认后采用补料并继续。本次追加费用本轮募集说明书：需要重做，按当前完整文档价格 · 4500 积分合计追加 4500 积分 · 报价有效至 2099年1月1日 08:00确认追加 4500 积分并继续核对追加费用无法访问这个项目，它可能已移除或不属于当前账号。"
+
+
+      70 |   await page.reload();await mountSupplementSurface(page,s,surface);await expect(action(page,'adopt')).toBeEnabled();
+      71 |   expect(f.confirms).toEqual([]);expect(f.adopts).toEqual([]);expect(f.quoteRequests).toHaveLength(1);
+    > 72 |   await action(page,'adopt').click();await expect(panel(page).locator('[data-supplement-adoption]')).toContainText('补料已采用');
+         |                                                                                                      ^
+      73 |   if(process.env.BB_SUPPLEMENT_ADOPTION_EVIDENCE_DIR)await page.screenshot({path:join(process.env.BB_SUPPLEMENT_ADOPTION_EVIDENCE_DIR,`${surface}-b1-adopted.png`),fullPage:true});
+      74 |   expect(f.confirms).toHaveLength(1);expect(f.adopts).toHaveLength(1);expect(s.saves).toHaveLength(1);expect(s.byteWrites).toBe(1);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+      75 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-adoption.spec.ts:72:102
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-edge\test-results\run-supplement-adoption-de-e2c53-h-cannot-authorize-a-charge\error-context.md
+
+
+(node:8540) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[2/31] tests\run-supplement-adoption.spec.ts:64:48 › desktop m3: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+  2) tests\run-supplement-adoption.spec.ts:64:48 › desktop m3: B1 exact quote requires explicit consent, and refresh cannot authorize a charge 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]')
+    Expected substring: "补料已采用"
+    Received string:    "需重做的文档按该文档当前完整价格追加计费；不受影响的文档不追加费用。先核对报价，明确确认后采用补料并继续。本次追加费用本轮募集说明书：需要重做，按当前完整文档价格 · 4500 积分合计追加 4500 积分 · 报价有效至 2099年1月1日 08:00确认追加 4500 积分并继续核对追加费用无法访问这个项目，它可能已移除或不属于当前账号。"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]') with timeout 5000ms
+      - waiting for locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]')
+        14 × locator resolved to <div data-supplement-adoption="">…</div>
+           - unexpected value "需重做的文档按该文档当前完整价格追加计费；不受影响的文档不追加费用。先核对报价，明确确认后采用补料并继续。本次追加费用本轮募集说明书：需要重做，按当前完整文档价格 · 4500 积分合计追加 4500 积分 · 报价有效至 2099年1月1日 08:00确认追加 4500 积分并继续核对追加费用无法访问这个项目，它可能已移除或不属于当前账号。"
+
+
+      70 |   await page.reload();await mountSupplementSurface(page,s,surface);await expect(action(page,'adopt')).toBeEnabled();
+      71 |   expect(f.confirms).toEqual([]);expect(f.adopts).toEqual([]);expect(f.quoteRequests).toHaveLength(1);
+    > 72 |   await action(page,'adopt').click();await expect(panel(page).locator('[data-supplement-adoption]')).toContainText('补料已采用');
+         |                                                                                                      ^
+      73 |   if(process.env.BB_SUPPLEMENT_ADOPTION_EVIDENCE_DIR)await page.screenshot({path:join(process.env.BB_SUPPLEMENT_ADOPTION_EVIDENCE_DIR,`${surface}-b1-adopted.png`),fullPage:true});
+      74 |   expect(f.confirms).toHaveLength(1);expect(f.adopts).toHaveLength(1);expect(s.saves).toHaveLength(1);expect(s.byteWrites).toBe(1);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+      75 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-adoption.spec.ts:72:102
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-edge\test-results\run-supplement-adoption-de-5085c-h-cannot-authorize-a-charge\error-context.md
+
+
+
+(node:20944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[3/31] tests\run-supplement-adoption.spec.ts:64:48 › desktop m4: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+  3) tests\run-supplement-adoption.spec.ts:64:48 › desktop m4: B1 exact quote requires explicit consent, and refresh cannot authorize a charge 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]')
+    Expected substring: "补料已采用"
+    Received string:    "需重做的文档按该文档当前完整价格追加计费；不受影响的文档不追加费用。先核对报价，明确确认后采用补料并继续。本次追加费用本轮募集说明书：需要重做，按当前完整文档价格 · 4500 积分合计追加 4500 积分 · 报价有效至 2099年1月1日 08:00确认追加 4500 积分并继续核对追加费用无法访问这个项目，它可能已移除或不属于当前账号。"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]') with timeout 5000ms
+      - waiting for locator('[data-run-supplement="supplement-run"]').locator('[data-supplement-adoption]')
+        14 × locator resolved to <div data-supplement-adoption="">…</div>
+           - unexpected value "需重做的文档按该文档当前完整价格追加计费；不受影响的文档不追加费用。先核对报价，明确确认后采用补料并继续。本次追加费用本轮募集说明书：需要重做，按当前完整文档价格 · 4500 积分合计追加 4500 积分 · 报价有效至 2099年1月1日 08:00确认追加 4500 积分并继续核对追加费用无法访问这个项目，它可能已移除或不属于当前账号。"
+
+
+      70 |   await page.reload();await mountSupplementSurface(page,s,surface);await expect(action(page,'adopt')).toBeEnabled();
+      71 |   expect(f.confirms).toEqual([]);expect(f.adopts).toEqual([]);expect(f.quoteRequests).toHaveLength(1);
+    > 72 |   await action(page,'adopt').click();await expect(panel(page).locator('[data-supplement-adoption]')).toContainText('补料已采用');
+         |                                                                                                      ^
+      73 |   if(process.env.BB_SUPPLEMENT_ADOPTION_EVIDENCE_DIR)await page.screenshot({path:join(process.env.BB_SUPPLEMENT_ADOPTION_EVIDENCE_DIR,`${surface}-b1-adopted.png`),fullPage:true});
+      74 |   expect(f.confirms).toHaveLength(1);expect(f.adopts).toHaveLength(1);expect(s.saves).toHaveLength(1);expect(s.byteWrites).toBe(1);expect(s.controls).toEqual([]);expect(s.unexpectedMutations).toEqual([]);
+      75 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\ux-coverage-20261026\apps\web\tests\run-supplement-adoption.spec.ts:72:102
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-20261027T-edge\test-results\run-supplement-adoption-de-446b7-h-cannot-authorize-a-charge\error-context.md
+
+
+(node:37092) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[4/31] tests\run-supplement-adoption.spec.ts:77:1 › zero additional quote explains continued original fees and still needs an explicit continue

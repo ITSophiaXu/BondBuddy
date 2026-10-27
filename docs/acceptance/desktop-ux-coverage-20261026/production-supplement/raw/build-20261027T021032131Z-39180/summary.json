@@ -1,0 +1,73 @@
+[
+  {
+    "name": "contracts",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "packages/contracts/tsconfig.json"
+    ],
+    "startedAt": "2026-10-27T02:10:32.136Z",
+    "completedAt": "2026-10-27T02:10:38.310Z",
+    "exitCode": 0,
+    "signal": null,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "api",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "apps/api/tsconfig.json"
+    ],
+    "startedAt": "2026-10-27T02:10:38.315Z",
+    "completedAt": "2026-10-27T02:10:56.468Z",
+    "exitCode": 0,
+    "signal": null,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "worker",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "apps/worker/tsconfig.json"
+    ],
+    "startedAt": "2026-10-27T02:10:56.471Z",
+    "completedAt": "2026-10-27T02:11:12.286Z",
+    "exitCode": 0,
+    "signal": null,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "web-types",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "apps/web/tsconfig.json"
+    ],
+    "startedAt": "2026-10-27T02:11:12.289Z",
+    "completedAt": "2026-10-27T02:11:33.717Z",
+    "exitCode": 0,
+    "signal": null,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "web",
+    "args": [
+      "node_modules/vite/bin/vite.js",
+      "build",
+      "apps/web"
+    ],
+    "startedAt": "2026-10-27T02:11:33.721Z",
+    "completedAt": "2026-10-27T02:11:35.072Z",
+    "exitCode": 0,
+    "signal": null,
+    "stdoutSha256": "c3becc2811a6ef4e03a498b5dc4fcda30f9c107e3aa3a0da193b54afbbc59781",
+    "stderrSha256": "351b524197fb492920789369e7f1a271420c757633fbb553b280a181ac4c31a4"
+  }
+]

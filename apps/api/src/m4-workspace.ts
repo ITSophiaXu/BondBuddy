@@ -278,10 +278,17 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
   await c.query("UPDATE bb_projects SET execution_scope_project_id=$3,kind=CASE WHEN kind='qa' THEN 'generation' ELSE kind END WHERE owner_user_id=$1 AND id=$2",[owner,t.project_id,manifest.execution_scope_project_id]);
   return newRun(c,owner,t,b.execution_request_id,requestHash,manifest,b.quote_id,inputManifestHash(manifest),queueEnabled);
 }
+// Resolve the fee belonging to this artifact's execution. A free V1 run can
+// acquire a paid supplement, and its original pointer must stay unchanged.
+const dynamicArtifactFee=`EXISTS(SELECT 1 FROM bb_run_execution_billing_bindings paid
+  JOIN bb_run_billing_segments fee ON fee.id=paid.billing_segment_id AND fee.owner_user_id=paid.owner_user_id
+    AND fee.project_id=paid.project_id AND fee.run_id=paid.run_id
+  WHERE paid.owner_user_id=r.owner_user_id AND paid.run_id=r.id AND paid.execution_version=a.execution_version
+    AND paid.input_revision=a.input_revision AND paid.input_hash=a.input_hash AND fee.billing_policy='authoring_balance_v2')`;
 async function artifactRows(db:Db,owner:string,topic:string){return (await db.query(`SELECT a.*,v.sha256,v.media_type,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifact_execution_versions a
   JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
   JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id ${artifactNameJoins('v')} WHERE a.owner_user_id=$1 AND a.topic_id=$2
-  AND v.quality_status='passed' AND v.delivery_status='available' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2')) ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
+  AND v.quality_status='passed' AND v.delivery_status='available' AND (r.state='succeeded' OR NOT ${dynamicArtifactFee}) ORDER BY a.created_at,a.kind`,[owner,topic])).rows;}
 const artifactDto=(a:any):M4Artifact=>({source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim(),
   topic_id:a.topic_id,run_id:a.run_id,document_type:a.document_type,kind:a.kind,filename:artifactDownloadName(a).filename,mime_type:a.media_type,byte_size:Number(a.byte_size),
   created_at:date(a.created_at),base_artifact:a.base_artifact,input_hash:a.input_hash.trim(),revision_number:a.revision_number??null});
@@ -504,7 +511,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
     const a=(await db().query(`SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,${artifactNameColumns('v')} FROM bb_m4_artifact_execution_versions a
       JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id
       JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id ${artifactNameJoins('v')}
-      WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed' AND (r.state='succeeded' OR NOT EXISTS(SELECT 1 FROM bb_credit_reservations c WHERE c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id AND c.billing_policy='authoring_balance_v2'))`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};
+      WHERE a.owner_user_id=$1 AND a.artifact_id=$2 AND a.artifact_version=$3 AND p.deleted_at IS NULL AND v.delivery_status='available' AND v.quality_status='passed' AND (r.state='succeeded' OR NOT ${dynamicArtifactFee})`,[user,artifactId,version])).rows[0];if(!a)throw missing();return a;};
   app.get(`${base}/artifacts/:artifact_id/versions/:artifact_version/preview`,async request=>{const a=await readArtifact(request);return {artifact:artifactDto(a),content:a.preview_content??'此准确版本暂无文本预览，请下载原始 Word 查看。'};});
   app.get(`${base}/artifacts/:artifact_id/versions/:artifact_version/bytes`,async(request,reply)=>{const a=await readArtifact(request);
     const bytes=a.kind==='qa_text'?Buffer.from(a.body_content??'','utf8'):await blobs().getIfExistsBounded(a.object_key,100*1024*1024);

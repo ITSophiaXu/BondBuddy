@@ -1,0 +1,80 @@
+{
+  "record_type": "final read-only visual review of round5 M1 screenshot evidence",
+  "recorded_at_utc": "2026-10-27T02:38:44.970842+00:00",
+  "reviewer_task": "/root/review_body_tests/visual_evidence_check",
+  "scope": "Only the two named round5 authoring/M1 screenshots were actually viewed for this final review; round5 M3 and M4 screenshots were not reviewed here.",
+  "desktop_viewport": {
+    "width": 1440,
+    "height": 960,
+    "source": "real browser test viewport configuration; full-page PNG dimensions are recorded separately"
+  },
+  "reported_test_context": {
+    "source": "Parent task report, separate from visual observations",
+    "context": "Round5 harness explicitly enables paid authoring/review, wallet enabled=true, M1 passed, and the successor Word contains a marker from uploaded material bytes.",
+    "independently_verified_here": "The screenshots show paid point amounts, explicit 4500-point consent, a version-2 result, browser-download handoff and a visible adopted marker in the update note. This visual review did not inspect the actual downloaded Word bytes or HTTP/ledger records."
+  },
+  "screenshots": [
+    {
+      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round5\\authoring\\b1-quote-full.png",
+      "purpose": "M1 round5 quote",
+      "actually_viewed": true,
+      "viewing_tool": "functions view_image (rendered image visually inspected)",
+      "png_width": 1440,
+      "png_height": 2977,
+      "metadata_source": "PNG IHDR bytes",
+      "sha256": "5b3bb9b4cd847d387a4bd92df488c46ddf2ff968ca4074940a1913fea5343c31",
+      "bytes": 280218,
+      "observations": [
+        "The task is paused and the saved supplement is explicitly marked not yet adopted.",
+        "The paid-task card shows 907 points already consumed and an available balance of 9093 points; the sidebar also shows 9093.",
+        "The quote section explicitly shows a total additional 4500 points and the confirmation button to add 4500 points and continue.",
+        "The additional-price explanation and consent action are legible, with no visible control overlap, clipping or horizontal overflow in this desktop image."
+      ]
+    },
+    {
+      "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round5\\authoring\\successor-word-downloaded-full.png",
+      "purpose": "M1 round5 successor download",
+      "actually_viewed": true,
+      "viewing_tool": "functions view_image (rendered image visually inspected)",
+      "png_width": 1440,
+      "png_height": 2837,
+      "metadata_source": "PNG IHDR bytes",
+      "sha256": "ed03d6c0da5f4730464b19dbb75f9c5b0ba9297c1a3f704790c41754c5cc2678",
+      "bytes": 267437,
+      "observations": [
+        "The task states that the document has been generated and can be downloaded.",
+        "The paid-task card shows 4500 points charged for this execution and an available balance of 4593 points; the sidebar also shows 4593.",
+        "The adopted supplement summary explicitly records the additional 4500 points.",
+        "The current result is labelled version 2; clean and tracked downloads are distinct, and the clean download shows the browser-download handoff message.",
+        "The current update note visibly includes a SYNTHETIC_AUTHORING_..._ADOPTED material marker.",
+        "No visible control overlap, clipping or horizontal overflow was seen, including around the material marker text."
+      ]
+    }
+  ],
+  "observed_conclusion": "The paid point display, explicit additional-4500 consent, adopted state and version-2 download state remain visually understandable at the recorded desktop viewport, without obvious layout obstruction.",
+  "product_assets_at_round5_start": {
+    "manifest": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round5\\source-before.json",
+    "assets": [
+      {
+        "path": "apps/web/dist/assets/index-CumTaIPJ.js",
+        "sha256": "f9fc10bb5746c5e07ea61b4811688d5f451ad0be435f2f0d14bccbeb0f5650eb",
+        "bytes": 1662864,
+        "mtimeUtc": "2026-10-27T02:11:34.983Z"
+      }
+    ],
+    "basis": "Associated with the frozen product assets recorded at round5 start; this visual review does not itself assert final before/after source stability for the whole test run."
+  },
+  "limitations": [
+    "The quotation section remains low on a long page and requires scrolling from the initial desktop viewport.",
+    "This final visual review covers round5 M1 only. It does not replace the earlier round2 M1/M4 review or claim review of final M3/M4 screenshots.",
+    "The supplier/provider output and credit grants are synthetic. No real supplier or real payment was validated.",
+    "Displayed balances were read visually; the five wallet checkpoints, ledger conservation, wallet enabled flag and pause-clock behavior were not independently validated by this visual review.",
+    "A material marker is visible in the update note, but actual uploaded-byte provenance and downloaded Word contents require the separate automated evidence.",
+    "This review covers the recorded 1440-pixel desktop viewport only; mobile layout, keyboard navigation and accessibility were not evaluated.",
+    "No source, supplier fixture, built asset, existing screenshot or old visual-review.json was changed."
+  ],
+  "preserved_prior_review": {
+    "path": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\visual-review.json",
+    "sha256_before": "adf01b964098a03029655683d2da8cad2dfef0f3b8d009973c36e4545697c4c6"
+  }
+}

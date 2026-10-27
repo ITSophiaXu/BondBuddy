@@ -976,3 +976,17 @@ M4 测试交付先给 Word 加测试标记，再登记实际成品的字节数�
 实际 debit、progress sync/read、worker activity、finish 尾款及 SQL finalizer 使用准确绑定；缺失或不同的收费绑定拒绝收费，不回退原 pointer。free V1 和原内部免费 V2 没有费用段，继续使用零金额 legacy meter。SQL 结算只替换准确费用来源与 meter，原 on_delivery、authoring_progress_v1、authoring_balance_v2 的交付要求、取消金额、退款及追加账本语句保留。历史按费用段原输入取名称，公开 DTO 与分页保持；运维冲正可指定 reservation，审计覆盖全部五类原报价和完整映射/镜像，避免遗漏 M4 等原 credit_quotes 外费用。
 
 此迁移仍保留每 run 一条 reservation 的唯一约束及全部 paid successor gates，仅建立并接入原费用段。B1 重做段、0 追加的原费用延续绑定、前段停止计费与本段独立退款、正式生产采用授权和桌面闭环仍待接通；不能据此称已实现追加收费或关闭 G03。验证见[原费用段专项](acceptance/desktop-ux-coverage-20261026/original-billing-segments/README.md)，完整 goal 继续 active。
+
+## 2026-10-27：生产任务按 B1 确认补料并续做（0139，本地未发布）
+
+`bb_run_supplement_adoptions` 将准确补料回执、处理计划、原执行、候选输入、不可变报价及明确确认关联为生产采用权限。`POST /runs/:run_id/supplement-adoptions` 只接受请求 key、quote ID/hash 与 confirmation ID；客户端不能指定金额、目标输入或收费段。字节读取先于事务，事务按 project→run→job 锁重验材料、最新保存、暂停边界、现价及有效期，再原子写入采用权限、新输入与业务快照、收费绑定、V2 head、全新阶段检查点、状态事件和 outbox。原 run/job、初始输入与执行请求不变。精确请求回执重放先于状态/价格/有效期检查，响应丢失不会重新报价、排队或收费。
+
+需要重做时建立独立 `authoring_balance_v2` 费用段，金额为明确确认的现行整份文档价格，新段从零计量。原段按原 policy 退休：动态费用保留已扣部分；on_delivery 释放原预留；authoring_progress_v1 结算已冻结的 accrued 部分并释放余量。`bb_run_billing_segment_closures` 保存准确执行与关闭后的 charged/released/refunded 值，关闭后的财务状态和 meter 不得改写。新段失败只退款新段，旧消费不被新任务失败抵销。零追加的已付费任务继续原段与剩余上限，免费任务有显式 unbilled 采用且不创建虚假费用。免费起始、补料后付费的任务保留原 billing_mode 与 null reservation pointer，以当前执行的准确费用绑定选择真实责任。
+
+生产 V2 与既有内部测试 V2 使用独立授权。新工作要求完整当前 execution、活动 head、有效 lease 和准确采用权限；历史文件读取与清理使用不可变来源，不要求它仍是当前 head。报价到期与可用积分只在采用准入时核验，已发出的调用结果不会因后来到期或余额耗尽而丢失。provider result、unknown usage 恢复、实际 worker、进度、结算、M4 费用及下载读取当前准确费用段；M4 workspace 的 quote/state/progress 在同一只读重复读快照内返回，避免切换执行时混合两段费用。
+
+认证 `GET /runs/:run_id/supplement-adoptions?request_id=…` 用于准确回执恢复；`GET /runs/:run_id/supplement-adoptions/current` 按完整当前 head 返回同一不可变回执，不接受本机 key，也不产生收费或执行权限。未采用的 V1 和已归属内部任务返回 404；外部账号、已删除项目及已关闭账号不能读取。新浏览器据此显示已采用摘要，并通过普通 resume 恢复当前执行，无需读取只支持原 V1 的补料准备。用户可再次安全暂停、刷新/丢失本机记录后继续，也可撤回仍在保存中的暂停；这些动作不再报价或追加收费。
+
+桌面沿用三类任务原材料区，先保存并核对报价，再点击“确认追加 X 积分并继续”。本机准备草稿与追加确认 journal 分开保存；刷新只读恢复，未知采用先查原回执，跨页冲突不自动覆盖或授权。已采用任务的普通继续显示“继续当前任务”。本次协议限定原 V1 到 V2 的一次采用，未开放 V3 及再次补料采用。供应商与支付仍按既有能力运行，合成验证不代表专业内容或真实供应商验收。最终运行证据与当前 G03 状态见[生产补料采用记录](acceptance/desktop-ux-coverage-20261026/production-supplement/README.md)。
+
+最终本地专项分别采用 API 15/15、相关回归 88/88、生产 worker 5/5、契约 4/4、桌面交互 37/37 和真实本地完整链 3/3；五点钱包/流水及材料标记进入新 Word 已直接核对。内部 worker 回归 8 pass/3 环境跳过，构建/类型/契约检查通过。各选集不合计，历史失败与源码冻结单独保留；G03 的本地合成工程缺口关闭，真实供应商/支付/Azure、客户端、专业与用户效果仍属最终统一验收待办。

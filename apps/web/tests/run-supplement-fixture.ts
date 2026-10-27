@@ -72,6 +72,7 @@ export function supplementFixture(){
 export type SupplementFixture=ReturnType<typeof supplementFixture>;
 
 export function supplementResponse(s:SupplementFixture,requestId:string|null=null):RunSupplementDraftResponse{
+  requestId??=[...s.requestBodies.values()].find(r=>r.expected_revision+1===s.revision)?.request_id??null;
   const changed=s.changes.flatMap(c=>c.replaces?[c.replaces]:[]);
   const result=s.base.filter(m=>!changed.some(pin=>samePin(supplementPin(m),pin)));
   for(const change of s.changes){const m=s.materials.find(m=>samePin(supplementPin(m),change.material));if(m)result.push({...supplementPin(m),source_project_id:supplementIds.project,filename:m.filename,role:m.role,media_type:m.media_type,available:true});}

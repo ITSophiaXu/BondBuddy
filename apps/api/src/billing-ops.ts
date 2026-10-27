@@ -48,9 +48,19 @@ export async function auditCredits(pool:Pool){
     const reservationDrift=(await c.query(`SELECT r.id,r.run_id,r.state,r.points::text FROM bb_credit_reservations r
       LEFT JOIN bb_runs run ON run.id=r.run_id
       LEFT JOIN bb_run_billing_segments s ON s.reservation_id=r.id
-      LEFT JOIN bb_run_execution_versions origin ON origin.owner_user_id=r.owner_user_id AND origin.run_id=r.run_id AND origin.execution_version=1
-      LEFT JOIN bb_run_execution_billing_bindings b ON b.owner_user_id=r.owner_user_id AND b.run_id=r.run_id AND b.execution_version=1
+      LEFT JOIN bb_run_execution_versions origin ON origin.owner_user_id=r.owner_user_id AND origin.run_id=r.run_id
+        AND origin.execution_version=s.origin_execution_version
+      LEFT JOIN bb_run_execution_billing_bindings b ON b.owner_user_id=r.owner_user_id AND b.run_id=r.run_id
+        AND b.execution_version=s.origin_execution_version
+      LEFT JOIN bb_run_supplement_adoptions adoption ON adoption.owner_user_id=r.owner_user_id AND adoption.run_id=r.run_id
+        AND adoption.target_billing_segment_id=s.id AND adoption.assignment_kind='rework'
+      LEFT JOIN bb_run_execution_heads head ON head.owner_user_id=r.owner_user_id AND head.run_id=r.run_id
+      LEFT JOIN bb_run_execution_billing_bindings current_binding ON current_binding.owner_user_id=head.owner_user_id
+        AND current_binding.project_id=head.project_id AND current_binding.run_id=head.run_id
+        AND current_binding.execution_version=head.execution_version AND current_binding.input_revision=head.input_revision
+        AND current_binding.input_hash=head.input_hash
       LEFT JOIN bb_run_billing_progress m ON m.billing_segment_id=s.id
+      LEFT JOIN bb_run_billing_segment_closures closed ON closed.billing_segment_id=s.id
       LEFT JOIN bb_authoring_progress legacy ON legacy.owner_user_id=r.owner_user_id AND legacy.run_id=r.run_id
       LEFT JOIN LATERAL (SELECT count(*) AS matches,min(price.points) AS points FROM (
         SELECT owner_user_id,id,points FROM bb_credit_quotes
@@ -58,24 +68,52 @@ export async function auditCredits(pool:Pool){
         UNION ALL SELECT owner_user_id,id,points FROM bb_project_file_update_quotes
         UNION ALL SELECT owner_user_id,id,points FROM bb_integrity_quotes
         UNION ALL SELECT owner_user_id,id,points FROM bb_project_qa_quotes
+        UNION ALL SELECT owner_user_id,id,total_points AS points FROM bb_run_supplement_quotes
       ) price WHERE price.owner_user_id=r.owner_user_id AND price.id=r.quote_id) source ON true
       WHERE source.matches<>1 OR r.points IS DISTINCT FROM source.points
-      OR r.owner_user_id IS DISTINCT FROM run.owner_user_id OR run.reservation_id IS DISTINCT FROM r.id
+      OR r.owner_user_id IS DISTINCT FROM run.owner_user_id
       OR s.id IS DISTINCT FROM r.id OR s.reservation_id IS DISTINCT FROM r.id
       OR s.owner_user_id IS DISTINCT FROM r.owner_user_id OR s.project_id IS DISTINCT FROM run.project_id OR s.run_id IS DISTINCT FROM r.run_id
-      OR s.segment_number IS DISTINCT FROM 1 OR s.origin_execution_version IS DISTINCT FROM 1
-      OR s.origin_input_revision IS DISTINCT FROM run.input_revision OR s.origin_input_hash IS DISTINCT FROM run.input_hash
+      OR NOT (s.segment_number=1 AND s.origin_execution_version=1 AND run.reservation_id=r.id
+        AND s.origin_input_revision=run.input_revision AND s.origin_input_hash=run.input_hash
+        OR s.segment_number=2 AND s.origin_execution_version=2 AND adoption.id IS NOT NULL
+          AND adoption.project_id=s.project_id AND adoption.execution_version=s.origin_execution_version
+          AND adoption.input_revision=s.origin_input_revision AND adoption.input_hash=s.origin_input_hash
+          AND adoption.quote_id=s.source_quote_id AND adoption.total_points=s.points AND adoption.total_points>0
+          AND s.billing_policy='authoring_balance_v2')
       OR s.source_quote_id IS DISTINCT FROM r.quote_id OR s.billing_policy IS DISTINCT FROM r.billing_policy
       OR s.points IS DISTINCT FROM r.points OR s.created_at IS DISTINCT FROM r.created_at
       OR origin.project_id IS DISTINCT FROM s.project_id OR origin.input_revision IS DISTINCT FROM s.origin_input_revision
       OR origin.input_hash IS DISTINCT FROM s.origin_input_hash
       OR b.project_id IS DISTINCT FROM s.project_id OR b.input_revision IS DISTINCT FROM s.origin_input_revision
       OR b.input_hash IS DISTINCT FROM s.origin_input_hash OR b.billing_segment_id IS DISTINCT FROM s.id
-      OR b.assignment_kind IS DISTINCT FROM 'original' OR b.created_at IS DISTINCT FROM s.created_at
+      OR b.assignment_kind IS DISTINCT FROM CASE WHEN s.segment_number=1 THEN 'original' ELSE 'rework' END
+      OR b.created_at IS DISTINCT FROM s.created_at
+      OR current_binding.billing_segment_id IS NULL
+      OR (closed.billing_segment_id IS NOT NULL AND (closed.owner_user_id IS DISTINCT FROM s.owner_user_id
+        OR closed.project_id IS DISTINCT FROM s.project_id OR closed.run_id IS DISTINCT FROM s.run_id
+        OR r.state='held' OR r.finalized_at IS NULL
+        OR closed.charged_points IS DISTINCT FROM COALESCE(r.charged_points,CASE WHEN r.state='settled' THEN r.points ELSE 0 END)
+        OR closed.released_points IS DISTINCT FROM (SELECT COALESCE(sum(points),0) FROM bb_credit_events WHERE reservation_id=r.id AND kind='release')
+        OR closed.refunded_points IS DISTINCT FROM (SELECT COALESCE(sum(points),0) FROM bb_credit_events WHERE reservation_id=r.id
+          AND kind='correction' AND reason='authoring_platform_failure_refund')
+        OR m.lease_until IS NOT NULL
+        OR NOT EXISTS(SELECT 1 FROM bb_run_supplement_adoptions authority WHERE authority.id=closed.adoption_id
+          AND authority.owner_user_id=s.owner_user_id AND authority.project_id=s.project_id AND authority.run_id=s.run_id
+          AND (closed.disposition='superseded' AND authority.assignment_kind='rework' AND authority.source_billing_segment_id=s.id
+            AND closed.execution_version=authority.source_execution_version AND closed.input_revision=authority.source_input_revision
+            AND closed.input_hash=authority.source_input_hash
+            OR closed.disposition IN ('succeeded','failed','cancelled','rejected') AND authority.target_billing_segment_id=s.id
+              AND closed.execution_version=authority.execution_version AND closed.input_revision=authority.input_revision
+              AND closed.input_hash=authority.input_hash AND run.state=closed.disposition))))
+      OR (closed.billing_segment_id IS NULL AND (EXISTS(SELECT 1 FROM bb_run_supplement_adoptions authority
+        WHERE authority.run_id=s.run_id AND authority.source_billing_segment_id=s.id AND authority.assignment_kind='rework')
+        OR (current_binding.execution_version=2 AND current_binding.billing_segment_id=s.id
+          AND run.state IN ('succeeded','failed','cancelled','rejected'))))
       OR m.billing_segment_id IS DISTINCT FROM s.id OR m.owner_user_id IS DISTINCT FROM s.owner_user_id
       OR m.project_id IS DISTINCT FROM s.project_id OR m.run_id IS DISTINCT FROM s.run_id
-      OR ROW(legacy.active_ms,legacy.work_bps,legacy.accrued_points,legacy.clock_at,legacy.lease_until,legacy.last_activity_at)
-        IS DISTINCT FROM ROW(m.active_ms,m.work_bps,m.accrued_points,m.clock_at,m.lease_until,m.last_activity_at)
+      OR (current_binding.billing_segment_id=s.id AND ROW(legacy.active_ms,legacy.work_bps,legacy.accrued_points,legacy.clock_at,legacy.lease_until,legacy.last_activity_at)
+        IS DISTINCT FROM ROW(m.active_ms,m.work_bps,m.accrued_points,m.clock_at,m.lease_until,m.last_activity_at))
       OR (r.billing_policy<>'authoring_balance_v2' AND (r.points<>(SELECT COALESCE(sum(points),0) FROM bb_credit_allocations WHERE reservation_id=r.id)
       OR NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='reserve' AND e.points=r.points)
       OR (r.state<>'held' AND (r.points<>(SELECT COALESCE(sum(e.points),0) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind IN ('settle','release')) OR COALESCE(r.charged_points,CASE WHEN r.state='settled' THEN r.points ELSE 0 END)<>(SELECT COALESCE(sum(e.points),0) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='settle')))))

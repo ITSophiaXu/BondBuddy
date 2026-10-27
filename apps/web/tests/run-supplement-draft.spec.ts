@@ -60,7 +60,7 @@ test('captured work discloses result references and hides old confirmation durin
   await add(page);await action(host,'save').click();await expect.poll(()=>s.revision).toBe(1);
   const work=host.locator('[data-supplement-saved-work]');
   await expect(work).toContainText('已关联 2 项已保存处理结果。继续前核对可复用文件。');
-  await expect(host.getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
+  await expect(action(host,'quote')).toBeEnabled();
   expect(s.receipts.get(s.saves[0].request_id)!.saved_work).toEqual({status:'captured',stage_count:3,result_count:2});
   await add(page,'新的待确认材料.txt','new synthetic evidence');
   await expect(work).toContainText('确认本次保存回执后再查看');await expect(work).not.toContainText('已关联 2 项');

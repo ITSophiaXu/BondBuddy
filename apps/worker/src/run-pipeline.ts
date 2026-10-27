@@ -14,7 +14,8 @@ import { unifiedInputGate } from './unified-input.js';
 import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
 import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
-import { digest, Problem, transaction, type PrivateBlobs } from '@bondbuddy/api/data';
+import { digest, Problem, transaction, run as getRun, type PrivateBlobs } from '@bondbuddy/api/data';
+import { readRunBillingSegment } from '@bondbuddy/api/run-billing-segment';
 import { registerM4Artifacts,lockM4ArtifactTopic,settleM4Metering,type M4ArtifactRegistration } from '@bondbuddy/api/m4-workspace';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
@@ -499,6 +500,9 @@ export function codexModelStage(options: {
   onActivity?: ContainedCallInput['onActivity'];
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
   wrapJournal?: (journal: CodexJournal) => CodexJournal;
+  /** Internal test seam at the contained-provider boundary. Input gates,
+   * prompt snapshots, the durable journal and result recovery remain real. */
+  runContainedCall?: typeof runContainedModelCall;
 }): RunStage {
   const promptStage = `${options.name}_prompt`;
   return {
@@ -545,18 +549,21 @@ export function codexModelStage(options: {
       const authoring=['update','generation'].includes(run.task_kind)&&(!options.logicalCallId.startsWith('m4-')||options.logicalCallId==='m4-document-v1')
         ?createAuthoringActivityObserver({signal:ctx.signal,persist:activity=>recordAuthoringActivity(pool,lease,activity)}):undefined;
       let result:ContainedCallResult;
-      try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
+      try { result = await (options.runContainedCall??runContainedModelCall)({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
       } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
-      if(result.status==='needs_reconcile'&&['fixed_credits','metered_credits'].includes(run.billing_mode??'')&&!options.reviewTools){
-        const attempt=await durable.latestAttempt(options.logicalCallId);
-        if(attempt?.status==='completed'){
-          const saved=await durable.readCompleted(options.logicalCallId,attempt.attempt_no);
-          if(saved)return {kind:'done',value:saved.value,checkpoint:{logical_call_id:options.logicalCallId,prompt_snapshot_ref:snapshotId}};
+      if(result.status==='needs_reconcile'&&!options.reviewTools){
+        const fee=await readRunBillingSegment(pool,await getRun(pool,run.owner_user_id,run.id),lease);
+        if(fee){
+          const attempt=await durable.latestAttempt(options.logicalCallId);
+          if(attempt?.status==='completed'){
+            const saved=await durable.readCompleted(options.logicalCallId,attempt.attempt_no);
+            if(saved)return {kind:'done',value:saved.value,checkpoint:{logical_call_id:options.logicalCallId,prompt_snapshot_ref:snapshotId}};
+          }
         }
       }
       // The observation may already have paused or failed the job; otherwise park it ourselves.

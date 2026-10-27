@@ -1,0 +1,28 @@
+C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg\lib\client.js:694
+          Error.captureStackTrace(err)
+                ^
+
+error: syntax error at end of input
+    at C:\Users\lezhai\Downloads\Bondbuddy\push-readiness-20261026\integration\node_modules\pg\lib\client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/db/migrate.mjs:13:40 {
+  length: 94,
+  severity: 'ERROR',
+  code: '42601',
+  detail: undefined,
+  hint: undefined,
+  position: '70964',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'scan.l',
+  line: '1240',
+  routine: 'scanner_yyerror'
+}
+
+Node.js v24.22.1

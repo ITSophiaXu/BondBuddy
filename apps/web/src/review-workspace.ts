@@ -316,7 +316,8 @@ export class ReviewWorkspace {
   }
   private labelSupplementResume(){
     const run=this.taskRun(),panel=run&&this.supplements.get(run.run_id),button=this.page?.querySelector<HTMLButtonElement>('#review-making-panel [data-review-action="resume"]');
-    if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮复核';
+    if(button&&panel?.hasAdoptedSupplement)button.textContent='继续当前任务';
+    else if(button&&panel?.hasSupplements)button.textContent='按原材料继续本轮复核';
   }
   private renderMeta(){
     this.renderCharge();

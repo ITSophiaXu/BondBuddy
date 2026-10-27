@@ -16,7 +16,9 @@ export async function assertArtifactExecution(db: Pick<Pool, 'query'>, artifact:
     || !Number.isSafeInteger(artifact.version) || artifact.version < 1) throw unavailable();
   const rows = (await db.query(`SELECT b.*,a.media_type AS artifact_media_type,a.sha256 AS artifact_sha256,
       a.object_key AS artifact_object_key,r.input_revision AS run_input_revision,r.input_hash AS run_input_hash,
-      r.channel AS run_channel,successor.id AS successor_authorization_id
+      r.channel AS run_channel,successor.id AS successor_authorization_id,
+      bb_production_successor_execution_origin(e.owner_user_id,e.project_id,e.run_id,
+        e.execution_version,e.input_revision,e.input_hash) AS production_successor_authorized
     FROM bb_artifact_execution_bindings b
     JOIN bb_execution_artifact_versions a ON a.owner_user_id=b.owner_user_id AND a.run_id=b.run_id
       AND a.id=b.artifact_id AND a.version=b.artifact_version
@@ -38,9 +40,10 @@ export async function assertArtifactExecution(db: Pick<Pool, 'query'>, artifact:
     || !hash(row.input_hash) || !hash(row.run_input_hash)
     || !(row.execution_version === 1 && row.input_revision === row.run_input_revision
       && hash(row.input_hash) === hash(row.run_input_hash)
-      || row.execution_version === 2 && row.run_channel === 'non_production_test'
-        && row.input_revision !== row.run_input_revision
-        && typeof row.successor_authorization_id === 'string' && row.successor_authorization_id.length > 0)) throw unavailable();
+      || row.execution_version === 2 && row.input_revision !== row.run_input_revision
+        && (row.run_channel === 'non_production_test'
+          && typeof row.successor_authorization_id === 'string' && row.successor_authorization_id.length > 0
+          || row.run_channel === 'production' && row.production_successor_authorized === true))) throw unavailable();
   for (const [field, stored] of [['project_id',row.project_id],['media_type',row.artifact_media_type],
     ['object_key',row.artifact_object_key]] as const) {
     if (Object.hasOwn(artifact,field) && (typeof artifact[field] !== 'string' || !artifact[field] || artifact[field] !== stored)) throw unavailable();

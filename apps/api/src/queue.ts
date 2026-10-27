@@ -17,7 +17,8 @@ import { registerProjectFileOutcome } from './project-file-storage.js';
 import { syncAuthoringProgress,recordAuthoringProgressActivity } from './authoring-progress.js';
 import { creditBalance,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
-import { assertRunExecution, readExecutionStages, stampExecutionCheckpoint, type RunExecutionIdentity } from './run-execution.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
+import { assertRunExecution, assertProductionSuccessorExecutionActive, readExecutionStages, stampExecutionCheckpoint, type RunExecutionIdentity } from './run-execution.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = RunExecutionIdentity & { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -41,7 +42,12 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
 }
 
 // Used by claim, the operator queue and resolve so no paused attempt is invisible.
-const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')))";
+const fixedPriceRun = `EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND
+  (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')
+    OR EXISTS(SELECT 1 FROM bb_run_execution_billing_bindings b JOIN bb_run_execution_heads h
+      ON h.owner_user_id=b.owner_user_id AND h.project_id=b.project_id AND h.run_id=b.run_id
+        AND h.execution_version=b.execution_version AND h.input_revision=b.input_revision AND h.input_hash=b.input_hash
+      WHERE b.owner_user_id=billing_run.owner_user_id AND b.run_id=billing_run.id)))`;
 const needsProviderReconciliation = `(
   a.status='pending_reconcile'
   OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
@@ -91,6 +97,8 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
     const execution=await assertRunExecution(client,r);
     readExecutionStages(j.checkpoint,execution);
+    if(r.channel==='production'&&execution.executionVersion===2)
+      await assertProductionSuccessorExecutionActive(client,{owner:r.owner_user_id,projectId:r.project_id,runId:r.id,...execution});
     if(r.channel==='non_production_test'){
       try { await assertRunExecutionTestGrant(client,{owner:r.owner_user_id,projectId:r.project_id,runId:r.id,...execution}); }
       catch(error){
@@ -117,6 +125,8 @@ async function lockedLease(client:PoolClient, lease:Lease) {
   const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
   if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   await assertRunExecution(client,r,lease);
+  if(r.channel==='production'&&lease.executionVersion===2)
+    await assertProductionSuccessorExecutionActive(client,{...lease,projectId:r.project_id});
   readExecutionStages(j.checkpoint,lease);
   return {r,j};
 }
@@ -574,6 +584,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
   return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
     if(artifact)await assertArtifactExecution(client,artifact,lease);
+    const fee=await readRunBillingSegment(client,r,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
       if(j.subtype==='m4_document_v1'){
@@ -596,7 +607,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
         const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);
         if(!ready.rowCount||ready.rows[0].operation==='check'&&!ready.rows[0].result?.records?.some((v:any)=>v.search_performed===true))
           throw new Problem(422,'DELIVERY_FAILED','Integrity workpaper requires recorded actual search');
-      }else if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
+      }else if((r.billing_mode==='fixed_credits'||fee)&&r.task_kind!=='review'){
         const pair=j.checkpoint?.stages?.word_delivery_pair;
         if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)
           throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
@@ -785,7 +796,8 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
         return false;
       }
     }
-    if(r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
+    const fee=await readRunBillingSegment(client,r,execution);
+    if(fee?.billingPolicy==='on_delivery' && r.billing_mode==='metered_credits' && j.subtype.startsWith('m4_') &&
       (r.state==='settlement_pending' || (await client.query('SELECT 1 FROM bb_m4_artifact_execution_versions WHERE owner_user_id=$1 AND run_id=$2 AND project_id=$3 AND input_revision=$4 AND input_hash=$5 AND execution_version=$6',[owner,runId,r.project_id,execution.inputRevision,execution.inputHash,execution.executionVersion])).rowCount)){
       const {settleM4Metering}=await import('./m4-billing.js');
       const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;

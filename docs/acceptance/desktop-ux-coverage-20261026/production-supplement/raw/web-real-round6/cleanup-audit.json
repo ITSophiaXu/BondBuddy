@@ -1,0 +1,493 @@
+{
+  "audited_at": "2026-10-27T02:52:02.967Z",
+  "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round6",
+  "stats": {
+    "startTime": "2026-10-27T02:47:48.985Z",
+    "duration": 197340.579,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "frozen_files": 27,
+  "source_and_artifacts_stable": true,
+  "product_hashes_unchanged_from_round3": true,
+  "unchanged_product_file_count": 18,
+  "cases": [
+    {
+      "kind": "authoring",
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round6\\authoring",
+      "real_browser_http_pg_worker": true,
+      "synthetic_provider": true,
+      "synthetic_credit_lot": true,
+      "adopted_material_marker": "SYNTHETIC_AUTHORING_e70433f9a19e4932a43a806af1d1cfb3_ADOPTED",
+      "uploaded_material_sha256": "25fbc02028e40aad724e6d3ffe80b36642ed70bc39caab05f27e5da89235aa43",
+      "marker_read_from_uploaded_bytes": true,
+      "original_word_read_method": "persisted_private_blob",
+      "v1_marker_absent": true,
+      "browser_download_v2_marker_present": true,
+      "downloaded_sha256": "020b5aa49c6484bc22540333ea0b8bd2388d6268b24d6b14098310f568a86262",
+      "word_paragraphs": 2,
+      "browser_byte_route": "/api/v1/artifacts/word-a264afe010a505d98e470cbe3d610119ace766ac54a80ce759df0f2482467494/download",
+      "resumed_without_local_journal": true,
+      "counts_before_resume": {
+        "quotes": 1,
+        "confirmations": 1,
+        "adoptions": 1,
+        "fees": 2
+      },
+      "required_wallet_stages": [
+        {
+          "stage": "before_pause",
+          "available": 9095,
+          "reserved": 0,
+          "consumed": 905,
+          "granted": 10000
+        },
+        {
+          "stage": "paused",
+          "available": 9093,
+          "reserved": 0,
+          "consumed": 907,
+          "granted": 10000
+        },
+        {
+          "stage": "supplement_saved",
+          "available": 9093,
+          "reserved": 0,
+          "consumed": 907,
+          "granted": 10000
+        },
+        {
+          "stage": "before_adoption_consent",
+          "available": 9093,
+          "reserved": 0,
+          "consumed": 907,
+          "granted": 10000
+        },
+        {
+          "stage": "succeeded",
+          "available": 4593,
+          "reserved": 0,
+          "consumed": 5407,
+          "granted": 10000
+        }
+      ],
+      "wallet_checks": {
+        "pause_request_final_active_points": 2,
+        "no_new_reservation": true,
+        "paused_clock_stopped": true,
+        "one_additional_reservation": true,
+        "additional_ceiling": 4500,
+        "adoption_debit": 0,
+        "adoption_frozen": 0,
+        "original_charged_points": 907,
+        "paused_through_saving_and_quote_refresh_unchanged": true,
+        "successor_consumed_points": 4500,
+        "original_fee_preserved": true,
+        "ledger_append_only": true,
+        "all_http_wallets_match_rr_lots": true,
+        "all_lot_ledger_wallet_totals_conserved": true
+      },
+      "screenshots": [
+        "adopted-before-worker.png",
+        "b1-quote-full.png",
+        "end-state-full.png",
+        "successor-word-downloaded-full.png"
+      ],
+      "cleanup_phases": [
+        {
+          "phase": "before_app_close",
+          "at": "2026-10-27T02:48:48.447Z",
+          "http_connections": 2,
+          "active_http": [],
+          "pool": {
+            "total": 3,
+            "idle": 3,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_app_close",
+          "at": "2026-10-27T02:48:48.460Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 3,
+            "idle": 3,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "before_fixture_cleanup",
+          "at": "2026-10-27T02:48:48.475Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 3,
+            "idle": 3,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_fixture_cleanup",
+          "at": "2026-10-27T02:48:49.351Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "before_owned_drop",
+          "at": "2026-10-27T02:48:49.357Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_owned_drop",
+          "at": "2026-10-27T02:48:49.909Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        }
+      ],
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t45496_6dcc435e",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "kind": "review",
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round6\\review",
+      "real_browser_http_pg_worker": true,
+      "synthetic_provider": true,
+      "synthetic_credit_lot": true,
+      "adopted_material_marker": "SYNTHETIC_REVIEW_66fa9d94052546cabaec83f3df176fe6_ADOPTED",
+      "uploaded_material_sha256": "f3ecc4d7a78e429f6790223f723b1e7ebf2000d147ca57baba70ce9cee2a6c87",
+      "marker_read_from_uploaded_bytes": true,
+      "original_word_read_method": "persisted_private_blob",
+      "v1_marker_absent": true,
+      "browser_download_v2_marker_present": true,
+      "downloaded_sha256": "455722ac2b0a41080074ce9928a4d64ee46ce2908705bf4bcd6b24f1422bfc0c",
+      "word_paragraphs": 25,
+      "browser_byte_route": "/api/v1/artifacts/word-c8d11a0a5a07b1d7d93d88fc96460d04393346d7494ea081c66c52b996ac6b69/download",
+      "resumed_without_local_journal": true,
+      "counts_before_resume": {
+        "quotes": 1,
+        "confirmations": 1,
+        "adoptions": 1,
+        "fees": 2
+      },
+      "required_wallet_stages": [
+        {
+          "stage": "before_pause",
+          "available": 9090,
+          "reserved": 0,
+          "consumed": 910,
+          "granted": 10000
+        },
+        {
+          "stage": "paused",
+          "available": 9088,
+          "reserved": 0,
+          "consumed": 912,
+          "granted": 10000
+        },
+        {
+          "stage": "supplement_saved",
+          "available": 9088,
+          "reserved": 0,
+          "consumed": 912,
+          "granted": 10000
+        },
+        {
+          "stage": "before_adoption_consent",
+          "available": 9088,
+          "reserved": 0,
+          "consumed": 912,
+          "granted": 10000
+        },
+        {
+          "stage": "succeeded",
+          "available": 4588,
+          "reserved": 0,
+          "consumed": 5412,
+          "granted": 10000
+        }
+      ],
+      "wallet_checks": {
+        "pause_request_final_active_points": 2,
+        "no_new_reservation": true,
+        "paused_clock_stopped": true,
+        "one_additional_reservation": true,
+        "additional_ceiling": 4500,
+        "adoption_debit": 0,
+        "adoption_frozen": 0,
+        "original_charged_points": 912,
+        "paused_through_saving_and_quote_refresh_unchanged": true,
+        "successor_consumed_points": 4500,
+        "original_fee_preserved": true,
+        "ledger_append_only": true,
+        "all_http_wallets_match_rr_lots": true,
+        "all_lot_ledger_wallet_totals_conserved": true
+      },
+      "screenshots": [
+        "adopted-before-worker.png",
+        "b1-quote-full.png",
+        "end-state-full.png",
+        "successor-word-downloaded-full.png"
+      ],
+      "cleanup_phases": [
+        {
+          "phase": "before_app_close",
+          "at": "2026-10-27T02:50:00.100Z",
+          "http_connections": 2,
+          "active_http": [],
+          "pool": {
+            "total": 3,
+            "idle": 3,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_app_close",
+          "at": "2026-10-27T02:50:00.110Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 3,
+            "idle": 3,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "before_fixture_cleanup",
+          "at": "2026-10-27T02:50:00.130Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 3,
+            "idle": 3,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_fixture_cleanup",
+          "at": "2026-10-27T02:50:00.149Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "before_owned_drop",
+          "at": "2026-10-27T02:50:00.171Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_owned_drop",
+          "at": "2026-10-27T02:50:00.899Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        }
+      ],
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t45496_4059b4ee",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    },
+    {
+      "kind": "m4",
+      "evidence_dir": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\ux-coverage-20261026\\.local\\production-supplement-20261027\\web-real-round6\\m4",
+      "real_browser_http_pg_worker": true,
+      "synthetic_provider": true,
+      "synthetic_credit_lot": true,
+      "adopted_material_marker": "SYNTHETIC_M4_959aa6b3e650462b97b59d50975d4456_ADOPTED",
+      "uploaded_material_sha256": "78d934e3bf3e60af8d34c9876cea72753f18d64a7d42594076ecb8776cd7b334",
+      "marker_read_from_uploaded_bytes": true,
+      "original_word_read_method": "persisted_private_blob",
+      "v1_marker_absent": true,
+      "browser_download_v2_marker_present": true,
+      "downloaded_sha256": "f76b17a984c008f735a222fb40c3930c577b3ba75dbbedac47aca5a67542c926",
+      "word_paragraphs": 2,
+      "browser_byte_route": "/api/v1/m4/artifacts/word-b57aabd1116ff5cc334785923cb88eb7bdb9bf0a9d42a580bffd65f3932fd767/versions/1/bytes",
+      "resumed_without_local_journal": true,
+      "counts_before_resume": {
+        "quotes": 1,
+        "confirmations": 1,
+        "adoptions": 1,
+        "fees": 2
+      },
+      "required_wallet_stages": [
+        {
+          "stage": "before_pause",
+          "available": 9091,
+          "reserved": 0,
+          "consumed": 909,
+          "granted": 10000
+        },
+        {
+          "stage": "paused",
+          "available": 9087,
+          "reserved": 0,
+          "consumed": 913,
+          "granted": 10000
+        },
+        {
+          "stage": "supplement_saved",
+          "available": 9087,
+          "reserved": 0,
+          "consumed": 913,
+          "granted": 10000
+        },
+        {
+          "stage": "before_adoption_consent",
+          "available": 9087,
+          "reserved": 0,
+          "consumed": 913,
+          "granted": 10000
+        },
+        {
+          "stage": "succeeded",
+          "available": 4587,
+          "reserved": 0,
+          "consumed": 5413,
+          "granted": 10000
+        }
+      ],
+      "wallet_checks": {
+        "pause_request_final_active_points": 4,
+        "no_new_reservation": true,
+        "paused_clock_stopped": true,
+        "one_additional_reservation": true,
+        "additional_ceiling": 4500,
+        "adoption_debit": 0,
+        "adoption_frozen": 0,
+        "original_charged_points": 913,
+        "paused_through_saving_and_quote_refresh_unchanged": true,
+        "successor_consumed_points": 4500,
+        "original_fee_preserved": true,
+        "ledger_append_only": true,
+        "all_http_wallets_match_rr_lots": true,
+        "all_lot_ledger_wallet_totals_conserved": true
+      },
+      "screenshots": [
+        "adopted-before-worker.png",
+        "b1-quote-full.png",
+        "end-state-full.png",
+        "successor-word-downloaded-full.png"
+      ],
+      "cleanup_phases": [
+        {
+          "phase": "before_app_close",
+          "at": "2026-10-27T02:51:05.251Z",
+          "http_connections": 2,
+          "active_http": [],
+          "pool": {
+            "total": 10,
+            "idle": 10,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_app_close",
+          "at": "2026-10-27T02:51:05.259Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 10,
+            "idle": 10,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "before_fixture_cleanup",
+          "at": "2026-10-27T02:51:05.278Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 10,
+            "idle": 10,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_fixture_cleanup",
+          "at": "2026-10-27T02:51:05.302Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "before_owned_drop",
+          "at": "2026-10-27T02:51:05.322Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        },
+        {
+          "phase": "after_owned_drop",
+          "at": "2026-10-27T02:51:05.997Z",
+          "http_connections": 0,
+          "active_http": [],
+          "pool": {
+            "total": 0,
+            "idle": 0,
+            "waiting": 0
+          }
+        }
+      ],
+      "cleanup": {
+        "clone_name": "bb_prod_supplement02_20261027_t45496_26ab6158",
+        "clone_remaining": [],
+        "http_app_closed": true
+      }
+    }
+  ],
+  "owned_clones_remaining": [],
+  "http_ports_listening": {
+    "5187": false,
+    "5199": false
+  },
+  "web_noemit_exit": 0
+}

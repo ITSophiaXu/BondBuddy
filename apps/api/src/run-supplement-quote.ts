@@ -135,6 +135,14 @@ async function pricedItem(db: PoolClient, run: any, basis: RunSupplementProcessi
     price_version:kind === 'm4' ? M4_DOCUMENT_FIXED_PRICE.version : price.id,full_price_points:points,points} as Item };
 }
 
+/** Creation, confirmation and adoption share the same business price rules.
+ * Adoption revalidates the accepted quote; it never silently reprices consent. */
+async function recheckQuotePrice(db: PoolClient, scope: Scope, quote: any, basis: RunSupplementProcessingBasis) {
+  const run = await visibleRun(db,scope.owner,scope.runId), price = await pricedItem(db,run,basis);
+  if (!same(quote.items,[price.item]) || quote.source_quote_id !== price.sourceQuoteId
+    || !(await db.query('SELECT 1 WHERE $1::timestamptz>clock_timestamp()',[quote.expires_at])).rowCount) throw changed();
+}
+
 async function preparation(input: Create) {
   const run = await visibleRun(input.pool,input.owner,input.runId);
   await latestReceipt(input.pool,input.owner,input.runId,input.request.supplement_revision,input.request.saved_request_id);
@@ -218,9 +226,7 @@ async function confirmQuote(input: Confirm): Promise<RunSupplementQuoteResponse>
     const replay = (await db.query(`SELECT * FROM bb_run_supplement_quote_confirmations
       WHERE owner_user_id=$1 AND run_id=$2 AND request_id=$3`,[input.owner,input.runId,input.request.request_id])).rows[0];
     if (replay) { if (replay.quote_id !== input.quoteId || replay.request_hash.trim() !== requestHash) throw conflict(); return response(db,quote); }
-    const run = await visibleRun(db,input.owner,input.runId), price = await pricedItem(db,run,basis);
-    if (!same(quote.items,[price.item]) || quote.source_quote_id !== price.sourceQuoteId
-      || !(await db.query('SELECT 1 WHERE $1::timestamptz>clock_timestamp()',[quote.expires_at])).rowCount) throw changed();
+    await recheckQuotePrice(db,input,quote,basis);
     const confirmationId = uid();
     await db.query(`INSERT INTO bb_run_supplement_quote_confirmations
       (id,owner_user_id,project_id,run_id,quote_id,quote_hash,total_points,request_id,request_hash,confirmed_by)
@@ -253,6 +259,50 @@ export async function readRunSupplementQuote(input:Scope & {quoteId:string}):Pro
 }
 export async function confirmRunSupplementQuote(input:Confirm):Promise<RunSupplementQuoteResponse> {
   return quoteBoundary(()=>confirmQuote(input));
+}
+
+export type ConfirmedRunSupplementQuoteInput = Scope & { blobs: PrivateBlobs; quoteId: string; confirmationId: string; quoteHash: string };
+/** This verified preparation remains data, not debit/execution authority. Only
+ * the separate atomic adoption transaction may consume it. */
+export async function readConfirmedRunSupplementQuoteForAdoption(input: ConfirmedRunSupplementQuoteInput) {
+  await visibleRun(input.pool,input.owner,input.runId);
+  const row = (await input.pool.query(`SELECT * FROM bb_run_supplement_quotes
+    WHERE owner_user_id=$1 AND run_id=$2 AND id=$3`, [input.owner,input.runId,input.quoteId])).rows[0];
+  if (!row) throw missing();
+  const quote = checkedQuote(row);
+  await exactConfirmation(input.pool,input,quote);
+  const args = { db:input.pool,blobs:input.blobs,owner:input.owner,projectId:quote.project_id,runId:input.runId,
+    revision:quote.supplement_revision,expectedCheckpointHash:quote.checkpoint_hash.trim(),
+    expectedCandidateInputHash:quote.candidate_input_hash.trim() };
+  const {plan,basis} = await readRunSupplementProcessingPlan({...args,kind:quote.kind,planId:quote.processing_plan_id});
+  if (plan.planHash !== quote.processing_plan_hash.trim() || basis.basisHash !== quote.basis_hash.trim()) throw changed();
+  return { quote,plan,basis,args };
+}
+export type ConfirmedRunSupplementQuotePreparation = Awaited<ReturnType<typeof readConfirmedRunSupplementQuoteForAdoption>>;
+async function exactConfirmation(db: Db, input: ConfirmedRunSupplementQuoteInput, quote: any) {
+  const current = await response(db,quote), confirmation = current.confirmation;
+  if (quote.id !== input.quoteId || quote.quote_hash.trim() !== input.quoteHash || !confirmation
+    || confirmation.confirmation_id !== input.confirmationId || confirmation.quote_id !== input.quoteId
+    || confirmation.quote_hash !== input.quoteHash || confirmation.total_points !== Number(quote.total_points)) throw changed();
+  return confirmation;
+}
+/** Recheck under project -> run -> job locks after byte I/O has completed. An
+ * existing adoption must be replayed before calling this freshness validator. */
+export async function recheckConfirmedRunSupplementQuoteForAdoption(db: PoolClient,
+  input: ConfirmedRunSupplementQuoteInput, prepared: ConfirmedRunSupplementQuotePreparation) {
+  await recheckRunSupplementProcessingBasis(db,prepared.args,prepared.basis);
+  const quote = checkedQuote((await db.query(`SELECT * FROM bb_run_supplement_quotes
+    WHERE owner_user_id=$1 AND run_id=$2 AND id=$3 FOR SHARE`, [input.owner,input.runId,input.quoteId])).rows[0]);
+  if (quote.canonical_snapshot_text !== prepared.quote.canonical_snapshot_text
+    || quote.request_hash.trim() !== prepared.quote.request_hash.trim()
+    || date(quote.created_at) !== date(prepared.quote.created_at) || date(quote.expires_at) !== date(prepared.quote.expires_at)) throw changed();
+  await db.query(`SELECT id FROM bb_run_supplement_quote_confirmations
+    WHERE owner_user_id=$1 AND run_id=$2 AND id=$3 AND quote_id=$4 FOR SHARE`,
+  [input.owner,input.runId,input.confirmationId,input.quoteId]);
+  const confirmation = await exactConfirmation(db,input,quote);
+  await latestReceipt(db,input.owner,input.runId,quote.supplement_revision,quote.receipt_request_id);
+  await recheckQuotePrice(db,input,quote,prepared.basis);
+  return { quote,confirmation };
 }
 
 export function registerRunSupplementQuoteRoutes(app: FastifyInstance, pool:()=>Pool, blobs:()=>PrivateBlobs,

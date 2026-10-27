@@ -685,7 +685,7 @@ export class MaterialWorkspace {
     const panel=this.supplementFor(task.run);host.hidden=false;if(host.firstElementChild!==panel.element)host.replaceChildren(panel.element);panel.updateRun(task.run);this.labelSupplementResume(task.run.run_id);
   }
   private labelSupplementResume(runId:string){
-    const panel=this.supplements.get(runId),button=this.page?.querySelector<HTMLButtonElement>('[data-m4-action="resume"][data-run="'+CSS.escape(runId)+'"]');if(button&&panel?.hasSupplements)button.textContent='按原材料继续生成';
+    const panel=this.supplements.get(runId),button=this.page?.querySelector<HTMLButtonElement>('[data-m4-action="resume"][data-run="'+CSS.escape(runId)+'"]');if(button&&panel?.hasAdoptedSupplement)button.textContent='继续当前任务';else if(button&&panel?.hasSupplements)button.textContent='按原材料继续生成';
   }
   private async cancel(id:string){try{await this.api.runAction(id,'cancel',this.controller.signal);await this.refresh();}catch(error){if(this.live())this.message(friendlyError(error),true);}}
   private async download(a:M4Artifact){const key=artKey(a);if(this.downloadStates.get(key)?.pending)return;this.downloadStates.set(key,{pending:true,text:'正在读取文件…'});this.paintContent();try{const bytes=await this.api.m4ArtifactBytes(a,this.controller.signal);if(this.live()){this.downloads.save(bytes,a.filename);this.downloadStates.set(key,{pending:false,text:'文件已交给浏览器下载，可在下载列表中查看。'});}}catch(error){if(this.live())this.downloadStates.set(key,{pending:false,error:true,text:`下载未完成。${friendlyError(error,'download')} 请重试下载。`});}finally{if(this.live())this.paintContent();}}

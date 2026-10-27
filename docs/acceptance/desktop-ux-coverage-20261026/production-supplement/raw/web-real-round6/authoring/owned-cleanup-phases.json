@@ -1,0 +1,200 @@
+[
+  {
+    "phase": "before_app_close",
+    "at": "2026-10-27T02:48:48.447Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 2,
+    "active_http": [],
+    "pool": {
+      "total": 3,
+      "idle": 3,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 17528,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:45.437Z",
+        "query": "SELECT * FROM bb_jobs WHERE job_type='parse' AND owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4\n    AND subtype=$5 AND parser_version=$6 "
+      },
+      {
+        "pid": 28684,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:48.287Z",
+        "query": "ROLLBACK"
+      },
+      {
+        "pid": 51032,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:44.488Z",
+        "query": "SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT 100"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_app_close",
+    "at": "2026-10-27T02:48:48.460Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 3,
+      "idle": 3,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 17528,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:45.437Z",
+        "query": "SELECT * FROM bb_jobs WHERE job_type='parse' AND owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4\n    AND subtype=$5 AND parser_version=$6 "
+      },
+      {
+        "pid": 28684,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:48.287Z",
+        "query": "ROLLBACK"
+      },
+      {
+        "pid": 51032,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:44.488Z",
+        "query": "SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT 100"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "before_fixture_cleanup",
+    "at": "2026-10-27T02:48:48.475Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 3,
+      "idle": 3,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 17528,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:45.437Z",
+        "query": "SELECT * FROM bb_jobs WHERE job_type='parse' AND owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4\n    AND subtype=$5 AND parser_version=$6 "
+      },
+      {
+        "pid": 28684,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:48.287Z",
+        "query": "ROLLBACK"
+      },
+      {
+        "pid": 51032,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:48:44.488Z",
+        "query": "SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT 100"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_fixture_cleanup",
+    "at": "2026-10-27T02:48:49.351Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  },
+  {
+    "phase": "before_owned_drop",
+    "at": "2026-10-27T02:48:49.357Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_owned_drop",
+    "at": "2026-10-27T02:48:49.909Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  }
+]

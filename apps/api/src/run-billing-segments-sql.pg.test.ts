@@ -1,8 +1,9 @@
 // Real PostgreSQL over synthetic originals. No paid-successor authority or
-// financial gate is disabled. Migration replay removes only its own scaffold
-// inside a rolled-back private-clone transaction.
+// financial gate is disabled. Historical replay builds its actual predecessor
+// from an owned, empty template0 database and drops only that generated database.
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {readFile,readdir} from 'node:fs/promises';
 import test from 'node:test';
 import {Pool,type PoolClient} from 'pg';
 import {INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
@@ -11,9 +12,69 @@ import {inputManifestHash} from './production-rule-pin.js';
 import {isolatedTestDatabase} from './test-database.js';
 
 const connection=await isolatedTestDatabase(undefined,'run-billing-segments-sql');
-const migrationConnection=await isolatedTestDatabase(undefined,'run-billing-segments-backfill');
-const migration=await readFile(new URL('../../../db/migrations/0138_run_billing_segments.sql',import.meta.url),'utf8');
+const migrationDirectory=new URL('../../../db/migrations/',import.meta.url);
+const migration=await readFile(new URL('0138_run_billing_segments.sql',migrationDirectory),'utf8');
 const options={skip:!connection,timeout:60000};
+
+async function historicalBaseline(connectionString:string,work:(c:PoolClient)=>Promise<void>,diagnostic:(message:string)=>void){
+  const filenames=(await readdir(migrationDirectory)).filter(name=>/^\d+.*\.sql$/.test(name)&&Number(name.split('_')[0])<=137).sort();
+  assert.equal(filenames.at(-1),'0137_run_supplement_quotes.sql');
+  const sources=await Promise.all(filenames.map(async filename=>{
+    const source=await readFile(new URL(filename,migrationDirectory),'utf8');
+    return {filename,source,sha256:createHash('sha256').update(source).digest('hex')};
+  }));
+  const sourceManifest=[...sources.map(({filename,sha256})=>({filename,sha256})),
+    {filename:'0138_run_billing_segments.sql',sha256:createHash('sha256').update(migration).digest('hex')}];
+  const maintenance=new URL(connectionString),originalDatabase=decodeURIComponent(maintenance.pathname.slice(1));
+  maintenance.pathname='/postgres';
+  const admin=new Pool({connectionString:maintenance.toString(),max:1});
+  const name=`bb_fee_pre0138_${process.pid}_${uid().replaceAll('-','')}`;
+  assert.match(name,/^bb_fee_pre0138_\d+_[a-f0-9]+$/);
+  assert.notEqual(name,originalDatabase);
+  let created=false,pool:Pool|undefined,c:PoolClient|undefined;
+  try{
+    const identity=(await admin.query(`SELECT current_user AS role_name,inet_server_port() AS port,
+      (SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=$1) AS template_owner`,[originalDatabase])).rows[0];
+    assert.equal(identity.port,Number(maintenance.port||5432));
+    assert.equal(identity.template_owner,identity.role_name,'historical fixture must use an owned private test clone');
+    await admin.query(`CREATE DATABASE "${name}" TEMPLATE template0`);created=true;
+    const baseline=new URL(connectionString);baseline.pathname=`/${name}`;
+    pool=new Pool({connectionString:baseline.toString(),max:1});c=await pool.connect();
+    await c.query('CREATE TABLE bb_schema_migrations(filename text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now())');
+    for(const entry of sources){
+      await c.query('BEGIN');
+      try{
+        await c.query(entry.source);
+        await c.query('INSERT INTO bb_schema_migrations(filename) VALUES($1)',[entry.filename]);
+        await c.query('COMMIT');
+      }catch(error){await c.query('ROLLBACK');throw error;}
+    }
+    assert.deepEqual((await c.query('SELECT filename FROM bb_schema_migrations ORDER BY filename')).rows.map(row=>row.filename),filenames);
+    assert.equal((await c.query("SELECT to_regclass('bb_run_supplement_adoptions') AS name")).rows[0].name,null);
+    diagnostic(JSON.stringify({historical_database:name,source:'template0',port:identity.port,sourceManifest}));
+    await work(c);
+    for(const entry of sourceManifest){
+      const current=await readFile(new URL(entry.filename,migrationDirectory));
+      assert.equal(createHash('sha256').update(current).digest('hex'),entry.sha256,`historical source changed: ${entry.filename}`);
+    }
+  }finally{
+    try{
+      try{if(c)await c.query('ROLLBACK');}finally{c?.release();if(pool)await pool.end();}
+    }finally{
+      try{
+        if(created)for(let attempt=0;;attempt++){
+          try{await admin.query(`DROP DATABASE "${name}"`);break;}
+          catch(error){
+            // All owned pools have ended. Give server-side disconnects a
+            // bounded chance to finish without killing an idle client socket.
+            if((error as {code?:string}).code!=='55006'||attempt>=20)throw error;
+            await new Promise(resolve=>setTimeout(resolve,50));
+          }
+        }
+      }finally{await admin.end();}
+    }
+  }
+}
 type Origin={owner:string;project:string;run:string;hash:string;quote:string;reservation:string;price:string};
 async function origin(c:PoolClient,paid=true):Promise<Origin>{
   const owner=uid(),project=uid(),run=uid(),quote=uid(),reservation=uid(),price=uid();
@@ -114,7 +175,21 @@ test('original pointer, price, policy, identity and mirrored meter cannot be rew
     await assert.rejects(f.pool.query('UPDATE bb_run_billing_progress SET project_id=$2 WHERE billing_segment_id=$1',[f.reservation,uid()]),
       {code:'23514',constraint:'bb_run_billing_meter_exact'});
     await assert.rejects(f.pool.query(`INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy)
-      VALUES($1,$2,$3,$4,4500,'authoring_balance_v2')`,[uid(),f.owner,f.run,f.quote]),{code:'23505',constraint:'bb_credit_reservations_run_id_key'});
+      VALUES($1,$2,$3,$4,4500,'authoring_balance_v2')`,[uid(),f.owner,f.run,f.quote]),{code:'23505',constraint:'bb_credit_reservations_quote_id_key'});
+    // The run can hold another fee only through exact successor adoption. A
+    // different valid original quote cannot manufacture a second V1 liability.
+    const anotherPrice=uid(),anotherQuote=uid();
+    await f.pool.query(`INSERT INTO bb_credit_price_versions(id,prices,effective_at,actor,reason)
+      SELECT $1,$2,max(effective_at)+interval '1 second','synthetic-test','Unadopted original fee'
+      FROM bb_credit_price_versions`,[anotherPrice,{...INITIAL_FIXED_PRICES,new_authoring:4500}]);
+    await f.pool.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason)
+      VALUES($1,$2,$3,1,$4,$5,'new_authoring',4500,'Unadopted original fee')`,[anotherQuote,f.owner,f.project,f.hash,anotherPrice]);
+    await assert.rejects(f.pool.query(`INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy,charged_points)
+      VALUES($1,$2,$3,$4,4500,'authoring_balance_v2',0)`,[uid(),f.owner,f.run,anotherQuote]),
+      {code:'23514',constraint:'bb_run_billing_capture_exact'});
+    for(const table of ['bb_credit_reservations','bb_run_billing_segments','bb_run_execution_billing_bindings'])
+      assert.equal((await f.pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE run_id=$1`,[f.run])).rows[0].n,1);
+    assert.equal((await f.pool.query('SELECT count(*)::int AS n FROM bb_credit_events WHERE run_id=$1',[f.run])).rows[0].n,0);
     await mirrored(f.pool,f);
   }finally{await f.pool.end();}
 });
@@ -160,34 +235,10 @@ for(const direction of ['canonical-held','legacy-held'] as const)
   });
 
 test('0138 backfill preserves historical price, charged prefix and microsecond meters atomically',
-  {skip:!migrationConnection,timeout:60000},async()=>{
-    const pool=new Pool({connectionString:migrationConnection,max:1}),c=await pool.connect();
-    try{
+  {skip:!connection,timeout:60000},async t=>{
+    await historicalBaseline(connection!,async c=>{
       await c.query('BEGIN');await c.query('SET CONSTRAINTS ALL IMMEDIATE');
-      // Reconstruct only the migration's predecessor definitions. All earlier
-      // execution, quote, production and terminal-delivery gates stay enabled.
-      for(const name of ['bb_credit_finalize_run','bb_m4_credit_finalize_run']){
-        let definition=(await c.query('SELECT pg_get_functiondef($1::regprocedure) AS d',[`${name}()`])).rows[0].d as string;
-        const canonical=/SELECT c\.\* INTO STRICT r FROM bb_run_execution_billing_bindings b[\s\S]*?FOR UPDATE OF c;/;
-        assert.match(definition,canonical);
-        definition=definition.replace(canonical,name==='bb_credit_finalize_run'
-          ? 'SELECT * INTO STRICT r FROM bb_credit_reservations WHERE id=NEW.reservation_id AND run_id=NEW.id AND owner_user_id=NEW.owner_user_id FOR UPDATE;'
-          : 'SELECT * INTO STRICT r FROM bb_credit_reservations WHERE id=NEW.reservation_id AND owner_user_id=NEW.owner_user_id AND run_id=NEW.id FOR UPDATE;');
-        definition=definition.replace(/IF NEW\.reservation_id IS NOT NULL AND NEW\.state IN \('succeeded','failed','cancelled','rejected'\) AND OLD\.state IS DISTINCT FROM NEW\.state THEN PERFORM bb_assert_original_run_billing\(NEW\.owner_user_id,NEW\.id\); END IF;/,'');
-        definition=definition.replace('SELECT accrued_points FROM bb_run_billing_progress WHERE billing_segment_id=r.id AND run_id=NEW.id AND owner_user_id=NEW.owner_user_id AND project_id=NEW.project_id',
-          'SELECT accrued_points FROM bb_authoring_progress WHERE run_id=NEW.id AND owner_user_id=NEW.owner_user_id');
-        await c.query(definition);
-      }
-      let supplement=(await c.query("SELECT pg_get_functiondef('bb_assert_supplement_quote_live(bb_run_supplement_quotes)'::regprocedure) AS d")).rows[0].d as string;
-      supplement=supplement.replace('SELECT * INTO reservation FROM bb_credit_reservations WHERE owner_user_id=q.owner_user_id AND run_id=q.run_id AND id=r.reservation_id;',
-        'SELECT * INTO reservation FROM bb_credit_reservations WHERE owner_user_id=q.owner_user_id AND run_id=q.run_id;');await c.query(supplement);
-      await c.query('DROP TABLE bb_run_billing_progress,bb_run_execution_billing_bindings,bb_run_billing_segments CASCADE');
-      const definitions=[...migration.matchAll(/CREATE FUNCTION (bb_[a-z_]+)\(/g)].map(match=>match[1]!);
-      for(const name of definitions){
-        const signatures=(await c.query('SELECT oid::regprocedure::text AS signature FROM pg_proc WHERE proname=$1',[name])).rows;
-        for(const row of signatures)await c.query(`DROP FUNCTION ${row.signature} CASCADE`);
-      }
-      await c.query("DELETE FROM bb_outbox WHERE event_type='run.billing_segment_bound'");
+      assert.equal((await c.query("SELECT to_regclass('bb_run_billing_segments') AS name")).rows[0].name,null);
       const f=await origin(c);
       const lot=uid();
       await c.query(`INSERT INTO bb_credit_lots(id,owner_user_id,source,source_key,original_points,remaining,frozen)
@@ -219,5 +270,5 @@ test('0138 backfill preserves historical price, charged prefix and microsecond m
       const event=(await c.query("SELECT payload FROM bb_outbox WHERE aggregate_id=$1 AND event_type='run.billing_segment_bound'",[f.run])).rows;
       assert.equal(event.length,1);assert.equal(event[0].payload.capture_kind,'historical_backfill');
       await c.query('SELECT bb_assert_original_run_billing($1,$2)',[f.owner,f.run]);
-    }finally{await c.query('ROLLBACK');c.release();await pool.end();}
+    },message=>t.diagnostic(message));
   });

@@ -1,0 +1,30 @@
+
+Running 3 tests using 1 worker
+
+(node:49876) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/3] tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop authoring: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word
+[2/3] tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop review: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word
+tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop review: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word
+
+(node:49876) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+  1) tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop review: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word 
+
+    Test timeout of 240000ms exceeded.
+
+    Error Context: ..\..\.local\production-supplement-20261027\web-real-round5\test-results\run-supplement-production--0d5e8-r-worker-→-private-new-Word\error-context.md
+
+
+(node:53052) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[3/3] tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop m4: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word
+tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop m4: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word
+(node:53052) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+
+  1 failed
+    tests\run-supplement-production-real-main.spec.ts:31:56 › real desktop review: saved Word work → browser B1 quote/consent/adoption → real successor worker → private new Word 
+  2 passed (6.3m)

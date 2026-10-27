@@ -1,0 +1,8 @@
+{
+  "stable": true,
+  "files": 27,
+  "exit": {
+    "code": 1,
+    "signal": null
+  }
+}

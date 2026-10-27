@@ -1,0 +1,37 @@
+{
+  "baseline": "web-real-round3/source-after.json",
+  "final": "web-real-round6/source-after.json",
+  "changes": [
+    {
+      "path": "apps/web/tests/run-supplement-production-real-main.spec.ts",
+      "sha256": "4c03d38f3dc7ec13e61777efce1eebdc5efd611eedf6f8ccb9fe9ec8865b6adf",
+      "bytes": 22679,
+      "mtimeUtc": "2026-10-27T02:46:39.419Z"
+    },
+    {
+      "path": "apps/web/tests/run-supplement-production-real-harness.ts",
+      "sha256": "71d93ad5129ffcdb23c538f6762fbb21d16921daee75a94756c0cb109272c273",
+      "bytes": 10761,
+      "mtimeUtc": "2026-10-27T02:46:37.798Z"
+    },
+    {
+      "path": "apps/worker/test-fixtures/codex/supplement-word-files.mjs",
+      "sha256": "824392cbada19473a0fcd67da4bb190dd1749a539d86e7bf2cbc3a7df726a663",
+      "bytes": 7562,
+      "mtimeUtc": "2026-10-27T02:30:01.975Z"
+    },
+    {
+      "path": "apps/web/tests/run-supplement-production-wallet.ts",
+      "sha256": "9b8c1e9df6e16318820850a9aa25d072272971221ed04a3b1fc895dddcebda6d",
+      "bytes": 9108,
+      "mtimeUtc": "2026-10-27T02:35:19.788Z"
+    },
+    {
+      "path": "apps/web/tests/run-supplement-production-worker-types.d.ts",
+      "sha256": "e40dda32185dc2cf1cd221c5094df008362a167e638168c81ffc3ba162e9e4b4",
+      "bytes": 574,
+      "mtimeUtc": "2026-10-27T01:57:10.303Z"
+    }
+  ],
+  "interpretation": "Only browser test/harness and the synthetic supplier test seam changed. Product source/dist unchanged."
+}

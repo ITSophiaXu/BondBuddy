@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./run-billing-segment": {"types":"./dist/run-billing-segment.d.ts","default":"./dist/run-billing-segment.js"},
     "./run-supplement-execution": {"types":"./dist/run-supplement-execution.d.ts","default":"./dist/run-supplement-execution.js"},
     "./run-execution-test-grant": {"types":"./dist/run-execution-test-grant.d.ts","default":"./dist/run-execution-test-grant.js"},
     "./run-supplement-test-adoption": {"types":"./dist/run-supplement-test-adoption.d.ts","default":"./dist/run-supplement-test-adoption.js"},

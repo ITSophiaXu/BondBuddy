@@ -1,0 +1,14 @@
+[
+  {
+    "phase": "before_context_close",
+    "at": "2026-10-27T02:49:59.962Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true
+  },
+  {
+    "phase": "after_context_close",
+    "at": "2026-10-27T02:49:59.993Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true
+  }
+]

@@ -1,7 +1,7 @@
 import type {Pool,PoolClient} from 'pg';
 import {digest,Problem,transaction,type PrivateBlobs} from './data.js';
 import type {Lease} from './queue.js';
-import {assertRunExecution} from './run-execution.js';
+import {assertProductionSuccessorExecutionActive,assertRunExecution} from './run-execution.js';
 import {assertRunExecutionTestGrant} from './run-execution-test-grant.js';
 import {assertModelCallExecution} from './model-call-execution.js';
 import {validateRunFileReference,extractRunFileReferences,type RunFileReference} from './run-file-reference.js';
@@ -23,7 +23,13 @@ const fileLock=(db:PoolClient,key:string)=>db.query("SELECT pg_advisory_xact_loc
 /** Cleanup may rediscover exact old results after adoption or revocation. It
  * records references to existing bytes; it cannot authorize a worker write. */
 async function historicalExecution(db:PoolClient,row:any,s:Scope){
- const entries=(await db.query(`SELECT e.execution_version,e.input_revision,e.input_hash,a.id AS authorization_id
+ const entries=(await db.query(`SELECT e.execution_version,e.input_revision,e.input_hash,a.id AS authorization_id,
+    bb_production_successor_execution_origin(e.owner_user_id,e.project_id,e.run_id,
+      e.execution_version,e.input_revision,e.input_hash) AS production_successor_authorized,
+    EXISTS(SELECT 1 FROM bb_run_supplement_adoptions accepted WHERE accepted.owner_user_id=e.owner_user_id
+      AND accepted.project_id=e.project_id AND accepted.run_id=e.run_id AND accepted.job_id=$7
+      AND accepted.execution_version=e.execution_version AND accepted.input_revision=e.input_revision
+      AND accepted.input_hash=e.input_hash AND accepted.created_at=e.created_at) AS production_job_authorized
   FROM bb_run_execution_versions e
   JOIN bb_runs r ON r.owner_user_id=e.owner_user_id AND r.project_id=e.project_id AND r.id=e.run_id
   LEFT JOIN bb_run_test_successor_authorizations a ON a.owner_user_id=e.owner_user_id AND a.project_id=e.project_id
@@ -37,8 +43,10 @@ async function historicalExecution(db:PoolClient,row:any,s:Scope){
  if(entries.length!==1||!entry||entry.execution_version!==s.executionVersion||entry.input_revision!==s.inputRevision
   ||entry.input_hash?.trim()!==s.inputHash
   ||!(s.executionVersion===1&&row.input_revision===s.inputRevision&&row.input_hash?.trim()===s.inputHash
-   ||s.executionVersion===2&&row.channel==='non_production_test'&&row.job_channel==='non_production_test'
-    &&typeof entry.authorization_id==='string'&&entry.authorization_id.length>0))throw failure();
+   ||s.executionVersion===2&&(row.channel==='non_production_test'&&row.job_channel==='non_production_test'
+    &&typeof entry.authorization_id==='string'&&entry.authorization_id.length>0
+    ||row.channel==='production'&&row.job_channel==='production'&&entry.production_successor_authorized===true
+      &&entry.production_job_authorized===true)))throw failure();
 }
 
 async function scope(db:PoolClient,s:Scope,source:RunWorkingFileSource,hidden=false){
@@ -50,7 +58,11 @@ async function scope(db:PoolClient,s:Scope,source:RunWorkingFileSource,hidden=fa
  if(hidden)await historicalExecution(db,row,s);
  else{
   await assertRunExecution(db,row,s);
-  if(s.executionVersion===2)await assertRunExecutionTestGrant(db,{...s});
+  if(s.executionVersion===2){
+   if(row.channel==='non_production_test')await assertRunExecutionTestGrant(db,{...s});
+   else if(row.channel==='production')await assertProductionSuccessorExecutionActive(db,s);
+   else throw failure();
+  }
  }
  let prompt:string|undefined;
  if(source.kind==='provider'){
@@ -139,8 +151,8 @@ export async function writeRunWorkingFile(input:WriteInput):Promise<void>{
   await blobs.put(ref.key,bytes,ref.mediaType);
   const stored=await blobs.getIfExistsBounded(ref.key,ref.byteSize);
   if(!stored||stored.length!==ref.byteSize||digest(stored)!==ref.sha256)throw failure();
-  // The live successor grant can be revoked while the independent bytes are
-  // written. Preserve the committed intent, but do not acknowledge that write.
+  // Successor permission can change while the independent bytes are written.
+  // Preserve the committed intent, but do not acknowledge an unauthorized write.
   if(s.executionVersion===2)await scope(db,s,source);
   if(!state.stored_at)await db.query('UPDATE bb_run_working_object_state SET stored_at=now() WHERE object_key=$1',[ref.key]);
  });

@@ -94,7 +94,10 @@ export async function assertRunExecution(db: Db, row: PersistedRunInput, expecte
         WHERE a.owner_user_id=e.owner_user_id AND a.project_id=e.project_id AND a.run_id=e.run_id
           AND a.execution_version=e.execution_version AND a.input_revision=e.input_revision AND a.input_hash=e.input_hash
           AND a.source_execution_version=1 AND a.source_input_revision=r.input_revision AND a.source_input_hash=r.input_hash
-      ) AS successor_authorization_id FROM bb_run_execution_versions e
+      ) AS successor_authorization_id,
+      bb_production_successor_execution_origin(e.owner_user_id,e.project_id,e.run_id,
+        e.execution_version,e.input_revision,e.input_hash) AS production_successor_authorized
+    FROM bb_run_execution_versions e
     JOIN bb_runs r ON r.owner_user_id=e.owner_user_id AND r.project_id=e.project_id AND r.id=e.run_id
     WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.run_id=$3
       AND r.input_revision=$4 AND r.input_hash=$5
@@ -108,16 +111,39 @@ export async function assertRunExecution(db: Db, row: PersistedRunInput, expecte
   if (entries.length !== 1 || !validInput(entry.input_revision, entry.input_hash?.trim())
     || !(entry.execution_version === 1 && entry.input_revision === row.input_revision
       && entry.input_hash.trim() === row.input_hash.trim()
-      || entry.execution_version === 2 && entry.channel === 'non_production_test'
-        && typeof entry.successor_authorization_id === 'string' && entry.successor_authorization_id.length > 0)) throw unavailable();
+      || entry.execution_version === 2 && (entry.channel === 'non_production_test'
+        && typeof entry.successor_authorization_id === 'string' && entry.successor_authorization_id.length > 0
+        || entry.channel === 'production' && entry.production_successor_authorized === true))) throw unavailable();
   const identity = { executionVersion: entry.execution_version, inputRevision: entry.input_revision, inputHash: entry.input_hash.trim() };
   if (expected && (expected.executionVersion !== identity.executionVersion || expected.inputRevision !== identity.inputRevision
     || expected.inputHash !== identity.inputHash)) throw unavailable();
   return identity;
 }
 
+export type ProductionSuccessorExecutionScope = RunExecutionIdentity & {
+  owner: string; projectId: string; runId: string;
+};
+
+/** Production successor writes consume complete durable adoption and fee
+ * authority. Expiry and funding were checked by adoption; saving an in-flight
+ * result must remain possible after its progress debit requests a credit pause.
+ * Internal test grants retain their separate live permission check. */
+export async function assertProductionSuccessorExecutionActive(db: Db,
+  scope: ProductionSuccessorExecutionScope): Promise<void> {
+  if (scope.executionVersion !== 2 || !validInput(scope.inputRevision, scope.inputHash)
+    || ![scope.owner, scope.projectId, scope.runId].every(value => typeof value === 'string' && value.length > 0)) throw unavailable();
+  try {
+    await db.query('SELECT bb_assert_production_successor_execution_active($1,$2,$3,$4,$5,$6)',
+      [scope.owner, scope.projectId, scope.runId, scope.executionVersion, scope.inputRevision, scope.inputHash]);
+  } catch (error) {
+    const failure = error as { code?: string };
+    if (failure?.code === '23514' || failure?.code === '55P03') throw unavailable();
+    throw error;
+  }
+}
+
 /** Real worker input resolution. Successor authority is structural here; new
- * calls and delivery independently recheck the exact execution's live grant. */
+ * calls and delivery independently recheck the execution's live authority. */
 export async function resolveRunExecution(db: Pool | PoolClient, owner: string, runId: string,
   expected: RunExecutionIdentity): Promise<RunExecutionProjection> {
   if (!expected) throw unavailable();

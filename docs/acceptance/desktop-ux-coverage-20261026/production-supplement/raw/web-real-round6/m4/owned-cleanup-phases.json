@@ -1,0 +1,431 @@
+[
+  {
+    "phase": "before_app_close",
+    "at": "2026-10-27T02:51:05.251Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 2,
+    "active_http": [],
+    "pool": {
+      "total": 10,
+      "idle": 10,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 25792,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 35680,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 36012,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 43680,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 50496,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51032,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.589Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51860,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51900,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51940,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.903Z",
+        "query": "SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,n_delivery.naming_integrity_kind AS naming_integrity_kind,n_delivery.naming_created_at AS naming_created_at,n_delivery.naming_input_revision AS naming_input_revision,n_delivery.naming_manifest AS naming_manifest,n_delivery.naming_review_version AS naming_review_version,n_delivery.naming_review_kind AS naming_review_kind,n_delivery.naming_m4_kind AS naming_m4_kind,n_delivery.naming_m4_revision AS naming_m4_revision,n_delivery.naming_m4_type AS naming_m4_type,n_delivery.naming_m4_manifest AS naming_m4_manifest,n_delivery.naming_pair AS naming_pair FROM bb_m4_artifact_execution_versions a\n      JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id\n      JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id  LEFT JOIN bb_run_execution_delivery_artifact_details n_delivery ON n_delivery.owner_u"
+      },
+      {
+        "pid": 52112,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:05.117Z",
+        "query": "ROLLBACK"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_app_close",
+    "at": "2026-10-27T02:51:05.259Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 10,
+      "idle": 10,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 25792,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 35680,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 36012,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 43680,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 50496,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51032,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.589Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51860,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51900,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51940,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.903Z",
+        "query": "SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,n_delivery.naming_integrity_kind AS naming_integrity_kind,n_delivery.naming_created_at AS naming_created_at,n_delivery.naming_input_revision AS naming_input_revision,n_delivery.naming_manifest AS naming_manifest,n_delivery.naming_review_version AS naming_review_version,n_delivery.naming_review_kind AS naming_review_kind,n_delivery.naming_m4_kind AS naming_m4_kind,n_delivery.naming_m4_revision AS naming_m4_revision,n_delivery.naming_m4_type AS naming_m4_type,n_delivery.naming_m4_manifest AS naming_m4_manifest,n_delivery.naming_pair AS naming_pair FROM bb_m4_artifact_execution_versions a\n      JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id\n      JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id  LEFT JOIN bb_run_execution_delivery_artifact_details n_delivery ON n_delivery.owner_u"
+      },
+      {
+        "pid": 52112,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:05.117Z",
+        "query": "ROLLBACK"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "before_fixture_cleanup",
+    "at": "2026-10-27T02:51:05.278Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 10,
+      "idle": 10,
+      "waiting": 0
+    },
+    "pg_activity": [
+      {
+        "pid": 25792,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 35680,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 36012,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 43680,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 50496,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51032,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.589Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51860,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51900,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.590Z",
+        "query": "SELECT * FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3"
+      },
+      {
+        "pid": 51940,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:01.903Z",
+        "query": "SELECT a.*,v.sha256,v.media_type,v.object_key,r.project_id,n_delivery.naming_integrity_kind AS naming_integrity_kind,n_delivery.naming_created_at AS naming_created_at,n_delivery.naming_input_revision AS naming_input_revision,n_delivery.naming_manifest AS naming_manifest,n_delivery.naming_review_version AS naming_review_version,n_delivery.naming_review_kind AS naming_review_kind,n_delivery.naming_m4_kind AS naming_m4_kind,n_delivery.naming_m4_revision AS naming_m4_revision,n_delivery.naming_m4_type AS naming_m4_type,n_delivery.naming_m4_manifest AS naming_m4_manifest,n_delivery.naming_pair AS naming_pair FROM bb_m4_artifact_execution_versions a\n      JOIN bb_delivered_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id\n      JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id  LEFT JOIN bb_run_execution_delivery_artifact_details n_delivery ON n_delivery.owner_u"
+      },
+      {
+        "pid": 52112,
+        "state": "idle",
+        "wait_event_type": "Client",
+        "wait_event": "ClientRead",
+        "backend_xid": null,
+        "backend_xmin": null,
+        "xact_start": null,
+        "query_start": "2026-10-27T02:51:05.117Z",
+        "query": "ROLLBACK"
+      }
+    ],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_fixture_cleanup",
+    "at": "2026-10-27T02:51:05.302Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  },
+  {
+    "phase": "before_owned_drop",
+    "at": "2026-10-27T02:51:05.322Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  },
+  {
+    "phase": "after_owned_drop",
+    "at": "2026-10-27T02:51:05.997Z",
+    "business_evidence_complete": true,
+    "browser_at_blank": true,
+    "browser_context_closed": true,
+    "http_connections": 0,
+    "active_http": [],
+    "pool": {
+      "total": 0,
+      "idle": 0,
+      "waiting": 0
+    },
+    "pg_activity": [],
+    "pg_locks": []
+  }
+]

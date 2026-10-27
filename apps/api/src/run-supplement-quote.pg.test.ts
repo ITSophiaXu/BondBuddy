@@ -342,10 +342,12 @@ test('a confirmed historical receipt remains exact after a new draft, price upda
   { skip: !connection, timeout: 120000 }, async () => {
     const f = await fixture('review', undefined, true);
     try {
-      await prices(f); const result = await create(f, quoteRequest(f), { validForSeconds: 1 });
+      await prices(f); const result = await create(f, quoteRequest(f), { validForSeconds: 10 });
       const request = confirmationRequest(result.quote), accepted = await confirm(f, result.quote.quote_id, request);
       await f.save(1); await prices(f, { differential_review: 917 });
-      await new Promise(resolve => setTimeout(resolve, 1250));
+      // Confirm while the short quote is live, then wait for its actual DB
+      // expiry. Other private suites may be doing real Word/PG work in parallel.
+      await new Promise(resolve => setTimeout(resolve, Math.max(0,Date.parse(result.quote.expires_at)-Date.now()+100)));
       const before = await originalEvidence(f);
       assert.deepEqual(await read(f, result.quote.quote_id), accepted);
       assert.deepEqual(await confirm(f, result.quote.quote_id, request), accepted);

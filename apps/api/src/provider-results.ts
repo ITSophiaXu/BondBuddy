@@ -8,6 +8,7 @@ import { runEventPayloadDto } from './run-event-dto.js';
 import { providerCallNeedsReconciliation, type Lease } from './queue.js';
 import { assertRunExecution, readExecutionStages } from './run-execution.js';
 import { assertModelCallExecution } from './model-call-execution.js';
+import { readRunBillingSegment } from './run-billing-segment.js';
 export type { PrivateBlobs } from './data.js';
 
 // This adapter exposes only immutable, run-local material reads; no side-effecting tools.
@@ -311,7 +312,9 @@ export async function recordProviderCallObservation(
     // conflicting usage remains in the internal cost ledger without holding credits.
     const usageOnlyPending=observation.outcome==='pending_reconcile'&&observation.finish_reason==='stop'&&
       ['MODEL_USAGE_PENDING','USAGE_PENDING'].includes(observation.error_code??'');
-    const resultMayPrecedeMetering=r.billing_mode==='fixed_credits' || r.billing_mode==='metered_credits' && ['m4_document_v1','m4_qa_v1'].includes(job.subtype);
+    const fee=await readRunBillingSegment(client,r,identity);
+    const resultMayPrecedeMetering=fee?.billingPolicy==='authoring_balance_v2' ||
+      r.billing_mode==='fixed_credits' || r.billing_mode==='metered_credits' && ['m4_document_v1','m4_qa_v1'].includes(job.subtype);
     const complete=!!result && candidateCount===1 &&
       (observation.outcome==='completed'&&(measuredWithoutConflict || resultMayPrecedeMetering) || resultMayPrecedeMetering&&usageOnlyPending);
     // A provider's explicit invalid_request_error is a request rejection, with no
@@ -418,7 +421,9 @@ export async function readCheckpointedProviderResult(input: {
     WHERE rr.owner_user_id=$1 AND rr.project_id=(SELECT project_id FROM bb_runs WHERE owner_user_id=$1 AND id=$2)
       AND rr.job_id=$3 AND rr.run_id=$2 AND rr.logical_call_id=$4 AND rr.attempt_no=$5 AND rr.attempt_id=$6 AND rr.id=$7 AND rr.result_sha256=$8
       AND (SELECT count(*) FROM bb_provider_result_refs candidate WHERE candidate.attempt_id=rr.attempt_id)=1`,[input.lease.owner,input.lease.runId,input.lease.jobId,input.logicalCallId,input.attemptNo,replay.call_id,replay.result_id,replay.result_sha256])).rows[0];
-  const fixedPrice=attempt.billing_mode==='fixed_credits' || attempt.billing_mode==='metered_credits' && ['m4_document_v1','m4_qa_v1'].includes(attempt.subtype);
+  const fee=await readRunBillingSegment(input.pool,activeLease.rows[0],identity);
+  const fixedPrice=fee?.billingPolicy==='authoring_balance_v2' ||
+    attempt.billing_mode==='fixed_credits' || attempt.billing_mode==='metered_credits' && ['m4_document_v1','m4_qa_v1'].includes(attempt.subtype);
   if (!result || attempt.status!=='completed' || !fixedPrice && (attempt.usage_status!=='measured' || Number(attempt.conflicting_measurements)>0) || result.prompt_snapshot_ref!==binding.promptSnapshotRef || result.result_ref!==replay.result_ref || result.result_schema_version!==replay.result_schema_version || Number(result.byte_size)<1 || result.trace_id!==input.lease.runId) {
     throw new Problem(409,'CAPABILITY_NOT_READY','Provider result or usage is not reconciled; call remains pending');
   }

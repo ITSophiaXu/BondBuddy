@@ -1,0 +1,1674 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/messages?limit=20",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/input-revisions/1",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/tasks",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=1",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=1",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=6",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=6",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=6",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=8",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=8",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=8",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=11",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=11",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/pause",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=11",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=12",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=12",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-adoptions/current",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-draft",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/uploads",
+    "status": 201
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/uploads/fbb06285-f981-474f-9164-2dae5eee80b3/bytes",
+    "status": 204
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/uploads/fbb06285-f981-474f-9164-2dae5eee80b3/complete",
+    "status": 200
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-draft",
+    "status": 200,
+    "body": {
+      "request_id": "affa32b9-cc57-4911-b3aa-f45f116eba36",
+      "expected_revision": 0,
+      "base_input_revision": 1,
+      "base_input_hash": "85f0aa2d02a6bc9aa348a71d4f6db284dee961a191d674764ad6a2b9dced72c0",
+      "changes": [
+        {
+          "material": {
+            "material_id": "e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0",
+            "material_version": 1,
+            "sha256": "89eb5f630614a08ac084cd884856ee1733b04b98038bca401b1926bff25f6267"
+          },
+          "replaces": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-quotes",
+    "status": 200,
+    "body": {
+      "request_id": "016d0583-e0a7-4d23-8473-acb0d569535f",
+      "supplement_revision": 1,
+      "saved_request_id": "affa32b9-cc57-4911-b3aa-f45f116eba36",
+      "candidate_input_hash": "bfd0448b7be8c6d9856a794ed5be878a51b5cec7a31497366c35756915856b3c"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/messages?limit=20",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/input-revisions/1",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/tasks",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-adoptions/current",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-quotes/23bd055b-41d6-4edd-a639-a0106eb77f50",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-draft",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-quotes/23bd055b-41d6-4edd-a639-a0106eb77f50/confirm",
+    "status": 200,
+    "body": {
+      "request_id": "66a338fe-c4b2-4675-9ab7-7f07b9305caf",
+      "quote_hash": "a067e986fffa2fad448a29a80ad2bb9c32caf5d56d73093ad35c3d5d05c7d19d"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-adoptions",
+    "status": 200,
+    "body": {
+      "request_id": "343a0973-6ce6-455f-b6ca-0b6c3bff67a8",
+      "quote_id": "23bd055b-41d6-4edd-a639-a0106eb77f50",
+      "confirmation_id": "648bf2a5-736c-4383-8bb9-b8289dabc0e9",
+      "quote_hash": "a067e986fffa2fad448a29a80ad2bb9c32caf5d56d73093ad35c3d5d05c7d19d"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=14",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=16",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=16",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=18",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=18",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=18",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=21",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=22",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=22",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=22",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=22",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=22",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=23",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=23",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=23",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=23",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=23",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=23",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=25",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=25",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/pause",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=25",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=26",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/account",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/messages?limit=20",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/input-revisions/1",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/tasks",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/stream",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=27",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-adoptions/current",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=27",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/events?after=0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/supplement-adoptions/current",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/resume",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=27",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=28",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=28",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=28",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=31",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=31",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=31",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=32",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=32",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=32",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=33",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=33",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=34",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/materials/e3f5cff2-a2a6-4c5b-b493-0d16a305c5e0/parse-job",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=34",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a/prospectus-versions",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=34",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/events?after=35",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b/credit-charge",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/credits/balance",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/artifacts/word-a8ae08baaaee21e8fe32eccac819ccb4b69ce621bff7507c7b09a6d77c9b30c7",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/runs/a6b1a8d2-1c18-4122-bfdc-8e42a323b93b",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/projects/9d147d68-930c-414d-bc4d-6995f331ac1a",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/artifacts/word-4adde14c26875ca3a4eaab07b6654e3169e5e552ce8a4efae2ad72fd0f9b7542",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/artifacts/word-4adde14c26875ca3a4eaab07b6654e3169e5e552ce8a4efae2ad72fd0f9b7542/download?grant=8a0f28b9-a38c-4ef8-b9fa-6131ae6e104a",
+    "status": 200
+  }
+]

@@ -1,0 +1,45 @@
+
+Running 37 tests using 1 worker
+
+(node:36252) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/37] tests\run-supplement-adoption-resume.spec.ts:79:48 › desktop m1: server-adopted paused execution resumes without either local journal or the retired draft
+[2/37] tests\run-supplement-adoption-resume.spec.ts:79:48 › desktop m3: server-adopted paused execution resumes without either local journal or the retired draft
+[3/37] tests\run-supplement-adoption-resume.spec.ts:79:48 › desktop m4: server-adopted paused execution resumes without either local journal or the retired draft
+[4/37] tests\run-supplement-adoption-resume.spec.ts:87:1 › desktop M3: an unavailable current-adoption read blocks resume and an explicit read-only retry recovers it
+[5/37] tests\run-supplement-adoption-resume.spec.ts:100:1 › desktop M4: current-adoption failure during resume verification requires a fresh read before ordinary resume
+[6/37] tests\run-supplement-adoption-resume.spec.ts:110:1 › desktop M1: a server-adopted running execution can withdraw its pending pause without new consent
+[7/37] tests\run-supplement-adoption.spec.ts:64:48 › desktop m1: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+[8/37] tests\run-supplement-adoption.spec.ts:64:48 › desktop m3: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+[9/37] tests\run-supplement-adoption.spec.ts:64:48 › desktop m4: B1 exact quote requires explicit consent, and refresh cannot authorize a charge
+[10/37] tests\run-supplement-adoption.spec.ts:77:1 › zero additional quote explains continued original fees and still needs an explicit continue
+[11/37] tests\run-supplement-adoption.spec.ts:83:1 › accepted adoption with a lost response survives refresh and recovers GET by original request_id
+[12/37] tests\run-supplement-adoption.spec.ts:91:1 › low balance retries the exact adoption request after recharge
+[13/37] tests\run-supplement-adoption.spec.ts:98:1 › lost quote and confirmation responses restore read-only and preserve their request IDs
+[14/37] tests\run-supplement-adoption.spec.ts:107:1 › changed or expired quotes require a new fee check while retaining saved drafts/uploads
+[15/37] tests\run-supplement-adoption.spec.ts:116:1 › a second tab changes consent journal; stale tab must explicitly reload before any charge
+[16/37] tests\run-supplement-draft.spec.ts:27:48 › desktop m1: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[17/37] tests\run-supplement-draft.spec.ts:27:48 › desktop m3: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[18/37] tests\run-supplement-draft.spec.ts:27:48 › desktop m4: paused preparation uploads, saves, reloads and explicitly excludes supplements on original resume
+[19/37] tests\run-supplement-draft.spec.ts:56:1 › captured work discloses result references and hides old confirmation during local edits and unknown saves
+[20/37] tests\run-supplement-draft.spec.ts:72:1 › a changed pause boundary requires a new explicit save even when the material choices are unchanged
+[21/37] tests\run-supplement-draft.spec.ts:87:1 › an old saved draft can capture work on a new save without changing its empty material selection
+[22/37] tests\run-supplement-draft.spec.ts:98:1 › saved material issues remain distinct from adoption, and local edits hide stale check results
+[23/37] tests\run-supplement-draft.spec.ts:112:1 › replacement source declarations start empty and survive source-only edits, an unknown receipt and refresh
+[24/37] tests\run-supplement-draft.spec.ts:158:1 › new reference information edits retain their exact declaration through a CAS keep-local resolution
+[25/37] tests\run-supplement-draft.spec.ts:184:1 › replacement intent keeps the frozen role, exact source pin and uploaded bytes separate from saving
+[26/37] tests\run-supplement-draft.spec.ts:199:1 › unsaved completed upload and add intent survive reload without silently creating a draft revision
+[27/37] tests\run-supplement-draft.spec.ts:205:1 › CAS conflict preserves the local selection until the user chooses how to resolve it
+[28/37] tests\run-supplement-draft.spec.ts:215:1 › CAS use-latest choice discards local choices only after explicit selection
+[29/37] tests\run-supplement-draft.spec.ts:222:1 › accepted PUT with a lost response is recovered by its exact receipt without a second save
+[30/37] tests\run-supplement-draft.spec.ts:229:1 › unaccepted PUT with a lost response retries the identical request only after receipt says not found
+[31/37] tests\run-supplement-draft.spec.ts:239:1 › unknown save persists through refresh and reads the original receipt even when a newer revision exists
+[32/37] tests\run-supplement-draft.spec.ts:247:1 › server can_save prevents a save while still showing the exact frozen base and explicit blocked reason
+[33/37] tests\run-supplement-draft.spec.ts:253:1 › a lost upload completion receipt is recovered before saving the preparation without resending bytes
+[34/37] tests\run-supplement-draft.spec.ts:261:1 › an upload completion after leaving its owner/run surface cannot attach or save to the new view
+[35/37] tests\run-supplement-draft.spec.ts:270:1 › mismatched exact receipt keeps the original request pending and prevents original-material resume until verified
+[36/37] tests\run-supplement-draft.spec.ts:280:1 › a delayed availability GET from V0 cannot offer an older draft after save confirms V1
+[37/37] tests\run-supplement-draft.spec.ts:291:1 › failure reading a newer draft does not turn an already verified original save receipt back into unknown
+  37 passed (1.2m)

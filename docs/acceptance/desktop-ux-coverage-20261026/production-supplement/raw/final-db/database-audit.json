@@ -1,0 +1,63 @@
+{
+  "auditedAt": "2026-10-27T02:53:07.457Z",
+  "settings": {
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/ux-coverage-20261026/.local/test-successor-postgres/data",
+    "port": "15542",
+    "postmaster_start_time": "2026-10-27T01:42:32.219Z"
+  },
+  "databases": [
+    {
+      "datname": "bb_b1_template_20261027"
+    },
+    {
+      "datname": "bb_prod_supplement01_20261027"
+    },
+    {
+      "datname": "bb_prod_supplement02_20261027"
+    },
+    {
+      "datname": "bb_segments_final02_20261027"
+    },
+    {
+      "datname": "bb_successor_template_20261027"
+    },
+    {
+      "datname": "bb_successor_word_final_20261027"
+    },
+    {
+      "datname": "postgres"
+    }
+  ],
+  "clients": [],
+  "ownedClonesRemaining": [],
+  "templates": [
+    {
+      "name": "bb_prod_supplement01_20261027",
+      "counts": {
+        "runs": 0,
+        "jobs": 0,
+        "supplement_quotes": 0
+      },
+      "preserved": true
+    },
+    {
+      "name": "bb_prod_supplement02_20261027",
+      "counts": {
+        "runs": 0,
+        "jobs": 0,
+        "supplement_quotes": 0
+      },
+      "preserved": true
+    },
+    {
+      "name": "bb_segments_final02_20261027",
+      "counts": {
+        "runs": 0,
+        "jobs": 0,
+        "supplement_quotes": 0
+      },
+      "preserved": true
+    }
+  ],
+  "databasesDropped": []
+}

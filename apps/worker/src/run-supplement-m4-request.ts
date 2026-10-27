@@ -33,7 +33,7 @@ export async function prepareRunSupplementM4Request(input: RunSupplementAuthorin
     if (loaded.input.manifest.kind !== 'document') throw Error('INPUT_REVISION_CONFLICT');
     const skill = loadM4DocumentSkill(loaded.input.manifest);
     const gate = await m4PinnedModelGate({pool: input.db, owner: input.owner, runId: input.runId,
-      billingMode: loaded.run.billing_mode}, config);
+      execution: current.sourceExecution}, config);
     const methodHash = inputManifestHash(await buildM4Method('document', skill, config));
     if (gate || current.priorWork && (current.priorWork.metadata.method_hash !== methodHash
       || current.priorWork.metadata.skill_sha256 !== skill.sha256))

@@ -1,0 +1,42 @@
+TAP version 13
+# Subtest: authoring: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+ok 1 - authoring: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+  ---
+  duration_ms: 35190.8577
+  type: 'test'
+  ...
+# (node:52060) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: review: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+ok 2 - review: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+  ---
+  duration_ms: 48308.2037
+  type: 'test'
+  ...
+# Subtest: m4: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+ok 3 - m4: paid origin public positive B1 adoption makes a fresh production Word and replays without another call
+  ---
+  duration_ms: 49741.7395
+  type: 'test'
+  ...
+# Subtest: authoring: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+ok 4 - authoring: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+  ---
+  duration_ms: 34117.8977
+  type: 'test'
+  ...
+# Subtest: m4: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+ok 5 - m4: free origin public positive B1 adoption makes a fresh production Word with unknown usage recovery and replays without another call
+  ---
+  duration_ms: 49447.4743
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 226955.2626

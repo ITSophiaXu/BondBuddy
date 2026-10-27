@@ -1,0 +1,15 @@
+{
+  "baseline": "api-20261027T022142158Z-32828/sources-after.json",
+  "final": "worker-20261027T023055916Z-39712/sources-after.json",
+  "productionAndTestSourceDeltaOutsideFixture": [],
+  "additionalCapturedRoots": [
+    "apps/worker/test-fixtures"
+  ],
+  "defaultSupplierWorkerRerun": {
+    "tests": 5,
+    "pass": 5,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  }
+}

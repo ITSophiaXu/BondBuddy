@@ -166,7 +166,7 @@ test('real main: a new prospectus is saved while its missing source declaration 
     issues:[{code:'source_information_required',material_id:material.material_id}]});
   preparationOnly(f,before,await real.evidence(f),[receipt]);
   await page.reload();await expect((await ready(page,f)).locator('[data-supplement-input-preview]')).toContainText('需要重新填写这份原稿的信息');
-  await expect(host(page,f).getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
+  await expect(action(host(page,f),'quote')).toBeDisabled();
   await capture(page,f,'source-information-required');
   await writeFile(join(real.artifactRoot,'source-information-required-assertions.json'),JSON.stringify({synthetic:true,full_main:true,receipt,before,after:await real.evidence(f)},null,2));
 });
@@ -249,7 +249,7 @@ test('real main M1: complete source fields and explicit baseline discard stay in
   expect(baselineLayout.text.width).toBeGreaterThan(200);expect(baselineLayout.label.height).toBeLessThanOrEqual(64);
   expect(baselineLayout.text.x+baselineLayout.text.width).toBeLessThanOrEqual(baselineLayout.label.x+baselineLayout.label.width+1);
   await expect(restored.locator('[data-supplement-input-preview]')).toContainText('材料关联已核对');
-  await expect(restored.getByRole('button',{name:'采用补料并继续（待定价规则确认）'})).toBeDisabled();
+  await expect(action(restored,'quote')).toBeEnabled();
   expect(await real.request('GET',`/api/v1/runs/${f.runId}/supplement-draft`)).toMatchObject({revision:2,adopted:false,changes:confirmedChanges});
   preparationOnly(f,before,await real.evidence(f),[first,receipt]);expect(projectWrites).toEqual([]);
   await capture(page,f,'source-declaration-isolated');
