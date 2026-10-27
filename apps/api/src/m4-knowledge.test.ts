@@ -27,7 +27,9 @@ test('workpaper guide pins the selected scope and distinguishes disclosures from
   for(const [market,offering] of [['sse','public'],['szse','private'],['nafmii','ppn']] as const){
     const pin=loadWorkpaperKnowledge(market,offering);
     assert.ok(validM4Knowledge(pin,market,'workpaper',offering));assert.match(pin.content,/不替代独立核查证据/);
-    assert.match(pin.content,/归档准备页/);assert.equal(validM4Knowledge({...pin,content:'changed'},market,'workpaper',offering),false);
+    assert.match(pin.content,/采用本项固定格式模板/);
+    assert.match(pin.content,/内部映射和编制说明不得进入交付文件包/);
+    assert.equal(validM4Knowledge({...pin,content:'changed'},market,'workpaper',offering),false);
   }
   assert.throws(()=>loadWorkpaperKnowledge('sse','ppn'),/M4_KNOWLEDGE_UNAVAILABLE/);
 });

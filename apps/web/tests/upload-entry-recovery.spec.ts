@@ -34,6 +34,7 @@ async function fixture(page:Page){
     if(method==='GET'&&path===`${base}/tasks`)return json(route,200,taskPage(project,[]));
     if(method==='GET'&&path===`${base}/files`)return json(route,200,{project_id:project,items:[],page:{has_more:false,next_cursor:null}});
     if(method==='GET'&&path===`${base}/project-files`)return json(route,200,{files:[]});
+    if(method==='GET'&&path===`${base}/workpapers/library`)return json(route,200,{items:[],total:0,offset:0,limit:30,source:null,checks:[]});
     if(method==='GET'&&path===`${base}/project-files/workspace`)return json(route,200,state.work);
     if(method==='GET'&&path===`${base}/prospectus-versions`)return json(route,200,{project_id:project,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:state.versions});
     if(method==='POST'&&path===`${base}/materials/uploads`){const id=`upload-${state.sessions.size+1}`;state.sessions.set(id,{declaration:body,received:false});return json(route,201,{upload_id:id,state:'uploading',upload_url:`${base}/materials/uploads/${id}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100*1024*1024});}
