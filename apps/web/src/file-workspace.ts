@@ -15,6 +15,7 @@ import {withProjectContext,navigationProjectContext,projectWorkHref} from './pro
 import {UploadRecovery,type UploadRecoveryJson,type UploadRecoveryRecord} from './upload-recovery';
 import './file-workspace.css';
 import {WorkpaperPanel} from './workpaper-panel';
+import {WorkpaperTaskPanel} from './workpaper-task';
 import '../../../product-prototype/public/file-generation-ux.css';
 import '../../../product-prototype/public/workpaper-entry.css';
 
@@ -57,7 +58,7 @@ export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undef
 }
 
 export class FileWorkspace {
-  private workpapers?:WorkpaperPanel;
+  private workpapers?:WorkpaperPanel|WorkpaperTaskPanel;
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
   private state?:Workspace;private project?:Dto<'ProjectResponse'>;private selected=new Set<M4DocumentType>();private busy=false;
   private timer?:ReturnType<typeof setTimeout>;private pendingBatch?:Readonly<FileGenerationBatchRequest>;private pendingUncertain=false;private pendingStored=false;private pendingExpired=false;
@@ -173,6 +174,13 @@ export class FileWorkspace {
     if(!this.id){await this.chooseProject();return;}
     try{
       this.project=await this.api.project(this.id,this.controller.signal);
+      const taskQuery=new URLSearchParams(location.hash.split('?')[1]),operation=taskQuery.get('operation');
+      if(taskQuery.get('run')&&(operation==='workpaper_assessment'||operation==='workpaper_check')){
+        if(!this.live())return;
+        this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,'generate');
+        this.workpapers=new WorkpaperTaskPanel(this.api,document.querySelector('#pf-workpapers')!,this.id,taskQuery.get('run')!,operation,()=>this.live());
+        await this.workpapers.render();return;
+      }
       try{this.state=await this.request<Workspace>('GET','/workspace');}
       catch(e){if(!(e instanceof ApiError)||e.status!==404)throw e;this.state=await this.request<Workspace>('POST','/workspace',{request_id:crypto.randomUUID()});}
       if(this.live()){
@@ -183,50 +191,64 @@ export class FileWorkspace {
     catch(e){if(this.live())this.shell(`<div class="collection-empty"><h1>文件生成暂时无法打开</h1><p role="alert">${esc(friendlyError(e,'read'))}</p><a class="btn secondary" href="#generate">重新选择项目</a></div>`,'generate');}
   }
   private status(s:string){this.message=s;if(!this.live())return;const node=document.querySelector('#pf-status');if(node)node.textContent=s;}
-  private syncSourceAction(){const button=document.querySelector<HTMLButtonElement>('#pf-source-next');if(button)button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;}
+  private syncSourceAction(){
+    const button=document.querySelector<HTMLButtonElement>('#pf-source-next');
+    if(button){button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;button.closest<HTMLElement>('footer')!.hidden=!!this.panel?.hasPendingGenerationVersion;}
+  }
+  private sourceDestination(){return new URLSearchParams(location.hash.split('?')[1]).get('mode')==='workpapers'?'workpapers':'documents';}
+  private async continueFromSource(){
+    const source=this.state?.source;if(!source)return;
+    const destination=this.sourceDestination();
+    if(destination==='documents')this.state=await this.request<Workspace>('POST','/source',{source_version_id:source.version_id,expected_selection_revision:source.selection_revision});
+    if(this.live())location.hash=this.href({step:destination});
+  }
   private lockPreparation(){this.syncSourceAction();this.paintSupportUpload();document.querySelectorAll<HTMLElement>('.pf-generation-grid,.pf-optional-grid,.pf-original-operations').forEach(n=>n.inert=this.busy);const b=document.querySelector<HTMLButtonElement>('#pf-generate');if(b&&this.busy)b.disabled=true;document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel],[data-pf-download]').forEach(button=>button.disabled=this.busy);const refresh=document.querySelector<HTMLButtonElement>('#pf-refresh-results');if(refresh){refresh.disabled=this.busy||this.resultsReading!==undefined;refresh.textContent=this.resultsReading!==undefined?'正在刷新…':'刷新生成状态';}}
   private async act(fn:()=>Promise<void>,operation:'read'|'save'|'download'|'submit'|'action'='save'){if(this.busy)return;if(this.panel&&!await this.panel.beforeLeave())return;this.busy=true;clearTimeout(this.timer);this.resultsRequest++;this.resultsReading=undefined;this.lockPreparation();this.paintEntryIntent();this.status('正在保存…');try{await fn();}catch(e){if(this.live())this.status(friendlyError(e,operation));}finally{this.busy=false;if(this.live()){if(document.querySelector('#pf-template-list'))this.paintTemplates();this.lockPreparation();this.paintEntryIntent();this.scheduleResults();}}}
   private prepared(){const source=this.state?.source;if(!source)return false;const matches=(id:M4DocumentType)=>{const pin=this.state!.workspace.drafts[id].project_file;return !!pin&&pin.project_id===this.id&&pin.source_version_id===source.version_id&&pin.source_selection_revision===source.selection_revision;};return this.selected.size?[...this.selected].every(matches):PROJECT_DOCUMENT_CATALOG.some(d=>matches(d.id));}
   private saveSelection(){if(this.cache&&!this.cache.saveSelection([...this.selected]))this.status('本次文件选择暂未保存到浏览器会话，刷新后请重新核对。');}
   private header(step:string){
-    const workpapers=step==='workpapers';
+    const workpapers=step==='workpapers'||step==='source'&&this.sourceDestination()==='workpapers',home=step==='choose';
     const navClass='btn secondary';
-    return `<header class="pf-workspace-heading pf-generation-heading ${workpapers?'pf-workpaper-heading':''}"><div class="pf-title-row"><div><h1>${workpapers?'批量生成底稿':'文件生成'}</h1><p>${workpapers?'上传 Excel 底稿目录，依据募集说明书逐份生成。':step==='results'?'查看生成进度，下载已完成的文件。':'选择生成方式，复用本项目的募集说明书。'}</p></div><nav class="pf-workspace-actions" aria-label="文件生成导航">${workpapers?`<a class="${navClass}" href="${esc(this.href({step:'documents'}))}">按模板生成文件</a>`:''}<a class="${navClass} pf-switch-project" href="#generate">更换项目</a>${step==='results'?`<a class="btn secondary" href="${esc(this.href({step:'documents'}))}">准备文件</a>`:`<a class="${navClass}" href="${esc(this.href({step:'results'}))}">生成记录${this.state?.batches.length?` · ${this.state.batches.length}`:''}</a>`}<a class="${navClass}" href="${esc(this.filesHref())}">项目文件</a></nav></div></header>
-      ${!workpapers?`<nav class="pf-generation-choices" aria-label="选择文件生成方式"><a class="pf-generation-choice pf-workpaper-choice" href="${esc(this.href({step:'workpapers'}))}" aria-label="批量生成底稿"><span class="pf-choice-icon">${ico('folder')}</span><span class="pf-choice-content"><strong>批量生成底稿</strong><span>上传 Excel 目录，按目录生成整套底稿及不生成项说明。</span><b>上传目录，生成底稿 ${ico('arrow')}</b></span></a><a class="pf-generation-choice" href="${esc(this.href({step:'documents'}))}" ${step==='documents'?'aria-current="page"':''} aria-label="按模板生成文件"><span class="pf-choice-icon">${ico('file')}</span><span class="pf-choice-content"><strong>按模板生成文件</strong><span>立项报告、主承销商核查意见、法律意见书等。</span><b>${step==='documents'?'当前方式':'选择文件与模板'} ${ico('arrow')}</b></span></a></nav>`:''}
+    return `<header class="pf-workspace-heading pf-generation-heading ${workpapers?'pf-workpaper-heading':''}">${home?'':`<a class="pf-back-link" href="${esc(this.href({step:'choose'}))}">← 选择生成方式</a>`}<div class="pf-title-row"><div><h1>${home?'文件生成':step==='results'?'生成记录':workpapers?'批量生成底稿':'按模板生成文件'}</h1><p>${home?'你想生成什么文件？选择一种方式开始。':step==='source'?'准备募集说明书，作为本次生成依据。':workpapers?'上传 Excel 底稿目录，依据募集说明书逐份生成。':step==='results'?'查看生成进度，下载已完成的文件。':'选择文件与模板，核对清单和费用后开始生成。'}</p></div><nav class="pf-workspace-actions" aria-label="文件生成导航">${home?`<a class="${navClass} pf-switch-project" href="#generate">更换项目</a>`:''}${step==='results'?`<a class="btn secondary" href="${esc(this.href({step:'documents'}))}">准备文件</a><a class="btn secondary" href="${esc(this.href({step:'workpapers',view:'results'}))}">底稿生成记录</a>`:`<a class="${navClass}" href="${esc(this.href(workpapers?{step:'workpapers',view:'results'}:{step:'results'}))}">生成记录${!workpapers&&this.state?.batches.length?` · ${this.state.batches.length}`:''}</a>`}<a class="${navClass}" href="${esc(this.filesHref())}">项目文件</a></nav></div></header>
+      ${home?`<nav class="pf-generation-choices" aria-label="选择文件生成方式"><a class="pf-generation-choice" href="${esc(this.href({step:'workpapers'}))}" aria-label="批量生成底稿"><span class="pf-choice-icon">${ico('folder')}</span><span class="pf-choice-content"><strong>批量生成底稿</strong><span>已有 Excel 底稿目录，按目录生成整套底稿及不生成项说明。</span><b>选择底稿目录 ${ico('arrow')}</b></span></a><a class="pf-generation-choice" href="${esc(this.href({step:'documents'}))}" aria-label="按模板生成文件"><span class="pf-choice-icon">${ico('file')}</span><span class="pf-choice-content"><strong>按模板生成文件</strong><span>选择立项报告、主承销商核查意见、法律意见书等文件，添加对应模板。</span><b>选择文件与模板 ${ico('arrow')}</b></span></a></nav>`:''}
       <section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`;
   }
   private async chooseProject(){
     this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'generate',title:'文件生成',eyebrow:'',
-      description:'先选择项目，基于募集说明书与已保存模板生成关联文件，完成后统一归入项目。',
+      description:'先选择项目，再按底稿目录或文件模板生成文件，完成后统一归入项目。',
       steps:[],next:'打开文件生成',onNew:()=>this.newProject(),
       open:async(id)=>{if(this.live())location.hash='generate?project='+encodeURIComponent(id);}});
     await this.entry.render();
   }
   private modal(title:string,body:string){this.dialog?.remove();const d=document.createElement('dialog');d.className='pf-modal';d.innerHTML=`<header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="关闭">${ico('close')}</button></header>${body}<p id="pf-modal-status" role="status"></p>`;document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.busy)d.close();});d.addEventListener('cancel',e=>{if(this.busy)e.preventDefault();});d.addEventListener('close',()=>d.remove());this.dialog=d;return d;}
   private newProject(){
-    const d=this.modal('新建项目',`<form id="pf-new-form"><label>项目名称<input name="name" required maxlength="200"/></label><label>发行人全称<input name="issuer_name" required maxlength="200"/></label><label>市场<select name="market">${Object.entries(MARKET_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><label>品种<select name="offering"></select></label><button class="btn primary">创建项目并添加募集说明书</button></form>`);
+    const d=this.modal('新建项目',`<form id="pf-new-form"><label>项目名称<input name="name" required maxlength="200"/></label><label>发行人全称<input name="issuer_name" required maxlength="200"/></label><label>市场<select name="market">${Object.entries(MARKET_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><label>品种<select name="offering"></select></label><button class="btn primary">创建项目，选择生成方式</button></form>`);
     const market=d.querySelector<HTMLSelectElement>('[name=market]')!,offering=d.querySelector<HTMLSelectElement>('[name=offering]')!;
     const sync=()=>{offering.innerHTML=MARKET_OFFERINGS[market.value as keyof typeof MARKET_OFFERINGS].map(v=>`<option value="${v}">${OFFERING_LABELS[v]}</option>`).join('');};market.addEventListener('change',sync);sync();
     const key=crypto.randomUUID();d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();if(this.busy)return;this.busy=true;const data=new FormData(e.target as HTMLFormElement);
       void this.api.request<Dto<'ProjectResponse'>>('POST','/projects',{creation_request_id:key,kind:'generation',name:data.get('name'),issuer_name:data.get('issuer_name'),market:market.value,offering:offering.value}, {},this.controller.signal)
-        .then(p=>{if(this.live()){d.close();location.hash=`generate?project=${p.project_id}&step=source`;}}).catch(e=>{d.querySelector('#pf-modal-status')!.textContent=friendlyError(e,'submit');}).finally(()=>{this.busy=false;});});
+        .then(p=>{if(this.live()){d.close();location.hash=`generate?project=${p.project_id}&step=choose`;}}).catch(e=>{d.querySelector('#pf-modal-status')!.textContent=friendlyError(e,'submit');}).finally(()=>{this.busy=false;});});
   }
   private async paint(){
     this.workpapers?.dispose();this.workpapers=undefined;
     if(!this.state||!this.live())return;this.capturePreparationView();this.panel?.dispose();this.panel=undefined;
-    const step=new URLSearchParams(location.hash.split('?')[1]).get('step')??(this.prepared()?'documents':'source');
+    const step=new URLSearchParams(location.hash.split('?')[1]).get('step')??(this.entryIntent||this.entryAdopted?'documents':'choose');
     if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,'generate');this.paintEntryIntent();return;}
     if(this.pendingBatch){this.paintRecovery();return;}
+    if(step==='choose'){
+      this.shell(`${this.header(step)}<div class="pf-home-source">${ico('file')}<div><strong>${this.state.source?'已准备项目募集说明书':'还没有募集说明书？'}</strong><p>${this.state.source?`${esc(this.state.source.filename)} · V${this.state.source.sequence}，两种方式均可复用。`:'选择生成方式后上传即可；文件选中后自动上传。'}</p></div></div><p id="pf-status" role="status">${esc(this.message)}</p>`,'generate');this.paintEntryIntent();return;
+    }
     if(step==='workpapers'){
       this.shell(`${this.header(step)}<div id="pf-workpapers"></div>`,'generate');
       this.workpapers=new WorkpaperPanel(this.api,document.querySelector('#pf-workpapers')!,this.id!,this.owner!,this.state.source,()=>this.live());await this.workpapers.render();return;
     }
     if(step==='source'){
-      this.shell(`${this.header(step)}<div class="pf-source-workspace"><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-source-actions"><p>${this.state.source?`将使用 V${this.state.source.sequence} 作为本次生成依据。`:'上传并采用募集说明书后，即可选择文件。'}</p><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>选择要生成的文件 ${ico('arrow')}</button></footer></div>`,'generate');this.paintEntryIntent();
+      const nextLabel=this.sourceDestination()==='workpapers'?'继续：选择底稿目录':'继续：选择文件与模板';
+      this.shell(`${this.header(step)}<div class="pf-source-workspace"><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-source-actions"><p>${this.state.source?`将使用 V${this.state.source.sequence} 作为本次生成依据。`:'选择文件后自动上传，上传完成后继续。'}</p><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>${nextLabel} ${ico('arrow')}</button></footer></div>`,'generate');this.paintEntryIntent();
       const sourceProject=this.state.source?.project_id??this.id!;
-      this.panel=new ProspectusPanel(this.api,sourceProject,document.querySelector('#pf-prospectus')!,async()=>!this.busy,async()=>{this.state=await this.request<Workspace>('GET','/workspace');await this.paint();},()=>this.syncSourceAction(),'generation',this.owner);await this.panel.refresh();
+      this.panel=new ProspectusPanel(this.api,sourceProject,document.querySelector('#pf-prospectus')!,async()=>!this.busy,async()=>this.act(async()=>{this.state=await this.request<Workspace>('GET','/workspace');await this.continueFromSource();}),()=>this.syncSourceAction(),'generation',this.owner);await this.panel.refresh();this.syncSourceAction();
       document.querySelector('#pf-source-next')!.addEventListener('click',()=>void this.act(async()=>{
-        const s=this.state!.source!;this.state=await this.request<Workspace>('POST','/source',{source_version_id:s.version_id,expected_selection_revision:s.selection_revision});location.hash=this.href({step:'documents'});
+        await this.continueFromSource();
       }));return;
     }
     if(step==='results'){this.paintResults();return;}

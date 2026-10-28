@@ -21,7 +21,7 @@ export async function workpaperDocx(title:string,paragraphs:string[],template?:R
  add('word/document.xml','<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+p(title,true)+paragraphs.flatMap(s=>s.split('\n')).map(s=>p(s)).join('')+(template?template.format.section:'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>')+'</w:body></w:document>');
  zip.end();return result;
 }
-export function explanationParagraphs(entry:WorkpaperEntry,d:WorkpaperDecision,source:ProjectFileSource,confirmation:string){
+export function explanationParagraphs(entry:WorkpaperEntry,d:WorkpaperDecision,source?:ProjectFileSource,confirmation?:string){
  return [
  d.status==='not_applicable'?'本项业务不适用。'+d.reason:'本项暂无法形成文件。'+d.reason,
  ...(d.missing_materials.length?['尚需取得：'+d.missing_materials.map(s=>s.replace(/^请(?:提供|补充|取得)/,'').replace(/[。；;\s]+$/,'')).join('；')+'。']:[]),

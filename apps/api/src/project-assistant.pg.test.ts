@@ -38,7 +38,7 @@ test('global assistant persistence, owner isolation, no implicit execution and c
     await ok('PUT',`/api/v1/m4/topics/${t.topic_id}/view`,{expected_version:0,view});
     assert.equal((await ok('GET',`/api/v1/m4/topics/${t.topic_id}/workspace`)).view.unsent_content,view.unsent_content);
     assert.equal((await send('PUT',`/api/v1/m4/topics/${t.topic_id}/view`,{expected_version:0,view})).statusCode,409);
-    const message={submission_request_id:randomUUID(),content:'如何使用项目助手',context:emptyM4Context()};
+    const message={submission_request_id:randomUUID(),content:'BondBuddy怎么使用？',context:emptyM4Context()};
     const first=await ok('POST',`/api/v1/m4/topics/${t.topic_id}/messages`,message);
     assert.equal((await ok('POST',`/api/v1/m4/topics/${t.topic_id}/messages`,message)).run.run_id,first.run.run_id);
     const manifest=(await pool.query('SELECT manifest FROM bb_m4_executions WHERE run_id=$1',[first.run.run_id])).rows[0].manifest;
@@ -71,7 +71,12 @@ test('global assistant persistence, owner isolation, no implicit execution and c
     const executed=await ok('POST',`/api/v1/m4/topics/${t.topic_id}/execute`,execution);
     assert.equal((await ok('POST',`/api/v1/m4/topics/${t.topic_id}/execute`,execution)).run.run_id,executed.run.run_id);
     assert.equal((await ok('GET',`/api/v1/assistant/topics/${t.topic_id}/cards`)).cards[0].run.run_id,executed.run.run_id);
-    assert.deepEqual(await creditBalance(pool,user),{available:5500,frozen:4500});
+    // New authoring requests debit actual progress; accepting the card does not freeze its ceiling.
+    assert.deepEqual(await creditBalance(pool,user),{available:10000,frozen:0});
+    const reservation=(await pool.query('SELECT billing_policy,points,charged_points FROM bb_credit_reservations WHERE owner_user_id=$1 AND run_id=$2',[user,executed.run.run_id])).rows[0];
+    assert.equal(reservation.billing_policy,'authoring_balance_v2');
+    assert.equal(Number(reservation.points),4500);
+    assert.equal(Number(reservation.charged_points),0);
     actor=other;
     for(const path of [`/m4/topics/${t.topic_id}/workspace`,`/assistant/topics/${t.topic_id}/cards`,`/assistant/projects/${p.project_id}`])assert.equal((await send('GET',`/api/v1${path}`)).statusCode,404);
     const foreign=(await ok('POST','/api/v1/m4/topics',{creation_request_id:randomUUID(),name:'Other',surface:'assistant'})).topic;

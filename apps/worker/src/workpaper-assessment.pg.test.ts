@@ -67,9 +67,17 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   const start={...body,request_id:randomUUID(),assessment_id:started.assessment_id,assessment_hash:'a'.repeat(64),price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points};
   assert.equal((await send('POST',base+'/batches',start)).statusCode,409);
   assert.equal((await pool.query('SELECT count(*) n FROM bb_workpaper_batches')).rows[0].n,'0');
+  await ok('POST','/api/v1/runs/'+started.assessment_id+'/pause',{reason:'synthetic_pause'});
+  const paused=(await ok('GET',base)).assessments[0];
+  assert.equal(paused.assessment_id,started.assessment_id);assert.equal(paused.state,'paused');
+  assert.deepEqual(paused.pause,{stage:'user_paused',reason:'user_paused',error_code:null});
+  actor=randomUUID();assert.equal((await send('POST','/api/v1/runs/'+started.assessment_id+'/resume',{reason:'synthetic_resume'})).statusCode,404);actor=user;
+  await ok('POST','/api/v1/runs/'+started.assessment_id+'/resume',{reason:'synthetic_resume'});
+  const resumed=(await ok('GET',base)).assessments[0];assert.equal(resumed.assessment_id,started.assessment_id);assert.equal(resumed.state,'queued');assert.equal(resumed.pause,null);
   assert.equal(await execute(),'succeeded');const a=(await ok('GET',base)).assessments[0];
   assert.deepEqual(a.decisions.map((d:any)=>d.status),['generate','not_applicable','external_evidence','missing_information']);
   assert.match(a.decisions[0].citations[0].location,/段落/);assert.equal(modelCalls,1);assert.equal(a.completed_items,4);
+  assert.equal(a.pause,null);assert.equal((await pool.query('SELECT count(*) n FROM bb_workpaper_assessments')).rows[0].n,'1');
   assert.equal((await pool.query('SELECT count(*) n FROM bb_credit_reservations')).rows[0].n,'0');
   const confirmed={...start,assessment_hash:a.result_hash};
   assert.equal((await send('POST',base+'/batches',{...confirmed,requirements:'变更要求'})).statusCode,409);

@@ -117,7 +117,7 @@ async function fixture(page:Page){
 }
 
 async function open(page:Page,project=apiProject,extra:Record<string,string>={}){
-  await page.goto('/'+href(project,extra));
+  await page.goto('/'+href(project,{step:'documents',...extra}));
   await expect(page.locator('#pf-generate')).toBeVisible();
 }
 async function choose(page:Page,types:M4DocumentType[]){await addDocuments(page,types);}
@@ -156,7 +156,7 @@ test('support drop validates every file and cannot bypass selection or an active
 test('prepared source opens document selection without preparation or initial bulk selection',async({page})=>{
   const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.setViewportSize({width:1440,height:1000});
   const s=await fixture(page);await open(page);
-  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'按模板生成文件',exact:true})).toBeVisible();
   await expect(page.locator('select[data-pf-document]')).toHaveCount(1);
   await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);
   await expect(page.locator('#pf-requirements')).toHaveValue('');
@@ -545,7 +545,7 @@ test('pending request cache cannot appear under another API project or owner',as
   const s=await fixture(page);s.batchFailure=408;await open(page);await choose(page,['init']);await confirm(page);
   await page.locator('#pf-confirm-generation').click();await expect(page.locator('#pf-retry-batch')).toBeVisible();
   await open(page,otherApiProject);await expect(page.locator('#pf-retry-batch')).toHaveCount(0);
-  s.owner='synthetic-other-owner';await page.goto('/'+href());await page.reload();
+  s.owner='synthetic-other-owner';await page.goto('/'+href(apiProject,{step:'documents'}));await page.reload();
   await expect(page.locator('#pf-generate')).toBeVisible();await expect(page.locator('#pf-retry-batch')).toHaveCount(0);
   s.owner=owner;await page.reload();await expect(page.locator('#pf-retry-batch')).toBeVisible();
   expect(batches(s.calls)).toHaveLength(1);expect(batches(s.calls,otherApiProject)).toHaveLength(0);
@@ -581,11 +581,10 @@ for(const width of [1440,390,320])test(`source upload has one obvious entry and 
   const dir=process.env.BB_UX_EVIDENCE_DIR;
   if(dir){await mkdir(dir,{recursive:true});await page.screenshot({path:join(dir,`source-empty-${width}.png`),fullPage:true});if(width===1440)await writeFile(join(dir,'source-empty.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-source-workspace')!.outerHTML));}
   const chooser=page.waitForEvent('filechooser');await page.locator('.pf-prospectus-dropzone').click();
-  await(await chooser).setFiles(supportFile);
-  await expect(page.locator('.prospectus-selected-file')).toContainText(supportFile.name);
-  await expect(page.locator('#save-prospectus-version')).toBeVisible();
-  await expect(page.locator('#save-prospectus-version')).toBeEnabled();
-  if(dir)await page.screenshot({path:join(dir,`source-selected-${width}.png`),fullPage:true});
+  await(await chooser).setFiles({name:'错误.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')});
+  await expect(page.locator('.prospectus-selected-file')).toContainText('错误.txt');
+  await expect(page.locator('#save-prospectus-version')).toBeHidden();
+  await expect(page.locator('#prospectus-status')).toContainText('请上传不超过');
   await page.locator('#cancel-prospectus-version').click();
   await expect(page.locator('.prospectus-upload-editor')).toBeHidden();
   await expect(page.locator('.pf-prospectus-dropzone')).toBeFocused();

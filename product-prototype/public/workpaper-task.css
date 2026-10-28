@@ -1,0 +1,9 @@
+.wp-task{padding:24px;min-width:0;overflow-wrap:anywhere}
+.wp-task h2{margin:0 0 18px;font-size:20px}
+.wp-task p{margin:12px 0;line-height:1.75}
+.wp-task #wp-task-message:empty{display:none}
+.wp-task .wp-check-status{margin:16px 0}
+.wp-task .wp-task-nav{margin-top:24px;padding-top:18px;border-top:1px solid #e3e8dd}
+.wp-task details{padding:12px 0;border-bottom:1px solid #e3e8dd}
+.wp-task details p{white-space:pre-wrap}
+@media(max-width:600px){.wp-task{padding:18px}.wp-task h2{font-size:18px}}

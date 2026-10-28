@@ -4,15 +4,14 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
 import {digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
-import {advanceWorkpaperBatch} from '@bondbuddy/api/workpapers';
-import {WORKPAPER_PRICE,type WorkpaperBatch,type M4DocumentManifest} from '@bondbuddy/contracts';
+import {advanceWorkpaperBatch,makeWorkpaperExplanation,publishWorkpaperItemResult} from '@bondbuddy/api/workpapers';
+import {WORKPAPER_PRICE,type WorkpaperDecision,type WorkpaperBatch,type M4DocumentManifest} from '@bondbuddy/contracts';
 import {grantCredits} from '../../api/dist/billing.js';
+import {debitAuthoringCredits} from '../../api/dist/authoring-credit-debit.js';
 import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {catalogueXlsx} from '../../api/dist/workpaper-catalogue.test.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,type RunStage} from './run-pipeline.js';
-import {workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
-import {loadCodexAdapterConfig} from './codex-adapter.js';
 import {m4InputGate} from './m4-input.js';
 const database=await isolatedTestDatabase(undefined,'workpaper-batches');
 
@@ -31,14 +30,42 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     return {source_project_id:id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};
   };
   const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';let processed=0,failOnce=true;
+  const explanations=new Map<string,Buffer>();
+  const explanationDecision=(item_id:string):WorkpaperDecision=>({item_id,status:'missing_information',reason:'尚缺本项原始资料，不能形成实质文件。',missing_materials:['对应原始资料'],citations:[]});
   const synthetic:RunStage={name:'model_generation',run:async ctx=>{
+    try{
     const manifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[ctx.run.project_id,ctx.run.input_revision])).rows[0].manifest as M4DocumentManifest;
-    assert.equal(manifest.input.document_type,'workpaper');assert.ok(manifest.input.workpaper);assert.match(manifest.knowledge!.content,/不替代独立核查证据/);
+    assert.equal(manifest.input.document_type,'workpaper');assert.ok(manifest.input.workpaper);assert.equal(manifest.input.workpaper.mode,'direct');assert.equal(manifest.input.workpaper.decision,undefined);assert.match(manifest.knowledge!.content,/不替代独立核查证据/);
     processed++;if(manifest.input.workpaper.entry.code==='2'&&failOnce){failOnce=false;return {kind:'fail',code:'MODEL_TURN_FAILED'};}
+    if(manifest.input.workpaper.entry.code==='3'){
+      const decision=explanationDecision(manifest.input.workpaper.entry.id),bytes=await makeWorkpaperExplanation(manifest.input.workpaper.entry,decision);
+      const key='synthetic-output/'+ctx.run.id;await blobs.put(key,bytes,DOCX);explanations.set(ctx.run.id,bytes);
+      const before=Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[ctx.run.id])).rows[0].charged_points);
+      assert.ok(before>0&&before<WORKPAPER_PRICE.points,'earlier pipeline milestones charged only part of the price');
+      await pool.query('UPDATE bb_jobs SET credit_pause_requested=true,user_pause_requested=true WHERE run_id=$1',[ctx.run.id]);
+      await publishWorkpaperItemResult(pool,user,ctx.run.id,decision,{key,sha256:digest(bytes),filename:'ignored.docx'});
+      const flags=(await pool.query('SELECT credit_pause_requested,user_pause_requested FROM bb_jobs WHERE run_id=$1',[ctx.run.id])).rows[0];
+      assert.equal(flags.credit_pause_requested,false);assert.equal(flags.user_pause_requested,true,'publishing a result never cancels a user pause');
+      await pool.query('UPDATE bb_jobs SET user_pause_requested=false WHERE run_id=$1',[ctx.run.id]);
+      const debit=await transaction(pool,async c=>{
+        const run=(await c.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[ctx.run.id])).rows[0];
+        await c.query('SELECT 1 FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[ctx.run.id]);
+        return debitAuthoringCredits(c,run,WORKPAPER_PRICE.points);
+      });
+      assert.equal(debit?.charged,before);assert.equal(debit.ceiling,before,'accepted explanation never demands the remaining price');
+    }
     return {kind:'done',value:manifest.input.workpaper.entry.title};
+    }catch(error){process.stderr.write('Synthetic model-stage assertion: '+String(error)+'\n');throw error;}
   }};
-  const delivery:RunStage={name:'word_delivery',run:async ctx=>({kind:'deliver',bytes:makeSyntheticDocxFixture({text:'合成底稿 '+ctx.values.get('model_generation')}),
-    namedArtifacts:[{kind:'preparation_note',filename:'preparation-note.docx',bytes:makeSyntheticDocxFixture({text:'合成编制说明：实际核查尚未执行。'})}],deliveryPolicy:'generated_review_v1'})};
+  const delivery:RunStage={name:'word_delivery',run:async ctx=>{
+    const task=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[ctx.run.project_id,ctx.run.input_revision])).rows[0].manifest.input.workpaper;
+    const decision:WorkpaperDecision=task.entry.code==='3'?explanationDecision(task.entry.id):{item_id:task.entry.id,status:'generate',reason:'已有合成财务数据。',missing_materials:[],citations:[]};
+    const bytes=decision.status==='generate'?makeSyntheticDocxFixture({text:'合成底稿 '+ctx.values.get('model_generation')}):explanations.get(ctx.run.id)!;
+    const key='synthetic-output/'+ctx.run.id,sha256=digest(bytes);await blobs.put(key,bytes,DOCX);
+    await publishWorkpaperItemResult(pool,user,ctx.run.id,decision,decision.status==='generate'?null:{key,sha256,filename:'ignored.docx'});
+    await publishWorkpaperItemResult(pool,user,ctx.run.id,decision,decision.status==='generate'?null:{key,sha256,filename:'ignored.docx'});
+    return {kind:'deliver',bytes,namedArtifacts:[{kind:'preparation_note',filename:'preparation-note.docx',bytes:makeSyntheticDocxFixture({text:'合成编制说明：实际核查尚未执行。'})}],deliveryPolicy:'generated_review_v1'};
+  }};
   const execute=()=>runPipelineOnce({pool,blobs,runKinds:['generation'],leaseSeconds:120,stages:[inputLockStage,materialsReadyStage,synthetic,delivery],onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'workpapers_'+user.slice(0,8)]);
@@ -50,22 +77,11 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(500),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     const importRequest={request_id:randomUUID(),material},cat=await ok('POST',base+'/catalogues',importRequest);
     assert.equal(cat.entries.length,500);assert.deepEqual(await ok('POST',base+'/catalogues',importRequest),cat);
-    const request={request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.slice(0,300).map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'缺少资料标记待补充',price_version:WORKPAPER_PRICE.version,expected_points:300*WORKPAPER_PRICE.points};
-    const assess=async(req:any)=>{
-      const {price_version,expected_points,assessment_id,assessment_hash,...body}=req;
-      const a=await ok('POST',base+'/assessments',{...body,request_id:randomUUID()});
-      const model:typeof import('./run-pipeline.js').codexModelStage=options=>({name:options.name,run:async ctx=>{
-        const prompt=await options.buildPrompt(ctx),data=JSON.parse(prompt.split('ref=workpaper-assessment\n')[1].split('\nBB-DATA-')[0]);
-        assert.match(prompt,/发行人总资产/);
-        const value={decisions:data.entries.map((e:any)=>({item_id:e.id,status:'generate',reason:'募集书披露了相关财务资料，可编制分析稿。',missing_materials:[],citations:[{span_id:data.spans[0].id,quote:data.spans[0].text}]}))};
-        assert.ok(options.validate(value));return {kind:'done',value};
-      }});
-      assert.equal(await runPipelineOnce({pool,blobs,runKinds:['generation'],leaseSeconds:120,stages:[inputLockStage,materialsReadyStage,workpaperAssessmentStage({model,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))}),'succeeded');
-      const ready=(await ok('GET',base)).assessments.find((x:any)=>x.assessment_id===a.assessment_id);
-      return {...req,assessment_id:a.assessment_id,assessment_hash:ready.result_hash};
-    };
-    assert.equal((await send('POST',base+'/batches',request)).statusCode,422);
-    Object.assign(request,await assess(request));
+    const request={start_mode:'direct' as const,request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.slice(0,300).map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'缺少资料标记待补充',price_version:WORKPAPER_PRICE.version,expected_points:300*WORKPAPER_PRICE.points};
+    // A previous free preflight stays recorded but cannot block direct authoring.
+    const {start_mode,price_version,expected_points,...oldRequest}=request;
+    const retired=await ok('POST',base+'/assessments',{...oldRequest,request_id:randomUUID()});
+    await ok('POST','/api/v1/runs/'+retired.assessment_id+'/pause',{reason:'synthetic_retired_preflight'});
     assert.equal((await send('POST',base+'/batches',{...request,expected_points:1})).statusCode,409);
     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;
     assert.equal(batch.items.length,300);assert.equal((await ok('POST',base+'/batches',request)).batch_id,batch.batch_id);
@@ -93,18 +109,28 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'retry_failed',expected_revision:batch.revision});
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');await advanceWorkpaperBatch(pool);batch=await read();
     assert.equal(batch.state,'complete');assert.equal(processed,301);assert.ok(succeededRuns.every(id=>batch.items.some(i=>i.run_id===id)));
-    assert.equal(batch.charged_points,300*WORKPAPER_PRICE.points);assert.equal(batch.items[1].attempt,2);
+    assert.equal(batch.charged_points,299*WORKPAPER_PRICE.points);assert.equal(batch.items[1].attempt,2);
     assert.equal(batch.items[0].artifacts.length,1);assert.ok(batch.items[0].artifacts.every(a=>a.kind==='document'&&a.filename.includes('财务核查 1')));
     const response=await send('GET',base+`/batches/${batch.batch_id}/download`);assert.equal(response.statusCode,200);assert.equal(response.headers['content-type'],'application/zip');
     const bytes=response.rawPayload,end=bytes.length-22;assert.equal(bytes.readUInt32LE(end),0x06054b50);assert.equal(bytes.readUInt16LE(end+10),300);
     let cursor=bytes.readUInt32LE(end+16);const names:string[]=[];
     while(cursor<end){assert.equal(bytes.readUInt32LE(cursor),0x02014b50);const len=bytes.readUInt16LE(cursor+28);names.push(bytes.subarray(cursor+46,cursor+46+len).toString('utf8'));cursor+=46+len+bytes.readUInt16LE(cursor+30)+bytes.readUInt16LE(cursor+32);}
-    assert.equal(new Set(names).size,300);assert.ok(names.includes('可生成文件/财务资料/300 财务核查 300.docx'));assert.ok(names.every(n=>n.startsWith('可生成文件/')));
+    assert.equal(new Set(names).size,300);assert.ok(names.includes('可生成文件/财务资料/300 财务核查 300.docx'));assert.equal(names.filter(n=>n.startsWith('可生成文件/')).length,299);assert.equal(names.filter(n=>n.startsWith('不适用说明/')).length,1);
+    assert.ok(batch.items[2].explanation);assert.equal(batch.items[2].artifacts.length,0);
+    const explanation=(await send('GET',base+`/batches/${batch.batch_id}/explanations/${batch.items[2].entry.id}`));assert.equal(explanation.statusCode,200);
+    const library=await ok('GET',base+'/library?category=explanation');assert.equal(library.total,1);assert.equal(library.items[0].decision.status,'missing_information');
+    const reservation=(await pool.query('SELECT state,charged_points FROM bb_credit_reservations WHERE run_id=$1',[batch.items[2].run_id])).rows[0];assert.equal(reservation.state,'released');
+    const refunded=(await pool.query("SELECT coalesce(sum(points),0) n FROM bb_credit_events WHERE run_id=$1 AND kind='correction' AND reason='workpaper_explanation_no_charge'",[batch.items[2].run_id])).rows[0];assert.equal(Number(refunded.n),Number(reservation.charged_points));
+    assert.ok(Number(refunded.n)>0&&Number(refunded.n)<WORKPAPER_PRICE.points);
+    const receipt=(await pool.query('SELECT * FROM bb_workpaper_item_results WHERE run_id=$1',[batch.items[2].run_id])).rows[0];
+    await assert.rejects(publishWorkpaperItemResult(pool,user,receipt.run_id,{...receipt.decision,reason:'changed result'},receipt.explanation),/INPUT_REVISION_CONFLICT/);
+    await assert.rejects(publishWorkpaperItemResult(pool,'foreign',receipt.run_id,receipt.decision,receipt.explanation),/INPUT_REVISION_CONFLICT/);
+    await assert.rejects(pool.query("UPDATE bb_workpaper_item_results SET result_hash=$2 WHERE run_id=$1",[receipt.run_id,'a'.repeat(64)]),{code:'23514'});
+    assert.equal((await pool.query('SELECT count(*) n FROM bb_workpaper_assessments')).rows[0].n,'1');
     assert.equal((await pool.query('SELECT count(*) n FROM bb_model_call_attempts')).rows[0].n,'0');
     assert.equal((await ok('POST',base+'/batches',request)).batch_id,batch.batch_id);
     let smallRequest={...request,request_id:randomUUID(),item_ids:request.item_ids.slice(0,3),expected_points:3*WORKPAPER_PRICE.points,source_version_id:updatedSource.current_version_id,source_selection_revision:updatedSource.selection_revision};
-    assert.equal((await send('POST',base+'/batches',{...smallRequest,source_version_id:request.source_version_id,source_selection_revision:request.source_selection_revision})).json().code,'INPUT_REVISION_CONFLICT');
-    smallRequest=await assess(smallRequest);
+    assert.equal((await send('POST',base+'/batches',{...smallRequest,source_version_id:request.source_version_id,source_selection_revision:request.source_selection_revision})).json().code,'PROJECT_FILE_BATCH_INPUT_EXPIRED');
     batch=await ok('POST',base+'/batches',smallRequest);await advanceWorkpaperBatch(pool);
     batch=await read();batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'cancel',expected_revision:batch.revision});
     assert.equal(await advanceWorkpaperBatch(pool),false);assert.equal(await execute(),'succeeded');

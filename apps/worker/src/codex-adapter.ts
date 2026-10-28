@@ -20,6 +20,8 @@ import type { ProbeJournal } from './deepseek-probe.js';
 import {validateModelImage,type ModelImageInput} from './model-image-input.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
+/** A completed turn produced a known-invalid file, not an unknown provider outcome. */
+export class CodexOutputValidationError extends Error {}
 export const REVIEW_TOOL_ADAPTER_VERSION = 'codex-review-tools-1';
 
 export type CodexCredential = { kind: 'env'; name: string } | { kind: 'auth_file'; path: string } | { kind: 'command'; path: string; oauth_file: string };
@@ -663,7 +665,11 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
             const persisted:unknown=input.reviewTools?{version:'review-model-envelope-v1',output:cls.value,tool_trace:reviewToolTrace!} satisfies ReviewModelEnvelope:cls.value;
             obs = { ...obs, ...await journal.storeResult(intent, Buffer.from(JSON.stringify(persisted)), input.result_schema_version) };
           }
-          catch { obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_RESULT_STORE_FAILED' }; }
+          catch (error) {
+            obs = error instanceof CodexOutputValidationError
+              ? { ...obs, outcome:'failed',error_code:'MODEL_OUTPUT_SCHEMA_INVALID' }
+              : { ...obs, outcome:'pending_reconcile',error_code:'MODEL_RESULT_STORE_FAILED' };
+          }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
         if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
