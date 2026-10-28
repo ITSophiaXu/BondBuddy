@@ -1,0 +1,127 @@
+/* Shared by the real project selectors and their interactive design reference. */
+.prototype-app .shell:has(main > .project-entry-page) {
+  height: 100dvh;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+.prototype-app .shell:has(.project-entry-page) > .topbar { flex-shrink: 0; }
+body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding-bottom: 24px;
+}
+.project-entry-page.update-entry {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  margin: 0 auto;
+}
+.project-entry-page > .page-head { flex-shrink: 0; margin-bottom: 18px; }
+.project-entry-page > .stepper { flex-shrink: 0; margin: 0 0 18px; }
+.project-entry-page .project-picker {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.project-entry-page .update-entry-existing { padding: 22px 24px 0; }
+.project-entry-page .project-picker > h2 { flex-shrink: 0; font-size: 16px; }
+.project-entry-page .project-picker form { flex-shrink: 0; margin-top: 16px; gap: 10px; }
+.project-entry-page .project-picker form .btn { flex-shrink: 0; }
+.project-entry-page .project-picker-status { flex-shrink: 0; font-size: 13px; }
+.project-entry-page .project-picker-status:not(:empty) { padding: 10px 0; }
+.project-entry-page .project-picker-scroll {
+  flex: 1;
+  min-height: 88px;
+  overflow: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  margin: 12px -6px 0;
+  padding: 3px 6px 10px;
+  scroll-padding: 6px;
+}
+.project-entry-page .project-picker-scroll:focus-visible { outline-offset: -3px; border-radius: 6px; }
+.project-entry-page .update-project-option {
+  padding: 14px 16px;
+  margin: 0 0 10px;
+  gap: 12px;
+  min-height: 78px;
+}
+.project-entry-page .update-project-option > span:not(.update-folder):not(.update-prospectus-badge) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.project-entry-page .update-project-option input { min-height: 0; margin: 0; padding: 0; accent-color: #2c5a49; }
+.project-entry-page .update-project-option small { margin-top: 4px; line-height: 1.6; }
+.project-entry-page .update-project-option:focus-within { outline: 2px solid #729747; outline-offset: -2px; }
+.project-entry-page .update-folder { flex-shrink: 0; }
+.project-entry-page .project-picker-footer {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  margin: 0 -24px;
+  padding: 16px 24px;
+  border-top: 1px solid #dfe6d9;
+  border-radius: 0 0 13px 13px;
+  background: #fffefa;
+  box-shadow: 0 -6px 16px #203b2e06;
+}
+.project-entry-page .project-picker-selection { min-width: 0; flex: 1; }
+.project-entry-page .project-picker-selection strong { display: block; color: #233c34; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-entry-page .project-picker-selection > span { display: block; margin-top: 4px; font-size: 12px; }
+.project-entry-page .project-picker-selection [role=alert]:empty { display: none; }
+.project-entry-page .project-picker-selection [role=alert]:not(:empty) { color: #9c3e32; font-size: 12px; margin: 6px 0 0; }
+.project-entry-page .project-picker-footer > .btn { flex-shrink: 0; min-height: 44px; }
+.project-entry-page .project-picker-footer > .btn.primary:not(:disabled) { background: #193f34; color: white; opacity: 1; }
+/* Preserve the new-project-first entry. Expanding existing projects gives the list the available space. */
+.project-entry-update > details { flex-shrink: 0; padding-bottom: 22px; }
+.project-entry-update > details[open] { flex: 1; min-height: 0; padding-bottom: 0; display: flex; flex-direction: column; }
+.project-entry-update > details[open]::details-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.project-entry-update > details > summary { flex-shrink: 0; }
+.project-entry-update:has(details[open]) .update-entry-primary { padding: 14px 20px; margin-bottom: 16px; gap: 16px; align-items: center; flex-shrink: 0; }
+.project-entry-update:has(details[open]) .update-entry-primary > div:last-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.project-entry-update:has(details[open]) .update-entry-primary h2 { font-size: 16px; margin: 0; }
+.project-entry-update:has(details[open]) .update-entry-primary p { display: none; }
+.project-entry-update:has(details[open]) .update-entry-primary .btn { margin: 0; flex-shrink: 0; }
+.project-entry-update:has(details[open]) .update-entry-icon { width: 40px; height: 40px; border-radius: 8px; }
+.project-entry-update:has(details[open]) .update-entry-icon svg { width: 24px; height: 24px; }
+@media (max-width: 760px) {
+  body .prototype-app .shell main:has(> .project-entry-page.update-entry) { padding: 18px 14px 80px; }
+  .project-entry-page > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .project-entry-page > .page-head > div { display: contents; }
+  .project-entry-page > .page-head .eyebrow { display: none; }
+  .project-entry-page > .page-head h1 { grid-column: 1; grid-row: 1; }
+  .project-entry-page > .page-head > .btn { grid-column: 2; grid-row: 1; }
+  .project-entry-page > .page-head p { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
+  .project-entry-page > .stepper { margin-bottom: 14px; gap: 6px; }
+  .project-entry-page > .stepper .step { flex: 1; min-width: 0; flex-direction: column; gap: 4px; white-space: normal; text-align: center; }
+  .project-entry-page > .stepper .step-line { width: 16px; flex: 0 0 16px; }
+  .project-entry-page .update-entry-existing { padding: 16px 16px 0; }
+  .project-entry-page .project-picker form { margin-top: 12px; }
+  .project-entry-page .update-project-option { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px 10px; padding: 12px; }
+  .project-entry-page .update-project-option input { grid-column: 1; grid-row: 1 / 3; align-self: center; }
+  .project-entry-page .update-project-option > span:not(.update-folder) { grid-column: 2; }
+  .project-entry-page .update-folder { display: none; }
+  .project-entry-page .update-prospectus-badge { justify-self: start; margin: 0; font-size: 11px; }
+  .project-entry-page .project-picker-footer { margin: 0 -16px; padding: 12px 16px; gap: 10px; align-items: stretch; flex-direction: column; }
+  .project-entry-page .project-picker-selection > span { display: none; }
+  .project-entry-update > details:not([open]) { padding-bottom: 16px; }
+  .project-entry-update:has(details[open]) .update-entry-primary { padding: 12px; margin-bottom: 12px; }
+  .project-entry-update:has(details[open]) .update-entry-icon { display: none; }
+  .project-entry-update:has(details[open]) .update-entry-primary h2 { font-size: 14px; }
+  .project-entry-update > details summary span { display: none; }
+}
+@media (max-height: 740px) {
+  .project-entry-page > .page-head .eyebrow { display: none; }
+  .project-entry-page > .page-head { margin-bottom: 10px; }
+  .project-entry-page > .stepper { margin-bottom: 10px; }
+}
+@container assistant-page (max-width: 600px) {
+  .project-entry-page .update-project-option { flex-wrap: wrap; }
+  .project-entry-page .update-prospectus-badge { margin-left: 30px; }
+  .project-entry-page .project-picker-footer { gap: 10px; }
+}
