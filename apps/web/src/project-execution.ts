@@ -179,7 +179,7 @@ export class ProjectExecution {
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
     private initialNotice = '', private onDelivered?:()=>void,
-    private refreshPreparation?:()=>Promise<boolean>) {}
+    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
@@ -267,7 +267,8 @@ export class ProjectExecution {
     if (this.nextRequested && (this.nextBasisLoading || !this.nextBasis || this.nextBasisError)) return { reason: this.nextBasisError || '正在核对下一轮采用稿与已保存材料…' };
     if (this.inputRejected) return { reason: '本次输入已被拒绝；请按上方提示处理，输入不变时无需重复提交。' };
     if (this.preflight?.status === 'blocked' && this.selected) return { reason: '当前处理条件尚未就绪，请重新检查；条件未变时无需重复提交。' };
-    if (!this.materialReady) return { reason: this.materialMessage || '材料尚未保存完成，请查看文件进度。' };
+    const materialBlock = this.materialBlock();
+    if (materialBlock) return { reason: materialBlock };
     if (!this.eligibleMaterials().length) return { reason: '请先添加本次需要的项目材料。' };
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return { reason: '项目信息尚未保存，请返回上一步处理。' };
     if (!this.draft.fields.market || !this.draft.fields.offering) return { reason: '请在上一步选择发行市场和发行方式。' };
@@ -279,6 +280,11 @@ export class ProjectExecution {
     }
     if (this.conversation.blockReason) return { reason: this.conversation.blockReason };
     return { reason: '' };
+  }
+  private materialBlock() {
+    // Read the live upload queue as well as the last rendered snapshot. A stale
+    // enabled button must never lock an input that omits an unfinished file.
+    return this.readMaterialBlock?.() || (!this.materialReady ? this.materialMessage || '材料尚未保存完成，请查看文件进度。' : '');
   }
   private focusMissingSourceInformation() {
     if (!this.materialsEditable) return;
@@ -330,11 +336,12 @@ export class ProjectExecution {
   sync(materials: Material[], ready: boolean, materialMessage = '') {
     if (!this.active) return;
     const stamp = JSON.stringify([this.draft.fields, materials.map(m => [m.material_id, m.material_version]).sort()]);
-    if (stamp !== this.sourceStamp || (this.materialReady && !ready)) {
+    const changed = stamp !== this.sourceStamp || (this.materialReady && !ready);
+    this.materials = materials; this.materialReady = ready; this.materialMessage = materialMessage;
+    if (changed) {
       this.sourceStamp = stamp;
       this.invalidate();
     }
-    this.materials = materials; this.materialReady = ready; this.materialMessage = materialMessage;
     this.render();
   }
   private button(id: string) { return this.node(`#${id}`) as HTMLButtonElement; }
@@ -398,6 +405,7 @@ export class ProjectExecution {
     this.button('complete-source-information').hidden = !block.sourceGap || !this.materialsEditable;
     this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote && this.quote.balance.available === 0);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…')
+      : this.materialsEditable && this.materialBlock() ? '等待材料保存完成'
       : this.awaitingCredits ? '继续更新'
       : this.nextRequested ? '生成新版' : '开始更新';
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
@@ -566,7 +574,8 @@ export class ProjectExecution {
     finally{if(read===this.nextBasisRead){this.nextBasisLoading=false;if(this.active)this.render();}}
   }
   private async start() {
-    if (!this.active || this.startBlock().reason) return;
+    if (!this.active) return;
+    if (this.startBlock().reason) { this.render(); return; }
     this.starting = true; this.render();
     try {
       if (!this.selected) await this.save();
@@ -630,7 +639,7 @@ export class ProjectExecution {
   }
   private async save() {
     await this.action(async () => {
-      if (!this.materialReady || this.inputReadUncertain || this.pendingExecution) return;
+      if (this.materialBlock() || this.inputReadUncertain || this.pendingExecution) return;
       const selected = this.eligibleMaterials();
       if (!selected.length) { this.message = '请先添加本次需要的项目材料。'; return; }
       const details = this.draft.fields.update_details;
@@ -643,6 +652,7 @@ export class ProjectExecution {
       }
       const confirmedGeneration = this.generation;
       if (!await this.draft.save() || !this.active) { this.message = '项目修改尚未保存，请先处理上方保存提示。'; return; }
+      if (this.materialBlock()) return;
       if (confirmedGeneration !== this.generation) { this.message = '保存期间目标或材料有变化，请重新核对目标。'; return; }
       const p = this.draft.project;
       if (!p.market || !p.offering) { this.message = '请先在项目表单选择目标市场和发行方式。'; return; }
@@ -670,6 +680,7 @@ export class ProjectExecution {
             this.nextNeedsProjectRefresh=true;this.message=this.nextBasisError;return;
           }
         }
+        if (!this.active || generation !== this.generation || this.materialBlock()) return;
         submitted=true;
         result = await this.api.createInputRevision(this.id, { prospectus_selection_revision:versions.selection_revision,draft_revision: p.draft_revision,
           ...(this.nextRequested?{edit_base:this.nextBasis!.editBase}:{}),
@@ -770,7 +781,7 @@ export class ProjectExecution {
     },'other','submit');
   }
   private async execute() {
-    if (!this.input || !this.preflight || !this.selected || this.draft.dirty || !this.selectedMessages) return;
+    if (!this.input || !this.preflight || !this.selected || this.draft.dirty || !this.selectedMessages || this.materialBlock()) return;
     const input = this.input, generation = this.generation;
     await this.action(async () => {
       const latestMessages = await this.conversation.currentRef();
@@ -781,7 +792,7 @@ export class ProjectExecution {
       }
       const request = await executionRequest(input, this.taskKind);
       if(this.quote?.quote)request.quote_id=this.quote.quote.quote_id;
-      if (!this.active || generation !== this.generation) return;
+      if (!this.active || generation !== this.generation || this.materialBlock()) return;
       this.pendingExecution={...request};this.pendingExecutionConflict=false;this.render();
       await this.submitExecution(this.pendingExecution);
     }, 'execute');

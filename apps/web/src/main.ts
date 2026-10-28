@@ -623,7 +623,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         await refreshProjectMaterials(project.project_id,prospectusEpoch);
         const fresh=await api.project(project.project_id);
         return prospectusEpoch===epoch&&!!draft&&draft.adoptUnchanged(fresh);
-      });
+      },()=>projectMaterialReadiness(project.project_id).message);
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
@@ -834,16 +834,20 @@ function renderMaterialPartitions(projectId: string) {
   return groups;
 }
 
-function syncProjectExecution(projectId: string) {
-  if (!isCurrentProjectWorkspace(projectId)) return;
-  const unsettled = Boolean(prospectusPanel?.hasUnconfirmed) || (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
-  const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${confirmedMaterials(projectId).length} 份已保存材料`;
+function projectMaterialReadiness(projectId: string) {
   const recovery = recoveryStates.get(projectId);
   const pending = (localUploads.get(projectId) ?? []).find(upload => upload.phase !== 'persisted');
   const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
     : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
     : recovery?.state !== 'ready' ? '正在读取已保存材料…' : '';
-  projectExecution?.sync(confirmedMaterials(projectId), recovery?.state === 'ready' && !unsettled, message);
+  return {ready: !message, message};
+}
+
+function syncProjectExecution(projectId: string) {
+  if (!isCurrentProjectWorkspace(projectId)) return;
+  const materials = confirmedMaterials(projectId), readiness = projectMaterialReadiness(projectId);
+  const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${materials.length} 份已保存材料`;
+  projectExecution?.sync(materials, readiness.ready, readiness.message);
 }
 
 function updateMaterialWorkspace(projectId: string) {
