@@ -1,4 +1,4 @@
-.authoring-preparation-guide{border:1px solid #d8e3cc;border-radius:10px;background:#f4f7ee;padding:18px 20px;margin:0 0 20px;overflow-wrap:anywhere}
+.authoring-preparation-guide{border-bottom:1px solid var(--line);padding:0 24px 18px;margin:0;overflow-wrap:anywhere;scroll-margin-top:160px}
 .authoring-preparation-guide strong{font-size:15px;color:var(--green)}
 .authoring-preparation-guide p{font-size:13px;line-height:1.85;color:#65745d;margin:8px 0 12px}
 .authoring-preparation-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
@@ -9,7 +9,8 @@
 #prospectus-panel>.prospectus-panel>details>summary{padding:10px 0;cursor:pointer}
 #prospectus-panel>.prospectus-panel>details+details{border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
 #prospectus-panel #prospectus-status:empty{display:none}
-@media(max-width:680px){.authoring-preparation-guide{padding:16px}.authoring-preparation-actions{gap:12px;align-items:flex-start;flex-direction:column}}
+@media(max-width:760px){.authoring-preparation-guide{padding:0 18px 18px;scroll-margin-top:220px}}
+@media(max-width:680px){.authoring-preparation-actions{gap:12px;align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){#prospectus-panel>.prospectus-panel{padding:20px}}
 .continuation-basis-choice{display:flex;gap:14px;align-items:center;margin:18px 0 14px;font-size:13px;color:var(--green)}
 .continuation-basis-choice select{flex:1;min-width:0;max-width:480px;min-height:42px;padding:9px 12px;border:1px solid #c7d2bc;border-radius:6px;background:#fff;color:var(--green);font:inherit}

@@ -353,8 +353,9 @@ export class ProjectExecution {
     const preparationGuide=document.querySelector<HTMLElement>('[data-authoring-preparation-guide]');
     if(preparationGuide){
       preparationGuide.hidden=!this.materialsEditable;
-      const title=preparationGuide.querySelector('[data-authoring-preparation-title]');
-      if(title)title.textContent=this.nextRequested?'准备下一轮募集书':'准备本轮材料与要求';
+      preparationGuide.setAttribute('aria-label',this.nextRequested?'准备下一轮募集书':'准备本轮材料与要求');
+      const title=preparationGuide.querySelector<HTMLElement>('[data-authoring-preparation-title]');
+      if(title)title.hidden=!this.nextRequested;
       const intro=preparationGuide.querySelector<HTMLElement>('[data-authoring-preparation-intro]');
       if(intro)intro.hidden=this.nextRequested;
       const summary=preparationGuide.querySelector<HTMLElement>('[data-next-authoring-summary]');
@@ -440,7 +441,7 @@ export class ProjectExecution {
     this.node('#run-panel').hidden = !run;
     const progressHost = document.querySelector('#workspace-progress');
     if (run && progressHost && this.host.parentElement !== progressHost) progressHost.append(this.host);
-    if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = false; } this.materialRun = run.run_id; }
+    if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = this.nextRequested; } this.materialRun = run.run_id; }
     const testRun = run?.channel === 'non_production_test';
     const testCompleted = run?.state === 'test_completed' && testRun;
     const automaticPause = automaticPauseMessage(run);
@@ -927,6 +928,7 @@ export class ProjectExecution {
       if(intent.get('prepare')==='next'&&requestedRun===this.run?.run_id&&this.run&&after!==null&&!newer&&!unassignedInput&&
         !this.otherActiveRun&&['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state)){
         this.preparationAfter=after;this.nextRequested=true;this.nextChoice=intent.get('basis')==='current'?'current':this.run.state==='succeeded'&&this.run.channel==='production'?'result':'current';
+        const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
       }else if(intent.get('prepare')==='next'){
         this.writePreparationRoute(false);
         if(newer||activeTask)this.message='项目已有新一轮任务，已恢复对应任务。准备不会自动启动新任务。';

@@ -10,7 +10,7 @@ const previousSummary=(page:Page)=>page.locator('#previous-execution-summary');
 const guide=(page:Page)=>page.locator('[data-authoring-preparation-guide]');
 const nextSummary=(page:Page)=>page.locator('[data-next-authoring-summary]');
 async function historicalDownload(page:Page,state:State,variant:'clean'|'revision'){
- const event=page.waitForEvent('download');await page.getByRole('button',{name:variant==='clean'?'下载清洁版':'下载修订版',exact:true}).click();const file=await event,saved=state.artifacts.get(artifactId(2,variant))!;
+ const event=page.waitForEvent('download');await page.locator('#execution-delivery').getByRole('button',{name:variant==='clean'?'下载清洁版':'下载修订版',exact:true}).click();const file=await event,saved=state.artifacts.get(artifactId(2,variant))!;
  expect(file.suggestedFilename()).toBe(saved.metadata.filename);expect(await downloadBytes(file)).toEqual(saved.bytes);expect(state.byteReads.at(-1)).toBe(saved.metadata.artifact_id);expect(saved.metadata.run_id).toBe(ids.oldRun);expect(saved.metadata.version).toBe(7);
 }
 async function assertNoStart(state:State){expect(state.inputAttempts).toEqual([]);expect(state.preflights).toEqual([]);expect(state.quotes).toEqual([]);expect(state.executions).toEqual([]);}

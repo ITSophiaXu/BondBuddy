@@ -344,6 +344,7 @@ for (const width of [1440, 390]) test(`${width}: continue and refresh restore on
   await expect(page).toHaveURL(/prepare=next/); await expect(page).toHaveURL(new RegExp(`run=${oldRunId}`)); await expect(page).toHaveURL(/basis=result/);
   await expect(page).toHaveURL(/prepare_after=7/);
   expect(writes(state)).toEqual([]); expectNoExecution(state); await page.reload(); await expectSummary(page);
+  await expect(page.locator('#project-materials-details')).toHaveJSProperty('open', true); await expect(summary(page)).toBeVisible();
   await expect(basis(page)).toHaveValue('result'); await expect(page.locator('#execute-input')).toBeEnabled();
   expectNoExecution(state); expect(writes(state)).toEqual([]); expect(oldRecords(state)).toEqual(old);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
