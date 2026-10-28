@@ -1,6 +1,6 @@
 # 商业计费前端验证证据
 
-基线：`develop@5d24d5d`。参考原型和实现截图均来自当前 `feat/commercial-billing-20261028` 分支；最终统一提交 SHA 由集成提交补充。原型入口为 `product-prototype/public/account-credits.html?commerce=1`，默认入口仍保留旧积分演示。
+基线：`develop@5d24d5d`。参考原型和实现截图对应 `feat/commercial-billing-20261028` 的代码提交 `18e2a21`；后续提交仅补充本证据索引。两边均使用该提交中的源码及合成响应，尚无产品负责人对差异的确认。原型入口为 `product-prototype/public/account-credits.html?commerce=1`，默认入口仍保留旧积分演示。
 
 ## 截图范围
 

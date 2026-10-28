@@ -1,6 +1,6 @@
 # Commercial scope billing validation
 
-Base: `origin/develop` / `5d24d5d` (2026-10-28). Implementation, tests and updated account prototype are in this change's working tree. Windows, Node 24, PostgreSQL 16 isolated local template/clones. This is a code review candidate, not a production deployment.
+Base: `origin/develop` / `5d24d5d` (2026-10-28). Implementation, tests and updated account prototype are in code commit `18e2a21`; the subsequent documentation commit records this provenance. Windows, Node 24, PostgreSQL 16 isolated local template/clones. This is a code review candidate, not a production deployment.
 
 ## Executed
 
