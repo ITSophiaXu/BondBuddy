@@ -14,7 +14,7 @@ import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAut
 import { taskProgress } from './task-progress';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { resolveContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
-import {isCnyPrice,displayPrice,confirmCnyTask,readCommerce,scopePending,scopeLinesHtml} from './commerce';
+import {isCnyPrice,displayPrice,confirmCnyTask,readCommerce,scopePending,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel} from './commerce';
 
 type Input = Dto<'InputRevisionResponse'>;
 type Material = Dto<'MaterialResponse'>;
@@ -417,7 +417,7 @@ export class ProjectExecution {
     const q=this.quote;
     const insufficient=!!q&&(isCnyPrice(q.quote)?q.shortage>0:q.balance.available===0);
     quoteHost.hidden=(!insufficient&&!scopePending(q?.quote))||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=scopePending(q?.quote)?`<div class="fixed-quote"><h3>本次范围报价待确认，尚未收费</h3><p>已保存材料与要求；待核实实际处理范围和工作项后确认总价。</p><button type="button" class="text-button" id="refresh-quote">刷新范围报价</button></div>`:insufficient?`<div class="fixed-quote"><h3>${isCnyPrice(q?.quote)?'服务余额不足':'积分不足'}，请充值后继续更新</h3><p>${isCnyPrice(q?.quote)?'本次总价 '+displayPrice(q?.quote)+'。':''}项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="${esc(this.rechargeLink())}">${isCnyPrice(q?.quote)?'按需充值':'充值积分'}</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
+    quoteHost.innerHTML=scopePending(q?.quote)?`<div class="fixed-quote"><h3>${esc(scopeStatusLabel(q?.quote))}</h3>${scopeLifecycleHtml(q?.quote)}<button type="button" class="text-button" id="refresh-quote">刷新范围报价</button></div>`:insufficient?`<div class="fixed-quote"><h3>${isCnyPrice(q?.quote)?'服务余额不足':'积分不足'}，请充值后继续更新</h3><p>${isCnyPrice(q?.quote)?'本次总价 '+displayPrice(q?.quote)+'。':''}项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="${esc(this.rechargeLink())}">${isCnyPrice(q?.quote)?'按需充值':'充值积分'}</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote(),'other','read');});
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }

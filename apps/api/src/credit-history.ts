@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Static } from '@sinclair/typebox';
-import { BILLING_TASKS, M4_BILLING_TASKS, schemas,OUTCOME_PRICE_VERSION,commerceMetadata } from '@bondbuddy/contracts';
+import { BILLING_TASKS, M4_BILLING_TASKS, schemas,isOutcomePriceVersion,commerceMetadata } from '@bondbuddy/contracts';
 import { date, digest, Problem } from './data.js';
 
 type Query=Static<typeof schemas.CreditHistoryQuery>;
@@ -35,7 +35,8 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
       r.project_id,p.deleted_at,p.kind AS project_kind,
       COALESCE(i.manifest->>'name',i.manifest->>'project_name',i.manifest#>>'{assistant_context,project_name}',p.name,'项目任务') AS project_name,
       COALESCE(CASE WHEN i.manifest->>'version'='project-qa-v1' THEN 'qa' WHEN i.manifest->>'version'='integrity-round-v1' THEN 'integrity_check' END,q.task_type,mq.task_type,CASE WHEN fq.id IS NOT NULL THEN 'project_file_update' WHEN cq.id IS NOT NULL THEN 'project_file_check' ELSE r.task_kind END) AS task_type,
-      (q.pricing_mode='outcome_cny_v1' OR mq.pricing_mode='outcome_cny_v1' OR fq.price_version='outcome-cny-20261028-v1' OR cq.price_version='outcome-cny-20261028-v1' OR qq.price_version='outcome-cny-20261028-v1' OR i.manifest->>'pricing_mode'='outcome_cny_v1') AS outcome_cny,
+      (q.pricing_mode='outcome_cny_v1' OR mq.pricing_mode='outcome_cny_v1' OR fq.price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2') OR cq.price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2') OR qq.price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2') OR i.manifest->>'pricing_mode'='outcome_cny_v1') AS outcome_cny,
+      COALESCE(q.price_version,mq.fixed_price_version,fq.price_version,cq.price_version,qq.price_version,i.manifest->>'price_version') AS outcome_price_version,
       COALESCE(e.charged,0)::text AS charged,COALESCE(e.released,0)::text AS released,COALESCE(e.corrected,0)::text AS corrected
     FROM selected c JOIN bb_runs r ON r.id=c.run_id AND r.owner_user_id=c.owner_user_id
     JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=c.owner_user_id
@@ -51,7 +52,7 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
     ORDER BY c.created_at DESC,c.id DESC`,[owner,after?.time??null,after?.id??null,limit+1])).rows;
   const result=page(rows,limit,owner,'consumption');
   const labels:Record<string,string>={...BILLING_TASKS,...M4_BILLING_TASKS,update:'更新募集书',review:'复核募集书',generation:'文件生成',project_file_update:'更新关联文件',project_file_check:'关联文件一致性检查',integrity_check:'诚信核查',qa:'项目问答'};
-  return {page:result.page,items:result.items.map(r=>({...(r.outcome_cny?commerceMetadata(Number(r.points)):{}),reservation_id:r.id,run_id:r.run_id,
+  return {page:result.page,items:result.items.map(r=>({...(r.outcome_cny?commerceMetadata(Number(r.points),Number(r.points),1,r.outcome_price_version):{}),reservation_id:r.id,run_id:r.run_id,
     project_id:r.deleted_at||r.project_kind==='qa'?null:r.project_id,project_name:r.deleted_at?'已删除项目':r.project_name,
     task_name:labels[r.task_type]??'项目任务',created_at:date(r.created_at),finalized_at:r.finalized_at?date(r.finalized_at):null,
     state:r.state,billing_policy:r.billing_policy,reserved_points:r.billing_policy==='authoring_balance_v2'?0:Number(r.points),charged_points:Number(r.charged),released_points:Number(r.released),corrected_points:Number(r.corrected)}))};
@@ -64,7 +65,7 @@ export async function rechargeHistory(db:Pool,owner:string,query:Query){
     AND ($2::timestamptz IS NULL OR (created_at,id)<($2::timestamptz,$3::text))
     ORDER BY created_at DESC,id DESC LIMIT $4`,[owner,after?.time??null,after?.id??null,limit+1])).rows;
   const result=page(rows,limit,owner,'recharge');
-  return {page:result.page,items:result.items.map(r=>({...(r.pack_id==='service_balance'&&r.pack_version===OUTCOME_PRICE_VERSION?commerceMetadata(Number(r.amount_fen)):{}),order_id:r.id,provider:r.provider,state:r.state,amount_fen:Number(r.amount_fen),points:Number(r.points),created_at:date(r.created_at),credited_at:r.credited_at?date(r.credited_at):null}))};
+  return {page:result.page,items:result.items.map(r=>({...(r.pack_id==='service_balance'&&isOutcomePriceVersion(r.pack_version)?commerceMetadata(Number(r.amount_fen),Number(r.amount_fen),1,r.pack_version):{}),order_id:r.id,provider:r.provider,state:r.state,amount_fen:Number(r.amount_fen),points:Number(r.points),created_at:date(r.created_at),credited_at:r.credited_at?date(r.credited_at):null}))};
 }
 export function installCreditHistory(app:FastifyInstance,db:()=>Pool,owner:(request:FastifyRequest)=>Promise<string>){
   app.get('/api/v1/credits/consumption-history',{schema:{querystring:schemas.CreditHistoryQuery,response:{200:schemas.CreditConsumptionHistoryResponse}}},async(request,reply)=>{

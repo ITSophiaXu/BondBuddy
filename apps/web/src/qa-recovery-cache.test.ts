@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {PROJECT_QA_PRICE,type QaDraft,type ProjectFileAsset} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION,type QaDraft,type ProjectFileAsset} from '@bondbuddy/contracts';
 import {QaRecoveryCache,type QaRecoveryValue,type QaRecoveryCacheStorage} from './qa-recovery-cache.js';
 
 class MemoryStorage implements QaRecoveryCacheStorage{
@@ -19,6 +19,16 @@ const pendingDraft=():QaRecoveryValue=>{const saved=value();return {...saved,pen
 const pendingPrepare=():QaRecoveryValue=>({...value(),needsKnowledgeChoice:true,pending:{kind:'prepare',request:{request_id:'same-prepare-request',source:source()}}});
 const wrapper=(saved:unknown)=>({version:'qa-recovery-cache-v1',owner:'owner',project:'project',value:saved});
 function put(storage:MemoryStorage,saved:unknown){const raw=JSON.stringify(wrapper(saved));storage.values.set(key,raw);return raw;}
+
+test('CNY pending answer recovery keeps the exact historical/current scope and request without treating fen as legacy credits',()=>{
+ for(const version of [LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION]){
+  const cache=new QaRecoveryCache('owner','project',new MemoryStorage()),saved=value();
+  saved.pending={kind:'answer',request:{request_id:'same-answer-request',expected_revision:7,expected_points:3900,price_version:version,scope_quote_id:'exact-accepted-scope'}};
+  assert.equal(cache.save(saved).status,'valid');assert.deepEqual(cache.read(),{status:'valid',value:saved});
+  const missingScope=structuredClone(saved);if(missingScope.pending?.kind==='answer')delete missingScope.pending.request.scope_quote_id;
+  assert.equal(cache.save(missingScope).status,'invalid');
+ }
+});
 
 test('QA recovery restores the complete answer envelope and all exact material versions as independent frozen copies',()=>{
   const storage=new MemoryStorage(),cache=new QaRecoveryCache('owner','project',storage),input=value();

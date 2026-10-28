@@ -1,4 +1,4 @@
-import {displayPrice,isCnyPrice,cny,scopeReady,scopeLinesHtml,copyCommercePrice} from './commerce';
+import {displayPrice,isCnyPrice,cny,scopeReady,scopeLinesHtml,copyCommercePrice,scopeLifecycleHtml,scopeStatusLabel,guardScopeExpiry} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import {integrityRecordPresentation,integrityFindingLabel,inferIntegrityRegion,INTEGRITY_SITES,INTEGRITY_PROVINCES,INTEGRITY_PRICE,IntegrityWorkspaceSchema,integritySchemas,schemas,resolveIntegritySite,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,type IntegrityWorkspace as Workspace,type IntegritySubject,type IntegrityRound,type IntegrityManual,type M4MaterialPin,type IntegrityDraft} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
@@ -226,14 +226,16 @@ export class IntegrityWorkspace {
    const revision=this.state!.revision,draft=structuredClone(this.state!.draft),commercial=isCnyPrice(this.state!.price);
    const quote=commercial?await this.request<Dto<'IntegrityQuoteResponse'>>('POST','/quote',{expected_revision:revision}):undefined;
    if(!this.live()||this.state!.revision!==revision||canonical(this.state!.draft)!==canonical(draft))throw new ApiError(409,'QUOTE_CHANGED');
-   if(quote&&!scopeReady(quote)){const pending=this.modal('本次范围报价待确认','<p>本次范围报价待确认，尚未收费。主体名单、网站范围和要求保留；待核实工作项后确认总价。</p><button class="btn primary" id="integrity-refresh-scope">刷新范围报价</button>');pending.querySelector('#integrity-refresh-scope')!.addEventListener('click',()=>{pending.close();this.confirmStart();});return;}
+   if(quote&&!scopeReady(quote)){const pending=this.modal(scopeStatusLabel(quote),scopeLifecycleHtml(quote)+'<button class="btn primary" id="integrity-refresh-scope">刷新范围报价</button>');pending.querySelector('#integrity-refresh-scope')!.addEventListener('click',()=>{pending.close();this.confirmStart();});return;}
    const price=quote??this.state!.price,points=quote?.points??this.state!.price.points,priceVersion=quote?.price_version??this.state!.price.version,total=displayPrice(price,points);
    const d=this.modal('开始本轮诚信核查',`${this.summary(draft)}<p>本轮费用 <strong>${total}</strong>，开始时预留，底稿交付后结算。未完成交付将释放预留。</p>${scopeLinesHtml(price)}<p>新轮重新查询全部所列对象和网站，不沿用旧查询时间、结论或人工证据。部分网站受限仍可能交付并收取本轮费用；注册地缺失与人员不适用项会如实记录。同轮重新导出免费。</p><button class="btn primary" id="integrity-confirm">确认并开始 · ${total}</button>`);
    d.querySelector('#integrity-confirm')!.addEventListener('click',()=>void this.act(async()=>{
+    if(quote&&!scopeReady(quote))throw new ApiError(409,'QUOTE_EXPIRED');
     if(this.state!.revision!==revision||canonical(this.state!.draft)!==canonical(draft))throw new ApiError(409,'QUOTE_CHANGED');
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode([this.owner,this.id,revision].join('\0'))),request_id='integrity-check-'+[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
     this.pending={kind:'check',...(commercial?{price:copyCommercePrice(price)}:{}),request:{request_id,expected_revision:revision,price_version:priceVersion,expected_points:points,...(quote?.scope_quote_id?{scope_quote_id:quote.scope_quote_id}:{})}};await this.sendPending();
    },'submit'));
+   if(quote){d.querySelector('#integrity-confirm')!.before(document.createRange().createContextualFragment(scopeLifecycleHtml(quote)));guardScopeExpiry(d,[quote],'#integrity-confirm');}
   },'save');
  }
  private paintRound(r:IntegrityRound){

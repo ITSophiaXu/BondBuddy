@@ -3,18 +3,20 @@ import type { Pool } from 'pg';
 import type { Static } from '@sinclair/typebox';
 import { RECHARGE_PACKS, RECHARGE_PACK_VERSION, OUTCOME_PRICE_VERSION, schemas, type CommerceTopup } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
-import { grantCredits } from './billing.js';
+import { grantCredits,lockCreditAccount } from './billing.js';
+import { installPaymentRefunds,recordPaymentCashProof,type PaymentRefundProvider } from './payment-refunds.js';
 
 type OrderRequest=Static<typeof schemas.RechargeOrderRequest>;
 export type PaymentOrder={id:string;merchant_id:string;amount_fen:number;currency:'CNY';expires_at:string};
 /** Only a channel adapter after signature/decryption or authenticated query may produce this receipt. */
-export type VerifiedPayment={orderId:string;merchantId:string;amountFen:number;currency:string;transactionId:string|null;state:'pending'|'paid'|'failed'|'expired'};
+export type VerifiedPayment={orderId:string;merchantId:string;amountFen:number;currency:string;transactionId:string|null;state:'pending'|'paid'|'failed'|'expired';payerCash?:{amountFen:number;currency:string}};
 export interface PaymentProvider {
   readonly name:OrderRequest['provider']; readonly merchantId:string;
   create(order:PaymentOrder):Promise<{checkoutUrl:string}>;
   query(order:PaymentOrder):Promise<VerifiedPayment>;
   verifyCallback(headers:FastifyRequest['headers'],rawBody:string):Promise<VerifiedPayment>;
   acknowledgement:object;
+  readonly refunds?:PaymentRefundProvider;
 }
 export function paymentOrder(row:any):PaymentOrder{return {id:row.id,merchant_id:row.merchant_id,amount_fen:Number(row.amount_fen),currency:row.currency,expires_at:date(row.expires_at)};}
 export function rechargeDto(row:any):Static<typeof schemas.RechargeOrderResponse>{return {order_id:row.id,provider:row.provider,state:row.state,
@@ -26,6 +28,8 @@ function adapter(providers:readonly PaymentProvider[],name:string,merchantId?:st
 }
 export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,receipt:VerifiedPayment){
   return transaction(pool,async c=>{
+    const pointer=(await c.query('SELECT owner_user_id FROM bb_recharge_orders WHERE id=$1',[receipt.orderId])).rows[0];if(!pointer)throw missing();
+    await lockCreditAccount(c,pointer.owner_user_id);
     const order=(await c.query('SELECT * FROM bb_recharge_orders WHERE id=$1 FOR UPDATE',[receipt.orderId])).rows[0];
     if(!order)throw missing();
     if(order.provider!==provider.name||order.merchant_id!==provider.merchantId||receipt.merchantId!==order.merchant_id||
@@ -37,8 +41,9 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
     if(receipt.state==='paid'){
       // Payment success and credit issuance commit together. A callback/query retry
       // after a database failure recovers the same order, without another payment.
-      await grantCredits(c,{owner:order.owner_user_id,source:'purchase',key:`recharge:${order.id}`,points:Number(order.points),expiresAt:null,actor:`payment:${provider.name}`,reason:`verified_order:${order.id}`});
+      const lotId=await grantCredits(c,{owner:order.owner_user_id,source:'purchase',key:`recharge:${order.id}`,points:Number(order.points),expiresAt:null,actor:`payment:${provider.name}`,reason:`verified_order:${order.id}`});
       await c.query("UPDATE bb_recharge_orders SET state='paid',provider_txn_id=$2,credited_at=COALESCE(credited_at,now()) WHERE id=$1",[order.id,receipt.transactionId]);
+      await recordPaymentCashProof(c,{...order,state:'paid',provider_txn_id:receipt.transactionId},lotId,receipt.payerCash);
     }else if(order.state!=='paid'&&receipt.state!=='pending'){
       await c.query('UPDATE bb_recharge_orders SET state=$2 WHERE id=$1',[order.id,receipt.state]);
     }
@@ -97,6 +102,7 @@ export async function refreshRecharge(pool:Pool,owner:string,id:string,providers
   return updated;
 }
 export function installPayments(app:FastifyInstance,pool:Pool,owner:(r:FastifyRequest)=>Promise<string>,enabled:boolean,providers:readonly PaymentProvider[]){
+  installPaymentRefunds(app,pool,owner,providers);
   app.get('/api/v1/credits/recharge-config',{schema:{response:{200:schemas.RechargeConfigResponse}}},async r=>{
     await owner(r);return {enabled:enabled&&providers.length>0,providers:enabled?providers.map(p=>p.name):[],packs:RECHARGE_PACKS,pack_version:RECHARGE_PACK_VERSION};
   });

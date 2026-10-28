@@ -54,7 +54,7 @@ export type LoadGenerationIssuerBinding = (scope: GenerationIssuerBindingScope) 
 /** #76 target-period candidate producer call site; injected by the runtime only when enabled. */
 export type TargetPeriodCandidateProducer = (request: ProduceTargetPeriodCandidateSnapshotRequest) => Promise<void>;
 
-export type RunRow = { billing_mode?: (typeof import('@bondbuddy/contracts').RUN_BILLING_MODES)[number]; id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
+export type RunRow = { billing_mode?: (typeof import('@bondbuddy/contracts').RUN_BILLING_MODES)[number]; covered_zero_outcome?:boolean; id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
   pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunRow; signal: AbortSignal;
   /** Checkpoint of completed stages, then values produced by stages in this attempt. */
@@ -559,7 +559,7 @@ export function codexModelStage(options: {
       } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
-      if(result.status==='needs_reconcile'&&['fixed_credits','metered_credits'].includes(run.billing_mode??'')&&!options.reviewTools){
+      if(result.status==='needs_reconcile'&&(run.covered_zero_outcome===true||['fixed_credits','metered_credits'].includes(run.billing_mode??''))&&!options.reviewTools){
         const attempt=await durable.latestAttempt(options.logicalCallId);
         if(attempt?.status==='completed'){
           const saved=await durable.readCompleted(options.logicalCallId,attempt.attempt_no);
@@ -604,7 +604,10 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
   let currentStage: string | undefined;
   try {
-    const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind,channel,test_grant_id,billing_mode FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
+    const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,
+      EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+        WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0) AS covered_zero_outcome
+      FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2`, [lease.runId, lease.owner])).rows[0] as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,

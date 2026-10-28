@@ -5,12 +5,17 @@ import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,schemas,type Commer
 import {creditBalance} from './billing.js';
 import {createServiceTopup,rechargeDto,refreshRecharge,type PaymentProvider} from './payments.js';
 import {digest,missing,Problem,transaction,uid} from './data.js';
-import {readScopeQuotations} from './scope-quotations.js';
+import {readScopeQuotations,readScopeQuotation,declineScopeQuotation,requoteScopeQuotation} from './scope-quotations.js';
 
 export function installCommerce(app:FastifyInstance,pool:Pool,owner:(r:FastifyRequest)=>Promise<string>,enabled:boolean,providers:readonly PaymentProvider[]){
   app.get('/api/v1/commerce/quotations',{schema:{response:{200:schemas.CommerceScopeQuotationsResponse}}},async(r,reply)=>{
     reply.header('cache-control','private, no-store');return readScopeQuotations(pool,await owner(r));
   });
+  app.get('/api/v1/commerce/quotations/:quotation_id',{schema:{response:{200:schemas.CommerceScopeQuotationResponse}}},async(r,reply)=>{
+    reply.header('cache-control','private, no-store');return readScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id);
+  });
+  app.post('/api/v1/commerce/quotations/:quotation_id/decline',{schema:{body:schemas.CommerceScopeDeclineRequest,response:{200:schemas.CommerceScopeQuotationResponse}}},async r=>declineScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id,r.body as Static<typeof schemas.CommerceScopeDeclineRequest>));
+  app.post('/api/v1/commerce/quotations/:quotation_id/requote',{schema:{body:schemas.CommerceScopeRequoteRequest,response:{200:schemas.CommerceScopeQuotationResponse}}},async r=>requoteScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id,r.body as Static<typeof schemas.CommerceScopeRequoteRequest>));
   app.get('/api/v1/commerce/catalog',{schema:{response:{200:schemas.CommerceCatalogResponse}}},async r=>{
     await owner(r);return{enabled,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:OUTCOME_CATALOG,rules:COMMERCE_RULES};
   });

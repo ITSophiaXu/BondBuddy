@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {PROJECT_QA_PRICE,type ProjectFileAsset,type QaAnswer,type QaDraft,type QaQuestion,type QaResult,type QaRun} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION,commerceMetadata,type ProjectFileAsset,type QaAnswer,type QaDraft,type QaQuestion,type QaResult,type QaRun} from '@bondbuddy/contracts';
 import {qaAssetKey,qaSameDraft,qaPreparationFor,qaFollowupFor} from './qa-continuation.js';
 
 const projectId='qa-project',sha='a'.repeat(64),snapshotSha='b'.repeat(64),documentSha='c'.repeat(64),prepareHash='d'.repeat(64),answerHash='e'.repeat(64),evidenceSha='f'.repeat(64);
@@ -27,6 +27,14 @@ const answerRun=(patch:Partial<QaRun>={}):QaRun=>({run_id:'historical-answer',se
 function assertBlocked(run:QaRun,runs:readonly QaRun[]=[preparation()],project=projectId){
   const choice=qaFollowupFor(run,runs,project);assert.ok(choice.error);assert.deepEqual(choice.questions,[]);assert.deepEqual(choice.missingIds,[]);assert.equal(choice.preparation,undefined);
 }
+
+test('historical and current CNY answer continuations preserve the paid amount instead of reclassifying it as per-question credits',()=>{
+ for(const version of [LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION]){
+  const run=answerRun();run.manifest={...run.manifest,...commerceMetadata(3900,3900,1,version),price_version:version,points:3900};run.charged_points=3900;
+  const choice=qaFollowupFor(run,[preparation()],projectId);assert.equal(choice.error,undefined);assert.ok(choice.preparation);
+  assertBlocked({...run,manifest:{...run.manifest,points:180}});
+ }
+});
 
 test('QA asset keys normalize property order and retain every exact material or artifact pin field',()=>{
   const original=source();if(original.kind!=='material')return;

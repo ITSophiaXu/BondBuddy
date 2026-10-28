@@ -1,6 +1,7 @@
 import { createDecipheriv, createPrivateKey, createPublicKey, randomBytes, sign, verify, X509Certificate, type KeyObject } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { PaymentOrder, PaymentProvider, VerifiedPayment } from './payments.js';
+import type { RefundOrder,VerifiedRefund } from './payment-refunds.js';
 
 const API_ORIGIN = 'https://api.mch.weixin.qq.com';
 const MAX_BODY_BYTES = 65536;
@@ -15,6 +16,8 @@ export type WechatPayOptions = {
   merchantPrivateKeyPem: string;
   apiV3Key: string;
   notifyUrl: string;
+  /** Explicitly configured original-payment refund callback; absent means refunds remain disabled. */
+  refundNotifyUrl?: string;
   /** Out-of-band trusted pins, never loaded from a callback or response URL. */
   platformKeys: readonly WechatPayPlatformKey[];
   timeoutMs?: number;
@@ -101,10 +104,13 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
   const timeoutMs = options.timeoutMs ?? 10000;
   try {
     const notify = new URL(options.notifyUrl);
+    const refundNotify = options.refundNotifyUrl===undefined?undefined:new URL(options.refundNotifyUrl);
     if (!/^[0-9]{6,32}$/.test(options.merchantId) || !/^wx[A-Za-z0-9]{16}$/.test(options.appId) ||
         !/^[A-Fa-f0-9]{8,128}$/.test(options.merchantCertificateSerial) ||
         Buffer.byteLength(options.apiV3Key, 'utf8') !== 32 || /[\r\n\0]/.test(options.apiV3Key) || notify.protocol !== 'https:' || !notify.hostname ||
-        notify.username || notify.password || notify.hash || notify.search || !Number.isInteger(timeoutMs) || timeoutMs < 10 || timeoutMs > 30000 ||
+        notify.username || notify.password || notify.hash || notify.search ||
+        refundNotify&&(refundNotify.protocol!=='https:'||!refundNotify.hostname||refundNotify.username||refundNotify.password||refundNotify.hash||refundNotify.search)||
+        !Number.isInteger(timeoutMs) || timeoutMs < 10 || timeoutMs > 30000 ||
         !Array.isArray(options.platformKeys) || options.platformKeys.length < 1 || options.platformKeys.length > 8 || typeof fetcher !== 'function') return fail('CONFIG_INVALID');
     merchantKey = rsa(createPrivateKey(options.merchantPrivateKeyPem));
     pins = new Map(options.platformKeys.map(value => pin(value, now())));
@@ -112,7 +118,7 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     apiV3Key = Buffer.from(options.apiV3Key, 'utf8');
   } catch { return fail('CONFIG_INVALID'); }
   // Capture primitive configuration; later mutation of an injected options object cannot change the merchant.
-  const merchantId = options.merchantId, appId = options.appId, merchantSerial = options.merchantCertificateSerial.toUpperCase(), notifyUrl = options.notifyUrl;
+  const merchantId = options.merchantId, appId = options.appId, merchantSerial = options.merchantCertificateSerial.toUpperCase(), notifyUrl = options.notifyUrl,refundNotifyUrl=options.refundNotifyUrl;
   function verifyMessage(headers: FastifyRequest['headers'] | Headers, rawBody: string) {
     if (typeof rawBody !== 'string' || Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) return fail('SIGNATURE_INVALID');
     const timestamp = header(headers, 'wechatpay-timestamp'), nonce = header(headers, 'wechatpay-nonce');
@@ -140,7 +146,47 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     const transactionId = state === 'paid' ? text(value.transaction_id) : null;
     if (transactionId && !/^[A-Za-z0-9_-]{1,128}$/.test(transactionId)) return fail('RECEIPT_INVALID');
     if (expected && (expected.id !== orderId || expected.merchant_id !== value.mchid || expected.amount_fen !== amount.total || expected.currency !== amount.currency)) return fail('RECEIPT_INVALID');
-    return { orderId, merchantId, amountFen: Number(amount.total), currency: 'CNY', transactionId, state };
+    let payerCash:VerifiedPayment['payerCash'];
+    if(state==='paid'&&(amount.payer_total!==undefined||amount.payer_currency!==undefined)){
+      if(!Number.isSafeInteger(amount.payer_total)||Number(amount.payer_total)<0||Number(amount.payer_total)>Number(amount.total)||amount.payer_currency!=='CNY')return fail('RECEIPT_INVALID');
+      payerCash={amountFen:Number(amount.payer_total),currency:'CNY'};
+    }
+    return { orderId, merchantId, amountFen: Number(amount.total), currency: 'CNY', transactionId, state,...(payerCash?{payerCash}:{}) };
+  }
+  function assertRefund(order:RefundOrder){
+    if(!orderIdPattern.test(order.id)||!orderIdPattern.test(order.order_id)||order.merchant_id!==merchantId||order.currency!=='CNY'||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(order.provider_transaction_id)||![order.order_amount_fen,order.amount_fen].every(Number.isSafeInteger)||
+      order.amount_fen<1||order.order_amount_fen<order.amount_fen)return fail('ORDER_INVALID');
+  }
+  function refundReceipt(value:JsonObject,expected?:RefundOrder,callback=false):VerifiedRefund{
+    const amount=object(value.amount),refundId=text(value.out_refund_no,32),orderId=text(value.out_trade_no,32),transactionId=text(value.transaction_id),providerRefundId=text(value.refund_id);
+    const status=callback?value.refund_status:value.status;
+    if(!orderIdPattern.test(refundId)||!orderIdPattern.test(orderId)||!orderIdPattern.test(providerRefundId)||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(transactionId)||(callback&&value.mchid!==merchantId)||
+      value.mchid!==undefined&&value.mchid!==merchantId||value.appid!==undefined&&value.appid!==appId||amount.currency!=='CNY'||
+      ![amount.total,amount.refund,amount.payer_total,amount.payer_refund].every(Number.isSafeInteger)||
+      Number(amount.total)<1||Number(amount.refund)<1||Number(amount.refund)>Number(amount.total)||
+      Number(amount.payer_total)!==Number(amount.total)||Number(amount.payer_refund)!==Number(amount.refund))return fail('RECEIPT_INVALID');
+    // ABNORMAL is unresolved: it can still succeed later and is never a reason to release the frozen balance.
+    const state:VerifiedRefund['state']=status==='SUCCESS'?'succeeded':status==='CLOSED'?'failed':status==='PROCESSING'||status==='ABNORMAL'?'processing':fail('RECEIPT_INVALID');
+    if(expected&&(refundId!==expected.id||orderId!==expected.order_id||transactionId!==expected.provider_transaction_id||
+      Number(amount.total)!==expected.order_amount_fen||Number(amount.refund)!==expected.amount_fen))return fail('RECEIPT_INVALID');
+    return {refundId,orderId,merchantId,transactionId,providerRefundId,currency:'CNY',orderAmountFen:Number(amount.total),amountFen:Number(amount.refund),
+      payerTotalFen:Number(amount.payer_total),payerRefundFen:Number(amount.payer_refund),state,...(state==='failed'?{failureCode:'CLOSED'}:{})};
+  }
+  function decryptEvent(headers:FastifyRequest['headers'],rawBody:string,originalType:'transaction'|'refund'){
+    verifyMessage(headers,rawBody);
+    const event=json(rawBody),resource=object(event.resource);
+    if(event.resource_type!=='encrypt-resource'||resource.algorithm!=='AEAD_AES_256_GCM'||resource.original_type!==originalType)return fail('PAYLOAD_INVALID');
+    const nonce=text(resource.nonce,12),associated=resource.associated_data??'';
+    if(Buffer.byteLength(nonce,'utf8')!==12||typeof associated!=='string'||Buffer.byteLength(associated)>256)return fail('PAYLOAD_INVALID');
+    const encrypted=base64(resource.ciphertext,MAX_BODY_BYTES);if(encrypted.length<=16)return fail('PAYLOAD_INVALID');
+    try{
+      const decipher=createDecipheriv('aes-256-gcm',apiV3Key,Buffer.from(nonce));
+      decipher.setAuthTag(encrypted.subarray(-16));decipher.setAAD(Buffer.from(associated));
+      const plaintext=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat([decipher.update(encrypted.subarray(0,-16)),decipher.final()]));
+      return {event,value:json(plaintext)};
+    }catch{return fail('PAYLOAD_INVALID');}
   }
   async function request(method: 'POST' | 'GET', path: string, payload?: JsonObject): Promise<JsonObject> {
     const body = payload ? JSON.stringify(payload) : '', timestamp = String(Math.floor(now() / 1000)), nonce = randomBytes(16).toString('hex');
@@ -163,6 +209,21 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
   }
   return {
     name: 'wechat', merchantId, acknowledgement: { code: 'SUCCESS', message: '成功' },
+    ...(refundNotifyUrl?{refunds:{
+      async create(order:RefundOrder){
+        assertRefund(order);
+        return refundReceipt(await request('POST','/v3/refund/domestic/refunds',{transaction_id:order.provider_transaction_id,out_refund_no:order.id,
+          notify_url:refundNotifyUrl,amount:{refund:order.amount_fen,total:order.order_amount_fen,currency:'CNY'}}),order);
+      },
+      async query(order:RefundOrder){
+        assertRefund(order);return refundReceipt(await request('GET',`/v3/refund/domestic/refunds/${encodeURIComponent(order.id)}`),order);
+      },
+      async verifyCallback(headers:FastifyRequest['headers'],rawBody:string){
+        const {event,value}=decryptEvent(headers,rawBody,'refund');
+        if(!['REFUND.SUCCESS','REFUND.CLOSED','REFUND.ABNORMAL'].includes(String(event.event_type))||event.event_type!==`REFUND.${value.refund_status}`)return fail('PAYLOAD_INVALID');
+        return refundReceipt(value,undefined,true);
+      },
+    }}:{}),
     async create(order) {
       assertOrder(order);
       if (Date.parse(order.expires_at) <= now()) return fail('ORDER_INVALID');
@@ -179,21 +240,9 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
       return receipt(await request('GET', `/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}?mchid=${encodeURIComponent(merchantId)}`), order);
     },
     async verifyCallback(headers, rawBody) {
-      verifyMessage(headers, rawBody);
-      const event = json(rawBody), resource = object(event.resource);
-      if (event.event_type !== 'TRANSACTION.SUCCESS' || event.resource_type !== 'encrypt-resource' || resource.algorithm !== 'AEAD_AES_256_GCM' || resource.original_type !== 'transaction') return fail('PAYLOAD_INVALID');
-      const nonce = text(resource.nonce, 12), associated = resource.associated_data ?? '';
-      if (Buffer.byteLength(nonce, 'utf8') !== 12 || typeof associated !== 'string' || Buffer.byteLength(associated) > 256) return fail('PAYLOAD_INVALID');
-      const encrypted = base64(resource.ciphertext, MAX_BODY_BYTES);
-      if (encrypted.length <= 16) return fail('PAYLOAD_INVALID');
-      let plaintext: string;
-      try {
-        const decipher = createDecipheriv('aes-256-gcm', apiV3Key, Buffer.from(nonce));
-        decipher.setAuthTag(encrypted.subarray(-16));
-        decipher.setAAD(Buffer.from(associated));
-        plaintext = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat([decipher.update(encrypted.subarray(0, -16)), decipher.final()]));
-      } catch { return fail('PAYLOAD_INVALID'); }
-      const result = receipt(json(plaintext));
+      const {event,value}=decryptEvent(headers,rawBody,'transaction');
+      if(event.event_type!=='TRANSACTION.SUCCESS')return fail('PAYLOAD_INVALID');
+      const result = receipt(value);
       if (result.state !== 'paid') return fail('RECEIPT_INVALID');
       // Deterministic receipt on repeated signed delivery. Durable replay/amount/order checks belong to applyVerifiedPayment.
       return result;

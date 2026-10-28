@@ -1,7 +1,7 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
+import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {creditBalance,lockCreditAccount} from './billing.js';
@@ -11,6 +11,7 @@ import {readProjectFileAsset,projectFileSource} from './project-file-storage.js'
 import {memberProjectsSql} from './project-collection.js';
 import {qaCaseSearch} from './qa-knowledge.js';
 import {requestScope,assertScopeQuote,scopePriceMetadata} from './scope-quotations.js';
+import {bindCommerceScopeRun} from './commerce-coverage.js';
 const empty=():QaDraft=>({preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:true});
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 type Db=Pool|PoolClient;
@@ -52,33 +53,41 @@ async function notify(c:PoolClient,owner:string,id:string,type:string,payload:un
 }
 /** An explicit original-scope continuation cannot add questions or requirements. New evidence is allowed. */
 export async function validateIncludedQaFollowup(db:Db,owner:string,projectId:string,parentId:string,questions:QaQuestion[],requirements:string,source:QaInput['source']){
- const parent=(await db.query(`SELECT q.manifest FROM bb_project_qa_runs q JOIN bb_runs run ON run.id=q.run_id AND run.owner_user_id=q.owner_user_id
+ const parent=(await db.query(`SELECT q.manifest,price.price_version FROM bb_project_qa_runs q JOIN bb_runs run ON run.id=q.run_id AND run.owner_user_id=q.owner_user_id
  JOIN bb_credit_reservations res ON res.run_id=q.run_id AND res.owner_user_id=q.owner_user_id
  JOIN bb_project_qa_quotes price ON price.id=res.quote_id AND price.run_id=q.run_id AND price.owner_user_id=q.owner_user_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='answer' AND run.state='succeeded'
- AND res.state='settled' AND res.charged_points=price.points AND price.price_version=$4 AND price.scope_quote_id IS NOT NULL AND price.points>0`,[owner,projectId,parentId,OUTCOME_PRICE_VERSION])).rows[0];
- if(!parent||parent.manifest.requirements!==requirements||inputManifestHash(parent.manifest.source.asset)!==inputManifestHash(source.asset)
+ AND res.state='settled' AND res.charged_points=price.points AND price.scope_quote_id IS NOT NULL AND price.points>0
+ AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=q.owner_user_id AND e.reservation_id=res.id AND e.kind='correction')`,[owner,projectId,parentId])).rows[0];
+ if(!parent||!isOutcomePriceVersion(parent.price_version)||parent.manifest.requirements!==requirements||inputManifestHash(parent.manifest.source.asset)!==inputManifestHash(source.asset)
  ||!questions.length||questions.some(q=>!parent.manifest.questions.some((old:QaQuestion)=>inputManifestHash(old)===inputManifestHash(q))))
    throw conflict('INPUT_REVISION_CONFLICT','原范围续做须引用本人同项目已付成功任务，保持原问题、原要求和问题清单；新增范围请单独报价。');
+ return parent.price_version;
 }
 /** Price and quotation identity are deliberately excluded from the business-scope hash. */
 export const qaAnswerScope=(input:Pick<QaInput,'source'|'preparation_id'|'questions'|'materials'|'requirements'>)=>({
  source:input.source,preparation_id:input.preparation_id,questions:input.questions,materials:input.materials,requirements:input.requirements,
 });
 export async function reserveQaCredits(c:PoolClient,owner:string,run:any,input:QaInput){
- await lockCreditAccount(c,owner);const points=input.points;
- const scope=input.price_version===OUTCOME_PRICE_VERSION&&!input.included_followup_of
+ const points=input.points,commercial=isOutcomePriceVersion(input.price_version);
+ const scope=commercial&&!input.included_followup_of
   ?await assertScopeQuote(c,input.scope_quote_id,owner,run.project_id,'project_qa_answer',inputManifestHash(qaAnswerScope(input)),points):null;
- if((await creditBalance(c,owner)).available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',input.price_version===OUTCOME_PRICE_VERSION?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
- const quote=uid(),reservation=uid();
- await c.query('INSERT INTO bb_project_qa_quotes(id,owner_user_id,run_id,input_hash,question_count,unit_points,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[quote,owner,run.id,run.input_hash,input.questions.length,input.price_version===OUTCOME_PRICE_VERSION?0:PROJECT_QA_PRICE.points,points,input.price_version,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[]),scope?inputManifestHash(qaAnswerScope(input)):null]);
+ if(scope&&scope.price_version!==input.price_version)throw conflict('QUOTE_CHANGED','人民币问题报价规则版本已变化。');
+ const quote=uid();
+ await c.query('INSERT INTO bb_project_qa_quotes(id,owner_user_id,run_id,input_hash,question_count,unit_points,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[quote,owner,run.id,run.input_hash,input.questions.length,commercial?0:PROJECT_QA_PRICE.points,points,input.price_version,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[]),scope?inputManifestHash(qaAnswerScope(input)):null]);
  if(input.included_followup_of&&points===0)return;
+ if(commercial&&points===0){await bindCommerceScopeRun(c,owner,scope!.scope_quote_id,run.id);return;}
+ await lockCreditAccount(c,owner);
+ if((await creditBalance(c,owner)).available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
+ const reservation=uid();
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);
  const lots=(await c.query("SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now()) ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE",[owner])).rows;
  let left=points;for(const lot of lots){const take=Math.min(left,Number(lot.remaining)-Number(lot.frozen));await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[lot.id,take]);await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[reservation,lot.id,take]);left-=take;if(!left)break;}
  if(left)throw new Problem(503,'DATA_UNAVAILABLE','Q&A credit allocation mismatch');
  await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,'project_qa_questions_confirmed')",[uid(),owner,'reserve:'+reservation,points,reservation,run.id]);
  await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run.id,reservation]);
+ run.billing_mode='fixed_credits';run.reservation_id=reservation;
+ if(scope)await bindCommerceScopeRun(c,owner,scope.scope_quote_id,run.id);
 }
 async function existing(c:PoolClient,owner:string,key:string,hash:string){await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[owner+':'+key]);const old=(await c.query('SELECT id,request_hash FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[owner,key])).rows[0];if(old&&old.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','请求已用于其他问题清单。');return old?.id as string|undefined;}
 async function createRun(c:PoolClient,owner:string,p:any,key:string,requestHash:string,manifest:QaInput){
@@ -111,7 +120,7 @@ export async function readQa(db:Pool,owner:string,id:string,requested?:string,an
  LEFT JOIN answers a ON a.run_id=q.run_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id IN(SELECT run_id FROM included)
  ORDER BY (q.run_id=$3) DESC NULLS LAST,q.sequence DESC`,[owner,id,requested??null,d?.draft?.preparation_id??null])).rows;
- return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:commercial?{points:0,version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope',scope_lines:[]}:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(answerSequence&&r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,...(r.manifest.pricing_mode==='outcome_cny_v1'?{...outcomeMetadata(r.manifest.points),scope_quote_id:r.manifest.scope_quote_id,quote_status:'ready' as const,scope_lines:r.manifest.scope_lines??[]}:{}),result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
+ return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:commercial?{points:0,version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope',scope_lines:[]}:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(answerSequence&&r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,...(r.manifest.pricing_mode==='outcome_cny_v1'?{...outcomeMetadata(r.manifest.points,r.manifest.points,1,r.manifest.price_version),scope_quote_id:r.manifest.scope_quote_id,quote_status:'ready' as const,scope_lines:r.manifest.scope_lines??[]}:{}),result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
 }
 export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,commercial=false){
  const base='/api/v1/projects/:project_id/qa',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
@@ -143,8 +152,8 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    const d=row.draft as QaDraft,{p:prepared,materials}=await validateDraft(c,user,pid,d,true);
    if(b.included_followup_of){
     if(!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');
-    await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source);
-    return {points:0,price_version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'ready',scope_lines:[]};
+    const priceVersion=await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source);
+    return {points:0,price_version:priceVersion,...outcomeMetadata(0,0,1,priceVersion),quote_status:'ready',scope_lines:[]};
    }
    if(!commercial)return {points:d.questions.length*PROJECT_QA_PRICE.points,price_version:PROJECT_QA_PRICE.version};
    const snapshot=qaAnswerScope({source:prepared.manifest.source,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements});
@@ -157,13 +166,15 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
   const run_id=await transaction(db(),async c=>{const p=await project(c,user,pid,true),hash=inputManifestHash({pid,...b}),key='qa-answer:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
    const row=(await c.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];if(!row||row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题或材料已变化，请重新确认。');
    const d=row.draft as QaDraft,{p:prepared,materials,prospectus}=await validateDraft(c,user,pid,d,true);
-   if(b.included_followup_of){if(!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source);}
+   if(b.included_followup_of&&!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');
+   const includedVersion=b.included_followup_of?await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source):undefined;
    const snapshot=qaAnswerScope({source:prepared.manifest.source,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements});
    const scope=commercial&&!b.included_followup_of?await assertScopeQuote(c,b.scope_quote_id,user,pid,'project_qa_answer',inputManifestHash(snapshot),b.expected_points):null;
    const points=b.included_followup_of?0:commercial?scope!.amount_fen:d.questions.length*PROJECT_QA_PRICE.points;
-   if(points!==b.expected_points||b.price_version!==(commercial?OUTCOME_PRICE_VERSION:PROJECT_QA_PRICE.version))throw conflict('QUOTE_CHANGED','实际处理范围与费用已变化，请重新确认。');
+   const priceVersion=commercial?(scope?.price_version??includedVersion):PROJECT_QA_PRICE.version;
+   if(points!==b.expected_points||b.price_version!==priceVersion||commercial&&!isOutcomePriceVersion(priceVersion))throw conflict('QUOTE_CHANGED','实际处理范围与费用已变化，请重新确认。');
    const cases:QaInput['cases']=[];if(d.use_knowledge)for(const q of d.questions){for(const item of await qaCaseSearch(c,q.question,3))if(!cases.some(x=>x.id===item.id)&&cases.length<40)cases.push(item);}
-   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points,price_version:commercial?OUTCOME_PRICE_VERSION:PROJECT_QA_PRICE.version,...(scope?scopePriceMetadata(scope):commercial?{...outcomeMetadata(0),quote_status:'ready' as const,scope_lines:[]}:{}),...(b.included_followup_of?{included_followup_of:b.included_followup_of}:{})});
+   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points,price_version:priceVersion!,...(scope?scopePriceMetadata(scope):commercial?{...outcomeMetadata(0,0,1,includedVersion!),quote_status:'ready' as const,scope_lines:[]}:{}),...(b.included_followup_of?{included_followup_of:b.included_followup_of}:{})});
   });return {run_id};
  });
 }

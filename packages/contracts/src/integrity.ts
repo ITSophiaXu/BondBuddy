@@ -1,13 +1,13 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {M4MaterialPinSchema} from './m4-workspace.js';
 import {INTEGRITY_SITE_LIMIT} from './integrity-sites.js';
-import {CommerceMetadataFields,OUTCOME_PRICE_VERSION} from './commerce.js';
+import {CommerceMetadataFields,OutcomePriceVersionSchema} from './commerce.js';
 export * from './integrity-sites.js';
 export const INTEGRITY_PRICE={points:5000,version:'integrity-round-5000-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128}),short=Type.String({maxLength:200}),text=Type.String({maxLength:12000});
 const hash=Type.String({pattern:'^[a-f0-9]{64}$'}),time=Type.String({pattern:'^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$'});
-const integrityPriceVersion=Type.Union([Type.Literal(INTEGRITY_PRICE.version),Type.Literal(OUTCOME_PRICE_VERSION)]);
+const integrityPriceVersion=Type.Union([Type.Literal(INTEGRITY_PRICE.version),OutcomePriceVersionSchema]);
 export const IntegritySubjectSchema=obj({id,kind:Type.Union([Type.Literal('company'),Type.Literal('person')]),name:Type.String({minLength:1,maxLength:200}),identifier:short,role:short,province:short,city:short});
 export type IntegritySubject=Static<typeof IntegritySubjectSchema>;
 export const IntegrityDraftSchema=obj({subjects:Type.Array(IntegritySubjectSchema,{maxItems:100}),site_ids:Type.Array(id,{uniqueItems:true,maxItems:INTEGRITY_SITE_LIMIT}),notes:text});

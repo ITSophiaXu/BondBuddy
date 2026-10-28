@@ -42,9 +42,11 @@ export function paymentProvidersFromEnv(env: NodeJS.ProcessEnv = process.env, de
     }
     const timeoutText = env.BB_WECHAT_PAY_TIMEOUT_MS;
     if (timeoutText !== undefined && !/^[0-9]{1,5}$/.test(timeoutText)) throw new Error('Invalid payment timeout');
+    if(env.BB_WECHAT_PAY_REFUND_ENABLED!==undefined&&!['0','1'].includes(env.BB_WECHAT_PAY_REFUND_ENABLED))throw new Error('Invalid refund setting');
     const provider = createWechatPayProvider({ merchantId: required('BB_WECHAT_PAY_MERCHANT_ID'), appId: required('BB_WECHAT_PAY_APP_ID'),
       merchantCertificateSerial: required('BB_WECHAT_PAY_MERCHANT_CERT_SERIAL'), merchantPrivateKeyPem: secret('BB_WECHAT_PAY_PRIVATE_KEY'),
       apiV3Key: secret('BB_WECHAT_PAY_API_V3_KEY'), notifyUrl: required('BB_WECHAT_PAY_NOTIFY_URL'), platformKeys,
+      refundNotifyUrl:env.BB_WECHAT_PAY_REFUND_ENABLED==='1'?required('BB_WECHAT_PAY_REFUND_NOTIFY_URL'):undefined,
       timeoutMs: timeoutText === undefined ? undefined : Number(timeoutText) }, dependencies);
     return { providers: [provider], status: 'ready' };
   } catch { return { providers: [], status: 'invalid' }; }
