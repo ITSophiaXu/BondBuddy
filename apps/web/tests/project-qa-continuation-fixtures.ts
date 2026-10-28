@@ -88,6 +88,7 @@ export async function install(page:Page,state=fixture()){
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
     const body:unknown=request.postData()&&request.headers()['content-type']?.includes('application/json')?request.postDataJSON():undefined;
     state.calls.push({method,path,search:url.search,...(body===undefined?{}:{body:structuredClone(body)})});
+    if(method==='GET'&&path==='/commerce/catalog')return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
     if(method==='GET'&&path==='/me')return reply(route,'MeResponse',{user_id:state.owner,session_status:'active'});
     if(method==='GET'&&path==='/auth/recovery/info')return reply(route,'RecoveryInfoResponse',{enabled:false,support_contact:null,link_minutes:30});
     if(method==='GET'&&path==='/account')return reply(route,'AccountResponse',{user_id:state.owner,username:'synthetic_qa',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});

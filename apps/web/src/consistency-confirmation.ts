@@ -33,7 +33,7 @@ function sameBinding(a:ConfirmationBinding,b:ConfirmationBinding){
   return a.owner===b.owner&&a.project===b.project&&a.checkId===b.checkId&&
     a.body.request_id===b.body.request_id&&a.body.expected_check_sha256===b.body.expected_check_sha256&&
     a.body.price_version===b.body.price_version&&a.body.expected_points===b.body.expected_points&&
-    a.body.files.length===b.body.files.length&&a.body.files.every((file,index)=>file.file_version_id===b.body.files[index].file_version_id&&a.filenames[index]===b.filenames[index]);
+    a.body.files.length===b.body.files.length&&a.body.files.every((file,index)=>file.file_version_id===b.body.files[index].file_version_id&&file.scope_quote_id===b.body.files[index].scope_quote_id&&a.filenames[index]===b.filenames[index]);
 }
 function validAsset(asset:ProjectFileAsset){
   const pin=asset.pin,version=asset.kind==='material'?asset.pin.material_version:asset.pin.artifact_version;
@@ -50,7 +50,7 @@ function cloneBinding(binding:ConfirmationBinding):ConfirmationBinding{
   return {...(binding.owner===undefined?{}:{owner:binding.owner}),project:binding.project,checkId:binding.checkId,
     body:{request_id:binding.body.request_id,expected_check_sha256:binding.body.expected_check_sha256,
       price_version:binding.body.price_version,expected_points:binding.body.expected_points,
-      files:binding.body.files.map(file=>({file_version_id:file.file_version_id}))},filenames:[...binding.filenames]};
+      files:binding.body.files.map(file=>({file_version_id:file.file_version_id,...(file.scope_quote_id?{scope_quote_id:file.scope_quote_id}:{})}))},filenames:[...binding.filenames]};
 }
 function freeze<T>(value:T):T{
   if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}

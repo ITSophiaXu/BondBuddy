@@ -65,6 +65,9 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请充值后重新确认。';
     case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
     case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
+    case 'QUOTE_EXPIRED': return '报价已过期，本次未开始、未扣费。准备内容保留，请重新申请范围报价。';
+    case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
+    case 'QUOTE_DECLINED': return '本报价已拒绝，本次未开始、未扣费。准备内容保留，可重新申请范围报价。';
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
     case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
@@ -81,6 +84,12 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
 }
 
 export class ApiClient {
+  commerceCatalog(signal?:AbortSignal){return this.request<Dto<'CommerceCatalogResponse'>>('GET','/commerce/catalog',undefined,{},signal);}
+  commerceAccount(signal?:AbortSignal){return this.request<Dto<'CommerceAccountResponse'>>('GET','/commerce/account',undefined,{},signal);}
+  commerceTopup(input:Dto<'CommerceTopupRequest'>,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('POST','/commerce/topups',input,{},signal);}
+  commerceOrder(id:string,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('GET',`/commerce/topups/${encodeURIComponent(id)}`,undefined,{},signal);}
+  commerceRefresh(id:string,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('POST',`/commerce/topups/${encodeURIComponent(id)}/refresh`,{}, {},signal);}
+  commerceFeedback(input:Dto<'CommerceFeedbackRequest'>,signal?:AbortSignal){return this.request<Dto<'CommerceFeedbackResponse'>>('POST','/commerce/feedback',input,{},signal);}
   projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   projectFiles(id:string,signal?:AbortSignal){return this.request<Dto<'ProjectFilesResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/files',undefined,{},signal);}
   consumptionHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'CreditConsumptionHistoryResponse'>>('GET','/credits/consumption-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
@@ -148,7 +157,7 @@ export class ApiClient {
     const value = response.status === 204 ? undefined as T : await response.json();
     // Refresh the signed-in wallet after charge/quote reads and explicit execution/payment changes.
     if (typeof window !== 'undefined' && (path.endsWith('/credit-charge') || path.endsWith('/credit-quote') ||
-        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/')))) {
+        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/') || path.startsWith('/commerce/')))) {
       window.dispatchEvent(new Event('bondbuddy:credits-changed'));
     }
     return value;

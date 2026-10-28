@@ -1,16 +1,19 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {PROJECT_DOCUMENT_CATALOG,projectFileSchemas,type M4DocumentManifest,type ProjectFileBatch} from '@bondbuddy/contracts';
+import {PROJECT_DOCUMENT_CATALOG,projectFileSchemas,type M4DocumentManifest,type ProjectFileBatch,type ScopeLine} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {readM4Workspace,saveM4Draft,projectFileDocumentManifest,startPinnedM4Run,readM4MaterialPin} from './m4-workspace.js';
 import {quoteM4} from './m4-billing.js';
+import {OUTCOME_PRICE_VERSION,isOutcomePriceVersion} from '@bondbuddy/contracts';
+import {OUTCOME_MODE,outcomeMetadata} from './outcome-pricing.js';
 import {importProspectusMaterial} from './prospectus-import.js';
 import {projectFileSource,projectFileVersions,projectFileFamily,appendProjectFile} from './project-file-storage.js';
+import {acceptScopeBatch} from './scope-quotations.js';
 
 type Db=Pool|PoolClient;
-type BatchItem={manifest:M4DocumentManifest;run_id:string|null;attempt:number;error:string|null};
+type BatchItem={pricing_mode?:typeof OUTCOME_MODE;scope_quote_id?:string;scope_acceptance_id?:string;scope_expires_at?:string|null;points?:number;scope_lines?:ScopeLine[];manifest:M4DocumentManifest;run_id:string|null;attempt:number;error:string|null};
 const terminal=['succeeded','test_completed','failed','cancelled','rejected'];
 async function event(c:PoolClient,owner:string,id:string,type:string,payload:unknown){
   await c.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)`,[uid(),owner,id,type,payload]);
@@ -37,16 +40,19 @@ export async function ensureProjectFileWorkspace(c:PoolClient,owner:string,id:st
 async function batchDto(db:Db,owner:string,row:any):Promise<ProjectFileBatch>{
   const items=row.items as BatchItem[],ids=items.flatMap(i=>i.run_id?[i.run_id]:[]);
   const runs=(await db.query('SELECT id,state FROM bb_runs WHERE owner_user_id=$1 AND id=ANY($2::text[])',[owner,ids])).rows;
+  const scopeIds=items.flatMap(i=>i.pricing_mode===OUTCOME_MODE&&i.scope_quote_id?[i.scope_quote_id]:[]);
+  const scopes=scopeIds.length?(await db.query('SELECT id,price_version FROM bb_scope_quotations WHERE owner_user_id=$1 AND id=ANY($2::text[])',[owner,scopeIds])).rows:[];
+  const scopeVersions=new Map(scopes.map(scope=>[scope.id,scope.price_version]));
   return {batch_id:row.id,state:row.state,items:items.filter(i=>i.manifest.input.document_type!=='workpaper').map(i=>({document_type:i.manifest.input.document_type as ProjectFileBatch['items'][number]['document_type'],run_id:i.run_id,
-    state:runs.find(r=>r.id===i.run_id)?.state??'queued',error:i.error}))};
+    state:runs.find(r=>r.id===i.run_id)?.state??'queued',error:i.error,...(i.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(i.points??0),price_version:scopeVersions.get(i.scope_quote_id),scope_quote_id:i.scope_quote_id,scope_expires_at:i.scope_expires_at??null,scope_lines:i.scope_lines??[],quote_status:'ready'}:{})}))};
 }
-export async function readProjectFileWorkspace(db:Pool,owner:string,id:string){
+export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,commercial=false){
   await project(db,owner,id);
   const binding=(await db.query('SELECT topic_id FROM bb_project_file_workspaces WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0];
   if(!binding)throw missing();
   const batches=(await db.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 20',[owner,id])).rows;
   return {project_id:id,source:await projectFileSource(db,owner,id),workspace:await readM4Workspace(db,owner,binding.topic_id),
-    files:await projectFileVersions(db,owner,id),batches:await Promise.all(batches.map(b=>batchDto(db,owner,b)))};
+    files:await projectFileVersions(db,owner,id),batches:await Promise.all(batches.map(b=>batchDto(db,owner,b))),...(commercial?{price:{points:0,price_version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope' as const,scope_lines:[]}}:{})};
 }
 
 /** The worker starts each frozen item after its predecessor; closing the browser cannot lose a batch. */
@@ -80,7 +86,9 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
     if((await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))`,[owner,m.execution_scope_project_id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有任务正在执行。');
     const t=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,row.topic_id])).rows[0];
     if(!t)throw missing();
-    const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m);
+    const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m,item.pricing_mode===OUTCOME_MODE,item.scope_acceptance_id?{scope_quote_id:item.scope_quote_id!,scope_acceptance_id:item.scope_acceptance_id,points:item.points!}:undefined);
+    if(item.pricing_mode===OUTCOME_MODE&&(quote.quote.quote_status!=='ready'||quote.quote.scope_quote_id!==item.scope_quote_id||quote.quote.points!==item.points))
+      throw conflict('QUOTE_CHANGED','已确认的文件范围或费用不一致，请核对原范围报价。');
     const request=`project-files:${row.id}:${next}:${item.attempt}`;
     const run=await startPinnedM4Run(c,owner,t,request,inputManifestHash({batch:row.id,index:next,attempt:item.attempt}),m,quote.quote.quote_id,inputManifestHash(m),true);
     item.run_id=run.id;
@@ -97,13 +105,32 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
   });
 }
 
-export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
+export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,commercial=false){
   const base='/api/v1/projects/:project_id/project-files',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
   app.post(base+'/workspace',{schema:{body:projectFileSchemas.ProjectFileWorkspaceRequest}},async r=>{
-    const user=await owner(r),projectId=id(r);await transaction(db(),c=>ensureProjectFileWorkspace(c,user,projectId));return readProjectFileWorkspace(db(),user,projectId);
+    const user=await owner(r),projectId=id(r);await transaction(db(),c=>ensureProjectFileWorkspace(c,user,projectId));return readProjectFileWorkspace(db(),user,projectId,commercial);
   });
-  app.get(base+'/workspace',async r=>readProjectFileWorkspace(db(),await owner(r),id(r)));
+  app.get(base+'/workspace',async r=>readProjectFileWorkspace(db(),await owner(r),id(r),commercial));
   app.get(base,async r=>({files:await projectFileVersions(db(),await owner(r),id(r))}));
+  app.post(base+'/batches/quote',{schema:{body:projectFileSchemas.ProjectFileBatchRequest}},async r=>{
+    const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileBatchRequest>;
+    return transaction(db(),async c=>{
+      const t=await ensureProjectFileWorkspace(c,user,projectId),source=await projectFileSource(c,user,projectId);
+      if(!source||source.version_id!==b.source_version_id||source.selection_revision!==b.expected_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
+      if(new Set(b.documents.map(d=>d.document_type)).size!==b.documents.length)throw new Problem(422,'VALIDATION_FAILED','文件类型不能重复。');
+      const documents=[];
+      for(const d of b.documents){
+        const manifest=await projectFileDocumentManifest(c,user,t,d.document_type,d.draft_version);
+        if(manifest.input.project_file?.project_id!==projectId||manifest.input.project_file.source_version_id!==source.version_id||manifest.input.project_file.source_selection_revision!==source.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','文件草稿的募集书版本与本次选择不同。');
+        const {quote}=await quoteM4(c,user,t.id,manifest.billing_task,inputManifestHash(manifest),manifest,commercial);
+        const price=commercial&&isOutcomePriceVersion(quote.price_version)?outcomeMetadata(quote.points,quote.points,1,quote.price_version):null;
+        if(commercial&&!price)throw new Problem(503,'BILLING_NOT_READY','文件报价规则版本不可用，请稍后重新核对。');
+        documents.push({document_type:d.document_type,draft_version:d.draft_version,points:quote.points,...(commercial?{...price,scope_quote_id:quote.scope_quote_id,quote_status:quote.quote_status,scope_expires_at:quote.scope_expires_at,scope_lines:quote.scope_lines??[]}:{})});
+      }
+      const points=documents.reduce((sum,d)=>sum+d.points,0),ready=!commercial||documents.every(d=>d.quote_status==='ready');
+      return {points,price_version:commercial?OUTCOME_PRICE_VERSION:null,quote_status:ready?'ready':documents.find(d=>d.quote_status!=='ready')?.quote_status??'pending_scope',documents,...(commercial?outcomeMetadata(points):{})};
+    });
+  });
   app.post(base+'/batches/:batch_id/actions',{schema:{body:projectFileSchemas.ProjectFileBatchActionRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileBatchActionRequest>,batchId=(r.params as {batch_id:string}).batch_id;
     await transaction(db(),async c=>{
@@ -120,7 +147,7 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
         await c.query("UPDATE bb_project_file_batches SET state='queued',items=$2,updated_at=now() WHERE id=$1",[batchId,JSON.stringify(items)]);
       }
       await event(c,user,projectId,'project.file_batch_'+b.action,{batch_id:batchId});
-    });return readProjectFileWorkspace(db(),user,projectId);
+    });return readProjectFileWorkspace(db(),user,projectId,commercial);
   });
   app.post(base+'/source',{schema:{body:projectFileSchemas.ProjectFileSourceRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileSourceRequest>;
@@ -137,7 +164,7 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
           fields:{...previous.fields,market:p.market,offering:p.offering,issuer_name:p.issuer_name??''}};
         if(inputManifestHash(input)!==inputManifestHash(previous))await saveM4Draft(c,user,t.id,input,version);
       }
-    });return readProjectFileWorkspace(db(),user,projectId);
+    });return readProjectFileWorkspace(db(),user,projectId,commercial);
   });
   app.post(base+'/batches',{schema:{body:projectFileSchemas.ProjectFileBatchRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileBatchRequest>;
@@ -156,18 +183,29 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
       if(source.version_id!==b.source_version_id||source.selection_revision!==b.expected_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
       if((await c.query("SELECT 1 FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,projectId])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有文件包尚未完成，请先处理当前任务。');
       const items:BatchItem[]=[];
+      let total=0,pending=false;
       for(const d of b.documents){
         const current=(await c.query('SELECT version FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3',[user,t.id,d.document_type])).rows[0];
         if(current&&Number(current.version)>d.draft_version)
           throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，文件草稿已换版，请重新准备并确认。');
         const manifest=await projectFileDocumentManifest(c,user,t,d.document_type,d.draft_version);
         if(manifest.input.project_file?.project_id!==projectId||manifest.input.project_file?.source_version_id!==source.version_id||manifest.input.project_file.source_selection_revision!==source.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','文件草稿的募集书版本与本次选择不同。');
-        items.push({manifest,run_id:null,attempt:1,error:null});
+        const quote=commercial?(await quoteM4(c,user,t.id,manifest.billing_task,inputManifestHash(manifest),manifest,true)).quote:null;
+        if(quote&&quote.quote_status!=='ready')pending=true;
+        if(quote?.quote_status==='ready'&&d.scope_quote_id!==quote.scope_quote_id)throw conflict('QUOTE_CHANGED','所选文件的范围报价已变化，请重新确认。');
+        total+=quote?.points??0;
+        items.push({manifest,run_id:null,attempt:1,error:null,...(commercial?{pricing_mode:OUTCOME_MODE,scope_quote_id:quote?.scope_quote_id,scope_expires_at:quote?.scope_expires_at,points:quote?.points,scope_lines:quote?.scope_lines??[]}:{})});
       }
+      if(pending)return {scope_pending:true};
+      if(commercial&&(!isOutcomePriceVersion(b.price_version)||b.expected_points!==total))throw conflict('QUOTE_CHANGED','请确认每份文件的范围明细和人民币总价后开始。');
       const row=(await c.query(`INSERT INTO bb_project_file_batches(id,owner_user_id,project_id,topic_id,request_id,request_hash,items,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,'queued') RETURNING *`,[uid(),user,projectId,t.id,b.request_id,hash,JSON.stringify(items)])).rows[0];
+      if(commercial){
+        for(const [index,item] of items.entries())item.scope_acceptance_id=await acceptScopeBatch(c,user,item.scope_quote_id!,'file_generation_batch',row.id,index,item.manifest);
+        await c.query('UPDATE bb_project_file_batches SET items=$2 WHERE id=$1',[row.id,JSON.stringify(items)]);row.items=items;
+      }
       await event(c,user,projectId,'project.file_batch_submitted',{batch_id:row.id,document_types:b.documents.map(d=>d.document_type)});return row;
-    });return batchDto(db(),user,batch);
+    });if('scope_pending' in batch)throw conflict('QUOTE_REQUIRED','本次文件范围待核实，请先取得全部文件的范围明细报价后确认。');return batchDto(db(),user,batch);
   });
   app.post(base+'/imports',{schema:{body:projectFileSchemas.ProjectFileImportRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileImportRequest>;

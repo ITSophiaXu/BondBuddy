@@ -1,4 +1,9 @@
 import {workpaperOpenApiPaths} from './workpapers.js';
+import {commerceSchemas} from './commerce.js';
+import {paymentRefundSchemas,paymentRefundOpenApiPaths} from './payment-refunds.js';
+export * from './payment-refunds.js';
+export * from './commerce.js';
+export * from './outcome-pricing.js';
 export * from './workpapers.js';
 import { qaSchemas,qaOpenApiPaths } from './project-qa.js';
 export * from './project-qa.js';
@@ -198,6 +203,8 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
+  ...commerceSchemas,
+  ...paymentRefundSchemas,
   ...prospectusVersionSchemas,
   ...m4Schemas,
   ...projectFileSchemas,
@@ -368,6 +375,13 @@ export const operations: readonly Operation[] = [
   op('post','/projects/{project_id}/credit-quote','Preview one fixed price for the immutable input without reserving credits','FixedQuoteResponse',200,'FixedQuoteRequest',[404,409,503]),
   op('get','/runs/{run_id}/credit-charge','Read this task confirmation and settlement state','RunCreditChargeResponse',200,undefined,[404]),
   op('get','/credits/recharge-config','Read configured payment channels and locked recharge packs','RechargeConfigResponse'),
+  op('get','/commerce/catalog','Read outcome prices, scopes and charging rules','CommerceCatalogResponse'),
+  op('get','/commerce/quotations','Read pending and published work-scope quotations','CommerceScopeQuotationsResponse'),
+  op('get','/commerce/account','Read service balance and available payment channels','CommerceAccountResponse'),
+  op('post','/commerce/topups','Create exact-amount CNY service balance order','RechargeOrderResponse',201,'CommerceTopupRequest',[404,409,503]),
+  op('get','/commerce/topups/{order_id}','Read an owned service balance order','RechargeOrderResponse',200,undefined,[404]),
+  op('post','/commerce/topups/{order_id}/refresh','Verify payment and idempotently fund service balance','RechargeOrderResponse',200,undefined,[404,409,422,503]),
+  op('post','/commerce/feedback','Record adoption of a delivered outcome','CommerceFeedbackResponse',200,'CommerceFeedbackRequest',[404,409]),
   op('post','/credits/recharge-orders','Create an idempotent recharge order without starting a task','RechargeOrderResponse',201,'RechargeOrderRequest',[404,409,503]),
   op('get','/credits/recharge-orders/{order_id}','Read an owned recharge order','RechargeOrderResponse',200,undefined,[404]),
   op('post','/credits/recharge-orders/{order_id}/refresh','Verify payment with the configured provider and idempotently issue credits','RechargeOrderResponse',200,undefined,[404,409,422,503]),
@@ -604,6 +618,7 @@ export function openApiDocument() {
   Object.assign(paths, integrityOpenApiPaths());
   Object.assign(paths, qaOpenApiPaths());
   Object.assign(paths, workpaperOpenApiPaths());
+  Object.assign(paths, paymentRefundOpenApiPaths());
   Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
   Object.assign(paths, agreementOpenApiPaths(ref)); // #7 registration agreement
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
