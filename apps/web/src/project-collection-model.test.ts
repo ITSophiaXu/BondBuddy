@@ -54,6 +54,15 @@ test('collection pagination never turns partial pages into totals; empty and abo
 test('file tree includes child files directly in parent folders',()=>{
   const file={folder:'4.2'} as ProjectFile;assert.ok(inFolder(file,'4'));assert.ok(inFolder(file,'all'));assert.ok(!inFolder(file,'4.1'));
 });
+test('project QA prepare and answer routes override generation kind and delivered artifacts',async()=>{
+  const qaTasks:ProjectTask[]=[];
+  for(const operation of ['qa_prepare','qa_answer'])for(const state of ['running','paused','succeeded','failed'] as const){
+    const qa={...task(state,'generation'),operation,artifact_id:state==='succeeded'?'qa-word':null};qaTasks.push(qa);
+    const href=taskHref(qa),query=new URLSearchParams(href.split('?')[1]);
+    assert.ok(href.startsWith('#qa?'));assert.equal(query.get('project'),qa.project_id);assert.equal(query.get('run'),qa.run_id);
+  }
+  assert.deepEqual(await authoringTasks(async()=>({project_id:'project 1',items:qaTasks,page:{has_more:false,next_cursor:null}}),'project 1',()=>false),[]);
+});
 test('workpaper checks keep exact execution routes and never restore as prospectus authoring',async()=>{
   const checks=['workpaper_assessment','workpaper_check'].map(operation=>({...task('paused','generation'),run_id:operation,operation}));
   for(const t of checks){
