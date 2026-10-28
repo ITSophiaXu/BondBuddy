@@ -169,7 +169,7 @@ export class ProjectQaWorkspace {
  }
  async render(){
   if(!this.id){
-   this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'qa',title:'项目问答',eyebrow:'',description:'先确认本项目募集说明书，再上传问题清单。结合项目资料逐题回答，缺少的材料会逐项列明。',steps,next:'下一步：确认项目资料',onNew:()=>this.newProject(),open:async id=>{if(this.live())location.hash='qa?project='+encodeURIComponent(id);}});
+   this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'qa',title:'项目问答',eyebrow:'PROJECT Q&A',description:'先确认本项目募集说明书，再上传问题清单。结合项目资料逐题回答，缺少的材料会逐项列明。',steps,next:'下一步：确认项目资料',onNew:()=>this.newProject(),open:async id=>{if(this.live())location.hash='qa?project='+encodeURIComponent(id);}});
    await this.entry.render();return;
   }
   this.shell('<p role="status">正在读取项目问答…</p>','qa');
@@ -182,7 +182,7 @@ export class ProjectQaWorkspace {
    this.scanUploads();if(this.live())this.paint();
   }catch(e){if(this.live())this.shell(`<h1>项目问答暂时无法打开</h1><p role="alert">${esc(this.error(e,'read'))}</p><a href="#qa">重新选择项目</a>`,'qa');}
  }
- private header(){return `<header class="page-head"><div><h1>项目问答</h1><p>基于募集说明书和项目资料逐题回答，资料不足时明确列出补充要求。</p></div><a class="text-button" href="#qa">更换项目</a></header>${navigationProjectContext(location.hash)?.projectId===this.id?'':`<div class="pf-source-strip"><strong>${esc(this.project!.name)}</strong><a href="${esc(this.filesHref())}">项目文件 →</a></div>`}`;}
+ private header(){return `<header class="page-head"><div><p class="eyebrow">PROJECT Q&amp;A</p><h1>项目问答</h1><p>基于募集说明书和项目资料逐题回答，资料不足时明确列出补充要求。</p></div><a class="text-button" href="#qa">更换项目</a></header>${navigationProjectContext(location.hash)?.projectId===this.id?'':`<div class="pf-source-strip"><strong>${esc(this.project!.name)}</strong><a href="${esc(this.filesHref())}">项目文件 →</a></div>`}`;}
 
 
  private prospectusIssue(){

@@ -1,0 +1,34 @@
+/* Shared typography for project entry pages, file generation and project Q&A. */
+.project-entry-page.update-entry > .page-head h1,
+.qa-page > .page-head > div > h1,
+.pf-generation-heading .pf-title-row h1 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -.3px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-entry-page > .page-head .eyebrow,
+.qa-page > .page-head .eyebrow,
+.pf-generation-heading .pf-title-row .eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 1.6px;
+  color: #798678;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+  max-width: none;
+}
+
+.pf-generation-heading .pf-title-row h1 + p { margin-top: 8px; }
+
+@media (max-width: 760px) {
+  .project-entry-page.update-entry > .page-head h1,
+  .qa-page > .page-head > div > h1,
+  .pf-generation-heading .pf-title-row h1 { font-size: 22px; }
+
+  .project-entry-page > .page-head .eyebrow { margin: 0; }
+}

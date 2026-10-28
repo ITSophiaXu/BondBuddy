@@ -22,7 +22,7 @@ body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
   min-width: 0;
   margin: 0 auto;
 }
-.project-entry-page > .page-head { flex-shrink: 0; margin-bottom: 18px; }
+.project-entry-page.update-entry > .page-head { flex-shrink: 0; margin-bottom: 18px; }
 .project-entry-page > .stepper { flex-shrink: 0; margin: 0 0 18px; }
 .project-entry-page .project-picker {
   display: flex;
@@ -103,12 +103,13 @@ body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
 .project-entry-update:has(details[open]) .update-entry-icon svg { width: 24px; height: 24px; }
 @media (max-width: 760px) {
   body .prototype-app .shell main:has(> .project-entry-page.update-entry) { padding: 18px 14px 80px; }
-  .project-entry-page > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .project-entry-page.update-entry > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 14px; }
   .project-entry-page > .page-head > div { display: contents; }
-  .project-entry-page > .page-head .eyebrow { display: none; }
-  .project-entry-page > .page-head h1 { grid-column: 1; grid-row: 1; }
-  .project-entry-page > .page-head > .btn { grid-column: 2; grid-row: 1; }
-  .project-entry-page > .page-head p { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
+  .project-entry-page > .page-head .eyebrow { grid-column: 1 / -1; grid-row: 1; }
+  .project-entry-page > .page-head h1 { grid-column: 1; grid-row: 2; }
+  .project-entry-page > .page-head > .btn { grid-column: 2; grid-row: 2; }
+  .project-entry-page > .page-head p:not(.eyebrow) { grid-column: 1 / -1; grid-row: 3; font-size: 12px; }
+  .project-entry-page.update-entry > .page-head { row-gap: 4px; }
   .project-entry-page > .stepper { margin-bottom: 14px; gap: 6px; }
   .project-entry-page > .stepper .step { flex: 1; min-width: 0; flex-direction: column; gap: 4px; white-space: normal; text-align: center; }
   .project-entry-page > .stepper .step-line { width: 16px; flex: 0 0 16px; }
@@ -129,9 +130,9 @@ body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
   .project-entry-update > details summary span { display: none; }
 }
 @media (max-height: 740px) {
-  .project-entry-page > .page-head .eyebrow { display: none; }
-  .project-entry-page > .page-head { margin-bottom: 10px; }
+  .project-entry-page.update-entry > .page-head { margin-bottom: 10px; }
   .project-entry-page > .stepper { margin-bottom: 10px; }
+  .project-entry-page > .project-picker { padding-top: 12px; }
 }
 @container assistant-page (max-width: 600px) {
   .project-entry-page .update-project-option { flex-wrap: wrap; }
