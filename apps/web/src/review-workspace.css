@@ -3,6 +3,13 @@
 .review-upload-summary{padding:10px 12px;margin:0 0 16px;border-radius:6px;background:var(--review-soft);font-size:12px;line-height:1.75}.review-upload-summary:empty{display:none}
 .review-workspace{max-width:1500px;margin:auto}.review-workspace [hidden],.review-history-dialog [hidden]{display:none!important}
 .review-workspace h2{font-size:20px;line-height:1.5}.review-workspace h3{font-size:15px}.review-workspace h4{font-size:12px;margin:0 0 9px;color:var(--review-muted)}
+.review-source-modes{display:flex;flex-wrap:wrap;gap:12px;border:0;padding:0;margin:16px 0 20px;min-width:0}
+.review-source-modes label{display:flex;align-items:center;gap:9px;flex:1 1 220px;padding:14px 16px;border:1px solid var(--review-line);border-radius:8px;cursor:pointer;font-weight:600;line-height:1.6}
+.review-source-modes label:has(:checked){border-color:var(--review-green);background:var(--review-soft)}
+.review-workspace .review-source-modes input[type=radio]{width:16px;height:16px;min-height:0;padding:0;margin:0;flex-shrink:0;accent-color:var(--review-green)}
+.review-source-modes label:has(:disabled){cursor:default;opacity:.65}
+.review-selected-source{margin-top:16px;padding:16px;border:1px solid var(--review-line);border-radius:8px;background:#fafbf7}
+.review-selected-source>.material-file-list{margin-top:8px}.review-selected-source>p{margin-bottom:0}
 .review-workspace p{line-height:1.8}.review-workspace button,.review-workspace input,.review-workspace select,.review-workspace textarea{font:inherit}.review-workspace button:disabled{cursor:not-allowed;opacity:.5}
 .review-workspace :focus-visible,.review-history-dialog :focus-visible{outline:2px solid #658a48;outline-offset:4px}
 .review-workspace .btn{white-space:normal}.review-workspace .text-btn{cursor:pointer;background:transparent;border:0;text-align:left;line-height:1.6}

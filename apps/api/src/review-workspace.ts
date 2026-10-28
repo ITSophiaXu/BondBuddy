@@ -21,6 +21,7 @@ import { enqueue } from './queue.js';
 import { lockReviewFileDelivery } from './review-file-knowledge.js';
 import { recordOperation } from './observability.js';
 import { runEventPayloadDto } from './run-event-dto.js';
+import { reviewNonEvidenceMaterialIds, withoutWorkflowMaterials } from './review-materials.js';
 
 type Db = Pool | PoolClient;
 const finalStates = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'];
@@ -36,6 +37,8 @@ async function requireReview(db: Db, user: string, id: string, lock = false) {
 }
 async function pins(db: Db, user: string, id: string, selected: ReviewMaterialPin[]) {
   if (new Set(selected.map(m => m.material_id)).size !== selected.length) invalid('A material can only be selected once');
+  const excluded = await reviewNonEvidenceMaterialIds(db, user, id);
+  if (selected.some(pin => excluded.has(pin.material_id))) invalid('问题清单、底稿目录、生成模板等任务材料不能作为复核核验材料，请刷新材料列表后重试。');
   const rows = [];
   for (const pin of selected) {
     const m = (await db.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [user, id, pin.material_id, pin.material_version])).rows[0];
@@ -61,7 +64,7 @@ async function context(db: Db, user: string, id: string, value: ReviewContext) {
 }
 export async function draft(db: Db, user: string, id: string) {
   const r = (await db.query('SELECT version,input FROM bb_review_drafts WHERE owner_user_id=$1 AND project_id=$2', [user, id])).rows[0];
-  return r ? { ...r.input, version: r.version } : { ...emptyInput(), version: 0 };
+  return withoutWorkflowMaterials(r ? { ...r.input, version: r.version } : { ...emptyInput(), version: 0 }, await reviewNonEvidenceMaterialIds(db, user, id));
 }
 async function messageDrafts(db: Db, user: string, id: string) {
   return (await db.query('SELECT context,content,version,updated_at FROM bb_review_message_drafts WHERE owner_user_id=$1 AND project_id=$2 ORDER BY updated_at', [user, id])).rows.map(r => ({ ...r, updated_at: date(r.updated_at) }));
@@ -163,7 +166,8 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
   const projectId = (request: FastifyRequest) => (request.params as { project_id: string }).project_id;
   app.get('/api/v1/projects/:project_id/review-workspace', async request => {
     const user = await owner(request), id = projectId(request), p = await requireReview(db(), user, id);
-    const materials = (await db().query(`SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC`, [user, id])).rows;
+    const excluded = await reviewNonEvidenceMaterialIds(db(), user, id);
+    const materials = (await db().query(`SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC`, [user, id])).rows.filter(m => !excluded.has(m.id));
     const reports = (await db().query('SELECT id AS report_id,version,run_id,created_at FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 ORDER BY version DESC', [user, id])).rows.map(r => ({ ...r, created_at: date(r.created_at) }));
     const requestedReport = (request.query as { report_id?: string }).report_id;
     const requested = requestedReport ? await readReviewReport(db(), user, id, requestedReport) : null;
