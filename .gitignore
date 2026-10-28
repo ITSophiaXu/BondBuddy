@@ -32,8 +32,10 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-15-bondbuddy-brand-name.md
 !docs/product-decisions/2026-10-27-project-qa-document-ux.md
 !docs/product-decisions/2026-10-28-project-qa-materials.md
+!docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/workpaper-shared-batch-20261028.md
 !docs/acceptance/issue-718/
 !docs/acceptance/m4-implementation-2026-10-06.md
 !docs/acceptance/m4-api-boundary-audit-20261006.md
