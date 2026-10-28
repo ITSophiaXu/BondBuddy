@@ -28,7 +28,7 @@ async function setup(page:import('@playwright/test').Page,count=350){
 }
 test('first visit with no catalogue presents the upload control',async({page})=>{
   const state=await setup(page);state.data.catalogues=[];
-  await page.goto('/'+href({step:'documents'}));
+  await page.goto('/'+href({step:'choose'}));
   await page.getByRole('link',{name:'批量生成底稿',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`project=${ids.api}&step=workpapers`));
   await expect(page.getByRole('heading',{name:'上传底稿目录',exact:true})).toBeVisible();
