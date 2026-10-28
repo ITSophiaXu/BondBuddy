@@ -39,6 +39,7 @@ export class ProspectusPanel {
       .sort((a,b)=>Number(b.version_id===this.savedVersionId)-Number(a.version_id===this.savedVersionId)||b.sequence-a.sequence)[0];
   }
   get hasPendingGenerationVersion(){return !!this.generationCandidate();}
+  get readyForGeneration(){return this.verifiedVersions()&&!!this.state?.current_version_id&&!this.hasUnconfirmed&&!this.pendingUpload&&!this.hasPendingGenerationVersion&&!this.host.querySelector<HTMLInputElement>('#prospectus-version-file')?.files?.length&&!this.uploadRows().length;}
   async beforeLeave(){
     if(!this.hasUnconfirmed)return true;
     this.status(this.busy?'募集书正在上传或保存，请等待本次操作确认后再离开。':'本次上传或采用结果尚未确认，请先重试确认，避免重复操作。');
@@ -180,6 +181,7 @@ export class ProspectusPanel {
       const editor=this.host.querySelector('.prospectus-upload-editor > p');if(editor)editor.textContent=generation?'选择或拖入文件后自动上传，完成后选择使用此版继续；原版本保留。':'选择或拖入文件后自动上传并保存，再选择是否采用为当前稿；旧版保留。';
       const label=this.host.querySelector('.prospectus-upload-label');if(label)label.textContent=this.fileError()?'文件无法上传':this.busy?'正在上传':'等待上传';
     }
+    if(generation)this.busyChanged();
   }
   private fileSize(bytes:number){return bytes>=1024*1024?`${(bytes/1024/1024).toFixed(1)} MB`:`${Math.max(1,Math.ceil(bytes/1024))} KB`;}
   private fileError(){const file=this.host.querySelector<HTMLInputElement>('#prospectus-version-file')?.files?.[0];return file&&(!/\.(docx|pdf)$/i.test(file.name)||!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes)?'请上传不超过 100 MB 的 DOCX 或 PDF 文件。':'';}
@@ -285,8 +287,13 @@ export class ProspectusPanel {
         throw e;
       }
       this.controller.signal.throwIfAborted();
-      this.state=state;this.pendingSelection=undefined;this.closeDialog();this.render();
       const adopted=state.current_version_id===selection.request.version_id;
+      if(adopted&&this.purpose==='generation'){
+        // An explicit choice also resolves other saved candidates for this visit.
+        this.savedVersionId=undefined;
+        for(const version of state.versions)if(version.version_id!==selection.request.version_id)this.ignoredSavedVersions.add(version.version_id);
+      }
+      this.state=state;this.pendingSelection=undefined;this.closeDialog();this.render();
       const message=adopted?`已采用 V${selection.version.sequence} · ${selection.version.filename}，关联文件请按新版重新核对。`:'本次采用请求已确认，但项目当前稿随后已变化。文件仍保留，请查看当前版本。';
       this.status(message);
       notifyChanged=adopted||!['generation','qa'].includes(this.purpose);

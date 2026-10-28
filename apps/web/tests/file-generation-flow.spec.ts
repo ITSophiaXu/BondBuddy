@@ -47,18 +47,21 @@ async function evidence(page:Page,name:string,selector?:string){
   const dir=process.env.BB_FLOW_EVIDENCE;if(!dir)return;
   await mkdir(dir,{recursive:true});await page.screenshot({path:join(dir,name+'.png'),fullPage:true});
   if(selector)await writeFile(join(dir,name+'.html'),await page.locator(selector).evaluate(node=>node.outerHTML));
-  if(name.startsWith('entry-'))await writeFile(join(dir,name+'.html'),await page.locator('.pf-workspace-heading').evaluate(node=>node.outerHTML+document.querySelector('.pf-generation-choices')!.outerHTML+document.querySelector('.pf-home-source')!.outerHTML));
+  if(name.startsWith('entry-'))await writeFile(join(dir,name+'.html'),await page.locator('.pf-workspace-heading').evaluate(node=>node.outerHTML+document.querySelector('.pf-home-source')!.outerHTML+document.querySelector('.pf-generation-choices')!.outerHTML));
 }
 
 for(const width of [1440,390,320])test(`generation starts with two equal choices and no implicit mode at ${width}px`,async({page})=>{
-  const state=await fixture(page);await page.setViewportSize({width,height:960});await page.goto('/'+href());
+  const {state}=await sourceFixture(page,true);await page.setViewportSize({width,height:960});await page.goto('/'+href());
   await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
   const choices=page.locator('.pf-generation-choice');await expect(choices).toHaveCount(2);
-  await expect(page.locator('.pf-generation-choice[aria-current],#pf-prospectus,#pf-generate')).toHaveCount(0);
+  await expect(page.locator('.pf-generation-choice[aria-current],#pf-generate')).toHaveCount(0);
+  await expect(page.locator('#pf-prospectus')).toBeVisible();await expect(choices.nth(1)).toBeDisabled();
+  await expect(page.locator('#pf-confirm-source')).toBeEnabled();
   const colors=await choices.evaluateAll(nodes=>nodes.map(n=>[getComputedStyle(n).backgroundColor,getComputedStyle(n).borderColor]));expect(colors[0]).toEqual(colors[1]);
   expect(state.calls.filter(c=>c.method!=='GET')).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await evidence(page,'entry-'+width);
+  await page.locator('#pf-confirm-source').click();await expect(choices.nth(1)).toBeEnabled();
   await choices.nth(1).focus();await page.keyboard.press('Enter');
   await expect(page.getByRole('heading',{name:'按模板生成文件',exact:true})).toBeVisible();
   await expect(page.locator('#pf-generate')).toBeVisible();await expect(choices).toHaveCount(0);
@@ -137,17 +140,129 @@ test('source preparation evidence includes empty, uploaded and current states',a
   expect(batches(s.state)).toHaveLength(0);
 });
 
+for(const mode of ['documents','workpapers'] as const)test(`home confirms an unprepared current source and opens ${mode} directly`,async({page})=>{
+  const s=await sourceFixture(page,true),workspace=s.state.workspaces.get(ids.api)!;
+  for(const draft of Object.values(workspace.workspace.drafts))delete draft.project_file;
+  await page.goto('/'+href({},ids.api,ids.navigation));
+  await expect(page.locator('#pf-confirm-source')).toBeEnabled();
+  expect(s.state.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  await page.locator('#pf-confirm-source').click();
+  await expect(page.locator(`[data-generation-mode="${mode}"]`)).toBeEnabled();
+  await page.locator(`[data-generation-mode="${mode}"]`).click();
+  await expect(page.locator(mode==='documents'?'#pf-generate':'#wp-upload')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`step=${mode}`));await expect(page).toHaveURL(new RegExp(`return_project=${ids.navigation}`));
+  await expect(page.locator('#pf-source-next,#pf-prospectus')).toHaveCount(0);
+  expect(s.state.calls.filter(c=>c.path.endsWith('/project-files/source'))).toHaveLength(mode==='documents'?1:0);
+  expect(s.selections).toEqual([]);expect(batches(s.state)).toEqual([]);expect(s.state.errors).toEqual([]);
+});
+
+for(const current of [false,true])for(const mode of ['documents','workpapers'])test(`home uploads and adopts once before ${mode}, existing=${current}`,async({page})=>{
+  const s=await sourceFixture(page,current);await page.goto('/'+href());
+  await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await page.locator('#prospectus-version-file').setInputFiles(file);
+  await expect(page.locator('[data-use-saved]')).toBeVisible();expect(s.selections).toEqual([]);expect(s.state.puts).toBe(1);
+  await page.reload();await expect(page.locator('[data-use-saved]')).toBeVisible();
+  await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await page.locator('[data-use-saved]').click();await expect(page.locator(`[data-generation-mode="${mode}"]`)).toBeEnabled();
+  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
+  await page.locator(`[data-generation-mode="${mode}"]`).click();
+  await expect(page.locator(mode==='documents'?'#pf-generate':'#wp-upload')).toBeVisible();
+  await expect(page.locator(mode==='documents'?'#pf-source-summary':'.wp-source-file')).toContainText(file.name);
+  expect(s.selections).toHaveLength(1);expect(s.state.puts).toBe(1);expect(batches(s.state)).toEqual([]);expect(s.state.errors).toEqual([]);
+});
+
+test('home invalidates confirmation during replacement and can explicitly keep the old version',async({page})=>{
+  const s=await sourceFixture(page,true);let release!:()=>void;const hold=new Promise<void>(r=>release=r);
+  await page.route('**/api/v1/projects/*/materials/uploads/*/complete',async route=>{await hold;await route.fallback();});
+  await page.goto('/'+href());await page.locator('#pf-confirm-source').click();await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  await page.locator('#prospectus-version-file').setInputFiles(file);
+  try{
+    await expect(page.locator('.prospectus-panel')).toHaveAttribute('aria-busy','true');
+    await expect(page.locator('#pf-confirm-source')).toBeDisabled();await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  }finally{release();}
+  await expect(page.locator('[data-use-saved]')).toBeVisible();await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await page.locator('[data-keep-current]').click();await page.locator('#pf-confirm-source').click();
+  await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  await page.locator('[data-generation-mode="documents"]').click();await expect(page.locator('#pf-source-summary')).toContainText('募集说明书_V3.docx');
+  expect(s.versions.versions).toHaveLength(2);expect(s.selections).toEqual([]);
+});
+
+test('home keeps selection recovery on the first page until the same receipt is confirmed',async({page})=>{
+  const s=await sourceFixture(page,true);s.control.dropSelection=true;
+  await page.goto('/'+href());await page.locator('#prospectus-version-file').setInputFiles(file);await page.locator('[data-use-saved]').click();
+  await expect(page.locator('#retry-prospectus-selection')).toBeVisible();await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await page.locator('#retry-prospectus-selection').click();await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();expect(s.selections).toHaveLength(2);expect(s.selections[0]).toEqual(s.selections[1]);
+});
+
+test('home detects a changed source after confirmation before opening either workflow',async({page})=>{
+  const s=await sourceFixture(page,true);await page.goto('/'+href());await page.locator('#pf-confirm-source').click();
+  await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  s.versions.selection_revision++;s.state.workspaces.get(ids.api)!.source!.selection_revision++;
+  await page.locator('[data-generation-mode="workpapers"]').click();
+  await expect(page.locator('#pf-status')).toContainText('已变化');await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await expect(page.locator('#wp-upload')).toHaveCount(0);await page.locator('#pf-confirm-source').click();await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  expect(batches(s.state)).toEqual([]);
+});
+
+test('home rejects an invalid replacement without silently continuing with the previously confirmed file',async({page})=>{
+  const s=await sourceFixture(page,true);await page.goto('/'+href());await page.locator('#pf-confirm-source').click();
+  await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  await page.locator('#prospectus-version-file').setInputFiles({name:'invalid.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')});
+  await expect(page.locator('#prospectus-status')).toContainText('DOCX 或 PDF');await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await page.locator('#cancel-prospectus-version').click();await expect(page.locator('#pf-confirm-source')).toBeEnabled();
+  expect(s.state.puts).toBe(0);expect(s.selections).toEqual([]);
+});
+
+test('home can confirm when the version list was read after the workspace snapshot changed',async({page})=>{
+  const s=await sourceFixture(page,true);s.versions.selection_revision++;
+  await page.goto('/'+href());await expect(page.locator('#pf-confirm-source')).toBeEnabled();
+  s.state.workspaces.get(ids.api)!.source!.selection_revision=s.versions.selection_revision;
+  await page.locator('#pf-confirm-source').click();await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  expect(s.selections).toEqual([]);
+});
+
+test('home can explicitly use a historical version without a newer saved version blocking continuation',async({page})=>{
+  const s=await sourceFixture(page,true);
+  s.versions.versions.push({...s.versions.versions[0],version_id:'source-v2',sequence:2,filename:'募集说明书_V2.docx',material_id:'source-material-v2'});
+  await page.goto('/'+href());await page.locator('[data-prospectus-history-summary]').click();await page.locator('[data-use-version="source-v2"]').click();
+  await expect(page.locator('[data-generation-mode="documents"]')).toBeEnabled();await expect(page.locator('.pf-upload-ready')).toHaveCount(0);
+  await page.locator('[data-generation-mode="documents"]').click();await expect(page.locator('#pf-source-summary')).toContainText('募集说明书_V2.docx');
+  expect(s.selections).toHaveLength(1);expect(s.versions.versions).toHaveLength(2);expect(batches(s.state)).toEqual([]);
+});
+
+test('home retries a failed upload without enabling either workflow or uploading the bytes twice',async({page})=>{
+  const s=await sourceFixture(page,true);let fail=true;
+  await page.route('**/api/v1/projects/*/materials/uploads/*/complete',async route=>{if(fail){fail=false;return route.abort('connectionreset');}await route.fallback();});
+  await page.goto('/'+href());await page.locator('#prospectus-version-file').setInputFiles(file);
+  await expect(page.locator('#save-prospectus-version')).toBeVisible();await expect(page.locator('.pf-generation-choice').first()).toBeDisabled();
+  await page.locator('#save-prospectus-version').click();await expect(page.locator('[data-use-saved]')).toBeVisible();
+  await page.locator('[data-use-saved]').click();await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+  expect(s.state.puts).toBe(1);expect(s.selections).toHaveLength(1);
+});
+
+for(const width of [1440,390,320])test(`home keeps long prospectus filenames and actions usable at ${width}px`,async({page})=>{
+  const s=await sourceFixture(page,true),filename='合成示例集团股份有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版(1).docx';
+  s.versions.versions[0].filename=filename;s.state.workspaces.get(ids.api)!.source!.filename=filename;
+  await page.setViewportSize({width,height:960});await page.goto('/'+href());await expect(page.locator('#pf-confirm-source')).toBeEnabled();
+  await expect(page.locator('.prospectus-current-file')).toContainText(filename);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await evidence(page,'home-long-name-'+width);await page.locator('#pf-confirm-source').click();await expect(page.locator('.pf-generation-choice').first()).toBeEnabled();
+});
+
 for(const width of [1440,390])test(`prototype matches entry and source controls at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:1000});await fixture(page);await page.goto('/'+href());
   const actual=page.locator('.pf-generation-choices');await expect(actual).toBeVisible();const actualWidth=(await actual.boundingBox())!.width;
   const dir=process.env.BB_FLOW_EVIDENCE??test.info().outputPath('comparison');await mkdir(dir,{recursive:true});
   await actual.screenshot({path:join(dir,`implementation-choices-${width}.png`)});
+  await expect(page.locator('#pf-confirm-source')).toBeEnabled();await page.locator('.pf-home-source').screenshot({path:join(dir,`implementation-source-${width}.png`)});
   const preview='/@fs/'+resolve(process.cwd(),'../../product-prototype/public/file-generation.html').replaceAll('\\','/');
   await page.goto(preview);await expect(page.locator('.pf-generation-choice')).toHaveCount(2);
   expect(Math.abs((await page.locator('.pf-generation-choices').boundingBox())!.width-actualWidth)).toBeLessThan(3);
   await page.locator('.pf-generation-choices').screenshot({path:join(dir,`prototype-choices-${width}.png`)});
+  await page.locator('.pf-home-source').screenshot({path:join(dir,`prototype-source-${width}.png`)});
   await page.getByRole('button',{name:'未上传',exact:true}).click();await page.locator('#prospectus-version-file').setInputFiles(file);
   await expect(page.locator('.pf-upload-ready')).toContainText(file.name);await expect(page.locator('#save-prospectus-version')).toBeHidden();
-  await page.getByRole('button',{name:'使用此版继续 →',exact:true}).click();await expect(page.locator('.pf-file-builder')).toBeVisible();
+  await page.getByRole('button',{name:'使用此版继续 →',exact:true}).click();await expect(page.locator('[data-generation-mode="documents"]')).toBeEnabled();
+  await page.locator('[data-generation-mode="documents"]').click();await expect(page.locator('.pf-file-builder')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
