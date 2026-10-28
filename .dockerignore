@@ -8,5 +8,3 @@
 !docker-entrypoint.sh
 backend/**/__pycache__/
 backend/**/*.pyc
-
-!product-prototype/public/workspace-typography.css
