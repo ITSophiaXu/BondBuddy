@@ -11,5 +11,6 @@ export type WorkpaperAssess=Static<typeof WorkpaperAssessSchema>;
 export const WorkpaperAssessmentInputSchema=obj({version:Type.Literal('workpaper-assessment-v1'),request:WorkpaperAssessSchema,
  source:ProjectFileSourceSchema,entries:Type.Array(WorkpaperEntrySchema,{minItems:1,maxItems:WORKPAPER_LIMITS.items})});
 export type WorkpaperAssessmentInput=Static<typeof WorkpaperAssessmentInputSchema>;
+export type WorkpaperAssessmentPause={stage:string|null;reason:string|null;error_code:string|null};
 export type WorkpaperAssessment={assessment_id:string;state:string;source:WorkpaperAssessmentInput['source'];request:WorkpaperAssess;created_at:string;
- result_hash:string|null;decisions:WorkpaperDecision[];warnings:string[];completed_items:number};
+ result_hash:string|null;decisions:WorkpaperDecision[];warnings:string[];completed_items:number;pause?:WorkpaperAssessmentPause|null};

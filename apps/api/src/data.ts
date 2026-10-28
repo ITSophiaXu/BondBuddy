@@ -101,7 +101,8 @@ export async function assertCanonicalBusinessRunIdle(client:PoolClient,owner:str
   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','同一来源项目正在提交任务，请稍后重试。');throw error;}
   if((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
     WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'
-    AND r.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected') LIMIT 1`,[owner,scope])).rowCount)
+    AND r.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')
+    AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision) LIMIT 1`,[owner,scope])).rowCount)
     throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待完成或停止任务后执行。');
 }
 export async function run(pool: Pool | PoolClient, owner: string, id: string, lock = false) {

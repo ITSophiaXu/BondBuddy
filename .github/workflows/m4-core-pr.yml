@@ -119,6 +119,7 @@ jobs:
             apps/api/dist/m4-knowledge.test.js \
             apps/api/dist/m4-workspace.pg.test.js \
             apps/api/dist/m4-fixed-billing.pg.test.js \
+            apps/api/dist/m4-dynamic-balance.pg.test.js \
             apps/api/dist/authoring-task-kind.pg.test.js \
             apps/api/dist/workpaper-task-routing.pg.test.js \
             apps/api/dist/project-assistant.pg.test.js \
@@ -137,6 +138,12 @@ jobs:
             apps/worker/dist/m4-runtime-skills.test.js \
             apps/worker/dist/m4-stages.test.js \
             apps/worker/dist/m4-pipeline.pg.test.js \
+            apps/worker/dist/workpaper-assessment-workspace.test.js \
+            apps/worker/dist/workpaper-assessment.pg.test.js \
+            apps/worker/dist/workpaper-direct-output.test.js \
+            apps/worker/dist/workpaper-traceability.test.js \
+            apps/worker/dist/workpapers.pg.test.js \
+            apps/worker/dist/workpaper-library.pg.test.js \
             apps/worker/dist/model-generation-router.test.js \
             | tee "$RUNNER_TEMP/m4-core-worker.tap"
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-core-worker.tap"
