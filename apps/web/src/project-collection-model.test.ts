@@ -25,6 +25,16 @@ test('all runtime states have accurate actions and unknown phases never leak log
   assert.equal(taskView({...task(),stage:'private prompt contents'}).detail,'正在更新募集书');
 });
 
+test('batch member links open the exact source-project batch for active, completed and retried runs',()=>{
+  const batch={batch_id:'batch / 历史&1',project_id:'source / 项目'};
+  for(const state of ['running','succeeded','failed','paused'] as const){
+    const url=taskHref({...task(state,'generation'),topic_id:'execution-topic',artifact_id:'single-file',workpaper_batch:batch});
+    assert.ok(url.startsWith('#generate?'));
+    assert.deepEqual(Object.fromEntries(new URLSearchParams(url.split('?')[1])),{from:'projects',project:batch.project_id,step:'workpapers',view:'results',batch:batch.batch_id});
+  }
+  assert.equal(taskHref({...task('running','generation'),topic_id:'ordinary-topic',document_type:'issuer'}),'#generate?from=projects&run=exact-run&topic=ordinary-topic');
+});
+
 test('historical file-update task links retain the original run independently of check identity',()=>{
   const patch={...task('succeeded','generation'),operation:'file_patch' as const,project_id:'project / 债券',run_id:'patch?old&run=1'};
   const target=taskHref(patch),query=new URLSearchParams(target.split('?')[1]);
