@@ -95,6 +95,7 @@ export async function install(page:Page,s=fixture()){
         if(path===base+'/files')return json(route,200,emptyFiles(project.project_id));
         if(path===base+'/tasks')return json(route,200,{project_id:project.project_id,items:[],page:{has_more:false,next_cursor:null}});
         if(path===base+'/project-files')return json(route,200,{files:[]});
+        if(path===base+'/workpapers/library')return json(route,200,{items:[],total:0,offset:0,limit:60,source:null,checks:[]});
         if(path===base+'/project-files/workspace')return failure(route,404);
         if(path===base+'/prospectus-versions')return json(route,200,{project_id:project.project_id,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]});
         s.unexpected.push(method+' '+path);return failure(route,500);

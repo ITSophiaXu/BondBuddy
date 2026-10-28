@@ -91,6 +91,7 @@ async function setupJourney(page:Page){
     if(method==='GET'&&path==='/credits/balance')return json(route,200,{enabled:true,available:18000,frozen:0});
     if(method==='GET'&&path==='/projects')return json(route,200,{items:[{...project,status:'draft',file_count:3,latest_run:null,latest_artifact:null}],page:{has_more:false,next_cursor:null}});
     if(method==='GET'&&path===`/projects/${projectId}`)return json(route,200,project);
+    if(method==='GET'&&path===`/projects/${projectId}/workpapers/library`)return json(route,200,{items:[],total:0,offset:0,limit:60,source:null,checks:[]});
     if(method==='GET'&&path===`/projects/${projectId}/tasks`)return json(route,200,{project_id:projectId,items:[],page:{has_more:false,next_cursor:null}});
     if(method==='GET'&&path===`/projects/${projectId}/files`)return json(route,200,collection());
     if(method==='GET'&&path===base)return json(route,200,{files});
@@ -177,7 +178,7 @@ test('project workbench saves then adopts a source and delivers a partially succ
 
   await page.getByText('上传募集书新版本',{exact:true}).click();
   await page.locator('#prospectus-version-file').setInputFiles({name:prospectusVersion(2).filename,mimeType:mime,buffer:uploadedBytes});
-  await page.locator('#save-prospectus-version').click();
+
   await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);
   await expect(page.locator('#pw-current-source')).toContainText('已采用 V1');
   expect(f.versions.current_version_id).toBe('source-v1');expect(f.versions.selection_revision).toBe(2);

@@ -98,13 +98,13 @@ export class ProspectusPanel {
     const removeButton=(v:ProspectusVersions['versions'][number])=>v.origin!=='upload'?'':v.delete_block_reason===null&&v.version_id!==current?.version_id?`<button type="button" class="text-button prospectus-delete" data-delete-version="${esc(v.version_id)}">删除</button>`:`<small class="prospectus-delete-reason">${v.version_id===current?.version_id?'正在使用，切换后可删除未使用的稿件':v.delete_block_reason==='used'?'已被任务或关联文件使用，保留依据':'版本记录待核对'}</small>`;
     const saved=this.generationCandidate();
     const downloadButtons=(v:ProspectusVersions['versions'][number])=>`<button type="button" class="text-button" data-download-version="${esc(v.version_id)}">${icon('download')}${v.origin==='generated'?'下载清洁版':'下载原文件'}</button>${v.revision_artifact_id?`<button type="button" class="text-button" data-download-revision="${esc(v.version_id)}">下载修订版</button>`:''}`;
-    this.host.innerHTML=`<section class="panel prospectus-panel ${generation?'pf-generation-prospectus':''}" aria-label="${title}"><header class="prospectus-panel-heading"><div><h2 tabindex="-1" data-prospectus-heading>${title}</h2><p>${!verified?'版本记录尚待核对，请重新读取项目后查看当前稿。':current&&generation?(this.pendingSelection?.attempted?'当前稿状态待确认，请先重试确认采用结果。':this.purpose==='qa'?'问答将依据此版本及选中的补充材料；已提交任务保留原依据。':'关联文件将依据此版本编制；已提交任务保留原依据。'):current?`${this.pendingSelection?.attempted?'上次读取的项目当前稿':'项目当前稿'}：V${current.sequence} · ${esc(current.filename)}`:this.purpose==='consistency'?'上传并保存募集书，再明确采用为当前稿，作为关联文件的一致性检查依据。':generation?(saved?this.purpose==='qa'?'核对募集说明书后，回到项目问答。':'核对募集说明书后，继续准备要生成的文件。':this.purpose==='qa'?'请提供本项目募集说明书，或选择项目已保存版本作为回答依据。':'上传募集书作为文件编制依据，或选择项目已保存版本。'):updating?'这里可上传历史募集说明书，作为本次更新的原稿或结构参考；无需先准备更新后的成稿。没有参考稿，也可用下方发行人材料编制首稿。':'保存项目募集说明书，选择当前稿后供新任务使用。'}</p></div>${generation&&!current&&!saved?'':`<button type="button" class="btn secondary" id="choose-prospectus-version">${icon('upload')}${updating?'上传历史／参考稿':current?'上传新版本':saved?'更换文件':'上传募集说明书'}</button>`}</header>
-      ${current?`<div class="prospectus-current-file"><span class="prospectus-file-icon">${icon('file')}</span><div class="prospectus-file-info"><span class="prospectus-current">${this.pendingSelection?.attempted?'上次读取的当前版本':'当前版本'} · V${current.sequence}</span><h3>${esc(current.filename)}</h3><p>${current.origin==='upload'?'用户上传':'BondBuddy 更新'} · ${esc(date(current.created_at))}</p></div><div class="prospectus-version-actions">${downloadButtons(current)}</div></div>`:generation?(saved?'':`<button type="button" class="pf-prospectus-dropzone" id="choose-prospectus-version" aria-label="上传募集说明书" ${selectedFile||saved?'hidden':''}><span class="prospectus-file-icon">${icon('upload')}</span><strong>上传募集说明书</strong><span>点击选择文件，或拖放到此处</span><small>Word（.docx）/ PDF · 单份不超过 100 MB</small></button>`):verified&&!(updating&&this.state.versions.length)?`<div class="prospectus-empty"><span class="prospectus-file-icon">${icon('file')}</span><div><h3>${updating?(this.state.versions.length?'尚未选择本次更新的参考稿':'没有参考稿也可以继续'):this.state.versions.length?'尚未选择当前版本':'尚未保存募集说明书'}</h3><p>${updating?'已保存的稿件需点击“用于本次更新”后才会参与更新；上传错误的文件可在下方删除。':this.state.versions.length?'从版本历史中选择一份，或上传新版本。':'先保存文件，再确认是否采用；旧版和原任务依据保留。'}${updating?'<button type="button" class="text-button" data-prospectus-skip>先提供发行人材料</button>':''}</p></div></div>`:''}
+    this.host.innerHTML=`<section class="panel prospectus-panel ${generation?'pf-generation-prospectus':''}" aria-label="${title}"><header class="prospectus-panel-heading"><div><h2 tabindex="-1" data-prospectus-heading>${title}</h2><p>${!verified?'版本记录尚待核对，请重新读取项目后查看当前稿。':current&&generation?(this.pendingSelection?.attempted?'当前稿状态待确认，请先重试确认采用结果。':this.purpose==='qa'?'问答将依据此版本及选中的补充材料；已提交任务保留原依据。':'关联文件将依据此版本编制；已提交任务保留原依据。'):current?`${this.pendingSelection?.attempted?'上次读取的项目当前稿':'项目当前稿'}：V${current.sequence} · ${esc(current.filename)}`:this.purpose==='consistency'?'选择募集书后自动上传，再明确采用为当前稿，作为关联文件的一致性检查依据。':generation?(saved?this.purpose==='qa'?'核对募集说明书后，回到项目问答。':'核对募集说明书后，继续准备要生成的文件。':this.purpose==='qa'?'请提供本项目募集说明书，或选择项目已保存版本作为回答依据。':'上传募集书作为文件编制依据，或选择项目已保存版本。'):updating?'这里可上传历史募集说明书，作为本次更新的原稿或结构参考；无需先准备更新后的成稿。没有参考稿，也可用下方发行人材料编制首稿。':'保存项目募集说明书，选择当前稿后供新任务使用。'}</p></div>${generation&&!current&&!saved?'':`<button type="button" class="btn secondary" id="choose-prospectus-version">${icon('upload')}${updating?'上传历史／参考稿':current?'上传新版本':saved?'更换文件':'上传募集说明书'}</button>`}</header>
+      ${current?`<div class="prospectus-current-file"><span class="prospectus-file-icon">${icon('file')}</span><div class="prospectus-file-info"><span class="prospectus-current">${this.pendingSelection?.attempted?'上次读取的当前版本':'当前版本'} · V${current.sequence}</span><h3>${esc(current.filename)}</h3><p>${current.origin==='upload'?'用户上传':'BondBuddy 更新'} · ${esc(date(current.created_at))}</p></div><div class="prospectus-version-actions">${downloadButtons(current)}</div></div>`:generation?(saved?'':`<button type="button" class="pf-prospectus-dropzone" id="choose-prospectus-version" aria-label="上传募集说明书" ${selectedFile||saved?'hidden':''}><span class="prospectus-file-icon">${icon('upload')}</span><strong>上传募集说明书</strong><span>点击选择文件，或拖放到此处</span><small>Word（.docx）/ PDF · 单份不超过 100 MB</small></button>`):verified&&!(updating&&this.state.versions.length)?`<div class="prospectus-empty"><span class="prospectus-file-icon">${icon('file')}</span><div><h3>${updating?(this.state.versions.length?'尚未选择本次更新的参考稿':'没有参考稿也可以继续'):this.state.versions.length?'尚未选择当前版本':'尚未保存募集说明书'}</h3><p>${updating?'已保存的稿件需点击“用于本次更新”后才会参与更新；上传错误的文件可在下方删除。':this.state.versions.length?'从版本历史中选择一份，或上传新版本。':'选文件后自动保存，再确认是否采用；旧版和原任务依据保留。'}${updating?'<button type="button" class="text-button" data-prospectus-skip>先提供发行人材料</button>':''}</p></div></div>`:''}
       <p class="prospectus-upload-hint">${generation?'选择文件后自动上传。上传仅保存文件，不启动生成或扣费。':`支持 Word（.docx）和 PDF，单份不超过 100 MB。上传仅保存文件，不启动${this.purpose==='consistency'?'检查':'更新'}或扣费。`}</p>
       ${saved?`<aside class="pf-upload-ready" aria-label="已上传的募集说明书"><span class="prospectus-file-icon">${icon('check')}</span><div><strong>${saved.origin==='upload'?'已上传':'已保存'} · ${esc(saved.filename)}</strong><p>${current?`继续后将采用 V${saved.sequence} 为项目当前稿，原 V${current.sequence} 保留。`:`继续后将采用 V${saved.sequence} 为项目当前稿。`}已提交任务保留原依据。</p></div><button type="button" class="btn primary" data-use-saved="${esc(saved.version_id)}">使用此版继续 ${icon('arrow')}</button>${current?'<button type="button" class="text-button" data-keep-current>继续使用原版本</button>':''}</aside>`:''}
       ${otherSaved.length&&!saved?`<aside class="prospectus-saved-notice" data-prospectus-saved-notice><div><strong>${current?'还有其他已保存版本可核对':updating?'参考稿已保存，尚未用于本次更新':'募集书已保存，尚未设置项目当前稿'}</strong><p>${current?`当前仍选用 V${current.sequence}，另有 ${otherSaved.length} 个之后保存的版本，可按需要查看或继续使用当前稿。`:`已有 ${otherSaved.length} 个已保存版本，可查看后${updating?'选择用于本次更新；上传错了可删除':'选择项目当前稿'}。`}查看不会切换当前稿或启动任务。${updating&&!current?'<button type="button" class="text-button" data-prospectus-skip>先提供发行人材料</button>':''}</p></div><button type="button" class="btn secondary" data-prospectus-saved-review>查看已保存版本</button></aside>`:''}
       <details class="${generation?'prospectus-history':''}" ${generation&&!this.state.versions.length?'hidden':''} data-prospectus-history data-prospectus-saved-id="${esc(this.savedVersionId??'')}" ${historyOpen||!generation&&newlySaved||this.pendingSelection?.attempted?'open':''}><summary tabindex="0" data-prospectus-history-summary>${generation?icon('clock'):''}版本历史（${this.state.versions.length}）${generation?icon('down'):''}</summary><p>${generation?'“使用此版继续”会将该版本设为项目当前稿，后续新任务将使用此版；已提交任务保留原依据。':updating?'选择一份用于本次更新。仅保存的稿件不会参与更新；未使用的上传可删除。':'“项目当前稿”是项目的默认选择；本轮复核稿和已提交任务各自保留其依据。'}版本序号表示保存顺序。</p>${this.state.versions.map(v=>`<div class="prospectus-version" data-prospectus-version="${esc(v.version_id)}"><div class="prospectus-version-info"><strong>V${v.sequence} · ${esc(v.filename)}</strong><small>${v.origin==='upload'?'用户上传':'BondBuddy 更新'} · ${esc(date(v.created_at))}</small><small data-prospectus-selection-state>${!verified?'当前稿状态待核对':v.version_id===current?.version_id?this.pendingSelection?.attempted?'上次读取的项目当前稿':'项目当前稿':this.pendingSelection?.attempted?'已保存；项目当前稿状态待确认':'已保存，未设为项目当前稿'}</small>${verified?this.versionReference(v):''}</div><div class="prospectus-version-actions">${verified&&v.version_id===current?.version_id?`<span class="prospectus-current">${this.pendingSelection?.attempted?'上次读取的项目当前稿':'项目当前稿'}</span>`:`<button type="button" class="text-button" data-use-version="${esc(v.version_id)}">${generation?'使用此版继续':updating?'用于本次更新':'采用此版'}</button>`}<button type="button" class="text-button" data-download-version="${esc(v.version_id)}">${v.origin==='generated'?'下载清洁版':'下载原文件'}</button>${v.revision_artifact_id?`<button type="button" class="text-button" data-download-revision="${esc(v.version_id)}">下载修订版</button>`:''}${verified?removeButton(v):''}</div></div>`).join('')||'<p>尚无版本记录。</p>'}</details>
-      <${generation?'section':'details'} class="prospectus-upload-editor" ${generation?selectedFile||recoveryRows.length||this.pendingUpload?'':'hidden':recoveryRows.length?'open':''}>${generation?'':`<summary>${updating?'上传历史／参考稿':'上传募集书新版本'}</summary>`}<p>${updating?'上传历史稿、待修改稿，或母子公司、相似企业的参考稿。保存后选择“用于本次更新”，再填写原稿信息；参考企业的事实不会作为本发行人的事实。':'先保存文件，再选择是否采用为当前稿；旧版保留。保存和采用不会启动付费更新。原稿信息仍需按文件填写。'}</p><div class="prospectus-upload"><input id="prospectus-version-file" aria-label="募集书新版本文件" type="file" accept=".docx,.pdf" ${generation?'hidden':''}/><button type="button" class="btn secondary" id="save-prospectus-version">上传并保存</button></div>${recoveryRows.map(r=>`<div class="prospectus-version"><div><strong>${esc(r.declaration.filename)}</strong><small>${r.stage==='saved'?'文件已保存，版本记录待确认':'原上传待确认'}；确认不会采用为当前稿。若需字节，请在上方重选原文件。</small></div><button type="button" class="text-button" data-resume-prospectus="${esc(r.id)}">确认原上传</button></div>`).join('')}</${generation?'section':'details'}>
+      <${generation?'section':'details'} class="prospectus-upload-editor" ${generation?selectedFile||recoveryRows.length||this.pendingUpload?'':'hidden':recoveryRows.length?'open':''}>${generation?'':`<summary>${updating?'上传历史／参考稿':'上传募集书新版本'}</summary>`}<p>${updating?'选文件后自动保存历史稿、待修改稿，或母子公司、相似企业的参考稿。保存后选择“用于本次更新”，再填写原稿信息；参考企业的事实不会作为本发行人的事实。':'选文件后自动上传并保存，再选择是否采用为当前稿；旧版保留。保存和采用不会启动付费更新。原稿信息仍需按文件填写。'}</p><div class="prospectus-upload"><input id="prospectus-version-file" aria-label="募集书新版本文件" type="file" accept=".docx,.pdf" ${generation?'hidden':''}/><button type="button" class="btn secondary" id="save-prospectus-version" hidden>重试上传</button></div>${recoveryRows.map(r=>`<div class="prospectus-version"><div><strong>${esc(r.declaration.filename)}</strong><small>${r.stage==='saved'?'文件已保存，版本记录待确认':'原上传待确认'}；确认不会采用为当前稿。若需字节，请在上方重选原文件。</small></div><button type="button" class="text-button" data-resume-prospectus="${esc(r.id)}">确认原上传</button></div>`).join('')}</${generation?'section':'details'}>
       <p id="prospectus-status" role="status">${esc(this.message)}</p>${this.pendingSelection?.attempted?'<button type="button" class="text-button" id="retry-prospectus-selection">重试确认采用结果</button>':''}</section>`;
     if(selectedFile){
       this.host.querySelector('#prospectus-version-file')!.replaceWith(selectedFile);
@@ -113,7 +113,7 @@ export class ProspectusPanel {
     const input=this.host.querySelector<HTMLInputElement>('#prospectus-version-file')!;
     const choose=()=>{const details=input.closest('details');if(details)details.open=true;input.click();};
     this.host.querySelector('#choose-prospectus-version')!.addEventListener('click',choose);
-    const dropzone=this.host.querySelector<HTMLElement>('.pf-prospectus-dropzone');
+    const dropzone=this.host.querySelector<HTMLElement>('.pf-prospectus-dropzone')??this.host.querySelector<HTMLElement>('.prospectus-upload-editor');
     dropzone?.addEventListener('dragover',e=>{e.preventDefault();if(!this.busy)dropzone.classList.add('is-dragging');});
     dropzone?.addEventListener('dragleave',()=>dropzone.classList.remove('is-dragging'));
     dropzone?.addEventListener('drop',e=>{e.preventDefault();dropzone.classList.remove('is-dragging');if(this.busy||this.pendingUpload)return;
@@ -124,7 +124,7 @@ export class ProspectusPanel {
     if(input.files?.[0]){
       const file=input.files[0],preview=document.createElement('div');
       preview.className='prospectus-selected-file';
-      preview.innerHTML=`<span class="prospectus-file-icon">${icon('file')}</span><div class="prospectus-file-info"><span class="prospectus-upload-label">待确认保存</span><strong>${esc(file.name)}</strong><small>${this.fileSize(file.size)} · 保存后可明确采用，已有版本保留</small></div><button type="button" class="text-button" id="cancel-prospectus-version">取消</button><button type="button" class="text-button" id="replace-prospectus-version">重新选择</button>`;
+      preview.innerHTML=`<span class="prospectus-file-icon">${icon('file')}</span><div class="prospectus-file-info"><span class="prospectus-upload-label">正在准备上传</span><strong>${esc(file.name)}</strong><small>${this.fileSize(file.size)} · 保存后可明确采用，已有版本保留</small></div><button type="button" class="text-button" id="cancel-prospectus-version">取消</button><button type="button" class="text-button" id="replace-prospectus-version">重新选择</button>`;
       input.before(preview);
       preview.querySelector('#replace-prospectus-version')!.addEventListener('click',choose);
       preview.querySelector('#cancel-prospectus-version')!.addEventListener('click',()=>{if(this.busy||this.pendingUpload)return;input.value='';this.render();this.host.querySelector<HTMLElement>('#choose-prospectus-version')?.focus();});
@@ -133,7 +133,7 @@ export class ProspectusPanel {
       if(this.busy)return;
       this.render();const error=this.fileError();
       if(error){this.host.querySelector<HTMLElement>('#replace-prospectus-version')?.focus();this.status(error,true);return;}
-      if(generation&&input.files?.length){
+      if(input.files?.length){
         // A recovery row retains its original receipt and scope; reselecting supplies bytes only.
         if(this.pendingUpload||recoveryRows.length){this.status('已重新选择文件，请点击“重试上传”或“确认原上传”继续原操作。');return;}
         void this.upload();
@@ -174,10 +174,10 @@ export class ProspectusPanel {
     this.host.querySelector('[data-prospectus-skip]')?.addEventListener('click',()=>this.host.dispatchEvent(new CustomEvent('prospectus:skip')));
     this.host.querySelectorAll<HTMLElement>('[data-delete-version]').forEach(button=>button.addEventListener('click',()=>this.confirmDeletion(button.dataset.deleteVersion!)));
     this.disableControls();
-    if(generation){
+    {
       const save=this.host.querySelector<HTMLButtonElement>('#save-prospectus-version')!;
-      save.hidden=!selectedFile&&!this.pendingUpload||!!this.fileError();save.textContent='重试上传';
-      const editor=this.host.querySelector('.prospectus-upload-editor > p');if(editor)editor.textContent='文件正在自动上传。上传完成后，选择使用此版继续；原版本保留。';
+      save.hidden=this.busy||!selectedFile&&!this.pendingUpload||!!this.fileError();save.textContent='重试上传';
+      const editor=this.host.querySelector('.prospectus-upload-editor > p');if(editor)editor.textContent=generation?'选择或拖入文件后自动上传，完成后选择使用此版继续；原版本保留。':'选择或拖入文件后自动上传并保存，再选择是否采用为当前稿；旧版保留。';
       const label=this.host.querySelector('.prospectus-upload-label');if(label)label.textContent=this.fileError()?'文件无法上传':this.busy?'正在上传':'等待上传';
     }
   }
@@ -191,9 +191,9 @@ export class ProspectusPanel {
   }
   private disableControls(){
     for(const root of [this.host,this.dialog])root?.querySelectorAll<HTMLButtonElement|HTMLInputElement>('button,input').forEach(b=>b.disabled=this.busy);
-    const save=this.host.querySelector<HTMLButtonElement>('#save-prospectus-version');if(save&&((['generation','qa'].includes(this.purpose)&&!this.host.querySelector<HTMLInputElement>('#prospectus-version-file')?.files?.length&&!this.pendingUpload)||this.fileError())){save.disabled=true;if(this.fileError())this.status(this.fileError(),true);}
+    const save=this.host.querySelector<HTMLButtonElement>('#save-prospectus-version');if(save&&((!this.host.querySelector<HTMLInputElement>('#prospectus-version-file')?.files?.length&&!this.pendingUpload)||this.fileError())){save.disabled=true;if(this.fileError())this.status(this.fileError(),true);}
     this.host.querySelector('.prospectus-panel')?.setAttribute('aria-busy',String(this.busy));
-    if(['generation','qa'].includes(this.purpose)){
+    {
       if(save)save.hidden=this.busy||!!this.fileError()||!this.host.querySelector<HTMLInputElement>('#prospectus-version-file')?.files?.length&&!this.pendingUpload;
       const label=this.host.querySelector('.prospectus-upload-label');if(label&&!this.fileError())label.textContent=this.busy?'正在上传':'等待重试';
     }
@@ -305,7 +305,7 @@ export class ProspectusPanel {
     const file=this.host.querySelector<HTMLInputElement>('#prospectus-version-file')!.files?.[0]??this.pendingUpload?.file;
     if(!file&&!operationId&&!this.pendingUpload){this.status('请先选择 DOCX 或 PDF 文件。');return;}
     await this.action(async()=>{
-      if(['generation','qa'].includes(this.purpose))this.status('正在上传募集说明书…');
+      this.status('正在上传募集说明书…');
       const ext=file?.name.split('.').at(-1)?.toLowerCase();
       if(file&&(!['docx','pdf'].includes(ext??'')||!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes))throw new UserFacingError('请上传不超过 100 MB 的 DOCX 或 PDF 文件。');
       if(!await this.beforeChange())throw new UserFacingError('请先保存项目信息。');
@@ -339,11 +339,11 @@ export class ProspectusPanel {
         this.status(['generation','qa'].includes(this.purpose)&&state.current_version_id!==saved.version_id?'':state.current_version_id===saved.version_id?`文件已保存，与当前采用的 V${saved.sequence} 相同，当前选择保持不变。`:`已保存 V${saved.sequence} · ${saved.filename}，尚未采用。${['generation','qa'].includes(this.purpose)?'点击“使用此版继续”准备文件。':this.purpose==='update'?'点击“用于本次更新”后才会使用此稿；上传错误可删除。':'请查看后选择“采用此版”；当前稿保持不变。'}`);
       }catch{
         this.controller.signal.throwIfAborted();
-        throw new UserFacingError(`文件已保存，但版本记录暂未读取。请${['generation','qa'].includes(this.purpose)?'点击“重试上传”':'重试“上传并保存”'}以读取原记录，文件不会重复上传。`);
+        throw new UserFacingError(`文件已保存，但版本记录暂未读取。请点击“重试上传”以读取原记录，文件不会重复上传。`);
       }
     });
-    if(['generation','qa'].includes(this.purpose)&&!this.controller.signal.aborted){
-      this.render();this.busyChanged();this.host.querySelector<HTMLElement>('[data-use-saved]')?.focus();
+    if(!this.controller.signal.aborted){
+      this.render();this.busyChanged();if(['generation','qa'].includes(this.purpose))this.host.querySelector<HTMLElement>('[data-use-saved]')?.focus();
     }
   }
 }

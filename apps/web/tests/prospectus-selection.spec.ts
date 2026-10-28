@@ -136,8 +136,7 @@ async function openContainingDetails(page:Page,selector:string){
 }
 async function upload(page:Page){
   await page.locator('#prospectus-version-file').setInputFiles({name:filename,mimeType:mime,buffer:bytes});
-  await openContainingDetails(page,'#save-prospectus-version');
-  await page.locator('#save-prospectus-version').click();
+
 }
 async function chooseNew(page:Page){
   await openContainingDetails(page,`[data-use-version="${newVersion.version_id}"]`);
@@ -267,15 +266,12 @@ test('disposing during the preceding draft save removes the dialog and cannot st
   expect(f.selections).toHaveLength(0);expect(f.state.current_version_id).toBe(oldVersion.version_id);expect(await f.changes()).toBe('0');
 });
 
-test('a background version refresh keeps a selected file ready for its explicit upload',async({page})=>{
+test('a background version refresh preserves the automatically uploaded version',async({page})=>{
   const f=await fixture(page);
   await openContainingDetails(page,'#save-prospectus-version');
   await page.locator('#prospectus-version-file').setInputFiles({name:filename,mimeType:mime,buffer:bytes});
   await page.evaluate(async()=>{await (window as unknown as {syntheticProspectusPanel:{refresh():Promise<void>}}).syntheticProspectusPanel.refresh();});
-  await expect(page.locator('#prospectus-version-file')).toBeVisible();
-  expect(await page.locator('#prospectus-version-file').evaluate((input:HTMLInputElement)=>input.files?.[0]?.name)).toBe(filename);
-  expect(f.mutations).toHaveLength(0);
-  await page.locator('#save-prospectus-version').click();await savedStatus(page);
+  await savedStatus(page);await expect(page.locator('#save-prospectus-version')).toBeHidden();
   expect(f.counts().puts).toBe(1);expect(f.state.current_version_id).toBe(oldVersion.version_id);
 });
 

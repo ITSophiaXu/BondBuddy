@@ -932,7 +932,15 @@ export class ReviewWorkspace {
 
   private uploadDialog(context?:ReviewContext){
     const target=context?structuredClone(context):undefined;
-    this.openDialog(target?'为此问题补充材料':'上传项目材料',`${target?`<div class="review-notice">补证目标：${esc(this.uploadTargetDescription(target))}。该补证对象固定保留。</div>`:''}<label for="review-upload-role">材料类型</label><select id="review-upload-role" class="review-source-select">${Object.entries(roleLabels).filter(([role])=>!target||role!=='historical').map(([role,label])=>`<option value="${role}" ${target&&role==='other'?'selected':''}>${label}</option>`).join('')}</select><label for="review-upload-file">选择 DOCX／PDF／XLSX／CSV／TXT 或图片</label><input id="review-upload-file" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"><p class="review-muted">文件会真实上传到当前项目。保存材料不自动开始复核。</p><div id="review-upload-progress" role="status"></div>`,[{label:'上传并保存',primary:true,action:async()=>{const input=this.dialog!.querySelector<HTMLInputElement>('#review-upload-file')!;if(!input.files?.length){this.dialogStatus('请选择文件。');return;}const role=this.dialog!.querySelector<HTMLSelectElement>('#review-upload-role')!.value as Dto<'MaterialResponse'>['role'];await this.upload([...input.files],role,target);}}]);
+    this.openDialog(target?'为此问题补充材料':'上传项目材料',`${target?`<div class="review-notice">补证目标：${esc(this.uploadTargetDescription(target))}。该补证对象固定保留。</div>`:''}<label for="review-upload-role">材料类型</label><select id="review-upload-role" class="review-source-select">${Object.entries(roleLabels).filter(([role])=>!target||role!=='historical').map(([role,label])=>`<option value="${role}" ${target&&role==='other'?'selected':''}>${label}</option>`).join('')}</select><label for="review-upload-file">选择 DOCX／PDF／XLSX／CSV／TXT 或图片</label><input id="review-upload-file" type="file" multiple accept=".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg"><p class="review-muted">选中文件后立即上传到当前项目。保存材料不自动开始复核。</p><div id="review-upload-progress" role="status"></div>`,[]);
+    const dialog=this.dialog!,input=dialog.querySelector<HTMLInputElement>('#review-upload-file')!,select=dialog.querySelector<HTMLSelectElement>('#review-upload-role')!;
+    input.addEventListener('change',()=>{
+      const files=[...(input.files??[])];if(!files.length||this.uploading)return;
+      input.disabled=true;select.disabled=true;
+      void this.upload(files,select.value as Dto<'MaterialResponse'>['role'],target).catch(error=>this.dialogStatus(friendlyError(error,'save'))).finally(()=>{
+        if(this.dialog===dialog&&dialog.open&&!dialog.querySelector('[data-review-upload-return]')){input.value='';input.disabled=false;select.disabled=false;}
+      });
+    });
   }
   private async deleteMaterial(id:string){
     if(this.uploadActionBlocked())return;
@@ -1059,7 +1067,7 @@ export class ReviewWorkspace {
     this.dialogStatus(`${this.status} ${instruction}`);
     const focusOriginal=()=>{if(!this.live())return;this.setTab('materials');const original=this.page?.querySelector<HTMLElement>(`[data-review-recovery-id="${CSS.escape(operationId)}"]`);if(original){original.scrollIntoView({block:'center'});const button=original.querySelector<HTMLButtonElement>('[data-review-recovery-action="resume"]');(button??original).focus({preventScroll:true});}};
     dialog.addEventListener('close',focusOriginal,{once:true});
-    const submit=dialog.querySelector<HTMLButtonElement>('[data-dialog-action="0"]');
+    const submit=dialog.querySelector<HTMLButtonElement>('[data-dialog-action="0"],[data-dialog-cancel]');
     if(submit){const returnButton=submit.cloneNode(false) as HTMLButtonElement;returnButton.removeAttribute('data-dialog-action');returnButton.dataset.reviewUploadReturn='';returnButton.textContent='查看原上传';returnButton.disabled=false;returnButton.addEventListener('click',()=>dialog.close());submit.replaceWith(returnButton);}
   }
   private async upload(files:File[],role:Dto<'MaterialResponse'>['role'],target?:ReviewContext){

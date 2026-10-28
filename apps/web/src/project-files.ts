@@ -541,11 +541,11 @@ export class ProjectFiles {
     const restoring=this.pendingImport;if(restoring)type=restoring.type;
     const target=restoring?this.registry.find(v=>v.version_id===restoring.latest&&v.document_type===restoring.type):clickedTarget;
     if(target)type=target.document_type;
-    let targetConflict=false;
+    let targetConflict=false,uploadFailed=!!restoring;
     d.setAttribute('aria-labelledby','pw-import-heading');
-    d.innerHTML='<header><h2 id="pw-import-heading">'+(target?'上传此文件修改稿':'上传项目关联文件')+'</h2><button class="icon-btn" data-close aria-label="关闭">'+ico('close')+'</button></header><p class="pw-import-target" id="pw-import-target">'+esc(this.name)+(target?' · '+esc(PROJECT_DOCUMENT_CATALOG.find(c=>c.id===target.document_type)!.name)+'<br><strong>原文件：'+esc(target.filename)+' · V'+target.sequence+'</strong>':restoring?.latest?'<br>原目标版本暂不可读取，将沿原文件类型与版本条件确认。':'')+'</p><form><label>文件类型<select name="type" required><option value="">请选择文件类型</option>'+PROJECT_DOCUMENT_CATALOG.map(c=>'<option value="'+c.id+'" '+(type===c.id?'selected':'')+'>'+c.name+'</option>').join('')+'</select></label><label>Word 或 PDF<input name="file" type="file" accept=".docx,.pdf" '+(restoring?'':'required')+'/></label><p>'+(restoring?'先确认原上传；已收到字节时无需重选。若需要字节，请选择原文件。':target?'保存为此类文件的新版本，原 V'+target.sequence+' 保留。本次不生成、不合并、不检查。':'保存为此类文件的新版本，保留旧版。上传后可检查与当前募集书的一致性。')+'</p><button class="btn primary">保存项目文件</button></form><p role="status"></p>';
+    d.innerHTML='<header><h2 id="pw-import-heading">'+(target?'上传此文件修改稿':'上传项目关联文件')+'</h2><button class="icon-btn" data-close aria-label="关闭">'+ico('close')+'</button></header><p class="pw-import-target" id="pw-import-target">'+esc(this.name)+(target?' · '+esc(PROJECT_DOCUMENT_CATALOG.find(c=>c.id===target.document_type)!.name)+'<br><strong>原文件：'+esc(target.filename)+' · V'+target.sequence+'</strong>':restoring?.latest?'<br>原目标版本暂不可读取，将沿原文件类型与版本条件确认。':'')+'</p><form><label>文件类型<select name="type" required><option value="">请选择文件类型</option>'+PROJECT_DOCUMENT_CATALOG.map(c=>'<option value="'+c.id+'" '+(type===c.id?'selected':'')+'>'+c.name+'</option>').join('')+'</select></label><label>Word 或 PDF<input name="file" type="file" accept=".docx,.pdf" '+(restoring?'':'required')+'/></label><p>'+(restoring?'先确认原上传；已收到字节时无需重选。若需要字节，请选择原文件。':target?'保存为此类文件的新版本，原 V'+target.sequence+' 保留。本次不生成、不合并、不检查。':'保存为此类文件的新版本，保留旧版。上传后可检查与当前募集书的一致性。')+'</p><p>选好文件类型后，选择 Word 或 PDF 即自动上传保存。</p><button class="btn primary" hidden>重试保存项目文件</button></form><p role="status"></p>';
     if(restoring?.file){const transfer=new DataTransfer();transfer.items.add(restoring.file);d.querySelector<HTMLInputElement>('[name=file]')!.files=transfer.files;}
-    const controls=()=>{d.querySelector<HTMLInputElement>('input')!.disabled=this.uploading||!!this.pendingImport?.uncertain&&!!this.pendingImport.file&&!this.pendingImport.allowReselect;d.querySelector<HTMLSelectElement>('select')!.disabled=this.uploading||!!this.pendingImport||!!target||!!restoring;d.querySelector<HTMLButtonElement>('form button')!.disabled=this.uploading||targetConflict;};
+    const controls=()=>{d.querySelector<HTMLInputElement>('input')!.disabled=this.uploading||!d.querySelector<HTMLSelectElement>('select')!.value||!!this.pendingImport?.uncertain&&!!this.pendingImport.file&&!this.pendingImport.allowReselect;d.querySelector<HTMLSelectElement>('select')!.disabled=this.uploading||!!this.pendingImport||!!target||!!restoring;const retry=d.querySelector<HTMLButtonElement>('form button')!;retry.disabled=this.uploading||targetConflict;retry.hidden=this.uploading||!uploadFailed;};
     const status=(text:string)=>{d.querySelector('[role=status]')!.textContent=text;};
     d.querySelector<HTMLSelectElement>('[name=type]')!.addEventListener('invalid',()=>status('请选择有效的文件类型，再保存项目文件。所选文件仍保留。'));
     if(restoring?.uncertain)status('本次保存结果尚未确认。请重试保存项目文件，沿用同一次操作。'+(restoring.pin?'已上传文件不会重复上传。':'请重试确认上传与保存结果。'));controls();
@@ -554,7 +554,7 @@ export class ProjectFiles {
     d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();if(this.uploading||targetConflict)return;
       const select=d.querySelector<HTMLSelectElement>('[name=type]')!,selected=select.value;
       if(!PROJECT_DOCUMENT_CATALOG.some(c=>c.id===selected)){status('请选择有效的文件类型，再保存项目文件。所选文件仍保留。');select.focus();return;}
-      this.uploading=true;controls();let confirmed=false;
+      this.uploading=true;uploadFailed=false;controls();status('正在上传并保存文件…');let confirmed=false;
       void(async()=>{const file=d.querySelector<HTMLInputElement>('[name=file]')!.files![0],type=selected as ProjectDocumentType;
         if(!file&&!this.pendingImport||file&&!/[.](docx|pdf)$/i.test(file.name))throw new UserFacingError('请选择 DOCX 或 PDF。');
         if(file&&(!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes))throw new UserFacingError('请上传不超过 100 MB 的 DOCX 或 PDF 文件。');
@@ -568,7 +568,7 @@ export class ProjectFiles {
         if(Array.isArray(result.files)){this.registry=result.files;this.registryLoaded=true;}
         this.controller.signal.throwIfAborted();await this.imports().forget(pending.upload.operationId!);this.pendingImport=undefined;
         if(this.live()){this.paintImportRecovery();this.paintSavedImport();d.close();this.uploading=false;await this.refresh();document.querySelector<HTMLElement>('.pw-import-result')?.focus();}
-      })().catch(async e=>{if(!this.live())return;
+      })().catch(async e=>{uploadFailed=true;if(!this.live())return;
         if(confirmed){if(this.pendingImport)this.pendingImport.uncertain=true;status('文件已保存，原保存记录暂未清理。请继续确认原保存，保持原操作编号。');this.paintSavedImport();this.paintImportRecovery();return;}
         const rejected=e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status);
         if(this.pendingImport)this.pendingImport.uncertain=true;
@@ -578,6 +578,9 @@ export class ProjectFiles {
         else status(rejected||!this.pendingImport?detail:'关联文件保存结果尚未确认。'+detail+' 请继续确认原保存；本次操作编号和版本条件已保留。');this.paintImportRecovery();
       }).finally(()=>{this.uploading=false;if(d.isConnected)controls();});
     });
+    const input=d.querySelector<HTMLInputElement>('[name=file]')!,select=d.querySelector<HTMLSelectElement>('[name=type]')!;
+    select.addEventListener('change',controls);
+    input.addEventListener('change',()=>{if(input.files?.length&&!this.uploading)d.querySelector('form')!.requestSubmit();});
   }
   private history(key:string){
     this.dialog?.remove();const rows=this.files.filter(f=>f.file_key===key);const dialog=document.createElement('dialog');this.dialog=dialog;dialog.className='collection-file-dialog';dialog.setAttribute('aria-label','文件版本记录');
