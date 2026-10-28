@@ -2,16 +2,29 @@
 const host = document.querySelector('#preview');
 const message = text => { document.querySelector('#preview-message').textContent = text; };
 let mode=new URLSearchParams(location.search).get('mode')==='workpapers'?'workpapers':'documents';
+let previewFilename='募集说明书_V3.docx',previewSequence=3;
 const next=()=>{if(mode==='workpapers')location.href='workpaper-batch.html';else show('documents');};
 function show(scene) {
-  host.replaceChildren(document.querySelector('#'+scene).content.cloneNode(true));
+  const home=scene!=='documents';
+  host.replaceChildren(document.querySelector('#'+(home?'choose':scene)).content.cloneNode(true));
+  if(home){
+    const source=document.querySelector('#'+(scene==='source-empty'?'source-empty':'source-current')).content.querySelector('.pf-source-workspace').cloneNode(true);
+    source.classList.remove('pf-source-workspace');host.querySelector('.pf-home-source').append(source);
+    const confirm=source.querySelector('#pf-source-next');confirm.id='pf-confirm-source';confirm.textContent='确认使用此募集说明书';
+    source.querySelector('.pf-source-actions p').textContent='两种生成方式均使用这里确认的募集说明书。';
+    const name=source.querySelector('.prospectus-file-info h3');if(name)name.textContent=previewFilename;
+    const badge=source.querySelector('.prospectus-file-info .prospectus-current');if(badge)badge.textContent='当前版本 · V'+previewSequence;
+  }
+  const confirmSource=()=>{
+    const confirm=host.querySelector('#pf-confirm-source');confirm.textContent='已确认使用此募集说明书';confirm.disabled=true;
+    host.querySelector('#pf-home-hint').textContent='已确认募集说明书，选择一种生成方式继续。';
+    host.querySelectorAll('[data-generation-mode]').forEach(button=>button.disabled=false);
+  };
   if(matchMedia('(max-width:760px)').matches)host.querySelectorAll('.pf-optional').forEach(panel=>panel.open=false);
   message('');
   document.querySelectorAll('[data-scene]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.scene === scene)));
-  if(scene.startsWith('source')&&mode==='workpapers'){
-    host.querySelector('h1').textContent='批量生成底稿';host.querySelector('#pf-source-next').textContent='继续：选择底稿目录 →';
-  }
-  host.querySelector('#pf-source-next')?.addEventListener('click',next);
+  host.querySelector('#pf-confirm-source')?.addEventListener('click',confirmSource);
+  host.querySelectorAll('[data-generation-mode]').forEach(button=>button.addEventListener('click',()=>{mode=button.dataset.generationMode;next();}));
   const file=host.querySelector('#prospectus-version-file');
   const choose=host.querySelector('#choose-prospectus-version');
   choose?.addEventListener('click',()=>file.click());
@@ -22,7 +35,16 @@ function show(scene) {
     const saved=document.createElement('aside');saved.className='pf-upload-ready';saved.setAttribute('aria-label','已上传的募集说明书');
     saved.innerHTML='<div><strong></strong><p>继续后将采用此版为项目当前稿，原版本保留。已提交任务保留原依据。</p></div><button class="btn primary">使用此版继续 →</button><button class="text-button">重新选择</button>';
     saved.querySelector('strong').textContent='已上传 · '+f.name;
-    saved.querySelector('.btn').onclick=next;saved.querySelector('.text-button').onclick=()=>file.click();
+    saved.querySelector('.btn').onclick=()=>{
+      previewFilename=f.name;previewSequence++;
+      let current=host.querySelector('.prospectus-current-file');
+      if(!current){current=document.querySelector('#source-current').content.querySelector('.prospectus-current-file').cloneNode(true);choose.before(current);}
+      current.querySelector('h3').textContent=previewFilename;current.querySelector('.prospectus-current').textContent='当前版本 · V'+previewSequence;
+      choose.className='btn secondary';choose.textContent='上传新版本';choose.setAttribute('aria-label','上传新版本');choose.hidden=false;host.querySelector('.prospectus-panel-heading').append(choose);
+      saved.remove();host.querySelector('.pf-source-actions').hidden=false;confirmSource();
+    };saved.querySelector('.text-button').onclick=()=>file.click();
+    host.querySelectorAll('[data-generation-mode]').forEach(button=>button.disabled=true);
+    host.querySelector('#pf-home-hint').textContent='先在本页确认使用的募集说明书，再选择生成方式。';
     host.querySelector('.prospectus-upload-hint').after(saved);host.querySelector('.pf-source-actions').hidden=true;
     if(choose.classList.contains('pf-prospectus-dropzone'))choose.hidden=true;
     message('预览展示上传成功状态；实际文件未上传。');saved.querySelector('.btn').focus();
@@ -32,14 +54,15 @@ function show(scene) {
   choose?.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files.length!==1){message('每次请选择一份募集说明书。');return;}previewFile(e.dataTransfer.files[0]);});
   host.querySelectorAll('a').forEach(link=>link.addEventListener('click',e=>{
     e.preventDefault();
-    if(link.classList.contains('pf-generation-choice')){mode=link.getAttribute('aria-label')==='批量生成底稿'?'workpapers':'documents';next();}
-    else if(link.classList.contains('pf-back-link'))show('choose');
+    if(link.classList.contains('pf-back-link'))show('choose');
     else if(link.textContent.includes('管理募集说明书'))show('source-current');
     else message('这是界面预览。项目导航与生成记录将在实际工作区打开。');
   }));
   host.querySelectorAll('[data-download-version],[data-pf-template]').forEach(button=>button.addEventListener('click',()=>message(button.hasAttribute('data-pf-template')?'实际工作区将在此打开模板选择与上传窗口。':'示例文件不可下载；实际工作区可在此下载对应版本。')));
   host.querySelector('#pf-generate')?.addEventListener('click',()=>message('实际工作区将在此核对所选文件、募集书版本和费用，明确确认后开始生成。'));
   if(scene==='documents'){
+    host.querySelector('#pf-source-summary strong').textContent=previewFilename;
+    host.querySelector('#pf-source-summary small').textContent='项目当前稿 · V'+previewSequence+' · 合成关联文件项目';
     const supportInput=host.querySelector('#pf-support'),supportUpload=host.querySelector('#pf-support-upload');
     const previewSupport=files=>{if(!files.length||supportInput.disabled)return;const feedback=host.querySelector('#pf-support-feedback');feedback.classList.remove('is-error');if(files.some(f=>!f.size||f.size>100*1024*1024||! /\.(docx|pdf|xlsx)$/i.test(f.name))){feedback.classList.add('is-error');feedback.textContent='请上传不超过 100 MB 的 DOCX、PDF 或 XLSX 文件。';return;}feedback.textContent='预览已选择 '+files.length+' 份：'+files.map(f=>f.name).join('、')+'。仅展示文件，不上传或保存。';};
     supportUpload.addEventListener('click',()=>supportInput.click());
