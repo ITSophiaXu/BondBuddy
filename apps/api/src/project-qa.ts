@@ -1,7 +1,7 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {PROJECT_QA_PRICE,qaSchemas,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {creditBalance,lockCreditAccount} from './billing.js';
@@ -40,7 +40,9 @@ async function validateDraft(db:Db,owner:string,id:string,d:QaDraft,starting=fal
  const p=await preparation(db,owner,id,d.preparation_id);if(d.questions.length||starting)validateQaQuestions(d.questions,p.result);
  const available=await qaMaterials(db,owner,id),keys=new Set(available.map(m=>inputManifestHash(m.asset))),used=new Set<string>();
  for(const asset of d.materials){const key=inputManifestHash(asset);if(!keys.has(key)||used.has(key)||key===inputManifestHash(p.manifest.source.asset))throw new Problem(422,'VALIDATION_FAILED','材料已变化，或问题清单被选为事实依据，请重新选择。');used.add(key);await readProjectFileAsset(db,owner,asset);}
- return {p,materials:d.materials.map(asset=>available.find(m=>inputManifestHash(m.asset)===inputManifestHash(asset))!)};
+ const prospectus=starting?await projectFileSource(db,owner,id):null;
+ if(starting){const issue=qaProspectusIssue(prospectus,d.materials,p.manifest.source.asset);if(issue)throw new Problem(422,'INPUT_REQUIRED',issue);}
+ return {p,prospectus,materials:d.materials.map(asset=>available.find(m=>inputManifestHash(m.asset)===inputManifestHash(asset))!)};
 }
 async function notify(c:PoolClient,owner:string,id:string,type:string,payload:unknown){
  await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
@@ -78,11 +80,12 @@ export async function readQa(db:Pool,owner:string,id:string,requested?:string):P
  ), included AS (
  SELECT run_id FROM selected UNION SELECT $3::text UNION SELECT $4::text
  UNION SELECT manifest->>'preparation_id' FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3
- ) SELECT q.*,r.state,r.stage,r.artifact_id,c.points,c.charged_points,c.state reservation_state FROM bb_project_qa_runs q
+ ) SELECT q.*,r.state,r.stage,r.artifact_id,c.points,c.charged_points,c.state reservation_state,
+ (SELECT j.error_code FROM bb_jobs j WHERE j.owner_user_id=q.owner_user_id AND j.run_id=q.run_id AND j.subtype='project_qa_v1' LIMIT 1) AS error_code FROM bb_project_qa_runs q
  JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id LEFT JOIN bb_credit_reservations c ON c.run_id=r.id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id IN(SELECT run_id FROM included)
  ORDER BY (q.run_id=$3) DESC NULLS LAST,q.sequence DESC`,[owner,id,requested??null,d?.draft?.preparation_id??null])).rows;
- return {draft:d?.draft??empty(),revision:d?.revision??0,materials,price:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,operation:r.operation,state:r.state,stage:r.stage??null,created_at:date(r.created_at),manifest:r.manifest,result:r.result??null,artifact_id:r.state==='succeeded'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
+ return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
 }
 export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
  const base='/api/v1/projects/:project_id/qa',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
@@ -108,10 +111,10 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
   const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaAnswerRequest>;
   const run_id=await transaction(db(),async c=>{const p=await project(c,user,pid,true),hash=inputManifestHash({pid,...b}),key='qa-answer:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
    const row=(await c.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];if(!row||row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题或材料已变化，请重新确认。');
-   const d=row.draft as QaDraft,{p:prepared,materials}=await validateDraft(c,user,pid,d,true),points=d.questions.length*60;
+   const d=row.draft as QaDraft,{p:prepared,materials,prospectus}=await validateDraft(c,user,pid,d,true),points=d.questions.length*60;
    if(points!==b.expected_points)throw conflict('QUOTE_CHANGED','问题数量与费用已变化，请重新确认。');
    const cases:QaInput['cases']=[];if(d.use_knowledge)for(const q of d.questions){for(const item of await qaCaseSearch(c,q.question,3))if(!cases.some(x=>x.id===item.id)&&cases.length<40)cases.push(item);}
-   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points});
+   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points});
   });return {run_id};
  });
 }
