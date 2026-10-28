@@ -31,6 +31,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-08-global-project-assistant.md
 !docs/product-decisions/2026-10-15-bondbuddy-brand-name.md
 !docs/product-decisions/2026-10-27-project-qa-document-ux.md
+!docs/product-decisions/2026-10-28-project-qa-materials.md
 !docs/acceptance/
 docs/acceptance/*
 !docs/acceptance/issue-718/

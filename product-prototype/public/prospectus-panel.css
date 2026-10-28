@@ -33,6 +33,10 @@
 .prospectus-history[open] summary > svg:last-child { transform: rotate(180deg); }
 .prospectus-history-count { min-width: 22px; padding: 1px 6px; border-radius: 5px; text-align: center; background: #eef2e8; color: #667760; font-size: 12px; }
 .prospectus-panel .prospectus-version { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid #edf0e8; }
+.prospectus-version-info { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.prospectus-version-info > strong, .prospectus-version-info > small { display: block; }
+.prospectus-delete { color: #923b2d; }
+.prospectus-delete-reason { max-width: 180px; color: #69766b; font-size: 12px; }
 .prospectus-history-list { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; }
 .prospectus-panel #prospectus-status:empty { display: none; }
 .prospectus-panel #prospectus-status:not(:empty) { margin: 0 0 20px; padding: 11px 14px; border-radius: 7px; background: #f0f4e9; overflow-wrap: anywhere; }

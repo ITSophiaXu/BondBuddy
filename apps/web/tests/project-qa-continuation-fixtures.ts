@@ -49,7 +49,7 @@ export function completed(manifest:QaInput,runId:string,sequence:number):QaRun{r
 function project(id:string):Dto<'ProjectResponse'>{return {project_id:id,name:id===projectId?'合成 QA 续答项目':'另一个合成 QA 项目',kind:'generation',issuer_name:'合成发行人有限公司',market:'sse',offering:'private',draft_revision:3,input_revision:null,input_hash:null,updated_at:now};}
 export function fixture(){
   const prepared=completed(input('prepare'),prepareId,1),answer=completed(input('answer'),answerId,5),other=completed(input('answer',questions,[newMaterial],'另一历史轮要求：核对业务报告第三版。'),otherAnswerId,9);
-  const workspace:QaWorkspace={draft:originalDraft(),revision:10,price:PROJECT_QA_PRICE,runs:[other,answer,prepared],materials:[
+  const workspace:QaWorkspace={draft:originalDraft(),revision:10,price:PROJECT_QA_PRICE,runs:[other,answer,prepared],prospectus:{project_id:projectId,version_id:'prospectus-v4',selection_revision:4,sequence:4,filename:'合成募集书_清洁版_v4.docx',asset:structuredClone(oldArtifact)},materials:[
     {filename:'合成业务报告_v2.pdf',asset:structuredClone(oldMaterial)},{filename:'合成募集书_清洁版_v4.docx',asset:structuredClone(oldArtifact)},{filename:'合成业务报告_v3.pdf',asset:structuredClone(newMaterial)}]};
   const otherWorkspace:QaWorkspace={draft:{preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:true},revision:0,price:PROJECT_QA_PRICE,runs:[],materials:[]};
   return {owner:ownerId,workspace,otherWorkspace,project:project(projectId),otherProject:project(otherProjectId),calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],

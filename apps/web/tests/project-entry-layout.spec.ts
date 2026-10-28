@@ -7,7 +7,7 @@ const entries = [
   {hash:'#generate', title:'文件生成', action:'打开文件生成'},
   {hash:'#review', title:'复核募集书', action:'下一步：材料与要求'},
   {hash:'#integrity', title:'诚信核查', action:'下一步：名单与网站范围'},
-  {hash:'#qa', title:'项目问答', action:'下一步：上传问题清单'},
+  {hash:'#qa', title:'项目问答', action:'下一步：确认项目资料'},
   {hash:'#/update', title:'更新募集书', action:'进入更新募集书'},
 ];
 const projects=Array.from({length:40},(_,i)=>({project_id:`synthetic-entry-${i+1}`,name:`示例项目 ${i+1}`,

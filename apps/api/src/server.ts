@@ -9,7 +9,7 @@ import { registerProjectCollection } from './project-collection.js';
 import { registerProjectFileWorkspace } from './project-file-workspace.js';
 import { registerWorkpapers } from './workpapers.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
-import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions } from './prospectus-versions.js';
+import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
 import { registerReviewEditor } from './review-editor.js';
 import { listArtifactHistory } from './artifact-history.js';
@@ -1297,10 +1297,14 @@ export function createServer(settings: Settings = {}) {
       await project(client,user,id,true);
       const found=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ORDER BY version DESC FOR UPDATE',[user,id,materialId]);
       if(!found.rows.length)throw missing();
-      if((await client.query('SELECT 1 FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3',[user,id,materialId])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','此文件已保留在募集书版本历史中，请上传或切换版本。');
       const live=found.rows.filter(row=>row.deleted_at===null);
       if(!live.length)return; // Owned repeat deletion is idempotent and emits no duplicate side effects.
+      const prospectus=await assertProspectusRemovable(client,user,id,materialId);
       const deleted=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL RETURNING *',[user,id,materialId]);
+      if(prospectus)await client.query(`UPDATE bb_projects SET draft_revision=draft_revision+1,updated_at=now(),
+        update_details=jsonb_set(update_details,'{source_prospectuses}',COALESCE((SELECT jsonb_agg(s)
+          FROM jsonb_array_elements(COALESCE(update_details->'source_prospectuses','[]'::jsonb)) s WHERE s->>'material_id'<>$3),'[]'::jsonb))
+        WHERE owner_user_id=$1 AND id=$2`,[user,id,materialId]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.deleted',{project_id:id,versions:deleted.rows.length}]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_delete',status:'submitted'});
     });

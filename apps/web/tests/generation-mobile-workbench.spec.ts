@@ -86,7 +86,7 @@ test('generation mobile: a partial note save and its error stay visible outside 
 for(const kind of ['support','template'] as const)test(`generation mobile: original ${kind} recovery remains visible and usable outside folded optional inputs`,async({page})=>{
   await mobile(page,kind==='support'?320:390);const s=await fixture(page),before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);await open(page);await chooseDocuments(page,kind==='support'?['init','underwriter']:['init']);
   if(kind==='support'){s.dropDraft='init';await disclosure(support(page),true);await page.locator('#pf-support').setInputFiles(file);}
-  else {s.dropTemplate=true;await page.locator('[data-pf-template="init"]').click();await page.locator('dialog input[name="broker"]').fill('原模板券商');await page.locator('dialog input[type="file"]').setInputFiles(file);await page.locator('dialog form button').click();}
+  else {s.dropTemplate=true;await page.locator('[data-pf-template="init"]').click();await page.locator('dialog input[name="broker"]').fill('原模板券商');await page.locator('dialog input[type="file"]').setInputFiles(file);}
   const recovery=page.locator(`#pf-${kind}-recovery`),resume=recovery.locator('[data-generation-resume]');await expect(resume).toBeVisible();const original=kind==='template'?structuredClone(templateWrites(s)[0].body):undefined;
   if(kind==='template'){await outsideDisclosure(page.locator('#pf-modal-status'));await expect(page.locator('#pf-modal-status')).toHaveText(/\S/);await page.locator('dialog [data-close]').click();await expect(page.locator('dialog')).toHaveCount(0);}
   await closeOptionalGroups(page);await outsideDisclosure(recovery);await outsideDisclosure(resume);await expect(recovery).toContainText(label('init'));

@@ -175,7 +175,7 @@ test.describe('project-file return: native desktop journeys',()=>{
   test('an unknown original upload blocks navigation at the canonical filter URL and retains the entire original upload and CAS envelope',async({page})=>{
     const s=await open(page);s.dropImportOnce=true;await ready(page);await chooseView(page);await readingY(row(page));
     await row(page).getByRole('button',{name:'上传此文件修改稿',exact:true}).click();const dialog=page.getByRole('dialog',{name:'上传此文件修改稿',exact:true});
-    await dialog.locator('[name=file]').setInputFiles(editedFile);await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();
+    await dialog.locator('[name=file]').setInputFiles(editedFile);
     await expect(dialog.locator('[role=status]')).toContainText('尚未确认');const first=structuredClone(s.imports[0]),journal=await uploadJournal(page),hash=await page.evaluate(()=>location.hash);
     expect(Object.keys(journal)).toHaveLength(1);await dialog.getByRole('button',{name:'关闭',exact:true}).click();
     await page.locator('#pw-task-summary a').click();await expect.poll(()=>page.evaluate(()=>location.hash)).toBe(hash);
@@ -184,7 +184,7 @@ test.describe('project-file return: native desktop journeys',()=>{
     const reads=s.readFiles;await page.locator('#refresh-files').click();expect(s.readFiles).toBe(reads);expect(await uploadJournal(page)).toEqual(journal);
     await page.locator('[data-resume-project-file]').click();const recovery=page.getByRole('dialog',{name:'上传此文件修改稿',exact:true});
     await expect(recovery.locator('[name=type]')).toHaveValue('init');await expect(recovery.locator('[name=type]')).toBeDisabled();
-    await recovery.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
+    await recovery.getByRole('button',{name:'重试保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
     expect(s.imports).toEqual([first,first]);expect(s.puts).toBe(1);expect(s.importReceipts.size).toBe(1);expect(await uploadJournal(page)).toEqual({});assertFixture(s);
   });
 

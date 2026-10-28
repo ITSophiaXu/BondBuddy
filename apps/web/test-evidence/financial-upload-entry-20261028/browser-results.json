@@ -1,0 +1,16 @@
+{
+  "synthetic": true,
+  "suite": {
+    "total": 43,
+    "passed": 42,
+    "failed": 1
+  },
+  "failure": "Old historical-download locator matched both historical result and project-current-version download buttons.",
+  "repair": "Scope download to #execution-delivery; preserve exact original filename, bytes, run and version checks.",
+  "targetedRerun": {
+    "total": 1,
+    "passed": 1
+  },
+  "finalCoveredCases": 43,
+  "productionDeployed": false
+}

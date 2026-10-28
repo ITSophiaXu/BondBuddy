@@ -185,7 +185,7 @@ for (const scene of ['materials', 'target-dialog'] as const) for (const width of
   if (scene === 'target-dialog') { await page.locator('#review-tab-results').click(); const finding = page.locator(`[data-finding-id="${ids.finding}"]`); await finding.locator('summary').click(); await finding.locator('[data-review-action=evidence]').click(); await expect(page.getByRole('dialog', { name: '为此问题补充材料' })).toBeVisible(); }
   else await page.locator('[data-review-drop=audit]').scrollIntoViewIfNeeded();
   captured.push(await capture(page, directory!, `${flavor}-${scene}-ready-${width}`));
-  if (scene === 'target-dialog') { await page.locator('#review-upload-role').selectOption('other'); await page.locator('#review-upload-file').setInputFiles(file); await page.getByRole('dialog').getByRole('button', { name: '上传并保存', exact: true }).click(); }
+  if (scene === 'target-dialog') { await page.locator('#review-upload-role').selectOption('other'); await page.locator('#review-upload-file').setInputFiles(file);  }
   else await page.locator('[data-review-upload-role=audit]').setInputFiles(file);
   if (reference) await expect(page.locator('[data-review-action=retry-upload]')).toBeEnabled(); else await expect(resume(page)).toBeEnabled();
   captured.push(await capture(page, directory!, `${flavor}-${scene}-pending-${width}`)); const before = await refreshReadOnly(page, state);

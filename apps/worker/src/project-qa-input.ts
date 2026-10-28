@@ -1,6 +1,6 @@
 import type {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
-import {QaInputSchema,type QaInput} from '@bondbuddy/contracts';
+import {QaInputSchema,qaProspectusIssue,type QaInput} from '@bondbuddy/contracts';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
 import {validateQaQuestions} from '@bondbuddy/api/project-qa';
@@ -16,6 +16,7 @@ export async function projectQaInputGate(pool:Pool,run:RunRow,input:InputRevisio
   for(const material of m.materials)await readProjectFileAsset(pool,run.owner_user_id,material.asset);
   if(m.operation==='prepare'){if(m.points!==0||m.questions.length||m.materials.length||m.cases.length||m.preparation_id)return fail;}
   else{
+   if(m.prospectus&&qaProspectusIssue(m.prospectus,m.materials.map(x=>x.asset),m.source.asset))return fail;
    if(m.points!==m.questions.length*60||!m.questions.length)return fail;
    const parent=(await pool.query("SELECT q.* FROM bb_project_qa_runs q JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='prepare' AND r.state='succeeded'",[run.owner_user_id,run.project_id,m.preparation_id])).rows[0];
    if(!parent?.result||inputManifestHash(parent.result)!==parent.result_hash.trim()||inputManifestHash(parent.manifest.source)!==inputManifestHash(m.source))return fail;
