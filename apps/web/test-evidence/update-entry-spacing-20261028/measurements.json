@@ -1,0 +1,66 @@
+[
+  {
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "beforeHeight": 48,
+    "afterHeight": 80,
+    "clickableHeight": 78,
+    "padding": {
+      "top": "24px",
+      "bottom": "24px"
+    },
+    "keyboardToggle": true,
+    "paddedAreaToggle": true,
+    "noOverflow": true
+  },
+  {
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    },
+    "beforeHeight": 48,
+    "afterHeight": 80,
+    "clickableHeight": 78,
+    "padding": {
+      "top": "24px",
+      "bottom": "24px"
+    },
+    "keyboardToggle": true,
+    "paddedAreaToggle": true,
+    "noOverflow": true
+  },
+  {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "beforeHeight": 58,
+    "afterHeight": 66,
+    "clickableHeight": 64,
+    "padding": {
+      "top": "18px",
+      "bottom": "18px"
+    },
+    "keyboardToggle": true,
+    "paddedAreaToggle": true,
+    "noOverflow": true
+  },
+  {
+    "viewport": {
+      "width": 320,
+      "height": 640
+    },
+    "beforeHeight": 58,
+    "afterHeight": 66,
+    "clickableHeight": 64,
+    "padding": {
+      "top": "18px",
+      "bottom": "18px"
+    },
+    "keyboardToggle": true,
+    "paddedAreaToggle": true,
+    "noOverflow": true
+  }
+]

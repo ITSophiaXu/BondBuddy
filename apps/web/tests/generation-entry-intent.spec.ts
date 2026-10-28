@@ -167,7 +167,7 @@ for(const outcome of ['continue','stop'] as const)test(`generation entry: a part
 
 for(const kind of ['support','template'] as const)for(const outcome of ['continue','stop'] as const)test(`generation entry: original ${kind} upload recovery can ${outcome} without redirecting its scope to the newly clicked type`,async({page})=>{
   const s=await fixture(page),before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);await open(page);await choose(page,kind==='support'?['init','underwriter']:['init']);
-  if(kind==='support'){s.dropDraft='init';await page.locator('#pf-support').setInputFiles(file);}else{s.dropTemplate=true;await page.locator('[data-pf-template="init"]').click();await page.locator('dialog input[name="broker"]').fill('原模板券商');await page.locator('dialog input[type="file"]').setInputFiles(file);await page.locator('dialog form button').click();}
+  if(kind==='support'){s.dropDraft='init';await page.locator('#pf-support').setInputFiles(file);}else{s.dropTemplate=true;await page.locator('[data-pf-template="init"]').click();await page.locator('dialog input[name="broker"]').fill('原模板券商');await page.locator('dialog input[type="file"]').setInputFiles(file);}
   const recovery=page.locator(`#pf-${kind}-recovery [data-generation-resume]`);await expect(recovery).toBeVisible();const originalTemplate=kind==='template'?structuredClone(templateWrites(s)[0].body):undefined;
   const count=writes(s).length;await page.reload();await expect(recovery).toBeVisible();expect(writes(s)).toHaveLength(count);
   await entry(page,'credit');await expect(page.locator('#pf-entry-intent')).toContainText('原');await documents(page);await expect(recovery).toBeVisible();

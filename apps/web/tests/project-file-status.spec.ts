@@ -170,14 +170,14 @@ test.describe('project file status: desktop next-step journeys',()=>{
   test('status changes never alter an unknown upload envelope; confirmed V2 leaves review but keeps a working new/old-version entry',async({page})=>{
     const s=await open(page);s.dropImportOnce=true;await page.locator('[data-file-type="init"]').click();await page.locator('#file-search').fill('立项');await choose(page,'review');
     await row(page).getByRole('button',{name:'上传此文件修改稿',exact:true}).click();const dialog=page.getByRole('dialog',{name:'上传此文件修改稿',exact:true});
-    await dialog.locator('[name=file]').setInputFiles(editedFile);await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(dialog.locator('[role=status]')).toContainText('尚未确认');
+    await dialog.locator('[name=file]').setInputFiles(editedFile);await expect(dialog.locator('[role=status]')).toContainText('尚未确认');
     const first=structuredClone(s.imports[0]),journal=await uploadJournal(page);expect(first.expected_latest_version_id).toBe(ids.version);expect(first.document_type).toBe('init');expect(Object.keys(journal)).toHaveLength(1);
     await dialog.getByRole('button',{name:'关闭',exact:true}).click();await choose(page,'check');await page.locator('[data-file-type="financial"]').click();await page.locator('#file-search').fill('财务');
     await choose(page,'review');await page.locator('[data-file-type="init"]').click();await page.locator('#file-search').fill('立项');expect(await uploadJournal(page)).toEqual(journal);expect(s.imports).toEqual([first]);expect(s.puts).toBe(1);
     const currentHash=await page.evaluate(()=>location.hash);await page.locator('#pw-task-summary a').click();await expect.poll(()=>page.evaluate(()=>location.hash)).toBe(currentHash);
     await expect(page.locator('#file-action-status')).toContainText('保存结果尚未确认');await page.locator('[data-resume-project-file]').click();
     const recovery=page.getByRole('dialog',{name:'上传此文件修改稿',exact:true});await expect(recovery.locator('[name=type]')).toHaveValue('init');await expect(recovery.locator('[name=type]')).toBeDisabled();
-    await recovery.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
+    await recovery.getByRole('button',{name:'重试保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
     expect(s.imports).toEqual([first,first]);expect(s.puts).toBe(1);expect(s.importReceipts.size).toBe(1);expect(await uploadJournal(page)).toEqual({});
     await expect(group(page,'review')).toHaveAttribute('aria-pressed','true');await expect(row(page)).toHaveCount(0);await count(page,'review',0);await count(page,'check',1);
     await page.locator('[data-saved-history]').click();const history=page.getByRole('dialog',{name:'文件版本记录',exact:true});await expect(history).toContainText('V1');await expect(history).toContainText('V2');

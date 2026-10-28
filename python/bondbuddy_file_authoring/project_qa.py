@@ -37,10 +37,25 @@ def prepare(source, output, result):
     if len(snapshot['spans']) > 10000:
         raise ValueError('QA_TOO_MANY_PARAGRAPHS')
     candidates = []
+    # Word list numbering is stored in paragraph/style XML, not in extracted text.
+    numbered_styles = set()
+    if 'word/styles.xml' in parts:
+        styles = etree.fromstring(parts['word/styles.xml'], etree.XMLParser(resolve_entities=False, no_network=True))
+        numbered_styles = {style.get(q('styleId')) for style in styles.findall(q('style'))
+                           if style.find('./' + q('pPr') + '/' + q('numPr')) is not None}
+    paragraphs = list(root.iter(q('p')))
     for i, span in enumerate(snapshot['spans']):
         text = span['text'].strip()
+        if text.startswith('【待补充：原 PDF 第') and '无法提取文字' in text:
+            continue
+        node = paragraphs[i] if i < len(paragraphs) else None
+        style = node.find('./' + q('pPr') + '/' + q('pStyle')) if node is not None else None
+        style_id = style.get(q('val'), '') if style is not None else ''
+        numbered = node is not None and (node.find('./' + q('pPr') + '/' + q('numPr')) is not None or style_id in numbered_styles)
+        numbered = numbered and not re.search(r'heading|title|标题', style_id, re.I) and len(text) > 4
         if text and (re.match(r'^(?:问题\s*[一二三四五六七八九十百\d]+|[一二三四五六七八九十百\d]+[、.．）)]|[（(][一二三四五六七八九十百\d]+[)）])', text)
-                     or re.match(r'^(?:请|是否|如何|为什么|为何)', text) or text.endswith(('？', '?'))):
+                     or re.match(r'^(?:请|是否|如何|为什么|为何)', text) or text.endswith(('？', '?')) or numbered
+                     or re.search(r'(?:请|应|需)(?:补充|说明|披露|核实|核查|提供|解释)', text)):
             candidates.append(i)
     # One anchor per paragraph: surrounding headings and evidence remain in the original file.
     questions = [dict(id='q' + str(i), start=i, end=i, question=snapshot['spans'][i]['text'].strip())

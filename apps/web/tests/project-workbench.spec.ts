@@ -62,7 +62,7 @@ test('workbench uses the real source without preparing a workspace; optional tas
   expect(state.calls.some(c=>c.path===`/projects/${root}/prospectus-versions`)).toBe(false);
   expect(state.calls.filter(c=>c.method!=='GET')).toEqual([]);
   const business=page.getByRole('navigation',{name:'本项目业务'});
-  for(const section of ['update','review','generate','integrity','qa'])await expect(business.locator(`a[href^="#${section}?"]`)).toHaveAttribute('href',new RegExp(`project=${root}&return_project=${root}`));
+  for(const section of ['update','review','generate','integrity','qa'])await expect(business.locator(`a[href^="#${section}?"]`).first()).toHaveAttribute('href',new RegExp(`project=${root}&return_project=${root}`));
   await expect(page.locator('.pw-prepare')).not.toHaveAttribute('open');
   await expect(page.locator('.pw-prepare .collection-file').first()).toBeHidden();
   const issuer=page.locator('#file-list>.collection-file').filter({hasText:'发行人基本情况.docx'});
@@ -141,10 +141,10 @@ test('an uncertain import retries the same pin and compare-and-set without anoth
   await page.getByRole('button',{name:'上传关联文件',exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.locator('[name=type]').selectOption('issuer');
   await dialog.locator('input[type=file]').setInputFiles({name:'新版发行人情况.docx',mimeType:mime,buffer:bytes});
-  await dialog.getByRole('button',{name:'保存项目文件'}).click();
+
   await expect(dialog.locator('[role=status]')).toContainText('尚未确认');
   expect(state.imports).toHaveLength(1);expect(state.uploadRequests).toBe(1);
-  state.importStatus=409;await dialog.getByRole('button',{name:'保存项目文件'}).click();
+  state.importStatus=409;await dialog.getByRole('button',{name:'重试保存项目文件'}).click();
   await expect(dialog.locator('[role=status]')).toContainText('其他页面修改');
   expect(state.imports).toHaveLength(2);expect(state.imports[1]).toEqual(state.imports[0]);
   expect(state.imports[1].expected_latest_version_id).toBe('issuer-v1');expect(state.uploadRequests).toBe(1);
@@ -159,7 +159,7 @@ for(const status of [503,408,429])test(`uncertain import ${status} survives clos
   await page.getByRole('button',{name:'上传关联文件',exact:true}).click();
   let dialog=page.getByRole('dialog');await dialog.locator('[name=type]').selectOption('issuer');
   await dialog.locator('[name=file]').setInputFiles({name:'待确认关联文件.docx',mimeType:mime,buffer:bytes});
-  await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();
+
   await expect(dialog.locator('[role=status]')).toContainText('保存结果尚未确认');
   await expect(dialog.locator('[name=file]')).toBeDisabled();
   const envelope=structuredClone(state.imports[0]);
@@ -172,7 +172,7 @@ for(const status of [503,408,429])test(`uncertain import ${status} survives clos
   await page.getByRole('button',{name:'继续确认关联文件',exact:true}).click();dialog=page.getByRole('dialog');
   await expect(dialog.locator('[name=type]')).toHaveValue('issuer');
   expect(await dialog.locator('[name=file]').evaluate(input=>(input as HTMLInputElement).files?.[0]?.name)).toBe('待确认关联文件.docx');
-  state.importStatus=200;await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();
+  state.importStatus=200;await dialog.getByRole('button',{name:'重试保存项目文件',exact:true}).click();
   await expect(dialog).not.toBeVisible();
   expect(state.imports).toHaveLength(2);expect(state.imports[1]).toEqual(envelope);expect(state.uploadRequests).toBe(1);
   await expect(page.locator('#pw-import-recovery')).toBeEmpty();
@@ -184,13 +184,13 @@ for(const missingReceipt of ['complete','put'] as const)test(`import reconciles 
   await page.getByRole('button',{name:'上传关联文件',exact:true}).click();
   let dialog=page.getByRole('dialog');await dialog.locator('[name=type]').selectOption('issuer');
   await dialog.locator('[name=file]').setInputFiles({name:'上传回执丢失.docx',mimeType:mime,buffer:bytes});
-  await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();
+
   await expect(dialog.locator('[role=status]')).toContainText('保存结果尚未确认');
   expect(state.uploadRequests).toBe(1);expect(state.putRequests).toBe(1);expect(state.imports).toHaveLength(0);
   expect(state.completeRequests).toBe(missingReceipt==='complete'?1:0);expect(state.completed).toBe(missingReceipt==='complete');
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
   await page.getByRole('button',{name:'继续确认关联文件',exact:true}).click();dialog=page.getByRole('dialog');
-  await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();
+  await dialog.getByRole('button',{name:'重试保存项目文件',exact:true}).click();
   await expect(dialog).not.toBeVisible();
   expect(state.uploadRequests).toBe(1);expect(state.putRequests).toBe(1);expect(state.completeRequests).toBe(missingReceipt==='complete'?2:1);
   expect(state.imports).toHaveLength(1);expect(state.completed).toBe(true);
@@ -201,7 +201,7 @@ test('navigation and closing are guarded while a file upload is in progress',asy
   const state=await setup(page);let release!:()=>void;state.holdUpload=new Promise<void>(resolve=>{release=resolve;});
   await page.getByRole('button',{name:'上传关联文件',exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.locator('[name=type]').selectOption('init');await dialog.locator('input[type=file]').setInputFiles({name:'已有文件.docx',mimeType:mime,buffer:bytes});
-  await dialog.getByRole('button',{name:'保存项目文件'}).click();await expect.poll(()=>state.uploadRequests).toBe(1);
+  await expect.poll(()=>state.uploadRequests).toBe(1);
   await page.evaluate(()=>{location.hash='tasks';});
   await expect(page).toHaveURL(new RegExp(`#/projects/${root}/files$`));
   await expect(dialog.locator('[role=status]')).toContainText('等待本次操作确认后再离开');

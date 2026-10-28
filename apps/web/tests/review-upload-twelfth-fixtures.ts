@@ -112,5 +112,5 @@ export const recovery = (page: Page, filename = file.name) => page.locator('[dat
 export async function records(page: Page) { return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('bb-review-upload-v1:')).map(key => ({ key, raw: localStorage.getItem(key)!, value: JSON.parse(localStorage.getItem(key)!) }))); }
 export async function selectEvidence(page: Page, selectedFile: typeof file | typeof file[] = file) {
   await page.locator('#review-tab-results').click(); const finding = page.locator(`[data-finding-id="${ids.finding}"]`); await finding.locator('summary').click(); await finding.locator('[data-review-action=evidence]').click();
-  await expect(page.getByRole('dialog', { name: '为此问题补充材料' })).toBeVisible(); await page.locator('#review-upload-role').selectOption('other'); await page.locator('#review-upload-file').setInputFiles(selectedFile); await page.getByRole('dialog').getByRole('button', { name: '上传并保存', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '为此问题补充材料' })).toBeVisible(); await page.locator('#review-upload-role').selectOption('other'); await page.locator('#review-upload-file').setInputFiles(selectedFile);
 }

@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-28",
+  "base": "859e7ada",
+  "status": "development-tested-not-deployed",
+  "browser": {
+    "distinct_tests_passed": 43,
+    "groups": [
+      {
+        "passed": 17,
+        "source": "prospectus-panel and initial native reentry cases"
+      },
+      {
+        "passed": 16,
+        "source": "remaining reentry and selection cases"
+      },
+      {
+        "passed": 8,
+        "source": "adoption callback and file/template/support recovery"
+      },
+      {
+        "passed": 2,
+        "source": "original prospectus upload recovery after entry-label correction"
+      }
+    ],
+    "note": "Passed across targeted runs; earlier fixture/navigation/text/cwd failures were repaired and affected cases rerun. No claim that every initial invocation passed."
+  },
+  "api": {
+    "passed": 8,
+    "postgres": "16-alpine",
+    "storage": "Azurite 3.35.0",
+    "update_chain": "actual upload/delete/CAS/input lock plus synthetic Word delivery, no model"
+  },
+  "contracts": {
+    "tests_passed": 49,
+    "public_examples": 171,
+    "internal_library_examples": 12,
+    "lifecycle_examples": 4
+  },
+  "builds": [
+    "contracts",
+    "domain",
+    "rule-pack-registry",
+    "rule-applicability-context",
+    "api",
+    "worker",
+    "web TypeScript",
+    "Vite"
+  ],
+  "migrations": [],
+  "dependencies": [],
+  "screenshots": {
+    "viewports": [
+      1440,
+      390
+    ],
+    "states": [
+      "empty",
+      "saved"
+    ],
+    "source": "synthetic"
+  },
+  "limits": [
+    "Browser HTTP fixtures; no browser-to-real-API integrated acceptance in this chat",
+    "Real API/database/storage tests use isolated local services and synthetic content",
+    "No real model, production mutation or user acceptance"
+  ]
+}

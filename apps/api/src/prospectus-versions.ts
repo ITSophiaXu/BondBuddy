@@ -4,10 +4,37 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { schemas, type ProspectusVersions } from '@bondbuddy/contracts';
 import { project, transaction, uid, digest, conflict, missing, Problem, date, readBlobToFile, type PrivateBlobs } from './data.js';
 
+// Used both for the displayed action and the locked deletion check. Material IDs
+// are owner-unique; inspect nested pins too (M4 and file operations are cross-project).
+const deletionReason = `CASE
+  WHEN v.origin='generated' THEN 'generated'
+  WHEN EXISTS(SELECT 1 FROM bb_prospectus_selection s WHERE s.owner_user_id=v.owner_user_id AND s.version_id=v.id) THEN 'current'
+  WHEN EXISTS(SELECT 1 FROM bb_input_revisions i WHERE i.owner_user_id=v.owner_user_id AND (
+    i.material_versions @> jsonb_build_array(jsonb_build_object('material_id',v.material_id)) OR
+    jsonb_path_exists(i.manifest,'$.**.material_id ? (@ == $material)',jsonb_build_object('material',v.material_id))))
+    OR EXISTS(SELECT 1 FROM bb_project_file_versions f WHERE f.owner_user_id=v.owner_user_id AND
+      (f.source_version_id=v.id OR f.asset#>>'{pin,material_id}'=v.material_id))
+    OR EXISTS(SELECT 1 FROM bb_workpaper_batches b WHERE b.owner_user_id=v.owner_user_id AND b.source->>'version_id'=v.id)
+    OR EXISTS(SELECT 1 FROM bb_review_drafts d WHERE d.owner_user_id=v.owner_user_id AND
+      jsonb_path_exists(d.input,'$.**.material_id ? (@ == $material)',jsonb_build_object('material',v.material_id)))
+  THEN 'used' ELSE NULL END`;
+
+/** Caller holds the project lock, shared with selection and input creation. */
+export async function assertProspectusRemovable(c:PoolClient,owner:string,id:string,materialId:string) {
+  const rows=(await c.query(`SELECT ${deletionReason} AS reason FROM bb_prospectus_versions v
+    WHERE v.owner_user_id=$1 AND v.project_id=$2 AND v.material_id=$3`,[owner,id,materialId])).rows;
+  if(rows.some(v=>v.reason==='current'))throw conflict('INPUT_REVISION_CONFLICT','此文件正在使用，请先选择其他参考稿。');
+  if(rows.some(v=>v.reason))throw conflict('INPUT_REVISION_CONFLICT','此文件已被任务或关联文件使用，需保留原始依据。');
+  return rows.length>0;
+}
+
 export async function prospectusVersions(db: Pool | PoolClient, owner: string, id: string): Promise<ProspectusVersions> {
-  await project(db, owner, id);
+  const p=await project(db, owner, id);
   const selection = (await db.query('SELECT * FROM bb_prospectus_selection WHERE owner_user_id=$1 AND project_id=$2', [owner,id])).rows[0];
-  const versions = (await db.query('SELECT * FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY sequence DESC', [owner,id])).rows;
+  const versions = (await db.query(`SELECT v.*,${deletionReason} AS delete_block_reason FROM bb_prospectus_versions v
+    WHERE v.owner_user_id=$1 AND v.project_id=$2 AND (v.material_id IS NULL OR EXISTS(
+      SELECT 1 FROM bb_material_versions m WHERE m.owner_user_id=v.owner_user_id AND m.id=v.material_id
+        AND m.version=v.material_version AND m.deleted_at IS NULL)) ORDER BY v.sequence DESC`, [owner,id])).rows;
   const current=versions.find(v=>v.id===selection?.version_id);
   let active=current?.material_id?[current.material_id]:[];
   if(current?.run_id){
@@ -15,9 +42,9 @@ export async function prospectusVersions(db: Pool | PoolClient, owner: string, i
     active=(manifest?.materials??[]).filter((m:any)=>m.role==='historical').map((m:any)=>m.material_id);
   }
   return { project_id:id, current_version_id:selection?.version_id ?? null, selection_revision:selection?.revision ?? 0,
-    inactive_material_ids:current?versions.filter(v=>v.material_id&&!active.includes(v.material_id)).map(v=>v.material_id):[],
+    inactive_material_ids:current||p.kind==='update'&&p.update_details?.authoring_mode==='unified_v1'?versions.filter(v=>v.material_id&&!active.includes(v.material_id)).map(v=>v.material_id):[],
     versions:versions.map(v => ({version_id:v.id,sequence:v.sequence,origin:v.origin,filename:v.filename,sha256:v.sha256.trim(),created_at:date(v.created_at),
-      material_id:v.material_id,material_version:v.material_version,artifact_id:v.artifact_id,artifact_version:v.artifact_version,revision_artifact_id:v.revision_artifact_id,run_id:v.run_id})) };
+      material_id:v.material_id,material_version:v.material_version,artifact_id:v.artifact_id,artifact_version:v.artifact_version,revision_artifact_id:v.revision_artifact_id,run_id:v.run_id,delete_block_reason:v.delete_block_reason})) };
 }
 
 export async function changed(c:PoolClient, owner:string, id:string, versionId:string) {

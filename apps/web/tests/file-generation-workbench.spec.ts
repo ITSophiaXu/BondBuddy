@@ -197,9 +197,9 @@ for(const mode of ['first','retry','replacement'] as const)test(`uploaded templa
   if(mode==='retry')s.failDraft='issuer';
   await open(page);await choose(page,['issuer']);await page.locator('[data-pf-template="issuer"]').click();
   await page.locator('#pf-template-form input[type=file]').setInputFiles({name:'首次模板.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic template bytes')});
-  await page.getByRole('button',{name:'保存并用于本次生成',exact:true}).click();
+
   if(mode==='retry'){
-    await expect(page.locator('#pf-modal-status')).not.toHaveText('正在保存…');
+    await expect(page.locator('#pf-template-form button')).toBeVisible();
     await page.locator('dialog [data-close]').click();await page.locator('[data-generation-resume]').click();
   }
   await expect(page.locator('#pf-generate')).toBeEnabled();await expect(page.locator('#pf-template-list')).toContainText('首次模板.docx');

@@ -41,29 +41,20 @@ test.describe('desktop file daily workflow journeys',()=>{
   test.skip(reference,'The exact R31 component is used only for its explicit comparison.');
   test.use({viewport:{width:1440,height:960}});
 
-  test('a non-init leaf presets the top upload; changing the type keeps the same File and saves only the real selected family with its CAS',async({page})=>{
+  test('a non-init leaf presets the type, and choosing a file immediately saves the selected family',async({page})=>{
     const s=await open(page),oldFinancial=latest(s,'financial').version_id,oldInit=latest(s,'init').version_id;
     await page.locator('[data-file-type="issuer"]').click();const d=await topUpload(page),type=d.locator('[name=type]'),file=d.locator('[name=file]');
-    await expect(type).toHaveValue('issuer');await expect(type).toBeEnabled();await file.setInputFiles(editedFile);
-    await file.evaluate(e=>{(window as unknown as {desktopChosenFile?:File}).desktopChosenFile=(e as HTMLInputElement).files![0];});
-    await type.selectOption('financial');expect(await file.evaluate(e=>(e as HTMLInputElement).files![0]===(window as unknown as {desktopChosenFile?:File}).desktopChosenFile)).toBe(true);
-    await d.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(d).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('V2');
+    await expect(type).toHaveValue('issuer');await expect(type).toBeEnabled();await type.selectOption('financial');await file.setInputFiles(editedFile);
+    await expect(d).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('V2');
     await assertUploaded(s,'financial',oldFinancial,oldInit);expect(await uploadJournal(page)).toEqual({});
   });
-
-  test('without a selected document type native validation and an explicit synthetic submit both stop before upload; the same File can then be saved after selection',async({page})=>{
+  test('choose the document type before the file; file choice then automatically saves once',async({page})=>{
     const s=await open(page),oldIssuer=latest(s,'issuer').version_id,oldInit=latest(s,'init').version_id;
     await page.locator('[data-folder="4.1"]').click();const d=await topUpload(page),type=d.locator('[name=type]'),file=d.locator('[name=file]');
-    await expect(type).toHaveValue('');await expect(type).toHaveAttribute('required','');await file.setInputFiles(editedFile);
-    await file.evaluate(e=>{(window as unknown as {desktopBlankTypeFile?:File}).desktopBlankTypeFile=(e as HTMLInputElement).files![0];});
-    expect(await type.evaluate(e=>(e as HTMLSelectElement).checkValidity())).toBe(false);
-    await d.getByRole('button',{name:'保存项目文件',exact:true}).click();expect(s.sessions.size).toBe(0);expect(s.imports).toEqual([]);expect(await uploadJournal(page)).toEqual({});
+    await expect(type).toHaveValue('');await expect(file).toBeDisabled();await expect(d.locator('form button')).toBeHidden();
     await d.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
-    await expect(d.locator('[role=status]')).toContainText('请选择有效的文件类型');await expect(type).toBeFocused();expect(s.sessions.size).toBe(0);expect(s.puts).toBe(0);expect(s.imports).toEqual([]);
-    await expect(page.locator('[data-resume-project-file]')).toHaveCount(0);expect(await uploadJournal(page)).toEqual({});
-    expect(await file.evaluate(e=>(e as HTMLInputElement).files![0]===(window as unknown as {desktopBlankTypeFile?:File}).desktopBlankTypeFile)).toBe(true);
-    expect(await file.evaluate(e=>(e as HTMLInputElement).files![0].name)).toBe(editedFile.name);
-    await type.selectOption('issuer');await d.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(d).toHaveCount(0);
+    await expect(d.locator('[role=status]')).toContainText('请选择有效的文件类型');expect(s.sessions.size).toBe(0);expect(s.imports).toEqual([]);
+    await type.selectOption('issuer');await expect(file).toBeEnabled();await file.setInputFiles(editedFile);await expect(d).toHaveCount(0);
     await assertUploaded(s,'issuer',oldIssuer,oldInit);expect(await uploadJournal(page)).toEqual({});
   });
 
@@ -72,14 +63,14 @@ test.describe('desktop file daily workflow journeys',()=>{
     await expanded(page,4);await page.locator('[data-file-type="issuer"]').click();
     await page.locator('[data-file-family="'+original.file_id+'"]').getByRole('button',{name:'上传此文件修改稿',exact:true}).click();
     const d=modifiedDialog(page);await expect(d.locator('[name=type]')).toHaveValue('issuer');await expect(d.locator('[name=type]')).toBeDisabled();
-    await d.locator('[name=file]').setInputFiles(editedFile);await d.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(d.locator('[role=status]')).toContainText('尚未确认');
+    await d.locator('[name=file]').setInputFiles(editedFile);await expect(d.locator('[role=status]')).toContainText('尚未确认');
     const first=structuredClone(s.imports[0]),journal=await uploadJournal(page);expect(first.expected_latest_version_id).toBe(original.version_id);
     await d.getByRole('button',{name:'关闭',exact:true}).click();await page.locator('[data-file-type="financial"]').click();
     const route=await page.evaluate(()=>location.hash);await taskRow(page,ids.originalRun).getByRole('link').click();await expect.poll(()=>page.evaluate(()=>location.hash)).toBe(route);
     await expect(page.locator('#file-action-status')).toContainText('保存结果尚未确认');await expect(tasks(page)).toHaveCount(4);
     await page.locator('#logout').click();expect(s.authPosts).toEqual([]);expect(s.imports).toEqual([first]);expect(await uploadJournal(page)).toEqual(journal);
     await page.locator('[data-resume-project-file]').click();const recovery=modifiedDialog(page);await expect(recovery.locator('[name=type]')).toHaveValue('issuer');await expect(recovery.locator('[name=type]')).toBeDisabled();
-    await recovery.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);
+    await recovery.getByRole('button',{name:'重试保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);
     expect(s.imports).toEqual([first,first]);expect(s.puts).toBe(1);expect(s.importReceipts.size).toBe(1);expect(latest(s,'issuer').sequence).toBe(2);expect(await uploadJournal(page)).toEqual({});noExecution(s);
   });
 

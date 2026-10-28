@@ -42,3 +42,57 @@ test('workpaper task projection distinguishes inspections; exact historical read
     assert.equal((await pool.query('SELECT state FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[originalOwner,oldest])).rows[0].state,'paused');
   }finally{await app.close();await pool.end();}
 });
+
+test('batch tasks project immutable attempt membership to both collection endpoints with owner/source isolation',{skip:!connection},async()=>{
+  const pool=new Pool({connectionString:connection});let owner='batch-routing-'+randomUUID();const originalOwner=owner;
+  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
+  const send=(method:'GET'|'POST',url:string,payload?:any)=>app.inject({method,url,payload,headers:{origin:'http://bondbuddy.test'}});
+  const ok=async(method:'GET'|'POST',url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.json();};
+  const hash='b'.repeat(64);
+  try{
+    const newProject=async()=>ok('POST','/api/v1/projects',{name:'Synthetic batch project',kind:'generation',issuer_name:'Synthetic issuer',market:'sse',offering:'private'});
+    const p=await newProject(),other=await newProject(),project=p.project_id;
+    const topic=(await ok('POST','/api/v1/m4/topics',{creation_request_id:randomUUID(),name:'Synthetic batch files',source_project_id:project})).topic;
+    const source={project_id:project,version_id:'synthetic-source',selection_revision:1,sequence:1,filename:'合成募集书.docx',asset:{kind:'material',pin:{source_project_id:project,material_id:'synthetic-material',material_version:1,sha256:hash}}};
+    const catalogue=randomUUID(),entry={id:'item',code:'1.1',title:'合成底稿',folder:'1 尽职调查文件',kind:'file',sheet:'目录',row:2,instructions:'',path:'1.1 合成底稿.docx'};
+    await pool.query("INSERT INTO bb_workpaper_catalogues(id,owner_user_id,project_id,request_id,request_hash,material,filename,entries,warnings,sha256) VALUES($1,$2,$3,$1,$4,'{}','synthetic.xlsx',$5,'[]',$4)",[catalogue,owner,project,hash,JSON.stringify([entry])]);
+    const addBatch=async(sourceProject=project)=>{
+      const id=randomUUID();
+      await pool.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,start_mode) VALUES($1,$2,$3,$4,$5,$1,$6,$7,'running',0,'synthetic','direct')",[id,owner,sourceProject,topic.topic_id,catalogue,hash,source]);
+      await pool.query('INSERT INTO bb_workpaper_items(owner_user_id,batch_id,item_id,ordinal,manifest) VALUES($1,$2,\'item\',1,$3)',[owner,id,{input:{document_type:'workpaper',workpaper:{entry,mode:'direct'}}}]);return id;
+    };
+    await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[topic.project_id,owner,hash]);
+    const addRun=async(state='failed',documentType='workpaper')=>{
+      const id=randomUUID();
+      await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'generation',$4,$5)",[id,owner,topic.project_id,hash,state]);
+      await pool.query('INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)',[id,owner,topic.topic_id,{input:{document_type:documentType}},hash]);return id;
+    };
+    const attempt=async(batch:string,run:string,n=1)=>pool.query('INSERT INTO bb_workpaper_attempts(owner_user_id,batch_id,item_id,attempt,run_id) VALUES($1,$2,\'item\',$3,$4)',[owner,batch,n,run]);
+    const batch=await addBatch(),oldRun=await addRun(),retry=await addRun('running');
+    await attempt(batch,oldRun);await attempt(batch,retry,2);
+    await pool.query("UPDATE bb_workpaper_items SET run_id=$1,attempt=2,state='running' WHERE batch_id=$2",[retry,batch]);
+    const ordinary=await addRun('failed','issuer');
+    // Even inconsistent historical associations must not expose another source project.
+    const unrelatedBatch=await addBatch(other.project_id),unrelatedRun=await addRun();await attempt(unrelatedBatch,unrelatedRun);
+    const tasks=await ok('GET',`/api/v1/projects/${project}/tasks?limit=50`);
+    for(const run of [oldRun,retry]){
+      const task=tasks.items.find((t:any)=>t.run_id===run);
+      assert.equal(task.project_id,topic.project_id,'execution identity is retained');
+      assert.deepEqual(task.workpaper_batch,{batch_id:batch,project_id:project});
+    }
+    for(const run of [ordinary,unrelatedRun])assert.equal(tasks.items.find((t:any)=>t.run_id===run).workpaper_batch,undefined);
+    assert.equal(tasks.items.length,4,'attempt joins do not duplicate tasks');
+    const summary=(await ok('GET','/api/v1/projects')).items.find((item:any)=>item.project_id===project).task_summary;
+    assert.equal(summary.latest.run_id,retry);assert.deepEqual(summary.latest.workpaper_batch,{batch_id:batch,project_id:project});
+    const exact=await ok('GET',`/api/v1/projects/${project}/workpapers/batches/${batch}`);
+    assert.equal(exact.items[0].run_id,retry);assert.equal(exact.items[0].attempt,2);
+    assert.equal((await send('GET',`/api/v1/projects/${other.project_id}/workpapers/batches/${batch}`)).statusCode,404);
+    assert.equal((await send('GET',`/api/v1/projects/${project}/workpapers/batches/absent`)).statusCode,404);
+    assert.deepEqual((await ok('GET',`/api/v1/projects/${other.project_id}/tasks`)).items,[]);
+    owner='foreign-'+randomUUID();
+    assert.equal((await send('GET',`/api/v1/projects/${project}/workpapers/batches/${batch}`)).statusCode,404);
+    assert.equal((await send('GET',`/api/v1/projects/${project}/tasks`)).statusCode,404);
+    assert.deepEqual((await ok('GET','/api/v1/projects')).items,[]);
+    assert.equal((await pool.query('SELECT state FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[originalOwner,retry])).rows[0].state,'running');
+  }finally{await app.close();await pool.end();}
+});

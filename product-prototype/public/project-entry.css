@@ -78,10 +78,22 @@ body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
 .project-entry-page .project-picker-footer > .btn { flex-shrink: 0; min-height: 44px; }
 .project-entry-page .project-picker-footer > .btn.primary:not(:disabled) { background: #193f34; color: white; opacity: 1; }
 /* Preserve the new-project-first entry. Expanding existing projects gives the list the available space. */
-.project-entry-update > details { flex-shrink: 0; padding-bottom: 22px; }
-.project-entry-update > details[open] { flex: 1; min-height: 0; padding-bottom: 0; display: flex; flex-direction: column; }
+.project-entry-update > details.update-entry-existing { flex-shrink: 0; padding: 0 24px; }
+.project-entry-update > details[open] { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .project-entry-update > details[open]::details-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.project-entry-update > details > summary { flex-shrink: 0; }
+/* Put the spacing on the summary so the entire padded row toggles the picker. */
+.project-entry-update > details > summary {
+  flex-shrink: 0;
+  min-height: 76px;
+  margin: 0 -24px;
+  padding: 24px;
+  border-radius: 13px;
+  line-height: 28px;
+  list-style-position: inside;
+}
+.project-entry-update > details > summary:hover { background: #f1f5eb; }
+.project-entry-update > details > summary:focus-visible { outline: 2px solid #729747; outline-offset: -4px; }
+.project-entry-update > details .project-picker form { margin-top: 0; }
 .project-entry-update:has(details[open]) .update-entry-primary { padding: 14px 20px; margin-bottom: 16px; gap: 16px; align-items: center; flex-shrink: 0; }
 .project-entry-update:has(details[open]) .update-entry-primary > div:last-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
 .project-entry-update:has(details[open]) .update-entry-primary h2 { font-size: 16px; margin: 0; }
@@ -109,7 +121,8 @@ body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
   .project-entry-page .update-prospectus-badge { justify-self: start; margin: 0; font-size: 11px; }
   .project-entry-page .project-picker-footer { margin: 0 -16px; padding: 12px 16px; gap: 10px; align-items: stretch; flex-direction: column; }
   .project-entry-page .project-picker-selection > span { display: none; }
-  .project-entry-update > details:not([open]) { padding-bottom: 16px; }
+  .project-entry-update > details.update-entry-existing { padding: 0 16px; }
+  .project-entry-update > details > summary { min-height: 64px; margin: 0 -16px; padding: 18px 16px; }
   .project-entry-update:has(details[open]) .update-entry-primary { padding: 12px; margin-bottom: 12px; }
   .project-entry-update:has(details[open]) .update-entry-icon { display: none; }
   .project-entry-update:has(details[open]) .update-entry-primary h2 { font-size: 14px; }

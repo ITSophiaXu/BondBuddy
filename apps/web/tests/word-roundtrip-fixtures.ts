@@ -117,6 +117,7 @@ export async function install(page:Page,s=fixture()){
     if(path===`/projects/${ids.root}`)return json(route,200,s.rootProject);
     if(path===`/projects/${ids.execution}`)return json(route,200,s.executionProject);
     const base=`/projects/${ids.root}`;
+    if(path===base+'/workpapers/library'&&method==='GET')return json(route,200,{items:[],total:0,offset:0,limit:60,source:s.source,checks:[]});
     if(path===base+'/tasks')return json(route,200,{project_id:ids.root,items:[],page:{has_more:false,next_cursor:null}});
     if(path===base+'/files'){s.readFiles++;return s.filesFailure?failure(route,503):json(route,200,collection(s));}
     if(path===base+'/project-files'&&method==='GET')return s.options.registryFailure?failure(route,503):json(route,200,{files:s.registry});

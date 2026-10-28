@@ -1,5 +1,5 @@
 import {Type,type Static} from '@sinclair/typebox';
-import {ProjectFileAssetSchema,ProjectFileTextSchema} from './project-file-workspace.js';
+import {ProjectFileAssetSchema,ProjectFileSourceSchema,ProjectFileTextSchema,type ProjectFileAsset,type ProjectFileSource} from './project-file-workspace.js';
 
 export const PROJECT_QA_PRICE={points:60,version:'project-qa-question-60-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
@@ -16,16 +16,28 @@ export type QaAnswer=Static<typeof QaAnswerSchema>;
 export const QaAssetSchema=obj({filename:short,asset:ProjectFileAssetSchema});
 export const QaDraftSchema=obj({preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(ProjectFileAssetSchema,{maxItems:50}),requirements:text,use_knowledge:Type.Boolean()});
 export type QaDraft=Static<typeof QaDraftSchema>;
-export const QaInputSchema=obj({version:Type.Literal('project-qa-v1'),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),project_name:short,source:QaAssetSchema,preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(QaAssetSchema,{maxItems:50}),requirements:text,cases:Type.Array(QaCaseSchema,{maxItems:40}),price_version:Type.Literal(PROJECT_QA_PRICE.version),points:Type.Integer({minimum:0,maximum:12000})});
+export const QaInputSchema=obj({version:Type.Literal('project-qa-v1'),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),project_name:short,source:QaAssetSchema,prospectus:Type.Optional(ProjectFileSourceSchema),preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(QaAssetSchema,{maxItems:50}),requirements:text,cases:Type.Array(QaCaseSchema,{maxItems:40}),price_version:Type.Literal(PROJECT_QA_PRICE.version),points:Type.Integer({minimum:0,maximum:12000})});
 export type QaInput=Static<typeof QaInputSchema>;
 export const QaDocumentSchema=obj({key:Type.String({maxLength:4096}),sha256:hash,byte_size:Type.Integer({minimum:1,maximum:104857600})});
 export const QaEvidenceTextSchema=obj({...ProjectFileTextSchema.properties,format:Type.Union(['docx','pdf','doc','xlsx','unreadable'].map(x=>Type.Literal(x)))});
 export const QaResultSchema=obj({version:Type.Literal('project-qa-result-v1'),input_hash:hash,document:QaDocumentSchema,snapshot:ProjectFileTextSchema,questions:Type.Array(QaQuestionSchema,{maxItems:200}),answers:Type.Array(QaAnswerSchema,{maxItems:200}),warnings:Type.Array(text,{maxItems:300}),evidence:Type.Array(obj({filename:short,snapshot:QaEvidenceTextSchema}),{maxItems:50})});
 export type QaResult=Static<typeof QaResultSchema>;
-export const QaRunSchema=obj({run_id:id,sequence:Type.Integer({minimum:1}),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),state:short,stage:nullable(short),created_at:short,manifest:QaInputSchema,result:nullable(QaResultSchema),artifact_id:nullable(id),reserved_points:Type.Integer({minimum:0}),charged_points:Type.Integer({minimum:0})});
+export const QaRunSchema=obj({run_id:id,sequence:Type.Integer({minimum:1}),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),state:short,stage:nullable(short),error_code:Type.Optional(nullable(short)),created_at:short,manifest:QaInputSchema,result:nullable(QaResultSchema),artifact_id:nullable(id),reserved_points:Type.Integer({minimum:0}),charged_points:Type.Integer({minimum:0})});
 export type QaRun=Static<typeof QaRunSchema>;
-export const QaWorkspaceSchema=obj({draft:QaDraftSchema,revision:Type.Integer({minimum:0}),runs:Type.Array(QaRunSchema),materials:Type.Array(QaAssetSchema),price:obj({points:Type.Literal(60),version:Type.Literal(PROJECT_QA_PRICE.version)})});
+export const QaWorkspaceSchema=obj({draft:QaDraftSchema,revision:Type.Integer({minimum:0}),runs:Type.Array(QaRunSchema),materials:Type.Array(QaAssetSchema),prospectus:Type.Optional(nullable(ProjectFileSourceSchema)),price:obj({points:Type.Literal(60),version:Type.Literal(PROJECT_QA_PRICE.version)})});
 export type QaWorkspace=Static<typeof QaWorkspaceSchema>;
+/** Old snapshots remain readable; every new answer must pin the adopted project prospectus. */
+export function qaSameAsset(a:ProjectFileAsset,b:ProjectFileAsset):boolean {
+ return a.kind===b.kind&&a.pin.source_project_id===b.pin.source_project_id&&a.pin.sha256===b.pin.sha256&&
+  (a.kind==='material'&&b.kind==='material'?a.pin.material_id===b.pin.material_id&&a.pin.material_version===b.pin.material_version:
+   a.kind==='artifact'&&b.kind==='artifact'&&a.pin.artifact_id===b.pin.artifact_id&&a.pin.artifact_version===b.pin.artifact_version);
+}
+export function qaProspectusIssue(prospectus:ProjectFileSource|null|undefined,materials:ProjectFileAsset[],questionSource?:ProjectFileAsset):string|null {
+ if(!prospectus)return '请先上传并采用本项目的募集说明书，再开始回答。问题清单已保留。';
+ if(questionSource&&qaSameAsset(prospectus.asset,questionSource))return '问题清单不能同时作为募集说明书，请核对本项目的募集说明书。';
+ if(!materials.some(a=>qaSameAsset(a,prospectus.asset)))return '本轮尚未选入项目当前募集说明书。请核对版本并用于本轮回答。';
+ return null;
+}
 export const qaSchemas={QaWorkspaceResponse:QaWorkspaceSchema,QaRunResponse:obj({run_id:id}),QaQuery:obj({run_id:Type.Optional(id)}),
  QaPrepareRequest:obj({request_id:id,source:ProjectFileAssetSchema}),
  QaDraftRequest:obj({expected_revision:Type.Integer({minimum:0}),draft:QaDraftSchema}),

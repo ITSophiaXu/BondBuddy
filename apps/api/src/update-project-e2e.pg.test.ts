@@ -82,7 +82,31 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     }
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[user])).rows[0].n,0,'uploads and workspace selection never run AI');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[user])).rows[0].n,0,'uploads never charge');
-    assert.equal((await send('DELETE',`${path}/materials/${first.material_id}`)).statusCode,409,'version originals cannot be removed from history');
+    // Only unused uploads can be removed; the immutable version row keeps sequence numbers stable.
+    const beforeDelete=await ok('GET',path);
+    assert.equal((await send('DELETE',`${path}/materials/${second.material_id}`)).statusCode,409,'current source is protected');
+    assert.equal((await send('DELETE',`${path}/materials/${first.material_id}`)).statusCode,204);
+    assert.equal((await send('DELETE',`${path}/materials/${first.material_id}`)).statusCode,204,'repeat deletion is idempotent');
+    assert.equal((await ok('GET',path)).draft_revision,beforeDelete.draft_revision+1);
+    assert.equal((await ok('GET',vpath)).versions.length,1);
+    assert.equal((await send('GET',`${path}/materials/${first.material_id}/download`)).statusCode,404);
+    assert.equal((await send('POST',vpath+'/current',{request_id:randomUUID(),expected_selection_revision:2,version_id:selected.current_version_id})).statusCode,404);
+    const mistake=await create('update'),mistakePath=`/api/v1/projects/${mistake.project_id}`;
+    const wrong=await upload(mistake.project_id,'mistaken-first-upload');
+    const unsel=await ok('GET',mistakePath+'/prospectus-versions');
+    assert.equal(unsel.current_version_id,null);assert.deepEqual(unsel.inactive_material_ids,[wrong.material_id]);
+    assert.equal(unsel.versions[0].delete_block_reason,null);
+    const mistakeDraft=await ok('GET',mistakePath);
+    const wrongInput={draft_revision:mistakeDraft.draft_revision,prospectus_selection_revision:0,material_versions:[{material_id:wrong.material_id,material_version:1}],requirement_message_ids:[]};
+    assert.equal((await send('POST',mistakePath+'/input-revisions',wrongInput)).statusCode,409,'saved-only upload cannot silently enter the task');
+    const noReference=await ok('POST',mistakePath+'/input-revisions',{...wrongInput,material_versions:[]});
+    assert.deepEqual(noReference.material_versions,[],'no reference remains a valid choice');
+    owner=`other-${randomUUID()}`;assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,404);owner=user;
+    assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,204);
+    assert.equal((await ok('GET',mistakePath+'/prospectus-versions')).versions.length,0);
+    const replacement=await upload(mistake.project_id,'correct-replacement');
+    const replaced=await ok('GET',mistakePath+'/prospectus-versions');
+    assert.equal(replaced.versions[0].sequence,2);assert.equal(replaced.versions[0].material_id,replacement.material_id);
 
     // Real queue, storage, settlement and delivery, with explicitly synthetic Word output (no model).
     await publishPrices(pool,{id:'update-e2e-prices',prices:INITIAL_FIXED_PRICES,effectiveAt:'2020-01-01T00:00:00Z',actor:'test',reason:'synthetic'});
@@ -107,9 +131,13 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
       }
       return clean;
     };
-    const run=await execute(locked),clean=await complete(run);
+    const refreshedProject=await ok('GET',path);
+    const refreshedInput=await ok('POST',`${path}/input-revisions`,{...input,draft_revision:refreshedProject.draft_revision});
+    assert.deepEqual((await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[p.project_id,locked.input_revision])).rows[0].manifest,snapshot,'deletion preserves the old immutable snapshot');
+    const run=await execute(refreshedInput),clean=await complete(run);
     const generated=await ok('GET',vpath);
-    assert.equal(generated.versions.length,3,'completion replay creates no duplicate');
+    assert.equal(generated.versions.length,2,'completion replay creates no duplicate');
+    assert.equal((await send('DELETE',`${path}/materials/${second.material_id}`)).statusCode,409,'old task source remains protected after current changes');
     assert.equal(generated.versions.find((v:any)=>v.version_id===generated.current_version_id).artifact_id,clean.artifactId);
     project=await ok('GET',path);
     const next=await ok('POST',`${path}/input-revisions`,{...input,draft_revision:project.draft_revision,prospectus_selection_revision:generated.selection_revision});
@@ -120,7 +148,7 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     await complete(running);
     const raced=await ok('GET',vpath);
     assert.equal(raced.current_version_id,uploaded.current_version_id,'older task completion cannot overwrite newer upload');
-    assert.equal(raced.versions.length,5,'generated output remains in history');
+    assert.equal(raced.versions.length,4,'generated output remains in history');
 
     // Upgrade backfill is repeatable and leaves explicitly selected versions unchanged.
     const legacy=await create('review'),legacyMaterial=await upload(legacy.project_id,'legacy');
