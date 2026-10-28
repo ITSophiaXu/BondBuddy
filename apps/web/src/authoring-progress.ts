@@ -54,7 +54,8 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   const summary=report?.summary?`最近一次模型进度：${report.summary}${notice?' '+notice:''}`:notice;
   return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }
-export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:number;state:string},error=false):string{
+export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:number;state:string}&CommercePriceMetadata,error=false):string{
+  if(isCnyPrice(legacy))return `<section class="authoring-credit-meter" aria-label="人民币任务费用"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。</p></section>`;
   if(run.billing_mode!=='fixed_credits')return '<p class="task-credit-receipt">本次任务按提交时的试用规则执行，不扣积分。</p>';
   if(!p){
     if(legacy&&legacy.state!=='held')return '<p class="task-credit-receipt">'+(legacy.state==='settled'?'已扣费 '+legacy.points.toLocaleString('zh-CN')+' 积分':'已返还，本次不扣费')+'</p>';
@@ -67,3 +68,5 @@ export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{poi
     p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，充值后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
   return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+n.toLocaleString('zh-CN')+' <small>积分</small></strong></div><div class="authoring-credit-meta">'+(dynamic?'<span>可用余额 '+(p.available_points??0).toLocaleString('zh-CN')+' 积分</span>':'')+'<span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(dynamic?'有积分即可开始，按服务端有效处理时间和已完成工作扣减；排队和暂停不扣。余额归零保存后暂停，到账后续跑。主动结束保留已扣部分，平台失败退回已扣积分，全程不超过原任务价格。':p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
 }
+import type {CommercePriceMetadata} from '@bondbuddy/contracts';
+import {isCnyPrice,displayPrice} from './commerce-price.js';

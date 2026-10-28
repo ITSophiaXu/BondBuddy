@@ -1,6 +1,6 @@
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
+import { commerceMetadata, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
@@ -1670,4 +1670,14 @@ for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion 
  await expect(page.getByRole('dialog')).not.toBeVisible();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
  if(evidence)await page.screenshot({path:join(evidence,'dynamic-resumed-'+width+'.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('commercial scope authoring blocks pending quotes and confirms ready work items before one execution',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;await setup(page,state);
+ let ready=false;
+ await page.route('**/api/v1/commerce/**',route=>new URL(route.request().url()).pathname.endsWith('/catalog')?json(route,200,{enabled:true,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}):json(route,200,{available_fen:100000,held_fen:0,payment_enabled:false,providers:[],legacy_balance_notice:''}));
+ await page.route('**/credit-quote',route=>json(route,200,{enabled:true,quote:{quote_id:'commercial-authoring-quote',project_id:id,...route.request().postDataJSON(),task_type:'interim',points:ready?16800:0,price_version:OUTCOME_PRICE_VERSION,reason:'按当前输入范围核实',created_at:now,...commerceMetadata(ready?16800:0),quote_status:ready?'ready':'pending_scope',scope_quote_id:'scope-authoring',scope_lines:ready?[{key:'period-update',label:'更新本期财务表和直接受影响正文',quantity:1,unit:'组',unit_price_fen:16800,amount_fen:16800,evidence:['锁定原稿和本期审计报告，按已核实业务范围处理。']}]:[]},balance:{available:100000,frozen:0},shortage:0,reason:null}));
+ await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('本次范围报价待确认，尚未收费');await expect(page.locator('#execute-input')).toBeDisabled();expect(state.executes).toEqual([]);
+ ready=true;await page.locator('#refresh-quote').click();await page.locator('#execute-input').click();await expect(page.locator('[data-commerce-confirm]')).toContainText('¥168.00');await expect(page.locator('[data-commerce-confirm]')).toContainText('更新本期财务表');
+ await page.locator('[data-commerce-back]').click();expect(state.executes).toEqual([]);await page.locator('#execute-input').click();await page.locator('[data-commerce-accept]').click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('commercial-authoring-quote');
 });

@@ -82,6 +82,12 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
 
 export class ApiClient {
   projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value},signal);}
+  commerceCatalog(signal?:AbortSignal){return this.request<Dto<'CommerceCatalogResponse'>>('GET','/commerce/catalog',undefined,{},signal);}
+  commerceAccount(signal?:AbortSignal){return this.request<Dto<'CommerceAccountResponse'>>('GET','/commerce/account',undefined,{},signal);}
+  commerceTopup(input:Dto<'CommerceTopupRequest'>,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('POST','/commerce/topups',input,{},signal);}
+  commerceOrder(id:string,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('GET',`/commerce/topups/${encodeURIComponent(id)}`,undefined,{},signal);}
+  commerceRefresh(id:string,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('POST',`/commerce/topups/${encodeURIComponent(id)}/refresh`,{}, {},signal);}
+  commerceFeedback(input:Dto<'CommerceFeedbackRequest'>,signal?:AbortSignal){return this.request<Dto<'CommerceFeedbackResponse'>>('POST','/commerce/feedback',input,{},signal);}
   projectFiles(id:string,signal?:AbortSignal){return this.request<Dto<'ProjectFilesResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/files',undefined,{},signal);}
   consumptionHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'CreditConsumptionHistoryResponse'>>('GET','/credits/consumption-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   rechargeHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'RechargeHistoryResponse'>>('GET','/credits/recharge-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
@@ -148,7 +154,7 @@ export class ApiClient {
     const value = response.status === 204 ? undefined as T : await response.json();
     // Refresh the signed-in wallet after charge/quote reads and explicit execution/payment changes.
     if (typeof window !== 'undefined' && (path.endsWith('/credit-charge') || path.endsWith('/credit-quote') ||
-        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/')))) {
+        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/') || path.startsWith('/commerce/')))) {
       window.dispatchEvent(new Event('bondbuddy:credits-changed'));
     }
     return value;

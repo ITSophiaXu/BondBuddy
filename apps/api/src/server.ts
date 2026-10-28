@@ -81,9 +81,11 @@ import { configuredUploadInspectionException, uploadInspectionExceptionMatches }
 import { creditBalance, quoteCredits, reserveCredits, quoteDto } from './billing.js';
 import { classifyFixedPrice } from './billing-classification.js';
 import { installPayments, type PaymentProvider } from './payments.js';
+import {installCommerce} from './commerce.js';
+import {paymentProvidersFromEnv} from './payment-provider-config.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -141,8 +143,10 @@ export function createServer(settings: Settings = {}) {
   // Preflight jobs persist request IDs; keep them unique across server restarts.
   const app = Fastify({ logger: false, genReqId: uid, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
-  const paidAuthoring = settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1';
-  const paidReview = settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1';
+  const commercial = settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1';
+  const paidAuthoring = commercial || (settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1');
+  const paidReview = commercial || (settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');
+  const paymentProviders = settings.paymentProviders ?? paymentProvidersFromEnv(process.env).providers;
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
@@ -183,13 +187,14 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
-  registerReviewRoutes(app, db, owner, paidReview);
-  registerM4Routes(app, db, owner, blob, queueEnabled);
+  registerReviewRoutes(app, db, owner, paidReview, commercial);
+  registerM4Routes(app, db, owner, blob, queueEnabled, commercial);
   registerProjectAssistant(app, db, owner);
-  registerProjectQa(app, db, owner);
+  registerProjectQa(app, db, owner, commercial);
   registerQaKnowledge(app, db, owner);
   registerReadableReview(app, db, owner, blob);
-  installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
+  installPayments(app,pool,owner,paidAuthoring&&!commercial,paymentProviders);
+  installCommerce(app,pool,owner,commercial,paymentProviders);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
     schema:{body:schemas.TargetPeriodEvidenceDecisionRequest,response:{200:schemas.TargetPeriodEvidenceDecisionResponse}}},async request=>{
     const user=await owner(request),projectId=param(request,'project_id');
@@ -317,10 +322,10 @@ export function createServer(settings: Settings = {}) {
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>,request.headers[PROJECT_TASK_COUNTS_CAPABILITY.header]===PROJECT_TASK_COUNTS_CAPABILITY.value));
   registerProspectusRoutes(app,db,owner,blob);
   registerProjectCollection(app,db,owner);
-  registerProjectFileWorkspace(app,db,owner,blob);
+  registerProjectFileWorkspace(app,db,owner,blob,commercial);
   registerWorkpapers(app,db,owner,blob);
-  registerProjectFileConsistency(app,db,owner);
-  registerIntegrity(app,db,owner,blob);
+  registerProjectFileConsistency(app,db,owner,commercial);
+  registerIntegrity(app,db,owner,blob,commercial);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
@@ -1349,7 +1354,7 @@ export function createServer(settings: Settings = {}) {
     const b=body<{input_revision:number;input_hash:string}>(request);
     if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Invalid input revision');
     if(!paidAuthoring)return {enabled:false,quote:null,balance:await creditBalance(db(),user),shortage:0,reason:null};
-    return quoteCredits(db(),user,id,b.input_revision,b.input_hash);
+    return quoteCredits(db(),user,id,b.input_revision,b.input_hash,commercial);
   });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);
@@ -1487,7 +1492,7 @@ export function createServer(settings: Settings = {}) {
       if(paidAuthoring && !testGrantId && ['update','generation'].includes(lockedKind)) {
         if(!classifyFixedPrice(input.rows[0].manifest).task)
           throw new Problem(422,'INPUT_REQUIRED','请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。');
-        await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject);
+        await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject,undefined,commercial);
       }
       if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});

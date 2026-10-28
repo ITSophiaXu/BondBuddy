@@ -58,7 +58,7 @@ function roundError(value:unknown):string|undefined{
     value.artifact_id!==null&&!validId(value.artifact_id))return '本轮核查记录不完整，请重新读取后再继续。';
   if(value.operation!==value.manifest.operation||value.round_id!==value.manifest.round_id)return '本轮核查身份与执行快照不一致，请重新读取后再继续。';
   if(value.operation==='check'){
-    if(value.run_id!==value.round_id||value.manifest.points!==INTEGRITY_PRICE.points||value.manifest.records.length||value.manifest.evidence_ids.length)
+    if(value.run_id!==value.round_id||value.manifest.points!==(value.manifest.pricing_mode==='outcome_cny_v1'?value.manifest.amount_fen:INTEGRITY_PRICE.points)||value.manifest.records.length||value.manifest.evidence_ids.length)
       return '原核查轮次与收费快照不一致，请重新读取后再继续。';
   }else if(value.run_id===value.round_id||value.manifest.points!==0||value.charged_points!==0||value.reserved_points!==0)
     return '免费导出与原核查轮次不一致，请重新读取后再继续。';

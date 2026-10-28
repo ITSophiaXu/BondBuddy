@@ -1,14 +1,16 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
+import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {creditBalance,lockCreditAccount} from './billing.js';
 import {enqueue} from './queue.js';
+import {outcomeMetadata} from './outcome-pricing.js';
 import {readProjectFileAsset,projectFileSource} from './project-file-storage.js';
 import {memberProjectsSql} from './project-collection.js';
 import {qaCaseSearch} from './qa-knowledge.js';
+import {requestScope,assertScopeQuote,scopePriceMetadata} from './scope-quotations.js';
 const empty=():QaDraft=>({preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:true});
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 type Db=Pool|PoolClient;
@@ -48,11 +50,29 @@ async function notify(c:PoolClient,owner:string,id:string,type:string,payload:un
  await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
  await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,type,payload]);
 }
-async function reserve(c:PoolClient,owner:string,run:any,input:QaInput){
+/** An explicit original-scope continuation cannot add questions or requirements. New evidence is allowed. */
+export async function validateIncludedQaFollowup(db:Db,owner:string,projectId:string,parentId:string,questions:QaQuestion[],requirements:string,source:QaInput['source']){
+ const parent=(await db.query(`SELECT q.manifest FROM bb_project_qa_runs q JOIN bb_runs run ON run.id=q.run_id AND run.owner_user_id=q.owner_user_id
+ JOIN bb_credit_reservations res ON res.run_id=q.run_id AND res.owner_user_id=q.owner_user_id
+ JOIN bb_project_qa_quotes price ON price.id=res.quote_id AND price.run_id=q.run_id AND price.owner_user_id=q.owner_user_id
+ WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='answer' AND run.state='succeeded'
+ AND res.state='settled' AND res.charged_points=price.points AND price.price_version=$4 AND price.scope_quote_id IS NOT NULL AND price.points>0`,[owner,projectId,parentId,OUTCOME_PRICE_VERSION])).rows[0];
+ if(!parent||parent.manifest.requirements!==requirements||inputManifestHash(parent.manifest.source.asset)!==inputManifestHash(source.asset)
+ ||!questions.length||questions.some(q=>!parent.manifest.questions.some((old:QaQuestion)=>inputManifestHash(old)===inputManifestHash(q))))
+   throw conflict('INPUT_REVISION_CONFLICT','原范围续做须引用本人同项目已付成功任务，保持原问题、原要求和问题清单；新增范围请单独报价。');
+}
+/** Price and quotation identity are deliberately excluded from the business-scope hash. */
+export const qaAnswerScope=(input:Pick<QaInput,'source'|'preparation_id'|'questions'|'materials'|'requirements'>)=>({
+ source:input.source,preparation_id:input.preparation_id,questions:input.questions,materials:input.materials,requirements:input.requirements,
+});
+export async function reserveQaCredits(c:PoolClient,owner:string,run:any,input:QaInput){
  await lockCreditAccount(c,owner);const points=input.points;
- if((await creditBalance(c,owner)).available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
+ const scope=input.price_version===OUTCOME_PRICE_VERSION&&!input.included_followup_of
+  ?await assertScopeQuote(c,input.scope_quote_id,owner,run.project_id,'project_qa_answer',inputManifestHash(qaAnswerScope(input)),points):null;
+ if((await creditBalance(c,owner)).available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',input.price_version===OUTCOME_PRICE_VERSION?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
  const quote=uid(),reservation=uid();
- await c.query('INSERT INTO bb_project_qa_quotes(id,owner_user_id,run_id,input_hash,question_count,unit_points,points,price_version) VALUES($1,$2,$3,$4,$5,60,$6,$7)',[quote,owner,run.id,run.input_hash,input.questions.length,points,input.price_version]);
+ await c.query('INSERT INTO bb_project_qa_quotes(id,owner_user_id,run_id,input_hash,question_count,unit_points,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[quote,owner,run.id,run.input_hash,input.questions.length,input.price_version===OUTCOME_PRICE_VERSION?0:PROJECT_QA_PRICE.points,points,input.price_version,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[]),scope?inputManifestHash(qaAnswerScope(input)):null]);
+ if(input.included_followup_of&&points===0)return;
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);
  const lots=(await c.query("SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now()) ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE",[owner])).rows;
  let left=points;for(const lot of lots){const take=Math.min(left,Number(lot.remaining)-Number(lot.frozen));await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[lot.id,take]);await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[reservation,lot.id,take]);left-=take;if(!left)break;}
@@ -69,11 +89,11 @@ async function createRun(c:PoolClient,owner:string,p:any,key:string,requestHash:
  await c.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,'[]','[]')",[p.id,revision,owner,p.draft_revision,hash,manifest]);
  const run=(await c.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *",[runId,owner,p.id,revision,hash,key,requestHash])).rows[0];
  await c.query('INSERT INTO bb_project_qa_runs(run_id,owner_user_id,project_id,sequence,operation,manifest,input_hash) SELECT $1,$2,$3,coalesce(max(sequence),0)+1,$4,$5,$6 FROM bb_project_qa_runs WHERE project_id=$3',[runId,owner,p.id,manifest.operation,manifest,hash]);
- if(manifest.operation==='answer')await reserve(c,owner,run,manifest);
+ if(manifest.operation==='answer')await reserveQaCredits(c,owner,run,manifest);
  await c.query('UPDATE bb_projects SET latest_input_revision=$3 WHERE owner_user_id=$1 AND id=$2',[owner,p.id,revision]);
  await enqueue(c,run,'project_qa_v1');await notify(c,owner,p.id,'project.qa_started',{run_id:runId,operation:manifest.operation});return runId;
 }
-export async function readQa(db:Pool,owner:string,id:string,requested?:string,answerSequence=true):Promise<QaWorkspace>{
+export async function readQa(db:Pool,owner:string,id:string,requested?:string,answerSequence=true,commercial=false):Promise<QaWorkspace>{
  const materials=await qaMaterials(db,owner,id),d=(await db.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0];
  const rows=(await db.query(`WITH answers AS (
  SELECT run_id,row_number() OVER(ORDER BY sequence) AS answer_sequence FROM bb_project_qa_runs
@@ -91,11 +111,11 @@ export async function readQa(db:Pool,owner:string,id:string,requested?:string,an
  LEFT JOIN answers a ON a.run_id=q.run_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id IN(SELECT run_id FROM included)
  ORDER BY (q.run_id=$3) DESC NULLS LAST,q.sequence DESC`,[owner,id,requested??null,d?.draft?.preparation_id??null])).rows;
- return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(answerSequence&&r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
+ return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:commercial?{points:0,version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope',scope_lines:[]}:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(answerSequence&&r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,...(r.manifest.pricing_mode==='outcome_cny_v1'?{...outcomeMetadata(r.manifest.points),scope_quote_id:r.manifest.scope_quote_id,quote_status:'ready' as const,scope_lines:r.manifest.scope_lines??[]}:{}),result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
 }
-export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
+export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,commercial=false){
  const base='/api/v1/projects/:project_id/qa',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
- app.get(base,{schema:{querystring:qaSchemas.QaQuery,response:{200:qaSchemas.QaWorkspaceResponse}}},async r=>readQa(db(),await owner(r),id(r),(r.query as {run_id?:string}).run_id,r.headers[QA_HISTORY_CAPABILITY.header]===QA_HISTORY_CAPABILITY.value));
+ app.get(base,{schema:{querystring:qaSchemas.QaQuery,response:{200:qaSchemas.QaWorkspaceResponse}}},async r=>readQa(db(),await owner(r),id(r),(r.query as {run_id?:string}).run_id,r.headers[QA_HISTORY_CAPABILITY.header]===QA_HISTORY_CAPABILITY.value,commercial));
  app.post(base+'/prepare',{schema:{body:qaSchemas.QaPrepareRequest,response:{200:qaSchemas.QaRunResponse}}},async r=>{
   const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaPrepareRequest>;
   const run_id=await transaction(db(),async c=>{const p=await project(c,user,pid,true),hash=inputManifestHash({pid,...b}),key='qa-prepare:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
@@ -111,16 +131,39 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    const old=(await c.query('SELECT revision FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];if((old?.revision??0)!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题清单已在其他页面修改，请刷新后核对。');
    await validateDraft(c,user,pid,b.draft);
    await c.query('INSERT INTO bb_project_qa_drafts(owner_user_id,project_id,revision,draft) VALUES($1,$2,$3,$4) ON CONFLICT(project_id) DO UPDATE SET revision=EXCLUDED.revision,draft=EXCLUDED.draft',[user,pid,b.expected_revision+1,b.draft]);await notify(c,user,pid,'project.qa_draft_saved',{revision:b.expected_revision+1});
-  });return readQa(db(),user,pid,undefined,r.headers[QA_HISTORY_CAPABILITY.header]===QA_HISTORY_CAPABILITY.value);
+  });return readQa(db(),user,pid,undefined,r.headers[QA_HISTORY_CAPABILITY.header]===QA_HISTORY_CAPABILITY.value,commercial);
+
+ });
+ app.post(base+'/quote',{schema:{body:qaSchemas.QaQuoteRequest,response:{200:qaSchemas.QaQuoteResponse}}},async r=>{
+  const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaQuoteRequest>;
+  return transaction(db(),async c=>{
+   await project(c,user,pid,true);
+   const row=(await c.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];
+   if(!row||row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题或材料已变化，请重新确认。');
+   const d=row.draft as QaDraft,{p:prepared,materials}=await validateDraft(c,user,pid,d,true);
+   if(b.included_followup_of){
+    if(!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');
+    await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source);
+    return {points:0,price_version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'ready',scope_lines:[]};
+   }
+   if(!commercial)return {points:d.questions.length*PROJECT_QA_PRICE.points,price_version:PROJECT_QA_PRICE.version};
+   const snapshot=qaAnswerScope({source:prepared.manifest.source,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements});
+   const scope=await requestScope(c,user,pid,'project_qa_answer',inputManifestHash(snapshot),snapshot);
+   return {points:scope.amount_fen,price_version:scope.price_version,...scopePriceMetadata(scope)};
+  });
  });
  app.post(base+'/runs',{schema:{body:qaSchemas.QaAnswerRequest,response:{200:qaSchemas.QaRunResponse}}},async r=>{
   const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaAnswerRequest>;
   const run_id=await transaction(db(),async c=>{const p=await project(c,user,pid,true),hash=inputManifestHash({pid,...b}),key='qa-answer:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
    const row=(await c.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];if(!row||row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题或材料已变化，请重新确认。');
-   const d=row.draft as QaDraft,{p:prepared,materials,prospectus}=await validateDraft(c,user,pid,d,true),points=d.questions.length*60;
-   if(points!==b.expected_points)throw conflict('QUOTE_CHANGED','问题数量与费用已变化，请重新确认。');
+   const d=row.draft as QaDraft,{p:prepared,materials,prospectus}=await validateDraft(c,user,pid,d,true);
+   if(b.included_followup_of){if(!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source);}
+   const snapshot=qaAnswerScope({source:prepared.manifest.source,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements});
+   const scope=commercial&&!b.included_followup_of?await assertScopeQuote(c,b.scope_quote_id,user,pid,'project_qa_answer',inputManifestHash(snapshot),b.expected_points):null;
+   const points=b.included_followup_of?0:commercial?scope!.amount_fen:d.questions.length*PROJECT_QA_PRICE.points;
+   if(points!==b.expected_points||b.price_version!==(commercial?OUTCOME_PRICE_VERSION:PROJECT_QA_PRICE.version))throw conflict('QUOTE_CHANGED','实际处理范围与费用已变化，请重新确认。');
    const cases:QaInput['cases']=[];if(d.use_knowledge)for(const q of d.questions){for(const item of await qaCaseSearch(c,q.question,3))if(!cases.some(x=>x.id===item.id)&&cases.length<40)cases.push(item);}
-   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points});
+   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points,price_version:commercial?OUTCOME_PRICE_VERSION:PROJECT_QA_PRICE.version,...(scope?scopePriceMetadata(scope):commercial?{...outcomeMetadata(0),quote_status:'ready' as const,scope_lines:[]}:{}),...(b.included_followup_of?{included_followup_of:b.included_followup_of}:{})});
   });return {run_id};
  });
 }

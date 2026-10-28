@@ -1,11 +1,14 @@
 import { ApiClient, type Dto } from './api';
 import { rechargeHref } from './project-navigation';
 import { esc } from './ui';
+import {readCommerce,cny} from './commerce';
+import type {CommerceAccount} from '@bondbuddy/contracts';
 
 /** One wallet per signed-in session; route rendering never owns or clears the balance. */
 export class CreditWallet {
   private controller = new AbortController();
   private balance?: Dto<'CreditBalanceResponse'>;
+  private commerce=false;private account?:CommerceAccount;
   private loading = false;
   private unavailable = false;
   private refreshPending = false;
@@ -22,6 +25,12 @@ export class CreditWallet {
     void this.refresh();
   }
   private draw() {
+    if(this.commerce){
+      const amount=this.unavailable?'—':this.account?cny(this.account.available_fen+this.account.held_fen):'…',href=esc(rechargeHref());
+      document.querySelectorAll<HTMLElement>('.top-plan-link').forEach(e=>{e.textContent='按成果付费 · 无月费';});
+      for(const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')){host.setAttribute('aria-label','人民币服务余额');host.innerHTML=host.dataset.creditWallet==='compact'?`<a href="${href}" aria-label="服务余额 ${amount}，查看我的账号"><span>余额</span> <strong aria-live="polite">${amount}</strong></a>`:`<div class="wallet-heading"><span>服务余额</span><button type="button" class="wallet-refresh" aria-label="刷新服务余额" ${this.loading?'disabled':''}>刷新</button></div><div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="${href}" aria-label="查看余额与按需充值">充值 ↗</a></div><p class="wallet-note">${this.unavailable?'余额暂未同步，请刷新':this.account?`可用 ${cny(this.account.available_fen)} · 已预留 ${cny(this.account.held_fen)}`:'正在读取余额'}</p>`;host.querySelector('button')?.addEventListener('click',()=>void this.refresh());}
+      return;
+    }
     // Reserved credits still belong to the user until delivery settles the task.
     const amount = this.unavailable ? '—' : this.balance ? (this.balance.available + this.balance.frozen).toLocaleString('zh-CN') : '…';
     const accountHref=esc(rechargeHref());
@@ -41,9 +50,11 @@ export class CreditWallet {
     clearTimeout(this.timer);
     this.loading = true;
     try {
-      const balance = await this.api.creditBalance(this.controller.signal);
+      const catalog=await readCommerce(this.api,this.controller.signal);this.commerce=catalog?.enabled===true;
+      const account=this.commerce?await this.api.commerceAccount(this.controller.signal):undefined;
+      const balance = this.commerce?undefined:await this.api.creditBalance(this.controller.signal);
       if (this.controller.signal.aborted) return;
-      this.balance = balance; this.unavailable = false;
+      this.balance = balance;this.account=account; this.unavailable = false;
     } catch {
       if (!this.controller.signal.aborted) this.unavailable = true;
     } finally {

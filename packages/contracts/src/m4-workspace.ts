@@ -6,6 +6,7 @@ import { MARKETS, OFFERINGS } from './public-enums.js';
 import type { Project, Run, RunEvent } from './index.js';
 import type { CreditBalance } from './billing.js';
 import type { AuthoringProgress } from './authoring-progress.js';
+import type {CommercePriceMetadata} from './commerce.js';
 
 const obj = <T extends Parameters<typeof Type.Object>[0]>(p: T) => Type.Object(p, { additionalProperties: false });
 const id = Type.String({ minLength: 1, maxLength: 128 });
@@ -88,7 +89,7 @@ export const M4_BILLING_TASKS = { m4_G01: '立项报告', m4_G02: '主承销商�
   m4_Q02: '授权资料定位', m4_Q03: '确定性计算', m4_Q04: '基础资料比较', m4_Q05: '基础资料解读' } as const;
 export type M4BillingTask = keyof typeof M4_BILLING_TASKS;
 export const M4_DOCUMENT_FIXED_PRICE = { version: 'm4-document-fixed-20261008-v1', points: 4500 } as const;
-export type M4Quote = { quote_id: string; topic_id: string; input_hash: string; task_type: M4BillingTask | 'm4_Q00' | 'm4_task_assistance';
+export type M4Quote = CommercePriceMetadata & { quote_id: string; topic_id: string; input_hash: string; task_type: M4BillingTask | 'm4_Q00' | 'm4_task_assistance';
   points: number; price_version: string | null; reason: string; created_at: string;
   billing_policy?: 'on_delivery' | 'authoring_balance_v2';
   billing_method: 'fixed' | 'metered_capped' | 'free'; multiplier: number; expires_at: string; amount_semantics: 'fixed_price' | 'reservation_cap' };
