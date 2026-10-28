@@ -233,6 +233,80 @@ async function prepare(page: Page) {
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
 }
+
+test('all selected uploads must finish and be saved before starting an update', async ({page}) => {
+  const state=fixture();state.checkStatus='ready';
+  const declarations=new Map<string,Dto<'UploadCreateRequest'>>();
+  const completions=new Map<string,()=>void>();
+  await page.addInitScript(()=>{
+    const send=XMLHttpRequest.prototype.send;
+    (window as any).heldUploads=[];
+    XMLHttpRequest.prototype.send=function(body){
+      if(body instanceof File){
+        const xhr=this;
+        (window as any).heldUploads.push({name:body.name,release:()=>send.call(xhr,body)});
+        xhr.upload.dispatchEvent(new ProgressEvent('progress',{lengthComputable:true,loaded:Math.floor(body.size/2),total:body.size}));
+      }else send.call(this,body);
+    };
+  });
+  await setup(page,state);
+  await page.route('**/materials/uploads**',async route=>{
+    const declaration=route.request().postDataJSON() as Dto<'UploadCreateRequest'>;
+    const uploadId=`upload-${declarations.size}`;declarations.set(uploadId,declaration);
+    return json(route,201,{upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100_000_000});
+  });
+  await page.route('**/materials/uploads/*/bytes',route=>route.fulfill({status:204}));
+  await page.route('**/materials/uploads/*/complete',async route=>{
+    const uploadId=new URL(route.request().url()).pathname.split('/').at(-2)!;
+    const declaration=declarations.get(uploadId)!;
+    await new Promise<void>(resolve=>{completions.set(declaration.filename,resolve);});
+    const material:Dto<'MaterialResponse'>={...declaration,upload_id:uploadId,material_id:`material-${uploadId}`,material_version:1,state:'persisted',persisted_at:now,error:null};
+    state.materials.push(material);return json(route,200,material);
+  });
+  const files=['first.pdf','second.pdf','queued.pdf'].map(name=>({name,mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic upload guard '+name)}));
+  await page.locator('[data-upload-role="audit"]').setInputFiles(files);
+  const start=page.locator('#execute-input');
+  await expect(page.locator('[data-upload-phase="uploading"]')).toHaveCount(2);
+  await expect(page.locator('[data-upload-phase="queued"]')).toHaveCount(1);
+  await expect(start).toBeDisabled();
+  await expect(start).toHaveText('等待材料保存完成');
+  if(process.env.BB_UPLOAD_GUARD_EVIDENCE){
+    for(const width of [1440,390]){
+      await page.setViewportSize({width,height:960});
+      await page.locator('#execution-actions').screenshot({path:join(process.env.BB_UPLOAD_GUARD_EVIDENCE,`waiting-${width}.png`)});
+      await page.locator('.material-file-row').filter({hasText:'first.pdf'}).screenshot({path:join(process.env.BB_UPLOAD_GUARD_EVIDENCE,`uploading-${width}.png`)});
+    }
+  }
+  for(const file of files){
+    await expect.poll(()=>page.evaluate(name=>(window as any).heldUploads.some((u:any)=>u.name===name),file.name)).toBe(true);
+    await page.evaluate(name=>(window as any).heldUploads.find((u:any)=>u.name===name).release(),file.name);
+    await expect.poll(()=>completions.has(file.name)).toBe(true);
+    await expect(page.locator('.material-file-row').filter({hasText:file.name})).toContainText('正在保存');
+    await expect(start).toBeDisabled();
+    await expect(start).toHaveText('等待材料保存完成');
+    await start.dispatchEvent('click');
+    expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
+    completions.get(file.name)!();
+    await expect(page.locator('.material-file-row').filter({hasText:file.name})).toContainText('服务器已确认保存');
+    if(file!==files.at(-1))await expect(start).toBeDisabled();
+  }
+  await expect(start).toBeEnabled();
+  expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  await start.click();
+  await expect.poll(()=>state.executes.length).toBe(1);
+  expect(state.inputs[0].material_versions).toHaveLength(5);
+});
+
+test('a failed newly selected file blocks existing saved materials until explicitly removed',async({page})=>{
+  const state=fixture();state.checkStatus='ready';await setup(page,state);
+  await page.locator('[data-upload-role="audit"]').setInputFiles({name:'empty.pdf',mimeType:'application/pdf',buffer:Buffer.alloc(0)});
+  const row=page.locator('.material-file-row').filter({hasText:'empty.pdf'}),start=page.locator('#execute-input');
+  await expect(row).toContainText('空文件不能上传');
+  await expect(start).toBeDisabled();
+  await start.dispatchEvent('click');expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  await row.getByRole('button',{name:'移除此行'}).click();await expect(start).toBeEnabled();
+  expect(state.executes).toHaveLength(0);
+});
 async function continueAuthoring(page: Page) {
   await page.getByRole('button',{name:'继续修改',exact:true}).click();
   await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
