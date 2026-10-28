@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BondBuddy · 已确认文件生成设计 · 2026-10-28</title><style>body{margin:0;font-family:"Microsoft YaHei",sans-serif}#bb-generation-flow{max-width:1440px;margin:auto}</style></head><body>
+<style>
+#bb-generation-flow{--bb-bg:light-dark(#f7f8f2,#151d19);--bb-panel:light-dark(#fff,#202b24);--bb-side:light-dark(#f0f3e9,#1b251e);--bb-ink:light-dark(#203e35,#e3ede5);--bb-muted:light-dark(#708075,#a4b4a8);--bb-line:light-dark(#e2e8dd,#35473b);--bb-soft:light-dark(#f3f6ee,#28372c);--bb-green:light-dark(#1d493a,#c3dfb7);--bb-on:light-dark(#fff,#193d2d);--bb-lime:light-dark(#e9f1dc,#334a2b);--bb-ok:light-dark(#557941,#b7d5a5);--bb-warn:light-dark(#966726,#e0bd79);--bb-warnbg:light-dark(#fcf6e8,#3c3424);--bb-error:light-dark(#a54c43,#eba99e);--bb-shadow:0 12px 40px light-dark(#1e3d3010,#00000030);font:14px/1.6 'Segoe UI','Microsoft YaHei',sans-serif;color:var(--bb-ink);color-scheme:light dark;width:100%;isolation:isolate}
+#bb-generation-flow *{box-sizing:border-box}
+#bb-generation-flow button,#bb-generation-flow input,#bb-generation-flow select,#bb-generation-flow textarea{font:inherit}
+#bb-generation-flow button{color:inherit}
+#bb-generation-flow button:disabled{opacity:.42;cursor:not-allowed}
+#bb-generation-flow button:focus-visible,#bb-generation-flow input:focus-visible,#bb-generation-flow select:focus-visible,#bb-generation-flow textarea:focus-visible{outline:2px solid var(--bb-ok);outline-offset:3px}
+#bb-generation-flow [hidden]{display:none!important}
+#bb-generation-flow h1,#bb-generation-flow h2,#bb-generation-flow h3,#bb-generation-flow p{margin:0}
+#bb-generation-flow h1{font-size:28px;line-height:1.35;letter-spacing:-.7px;font-weight:650}
+#bb-generation-flow h2{font-size:20px;line-height:1.45;font-weight:600;letter-spacing:-.3px}
+#bb-generation-flow h3{font-size:15px;font-weight:600}
+#bb-generation-flow .bb-demo{display:flex;align-items:center;gap:12px;padding:8px 18px;font-size:11px;color:var(--bb-muted);border-bottom:1px solid var(--bb-line);background:var(--bb-panel);padding-right:105px;min-height:40px}
+#bb-generation-flow .bb-demo strong{font-weight:600;letter-spacing:1.5px;color:var(--bb-ink)}
+#bb-generation-flow .bb-shell{display:grid;grid-template-columns:180px minmax(0,1fr);background:var(--bb-bg);border:1px solid var(--bb-line);border-radius:0 0 14px 14px;min-height:800px;position:relative}
+#bb-generation-flow .bb-sidebar{padding:27px 15px 20px;background:var(--bb-side);border-right:1px solid var(--bb-line);display:flex;flex-direction:column;gap:24px;border-radius:0 0 0 14px}
+#bb-generation-flow .bb-brand{display:flex;align-items:center;gap:8px;font-size:21px;letter-spacing:-.7px;font-weight:750;padding:0 6px}
+#bb-generation-flow .bb-logo{height:30px;width:30px;border-radius:9px;background:var(--bb-green);color:var(--bb-on);display:grid;place-items:center;font-size:23px;font-weight:750;line-height:1}
+#bb-generation-flow .bb-workspace{padding:12px;border:1px solid var(--bb-line);background:var(--bb-panel);border-radius:10px;font-size:12px;display:flex;gap:9px;align-items:center}
+#bb-generation-flow .bb-workspace small{display:block;font-size:10px;color:var(--bb-muted);letter-spacing:.3px}
+#bb-generation-flow .bb-nav{display:grid;gap:5px}
+#bb-generation-flow .bb-nav-label{font-size:11px;color:var(--bb-muted);letter-spacing:1px;padding:9px 12px}
+#bb-generation-flow .bb-nav-item{padding:11px 12px;display:flex;align-items:center;gap:10px;border-radius:8px;color:var(--bb-muted);font-size:13px;border:0;background:transparent;text-align:left;width:100%}
+#bb-generation-flow .bb-nav-item.bb-active{color:var(--bb-on);background:var(--bb-green)}
+#bb-generation-flow .bb-sidebar-bottom{margin-top:auto;padding-top:45px}
+#bb-generation-flow .bb-balance{padding:15px 12px;background:var(--bb-panel);border:1px solid var(--bb-line);border-radius:10px;margin-bottom:20px}
+#bb-generation-flow .bb-balance strong{font-size:20px;font-variant-numeric:tabular-nums;display:block;margin-top:3px}
+#bb-generation-flow .bb-user{display:flex;align-items:center;gap:8px;padding:0 10px;font-size:12px}
+#bb-generation-flow .bb-avatar{border-radius:50%;background:var(--bb-lime);width:30px;height:30px;display:grid;place-items:center}
+#bb-generation-flow .bb-main{min-width:0;padding:0 30px 24px}
+#bb-generation-flow .bb-topbar{min-height:61px;display:flex;gap:10px;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bb-line);font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .bb-breadcrumb{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#bb-generation-flow .bb-breadcrumb strong{color:var(--bb-ink);font-weight:500}
+#bb-generation-flow .bb-heading{padding:27px 0 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+#bb-generation-flow .bb-heading p{margin-top:7px;color:var(--bb-muted);font-size:13px}
+#bb-generation-flow .bb-eyebrow{font-size:11px;letter-spacing:1.8px;color:var(--bb-ok);margin-bottom:7px}
+#bb-generation-flow .bb-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--bb-line);background:var(--bb-panel);border-radius:7px;padding:9px 13px;font-size:12px;white-space:normal;line-height:1.5;min-height:38px;text-decoration:none}
+#bb-generation-flow .bb-button:hover{background:var(--bb-soft)}
+#bb-generation-flow .bb-primary{background:var(--bb-green);color:var(--bb-on);border-color:var(--bb-green);padding:11px 19px;font-weight:600}
+#bb-generation-flow .bb-primary:hover{background:var(--bb-green);filter:brightness(.95)}
+#bb-generation-flow .bb-link{padding:5px 0;border:0;background:transparent;color:var(--bb-ok);display:inline-flex;gap:6px;align-items:center;font-size:12px;text-align:left;white-space:nowrap}
+#bb-generation-flow .bb-link:hover{text-decoration:underline;text-underline-offset:4px}
+#bb-generation-flow .bb-steps{display:flex;align-items:flex-start;gap:0;margin-bottom:26px}
+#bb-generation-flow .bb-step{flex:1;position:relative;border:0;background:transparent;display:flex;align-items:center;gap:7px;padding:0 6px 12px 0;font-size:12px;color:var(--bb-muted);text-align:left;border-bottom:2px solid var(--bb-line);white-space:normal;min-height:43px}
+#bb-generation-flow .bb-step:last-child{flex:.9;padding-right:0}
+#bb-generation-flow .bb-step.bb-current{color:var(--bb-ink);border-color:var(--bb-green);font-weight:600}
+#bb-generation-flow .bb-step.bb-complete{border-color:var(--bb-ok);color:var(--bb-ok)}
+#bb-generation-flow .bb-step:disabled{opacity:1;cursor:default}
+#bb-generation-flow .bb-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;border:1px solid var(--bb-line);display:grid;place-items:center;font-size:11px;background:var(--bb-panel)}
+#bb-generation-flow .bb-current .bb-num{background:var(--bb-green);color:var(--bb-on);border-color:var(--bb-green)}
+#bb-generation-flow .bb-complete .bb-num{background:var(--bb-lime);border-color:transparent}
+#bb-generation-flow .bb-panel{padding:24px;background:var(--bb-panel);border:1px solid var(--bb-line);border-radius:12px;box-shadow:var(--bb-shadow)}
+#bb-generation-flow .bb-sub{color:var(--bb-muted);font-size:12px;margin-top:6px}
+#bb-generation-flow .bb-section-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:27px 0 12px;font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .bb-source-card{border:1px solid var(--bb-ok);border-radius:9px;padding:18px;background:var(--bb-soft);display:flex;gap:13px;align-items:flex-start}
+#bb-generation-flow .bb-file-icon{width:38px;height:44px;background:var(--bb-lime);border-radius:7px;color:var(--bb-ok);display:grid;place-items:center;flex-shrink:0}
+#bb-generation-flow .bb-file-info{min-width:0;flex:1}
+#bb-generation-flow .bb-file-name{overflow-wrap:anywhere;font-size:13px;font-weight:600;line-height:1.8}
+#bb-generation-flow .bb-metadata{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:9px;font-size:11px;color:var(--bb-muted)}
+#bb-generation-flow .bb-tag{display:inline-flex;align-items:center;gap:4px;color:var(--bb-ok);background:var(--bb-lime);font-size:11px;padding:2px 7px;border-radius:4px;line-height:1.6;white-space:nowrap}
+#bb-generation-flow .bb-warning-tag{background:var(--bb-warnbg);color:var(--bb-warn)}
+#bb-generation-flow .bb-file-check{color:var(--bb-ok);padding-top:2px}
+#bb-generation-flow .bb-source-note{display:flex;align-items:center;gap:7px;margin-top:17px;font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .bb-footer{border-top:1px solid var(--bb-line);margin-top:26px;padding-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+#bb-generation-flow .bb-footer-hint{font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .bb-footer-hint strong{color:var(--bb-ink);font-weight:600}
+#bb-generation-flow .bb-quiet-note{color:var(--bb-muted);font-size:11px;display:flex;gap:7px;align-items:center;justify-content:center;margin-top:22px}
+#bb-generation-flow .bb-context{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--bb-muted);margin:-7px 0 16px;min-width:0}
+#bb-generation-flow .bb-context span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#bb-generation-flow .bb-context .bb-link{flex-shrink:0}
+#bb-generation-flow .bb-dropzone{margin-top:23px;border:1px dashed var(--bb-line);border-radius:9px;padding:32px 18px;text-align:center;background:var(--bb-soft)}
+#bb-generation-flow .bb-dropzone .bb-file-icon{margin:0 auto 13px}
+#bb-generation-flow .bb-dropzone p{color:var(--bb-muted);font-size:12px;margin:7px 0 18px}
+#bb-generation-flow .bb-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0}
+#bb-generation-flow .bb-mode{border:1px solid var(--bb-line);border-radius:8px;background:var(--bb-panel);padding:13px;text-align:left;display:flex;align-items:flex-start;gap:10px}
+#bb-generation-flow .bb-mode[aria-pressed=true]{border-color:var(--bb-ok);background:var(--bb-soft)}
+#bb-generation-flow .bb-mode strong{display:block;font-size:13px;font-weight:600}
+#bb-generation-flow .bb-mode small{color:var(--bb-muted);font-size:11px;display:block;margin-top:3px}
+#bb-generation-flow .bb-mode svg{margin-top:3px;flex-shrink:0;color:var(--bb-ok)}
+#bb-generation-flow .bb-directory{padding:12px 14px;display:flex;align-items:center;gap:11px;background:var(--bb-soft);border-radius:8px;margin-bottom:22px}
+#bb-generation-flow .bb-directory .bb-file-info strong{display:block;font-size:13px;font-weight:500}
+#bb-generation-flow .bb-directory .bb-file-info small{color:var(--bb-muted);font-size:11px}
+#bb-generation-flow .bb-directory svg{color:var(--bb-ok);flex-shrink:0}
+#bb-generation-flow .bb-directory .bb-link{margin-left:auto}
+#bb-generation-flow .bb-range{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:13px;flex-wrap:wrap}
+#bb-generation-flow .bb-range strong{font-size:14px;font-weight:600}
+#bb-generation-flow .bb-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+#bb-generation-flow .bb-search{display:flex;align-items:center;gap:8px;border:1px solid var(--bb-line);border-radius:7px;flex:1;min-width:0;padding:7px 10px;background:var(--bb-panel);color:var(--bb-muted)}
+#bb-generation-flow .bb-search input{border:0;background:transparent;color:var(--bb-ink);width:100%;min-width:0;font-size:12px;outline-offset:5px}
+#bb-generation-flow input[type=checkbox],#bb-generation-flow input[type=radio]{width:15px;height:15px;accent-color:var(--bb-green);flex-shrink:0;margin:0}
+#bb-generation-flow .bb-check{display:flex;align-items:center;gap:9px;min-height:26px;font-size:12px}
+#bb-generation-flow .bb-tree{border-top:1px solid var(--bb-line)}
+#bb-generation-flow .bb-group{border-bottom:1px solid var(--bb-line)}
+#bb-generation-flow .bb-group-head{padding:12px 2px;display:flex;align-items:center;gap:9px}
+#bb-generation-flow .bb-group-head .bb-check{flex:1;font-size:12px;font-weight:600}
+#bb-generation-flow .bb-group-head .bb-expand{border:0;background:transparent;padding:4px;color:var(--bb-muted);display:flex;gap:6px;align-items:center;font-size:11px}
+#bb-generation-flow .bb-row{padding:10px 0 10px 26px;display:flex;align-items:center;gap:9px;font-size:12px;border-top:1px solid var(--bb-line)}
+#bb-generation-flow .bb-row label{flex:1}
+#bb-generation-flow .bb-row .bb-row-type{color:var(--bb-muted);font-size:11px;min-width:67px;text-align:right}
+#bb-generation-flow .bb-form-field{display:block;margin-top:19px;font-size:12px;font-weight:500}
+#bb-generation-flow .bb-input{display:block;width:100%;border:1px solid var(--bb-line);background:var(--bb-panel);color:var(--bb-ink);border-radius:7px;padding:10px 12px;margin-top:8px;font-size:13px}
+#bb-generation-flow textarea.bb-input{resize:vertical;min-height:94px}
+#bb-generation-flow .bb-builder-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:26px 0 16px}
+#bb-generation-flow .bb-builder-heading h3{font-size:17px}
+#bb-generation-flow .bb-builder-heading h3 span{font-size:13px;font-weight:400;color:var(--bb-muted);margin-left:8px}
+#bb-generation-flow .bb-file-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px;border:1px solid var(--bb-line);border-radius:8px;overflow:hidden}
+#bb-generation-flow .bb-file-table th{background:var(--bb-soft);color:var(--bb-muted);font-weight:500;text-align:left;padding:11px 12px}
+#bb-generation-flow .bb-file-table td{padding:16px 12px;vertical-align:top;border-top:1px solid var(--bb-line);overflow-wrap:anywhere}
+#bb-generation-flow .bb-file-table th:first-child{width:48px}
+#bb-generation-flow .bb-file-table th:nth-child(2){width:29%}
+#bb-generation-flow .bb-file-table th:last-child{width:122px}
+#bb-generation-flow .bb-file-table .bb-table-index{color:var(--bb-muted);font-variant-numeric:tabular-nums;padding-top:26px}
+#bb-generation-flow .bb-file-table select{width:100%;min-width:0;margin:0;padding:10px 7px;font-size:12px;height:44px}
+#bb-generation-flow .bb-template-name{display:flex;gap:7px;align-items:flex-start;font-weight:500;min-height:32px;padding-top:5px}
+#bb-generation-flow .bb-template-name svg{flex-shrink:0;margin-top:3px;color:var(--bb-ok)}
+#bb-generation-flow .bb-template-name small{font-size:11px;font-weight:400;color:var(--bb-muted);white-space:nowrap}
+#bb-generation-flow .bb-saved-inputs{font-size:11px;color:var(--bb-muted);margin-top:5px}
+#bb-generation-flow .bb-saved-inputs summary{line-height:1.8}
+#bb-generation-flow .bb-saved-inputs p{margin-top:10px;white-space:pre-wrap}
+#bb-generation-flow .bb-saved-inputs ul{padding-left:17px;margin:7px 0 0}
+#bb-generation-flow .bb-table-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#bb-generation-flow .bb-table-actions .bb-button{padding:7px 9px;font-size:11px}
+#bb-generation-flow .bb-table-actions .bb-link{font-size:11px}
+#bb-generation-flow .bb-table-placeholder{color:var(--bb-muted);display:block;padding-top:11px}
+#bb-generation-flow .bb-builder-bottom{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:15px 0 24px}
+#bb-generation-flow .bb-builder-bottom p{font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .bb-optional{padding:15px 0;border-top:1px solid var(--bb-line);font-size:12px}
+#bb-generation-flow .bb-optional>summary{font-size:13px;font-weight:500}
+#bb-generation-flow .bb-optional>summary small{font-size:11px;color:var(--bb-muted);font-weight:400;margin-left:10px}
+#bb-generation-flow .bb-optional-body{padding-top:2px}
+#bb-generation-flow .bb-optional .bb-inline-actions{margin-top:12px}
+#bb-generation-flow .bb-support-zone{padding:18px;border:1px dashed var(--bb-line);border-radius:8px;background:var(--bb-soft);margin-top:14px;text-align:center}
+#bb-generation-flow .bb-template-choice{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--bb-line)}
+#bb-generation-flow .bb-template-choice>div{flex:1;min-width:0;overflow-wrap:anywhere}
+#bb-generation-flow .bb-template-choice strong{font-size:13px;font-weight:500}
+#bb-generation-flow .bb-template-choice small{display:block;color:var(--bb-muted);font-size:11px}
+#bb-generation-flow .bb-template-upload{margin-top:14px;padding:15px;background:var(--bb-soft);border-radius:8px}
+#bb-generation-flow .bb-template-upload p{font-size:12px;margin:10px 0;overflow-wrap:anywhere}
+#bb-generation-flow .bb-confirm-docs{list-style:none;padding:0;margin:10px 0 0}
+#bb-generation-flow .bb-confirm-docs li{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid var(--bb-line);font-size:12px;flex-wrap:wrap}
+#bb-generation-flow .bb-confirm-docs small{color:var(--bb-muted);font-size:11px;overflow-wrap:anywhere}
+@media(max-width:850px){#bb-generation-flow .bb-file-table th:nth-child(2){width:30%}#bb-generation-flow .bb-file-table th:last-child{width:90px}#bb-generation-flow .bb-file-table td,#bb-generation-flow .bb-file-table th{padding-left:8px;padding-right:8px}}
+@media(max-width:760px){#bb-generation-flow .bb-file-table,#bb-generation-flow .bb-file-table tbody{display:block}#bb-generation-flow .bb-file-table thead{display:none}#bb-generation-flow .bb-file-table tr{display:grid;grid-template-columns:24px minmax(0,1fr);padding:14px;gap:10px;border-top:1px solid var(--bb-line)}#bb-generation-flow .bb-file-table tr:first-child{border-top:0}#bb-generation-flow .bb-file-table td{display:block;border:0;padding:0;grid-column:2}#bb-generation-flow .bb-file-table .bb-table-index{grid-column:1;grid-row:1;padding-top:11px}#bb-generation-flow .bb-file-table select{font-size:16px}#bb-generation-flow .bb-template-name{min-height:0}#bb-generation-flow .bb-builder-heading{flex-wrap:wrap}#bb-generation-flow .bb-builder-bottom{align-items:flex-start}#bb-generation-flow .bb-builder-bottom p{width:100%}#bb-generation-flow .bb-optional>summary small{display:block;margin-left:16px}#bb-generation-flow .bb-table-actions .bb-button,#bb-generation-flow .bb-table-actions .bb-link{min-height:40px}#bb-generation-flow .bb-confirm-docs li{display:block}#bb-generation-flow .bb-confirm-docs small{display:block;margin-top:4px}}
+#bb-generation-flow .bb-confirm-section{padding:18px 0;border-bottom:1px solid var(--bb-line)}
+#bb-generation-flow .bb-confirm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px;color:var(--bb-muted);font-size:12px}
+#bb-generation-flow .bb-confirm-section strong{font-size:13px;font-weight:500}
+#bb-generation-flow .bb-summary-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+#bb-generation-flow .bb-summary-list span{font-size:11px;padding:4px 8px;border-radius:4px;background:var(--bb-soft);color:var(--bb-muted)}
+#bb-generation-flow .bb-credit-row{display:flex;justify-content:space-between;align-items:center;margin-top:20px;font-size:12px;gap:12px}
+#bb-generation-flow .bb-credit-value{font-size:23px;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:-.5px}
+#bb-generation-flow .bb-credit-value small{font-size:12px;font-weight:400;letter-spacing:0}
+#bb-generation-flow .bb-notice{display:flex;gap:9px;padding:13px 15px;background:var(--bb-soft);border-radius:7px;font-size:12px;color:var(--bb-muted);margin-top:18px}
+#bb-generation-flow .bb-notice svg{flex-shrink:0;margin-top:2px}
+#bb-generation-flow .bb-progress-title{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}
+#bb-generation-flow .bb-status-icon{width:39px;height:39px;border-radius:50%;background:var(--bb-lime);color:var(--bb-ok);display:grid;place-items:center;flex-shrink:0}
+#bb-generation-flow .bb-progress-track{height:7px;background:var(--bb-soft);border-radius:6px;margin:24px 0 9px;overflow:hidden}
+#bb-generation-flow .bb-progress-fill{height:100%;background:var(--bb-green);border-radius:6px;transition:width .25s ease}
+#bb-generation-flow .bb-progress-detail{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--bb-muted)}
+#bb-generation-flow .bb-log{padding-top:24px;display:grid;gap:13px}
+#bb-generation-flow .bb-log-row{display:flex;align-items:center;gap:9px;font-size:12px}
+#bb-generation-flow .bb-log-row svg{color:var(--bb-ok)}
+#bb-generation-flow .bb-log-row span{flex:1}
+#bb-generation-flow .bb-log-row small{color:var(--bb-muted);font-size:11px}
+#bb-generation-flow .bb-result-summary{display:flex;gap:15px;align-items:flex-start}
+#bb-generation-flow .bb-result-stats{display:flex;gap:20px;flex-wrap:wrap;margin:23px 0 20px;padding:18px 0;border-top:1px solid var(--bb-line);border-bottom:1px solid var(--bb-line)}
+#bb-generation-flow .bb-result-stat{font-size:11px;color:var(--bb-muted)}
+#bb-generation-flow .bb-result-stat strong{font-size:25px;line-height:1.2;display:block;color:var(--bb-ink);font-weight:600;margin-bottom:5px;font-variant-numeric:tabular-nums}
+#bb-generation-flow .bb-result-tabs{display:flex;gap:19px;border-bottom:1px solid var(--bb-line);flex-wrap:wrap;margin-bottom:3px}
+#bb-generation-flow .bb-result-tab{background:transparent;border:0;border-bottom:2px solid transparent;padding:8px 0 10px;font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .bb-result-tab[aria-pressed=true]{color:var(--bb-ink);border-bottom-color:var(--bb-green);font-weight:600}
+#bb-generation-flow .bb-output{display:flex;align-items:center;gap:11px;padding:13px 0;border-bottom:1px solid var(--bb-line)}
+#bb-generation-flow .bb-output>svg{color:var(--bb-ok);flex-shrink:0}
+#bb-generation-flow .bb-output-info{flex:1;min-width:0}
+#bb-generation-flow .bb-output-info strong{display:block;font-size:12px;font-weight:500;overflow-wrap:anywhere}
+#bb-generation-flow .bb-output-info small{display:block;color:var(--bb-muted);font-size:11px;margin-top:3px}
+#bb-generation-flow .bb-output .bb-link{font-size:11px}
+#bb-generation-flow .bb-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px;font-size:11px;color:var(--bb-muted)}
+#bb-generation-flow .bb-inline-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#bb-generation-flow .bb-empty{padding:28px 12px;text-align:center;color:var(--bb-muted);font-size:12px}
+#bb-generation-flow .bb-modal-wrap{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;background:light-dark(#16312650,#00000080);padding:100px 20px 25px;border-radius:14px}
+#bb-generation-flow .bb-modal{width:100%;max-width:530px;background:var(--bb-panel);border:1px solid var(--bb-line);box-shadow:0 20px 80px #00000025;border-radius:12px;padding:25px}
+#bb-generation-flow .bb-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:17px}
+#bb-generation-flow .bb-modal-head button{border:0;background:transparent;padding:5px;color:var(--bb-muted)}
+#bb-generation-flow .bb-choice{border:1px solid var(--bb-line);border-radius:8px;display:flex;align-items:center;gap:11px;padding:14px;margin:10px 0;font-size:12px;background:var(--bb-soft)}
+#bb-generation-flow .bb-choice span{overflow-wrap:anywhere}
+#bb-generation-flow .bb-choice small{display:block;color:var(--bb-muted);font-size:11px;margin-top:5px}
+#bb-generation-flow .bb-preview-sheet{padding:22px;border:1px solid var(--bb-line);background:var(--bb-bg);font-size:12px;color:var(--bb-ink);line-height:2}
+#bb-generation-flow .bb-preview-sheet h3{text-align:center;margin-bottom:18px}
+#bb-generation-flow .bb-preview-sheet p{margin-top:10px}
+#bb-generation-flow .bb-toast{position:absolute;bottom:22px;left:200px;right:24px;z-index:8;padding:12px 16px;background:var(--bb-green);color:var(--bb-on);box-shadow:var(--bb-shadow);border-radius:8px;font-size:12px}
+#bb-generation-flow .bb-error{color:var(--bb-error)}
+#bb-generation-flow .bb-hide-input{display:none}
+#bb-generation-flow .material-partition{padding:20px 0 0;margin-bottom:20px}
+#bb-generation-flow .material-partition h3{margin:0 0 13px;color:var(--bb-ink);font-size:13px;font-weight:600}
+#bb-generation-flow .material-role-list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+#bb-generation-flow .material-role{min-width:0;padding:0;border:0;background:transparent}
+#bb-generation-flow .material-role-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0}
+#bb-generation-flow .material-role-heading>div{min-width:0;width:100%}
+#bb-generation-flow .material-role-heading span{display:block;overflow-wrap:anywhere;font-size:11px;color:var(--bb-muted);margin-top:5px;line-height:1.55}
+#bb-generation-flow .material-picker{position:relative;width:100%;border:1px dashed light-dark(#b7c6a8,#607352);border-radius:8px;background:light-dark(#fafcf6,#253025);padding:17px;margin:12px 0;display:flex;justify-content:center;align-items:center;gap:10px;min-height:90px;font-size:12px;color:var(--bb-muted)}
+#bb-generation-flow .material-picker:hover{background:var(--bb-soft)}
+#bb-generation-flow .material-picker span{margin:0;font-size:11px}
+#bb-generation-flow .material-picker svg{width:16px;height:16px;color:var(--bb-ink)}
+#bb-generation-flow .material-file-list{list-style:none;padding:0;margin:10px 0 0}
+#bb-generation-flow .material-file-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--bb-line)}
+#bb-generation-flow .material-file-main{min-width:0;flex:1}
+#bb-generation-flow .material-file-main strong,#bb-generation-flow .material-file-main span{display:block;overflow-wrap:anywhere}
+#bb-generation-flow .material-file-main strong{font-size:12px;line-height:1.55;font-weight:600}
+#bb-generation-flow .material-file-main span{font-size:11px;color:var(--bb-muted);margin-top:3px}
+#bb-generation-flow .material-file-status{font-size:11px;color:var(--bb-ok);margin-top:5px;line-height:1.55}
+#bb-generation-flow .material-file-error{color:var(--bb-error)}
+#bb-generation-flow .material-file-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+#bb-generation-flow .material-file-actions button{font-size:11px;padding:7px 5px;min-height:35px;border:0;background:transparent;color:var(--bb-ok)}
+#bb-generation-flow .project-source label{display:block;font-size:12px;margin:10px 0 0}
+#bb-generation-flow .project-source label strong{font-weight:600}
+#bb-generation-flow .review-source-select{display:block;width:100%;max-width:100%;min-width:0;padding:10px;border:1px solid light-dark(#cbd9bd,#53694b);border-radius:5px;background:var(--bb-panel);color:var(--bb-ink);margin:9px 0;font-size:12px;min-height:40px}
+#bb-generation-flow .review-muted{color:var(--bb-muted);font-size:12px;line-height:1.75}
+#bb-generation-flow .review-upload-summary{padding:10px 12px;margin:16px 0 0;border-radius:6px;background:var(--bb-soft);font-size:12px;line-height:1.75;color:var(--bb-muted)}
+#bb-generation-flow .review-upload-summary:empty{display:none}
+#bb-generation-flow .source-footer-copy strong{font-size:13px;font-weight:600;display:block;margin-bottom:4px}
+#bb-generation-flow .source-footer-copy p{font-size:11px;color:var(--bb-muted)}
+#bb-generation-flow .review-source-modes{display:flex;flex-wrap:wrap;gap:12px;border:0;padding:0;margin:16px 0 20px;min-width:0}
+#bb-generation-flow .review-source-modes label{display:flex;align-items:center;gap:9px;flex:1 1 220px;padding:14px 16px;border:1px solid var(--bb-line);border-radius:8px;font-weight:600;line-height:1.6;font-size:13px}
+#bb-generation-flow .review-source-modes label:has(:checked){border-color:light-dark(#173e33,#c3dfb7);background:light-dark(#f1f5e8,#28372c)}
+#bb-generation-flow .review-source-modes input[type=radio]{width:16px;height:16px;min-height:0;padding:0;margin:0;flex-shrink:0;accent-color:var(--bb-green)}
+#bb-generation-flow .review-source-modes label:has(:disabled){opacity:.65}
+#bb-generation-flow .review-selected-source{margin-top:16px;padding:16px;border:1px solid var(--bb-line);border-radius:8px;background:light-dark(#fafbf7,#253025)}
+#bb-generation-flow .review-selected-source>strong{font-size:13px;font-weight:600}
+#bb-generation-flow .review-selected-source>.material-file-list{margin-top:8px}
+#bb-generation-flow .review-selected-source>p{margin-bottom:0;font-size:11px}
+#bb-generation-flow .review-source-empty{padding-top:16px}
+@media(max-width:650px){#bb-generation-flow .review-source-select{font-size:16px}#bb-generation-flow .material-file-actions{flex-direction:column;align-items:flex-end}#bb-generation-flow .material-file-row{gap:7px}#bb-generation-flow .project-source label{line-height:1.8}#bb-generation-flow .material-file-actions button{min-height:38px}}
+@media(max-width:850px){#bb-generation-flow .bb-shell{grid-template-columns:151px minmax(0,1fr)}#bb-generation-flow .bb-sidebar{padding:23px 10px}#bb-generation-flow .bb-brand{font-size:18px;gap:6px}#bb-generation-flow .bb-main{padding:0 20px 22px}#bb-generation-flow .bb-panel{padding:20px}#bb-generation-flow .bb-nav-item{padding:11px 8px}#bb-generation-flow .bb-toast{left:170px}}
+@media(max-width:650px){#bb-generation-flow .bb-shell{grid-template-columns:minmax(0,1fr);min-height:720px}#bb-generation-flow .bb-sidebar{display:none}#bb-generation-flow .bb-main{padding:0 16px 20px}#bb-generation-flow .bb-heading{padding-top:22px;padding-bottom:22px}#bb-generation-flow h1{font-size:25px}#bb-generation-flow .bb-panel{padding:18px}#bb-generation-flow .bb-step{font-size:11px;flex-direction:column;align-items:flex-start;gap:7px}#bb-generation-flow .bb-steps{margin-bottom:22px}#bb-generation-flow .bb-demo{padding-left:12px;gap:7px;flex-wrap:wrap}#bb-generation-flow .bb-demo span{font-size:10px}#bb-generation-flow .bb-mode{padding:12px;gap:7px}#bb-generation-flow .bb-mode svg{display:none}#bb-generation-flow .bb-mode small{font-size:11px}#bb-generation-flow .bb-footer{align-items:flex-start;flex-wrap:wrap}#bb-generation-flow .bb-footer>.bb-primary{width:100%}#bb-generation-flow .bb-source-card{padding:14px;gap:10px}#bb-generation-flow .bb-source-card .bb-file-icon{width:30px;height:38px}#bb-generation-flow .bb-source-card .bb-file-check{display:none}#bb-generation-flow .bb-file-name{font-size:12px}#bb-generation-flow .bb-row-type{display:none}#bb-generation-flow .bb-context{font-size:11px}#bb-generation-flow .bb-modal-wrap{padding:60px 12px 16px}#bb-generation-flow .bb-modal{padding:19px}#bb-generation-flow .bb-toast{left:14px;right:14px}#bb-generation-flow .bb-result-tabs{gap:13px}#bb-generation-flow .bb-result-tab{font-size:11px}#bb-generation-flow .bb-row{padding-left:18px}#bb-generation-flow input[type=text],#bb-generation-flow textarea,#bb-generation-flow select{font-size:16px}#bb-generation-flow .bb-output .bb-tag{display:none}}
+@media(prefers-reduced-motion:reduce){#bb-generation-flow .bb-progress-fill{transition:none}}
+</style>
+<div id="bb-generation-flow" aria-label="BondBuddy 文件生成流程设计稿">
+  <div class="bb-demo"><strong>修订设计稿</strong><span id="bb-demo-context">对齐 PR #787 · 86229e0 · 示例数据与模拟任务</span></div>
+  <div class="bb-shell">
+    <aside class="bb-sidebar" aria-label="BondBuddy 导航">
+      <div class="bb-brand"><span class="bb-logo">b</span><span>bondbuddy</span></div>
+      <div class="bb-workspace"><i data-lucide="building-2" aria-hidden="true"></i><div>我的工作空间<small>PERSONAL WORKSPACE</small></div></div>
+      <div class="bb-nav">
+        <span class="bb-nav-item"><i data-lucide="folder" aria-hidden="true"></i>全部项目</span>
+        <div class="bb-nav-label">继续这个项目</div>
+        <span class="bb-nav-item"><i data-lucide="file-plus-2" aria-hidden="true"></i>更新募集书</span>
+        <button class="bb-nav-item" data-action="entry-review"><i data-lucide="file-check-2" aria-hidden="true"></i>复核募集书</button>
+        <button class="bb-nav-item bb-active" data-action="entry-generate"><i data-lucide="sparkles" aria-hidden="true"></i>文件生成</button>
+        <span class="bb-nav-item"><i data-lucide="shield-check" aria-hidden="true"></i>诚信核查</span>
+        <button class="bb-nav-item" data-action="entry-qa"><i data-lucide="messages-square" aria-hidden="true"></i>项目问答</button>
+      </div>
+      <div class="bb-sidebar-bottom"><div class="bb-balance"><span class="bb-sub">可用积分</span><strong>5,000,040</strong></div><div class="bb-user"><span class="bb-avatar">我</span><strong>maxy</strong></div></div>
+    </aside>
+    <main class="bb-main">
+      <div class="bb-topbar"><div class="bb-breadcrumb"><span>全部项目</span><span>/</span><strong>ceshi</strong><span>/</span><span id="bb-crumb">文件生成</span></div><button class="bb-link" data-action="history"><i data-lucide="history" aria-hidden="true"></i>生成记录</button></div>
+      <div class="bb-heading"><div><div class="bb-eyebrow">BOND BUDDY / PROJECT DOCUMENTS</div><h1 id="bb-page-title">生成文件</h1><p id="bb-page-subtitle">从募集说明书出发，生成项目所需文件。</p></div></div>
+      <nav class="bb-steps" id="bb-steps" aria-label="文件生成步骤"></nav>
+      <div id="bb-content"></div>
+      <div class="bb-quiet-note" id="bb-quiet"><i data-lucide="bookmark-check" aria-hidden="true"></i>已选择的资料与范围自动保留，可随时回来继续。</div>
+    </main>
+    <div id="bb-modal-root"></div>
+    <div class="bb-toast" id="bb-toast" role="status" hidden></div>
+    <input class="bb-hide-input" id="bb-file-input" type="file" aria-label="选择演示文件">
+  </div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('bb-generation-flow');
+  const content = root.querySelector('#bb-content');
+  const modalRoot = root.querySelector('#bb-modal-root');
+  const sourceName = '1-2 山东菏都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版(1).docx';
+  const groups = [
+    {name:'1-1 发行人基本情况',items:[['1-1-1','发行人基本情况说明','发行人说明'],['1-1-2','发行人历史沿革核查记录','综合核查记录'],['1-1-3','营业执照','原始资料']]},
+    {name:'1-2 公司治理与独立性',items:[['1-2-1','公司治理情况核查记录','综合核查记录'],['1-2-2','发行人独立性核查说明','专项核查'],['1-2-3','董事会会议决议','原始资料']]},
+    {name:'1-3 财务与偿债能力',items:[['1-3-1','主要财务数据核查记录','综合核查记录'],['1-3-2','偿债能力分析','专项核查'],['1-3-3','银行征信报告','原始资料']]},
+    {name:'1-4 业务经营与重大事项',items:[['1-4-1','主要业务情况说明','发行人说明'],['1-4-2','重大诉讼与仲裁核查记录','综合核查记录'],['1-4-3','管理层访谈记录','履职记录']]}
+  ];
+  const items = groups.flatMap((g,gi)=>g.items.map((a,ii)=>({id:a[0],name:a[1],type:a[2],group:gi,explain:ii===2})));
+  const documentCatalog=[{id:'init',name:'立项报告'},{id:'underwriter',name:'主承销商核查意见'},{id:'legal',name:'法律意见书'},{id:'application',name:'挂牌 / 发行申请书'},{id:'recommendation',name:'推荐函'},{id:'private_summary',name:'募集说明书摘要'},{id:'annual',name:'年度报告'},{id:'semiannual',name:'半年度报告'},{id:'issuer',name:'发行人基本情况说明'},{id:'financial',name:'主要财务情况说明'},{id:'credit',name:'授信情况说明'},{id:'proceeds',name:'募集资金使用情况说明'}];
+  const initialTemplates={init:[{name:'立项报告模板',version:1}],underwriter:[{name:'主承销商核查意见模板',version:1}],issuer:[{name:'发行人基本情况说明模板',version:1}]};
+  const initial = {step:2,source:sourceName,version:'V1',hasDirectory:true,directory:'底稿目录.xlsx',mode:'single',selected:items.map(x=>x.id),expanded:[0],query:'',entry:'generate',running:false,paused:false,done:false,progress:0,resultTab:'all',page:0,failed:false,parse:'ready',parseTarget:'',history:[],library:[{id:'v1',name:sourceName,version:'V1',status:'saved',size:0}],picks:{generate:'v1',review:'v1',qa:'v1'},sourceModes:{generate:null,review:null,qa:null},currentVersionId:'v1',sourceMessage:''};
+  const freshState=()=>({...initial,selected:items.map(x=>x.id),expanded:[0],library:initial.library.map(x=>({...x})),picks:{...initial.picks},sourceModes:{...initial.sourceModes},history:[],documentTypes:['init','underwriter'],blankRow:false,templates:JSON.parse(JSON.stringify(initialTemplates)),templatePicks:{init:1,underwriter:1,issuer:1},savedInputs:{init:{requirements:'保留模板章节顺序，采用本项目发行条款和财务口径。',materials:[]},underwriter:{requirements:'结合本次募集说明书，保留模板中的核查事项。',materials:[]}},reusedExpanded:[],requirementsDraft:'',requirementsOpen:false,supportOpen:false,templateTarget:'',pendingTemplate:'',broker:'',requirementsStatus:''});
+  let state=freshState();
+  const controls={scenario:'existing',result:'success'};
+  let taskTimer=null,parseTimer=null,toastTimer=null,uploadKind='source',modalFocus=null,savedRevision=0;
+  const icon=n=>`<i data-lucide="${n}" aria-hidden="true"></i>`;
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const button=(label,action,style='',disabled=false)=>`<button class="bb-button ${style}" data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
+  const link=(label,action)=>`<button class="bb-link" data-action="${action}">${label}</button>`;
+  const chosen=()=>items.filter(x=>state.selected.includes(x.id));
+  const templateDocuments=()=>state.documentTypes.map(id=>documentCatalog.find(d=>d.id===id)).filter(Boolean);
+  const templateFor=type=>(state.templates[type]||[]).find(t=>t.version===state.templatePicks[type]);
+  const readyDocuments=()=>templateDocuments().filter(d=>templateFor(d.id));
+  const templatesReady=()=>!!state.documentTypes.length&&readyDocuments().length===state.documentTypes.length;
+  const count=()=>state.mode==='batch'?state.selected.length:state.documentTypes.length;
+  const totalPoints=()=>count()*4500;
+  const entryTitle=()=>state.entry==='review'?'复核募集书':state.entry==='qa'?'项目问答':'生成文件';
+  const validSource=()=>!!state.source&&state.parse==='ready'&&!state.library.some(x=>x.status!=='saved');
+  const sourceRole=()=>state.entry==='review'?'待复核募集书':state.entry==='qa'?'问答依据募集说明书':'生成依据募集说明书';
+  const sourceMode=()=>state.sourceModes[state.entry]||(state.source||state.library.some(x=>x.status==='saved')?'project':'upload');
+  const sourceBlocked=()=>state.library.some(x=>x.status!=='saved');
+  function applySourceMode(){const upload=root.querySelector('#bb-source-upload'),existing=root.querySelector('#bb-source-existing');if(!upload||!existing)return;upload.hidden=sourceMode()!=='upload';existing.hidden=sourceMode()!=='project';root.querySelectorAll('[name=bb-source-mode]').forEach(radio=>{radio.checked=radio.value===sourceMode();radio.disabled=sourceBlocked();});}
+  function syncSource(){const chosenSource=state.library.find(x=>x.id===state.picks[state.entry]&&x.status==='saved');state.source=chosenSource?.name||'';state.version=chosenSource?.version||'';if(state.parseTarget!=='directory'){state.parse=state.library.some(x=>x.status==='uploading')?'loading':state.library.some(x=>x.status==='error')?'error':'ready';}}
+  function icons(){if(globalThis.lucide)lucide.createIcons({attrs:{width:16,height:16,'stroke-width':1.7}});}
+  function persist(){
+    if(window.openai?.setWidgetState){const saved={...state,history:state.history.slice(-3)};delete saved.query;window.openai.setWidgetState({modelContent:{design:'恢复文件表格与添加一行；募集书入口沿用 PR #787 / 86229e0',step:state.step,mode:state.mode,files:templateDocuments().map(d=>d.name),sourceMode:sourceMode(),scenario:controls.scenario},privateContent:{schema:'pr787-table-v4',flow:saved,flowRevision:++savedRevision,controls:{...controls}}}).catch(()=>{});}
+  }
+  function restore(saved){if(saved?.privateContent?.schema!=='pr787-table-v4'||!saved.privateContent.flow)return;savedRevision=Math.max(savedRevision,Number(saved.privateContent.flowRevision)||0);const s=saved.privateContent.flow;if(s.step>=1&&s.step<=4){state={...freshState(),...s,query:''};if(!Array.isArray(state.selected))state.selected=initial.selected.slice();state.library=state.library.map(x=>x.status==='uploading'?{...x,status:'error'}:x);Object.assign(controls,saved.privateContent.controls||{});if(state.running)state.paused=true;syncSource();}}
+  restore(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals',e=>{const incoming=e.detail?.globals?.widgetState;if(incoming){const revision=Number(incoming.privateContent?.flowRevision)||0;if(revision&&revision<=savedRevision)return;clearInterval(taskTimer);restore(incoming);render();}});
+  function steps(){const labels=state.entry==='generate'?['选择募集说明书','选择生成内容','确认并生成','查看成果']:['选择募集说明书',state.entry==='review'?'设置复核':'开始问答'];root.querySelector('#bb-steps').innerHTML=labels.map((t,i)=>`<button class="bb-step ${state.step===i+1?'bb-current':state.step>i+1?'bb-complete':''}" data-step="${i+1}" ${i+1<state.step&&!state.running&&!state.done?'':'disabled'} ${state.step===i+1?'aria-current="step"':''}><span class="bb-num">${state.step>i+1?'✓':i+1}</span><span>${t}</span></button>`).join('');}
+  function sourceContext(){return `<div class="bb-context">${icon('file-text')}<span>生成依据：${esc(state.source)} · ${state.version}</span>${link('更换','change-source')}</div>`;}
+  function sourceScreen(){
+    const saved=state.library.filter(x=>x.status==='saved'),pending=state.library.filter(x=>x.status==='uploading').length,failed=state.library.filter(x=>x.status==='error').length;
+    const purpose=state.entry==='review'?'本轮复核':state.entry==='qa'?'本次问答':'本次生成';
+    const selectedLabel=state.entry==='review'?'本次待复核稿':state.entry==='qa'?'本次问答依据':'本次生成依据';
+    const selectedSource=saved.find(x=>x.id===state.picks[state.entry]);
+    const uploadHelp=state.entry==='review'?'上传一份需要复核的募集说明书，支持 Word / PDF。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。':'上传一份用于'+(state.entry==='qa'?'项目问答':'文件生成')+'的募集说明书，支持 Word / PDF。';
+    const notice=pending?'正在上传并保存新的募集说明书，请保持页面打开。':failed?`${failed} 份文件尚未保存，请重试或移除后继续。`:'';
+    const next=state.entry==='review'?'下一步：补充复核材料':state.entry==='qa'?'下一步：确认问题':'下一步：选择生成内容';
+    const row=f=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(f.name)}</strong><span>${sourceRole()} · ${f.version}${f.size?' · '+(f.size/1024).toFixed(1)+' KB':''}</span><p class="material-file-status ${f.status==='error'?'material-file-error':''}" role="${f.status==='error'?'alert':'status'}">${f.status==='saved'?'已保存':f.status==='error'?'上传失败，请重试':f.progress>=2?'传输完成，正在确认文件保存…':`正在上传 ${f.progress===1?'66':'33'}%…`}</p></div><div class="material-file-actions">${f.status==='error'?`<button data-retry-source="${f.id}">重试此文件</button>`:''}<button data-delete-source="${f.id}" ${pending?'disabled':''}>${f.status==='error'?'移除此行':'删除'}</button></div></li>`;
+    return `<section class="bb-panel"><h2>选择募集说明书</h2><p class="bb-sub">选择一种方式，确定本次使用的募集说明书。单份不超过 100 MB。</p>${notice?`<p class="review-upload-summary" role="${failed?'alert':'status'}">${notice}</p>`:''}<section class="material-partition"><fieldset class="review-source-modes" aria-label="提供募集说明书的方式"><label><input type="radio" name="bb-source-mode" value="upload" aria-controls="bb-source-upload" ${sourceMode()==='upload'?'checked':''} ${sourceBlocked()?'disabled':''}>上传新募集说明书</label><label><input type="radio" name="bb-source-mode" value="project" aria-controls="bb-source-existing" ${sourceMode()==='project'?'checked':''} ${sourceBlocked()?'disabled':''}>选择项目已有募集说明书</label></fieldset><div id="bb-source-upload" ${sourceMode()==='upload'?'':'hidden'}><ul class="material-role-list"><li class="material-role" data-drop="source"><div class="material-role-heading"><div><span>${uploadHelp}</span></div><button class="material-picker" data-action="upload-source" ${sourceBlocked()?'disabled':''}>${icon('upload')}<span>点击或拖入文件</span></button></div><ul class="material-file-list">${state.library.filter(f=>f.status!=='saved').map(row).join('')}</ul></li></ul></div><div id="bb-source-existing" class="project-source" ${sourceMode()==='project'?'':'hidden'}><label for="bb-project-source">选择募集说明书版本</label><select class="review-source-select" id="bb-project-source" ${sourceBlocked()||!saved.length?'disabled':''}><option value="">请选择募集说明书版本</option>${saved.map(f=>`<option value="${f.id}" ${state.picks[state.entry]===f.id?'selected':''}>${f.version} · ${esc(f.name)}${state.currentVersionId===f.id?' · 项目当前版本':''}</option>`).join('')}</select>${!saved.length?'<p class="review-muted">项目还没有可选的募集说明书，请切换到“上传新募集说明书”。</p>':''}<p class="review-muted">所选版本只用于${purpose}。${state.entry==='review'?'PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。':''}</p></div><div data-selected-source>${selectedSource?`<div class="review-selected-source"><strong>${selectedLabel}</strong><ul class="material-file-list">${row(selectedSource)}</ul><p class="review-muted">上传新稿或选择其他版本后，将替换${selectedLabel}。</p></div>`:`<p class="review-muted review-source-empty" role="status">尚未选择${selectedLabel}。</p>`}</div></section><div class="bb-footer"><div class="source-footer-copy"><strong>${pending?'材料保存完成后即可继续':failed?'请先处理未保存的文件':validSource()?'募集说明书已保存':'请上传或选择募集说明书'}</strong><p aria-live="polite">${validSource()?(state.sourceMessage||'已选 '+state.version+'，可继续'+(state.entry==='generate'?'选择生成内容':state.entry==='review'?'补充复核材料':'确认问题')):'保存并选定募集说明书后进入下一步。'}</p></div>${button(next+' '+icon('arrow-right'),'next','bb-primary',!validSource())}</div></section>`;
+  }
+  function treeMarkup(){
+    const query=state.query.trim().toLowerCase();
+    const filtered=items.filter(x=>(x.id+x.name).toLowerCase().includes(query));
+    if(!filtered.length)return `<div class="bb-empty">没有匹配的文件，请换一个编号或名称。</div>`;
+    return groups.map((g,gi)=>{const giItems=filtered.filter(x=>x.group===gi);if(!giItems.length)return '';const all=items.filter(x=>x.group===gi);const selected=all.filter(x=>state.selected.includes(x.id)).length;const expanded=state.expanded.includes(gi)||!!query;return `<div class="bb-group"><div class="bb-group-head"><label class="bb-check"><input type="checkbox" data-group="${gi}" aria-label="选择${g.name}" ${selected===all.length?'checked':''} data-partial="${selected>0&&selected<all.length}"><span>${g.name}</span></label><button class="bb-expand" data-expand="${gi}" aria-expanded="${expanded}">${selected} / ${all.length} ${icon(expanded?'chevron-up':'chevron-down')}</button></div>${expanded?giItems.map(x=>`<div class="bb-row"><label class="bb-check"><input type="checkbox" data-item="${x.id}" ${state.selected.includes(x.id)?'checked':''}><span>${x.id} ${x.name}</span></label><span class="bb-row-type">${x.type}</span></div>`).join(''):''}</div>`;}).join('');
+  }
+  function templateTable(){
+    const docs=templateDocuments(),ready=readyDocuments(),rows=[...state.documentTypes];if(state.blankRow||!rows.length)rows.push('');
+    return `<div class="bb-builder-heading"><div><h3>要生成的文件 <span>${docs.length} 份</span></h3><p class="bb-sub">每行选择一种文件，并添加对应模板。已保存的模板自动复用。</p></div><span class="bb-tag ${ready.length===docs.length&&docs.length?'':'bb-warning-tag'}">${ready.length} / ${docs.length} 已准备</span></div>
+      <table class="bb-file-table" aria-label="要生成的文件"><thead><tr><th scope="col">序号</th><th scope="col">文件类型</th><th scope="col">采用的模板 / 已保存依据</th><th scope="col">操作</th></tr></thead><tbody>${rows.map((type,index)=>{
+        const t=templateFor(type),saved=state.savedInputs[type]||{requirements:'',materials:[]};
+        return `<tr data-document-row="${type}"><td class="bb-table-index">${String(index+1).padStart(2,'0')}</td><td><select class="bb-input" data-document-type="${type}" aria-label="第 ${index+1} 行文件类型"><option value="" disabled ${type?'':'selected'}>选择要生成的文件</option>${documentCatalog.map(d=>`<option value="${d.id}" ${d.id===type?'selected':state.documentTypes.includes(d.id)?'disabled':''}>${d.name}${d.id!==type&&state.documentTypes.includes(d.id)?'（已添加）':''}</option>`).join('')}</select></td><td>${type?`<div class="bb-template-name">${t?icon('file-text'):''}<span>${t?esc(t.name)+' <small>V'+t.version+'</small>':'<span class="bb-error">待添加模板</span>'}</span></div><details class="bb-saved-inputs" data-reused="${type}" ${state.reusedExpanded.includes(type)?'open':''}><summary>已保存的要求与依据 · ${saved.materials.length} 份资料${saved.requirements?' · 有要求':''}</summary><p>${esc(saved.requirements||'尚无个别要求。')}</p><ul>${saved.materials.length?saved.materials.map(name=>`<li>${esc(name)}</li>`).join(''):'<li>直接使用募集书和模板，可按需补充依据。</li>'}</ul></details>`:'<span class="bb-table-placeholder">选择文件类型后添加模板</span>'}</td><td><div class="bb-table-actions">${type?`<button class="bb-button" data-template-for="${type}">${t?'更换模板':'添加模板'}</button>`:''}<button class="bb-link" data-remove-document="${type}" aria-label="移除第 ${index+1} 行" ${!type&&!docs.length?'disabled':''}>移除</button></div></td></tr>`;
+      }).join('')}</tbody></table>
+      <div class="bb-builder-bottom">${button(icon('plus')+' 添加一行','add-row','',state.documentTypes.length===documentCatalog.length)}<p role="status">${!docs.length?'选择文件类型，开始准备本次清单。':ready.length===docs.length?`已复用 ${ready.length} 份模板，可以核对文件包。`:`还需为 ${docs.length-ready.length} 份文件添加模板。`}</p></div>
+      <details class="bb-optional" data-optional="requirementsOpen" ${state.requirementsOpen?'open':''}><summary>补充要求（选填）<small>已保存的个别要求会继续保留</small></summary><div class="bb-optional-body"><label class="bb-form-field">本轮统一补充要求<textarea class="bb-input" data-field="requirementsDraft" maxlength="1200" placeholder="填写本轮希望补充到所选文件的要求">${esc(state.requirementsDraft)}</textarea></label><div class="bb-inline-actions">${button('保存到所选文件','save-requirements','',!docs.length||!state.requirementsDraft.trim())}<span class="bb-sub" role="status">${esc(state.requirementsStatus)}</span></div></div></details>
+      <details class="bb-optional" data-optional="supportOpen" ${state.supportOpen?'open':''}><summary>补充依据（选填）<small>为本次所选文件补充参考资料</small></summary><div class="bb-support-zone" data-drop="support"><p class="bb-sub">DOCX / PDF / XLSX · 支持多份，每份不超过 100 MB</p><div class="bb-inline-actions" style="justify-content:center">${button(icon('upload')+' 添加补充依据','upload-support','',!docs.length)}</div><p class="bb-sub">已保存资料可在对应文件行中展开查看。</p></div></details>`;
+  }
+  function contentScreen(){
+    const modes=`<div class="bb-modes">${['batch','single'].map(m=>`<button class="bb-mode" data-mode="${m}" aria-pressed="${state.mode===m}">${icon(m==='batch'?'list-checks':'file-pen-line')}<div><strong>${m==='batch'?'按目录批量生成':'按模板生成文件'}</strong><small>${m==='batch'?'从底稿目录中勾选文件':'在表格中逐行添加所需文件'}</small></div></button>`).join('')}</div>`;
+    let body;
+    if(state.mode==='single')body=templateTable();
+    else if(!state.hasDirectory)body=`<div class="bb-dropzone" data-drop="directory"><div class="bb-file-icon">${icon('sheet')}</div><h3>添加底稿目录</h3><p>上传 Excel 目录，识别后即可勾选要生成的文件。</p>${button(icon('plus')+' 选择 Excel 目录','upload-directory','bb-primary')}</div><details class="bb-sub" style="margin-top:14px"><summary>目录怎么准备？</summary><p style="margin-top:8px">Excel 中保留底稿编号、文件名称和所属目录。默认选择“1 尽职调查文件”，可在识别后调整。</p></details>`;
+    else if(state.parse==='loading'&&state.parseTarget==='directory')body=`<div class="bb-directory">${icon('sheet')}<div class="bb-file-info"><strong>${esc(state.directory)}</strong><small>正在识别目录与文件条目…</small></div></div>`;
+    else body=`<div class="bb-directory">${icon('sheet')}<div class="bb-file-info"><strong>${esc(state.directory)}</strong><small>已识别 · 12 个条目</small></div>${link('更换目录','select-directory')}</div><div class="bb-range"><strong>1 尽职调查文件</strong><span class="bb-sub">已选 <strong id="bb-selected-count">${state.selected.length}</strong> / 12 项</span></div><div class="bb-toolbar"><label class="bb-search">${icon('search')}<input type="text" aria-label="搜索编号或名称" placeholder="搜索编号或名称" value="${esc(state.query)}" id="bb-search"></label>${link(state.selected.length===items.length?'清空选择':'选择全部','toggle-all')}</div><div class="bb-tree" id="bb-tree">${treeMarkup()}</div>`;
+    const valid=state.mode==='batch'?state.hasDirectory&&state.parse==='ready'&&state.selected.length>0:templatesReady();
+    return sourceContext()+`<section class="bb-panel"><h2>选择要生成的文件</h2><p class="bb-sub">已有的目录和模板可以直接复用。</p>${modes}${body}<div class="bb-footer">${link(icon('arrow-left')+' 上一步','back')}<span class="bb-footer-hint">${state.mode==='batch'?`已选 <strong id="bb-footer-count">${state.selected.length}</strong> 份文件`:`${count()} 份文件 · ${totalPoints().toLocaleString()} 积分`}</span>${button((state.mode==='single'?'核对文件包与费用':'下一步：确认生成')+' '+icon('arrow-right'),'next','bb-primary',!valid)}</div></section>`;
+  }
+  function confirmScreen(){
+    const listing=state.mode==='batch'?`<strong>${esc(state.directory)} · 1 尽职调查文件</strong><div class="bb-summary-list">${groups.map((g,i)=>{const n=chosen().filter(x=>x.group===i).length;return n?`<span>${g.name.replace(/^\S+ /,'')} ${n} 份</span>`:'';}).join('')}</div>`:`<strong>按模板生成文件 · ${count()} 份</strong><ul class="bb-confirm-docs">${templateDocuments().map(d=>{const t=templateFor(d.id),saved=state.savedInputs[d.id]||{requirements:'',materials:[]};return `<li><span>${d.name}</span><small>${esc(t.name)} V${t.version}<br>${saved.materials.length} 份补充依据${saved.requirements?' · 已保存补充要求':''}</small></li>`;}).join('')}</ul>`;
+    return sourceContext()+`<section class="bb-panel"><h2>确认本次生成</h2><p class="bb-sub">核对募集说明书、生成范围及预计积分。</p><div class="bb-confirm-section"><div class="bb-confirm-head"><span>募集说明书</span>${link('更换','change-source')}</div><strong class="bb-file-name">${esc(state.source)}</strong><div class="bb-metadata"><span class="bb-tag">${state.version} · 已保存</span></div></div><div class="bb-confirm-section"><div class="bb-confirm-head"><span>生成内容</span>${link('调整','edit-selection')}</div>${listing}</div>${state.mode==='batch'?`<div class="bb-notice">${icon('folder-output')}<span>可编制的条目形成文件；业务不适用或资料不足的条目分别写明情况。成果按“可生成文件”和“不适用说明”两个文件夹打包。</span></div>`:''}<div class="bb-credit-row"><div><strong>全部完成预计使用积分</strong><p class="bb-sub">${count()} 份 × 4,500 积分 · 当前可用 5,000,040 积分</p></div><div class="bb-credit-value">${totalPoints().toLocaleString()} <small>积分</small></div></div><div class="bb-footer">${link(icon('arrow-left')+' 上一步','back')}${button('确认并开始生成 '+icon('sparkles'),'generate','bb-primary')}</div></section>`;
+  }
+  function progressScreen(){const n=count(),finished=Math.min(n,Math.floor(state.progress*n/100));return `<section class="bb-panel"><div class="bb-progress-title"><div><h2>${state.paused?'生成已暂停':'正在生成文件'}</h2><p class="bb-sub">${state.paused?'已保留当前进度，可以继续生成。':'可离开此页面，稍后在生成记录中继续查看。'}</p></div><span class="bb-status-icon">${icon(state.paused?'pause':'sparkles')}</span></div><div class="bb-progress-track" role="progressbar" aria-label="生成进度" aria-valuenow="${state.progress}" aria-valuemin="0" aria-valuemax="100"><div class="bb-progress-fill" style="width:${state.progress}%"></div></div><div class="bb-progress-detail"><span>已完成 ${finished} / ${n} 份</span><span>${state.progress}%</span></div><div class="bb-log"><div class="bb-log-row">${icon('check')}<span>已确认募集说明书 ${state.version}</span><small>完成</small></div><div class="bb-log-row">${icon('check')}<span>已确定 ${n} 份生成文件</span><small>完成</small></div><div class="bb-log-row">${icon(state.paused?'pause':'file-pen-line')}<span>${state.paused?'等待继续生成':`正在编制：${esc(outputs()[Math.min(finished,n-1)]?.name||'核查文件')}`}</span><small>${state.paused?'已暂停':'进行中'}</small></div></div><div class="bb-footer"><span class="bb-footer-hint">本次资料与选择已保留</span>${button(state.paused?'继续生成':'暂停生成','pause',state.paused?'bb-primary':'')}</div></section>`;}
+  function outputs(){return state.mode==='batch'?chosen():templateDocuments().map(d=>({id:d.id,name:d.name,type:d.name,explain:false}));}
+  function resultRows(){let rows=outputs().map((x,i)=>({...x,failed:state.failed&&i===0}));if(state.resultTab==='docs')rows=rows.filter(x=>!x.explain&&!x.failed);if(state.resultTab==='notes')rows=rows.filter(x=>x.explain&&!x.failed);if(state.resultTab==='failed')rows=rows.filter(x=>x.failed);const start=state.page*5;const view=rows.slice(start,start+5);return `${view.length?view.map(x=>`<div class="bb-output">${icon(x.failed?'circle-alert':x.explain?'file-info':'file-text')}<div class="bb-output-info"><strong>${state.mode==='batch'?x.id+' ':''}${esc(x.name)}${x.explain?'—资料不足说明':''}.docx</strong><small>${x.failed?'暂时无法完成，请重试':x.explain?'不适用说明 / 资料不足':state.mode==='batch'?'可生成文件 / 已完成':'Word 文件 / 已完成'}</small></div>${x.failed?`<span class="bb-tag bb-warning-tag">生成失败</span>${link('重试','retry')}`:`<span class="bb-tag ${x.explain?'bb-warning-tag':''}">${x.explain?'情况说明':'已完成'}</span><button class="bb-link" data-preview="${esc(x.id||'single')}">预览</button>`}</div>`).join(''):'<div class="bb-empty">此分类下没有文件。</div>'}<div class="bb-pagination"><span>${rows.length?`${start+1}–${Math.min(start+5,rows.length)} / ${rows.length} 份`:'0 份'}</span><div class="bb-inline-actions">${button(icon('chevron-left'),'page-prev','',state.page===0)}${button(icon('chevron-right'),'page-next','',start+5>=rows.length)}</div></div>`;}
+  function resultScreen(){const rows=outputs(),failed=state.failed?1:0,notes=rows.filter(x=>x.explain).length,docs=rows.length-notes-failed;return `<section class="bb-panel"><div class="bb-result-summary"><span class="bb-status-icon">${icon(failed?'circle-alert':'check')}</span><div><h2>${failed?'文件已生成，1 项待重试':'文件已生成'}</h2><p class="bb-sub">${rows.length-failed} 份结果已保存到本项目，可预览或打包下载。</p></div></div><div class="bb-result-stats"><div class="bb-result-stat"><strong>${docs}</strong>可生成文件</div><div class="bb-result-stat"><strong>${notes}</strong>不适用说明</div>${failed?`<div class="bb-result-stat"><strong class="bb-error">1</strong>待重试</div>`:''}<div class="bb-result-stat" style="margin-left:auto;max-width:180px"><span>本次使用</span><p style="margin-top:7px;color:var(--bb-ink)">募集说明书 ${state.version}${state.mode==='batch'?'<br>1 尽职调查文件':''}</p></div></div>${failed?`<div class="bb-notice" style="margin:0 0 15px">${icon('info')}<span>已完成文件可以下载。只重试失败项，保留其余成果。</span>${link('重试失败项','retry')}</div>`:''}<div class="bb-result-tabs" aria-label="筛选生成结果">${[['all','全部',rows.length],['docs','可生成文件',docs],['notes','不适用说明',notes],...(failed?[['failed','待重试',1]]:[])].map(([v,l,n])=>`<button class="bb-result-tab" data-result-tab="${v}" aria-pressed="${state.resultTab===v}">${l} ${n}</button>`).join('')}</div><div id="bb-output-list">${resultRows()}</div><div class="bb-footer">${link('再生成一批','new-batch')}${button(icon('download')+(failed?' 下载已完成文件（ZIP）':' 下载全部（ZIP）'),'download','bb-primary')}</div></section>`;}
+  function render(){
+    syncSource();
+    root.querySelector('#bb-demo-context').textContent=state.entry==='review'?'复核对照 · PR #787 / 86229e0 的募集书二选一入口':state.entry==='qa'?'项目问答 · 沿用 PR #787 上传／选择交互的设计示意':'对齐 PR #787 · 86229e0 · 示例数据与模拟任务';
+    root.querySelector('#bb-page-title').textContent=entryTitle();
+    root.querySelector('#bb-crumb').textContent=state.entry==='generate'?'文件生成':entryTitle();
+    root.querySelector('#bb-page-subtitle').textContent=state.entry==='generate'?'从募集说明书出发，生成项目所需文件。':state.entry==='review'?'选择本项目的募集说明书，开始复核。':'选择本项目的募集说明书，围绕文件提问。';
+    root.querySelectorAll('[data-action^="entry-"]').forEach(b=>b.classList.toggle('bb-active',b.dataset.action==='entry-'+state.entry));
+    steps();
+    content.innerHTML=state.step===1?sourceScreen():state.running?progressScreen():state.done?resultScreen():state.step===2?contentScreen():confirmScreen();
+    applySourceMode();
+    root.querySelector('#bb-quiet').hidden=state.running||state.done;
+    root.querySelectorAll('[data-partial=true]').forEach(x=>x.indeterminate=true);
+    root.querySelectorAll('.bb-pagination button').forEach(x=>x.setAttribute('aria-label',x.dataset.action==='page-prev'?'上一页':'下一页'));
+    root.querySelectorAll('button,summary,label,input[type=radio],input[type=checkbox],select').forEach(x=>x.classList.add('cursor-interaction'));
+    icons();
+  }
+  function toast(msg){const el=root.querySelector('#bb-toast');el.textContent=msg;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,4200);}
+  function modal(title,body,footer=''){modalFocus=document.activeElement;modalRoot.innerHTML=`<div class="bb-modal-wrap"><section class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="bb-dialog-title"><div class="bb-modal-head"><h2 id="bb-dialog-title">${title}</h2><button data-action="close-modal" aria-label="关闭">${icon('x')}</button></div>${body}${footer?`<div class="bb-footer">${footer}</div>`:''}</section></div>`;icons();modalRoot.querySelector('button')?.focus();}
+  function closeModal(){modalRoot.innerHTML='';if(modalFocus?.isConnected)modalFocus.focus();}
+  function templateModal(type){
+    state.templateTarget=type;const d=documentCatalog.find(d=>d.id===type),saved=state.templates[type]||[],current=templateFor(type);
+    modal(d.name+' · 历史文件 / 模板',`<p class="bb-sub">添加一次，后续生成自动复用。新版本不会删除旧模板。</p><div class="bb-template-upload"><h3>上传历史文件 / 模板</h3><p>${esc(state.pendingTemplate||'Word（DOCX）· 单份不超过 100 MB')}</p>${button(icon('upload')+(state.pendingTemplate?' 重新选择':' 选择文件'),'upload-template')}${type==='init'?`<label class="bb-form-field">立项券商全称<input class="bb-input" data-field="broker" type="text" maxlength="200" value="${esc(state.broker)}" placeholder="填写券商完整名称"></label>`:''}<div class="bb-inline-actions" style="margin-top:14px">${button('保存并用于本次生成','save-template','bb-primary',!state.pendingTemplate||(type==='init'&&!state.broker.trim()))}</div></div><h3 style="margin-top:22px">从已保存模板库选用</h3>${saved.length?saved.map(t=>`<div class="bb-template-choice"><div><strong>${esc(t.name)}</strong><small>V${t.version} · 已保存</small></div><button class="bb-button" data-use-template="${t.version}" ${current?.version===t.version?'disabled':''}>${current?.version===t.version?'本次采用':'选用'}</button></div>`).join(''):'<p class="bb-sub">尚无此类型的模板。</p>'}`);
+  }
+  function focusDocument(index){const rows=root.querySelectorAll('[data-document-type]');rows[Math.min(index,rows.length-1)]?.focus();}
+  function chooseFile(kind){uploadKind=kind;const input=root.querySelector('#bb-file-input');input.accept=kind==='directory'?'.xlsx':kind==='template'?'.docx':kind==='support'?'.docx,.pdf,.xlsx':'.docx,.pdf';input.multiple=kind==='support';input.value='';input.click();}
+  function startSourceUploads(){
+    clearInterval(parseTimer);state.parseTarget='source';render();persist();
+    parseTimer=setInterval(()=>{
+      for(const file of state.library.filter(x=>x.status==='uploading')){
+        file.progress=(file.progress||0)+1;
+        if(file.progress>=3){file.status='saved';state.picks[file.owner||state.entry]=file.id;if(!state.currentVersionId)state.currentVersionId=file.id;state.sourceMessage='本次材料选择已保存';}
+      }
+      if(!state.library.some(x=>x.status==='uploading')){clearInterval(parseTimer);persist();}
+      render();
+    },650);
+  }
+  function receiveFile(file){
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(!(uploadKind==='directory'?['xlsx']:uploadKind==='template'?['docx']:uploadKind==='support'?['docx','pdf','xlsx']:['docx','pdf']).includes(ext)){toast('文件格式不匹配，请重新选择。');return;}
+    if(file.size>100*1024*1024){toast('单份文件不能超过 100 MB，请重新选择。');return;}
+    if(uploadKind==='template'){state.pendingTemplate=file.name;const returnFocus=modalFocus;templateModal(state.templateTarget);modalFocus=returnFocus;return;}
+    if(uploadKind==='support'){for(const type of state.documentTypes){const saved=state.savedInputs[type]||(state.savedInputs[type]={requirements:'',materials:[]});if(!saved.materials.includes(file.name))saved.materials.push(file.name);}render();persist();toast('演示：补充依据已保存到所选文件，可在各行展开查看。');return;}
+    closeModal();
+    if(uploadKind==='source'){
+      if(sourceBlocked()){toast('请先处理当前文件的上传或保存状态。');return;}
+      const next=Math.max(0,...state.library.map(x=>parseInt(x.version.slice(1),10)||0))+1;
+      state.library.push({id:'v'+next,name:file.name,version:'V'+next,status:'uploading',size:file.size,progress:0,owner:state.entry});
+      state.sourceModes[state.entry]='upload';
+      state.step=1;state.done=false;state.running=false;state.sourceMessage='';clearInterval(taskTimer);startSourceUploads();return;
+    }
+    state.parse='loading';state.parseTarget='directory';state.directory=file.name;state.hasDirectory=true;state.step=2;state.selected=items.map(x=>x.id);
+    render();clearTimeout(parseTimer);parseTimer=setTimeout(()=>{state.parse='ready';render();persist();toast('演示读取完成；未上传或解析真实文件内容。');},1200);
+  }
+  function startTask(){state.running=true;state.done=false;state.paused=false;state.progress=0;state.step=3;state.failed=controls.result==='partial';state.resultTab='all';state.page=0;render();persist();tickTask();}
+  function tickTask(){clearInterval(taskTimer);taskTimer=setInterval(()=>{if(state.paused||!state.running)return;state.progress=Math.min(100,state.progress+10);if(state.progress===100){clearInterval(taskTimer);state.running=false;state.done=true;state.step=4;state.history.push({name:state.mode==='batch'?state.directory:templateDocuments().map(d=>d.name).join('、'),count:count()});persist();}render();},650);}
+  function updateSearch(){const tree=root.querySelector('#bb-tree');if(tree){tree.innerHTML=treeMarkup();root.querySelectorAll('[data-partial=true]').forEach(x=>x.indeterminate=true);icons();}}
+  root.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b||b.disabled)return;
+    if(b.dataset.templateFor){state.pendingTemplate='';templateModal(b.dataset.templateFor);return;}
+    if(b.dataset.useTemplate){const type=state.templateTarget;state.templatePicks[type]=Number(b.dataset.useTemplate);closeModal();render();root.querySelector('[data-template-for="'+type+'"]')?.focus();persist();return;}
+    if(b.dataset.removeDocument!==undefined){const type=b.dataset.removeDocument,index=state.documentTypes.indexOf(type);if(type)state.documentTypes=state.documentTypes.filter(t=>t!==type);else state.blankRow=false;render();focusDocument(Math.max(0,index));persist();return;}
+    if(b.dataset.retrySource){const file=state.library.find(x=>x.id===b.dataset.retrySource);if(file){file.status='uploading';file.progress=0;file.owner=state.entry;startSourceUploads();}return;}
+    if(b.dataset.deleteSource){const file=state.library.find(x=>x.id===b.dataset.deleteSource);if(!file)return;if(file.status==='error'){state.library=state.library.filter(x=>x.id!==file.id);render();persist();return;}state.deleteSourceId=file.id;modal('删除项目材料',`<p class="review-muted">确定删除此文件？</p><div class="bb-choice"><span>${esc(file.name)}</span></div><p class="review-muted">删除后，该文件将不再出现在本项目的可选材料中。</p>`,`${button('取消','close-modal')}${button('删除文件','confirm-delete-source','bb-primary')}`);return;}
+    if(b.dataset.step){state.step=Number(b.dataset.step);render();persist();return;}
+    if(b.dataset.mode){state.mode=b.dataset.mode;render();persist();return;}
+    if(b.dataset.expand!==undefined){const i=Number(b.dataset.expand);state.expanded=state.expanded.includes(i)?state.expanded.filter(x=>x!==i):[...state.expanded,i];render();persist();return;}
+    if(b.dataset.resultTab){state.resultTab=b.dataset.resultTab;state.page=0;render();persist();return;}
+    if(b.dataset.preview){const x=outputs().find(x=>x.id===b.dataset.preview)||(state.mode==='single'?outputs()[0]:null);if(!x)return;modal('文件预览',`<div class="bb-preview-sheet"><h3>${esc(x.name)}${x.explain?'—资料不足说明':''}</h3>${x.explain?`<p>本项涉及${esc(x.type)}。当前资料不足，暂无法形成该文件。</p><p>未取得对应原件或实际履职记录，不能将资料缺失认定为业务不适用。</p>`:`<p>发行人：山东菏都发展投资有限公司。</p><p>此处展示“${esc(x.name)}”的版式与阅读位置。正式生成后在此预览文件完整内容。</p>`}<p class="bb-sub">设计稿预览 · 非真实生成文件</p></div>`,`${button('关闭','close-modal')}${button(icon('download')+' 下载此文件','download-one','bb-primary')}`);return;}
+    const action=b.dataset.action;if(!action)return;
+    if(action==='close-modal'){closeModal();return;}
+    if(action.startsWith('entry-')){const entry=action.slice(6);if(state.running||state.library.some(x=>x.status==='uploading')){toast('请先完成当前任务或材料保存，再切换入口。');return;}state.entry=entry;state.step=1;state.done=false;state.sourceMessage='';render();persist();return;}
+    switch(action){
+      case 'next':
+        if(state.step===1&&!validSource())return;
+        if(state.step===2&&state.mode==='single'&&!templatesReady())return;
+        if(state.entry!=='generate'){modal(state.entry==='review'?'继续提供复核材料':'继续确认问题',`<p class="bb-sub">已保留${state.entry==='review'?'本轮复核':'本次问答'}选用的募集说明书。设计稿在此展示上传／选择区的对照。</p><div class="bb-choice">${icon('file-check')}<span>${esc(state.source)}<small>${state.version} · 已保存</small></span></div>`,`${button('返回查看','close-modal')}${button('返回文件生成','return-generate','bb-primary')}`);return;}
+        state.step=Math.min(3,state.step+1);break;
+      case 'back':state.step=Math.max(1,state.step-1);break;
+      case 'change-source':state.step=1;break;
+      case 'edit-selection':state.step=2;break;
+      case 'return-generate':closeModal();state.entry='generate';state.step=1;break;
+      case 'confirm-delete-source':state.library=state.library.filter(x=>x.id!==state.deleteSourceId);if(state.currentVersionId===state.deleteSourceId)state.currentVersionId='';state.sourceMessage='';delete state.deleteSourceId;closeModal();break;
+      case 'upload-source':chooseFile('source');return;
+      case 'upload-directory':chooseFile('directory');return;
+      case 'upload-template':chooseFile('template');return;
+      case 'upload-support':chooseFile('support');return;
+      case 'add-row':state.blankRow=true;render();focusDocument(state.documentTypes.length);persist();return;
+      case 'save-template':{
+        const type=state.templateTarget;if(!state.pendingTemplate||(type==='init'&&!state.broker.trim()))return;
+        const saved=state.templates[type]||(state.templates[type]=[]),version=Math.max(0,...saved.map(t=>t.version))+1;
+        saved.push({name:state.pendingTemplate.replace(/\.docx$/i,''),version});state.templatePicks[type]=version;state.pendingTemplate='';closeModal();render();root.querySelector('[data-template-for="'+type+'"]')?.focus();persist();return;
+      }
+      case 'save-requirements':{
+        if(!state.requirementsDraft.trim()||!state.documentTypes.length)return;
+        for(const type of state.documentTypes){const saved=state.savedInputs[type]||(state.savedInputs[type]={requirements:'',materials:[]});saved.requirements=[saved.requirements,state.requirementsDraft.trim()].filter(Boolean).join('\n\n');}
+        state.requirementsStatus='已保存到 '+state.documentTypes.length+' 份文件';state.requirementsDraft='';break;
+      }
+      case 'select-directory':modal('更换底稿目录',`<p class="bb-sub">本项目已保存的目录</p><div class="bb-choice">${icon('sheet')}<span>${esc(state.directory)}<small>已识别 · 12 个条目 · 当前选用</small></span></div>`,`${link(icon('plus')+' 上传新目录','upload-directory')}${button('继续使用当前目录','close-modal','bb-primary')}`);return;
+      case 'toggle-all':state.selected=state.selected.length===items.length?[]:items.map(x=>x.id);break;
+      case 'generate':if(validSource()&&count()>0&&(state.mode==='batch'||templatesReady())){startTask();}return;
+      case 'pause':state.paused=!state.paused;if(!state.paused)tickTask();break;
+      case 'new-batch':state.done=false;state.running=false;state.step=1;state.progress=0;state.failed=false;break;
+      case 'download':toast(state.mode==='batch'?'演示：按“可生成文件”和“不适用说明”打包下载。设计稿不生成真实文件。':'演示：打包下载本次生成的 Word 文件。设计稿不生成真实文件。');return;
+      case 'download-one':toast('演示：下载当前 Word 文件。设计稿不生成真实文件。');return;
+      case 'retry':state.failed=false;state.resultTab='all';state.page=0;toast('演示：失败项重试成功，其余成果保留。');break;
+      case 'page-prev':state.page=Math.max(0,state.page-1);break;
+      case 'page-next':state.page+=1;break;
+      case 'history':modal('生成记录',state.running?`<div class="bb-choice">${icon('file-clock')}<span>${state.mode==='batch'?'批量生成底稿':'按模板生成文件'}<small>${state.paused?'已暂停':'正在生成'} · ${count()} 份</small></span></div>`:state.history.length?state.history.slice(-3).reverse().map(x=>`<div class="bb-choice">${icon('folder-check')}<span>${esc(x.name)}<small>演示任务 · ${x.count} 份 · 已生成</small></span></div>`).join(''):`<div class="bb-empty">本项目还没有生成记录。<br>开始生成后，可在这里继续查看。</div>`,`${button('返回当前页面','close-modal','bb-primary')}`);return;
+    }
+    render();persist();
+  });
+  root.addEventListener('change',e=>{
+    const el=e.target;
+    if(el.dataset.documentType!==undefined){const old=el.dataset.documentType,type=el.value,index=old?state.documentTypes.indexOf(old):state.documentTypes.length;if(state.documentTypes.includes(type)||!documentCatalog.some(d=>d.id===type)){el.value=old;return;}if(old)state.documentTypes[index]=type;else{state.documentTypes.push(type);state.blankRow=false;}if(!templateFor(type)&&state.templates[type]?.length)state.templatePicks[type]=state.templates[type].at(-1).version;render();focusDocument(index);persist();return;}
+    if(el.name==='bb-source-mode'){if(sourceBlocked()){applySourceMode();return;}state.sourceModes[state.entry]=el.value;applySourceMode();persist();return;}
+    if(el.id==='bb-file-input'){if(el.files.length>1&&uploadKind!=='support'){toast('一次只能上传一份文件，请重新选择。');return;}for(const file of el.files)receiveFile(file);return;}
+    if(el.id==='bb-project-source'){if(!el.value){el.value=state.picks[state.entry]||'';return;}state.picks[state.entry]=el.value;state.sourceMessage='本次材料选择已保存';render();root.querySelector('#bb-project-source')?.focus();persist();return;}
+    if(el.dataset.group!==undefined){const gi=Number(el.dataset.group),ids=items.filter(x=>x.group===gi).map(x=>x.id);state.selected=el.checked?[...new Set([...state.selected,...ids])]:state.selected.filter(x=>!ids.includes(x));render();persist();}
+    else if(el.dataset.item){state.selected=el.checked?[...new Set([...state.selected,el.dataset.item])]:state.selected.filter(x=>x!==el.dataset.item);render();persist();}
+    else if(el.dataset.field){state[el.dataset.field]=el.value;if(el.tagName==='SELECT')render();persist();}
+  });
+  root.addEventListener('input',e=>{if(e.target.id==='bb-search'){state.query=e.target.value;updateSearch();}else if(e.target.dataset.field){state[e.target.dataset.field]=e.target.value;const saveNote=root.querySelector('[data-action=save-requirements]');if(saveNote)saveNote.disabled=!state.documentTypes.length||!state.requirementsDraft.trim();const saveTemplate=root.querySelector('[data-action=save-template]');if(saveTemplate)saveTemplate.disabled=!state.pendingTemplate||(state.templateTarget==='init'&&!state.broker.trim());}});
+  root.addEventListener('toggle',e=>{const el=e.target;if(!el.isConnected)return;if(el.dataset.reused){const type=el.dataset.reused;if(state.reusedExpanded.includes(type)===el.open)return;state.reusedExpanded=el.open?[...state.reusedExpanded,type]:state.reusedExpanded.filter(t=>t!==type);persist();}if(el.dataset.optional&&state[el.dataset.optional]!==el.open){state[el.dataset.optional]=el.open;persist();}},true);
+  root.addEventListener('dragover',e=>{if(e.target.closest('[data-drop]'))e.preventDefault();});
+  root.addEventListener('drop',e=>{const target=e.target.closest('[data-drop]');if(target){e.preventDefault();uploadKind=target.dataset.drop;const files=[...e.dataTransfer.files];if(files.length>1&&uploadKind!=='support'){toast('一次只能上传一份文件，请重新选择。');return;}for(const file of files)receiveFile(file);}});
+  root.addEventListener('keydown',e=>{if(!modalRoot.firstChild)return;if(e.key==='Escape'){closeModal();return;}if(e.key==='Tab'){const nodes=[...modalRoot.querySelectorAll('button:not(:disabled),input,select,textarea,a[href]')];const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
+  render();
+  if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{
+    clearInterval(taskTimer);clearInterval(parseTimer);closeModal();state=freshState();state.step=1;
+    if(controls.scenario==='empty'){state.library=[];state.picks={generate:'',review:'',qa:''};state.currentVersionId='';state.hasDirectory=false;}
+    if(controls.scenario==='no-directory')state.hasDirectory=false;
+    if(['versions','uploading','upload-error'].includes(controls.scenario)){state.library.push({id:'v2',name:'山东菏都发展投资有限公司2026年科技创新公司债券募集说明书（修订稿）.docx',version:'V2',status:controls.scenario==='versions'?'saved':controls.scenario==='uploading'?'uploading':'error',progress:0,owner:'generate',size:0});}
+    if(controls.scenario==='versions'){state.currentVersionId='v2';state.picks.generate='v2';}
+    if(['uploading','upload-error'].includes(controls.scenario))state.sourceModes.generate='upload';
+    render();persist();if(controls.scenario==='uploading')startSourceUploads();
+  }});tweak.addSelect(controls,'scenario',{label:'项目资料状态',options:[{label:'已有募集书和底稿目录',value:'existing'},{label:'项目有多个募集书版本',value:'versions'},{label:'只有募集说明书',value:'no-directory'},{label:'首次进入，尚无资料',value:'empty'},{label:'文件正在上传保存',value:'uploading'},{label:'文件上传失败',value:'upload-error'}]});tweak.addSelect(controls,'result',{label:'生成结果演示',options:[{label:'全部完成',value:'success'},{label:'部分失败，可单独重试',value:'partial'}]});}
+})();
+</script>
+
+</body></html>

@@ -47,6 +47,9 @@ export class ReviewWorkspace {
   private sourceVersionsKey='';
   private sourceVersionsLoading=false;
   private selectedSourceVersion='';
+  private sourceMode?:'upload'|'project';
+  private sourceVersionsError='';
+  private selectingSource=false;
   private reviewApi: ReviewApi;
   private readable: ReadableReview;
   private fromList = projectListContext();
@@ -263,7 +266,10 @@ export class ReviewWorkspace {
     try{
       const cached=JSON.parse(localStorage.getItem(this.localInputKey)??'null');
       if(cached&&cached.project_id===this.projectId&&cached.owner===this.owner&&Number.isInteger(cached.version)&&Value.Check(ReviewDraftInputSchema,cached.input)){
-        this.draftInput=cached.input;this.inputDirty=true;
+        const available=new Set(this.workspace!.materials.map(m=>m.material_id));
+        this.draftInput={...cached.input,source_material_ref:available.has(cached.input.source_material_ref?.material_id)?cached.input.source_material_ref:null,
+          material_versions:cached.input.material_versions.filter((p:ReviewMaterialPin)=>available.has(p.material_id)),
+          ...(cached.input.evidence_links?{evidence_links:cached.input.evidence_links.filter((link:{material_ref:ReviewMaterialPin})=>available.has(link.material_ref.material_id))}:{})};this.inputDirty=true;
         this.status=cached.version===this.workspace!.draft.version?'已恢复未保存的材料与要求草稿，请保存后执行。':'服务器输入已有新版本。已保留本页草稿，请核对后保存；不会自动覆盖。';
         if(cached.version!==this.workspace!.draft.version)this.inputConflictVersion=cached.version;
       }
@@ -502,6 +508,10 @@ export class ReviewWorkspace {
     });
     this.page!.addEventListener('change',event=>{
       const target=event.target;
+      if(target instanceof HTMLInputElement&&target.name==='review-source-mode'){
+        if(this.uploadActionBlocked()||this.selectingSource){this.renderProjectSource();return;}
+        this.sourceMode=target.value as 'upload'|'project';this.renderProjectSource();return;
+      }
       if(target instanceof HTMLInputElement&&target.hasAttribute('data-review-recovery-reselect')){const row=this.uploadRows.get(target.dataset.reviewRecoveryReselect??''),file=target.files?.[0];if(row?.envelopeId&&row.itemIndex!==undefined&&file)void this.resumeUploadRecovery(row.envelopeId,row.itemIndex,file);return;}
       if(target instanceof HTMLInputElement&&target.dataset.reviewUploadRole){const files=[...(target.files??[])];target.value='';if(files.length)void this.upload(files,target.dataset.reviewUploadRole as Dto<'MaterialResponse'>['role']);return;}
       if(target instanceof HTMLInputElement&&target.dataset.reviewSelect){void this.selectFinding(target.dataset.reviewSelect,target.checked);return;}
@@ -518,21 +528,24 @@ export class ReviewWorkspace {
   private renderMaterials(){
     const host=this.page?.querySelector('#review-materials-panel');if(!host||!this.workspace||!this.draftInput)return;
     const active=document.activeElement;
-    const editing=host.contains(active)&&(active instanceof HTMLTextAreaElement||(active instanceof HTMLInputElement&&active.type!=='file')||active instanceof HTMLSelectElement)?{id:active.id,value:active.value,start:active instanceof HTMLTextAreaElement?active.selectionStart:null,end:active instanceof HTMLTextAreaElement?active.selectionEnd:null}:undefined;
-    const input=this.draftInput,materials=this.workspace.materials;const source=materials.filter(m=>['historical','reference'].includes(m.role)&&m.state==='persisted');
+    const editing=host.contains(active)&&active instanceof HTMLElement&&!!active.id&&(active instanceof HTMLTextAreaElement||(active instanceof HTMLInputElement&&active.type!=='file')||active instanceof HTMLSelectElement)?{id:active.id,value:active.value,start:active instanceof HTMLTextAreaElement?active.selectionStart:null,end:active instanceof HTMLTextAreaElement?active.selectionEnd:null}:undefined;
+    const input=this.draftInput,materials=this.workspace.materials;
     const running=isActiveRun(this.workspace.active_run);
     const pending=[...this.uploadRows.values()].filter(row=>!row.error).length;
     const failed=this.uploadRows.size-pending;
     const uploadNotice=this.uploadRecoveryProblem||(this.uploadRecordsPresent?'有原文件需要确认。先核对文件保存和原材料选择；刷新不会自动提交。':pending?`还有 ${pending} 份材料正在上传或等待可靠准备，可继续添加文件。请保持页面打开。`:failed?`${failed} 份本机文件选择尚未保存，请明确重试或移除后开始。`:'');
     const pendingMaterialIds=new Set([...this.uploadRows.values()].flatMap(row=>row.material?[row.material.material_id]:[]));
-    const groups=[{title:'待复核募集书',roles:['historical','reference'],primary:'historical'}, {title:'审计报告 / 财务报表及附注',roles:['audit','financial','interimFinancial','notes'],primary:'audit'}, {title:'其他核验材料',roles:Object.keys(roleLabels).filter(r=>!['historical','reference','audit','financial','interimFinancial','notes'].includes(r)),primary:'other'}];
+    const financeRoles=['audit','financial','interimFinancial','notes'];
+    const groups=[{title:'待复核募集书',roles:['historical'],primary:'historical',help:'选择一种方式，确定一份本次待复核稿。'},
+      {title:'审计报告 / 财务报表及附注',roles:financeRoles,primary:'audit',help:'选填。用于核对募集说明书中的财务数据；审计报告、报表和附注可一起上传。'},
+      {title:'其他核验材料',roles:[...new Set(['other','reference',...materials.map(m=>m.role).filter(r=>r!=='historical'&&!financeRoles.includes(r))])],primary:'other',help:'选填。可补充征信报告、评级报告、业务明细等，用于交叉核验。'}];
     const fileRow=(m:Dto<'MaterialResponse'>)=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(m.filename)}</strong><span>${esc(roleLabels[m.role]??'其他材料')} · ${(m.byte_size/1024).toFixed(1)} KB</span><p class="material-file-status">已保存</p></div><div class="material-file-actions"><button type="button" class="text-button" data-review-action="delete-material" data-material-id="${esc(m.material_id)}" aria-label="删除 ${esc(m.filename)}" ${running||this.uploading||this.deletingMaterial?'disabled':''}>${this.deletingMaterial===m.material_id?'正在删除…':'删除'}</button></div></li>`;
-    const role=(r:string,showTitle=true)=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div>${showTitle?`<strong>${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}</strong>`:''}<span>${r==='historical'?'上传需要复核的募集书，支持 Word / PDF':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" multiple accept="${r==='historical'||r==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${materials.filter(m=>m.role===r&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>row.role===r).map(([key,row])=>this.uploadRowHtml(key,row)).join('')}${duplicateUploadNotices([...this.duplicateUploads.values()].filter(n=>n.material.role===r))}</ul></li>`;
+    const role=(r:string,roles:string[])=>`<li class="material-role" data-review-drop="${r}"><div class="material-role-heading"><div><span>${r==='historical'?'上传一份需要复核的募集说明书，支持 Word / PDF。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。':'选中文件后立即上传，也可直接拖入文件'}</span></div><label class="button secondary material-picker" for="review-upload-${r}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="review-upload-${r}" type="file" ${r==='historical'?'':'multiple'} accept="${r==='historical'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="为${esc(roleLabels[r as keyof typeof roleLabels]??'其他核验材料')}选择文件" data-review-upload-role="${r}"></label></div><ul class="material-file-list">${r==='historical'?'':materials.filter(m=>roles.includes(m.role)&&!pendingMaterialIds.has(m.material_id)).map(fileRow).join('')}${[...this.uploadRows].filter(([,row])=>roles.includes(row.role)).map(([key,row])=>this.uploadRowHtml(key,row)).join('')}${duplicateUploadNotices([...this.duplicateUploads.values()].filter(n=>roles.includes(n.material.role)))}</ul></li>`;
     if(!host.querySelector('#review-upload-groups'))host.innerHTML='<div id="review-materials-before"></div><div id="review-upload-groups"></div><div id="review-materials-after"></div>';
     host.querySelector('#review-materials-before')!.innerHTML=`${this.projectInfo()}${reviewScope(this.workspace.project.market,this.workspace.project.offering)}${this.inputConflictVersion!==undefined?'<div class="review-notice error">其他页面已修改材料与要求，本页内容已保留。<button class="text-btn" data-review-action="reload-input">采用服务器版本</button><button class="text-btn" data-review-action="adopt-local-input">核对本页内容</button></div>':''}<div class="panel-heading materials-heading"><div><h2>材料与要求</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。上传过程中可继续添加文件。</p></div></div><p class="review-upload-summary" role="${this.uploadRecoveryProblem?'alert':'status'}">${esc(uploadNotice)}${this.uploadRecoveryProblem?'<button type="button" class="text-button" data-review-recovery-action="reload">重新读取上传记录</button>':''}</p>${running?'<p class="review-muted">当前任务使用的材料已锁定；请先停止任务，停止完成后可删除误传文件并重新上传。</p>':''}`;
     const groupsHost=host.querySelector('#review-upload-groups')!;
     const template=document.createElement('template');
-    template.innerHTML=`${groups.map(g=>`<section class="material-partition"><h3>${g.title}</h3><ul class="material-role-list">${role(g.primary,false)}</ul>${g.roles.filter(r=>r!==g.primary).length?`<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary><ul class="material-role-list">${g.roles.filter(r=>r!==g.primary).map(r=>role(r)).join('')}</ul></details>`:''}</section>`).join('')}`;
+    template.innerHTML=groups.map(g=>`<section class="material-partition"><h3>${g.title}</h3><p class="review-muted">${g.help}</p>${g.primary==='historical'?`<fieldset class="review-source-modes"><legend class="sr-only">提供待复核募集说明书的方式</legend><label><input type="radio" name="review-source-mode" value="upload" aria-controls="review-source-upload">上传新募集说明书</label><label><input type="radio" name="review-source-mode" value="project" aria-controls="review-source-existing">选择项目已有募集说明书</label></fieldset><div id="review-source-upload"><ul class="material-role-list">${role(g.primary,g.roles)}</ul></div><div id="review-source-existing" data-project-source></div><div data-review-selected-source></div>`:`<ul class="material-role-list">${role(g.primary,g.roles)}</ul>`}</section>`).join('');
     if(!groupsHost.childElementCount)groupsHost.append(template.content);
     else{
       // Keep file inputs connected while the native chooser is open.
@@ -541,10 +554,8 @@ export class ReviewWorkspace {
         current.querySelector('.material-file-list')!.innerHTML=fresh.querySelector('.material-file-list')!.innerHTML;
       }
     }
-    for(const details of groupsHost.querySelectorAll<HTMLDetailsElement>('.material-subtypes')){
-      const names=[...details.querySelectorAll('.material-file-main strong')].map(el=>el.textContent).join('\n');
-      if(names&&details.dataset.shownFiles!==names){details.open=true;details.dataset.shownFiles=names;}
-    }
+    const selected=materials.find(m=>input.source_material_ref&&sameMaterial(materialPin(m),input.source_material_ref));
+    groupsHost.querySelector('[data-review-selected-source]')!.innerHTML=selected?`<div class="review-selected-source"><strong>本次待复核稿</strong><ul class="material-file-list">${fileRow(selected)}</ul><p class="review-muted">上传新稿或选择其他版本后，将替换本次待复核稿。</p></div>`:'<p class="review-muted" role="status">尚未选择本次待复核稿。</p>';
     host.querySelector('#review-materials-after')!.innerHTML=`
     ${materials.filter(m=>!groups.some(g=>g.roles.includes(m.role))).length?`<div class="review-section-heading"><h3>已保存的其他材料</h3></div><ul class="material-file-list">${materials.filter(m=>!groups.some(g=>g.roles.includes(m.role))).map(fileRow).join('')}</ul>`:''}
 
@@ -554,26 +565,32 @@ export class ReviewWorkspace {
     if(editing){const field=host.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(`#${CSS.escape(editing.id)}`);if(field){field.value=editing.value;field.focus({preventScroll:true});if(field instanceof HTMLTextAreaElement&&editing.start!==null&&editing.end!==null)field.setSelectionRange(editing.start,editing.end);}}
   }
   private renderProjectSource(){
-    const parent=this.page?.querySelector<HTMLElement>('[data-review-drop="historical"]');if(!parent||!this.workspace||!this.draftInput)return;
-    let box=parent.querySelector<HTMLElement>('[data-project-source]');if(!box){box=document.createElement('div');box.dataset.projectSource='';parent.append(box);}
+    const box=this.page?.querySelector<HTMLElement>('[data-project-source]');if(!box||!this.workspace||!this.draftInput)return;
     const signature=JSON.stringify([this.workspace.materials.map(m=>[m.material_id,m.material_version]),this.workspace.artifact_run?.run_id]);
     if(signature!==this.sourceVersionsKey&&!this.sourceVersionsLoading){
       this.sourceVersionsLoading=true;
-      void this.api.prospectusVersions(this.projectId,this.controller.signal).then(v=>{if(this.live()){this.sourceVersions=v;this.sourceVersionsKey=signature;}}).catch(e=>{if(this.live()){this.sourceVersionsKey=signature;this.message(friendlyError(e,'read'),true);}}).finally(()=>{this.sourceVersionsLoading=false;if(this.live())this.renderProjectSource();});
+      void this.api.prospectusVersions(this.projectId,this.controller.signal).then(v=>{if(this.live()){this.sourceVersions=v;this.sourceVersionsError='';this.sourceVersionsKey=signature;}}).catch(e=>{if(this.live()){this.sourceVersionsKey=signature;this.sourceVersionsError=friendlyError(e,'read');}}).finally(()=>{this.sourceVersionsLoading=false;if(this.live())this.renderProjectSource();});
     }
     const sources=this.workspace.materials.filter(m=>['historical','reference'].includes(m.role)&&m.state==='persisted'),pin=this.draftInput.source_material_ref;
     const versions=this.sourceVersions?.versions??[];
     const matched=versions.find(v=>v.version_id===this.selectedSourceVersion&&v.sha256===pin?.sha256)??versions.find(v=>v.material_id===pin?.material_id)??versions.find(v=>v.sha256===pin?.sha256);
     const value=matched?'v:'+matched.version_id:pin?'m:'+pin.material_id:'';
-    box.innerHTML=`<label for="review-project-source"><strong>本次待复核稿 · 选用项目已有募集书</strong></label><select id="review-project-source" class="review-source-select" ${this.sourceVersionsLoading?'disabled':''}><option value="">${this.sourceVersionsLoading?'正在读取募集书版本…':'请选择募集说明书版本'}</option>${versions.map(v=>`<option value="v:${esc(v.version_id)}" ${value==='v:'+v.version_id?'selected':''}>V${v.sequence} · ${esc(v.filename)}${v.version_id===this.sourceVersions?.current_version_id?' · 项目当前版本':''}</option>`).join('')}${sources.filter(m=>!versions.some(v=>v.material_id===m.material_id||v.sha256===m.sha256)).map(m=>`<option value="m:${esc(m.material_id)}" ${value==='m:'+m.material_id?'selected':''}>${esc(m.filename)} · 上传 V${m.material_version}</option>`).join('')}</select><p class="review-muted">所选版本只用于本轮复核。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p>`;
+    const mode=this.sourceMode??(pin||sources.length||versions.length?'project':'upload');
+    const blocked=isActiveRun(this.workspace.active_run)||this.uploading||this.uploadRows.size>0||this.uploadRecordsPresent||!!this.uploadRecoveryProblem||this.selectingSource;
+    this.page!.querySelectorAll<HTMLInputElement>('[name="review-source-mode"]').forEach(radio=>{radio.checked=radio.value===mode;radio.disabled=!!blocked;});
+    this.page!.querySelector<HTMLElement>('#review-source-upload')!.hidden=mode!=='upload';box.hidden=mode!=='project';
+    const empty=!this.sourceVersionsLoading&&!versions.length&&!sources.length;
+    box.innerHTML=`<label for="review-project-source">选择募集说明书版本</label><select id="review-project-source" class="review-source-select" ${this.sourceVersionsLoading||blocked||empty?'disabled':''}><option value="">${this.sourceVersionsLoading?'正在读取募集书版本…':'请选择募集说明书版本'}</option>${versions.map(v=>`<option value="v:${esc(v.version_id)}" ${value==='v:'+v.version_id?'selected':''}>V${v.sequence} · ${esc(v.filename)}${v.version_id===this.sourceVersions?.current_version_id?' · 项目当前版本':''}</option>`).join('')}${sources.filter(m=>!versions.some(v=>v.material_id===m.material_id||v.sha256===m.sha256)).map(m=>`<option value="m:${esc(m.material_id)}" ${value==='m:'+m.material_id?'selected':''}>${esc(m.filename)} · 上传 V${m.material_version}</option>`).join('')}</select>${this.sourceVersionsError?`<p class="review-warning" role="alert">募集说明书版本暂时读取失败。<button type="button" class="text-btn" data-review-source-retry>重新读取</button></p>`:empty?'<p class="review-muted">项目还没有可选的募集说明书，请切换到“上传新募集说明书”。</p>':''}<p class="review-muted">所选版本只用于本轮复核。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p>`;
+    box.querySelector<HTMLButtonElement>('[data-review-source-retry]')?.addEventListener('click',()=>{this.sourceVersionsKey='';this.renderProjectSource();});
     box.querySelector<HTMLSelectElement>('select')!.onchange=async e=>{
-      const field=e.target as HTMLSelectElement,v=field.value;if(!v)return;if(this.uploadActionBlocked()){this.renderProjectSource();return;}field.disabled=true;
+      const field=e.target as HTMLSelectElement,v=field.value;if(!v){this.renderProjectSource();return;}if(this.uploadActionBlocked()||this.selectingSource){this.renderProjectSource();return;}this.selectingSource=true;this.renderProjectSource();
       try{
+        if(!await this.saveInput())return;
         const m=v.startsWith('v:')?await this.api.request<Dto<'MaterialResponse'>>('POST',`/projects/${encodeURIComponent(this.projectId)}/review-source`,{version_id:v.slice(2)},{},this.controller.signal):sources.find(m=>m.material_id===v.slice(2));
         if(!m||!this.live()||this.uploadActionBlocked())return;this.selectedSourceVersion=v.startsWith('v:')?v.slice(2):'';
         await this.refresh();if(!this.live()||this.uploadActionBlocked())return;const pin=materialPin(m);this.draftInput!.source_material_ref=pin;if(!this.draftInput!.material_versions.some(p=>sameMaterial(p,pin)))this.draftInput!.material_versions.push(pin);
         this.changedInput();await this.saveInput();this.renderMaterials();
-      }catch(error){if(this.live())this.message(friendlyError(error,'save'),true);}finally{if(this.live())this.renderProjectSource();}
+      }catch(error){if(this.live())this.message(friendlyError(error,'save'),true);}finally{this.selectingSource=false;if(this.live())this.renderProjectSource();}
     };
   }
   private async chooseProjectVersion(){
@@ -824,6 +841,7 @@ export class ReviewWorkspace {
   }
 
   private async previewExecution(operation:Operation,sourceReport:string|null,findings:string[]){
+    if(this.selectingSource){this.message('正在采用募集说明书，请等待保存完成。',true);return;}
     if(this.uploadActionBlocked())return;
     if(this.starting)return;this.starting=true;this.renderMaterials();
     try{
@@ -1071,6 +1089,8 @@ export class ReviewWorkspace {
     if(submit){const returnButton=submit.cloneNode(false) as HTMLButtonElement;returnButton.removeAttribute('data-dialog-action');returnButton.dataset.reviewUploadReturn='';returnButton.textContent='查看原上传';returnButton.disabled=false;returnButton.addEventListener('click',()=>dialog.close());submit.replaceWith(returnButton);}
   }
   private async upload(files:File[],role:Dto<'MaterialResponse'>['role'],target?:ReviewContext){
+    if(role==='historical'&&!target&&files.length!==1){this.message('请一次选择一份待复核募集说明书。',true);return false;}
+    if(this.selectingSource){this.message('正在采用募集说明书，请等待保存完成。',true);return false;}
     if(this.deletingMaterial||this.followupSaving||this.planSaving||this.starting||this.executionPending||this.adoptionPending){this.message('请先完成当前材料、要求或任务确认，再添加文件。',true);return false;}
     if(!this.workspace||!this.draftInput||!this.live())return false;
     if(!this.uploading&&this.uploadInputBlocked())return false;
@@ -1106,7 +1126,7 @@ export class ReviewWorkspace {
           if(!Value.Equal(serverInput,this.draftInput)){this.inputDirty=true;this.cacheInput();}
           if(!await this.saveInput())throw new UserFacingError('材料与要求尚未保存，请核对后重试此文件。');
           if(!this.live())return;
-          envelope=await this.reviewUploads.prepare(remaining.map(v=>v.file),batch.role,batch.target);
+          envelope=await this.reviewUploads.prepare(remaining.map(v=>v.file),batch.role,batch.target,batch.role==='historical'&&!batch.target);
           if(!this.live())return;
           if(batch.targetLabel)this.uploadTargetLabels.set(envelope.id,batch.targetLabel);
           for(const item of envelope.items){batch.operationIds.push(item.id);if(this.uploadRows.get(remaining[item.index].key)?.duplicateSelection)this.uploadDuplicateSelections.add(item.id);}

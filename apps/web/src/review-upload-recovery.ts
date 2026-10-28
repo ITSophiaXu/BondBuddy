@@ -19,7 +19,7 @@ export type ReviewUploadItem = { id: string; index: number; declaration: Dto<'Up
   adoptionDigest?: string; observedDraft?: ReviewDraft; localCacheResult: 'pending' | 'cleared' | 'preserved'; coreCleaned: boolean };
 export type ReviewUploadEnvelope = { version: 1; owner: string; projectId: string; id: string; kind: 'material' | 'evidence';
   baseVersion: number; baseInput: ReviewDraftInput; baseCacheRaw: string | null; targetContext: ReviewContext | null;
-  targetGuard: ReviewUploadTargetGuard | null; sourcePolicy: 'preserve' | 'adopt-first-source-if-empty'; digest: string;
+  targetGuard: ReviewUploadTargetGuard | null; sourcePolicy: 'preserve' | 'adopt-first-source-if-empty' | 'replace-with-upload'; digest: string;
   recordRevision: number; items: ReviewUploadItem[] };
 export type ReviewUploadResult = { envelope: ReviewUploadEnvelope; state: 'pending' | 'retryable' | 'adopted' | 'complete' | 'conflict';
   draft?: ReviewDraft; applyToPage: boolean; reason?: string };
@@ -87,6 +87,7 @@ export function reviewUploadAdoptionInput(e: ReviewUploadEnvelope, item: ReviewU
   const input = clone(item.adoptionBase.input), materialPin = pin(item.material), index = input.material_versions.findIndex(p => p.material_id === materialPin.material_id);
   if (index < 0) input.material_versions.push(materialPin); else input.material_versions[index] = materialPin;
   if (e.sourcePolicy === 'adopt-first-source-if-empty' && !input.source_material_ref && ['historical', 'reference'].includes(item.declaration.role)) input.source_material_ref = clone(materialPin);
+  if (e.sourcePolicy === 'replace-with-upload') input.source_material_ref = clone(materialPin);
   if (e.targetContext) {
     const links = input.evidence_links ?? [];
     for (const finding_id of e.targetContext.finding_ids) if (!links.some(link => link.report_id === e.targetContext!.report_id && link.finding_id === finding_id && samePin(link.material_ref, materialPin))) links.push({ report_id: e.targetContext.report_id!, finding_id, material_ref: clone(materialPin) });
@@ -100,7 +101,9 @@ function normalize(value: unknown, owner: string, projectId: string): ReviewUplo
     reviewUploadValidInput(value.baseInput) && (value.baseCacheRaw === null || typeof value.baseCacheRaw === 'string') && integer(value.recordRevision) && hash(value.digest) && Array.isArray(value.items) && value.items.length > 0 && value.items.length <= 60);
   const e = value as unknown as ReviewUploadEnvelope;
   check(cacheCompatible(e.baseCacheRaw, owner, projectId, { version: e.baseVersion, input: e.baseInput }));
-  check(e.sourcePolicy === (e.baseInput.source_material_ref ? 'preserve' : 'adopt-first-source-if-empty'));
+  check(e.sourcePolicy === 'replace-with-upload'
+    ? e.kind === 'material' && !e.targetContext && e.items.length === 1 && e.items[0].declaration.role === 'historical'
+    : e.sourcePolicy === (e.baseInput.source_material_ref ? 'preserve' : 'adopt-first-source-if-empty'));
   if (e.kind === 'material') check(e.targetContext === null && e.targetGuard === null);
   else {
     check(Value.Check(ReviewContextSchema, e.targetContext) && e.targetContext?.project_id === projectId && e.targetContext.report_id && e.targetContext.finding_ids.length &&
@@ -190,7 +193,8 @@ export class ReviewUploadRecovery {
     const workspace = await this.review.workspace(e.targetContext.report_id!); this.live(); this.unchanged(e);
     check(workspace.project?.project_id === this.projectId && workspace.selected_report && targetMatches(e.targetContext, workspace.selected_report, this.projectId) && reviewUploadSame(targetGuard(workspace.selected_report), e.targetGuard), '原报告或问题已变化或不可读取，材料没有转到当前报告。');
   }
-  async prepare(files: File[], role: Dto<'UploadCreateRequest'>['role'], target?: ReviewContext): Promise<ReviewUploadEnvelope> {
+  async prepare(files: File[], role: Dto<'UploadCreateRequest'>['role'], target?: ReviewContext, replaceSource = false): Promise<ReviewUploadEnvelope> {
+    check(!replaceSource || role === 'historical' && files.length === 1 && !target, '请一次选择一份待复核募集说明书。');
     return this.locked(async () => {
       check(!this.list().length && !this.core.list().length, '请先确认原文件或移除本机待办，再选择新文件。');
       const page = this.options.snapshot(); check(page && integer(page.version) && page.version < Number.MAX_SAFE_INTEGER && reviewUploadValidInput(page.input));
@@ -210,7 +214,7 @@ export class ReviewUploadRecovery {
       }
       this.requireBase({ ...base, cacheRaw: raw });
       const value: Omit<ReviewUploadEnvelope, 'digest'> = { version: 1, owner: this.owner, projectId: this.projectId, id: this.nonce(), kind: targetContext ? 'evidence' : 'material', baseVersion: base.version, baseInput: base.input, baseCacheRaw: raw,
-        targetContext, targetGuard: guard, sourcePolicy: base.input.source_material_ref ? 'preserve' : 'adopt-first-source-if-empty', recordRevision: 0, items };
+        targetContext, targetGuard: guard, sourcePolicy: replaceSource ? 'replace-with-upload' : base.input.source_material_ref ? 'preserve' : 'adopt-first-source-if-empty', recordRevision: 0, items };
       const e = this.write({ ...value, digest: digest(identity(value)) }, null);
       for (const item of e.items) this.core.begin(item.declaration, reviewUploadContext(e, item.index), item.id); return e;
     });

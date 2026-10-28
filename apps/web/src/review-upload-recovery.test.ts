@@ -57,6 +57,26 @@ function harness(input = base()) {
 const methods = (h: ReturnType<typeof harness>) => h.calls.map(call => call.method);
 const drafts = (h: ReturnType<typeof harness>) => h.calls.filter(call => call.method === 'draft');
 const cacheKey = 'bb-review-input:owner:project';
+test('explicit single-source upload replaces the selected source after refresh and a lost save response', async () => {
+  const h=harness(), firstFile=file('旧稿.docx','old source');
+  const first=await h.helper.prepare([firstFile],'historical');
+  const saved=await h.helper.resume(first.id,0,{file:firstFile});h.apply(saved.draft!);
+  const old=structuredClone(h.state.server.source_material_ref), replacement=file('新稿.pdf','new source');
+  const batch=await h.helper.prepare([replacement],'historical',undefined,true);
+  assert.equal(batch.sourcePolicy,'replace-with-upload');assert.deepEqual(h.state.server.source_material_ref,old);
+  h.state.failDraftAfter=true;
+  const result=await h.make().resume(batch.id,0,{file:replacement});
+  assert.equal(result.state,'complete');assert.notDeepEqual(result.draft!.source_material_ref,old);
+  assert.deepEqual(result.draft!.requirements,base().requirements);
+  assert.equal(h.state.draftWrites,2);assert.equal(h.materials.size,2);
+});
+test('source replacement cannot be a multi-file, supplemental or evidence upload',async()=>{
+  const h=harness();
+  await assert.rejects(h.helper.prepare([file(),file('second.pdf')],'historical',undefined,true));
+  await assert.rejects(h.helper.prepare([file()],'audit',undefined,true));
+  await assert.rejects(h.helper.prepare([file()],'historical',target(),true));
+  assert.equal(h.calls.length,0);
+});
 async function unknownDraft(h = harness()) { const e = await h.helper.prepare([file()], 'other'); h.state.failDraftBefore = true; const r = await h.helper.resume(e.id, 0, { file: file() }); assert.equal(r.state, 'retryable'); return { h, e, r }; }
 
 test('original owner/project, ordered declarations, source policy and small transport references are durably fixed before create', async () => {

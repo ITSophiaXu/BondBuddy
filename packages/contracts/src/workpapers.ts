@@ -9,6 +9,7 @@ export * from './workpaper-entry.js';
 export * from './workpaper-naming.js';
 export * from './workpaper-library.js';
 export * from './workpaper-assessment.js';
+export * from './workpaper-shared-plan.js';
 import {WorkpaperAssessSchema,type WorkpaperAssessment} from './workpaper-assessment.js';
 import type {WorkpaperDecision} from './workpaper-entry.js';
 export const WorkpaperImportSchema=obj({request_id:id,material:M4MaterialPinSchema,scope:Type.Optional(Type.Union([Type.Literal('due_diligence'),Type.Literal('all')]))});

@@ -36,7 +36,7 @@ test('generation mobile: a selected-document entry exposes its row, template and
   await precedes(page.locator('.pf-file-builder'),requirements(page));await expect(page.locator('#pf-generate')).toBeVisible();await noOverflow(page);
   expect(writes(s).map(call=>call.path)).toEqual([`/projects/${ids.api}/project-files/source`]);expect(s.workspaces.get(ids.api)!.workspace.drafts).toEqual(before);
   await page.locator('#pf-generate').click();await expect(page.locator('#pf-confirm-generation')).toBeVisible();await expect(page.locator('.pf-confirm-files li')).toHaveCount(1);await expect(page.locator('.pf-confirm-files')).toContainText(label('credit'));
-  const source=s.workspaces.get(ids.api)!.source!;await expect(page.locator('dialog')).toContainText(source.filename);await expect(page.locator('.pf-confirm-total')).toContainText(cost(1));expect(batches(s)).toEqual([]);expect(drafts(s)).toEqual([]);
+  const source=s.workspaces.get(ids.api)!.source!;await expect(page.locator('.pf-flow-confirm')).toContainText(source.filename);await expect(page.locator('.pf-confirm-total')).toContainText(cost(1));expect(batches(s)).toEqual([]);expect(drafts(s)).toEqual([]);
   await page.locator('#pf-confirm-generation').click();await expect(page.getByRole('heading',{name:'文件生成任务',exact:true})).toBeVisible();expect(batches(s)).toHaveLength(1);
   expect(batches(s)[0].body).toEqual({request_id:expect.any(String),source_version_id:source.version_id,expected_selection_revision:source.selection_revision,documents:[{document_type:'credit',draft_version:before.credit.version}]});expect(drafts(s)).toEqual([]);assertFixture(s);
 });
@@ -118,9 +118,9 @@ for(const width of [1440,390,320])test(`generation mobile component comparison a
       nextButtons:document.querySelectorAll('#pf-generate').length}));
     await page.screenshot({path:join(dir!,`generation-mobile-${name}-${width}.png`),fullPage:true});await writeFile(join(dir!,`generation-mobile-${name}-${width}.json`),JSON.stringify({...layout,reference,selection:await selected(page),query:await query(page)},null,2));
   };
-  if(!reference){expect(await isOpen(requirements(page))).toBe(width>760);expect(await isOpen(support(page))).toBe(width>760);}
+  if(!reference){expect(await isOpen(requirements(page))).toBe(false);expect(await isOpen(support(page))).toBe(false);}
   await capture('ready');await chooseDocuments(page,['init','legal']);await disclosure(requirements(page),true);await page.locator('#pf-requirements').fill(note);await page.reload();await expect(page.locator('#pf-generate')).toBeVisible();
   expect(await selected(page)).toEqual(['init','legal']);await expect(page.locator('#pf-requirements')).toHaveValue(note);await expect(page.locator('#pf-generate')).toBeDisabled();await expect(page.locator('#pf-prepared')).toHaveText('1 / 2 已准备');
-  if(!reference){expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(support(page))).toBe(width>760);}
+  if(!reference){expect(await isOpen(requirements(page))).toBe(true);expect(await isOpen(support(page))).toBe(false);}
   await capture('note-missing-template');expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);if(verify)await writeFile(join(dir!,`generation-mobile-reference-${width}.json`),JSON.stringify(await verify(),null,2));
 });

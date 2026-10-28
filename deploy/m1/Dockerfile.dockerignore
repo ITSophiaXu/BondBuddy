@@ -28,3 +28,5 @@ product-prototype
 !product-prototype/public/project-entry.css
 !product-prototype/public/workpaper-task.css
 !product-prototype/knowledge/*-review.md
+
+!product-prototype/public/workspace-typography.css

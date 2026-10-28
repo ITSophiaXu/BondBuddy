@@ -87,9 +87,13 @@
 /* One file per row keeps the document choice and its template together. */
 .pf-back-link{display:inline-flex;align-items:center;min-height:44px;color:#627164;font-size:13px;text-decoration:none}
 .pf-back-link:hover{text-decoration:underline}
-.pf-home-source{display:flex;align-items:flex-start;gap:12px;padding:20px 24px;border-top:1px solid #dfe6dc;color:#627164;font-size:14px}
-.pf-home-source svg,.pf-upload-ready svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;flex:none}
-.pf-home-source p{margin:6px 0 0;line-height:1.8;overflow-wrap:anywhere}
+.pf-home-source{margin:0 0 16px;min-width:0}
+.pf-home-source .prospectus-panel{margin-bottom:0}
+.pf-home-source .pf-source-actions{border-top:0;padding:16px 0 0}
+#pf-home-hint{margin:0 0 16px;color:#627164;font-size:14px;line-height:1.8}
+button.pf-generation-choice{font:inherit;text-align:left;color:inherit;cursor:pointer}
+button.pf-generation-choice:disabled{opacity:.6;cursor:not-allowed}
+.pf-upload-ready svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;flex:none}
 .pf-upload-ready{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:20px 0;padding:20px;background:#f4f8ef;border:1px solid #c8d6bd;border-radius:10px}
 .pf-upload-ready>div{flex:1;min-width:180px;overflow-wrap:anywhere}
 .pf-upload-ready strong{font-size:15px;line-height:1.8}

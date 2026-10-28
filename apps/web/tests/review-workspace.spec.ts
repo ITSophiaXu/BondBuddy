@@ -1099,3 +1099,51 @@ test('historical progress-only report is flagged without changing its ledger or 
   await expect(page.getByRole('button',{name:'下载原文件（异常成果）'})).toBeEnabled();
   expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
 });
+
+for(const width of [1440,390])test('review material source choices are exclusive and new upload replaces the selected source '+width,async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  const state=fixture();await page.setViewportSize({width,height:960});
+  await setup(page,state,`#/projects/${id}/review?tab=materials`);
+  const upload=page.getByRole('radio',{name:'上传新募集说明书',exact:true}),existing=page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true});
+  await expect(existing).toBeChecked();await expect(page.locator('#review-project-source')).toBeVisible();await expect(page.locator('#review-source-upload')).toBeHidden();
+  await expect(page.getByText('按细分类别补充材料（选填）',{exact:true})).toHaveCount(0);
+  await expect(page.locator('[data-review-drop=audit] .material-picker')).toBeVisible();
+  await expect(page.locator('[data-review-drop=other] .material-picker')).toBeVisible();
+  await upload.check();await expect(existing).not.toBeChecked();await expect(page.locator('#review-project-source')).toBeHidden();await expect(page.locator('#review-source-upload')).toBeVisible();
+  const dir=process.env.BB_REVIEW_MATERIALS_EVIDENCE;
+  if(dir){await mkdir(dir,{recursive:true});await upload.blur();await page.screenshot({path:dir+`/implementation-upload-${width}.png`,fullPage:true});}
+  await upload.focus();
+  await page.locator('[data-review-upload-role=historical]').setInputFiles({name:'新待复核募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic new prospectus')});
+  await expect(page.locator('[data-review-selected-source]')).toContainText('新待复核募集书.pdf');
+  expect(state.workspace.draft.source_material_ref?.material_id).toBe('evidence-new');expect(state.uploads).toHaveLength(1);
+  await existing.check();await page.locator('#review-project-source').selectOption('m:material-0');
+  await expect(page.locator('[data-review-selected-source]')).toContainText('合成募集书.docx');
+  expect(state.workspace.draft.source_material_ref?.material_id).toBe('material-0');expect(state.uploads).toHaveLength(1);
+  await page.reload();await expect(existing).toBeChecked();await expect(page.locator('[data-review-selected-source]')).toContainText('合成募集书.docx');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  if(dir)await page.screenshot({path:dir+`/implementation-existing-${width}.png`,fullPage:true});
+  expect(state.executes).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
+test('empty review explains both source choices and missing existing materials without an empty disclosure',async({page})=>{
+  const state=fixture();state.workspace.materials=[];state.workspace.draft={version:0,source_material_ref:null,material_versions:[],requirements:[],as_of:null};
+  await setup(page,state,`#/projects/${id}/review?tab=materials`);
+  await expect(page.getByRole('radio',{name:'上传新募集说明书',exact:true})).toBeChecked();
+  await page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true}).check();
+  await expect(page.getByText('项目还没有可选的募集说明书，请切换到“上传新募集说明书”。',{exact:true})).toBeVisible();
+  await expect(page.locator('#review-project-source')).toBeDisabled();
+  await expect(page.locator('#review-upload-groups details')).toHaveCount(0);
+  await page.getByRole('button',{name:'开始复核',exact:true}).click();expect(state.executes).toHaveLength(0);
+});
+
+test('old browser draft cannot reintroduce a question file omitted by the review API',async({page})=>{
+  const state=fixture(),question={material_id:'qa-question',material_version:1,sha256:hash('qa-question')};
+  const {version:_version,...original}=state.workspace.draft;
+  const input={...original,material_versions:[...original.material_versions,question]};
+  await page.addInitScript(({key,value})=>localStorage.setItem(key,JSON.stringify(value)),{key:`bb-review-input:owner-a:${id}`,value:{owner:'owner-a',project_id:id,version:1,input}});
+  await setup(page,state,`#/projects/${id}/review?tab=materials`);
+  await page.locator('#review-requirements').fill('保留本机补充要求');await page.getByRole('button',{name:'保存要求',exact:true}).click();
+  await expect.poll(()=>state.workspace.draft.requirements).toEqual(['保留本机补充要求']);
+  expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1']);
+});

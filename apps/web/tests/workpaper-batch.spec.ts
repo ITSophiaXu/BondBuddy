@@ -25,21 +25,35 @@ async function setup(page:import('@playwright/test').Page,count=350){
 }
 const assertNoPreflight=async(page:import('@playwright/test').Page)=>{
  await expect(page.locator('#wp-reviewed')).toHaveCount(0);await expect(page.locator('#wp-assess')).toHaveCount(0);await expect(page.locator('.wp-check-status')).toHaveCount(0);
- await expect(page.locator('.wp-workflow')).toContainText('选择底稿');await expect(page.locator('.wp-workflow')).toContainText('批量生成');await expect(page.locator('.wp-workflow')).toContainText('下载文件');
+ if(page.url().includes('workpaper-batch.html'))await expect(page.locator('.wp-workflow')).toContainText('选择底稿');
+ else {await expect(page.locator('.pf-flow-steps')).toContainText('选择募集说明书');await expect(page.locator('.pf-flow-steps')).toContainText('选择生成内容');await expect(page.locator('.pf-flow-steps')).toContainText('确认并生成');}
 };
+async function submitSelection(page:import('@playwright/test').Page){await page.locator('#wp-start').click();if(await page.locator('#wp-confirm-start').isVisible()){await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');await page.locator('#wp-confirm-start').click();}}
+
+for(const width of [1440,390,320])test(`saved directory stays compact and confirmation preserves selected scope ${width}`,async({page})=>{
+ const state=await setup(page,3);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));
+ await expect(page.locator('.wp-directory-current')).toContainText('合成底稿目录.xlsx');await expect(page.locator('.wp-upload-zone')).toHaveCount(0);await expect(page.locator('#wp-upload')).toBeHidden();
+ await page.locator('#wp-change-directory').click();await expect(page.locator('#wp-upload')).toBeVisible();await page.locator('#wp-change-directory').click();
+ await page.locator('[data-wp-item]').first().uncheck();await expect(page.locator('.wp-file-group>summary small')).toHaveText('2 / 3');expect(await page.locator('[data-wp-group]').evaluate((el:HTMLInputElement)=>el.indeterminate)).toBe(true);
+ const dir='test-evidence/generation-ux-flow-20261028';await mkdir(dir,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:`${dir}/directory-${width}.png`,fullPage:true});await page.screenshot({path:`${dir}/directory-${width}-viewport.png`});
+ await page.locator('#wp-start').click();expect(state.requests).toHaveLength(0);await expect(page.locator('#wp-confirmation-page')).toContainText('2 份文件');await expect(page.locator('#wp-confirmation-page')).toContainText('9,000');
+ await page.locator('#wp-confirm-back').click();await expect(page.locator('[data-wp-item]:checked')).toHaveCount(2);await page.locator('#wp-start').click();
+ await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:`${dir}/directory-confirm-${width}.png`,fullPage:true});
+ await page.locator('#wp-confirm-start').click();expect(state.requests).toHaveLength(1);expect(state.requests[0].item_ids).toHaveLength(2);await expect(page.locator('.wp-prepare')).toBeHidden();await expect(page.locator('[data-flow-step="4"]')).toHaveAttribute('aria-current','step');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.reload();await expect(page.locator('#wp-batches')).toBeVisible();expect(state.requests).toHaveLength(1);
+});
 
 test('first visit with no catalogue presents the upload control',async({page})=>{
   const state=await setup(page);state.data.catalogues=[];
-  await page.goto('/'+href({step:'choose'}));
-  await page.getByRole('link',{name:'批量生成底稿',exact:true}).click();
+  await page.goto('/'+href({step:'workpapers'}));
   await expect(page).toHaveURL(new RegExp(`project=${ids.api}&step=workpapers`));
-  await expect(page.getByRole('heading',{name:'上传底稿目录',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'添加底稿目录',exact:true})).toBeVisible();
   await expect(page.locator('#wp-upload')).toBeEnabled();
   await expect(page.getByText('底稿记录暂时无法读取。原记录已保留，请刷新重试。')).toHaveCount(0);
   await page.reload();await expect(page.locator('#wp-upload')).toBeEnabled();
   await expect(page.locator('#wp-start')).toHaveCount(0);
 });
-for(const width of [1440,390])test(`one click directly submits the selected 349 files and shows progress ${width}`,async({page})=>{
+for(const width of [1440,390])test(`confirmation submits selected 349 files and shows progress ${width}`,async({page})=>{
  const state=await setup(page);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));await assertNoPreflight(page);
  await expect(page.locator('[data-wp-item]')).toHaveCount(350);await expect(page.locator('#wp-start')).toBeEnabled();
  await page.locator('#wp-filter').fill('核查 350');await page.locator('[data-wp-item]').uncheck();await page.locator('#wp-filter').fill('');
@@ -49,20 +63,20 @@ for(const width of [1440,390])test(`one click directly submits the selected 349 
  await mkdir('test-evidence/workpaper-direct',{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);
  await page.screenshot({path:`test-evidence/workpaper-direct/preparation-${width}.png`,fullPage:true});
  await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-direct/preparation-card-${width}.png`});
- await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('0 / 349 份完成');
+ await submitSelection(page);await expect(page.locator('#wp-batches')).toContainText('0 / 349 份完成');
  expect(state.requests).toHaveLength(1);expect(state.requests[0]).toMatchObject({start_mode:'direct',expected_points:349*WORKPAPER_PRICE.points,source_version_id:'source-v3',requirements:'访谈只准备提纲，缺原件处如实说明'});
  expect(state.requests[0].assessment_id).toBeUndefined();expect(state.assessmentRequests).toHaveLength(0);await expect(page.locator('#wp-start')).toBeDisabled();
  await page.reload();await expect(page.locator('#wp-batches')).toContainText('0 / 349 份完成');expect(state.requests).toHaveLength(1);
  await page.screenshot({path:`test-evidence/workpaper-direct/progress-${width}.png`,fullPage:true});
- const url=page.url();await page.getByRole('link',{name:'查看生成进度',exact:true}).click();await expect(page).toHaveURL(url);
+ await expect(page.locator('[data-flow-step="4"]')).toHaveAttribute('aria-current','step');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
 test('uncertain direct submit survives reload and source changes using the exact saved request',async({page})=>{
- const state=await setup(page,3);state.uncertain=true;await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-start').click();
- await expect(page.locator('#wp-start')).toHaveText('继续确认上次提交');state.source.version_id='source-new';state.source.selection_revision++;
+ const state=await setup(page,3);state.uncertain=true;await page.goto('/'+href({step:'workpapers'}));await submitSelection(page);
+ await expect(page.locator('#wp-confirm-start')).toHaveText('继续确认上次提交');state.source.version_id='source-new';state.source.selection_revision++;
  await page.reload();await expect(page.locator('#wp-start')).toHaveText('继续确认上次提交');await expect(page.locator('[data-wp-item]').first()).toBeDisabled();
- await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('0 / 3 份完成');expect(state.requests).toHaveLength(2);expect(state.requests[1]).toEqual(state.requests[0]);expect(state.assessmentRequests).toHaveLength(0);
+ await submitSelection(page);await expect(page.locator('#wp-batches')).toContainText('0 / 3 份完成');expect(state.requests).toHaveLength(2);expect(state.requests[1]).toEqual(state.requests[0]);expect(state.assessmentRequests).toHaveLength(0);
 });
 for(const oldState of ['paused','running','succeeded'])test(`legacy ${oldState} preflight never gates direct submission`,async({page})=>{
  const state=await setup(page,4),cat=state.data.catalogues[0];
@@ -70,7 +84,7 @@ for(const oldState of ['paused','running','succeeded'])test(`legacy ${oldState} 
  state.data.assessments.push({assessment_id:'old-assessment',state:oldState,source:state.source,request,created_at:now,result_hash:oldState==='succeeded'?sha:null,decisions:[],warnings:[],completed_items:0,pause:{stage:'provider_reconcile',reason:'provider_result_pending',error_code:'MODEL_RESULT_STORE_FAILED'}});
  await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-requirements').fill('临时');await page.locator('#wp-requirements').fill('');
  await page.evaluate(request=>{const key=Object.keys(localStorage).find(k=>k.startsWith('bb-workpapers-v1:'))!,saved=JSON.parse(localStorage.getItem(key)!);saved.assessing=request;localStorage.setItem(key,JSON.stringify(saved));},request);
- await page.reload();await assertNoPreflight(page);await expect(page.locator('#wp-start')).toBeEnabled();await page.locator('#wp-start').click();
+ await page.reload();await assertNoPreflight(page);await expect(page.locator('#wp-start')).toBeEnabled();await submitSelection(page);
  expect(state.requests).toHaveLength(1);expect(state.requests[0].start_mode).toBe('direct');expect(state.assessmentRequests).toHaveLength(0);expect(state.resumeRequests).toHaveLength(0);
 });
 
@@ -78,11 +92,11 @@ test('a previously confirmed legacy request is replayed without changing its pri
  const state=await setup(page,3);await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-requirements').fill('已确认旧批次');
  const cat=state.data.catalogues[0],pending:WorkpaperStart={request_id:'legacy-paid',assessment_id:'old-assessment',assessment_hash:sha,catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map(e=>e.id),source_version_id:state.source.version_id,source_selection_revision:state.source.selection_revision,requirements:'已确认旧批次',price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points};
  await page.evaluate(pending=>{const key=Object.keys(localStorage).find(k=>k.startsWith('bb-workpapers-v1:'))!,saved=JSON.parse(localStorage.getItem(key)!);saved.pending=pending;localStorage.setItem(key,JSON.stringify(saved));},pending);
- await page.reload();await expect(page.locator('#wp-start')).toHaveText('继续确认上次提交');await page.locator('#wp-start').click();expect(state.requests).toEqual([pending]);
+ await page.reload();await expect(page.locator('#wp-start')).toHaveText('继续确认上次提交');await submitSelection(page);expect(state.requests).toEqual([pending]);
 });
 
 test('delivered explanations are visible and batch pause/resume do not submit another batch',async({page})=>{
- const state=await setup(page,3);await page.clock.install();await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-start').click();
+ const state=await setup(page,3);await page.clock.install();await page.goto('/'+href({step:'workpapers'}));await submitSelection(page);
  await page.getByRole('button',{name:'当前文件后暂停'}).click();await expect(page.getByRole('button',{name:'继续文件包'})).toBeVisible();await page.getByRole('button',{name:'继续文件包'}).click();
  await expect(page.getByRole('button',{name:'当前文件后暂停'})).toBeVisible();
  const b=state.data.batches[0];b.state='complete';b.items.forEach(i=>{i.state='succeeded';i.explanation={filename:i.entry.title+'-不适用说明.docx',sha256:sha};});
@@ -94,13 +108,19 @@ test('empty selection explains why submit is disabled and never sends requests',
  const state=await setup(page,4);await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-none').click();await expect(page.locator('#wp-start')).toBeDisabled();await expect(page.locator('#wp-action-hint')).toContainText('请先在目录中勾选');expect(state.requests).toHaveLength(0);expect(state.assessmentRequests).toHaveLength(0);
 });
 
+test('result action failures remain visible on the separate results step',async({page})=>{
+ const state=await setup(page,3);await page.goto('/'+href({step:'workpapers'}));await submitSelection(page);
+ await page.route('**/workpapers/batches/*/actions',route=>route.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE'}}));
+ await page.getByRole('button',{name:'当前文件后暂停'}).click();await expect(page.locator('#wp-results-status')).toBeVisible();await expect(page.locator('#wp-results-status')).not.toHaveText('底稿文件包已提交，关闭页面后仍会继续。');await expect(page.locator('#wp-results-status')).not.toBeEmpty();expect(state.requests).toHaveLength(1);
+});
+
 test('affected files can be directly recompiled from a batch older than the recent ten',async({page})=>{
  const state=await setup(page,3),catalogue={...state.data.catalogues[0],catalogue_id:'old-catalogue',filename:'历史底稿目录.xlsx'};
  await page.route('**/api/v1/projects/*/workpapers/batches/old-batch',r=>r.fulfill({json:{batch_id:'old-batch',catalogue_id:catalogue.catalogue_id}}));
  await page.route('**/api/v1/projects/*/workpapers/catalogues/old-catalogue',r=>r.fulfill({json:catalogue}));
  await page.route('**/api/v1/projects/*/workpapers/checks',r=>r.fulfill({json:{checks:[{batch_id:'old-batch',stale:false,result:{items:[{item_id:catalogue.entries[1].id,status:'needs_update'},{item_id:catalogue.entries[2].id,status:'current'}]}}]}}));
  await page.goto('/'+href({step:'workpapers'})+'&workpaper_batch=old-batch');await expect(page.locator('#wp-catalogue')).toHaveValue('old-catalogue');await expect(page.locator('[data-wp-item]:checked')).toHaveCount(1);
- await expect(page.locator('#wp-status')).toContainText('直接重新编制');await page.locator('#wp-start').click();expect(state.requests[0].catalogue_id).toBe('old-catalogue');expect(state.assessmentRequests).toHaveLength(0);
+ await expect(page.locator('#wp-status')).toContainText('直接重新编制');await submitSelection(page);expect(state.requests[0].catalogue_id).toBe('old-catalogue');expect(state.assessmentRequests).toHaveLength(0);
 });
 
 for(const width of [1440,390])test(`direct generation prototype ${width}`,async({page})=>{

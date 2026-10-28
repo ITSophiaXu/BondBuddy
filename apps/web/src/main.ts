@@ -52,6 +52,7 @@ import '../../../product-prototype/public/optional-materials.css';
 import '../../../product-prototype/public/source-prospectus.css';
 import './credit-wallet.css';
 import './project-context.css';
+import '../../../product-prototype/public/workspace-typography.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
