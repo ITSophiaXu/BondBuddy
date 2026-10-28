@@ -94,9 +94,8 @@ test.describe('prospectus saved reentry native desktop journeys',()=>{
 
   test('saved prospectus reentry: the native generation source step discovers the same retained candidate without preparing drafts or starting generation',async({page})=>{
     const s=await open(page,fixture({candidate:true})),fixed=fixedSnapshot(s),before=projection(s);await page.locator('.pw-actions').getByRole('link',{name:'生成文件',exact:true}).click();
-    await page.getByRole('link',{name:'按模板生成文件',exact:true}).click();
-    await expect(page.locator('#pf-prospectus .prospectus-panel')).toBeVisible();await expect(page.locator('.pf-workspace-heading h1')).toHaveText('按模板生成文件');await expect(page.locator('#pf-source-next')).toBeHidden();
-    await expect(page.locator('.pf-upload-ready')).toContainText(s.candidate.filename);await expect(page.locator('[data-use-saved]')).toBeEnabled();await history(page).locator(':scope > summary').click();await exactReference(page,s.candidate);expect(writes(s)).toEqual([]);expect(projection(s)).toEqual(before);fixedUnchanged(s,fixed);
+    await expect(page.locator('#pf-prospectus .pf-source-picker')).toBeVisible();await expect(page.locator('.pf-workspace-heading h1')).toHaveText('生成文件');await expect(page.locator('#pf-source-next')).toBeVisible();
+    await expect(page.locator('#pf-project-source option')).toContainText(['请选择募集说明书版本',s.candidate.filename,s.old.filename]);expect(writes(s)).toEqual([]);expect(projection(s)).toEqual(before);fixedUnchanged(s,fixed);
     await page.getByRole('link',{name:'项目文件',exact:true}).click();await ready(page);await expect(notice(page)).toBeVisible();expect(writes(s)).toEqual([]);fixedUnchanged(s,fixed);
   });
 
