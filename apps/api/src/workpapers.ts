@@ -19,6 +19,7 @@ import {loadWorkpaperKnowledge} from './m4-knowledge.js';
 import {registerWorkpaperAssessments,readWorkpaperAssessments} from './workpaper-assessments.js';
 import {workpaperDocx,explanationParagraphs} from './workpaper-docx.js';
 export {workpaperDocx} from './workpaper-docx.js';
+export {loadWorkpaperTemplate} from './workpaper-templates.js';
 import {parseWorkpaperXlsx} from './workpaper-catalogue.js';
 type Db=Pool|PoolClient;
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
@@ -45,6 +46,14 @@ export async function publishWorkpaperItemResult(db:Db,owner:string,runId:string
 async function event(c:PoolClient,owner:string,id:string,name:string,payload:unknown){
   await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,name,payload]);
   await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
+}
+export async function pauseSharedWorkpaperBatch(pool:Pool,owner:string,batch:string){
+  return transaction(pool,async c=>{
+    const changed=(await c.query(`UPDATE bb_workpaper_batches SET state='paused',revision=revision+1,
+      error='本批共享材料或编制计划尚未完成，请核对失败原因后继续。',updated_at=now()
+      WHERE owner_user_id=$1 AND id=$2 AND state IN ('queued','running') RETURNING project_id`,[owner,batch])).rows[0];
+    if(changed)await event(c,owner,changed.project_id,'workpaper.batch_paused',{batch_id:batch,reason:'shared_plan_incomplete'});
+  });
 }
 async function ownedBatch(db:Db,owner:string,id:string,batch:string,lock=false){
   await project(db,owner,id);const row=(await db.query(`SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ${lock?'FOR UPDATE':''}`,[owner,id,batch])).rows[0];
@@ -185,7 +194,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
         const decision=decisions.find(d=>d.item_id===entry.id);
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
           market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry),
-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const}:{decision})},source_material:sourcePin,materials:[cat.material],template:null,edit_base:null,scope:'whole',
+          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,execution:'shared_batch_v1' as const}:{decision})},source_material:sourcePin,materials:[cat.material],template:null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
         if(decision&&decision.status!=='generate'){

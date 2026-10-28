@@ -33,7 +33,7 @@ test('generation entry: invalid intent does not replace a cached choice and plai
 });
 
 test('generation entry: cache adoption belongs to the owner and actual API project when a navigation project is shared',async({page})=>{
-  const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill(note);
+  const s=await fixture(page);await open(page);await choose(page,['init']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);
   const oldSelection=await raw(page,'selection'),oldNote=await raw(page,'note');
   await page.goto('/'+href({step:'documents',prepare_document:'credit'},ids.other,ids.navigation));
   await expect(documentChoice(page,'credit')).toHaveValue('credit');expect(await selected(page)).toEqual(['credit']);await expect(page.locator('#pf-requirements')).toHaveValue('');
@@ -46,7 +46,7 @@ test('generation entry: cache adoption belongs to the owner and actual API proje
 
 for(const action of ['keep','transfer','clear'] as const)test(`generation entry: unsaved note has the explicit ${action} outcome`,async({page})=>{
   const s=await fixture(page),before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);
-  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');
+  await open(page);await choose(page,['init','underwriter']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');
   const card=page.getByRole('region',{name:'准备生成所选文种'});await expect(card).toContainText(note);
   await expect(card.getByRole('button')).toHaveCount(3);expect((await query(page)).prepare_document).toBe('credit');expect((await query(page)).prepare_wait).toBe('1');
   for(const anchor of await page.locator('.pf-workspace-actions a[href*="project="]').evaluateAll(nodes=>nodes.map(n=>(n as HTMLAnchorElement).getAttribute('href')!))){const q=new URLSearchParams(anchor.split('?')[1]);expect(q.get('prepare_document')).toBe('credit');expect(q.get('prepare_wait')).toBe('1');}
@@ -66,14 +66,14 @@ for(const action of ['keep','transfer','clear'] as const)test(`generation entry:
 });
 
 test('generation entry: an already identical single selection retains its unsaved note without a conflict card',async({page})=>{
-  const s=await fixture(page);await open(page);await choose(page,['credit']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');
+  const s=await fixture(page);await open(page);await choose(page,['credit']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');
   await expect(page.locator('#pf-entry-transfer')).toHaveCount(0);await expect(page.locator('#pf-entry-clear')).toHaveCount(0);
   expect((await query(page)).prepare_document).toBeUndefined();await documents(page);expect(await selected(page)).toEqual(['credit']);await expect(page.locator('#pf-requirements')).toHaveValue(note);
   expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);
 });
 
 test('generation entry: failing to clear the local note never changes selection or consumes intent',async({page})=>{
-  await installStorageControl(page);const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
+  await installStorageControl(page);const s=await fixture(page);await open(page);await choose(page,['init']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
   const selection=await raw(page,'selection'),savedNote=await raw(page,'note');await fault(page,{clearNote:true,trace:[]});await page.locator('#pf-entry-clear').click();
   await expect(page.locator('#pf-entry-intent')).toContainText(/清空|清除/);expect(await selected(page)).toEqual(['init']);await expect(page.locator('#pf-requirements')).toHaveValue(note);
   expect(await raw(page,'selection')).toBe(selection);expect(await raw(page,'note')).toBe(savedNote);expect(await trace(page)).toEqual(['remove:note']);
@@ -82,7 +82,7 @@ test('generation entry: failing to clear the local note never changes selection 
 });
 
 test('generation entry: note clear succeeds before a failed selection save, leaving a recoverable old selection and empty note',async({page})=>{
-  await installStorageControl(page);const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
+  await installStorageControl(page);const s=await fixture(page);await open(page);await choose(page,['init']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
   const selection=await raw(page,'selection');await fault(page,{selection:true,trace:[]});await page.locator('#pf-entry-clear').click();
   await expect(page.locator('#pf-entry-intent')).toContainText(/清空|清除/);expect(await selected(page)).toEqual(['init']);await expect(page.locator('#pf-requirements')).toHaveValue('');
   expect(await raw(page,'selection')).toBe(selection);expect(await raw(page,'note')).toBeNull();expect(await trace(page)).toEqual(['remove:note','set:selection']);
@@ -95,7 +95,7 @@ test('generation entry: ordinary adoption saves first and a failed save retains 
   await installStorageControl(page);const s=await fixture(page);await open(page);await choose(page,['init']);const selection=await raw(page,'selection');
   await openFiles(page);await fault(page,{selection:true,trace:[]});await clickEntry(page,'credit');await expect(page.locator('#pf-entry-continue')).toBeVisible();
   expect(await raw(page,'selection')).toBe(selection);expect((await query(page)).prepare_document).toBe('credit');expect((await query(page)).prepare_wait).toBe('1');expect(writes(s)).toEqual([]);
-  await page.getByRole('link',{name:/^生成记录/}).click();await page.getByRole('link',{name:'准备文件',exact:true}).click();await expect(page.locator('#pf-generate')).toBeDisabled();expect(await selected(page)).toEqual(['init']);
+  await page.getByRole('link',{name:/^生成记录/}).click();await page.getByRole('link',{name:'准备下一轮文件',exact:true}).click();await expect(page.locator('#pf-generate')).toBeDisabled();expect(await selected(page)).toEqual(['init']);
   await page.reload();await expect(page.locator('#pf-entry-continue')).toBeVisible();expect(await selected(page)).toEqual(['init']);expect(await raw(page,'selection')).toBe(selection);
   await page.locator('#pf-entry-continue').click();expect(await selected(page)).toEqual(['credit']);expect((await query(page)).prepare_document).toBeUndefined();expect((await query(page)).return_project).toBe(ids.api);expect(drafts(s)).toEqual([]);assertFixture(s);
 });
@@ -112,7 +112,7 @@ for(const mode of ['corrupt','throw'] as const)test(`generation entry: ${mode} c
 });
 
 for(const action of ['add','replace','remove'] as const)test(`generation entry: a manual ${action} choice cancels waiting intent and survives refresh`,async({page})=>{
-  const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
+  const s=await fixture(page);await open(page);await choose(page,['init']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);
   if(action==='add')await addDocuments(page,['legal']);else if(action==='replace')await documentChoice(page,'init').selectOption('legal');else await clearRows(page);
   const choice=await selected(page);expect(choice).toEqual(action==='add'?['init','legal']:action==='replace'?['legal']:[]);
   expect((await query(page)).prepare_document).toBeUndefined();expect((await query(page)).prepare_wait).toBeUndefined();
@@ -156,7 +156,7 @@ test('generation entry: a live results poll cannot repaint through an unknown ca
 
 for(const outcome of ['continue','stop'] as const)test(`generation entry: a partial note operation keeps its original scope when explicitly ${outcome==='continue'?'continued':'stopped'}`,async({page})=>{
   const s=await fixture(page),before=structuredClone(s.workspaces.get(ids.api)!.workspace.drafts);s.failDraft='underwriter';
-  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
+  await open(page);await choose(page,['init','underwriter']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
   const operation=await raw(page,'note-operation');await entry(page,'credit');await expect(page.locator('#pf-entry-intent')).toContainText('原');expect(await raw(page,'note-operation')).toBe(operation);await documents(page);
   expect(await selected(page)).toEqual(['init','underwriter']);await expect(page.locator('#pf-entry-transfer')).toHaveCount(0);await expect(page.locator('#pf-entry-continue')).toHaveCount(0);
   if(outcome==='continue')await page.locator('#pf-save-requirements').click();else await page.locator('#pf-stop-note').click();await expect(page.locator('#pf-stop-note')).toBeHidden();await expect(page.locator('#pf-entry-continue')).toBeVisible();
@@ -184,7 +184,9 @@ for(const width of [1440,390])test(`generation entry component comparison at ${w
   const ordinary=reference?['init','underwriter']:['credit'];expect(await selected(page)).toEqual(ordinary);
   const directory=process.env.BB_GENERATION_ENTRY_EVIDENCE_DIR??test.info().outputPath('component-capture');await mkdir(directory,{recursive:true});
   const capture=async(name:string)=>{await page.evaluate(()=>scrollTo(0,0));const layout=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,text:document.body.innerText}));expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width+1);await page.screenshot({path:join(directory!,`generation-entry-${name}-${width}.png`),fullPage:true});await writeFile(join(directory!,`generation-entry-${name}-${width}.json`),JSON.stringify({...layout,reference,selection:await selected(page),query:await query(page)},null,2));};
-  await capture('ordinary');await choose(page,['init','underwriter']);if(!await page.locator('#pf-requirements').isVisible())await page.locator('#pf-requirements-details > summary').click();await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);expect(await selected(page)).toEqual(['init','underwriter']);
+  await capture('ordinary');await choose(page,['init','underwriter']);if(!await page.locator('#pf-requirements').isVisible())await page.locator('#pf-requirements-details > summary').click();await revealRequirements(page);await page.locator('#pf-requirements').fill(note);await entry(page,'credit');await documents(page);expect(await selected(page)).toEqual(['init','underwriter']);
   if(reference)await expect(page.locator('#pf-entry-intent')).toHaveCount(0);else {await expect(page.locator('#pf-entry-transfer')).toBeVisible();await expect(page.locator('#pf-entry-intent')).toContainText(note);}
   await capture('note-conflict');expect(drafts(s)).toEqual([]);expect(batches(s)).toEqual([]);assertFixture(s);if(verify)await writeFile(join(directory!,`generation-entry-reference-${width}.json`),JSON.stringify(await verify(),null,2));
 });
+
+async function revealRequirements(page:import('@playwright/test').Page){if(!await page.locator('#pf-requirements').isVisible())await page.locator('#pf-requirements-details > summary').click();}
