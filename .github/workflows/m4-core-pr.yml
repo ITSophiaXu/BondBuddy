@@ -136,6 +136,8 @@ jobs:
             apps/worker/dist/m4-runtime-skills.test.js \
             apps/worker/dist/m4-stages.test.js \
             apps/worker/dist/m4-pipeline.pg.test.js \
+            apps/worker/dist/workpaper-assessment-workspace.test.js \
+            apps/worker/dist/workpaper-assessment.pg.test.js \
             apps/worker/dist/model-generation-router.test.js \
             | tee "$RUNNER_TEMP/m4-core-worker.tap"
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-core-worker.tap"

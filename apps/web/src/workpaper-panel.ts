@@ -9,6 +9,7 @@ import {esc,date} from './ui';
 import {prototypeIcon as ico} from './prototype-design';
 import {withProjectContext} from './project-navigation';
 import {runStateLabel} from './review-state';
+import {assessmentPauseView} from './workpaper-assessment-state';
 import './workpaper-panel.css';
 
 const stateNames:Record<string,string>={queued:'等待生成',running:'正在生成',paused:'已暂停',partial:'部分完成',complete:'已完成',cancelled:'已结束排队'};
@@ -17,6 +18,7 @@ export class WorkpaperPanel {
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
   private assessing?:WorkpaperAssess;private reviewed=false;private reviewedHash?:string;
   private pending?:WorkpaperStart;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
+  private assessmentError='';private assessmentErrorId?:string;
   constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean){}
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
   get hasUnconfirmed(){return this.busy||!!this.pending||!!this.assessing||this.storageError;}
@@ -86,23 +88,25 @@ export class WorkpaperPanel {
   }
   private paintConfirm(){
     const node=this.host.querySelector('#wp-confirm');if(!node)return;const count=this.selected.size,a=this.matchingAssessment();
+    if(a?.assessment_id!==this.assessmentErrorId||a?.state!=='paused')this.assessmentError='';
     if(this.pending){
       node.innerHTML='<p>上次已确认 '+this.pending.item_ids.length+' 项，费用 '+this.pending.expected_points.toLocaleString()+' 积分。请先确认上次提交结果，原范围及判断版本保留。</p><button class="btn primary" id="wp-start" '+(this.busy||this.storageError?'disabled':'')+'>继续确认上次提交</button>';
       node.querySelector('#wp-start')?.addEventListener('click',()=>void this.start());return;
     }
     if(this.reviewedHash!==a?.result_hash)this.reviewed=false;
     const ready=a?.state==='succeeded'&&!!a.result_hash,waiting=!!a&&['queued','running','paused'].includes(a.state);
+    const recovery=a?.state==='paused'?assessmentPauseView(a):null;
     const active=this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
     const generated=ready?a.decisions.filter(d=>d.status==='generate').length:0,excluded=ready?count-generated:0;
-    const disabled=!count||!this.source||this.busy||this.storageError||active||(!this.assessing&&(waiting||(ready&&!this.reviewed)));
-    const label=this.assessing?'继续确认检查请求':ready?'确认并生成底稿':'批量生成底稿';
+    const disabled=!count||!this.source||this.busy||this.storageError||active||(!this.assessing&&(!recovery&&waiting||(ready&&!this.reviewed)));
+    const label=this.assessing?'继续确认检查请求':recovery?.label??(ready?'确认并生成底稿':'批量生成底稿');
     const hint=this.storageError?'浏览器未能保存请求，请恢复存储后重试。'
       :active?'已有底稿文件包正在处理，请在下方查看生成进度。'
       :!this.source?'请先上传并采用募集说明书，再开始批量生成。'
       :!count?'请先在目录中勾选需要生成的底稿。'
       :this.busy?'正在提交，请稍候。'
       :this.assessing?'上次检查请求的提交结果尚未确认，请点击继续；会复用原请求。'
-      :a?.state==='paused'?'检查已暂停。请查看暂停任务，处理提示后继续检查。'
+      :recovery?recovery.message
       :waiting?'检查完成后，这里会显示文件清单与费用；经你确认后才开始生成。'
       :ready?(this.reviewed?'清单与费用已核对，点击下方按钮开始生成。':'请先核对上方清单与费用，并勾选确认，生成按钮即可使用。')
       :a?'上次检查未完成。点击“批量生成底稿”重新检查，完成后再确认生成。'
@@ -127,17 +131,44 @@ export class WorkpaperPanel {
 
        <label class="wp-review"><input type="checkbox" id="wp-reviewed" ${this.reviewed?'checked':''} ${this.busy?'disabled':''}><span>我已核对生成范围及全部不生成项，同意为不生成项逐份生成说明</span></label>`
        :''}
-      <div class="wp-confirm-actions"><div class="wp-fee-summary">${ready?`<span>本批共 <strong>${(generated*WORKPAPER_PRICE.points).toLocaleString()}</strong> 积分</span><small>仅 ${generated} 份生成底稿计费</small>`:`<span>${WORKPAPER_PRICE.points.toLocaleString()} 积分 / 份</span><small>检查完成后显示本批总额</small>`}</div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${ready&&!this.assessing?`<button class="btn secondary" id="wp-assess" ${this.busy||this.storageError||active?'disabled':''}>重新检查</button>`:''}${a?.state==='paused'?'<a class="btn secondary" href="#tasks">查看暂停任务</a>':''}${active?'<a class="btn secondary" id="wp-view-progress" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint" ${disabled?'disabled':''}>${label}</button></div></div></div>
+      <div class="wp-confirm-actions"><div class="wp-fee-summary">${ready?`<span>本批共 <strong>${(generated*WORKPAPER_PRICE.points).toLocaleString()}</strong> 积分</span><small>仅 ${generated} 份生成底稿计费</small>`:`<span>${WORKPAPER_PRICE.points.toLocaleString()} 积分 / 份</span><small>检查完成后显示本批总额</small>`}</div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${ready&&!this.assessing?`<button class="btn secondary" id="wp-assess" ${this.busy||this.storageError||active?'disabled':''}>重新检查</button>`:''}${active?'<a class="btn secondary" id="wp-view-progress" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint" ${disabled?'disabled':''}>${label}</button></div></div></div>
+      ${this.assessmentError?`<p id="wp-recovery-error" role="alert">${esc(this.assessmentError)}</p>`:''}
       <p class="wp-fee-note">检查及不生成项说明不另收费。确认生成后按生成底稿逐份扣费。</p>`;
     if(focusId)node.querySelector<HTMLElement>('#'+focusId)?.focus({preventScroll:true});
     const table=node.querySelector('.wp-assessment');
     if(table){table.scrollTop=tableScroll.top;table.scrollLeft=tableScroll.left;}
     node.querySelector('#wp-reviewed')?.addEventListener('change',e=>{this.reviewed=(e.target as HTMLInputElement).checked;this.reviewedHash=a?.result_hash??undefined;this.paintConfirm();});
-    node.querySelector('#wp-start')?.addEventListener('click',()=>{if(!disabled)void (ready&&!this.assessing?this.start():this.assess());});
+    node.querySelector('#wp-start')?.addEventListener('click',()=>{if(!disabled)void (recovery&&!this.assessing?this.recoverAssessment(a!):ready&&!this.assessing?this.start():this.assess());});
     node.querySelector('#wp-assess')?.addEventListener('click',()=>void this.assess());
     node.querySelector('#wp-view-progress')?.addEventListener('click',e=>{e.preventDefault();this.host.querySelector('#wp-batches')?.scrollIntoView({behavior:'smooth',block:'start'});});
   }
+  private async recoverAssessment(a:WorkpaperAssessment){await this.act(async()=>{
+    this.assessmentError='';this.assessmentErrorId=a.assessment_id;
+    let error:unknown;
+    // Resume exactly this saved run. Never create a new assessment or a paid batch.
+    if(assessmentPauseView(a).action==='resume')try{
+      await this.api.request('POST',`/runs/${encodeURIComponent(a.assessment_id)}/resume`,{reason:'user_resume_workpaper_assessment'},{},this.controller.signal);
+    }catch(e){error=e;}
+    try{
+      const data=await this.request<WorkpaperWorkspace>('GET');if(!this.live())return;
+      this.data=data;
+      const current=data.assessments.find(item=>item.assessment_id===a.assessment_id);
+      if(!current){this.status='原检查记录暂未读取到，请刷新后重试。';this.paintConfirm();return;}
+      if(error&&current?.state==='paused'){
+        this.assessmentError=error instanceof ApiError&&error.code==='CAPABILITY_NOT_READY'
+          ?'本次调用状态尚未核对完成，暂不能恢复。请刷新检查状态，原任务和进度保留。'
+          :error instanceof ApiError&&error.code==='TRIAL_QUOTA_EXCEEDED'
+          ?'检查服务的使用限制尚未解除，请稍后继续原检查。'
+          :'继续检查的结果暂未确认。请刷新状态后重试，仍会使用原任务。';
+      }
+      this.status=current.state==='paused'?'已刷新本批检查状态。':['queued','running'].includes(current.state)?'原检查任务已恢复，完成后请核对清单与费用。':'已刷新本批检查结果。';
+    }catch{
+      this.assessmentError='检查状态暂时无法读取。请刷新后重试，原任务和进度保留。';
+    }
+    this.paintConfirm();this.poll();
+  });}
   private async assess(){await this.act(async()=>{
+    this.assessmentError='';
     if(!this.assessing){if(!this.catalogue||!this.source||!this.selected.size)return;
       this.assessing={request_id:crypto.randomUUID(),catalogue_id:this.catalogue.catalogue_id,catalogue_sha256:this.catalogue.sha256,item_ids:[...this.selected],source_version_id:this.source.version_id,source_selection_revision:this.source.selection_revision,requirements:this.requirements};
       if(!this.save())return;this.paint();

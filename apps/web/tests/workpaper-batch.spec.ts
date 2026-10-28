@@ -7,7 +7,14 @@ import {fixture,href,ids,now,sha} from './generation-entry-fixtures';
 async function setup(page:import('@playwright/test').Page,count=350){
   const existing=await fixture(page),source=existing.workspaces.get(ids.api)!.source!;
   const data:WorkpaperWorkspace={catalogues:[{catalogue_id:'catalogue-1',filename:'合成底稿目录.xlsx',sha256:sha,created_at:now,warnings:[],entries:Array.from({length:count},(_,i)=>({id:`item-${i+1}`,code:`1.${i+1}`,title:`财务与业务核查 ${i+1}`,folder:'1 尽职调查',kind:'file' as const,path:`1 尽职调查/1.${i+1} 财务与业务核查 ${i+1}.docx`,row:i+2,sheet:'目录',instructions:''}))}],batches:[],assessments:[]};
-  const state={data,source,requests:[] as WorkpaperStart[],assessmentRequests:[] as WorkpaperAssess[],assessmentState:'succeeded',uncertain:false,uncertainAssessment:false};
+  const state={data,source,requests:[] as WorkpaperStart[],assessmentRequests:[] as WorkpaperAssess[],resumeRequests:[] as string[],assessmentState:'succeeded',uncertain:false,uncertainAssessment:false,uncertainResume:false,resumeError:false};
+  await page.route('**/api/v1/runs/*/resume',async route=>{
+    const id=new URL(route.request().url()).pathname.split('/').at(-2)!;state.resumeRequests.push(id);
+    if(state.resumeError)return route.fulfill({status:429,json:{code:'TRIAL_QUOTA_EXCEEDED'}});
+    const a=data.assessments.find(item=>item.assessment_id===id)!;a.state='queued';a.pause=null;
+    if(state.uncertainResume)return route.abort('failed');
+    return route.fulfill({json:{run_id:id,state:'queued'}});
+  });
   await page.route('**/api/v1/projects/*/workpapers**',async route=>{
     const request=route.request(),url=new URL(request.url()),base=`/api/v1/projects/${ids.api}/workpapers`;
     if(url.pathname===base&&request.method()==='GET')return route.fulfill({json:data});
@@ -134,9 +141,11 @@ for(const width of [1440,390])test(`generation action stays visible through chec
  assessment.completed_items=12;await page.clock.fastForward(5100);await expect(status).toContainText('已检查 12 / 248 项');
  await expect(page.locator('.wp-check-help')).toHaveAttribute('open','');
  await expect(page.getByRole('progressbar',{name:'可生成文件检查进度'})).toHaveAttribute('value','12');
- assessment.state='paused';await page.clock.fastForward(5100);await expect(status).toContainText('检查已暂停');
- await expect(hint).toContainText('处理提示后继续检查');await expect(start).toBeDisabled();
- await expect(page.getByRole('link',{name:'查看暂停任务'})).toHaveAttribute('href','#tasks');
+ assessment.state='paused';assessment.pause={stage:'user_paused',reason:'user_paused',error_code:null};await page.clock.fastForward(5100);await expect(status).toContainText('检查已暂停');
+ await expect(hint).toContainText('从原任务接着处理');await expect(start).toBeEnabled();await expect(start).toHaveText('继续检查');
+ await expect(page.getByRole('link',{name:'查看暂停任务'})).toHaveCount(0);
+ await mkdir('test-evidence/workpaper-paused',{recursive:true});await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-paused/resume-${width}.png`});
+ await start.click();await expect(status).toContainText('等待检查');expect(state.resumeRequests).toEqual([assessment.assessment_id]);expect(state.assessmentRequests).toHaveLength(1);
  assessment.state='failed';await page.clock.fastForward(5100);await expect(status).toContainText('检查未完成');
  await expect(start).toBeEnabled();await expect(hint).toContainText('重新检查');expect(state.requests).toHaveLength(0);
  state.assessmentState='succeeded';await start.click();
@@ -152,6 +161,36 @@ for(const width of [1440,390])test(`generation action stays visible through chec
  await expect(hint).toContainText('已有底稿文件包正在处理');
  const url=page.url();await page.getByRole('link',{name:'查看生成进度',exact:true}).click();await expect(page).toHaveURL(url);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+for(const width of [1440,390])test(`provider result failure gives a reason and refresh without duplicate execution ${width}`,async({page})=>{
+ const state=await setup(page,248);state.assessmentState='queued';await page.clock.install();await page.setViewportSize({width,height:960});
+ await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-start').click();
+ const a=state.data.assessments[0];a.state='paused';a.pause={stage:'provider_reconcile',reason:'provider_result_pending',error_code:'MODEL_RESULT_STORE_FAILED'};
+ await page.clock.fastForward(5100);await expect(page.locator('#wp-action-hint')).toContainText('检查结果未能保存');
+ await expect(page.locator('#wp-start')).toHaveText('刷新检查状态');await expect(page.locator('#wp-start')).toBeEnabled();
+ await page.locator('#wp-start').click();expect(state.resumeRequests).toHaveLength(0);expect(state.assessmentRequests).toHaveLength(1);expect(state.requests).toHaveLength(0);
+ await expect(page.locator('#wp-action-hint')).toContainText('请勿重复提交');await expect(page.locator('#wp-start')).toHaveText('刷新检查状态');
+ await mkdir('test-evidence/workpaper-paused',{recursive:true});await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-paused/provider-${width}.png`});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('resume handles a lost response and keeps errors beside the same task action',async({page})=>{
+ const state=await setup(page,4);state.assessmentState='queued';await page.clock.install();await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-start').click();
+ const a=state.data.assessments[0];a.state='paused';a.pause={stage:'trial_limit',reason:'model_tokens_per_user_per_day',error_code:'TRIAL_QUOTA_EXCEEDED'};
+ state.resumeError=true;await page.clock.fastForward(5100);await page.locator('#wp-start').click();
+ await expect(page.locator('#wp-recovery-error')).toContainText('使用限制尚未解除');await expect(page.locator('#wp-start')).toHaveText('继续检查');
+ a.state='running';a.pause=null;await page.clock.fastForward(5100);await expect(page.locator('#wp-recovery-error')).toHaveCount(0);
+ a.state='paused';a.pause={stage:'user_paused',reason:'user_paused',error_code:null};await page.clock.fastForward(5100);
+ state.resumeError=false;state.uncertainResume=true;await page.locator('#wp-start').click();
+ await expect(page.locator('.wp-check-status')).toContainText('等待检查');await expect(page.locator('#wp-recovery-error')).toHaveCount(0);
+ expect(state.resumeRequests).toEqual([a.assessment_id,a.assessment_id]);expect(state.assessmentRequests).toHaveLength(1);expect(state.requests).toHaveLength(0);
+});
+
+test('old paused responses refresh without guessing a reason or creating another check',async({page})=>{
+ const state=await setup(page,4);state.assessmentState='paused';await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-start').click();
+ await expect(page.locator('#wp-action-hint')).toContainText('暂停原因暂未读取到');await page.locator('#wp-start').click();
+ expect(state.resumeRequests).toHaveLength(0);expect(state.assessmentRequests).toHaveLength(1);expect(state.requests).toHaveLength(0);
 });
 
 test('uncertain check reuses the saved request and cannot start paid generation',async({page})=>{
@@ -179,5 +218,14 @@ for(const width of [1440,390])test(`checking prototype companion ${width}`,async
  await expect(page.locator('#wp-start')).toBeVisible();await expect(page.locator('#wp-start')).toBeDisabled();
  await page.locator('#wp-confirm').scrollIntoViewIfNeeded();
  await page.screenshot({path:`test-evidence/workpaper-actions/prototype-checking-${width}.png`,fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+for(const width of [1440,390])for(const provider of [false,true])test(`paused prototype companion ${width} ${provider?'provider':'resume'}`,async({page})=>{
+ await page.setViewportSize({width,height:960});
+ const file=resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/');
+ await page.goto('/@fs/'+file+'?check=paused'+(provider?'&reason=provider':''));
+ await expect(page.locator('#wp-start')).toHaveText(provider?'刷新检查状态':'继续检查');await expect(page.locator('#wp-start')).toBeEnabled();
+ await mkdir('test-evidence/workpaper-paused',{recursive:true});await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-paused/prototype-${provider?'provider':'resume'}-${width}.png`});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });

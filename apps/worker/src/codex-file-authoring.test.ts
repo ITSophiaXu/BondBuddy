@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {runContainedModelCall,loadCodexAdapterConfig,type ContainedCallInput} from './codex-adapter.js';
+import {runContainedModelCall,loadCodexAdapterConfig,CodexOutputValidationError,type ContainedCallInput} from './codex-adapter.js';
 import {MemoryCodexJournal} from './codex-memory-journal.js';
 
 async function setup(){
@@ -44,4 +44,17 @@ test('file mode validates actual output when a completed CLI has no final prose'
     assert.equal(result.status,'completed');assert.deepEqual(result.value,{file:'synthetic file'});
     assert.equal(result.attempts.length,1);assert.deepEqual(s.counts(),{prepared:1,collected:1});
   }finally{await rm(s.root,{recursive:true,force:true});}
+});
+
+test('known-invalid file output is a measured failure; storage errors still require reconciliation',{skip:process.platform!=='linux'},async()=>{
+ const s=await setup();try{
+  for(const [error,expected] of [[new CodexOutputValidationError('workpaper_source_coverage_incomplete'),'failed'],[new Error('synthetic_storage_error'),'needs_reconcile']] as const){
+   const journal=new MemoryCodexJournal();
+   const result=await runContainedModelCall({...s.input,fileWorkspace:{...s.input.fileWorkspace!,collect:async()=>{throw error;}}},journal,s.config);
+   assert.equal(result.status,expected);assert.equal(result.attempts.length,1);
+   assert.equal(result.attempts[0].usage.status,'measured');
+   assert.equal(result.error_code,expected==='failed'?'MODEL_OUTPUT_SCHEMA_INVALID':'MODEL_RESULT_STORE_FAILED');
+   assert.equal(result.value,null);
+  }
+ }finally{await rm(s.root,{recursive:true,force:true});}
 });
