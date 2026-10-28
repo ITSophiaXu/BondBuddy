@@ -156,7 +156,7 @@ test('upload saves a new version without adopting it or rebuilding its parent',a
   expect(f.mutations.some(m=>m.path===`${base}/prospectus-versions`)).toBe(false);
   expect(f.counts().puts).toBe(1);expect(f.counts().reads).toBeGreaterThan(1);
   await openContainingDetails(page,`[data-use-version="${newVersion.version_id}"]`);
-  await expect(page.locator(`[data-use-version="${newVersion.version_id}"]`)).toHaveText('采用此版');
+  await expect(page.locator(`[data-use-version="${newVersion.version_id}"]`)).toHaveText('用于本次更新');
   await expect(page.locator('.prospectus-panel header')).toContainText(oldVersion.filename);
 });
 
@@ -248,7 +248,7 @@ test('saving a file neither invents source declarations nor claims automatic ide
 test('an acknowledged adoption remains adopted when its following parent refresh fails',async({page})=>{
   const f=await fixture(page,{candidate:true,failChanged:true});
   await chooseNew(page);await page.locator('#confirm-prospectus-selection').click();
-  await expect(page.locator('#prospectus-status')).toContainText(/已采用.*页面刷新尚未完成/);
+  await expect(page.locator('#prospectus-status')).toContainText(/已采用.*下一步暂未打开/);
   await expect(page.locator('.prospectus-panel header')).toContainText(filename);
   await expect(page.locator('dialog[open], #retry-prospectus-selection')).toHaveCount(0);
   expect(f.selections).toHaveLength(1);expect(f.state.selection_revision).toBe(8);expect(await f.changes()).toBe('1');
