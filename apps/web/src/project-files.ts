@@ -281,7 +281,7 @@ export class ProjectFiles {
     if(!this.panel){
       const panel=new ProspectusPanel(this.api,id,host,async()=>!this.uploading&&!this.pendingImport?.uncertain,async()=>{
         this.sourceChanged=true;await this.refresh(true);void this.workpapers?.refresh();
-      },()=>{if(this.live())this.paintSummary();},'update',this.owner);this.panel=panel;
+      },()=>{if(this.live())this.paintSummary();},'project',this.owner);this.panel=panel;
     }
     const panel=this.panel;
     try{await panel.refresh();if(!this.live()||this.panel!==panel)return;

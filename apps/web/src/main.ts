@@ -559,6 +559,21 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     prospectusPanel?.dispose();prospectusPanel=undefined;
     await renderRoute();
   },()=>syncProjectExecution(project.project_id),'update',identity);
+  document.querySelector('#prospectus-panel')!.addEventListener('prospectus:deleted',event=>{
+    const materialId=(event as CustomEvent<{materialId:string}>).detail.materialId;
+    for(const upload of localUploads.get(project.project_id)??[])if(upload.material?.material_id===materialId&&!upload.journalDone){
+      const recovery=uploadRecovery(project.project_id,upload.owner);
+      void recovery.forget(upload.key).catch(()=>{uploadJournalErrors.set(project.project_id,'文件已删除，本机上传恢复记录暂未清除，请刷新后核对。');});
+    }
+    localUploads.set(project.project_id,(localUploads.get(project.project_id)??[]).filter(upload=>upload.material?.material_id!==materialId));
+    recoveredMaterials.set(project.project_id,(recoveredMaterials.get(project.project_id)??[]).filter(material=>material.material_id!==materialId));
+  });
+  document.querySelector('#prospectus-panel')!.addEventListener('prospectus:skip',()=>{
+    const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
+    const financial=document.querySelector<HTMLElement>('[data-material-role="audit"]');
+    financial?.scrollIntoView({block:'start',behavior:'smooth'});
+    financial?.querySelector<HTMLInputElement>('input[type="file"]')?.focus({preventScroll:true});
+  });
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
     const details = { ...draft.fields.update_details, supplementary_notes: text || null };

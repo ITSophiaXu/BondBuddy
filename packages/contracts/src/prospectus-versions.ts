@@ -9,6 +9,7 @@ export const ProspectusVersionSchema = obj({
   filename: Type.String(), sha256: Type.String({ pattern: '^[a-f0-9]{64}$' }), created_at: Type.String({ format: 'date-time' }),
   material_id: nullable(id), material_version: nullable(integer), artifact_id: nullable(id), artifact_version: nullable(integer),
   revision_artifact_id: nullable(id), run_id: nullable(id),
+  delete_block_reason: Type.Optional(nullable(Type.Union([Type.Literal('current'), Type.Literal('used'), Type.Literal('generated')]))),
 });
 export const prospectusVersionSchemas = {
   UpdateWorkspaceRequest: obj({}),

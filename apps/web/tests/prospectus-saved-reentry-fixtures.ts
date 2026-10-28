@@ -84,6 +84,7 @@ export async function install(page:Page,s=fixture()){
     if(method==='GET'&&path==='/m4/topics')return route.fulfill({json:{topics:[]}});
     if(method==='GET'&&path==='/projects')return reply(route,'ProjectListResponse',{items:[{project_id:ids.project,name:s.project.name,kind:s.project.kind,issuer_name:s.project.issuer_name,market:s.project.market,offering:s.project.offering,draft_revision:s.project.draft_revision,updated_at:now,file_count:collection(s).items.length,latest_run:null,latest_artifact:null,status:'draft'}],page:{has_more:false,next_cursor:null}});
     const base='/projects/'+ids.project;
+    if(method==='GET'&&path===base+'/workpapers/library')return route.fulfill({json:{items:[],total:0,offset:0,limit:100,source:currentSource(s),checks:[]}});
     if(method==='GET'&&path===base)return reply(route,'ProjectResponse',s.project);
     if(method==='GET'&&path===base+'/tasks')return reply(route,'ProjectTasksResponse',{project_id:ids.project,items:[{run_id:ids.originalRun,project_id:ids.execution,kind:'generation',state:'failed',stage:'completed',artifact_id:null,created_at:now,updated_at:now,report_id:null,topic_id:ids.topic,document_type:'init',operation:null}],page:{has_more:false,next_cursor:null}});
     if(method==='GET'&&path===base+'/files'){s.filesReads++;return reply(route,'ProjectFilesResponse',collection(s));}
