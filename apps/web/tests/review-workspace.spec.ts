@@ -1101,6 +1101,7 @@ test('historical progress-only report is flagged without changing its ledger or 
 });
 
 for(const width of [1440,390])test('review material source choices are exclusive and new upload replaces the selected source '+width,async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   const state=fixture();await page.setViewportSize({width,height:960});
   await setup(page,state,`#/projects/${id}/review?tab=materials`);
   const upload=page.getByRole('radio',{name:'上传新募集说明书',exact:true}),existing=page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true});
@@ -1111,6 +1112,7 @@ for(const width of [1440,390])test('review material source choices are exclusive
   await upload.check();await expect(existing).not.toBeChecked();await expect(page.locator('#review-project-source')).toBeHidden();await expect(page.locator('#review-source-upload')).toBeVisible();
   const dir=process.env.BB_REVIEW_MATERIALS_EVIDENCE;
   if(dir){await mkdir(dir,{recursive:true});await upload.blur();await page.screenshot({path:dir+`/implementation-upload-${width}.png`,fullPage:true});}
+  await upload.focus();
   await page.locator('[data-review-upload-role=historical]').setInputFiles({name:'新待复核募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic new prospectus')});
   await expect(page.locator('[data-review-selected-source]')).toContainText('新待复核募集书.pdf');
   expect(state.workspace.draft.source_material_ref?.material_id).toBe('evidence-new');expect(state.uploads).toHaveLength(1);
@@ -1121,6 +1123,7 @@ for(const width of [1440,390])test('review material source choices are exclusive
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   if(dir)await page.screenshot({path:dir+`/implementation-existing-${width}.png`,fullPage:true});
   expect(state.executes).toHaveLength(0);
+  expect(errors).toEqual([]);
 });
 
 test('empty review explains both source choices and missing existing materials without an empty disclosure',async({page})=>{

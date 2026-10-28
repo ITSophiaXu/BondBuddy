@@ -528,7 +528,7 @@ export class ReviewWorkspace {
   private renderMaterials(){
     const host=this.page?.querySelector('#review-materials-panel');if(!host||!this.workspace||!this.draftInput)return;
     const active=document.activeElement;
-    const editing=host.contains(active)&&(active instanceof HTMLTextAreaElement||(active instanceof HTMLInputElement&&active.type!=='file')||active instanceof HTMLSelectElement)?{id:active.id,value:active.value,start:active instanceof HTMLTextAreaElement?active.selectionStart:null,end:active instanceof HTMLTextAreaElement?active.selectionEnd:null}:undefined;
+    const editing=host.contains(active)&&active instanceof HTMLElement&&!!active.id&&(active instanceof HTMLTextAreaElement||(active instanceof HTMLInputElement&&active.type!=='file')||active instanceof HTMLSelectElement)?{id:active.id,value:active.value,start:active instanceof HTMLTextAreaElement?active.selectionStart:null,end:active instanceof HTMLTextAreaElement?active.selectionEnd:null}:undefined;
     const input=this.draftInput,materials=this.workspace.materials;
     const running=isActiveRun(this.workspace.active_run);
     const pending=[...this.uploadRows.values()].filter(row=>!row.error).length;

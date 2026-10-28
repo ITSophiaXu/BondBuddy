@@ -28,7 +28,7 @@
 ## 验证
 
 - contracts、domain、rule-pack-registry、rule-applicability-context、API TypeScript 构建通过；web TypeScript 与 Vite 构建通过。Vite 保留原有大包体提示。
-- 浏览器：`review-workspace.spec.ts` + `review-upload-twelfth.spec.ts`，**94 通过 / 9 个原有可选取证测试跳过**。包括上传恢复、并发草稿冲突、补证、删除、重复上传、执行和计费交互。最终文案调整后，本次新增的 4 项场景再次全部通过。
+- 浏览器：`review-workspace.spec.ts` + `review-upload-twelfth.spec.ts`，**94 通过 / 9 个原有可选取证测试跳过**。包括上传恢复、并发草稿冲突、补证、删除、重复上传、执行和计费交互。最终调整后，本次新增的 4 项场景再次全部通过；桌面/手机用例还检查单选按钮保留焦点时上传及重绘没有浏览器异常。
 - 单元：`review-upload-recovery.test.js` + `review-state.test.js`，**56/56**。新增单文件替换、刷新恢复、保存回执丢失，以及禁止用多文件/补证/财务上传替换来源的验证。
 - 真实 PostgreSQL 16 + API：`review-materials.test.js` + `review-workspace.test.js`，**2/2**。覆盖四类任务材料、同名事实材料、旧草稿、新执行输入、关联项目副本和原文件保留；原权限、幂等、互斥和历史验证继续通过。
 - 公共契约：171 + 12 个示例、4 个生命周期示例及 49 项测试通过。
