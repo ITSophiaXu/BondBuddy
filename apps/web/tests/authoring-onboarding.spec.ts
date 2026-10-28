@@ -384,7 +384,8 @@ test('network save failure retains fields without background retry and explicit 
 
 test('finance-only project uses the existing explicit start and locks the exact no-source draft through preflight, quote and reload', async ({ page }) => {
   const state = await install(page); await page.goto(`/#/projects/${projectId}?step=materials`);
-  const guide = page.locator('[data-authoring-preparation-guide]'); await expect(guide).toBeVisible();
+  const guide = page.locator('#project-materials-details [data-authoring-preparation-guide]'); await expect(guide).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加财务材料', exact: true })).toHaveCount(0);
   await expect(guide).toContainText('没有原稿也可编制首稿'); await expect(guide).toContainText('不会开始任务');
   await page.locator('[data-authoring-requirements]').click();
   await expect(page.locator('#project-message')).toBeFocused();
@@ -392,7 +393,8 @@ test('finance-only project uses the existing explicit start and locks the exact 
   await expect(page.locator('[data-upload-role=audit]')).toBeEnabled();
   expect(await page.locator('[data-material-role=audit]').evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('[data-material-role=historical]')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   expectNoExecution(state);
-  const chooserEvent = page.waitForEvent('filechooser'); await page.locator('[data-authoring-financial]').click(); const chooser = await chooserEvent;
+  await screenshot(page, 'financial-upload-entry-desktop.png');
+  const chooserEvent = page.waitForEvent('filechooser'); await page.locator('[data-material-role=audit] .material-picker').click(); const chooser = await chooserEvent;
   expect(await chooser.element().getAttribute('data-upload-role')).toBe('audit');
   const bytes = Buffer.from('%PDF-1.7\nsynthetic finance upload boundary\n%%EOF');
   await chooser.setFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: bytes });

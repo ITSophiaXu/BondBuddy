@@ -542,9 +542,9 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
       <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}><div id="business-handoff"></div>
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
-        <aside class="authoring-preparation-guide" data-authoring-preparation-guide hidden aria-label="准备本轮材料与要求"><strong data-authoring-preparation-title>准备本轮材料与要求</strong><p data-authoring-preparation-intro>优先提供审计报告，或财务报表及附注；已保存的材料不用重复上传。历史／参考募集书选填，没有原稿也可编制首稿。</p><div data-next-authoring-summary hidden></div><div class="authoring-preparation-actions"><button type="button" class="btn secondary small" data-authoring-financial>添加财务材料</button><button type="button" class="text-btn" data-authoring-requirements>填写补充要求（选填）</button></div><p class="authoring-execution-note" data-authoring-execution-note>保存项目、材料或要求不会开始任务；准备好后点击页末“开始更新”。</p></aside>
         <div id="workspace-progress"></div><div id="prospectus-panel"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span id="materials-state-label">开始编制前可补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted" id="materials-state-description">请在开始编制前补齐材料；开始后材料锁定，仅可查看。</p><p class="muted material-upload-guidance">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
+    <aside class="authoring-preparation-guide" data-authoring-preparation-guide hidden aria-label="准备本轮材料与要求"><strong data-authoring-preparation-title hidden>准备下一轮募集书</strong><p data-authoring-preparation-intro>优先提供审计报告，或财务报表及附注；已保存的材料不用重复上传。历史／参考募集书选填，没有原稿也可编制首稿。</p><div data-next-authoring-summary hidden></div><div class="authoring-preparation-actions"><button type="button" class="text-btn" data-authoring-requirements>填写补充要求（选填）</button></div><p class="authoring-execution-note" data-authoring-execution-note>保存项目、材料或要求不会开始任务；准备好后点击页末“开始更新”。</p></aside>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><fieldset id="material-editing" aria-label="项目材料" disabled><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div></fieldset>
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote material-upload-guidance">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
@@ -585,12 +585,6 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   };
   document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
-  document.querySelector('[data-authoring-financial]')!.addEventListener('click',()=>{
-    if(projectExecution&&!projectExecution.materialsEditable)return;
-    const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
-    const input=document.querySelector<HTMLInputElement>('[data-upload-role="audit"]');if(!input||input.disabled)return;
-    input.closest('.material-role')?.scrollIntoView({block:'center'});input.click();
-  });
   document.querySelector('[data-authoring-requirements]')!.addEventListener('click',()=>{
     if(projectExecution&&!projectExecution.materialsEditable)return;
     const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
