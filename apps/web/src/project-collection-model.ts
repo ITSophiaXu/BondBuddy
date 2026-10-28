@@ -14,6 +14,7 @@ export function taskView(t:Pick<ProjectTask,'kind'|'state'|'stage'|'operation'>)
   return {label:labels[t.state],detail:unreadableReason?(t.state==='failed'?'本次更新未完成':'本次更新未启动')+'，已保存材料与此前成果保留':(t.state==='running'&&t.stage&&phases[t.stage])||details[t.state],tone:activeStates.has(t.state)?'active':t.state==='succeeded'?'done':'attention',action:unreadableReason?'查看任务':t.state==='succeeded'?'查看结果':activeStates.has(t.state)?'查看进度':['failed','rejected'].includes(t.state)?'查看原因':'查看任务'};
 }
 export function taskHref(t:ProjectTask){
+  if(t.workpaper_batch)return '#generate?'+new URLSearchParams({from:'projects',project:t.workpaper_batch.project_id,step:'workpapers',view:'results',batch:t.workpaper_batch.batch_id});
   if(t.operation==='workpaper_assessment'||t.operation==='workpaper_check')return '#generate?'+new URLSearchParams({from:'projects',project:t.project_id,step:'workpapers',run:t.run_id,operation:t.operation});
   if(t.operation==='qa_prepare'||t.operation==='qa_answer')return '#qa?project='+encodeURIComponent(t.project_id)+'&run='+encodeURIComponent(t.run_id);
   if(t.operation==='integrity_check'||t.operation==='integrity_export')return '#integrity?project='+encodeURIComponent(t.project_id)+'&run='+encodeURIComponent(t.run_id);

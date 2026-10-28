@@ -15,6 +15,7 @@ const stateNames:Record<string,string>={queued:'等待生成',running:'正在生
 export class WorkpaperPanel {
   private controller=new AbortController();private downloads=new ArtifactDownloads();private timer?:ReturnType<typeof setTimeout>;
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
+  private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
   private pending?:WorkpaperStart;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean){}
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
@@ -23,11 +24,23 @@ export class WorkpaperPanel {
   dispose(){this.controller.abort();clearTimeout(this.timer);this.downloads.dispose();}
   private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
   private request<T>(method:string,path='',body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,{},this.controller.signal);}
+  private async readWorkspace(){
+    const data=await this.request<WorkpaperWorkspace>('GET');
+    // The workspace contains only recent batches. Resolve the requested batch on every
+    // refresh so a historical link never falls back to a newer batch or disappears.
+    if(this.progressBatch&&!data.batches.some(b=>b.batch_id===this.progressBatch)){
+      const batch=await this.request<WorkpaperBatch>('GET','/batches/'+encodeURIComponent(this.progressBatch));
+      data.batches.unshift(batch);
+    }
+    return data;
+  }
   private save(){try{localStorage.setItem(this.key,JSON.stringify({catalogue:this.catalogue?.catalogue_id,selected:[...this.selected],requirements:this.requirements,pending:this.pending}));this.storageError=false;return true;}catch{this.storageError=true;this.status='本浏览器无法保存待提交请求，请恢复存储后重试；尚未提交生成任务。';return false;}}
   async render(){
     this.host.innerHTML='<p role="status">正在读取底稿目录与生成进度…</p>';
     try{
-      this.data=await this.request<WorkpaperWorkspace>('GET');if(!this.live())return;
+      const query=new URLSearchParams(location.hash.split('?')[1]);
+      this.progressBatch=query.get('view')==='results'?query.get('batch')??undefined:undefined;
+      this.data=await this.readWorkspace();if(!this.live())return;
       const saved=JSON.parse(localStorage.getItem(this.key)??'null');
       if(saved?.pending){if(!Value.Check(WorkpaperStartSchema,saved.pending))throw Error('invalid pending');this.pending=saved.pending;}
       const restoredCatalogue=this.pending?.catalogue_id??saved?.catalogue;
@@ -49,7 +62,8 @@ export class WorkpaperPanel {
       }
       this.requirements=this.pending?.requirements??saved?.requirements??'';this.paint();this.poll();
       if(new URLSearchParams(location.hash.split('?')[1]).get('view')==='results'){
-        const results=this.host.querySelector<HTMLElement>('#wp-batches');if(results){results.tabIndex=-1;results.focus({preventScroll:true});results.scrollIntoView({block:'start'});}
+        const results=this.progressBatch?[...this.host.querySelectorAll<HTMLElement>('[data-wp-batch-id]')].find(el=>el.dataset.wpBatchId===this.progressBatch):this.host.querySelector<HTMLElement>('#wp-batches');
+        if(results){results.tabIndex=-1;results.focus({preventScroll:true});results.scrollIntoView({block:'start'});}
       }
     }catch(e){if(this.live()){this.host.innerHTML='<p role="status">底稿记录暂时无法读取。原记录已保留，请刷新重试。</p>';}}
   }
@@ -135,12 +149,13 @@ export class WorkpaperPanel {
   });}
   private paintBatches(){
     const node=this.host.querySelector('#wp-batches');if(!node)return;
-    const opened=new Set([...node.querySelectorAll<HTMLDetailsElement>('details[open]')].map(e=>e.dataset.batch));
+    node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(e=>this.expandedBatches.set(e.dataset.batch!,e.open));
     node.innerHTML=`<h2>底稿生成进度</h2>${!this.data.batches.length?'<p class="muted">尚未提交底稿文件包。</p>':''}${this.data.batches.map(b=>{
       const done=b.items.filter(i=>i.state==='succeeded').length,failed=b.items.filter(i=>['failed','rejected','cancelled'].includes(i.state)&&i.run_id).length;
-      return `<article class="panel wp-batch"><div class="wp-batch-heading"><h3>底稿文件包 <span class="wp-batch-state" data-state="${esc(b.state)}">${esc(stateNames[b.state])}</span></h3><span class="wp-batch-count"><strong>${done}</strong> / ${b.items.length} 份完成${failed?` · ${failed} 份未完成`:''}</span></div><progress max="${b.items.length}" value="${done}" aria-label="底稿完成进度"></progress><dl class="wp-batch-meta"><div><dt>生成依据</dt><dd>${esc(b.source.filename)} · V${b.source.sequence}</dd></div><div><dt>提交时间</dt><dd>${date(b.created_at)}</dd></div><div><dt>已扣积分</dt><dd>${b.charged_points.toLocaleString()} 积分</dd></div></dl>${b.error?`<p role="status">${esc(b.error)}</p>`:''}
+      return `<article class="panel wp-batch" data-wp-batch-id="${esc(b.batch_id)}"><div class="wp-batch-heading"><h3>底稿文件包 <span class="wp-batch-state" data-state="${esc(b.state)}">${esc(stateNames[b.state])}</span></h3><span class="wp-batch-count"><strong>${done}</strong> / ${b.items.length} 份完成${failed?` · ${failed} 份未完成`:''}</span></div><progress max="${b.items.length}" value="${done}" aria-label="底稿完成进度"></progress><dl class="wp-batch-meta"><div><dt>生成依据</dt><dd>${esc(b.source.filename)} · V${b.source.sequence}</dd></div><div><dt>提交时间</dt><dd>${date(b.created_at)}</dd></div><div><dt>已扣积分</dt><dd>${b.charged_points.toLocaleString()} 积分</dd></div></dl>${b.error?`<p role="status">${esc(b.error)}</p>`:''}
       <div class="wp-actions">${done?`<button class="btn primary" data-wp-zip="${esc(b.batch_id)}">下载已完成文件（ZIP）</button>`:''}${(['queued','running'].includes(b.state)?['pause','cancel']:b.state==='paused'?['resume','cancel']:b.state==='partial'||b.state==='cancelled'?['retry_failed']:[]).map(action=>`<button class="btn secondary" data-wp-action="${action}" data-batch="${esc(b.batch_id)}">${({pause:'当前文件后暂停',resume:'继续文件包',cancel:'结束后续排队',retry_failed:'重试未完成项'} as Record<string,string>)[action]}</button>`).join('')}</div>
-      <details data-batch="${esc(b.batch_id)}" ${opened.has(b.batch_id)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}${i.run_id?`<a href="#generate?topic=${encodeURIComponent(b.topic_id)}&run=${encodeURIComponent(i.run_id)}&return_project=${encodeURIComponent(this.project)}">任务详情</a>`:''}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
+      <details data-batch="${esc(b.batch_id)}" ${(this.expandedBatches.get(b.batch_id)??b.batch_id===this.progressBatch)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}${i.run_id?`<a href="#generate?topic=${encodeURIComponent(b.topic_id)}&run=${encodeURIComponent(i.run_id)}&return_project=${encodeURIComponent(this.project)}">任务详情</a>`:''}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
+    node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(el=>el.addEventListener('toggle',()=>{if(el.isConnected)this.expandedBatches.set(el.dataset.batch!,el.open);}));
     node.querySelectorAll<HTMLElement>('[data-wp-action]').forEach(el=>el.onclick=()=>void this.act(async()=>{const b=this.data.batches.find(b=>b.batch_id===el.dataset.batch)!;const changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(b.batch_id)}/actions`,{action:el.dataset.wpAction,expected_revision:b.revision});this.data.batches=this.data.batches.map(b=>b.batch_id===changed.batch_id?changed:b);this.paintBatches();this.poll();}));
     node.querySelectorAll<HTMLElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.act(async()=>{const bytes=await this.api.workpaperZip(this.project,el.dataset.wpZip!,this.controller.signal);if(this.live())this.downloads.save(bytes,'底稿文件包.zip');}));
     node.querySelectorAll<HTMLElement>('[data-wp-explanation]').forEach(el=>el.onclick=()=>void this.act(async()=>{
@@ -151,7 +166,7 @@ export class WorkpaperPanel {
     node.querySelectorAll<HTMLElement>('[data-wp-art]').forEach(el=>el.onclick=()=>void this.act(async()=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpBatch)!,artifact=batch.items.flatMap(i=>i.artifacts).find(a=>a.pin.artifact_id===el.dataset.wpArt)!;const metadata=await this.api.request<import('./api').Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(artifact.pin.artifact_id)}?version=${artifact.pin.artifact_version}`,undefined,{},this.controller.signal);const bytes=await this.api.artifactBytes(metadata,this.controller.signal);if(this.live())this.downloads.save(bytes,artifact.filename);}));
   }
   private poll(){clearTimeout(this.timer);if(!this.live())return;this.timer=setTimeout(()=>void(async()=>{
-    try{if(!this.busy){const data=await this.request<WorkpaperWorkspace>('GET');if(this.live()){
+    try{if(!this.busy){const data=await this.readWorkspace();if(this.live()){
       // Keep the submit control stable while batch availability is unchanged.
       const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
       const previous=confirmationState();this.data=data;this.paintBatches();if(previous!==confirmationState())this.paintConfirm();

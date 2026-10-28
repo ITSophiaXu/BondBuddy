@@ -19,6 +19,7 @@ export const collectionTasksSql = `
  SELECT r.*, CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END AS display_kind,
    coalesce('qa_'||pqa.operation,CASE WHEN ir.operation='check' THEN 'integrity_check' WHEN ir.operation='export' THEN 'integrity_export' END,e.operation,CASE WHEN pf.operation='check' THEN 'file_check' WHEN pf.operation='patch' THEN 'file_patch' END,CASE WHEN wa.run_id IS NOT NULL THEN 'workpaper_assessment' WHEN wc.run_id IS NOT NULL THEN 'workpaper_check' END) AS operation, t.id AS topic_id, me.manifest#>>'{input,document_type}' AS document_type,
    (SELECT id FROM bb_review_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.run_id=r.id LIMIT 1) AS report_id,
+   wb.id AS workpaper_batch_id, wb.project_id AS workpaper_project_id,
    row_number() OVER(PARTITION BY r.project_id,CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END,
      coalesce(me.manifest#>>'{input,document_type}',pf.operation,'qa_'||pqa.operation,'integrity_'||ir.operation,CASE WHEN wa.run_id IS NOT NULL THEN 'workpaper_assessment' WHEN wc.run_id IS NOT NULL THEN 'workpaper_check' END,'') ORDER BY r.created_at DESC,r.id DESC) AS lane_rank
  FROM bb_runs r
@@ -30,6 +31,10 @@ export const collectionTasksSql = `
  LEFT JOIN bb_review_executions e ON e.owner_user_id=r.owner_user_id AND e.run_id=r.id
  LEFT JOIN bb_m4_executions me ON me.owner_user_id=r.owner_user_id AND me.run_id=r.id
  LEFT JOIN bb_m4_topics t ON t.owner_user_id=r.owner_user_id AND t.id=me.topic_id
+ -- Immutable attempts keep historical/retried runs associated with their original batch.
+ LEFT JOIN bb_workpaper_attempts wpa ON wpa.owner_user_id=r.owner_user_id AND wpa.run_id=r.id
+ LEFT JOIN bb_workpaper_batches wb ON wb.owner_user_id=r.owner_user_id AND wb.id=wpa.batch_id
+   AND wb.topic_id=t.id AND t.project_id=r.project_id AND wb.project_id IN(SELECT id FROM members)
  WHERE r.owner_user_id=$1 AND r.project_id IN(SELECT id FROM members)
    AND (t.id IS NULL OR t.surface<>'assistant')
 `;
@@ -38,7 +43,8 @@ export const terminalTaskSql = "('succeeded','test_completed','failed','cancelle
 export const taskDto = (r:any) => r ? ({
   run_id:r.id,project_id:r.project_id,kind:r.display_kind,state:r.state,stage:r.stage,
   created_at:date(r.created_at),updated_at:date(r.updated_at),artifact_id:r.artifact_id??null,
-  report_id:r.report_id??null,topic_id:r.topic_id??null,document_type:r.document_type??null,operation:r.operation??null
+  report_id:r.report_id??null,topic_id:r.topic_id??null,document_type:r.document_type??null,operation:r.operation??null,
+  ...(r.workpaper_batch_id?{workpaper_batch:{batch_id:r.workpaper_batch_id,project_id:r.workpaper_project_id}}:{})
 }) : null;
 
 // One entry per immutable file version. Only successful delivered artifacts are shown;
