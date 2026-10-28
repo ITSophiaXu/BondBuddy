@@ -133,13 +133,13 @@ declare global{interface Window{panelFixture:{refresh:()=>Promise<void>}}}
 test('mistaken saved upload can be cancelled, deleted, refreshed away and replaced',async({page})=>{
   const f=await setup(page);await expect(page.locator('[data-prospectus-heading]')).toHaveText('历史／参考募集书（选填）');
   await expect(page.getByRole('button',{name:'先提供发行人材料'})).toBeVisible();
-  await selectFile(page,'误上传的历史稿.docx');await page.getByRole('button',{name:'上传并保存',exact:true}).click();
+  await selectFile(page,'误上传的历史稿.docx');
   const row=page.locator('[data-prospectus-version="v3"]');await expect(row.getByRole('button',{name:'用于本次更新'})).toBeVisible();
   await row.getByRole('button',{name:'删除',exact:true}).click();await page.locator('[data-cancel-delete]').click();expect(f.calls.filter(c=>c.method==='DELETE')).toHaveLength(0);
   await row.getByRole('button',{name:'删除',exact:true}).click();await page.locator('[data-confirm-delete]').click();
   await expect(row).toHaveCount(0);await page.evaluate(()=>window.panelFixture.refresh());await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(0);
   expect(f.calls.filter(c=>c.method==='DELETE')).toHaveLength(1);expect(f.state.current_version_id).toBeNull();
-  await selectFile(page,'正确参考稿.docx');await page.getByRole('button',{name:'上传并保存',exact:true}).click();await expect(page.locator('[data-prospectus-version="v3"]')).toContainText('正确参考稿.docx');
+  await selectFile(page,'正确参考稿.docx');await expect(page.locator('[data-prospectus-version="v3"]')).toContainText('正确参考稿.docx');
   expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
 });
 

@@ -64,6 +64,10 @@ export async function install(page:Page,s=fixture()){
   await installReturn(page,s);
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length);
+    if(request.method()==='GET'&&path===`/projects/${ids.root}/project-files/checks/status-check-older-than-public-window`){
+      s.calls.push({owner:s.owner,method:'GET',path,search:url.search,body:null});
+      return json(route,404,{code:'NOT_FOUND'});
+    }
     if(request.method()!=='GET'||![`/projects/${ids.root}/files`,`/projects/${ids.root}/project-files`].includes(path))return route.fallback();
     if(!s.authenticated||s.owner!==ids.owner)return route.fallback();
     s.calls.push({owner:s.owner,method:'GET',path,search:url.search,body:null});

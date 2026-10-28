@@ -308,7 +308,9 @@ test('a failed newly selected file blocks existing saved materials until explici
   expect(state.executes).toHaveLength(0);
 });
 async function continueAuthoring(page: Page) {
-  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  if(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('prepare')!=='next'){
+    await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  }
   await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
 }
 async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
@@ -499,7 +501,7 @@ test('blocked preflight keeps backend gates and does not turn five diagnostics i
 test('lost execute response retries the same key; reload restores the actual task', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.dropExecute=true;
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('连接中断');
+  await expect(page.locator('#execution-message')).toContainText('提交结果暂未确认');
   await expect(page.locator('#execute-input')).toBeDisabled();
   await page.locator('#retry-execution').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
@@ -1175,7 +1177,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       const request = route.request(), path = new URL(request.url()).pathname;
       if (path.endsWith('/uploads')) {
         creates++;
-        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:now, max_bytes:100_000_000 });
+        return json(route, 201, { upload_id:'lost-upload', state:'uploading', upload_url:`/api/v1/projects/${id}/materials/uploads/lost-upload/bytes`, expires_at:'2099-01-01T00:00:00Z', max_bytes:100_000_000 });
       }
       if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
       if (path.endsWith('/complete')) {
@@ -1215,7 +1217,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/materials/uploads')) {
         const uploadId = `synthetic-upload-${uploads.size + 1}`;
         uploads.set(uploadId, request.postDataJSON());
-        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
+        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 100_000_000 });
       }
       if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
       if (path.endsWith('/complete')) {
