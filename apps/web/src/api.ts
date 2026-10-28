@@ -65,6 +65,9 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请充值后重新确认。';
     case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
     case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
+    case 'QUOTE_EXPIRED': return '报价已过期，本次未开始、未扣费。准备内容保留，请重新申请范围报价。';
+    case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
+    case 'QUOTE_DECLINED': return '本报价已拒绝，本次未开始、未扣费。准备内容保留，可重新申请范围报价。';
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
     case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';

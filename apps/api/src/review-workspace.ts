@@ -348,14 +348,15 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
         const hash=await intentHash(client,user,id,p,b);
         const {quote_id:_quote,...scopeRequest}=b;
         const price=await activePrice(client,commercial),scope=commercial?await requestScope(client,user,id,'review',hash,{task,request:scopeRequest,...('operation' in b?{review_draft:await draft(client,user,id)}:{})}):null;
-        if(scope?.quote_status==='pending_scope')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:id,input_revision:p.draft_revision,input_hash:hash,task_type:task,points:0,
+        if(scope&&scope.quote_status!=='ready')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:id,input_revision:p.draft_revision,input_hash:hash,task_type:task,points:0,
           reason:'本次复核范围待核实；核定覆盖范围及所需成果后，才能确认费用并执行。',created_at:new Date().toISOString(),...outcomeMetadata(0),...scope},balance,shortage:0,reason:'本次范围待核实，尚未形成可执行报价。'};
         const points=scope?.amount_fen??price.prices[task];
-        if(!Number.isSafeInteger(points)||points<=0)throw new Problem(503,'BILLING_NOT_READY','该任务的价格尚未核定。');
+        if(!Number.isSafeInteger(points)||points<0||points===0&&!scope)throw new Problem(503,'BILLING_NOT_READY','该任务的价格尚未核定。');
+        const priceVersion=scope?.price_version??price.id;
         const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash,pricing_mode,scope_quote_id,scope_lines)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,price.id,task,points,commercial?'按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。':'按本次已确认的任务范围收取固定积分；系统重试不重复收费。',commercial?'outcome_cny_v1':'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])])).rows[0]
-          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4',[user,id,hash,price.id])).rows[0];
-        return {enabled:true,quote:quoteDto(row),balance,shortage:Math.max(0,points-balance.available),reason:null};
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,priceVersion,task,points,commercial?'按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。':'按本次已确认的任务范围收取固定积分；系统重试不重复收费。',commercial?'outcome_cny_v1':'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])])).rows[0]
+          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4 AND scope_quote_id IS NOT DISTINCT FROM $5::text',[user,id,hash,priceVersion,scope?.scope_quote_id??null])).rows[0];
+        return {enabled:true,quote:quoteDto({...row,...scope}),balance,shortage:Math.max(0,points-balance.available),reason:null};
       });
     });
   }

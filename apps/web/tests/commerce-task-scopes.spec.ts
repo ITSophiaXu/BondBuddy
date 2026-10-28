@@ -27,7 +27,7 @@ test('QA pending scope cannot run; ready quote total and work items survive canc
   await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>{quoted.push(route.request().postDataJSON());return json(route,quote(ready?12340:0,ready));});
   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(route.request().postDataJSON());return json(route,{run_id:'commercial-qa-run'});});
   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();
-  await expect(page.getByRole('heading',{name:'本次范围报价待确认',exact:true})).toBeVisible();await expect(page.locator('#qa-confirm')).toHaveCount(0);expect(starts).toEqual([]);
+  await expect(page.getByRole('heading',{name:'范围报价待确认',exact:true})).toBeVisible();await expect(page.locator('#qa-confirm')).toHaveCount(0);expect(starts).toEqual([]);
   ready=true;await page.locator('#qa-refresh-scope').click();await expect(page.locator('#qa-confirm')).toContainText('¥123.40');
   await expect(page.locator('.qa-modal[open] [aria-label="本次范围报价明细"]')).toContainText('两项业务依据');await evidence(page,'qa-scope-confirmation-1440.png',false);
   await page.locator('.qa-modal[open] [data-close]').click();expect(starts).toEqual([]);
@@ -44,7 +44,7 @@ test('QA original paid scope supplements quote zero; switching to new facts obta
   await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>{const body=route.request().postDataJSON();requests.push(body);return json(route,quote(body.included_followup_of?0:24680,true,body.included_followup_of?'scope-included':'scope-new-facts'));});
   await page.goto(`/#qa?project=${qaProject}&run=${answerId}`);await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();
   await page.locator('[data-qa-knowledge-choice][value="false"]').check();await expect(page.locator('#qa-ranges')).toBeDisabled();
-  await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toContainText('¥0.00');expect(requests[0]).toMatchObject({included_followup_of:answerId});
+  await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toContainText('原范围包含／已购覆盖');await expect(page.locator('.qa-modal[open]')).toContainText('无需充值或新增预留');expect(requests[0]).toMatchObject({included_followup_of:answerId});
   await page.locator('.qa-modal[open] [data-close]').click();await page.locator('#qa-new-scope').click();await expect(page.locator('#qa-requirements')).toBeEditable();
   await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toContainText('¥246.80');expect(requests.at(-1)).not.toHaveProperty('included_followup_of');
   expect(state.answers).toEqual([]);
@@ -73,11 +73,29 @@ test('sync quotes each selected file, blocks a pending item and sends each immut
 
 test('a same-version paid consistency check reuses zero-ready coverage without interpreting pending zero as free',async({page})=>{
   const state=consistencyFixture();await installConsistency(page,state);await commerce(page);
-  let ready=false;const starts:any[]=[],versions=state.files.filter(file=>file.latest).map(file=>file.version_id);
+  let ready=false;const starts:any[]=[],topups:any[]=[],versions=state.files.filter(file=>file.latest).map(file=>file.version_id);
+  await page.route('**/api/v1/commerce/topups',route=>{topups.push(route.request().postDataJSON());return json(route,{code:'MUST_NOT_TOPUP'},500);});
   await page.route(`**/api/v1${base}/checks/quote`,route=>json(route,{...quote(0,ready),file_version_ids:versions,source_version_id:state.source.version_id}));
   await page.route(`**/api/v1${base}/checks`,async route=>{if(route.request().method()!=='POST')return route.fallback();starts.push(route.request().postDataJSON());return json(route,{run_id:checkId});});
   await page.goto(`/#consistency?project=${ids.root}&run=${checkId}`);await page.locator('[data-fc-start]').first().click();
   await expect(page.locator('[data-commerce-confirm]')).toContainText('本次范围报价待确认，尚未收费');await expect(page.locator('[data-commerce-accept]')).toHaveCount(0);expect(starts).toEqual([]);
-  await page.locator('[data-commerce-back]').click();ready=true;await page.locator('[data-fc-start]').first().click();await expect(page.locator('[data-commerce-confirm]')).toContainText('¥0.00');await page.locator('[data-commerce-accept]').click();
+  await page.locator('[data-commerce-back]').click();ready=true;await page.locator('[data-fc-start]').first().click();await expect(page.locator('[data-commerce-confirm]')).toContainText('原范围包含／已购覆盖');await expect(page.locator('[data-commerce-confirm]')).toContainText('无需充值或新增预留');await expect(page.locator('[data-commerce-confirm]')).not.toContainText('未交付部分释放');await expect(page.locator('[data-commerce-accept]')).toHaveText('确认范围并继续');await page.locator('[data-commerce-accept]').click();
   await expect.poll(()=>starts.length).toBe(1);expect(starts[0]).toMatchObject({expected_points:0,price_version:OUTCOME_PRICE_VERSION,expected_source_version_id:state.source.version_id,file_version_ids:versions});
+  expect(topups).toEqual([]);
+});
+
+for(const status of ['expired','unavailable','declined'] as const)test(`QA ${status} quotation cannot start and preparation remains available`,async({page})=>{
+  const state=qaFixture();state.workspace.price=workspacePrice();await installQa(page,state);await commerce(page);const starts:any[]=[];
+  await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>json(route,{...quote(12340,true),quote_status:status,scope_expires_at:'2020-01-01T00:00:00Z'}));
+  await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(route.request().postDataJSON());return json(route,{run_id:'must-not-execute'});});
+  await page.goto(`/#qa?project=${qaProject}`);const requirement=await page.locator('#qa-requirements').inputValue();await page.locator('#qa-start').click();
+  await expect(page.locator('#qa-confirm')).toHaveCount(0);await expect(page.locator('.qa-modal[open]')).toContainText(status==='expired'?'本报价已过期':status==='unavailable'?'暂无法承接':'已拒绝本报价');
+  await page.locator('.qa-modal[open] [data-close]').click();await expect(page.locator('#qa-requirements')).toHaveValue(requirement);expect(starts).toEqual([]);
+});
+
+test('a ready QA quote that expires while confirming is disabled without a run request',async({page})=>{
+  const state=qaFixture();state.workspace.price=workspacePrice();await installQa(page,state);await commerce(page);const starts:any[]=[];
+  await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>json(route,{...quote(12340,true),scope_expires_at:new Date(Date.now()+1500).toISOString()}));
+  await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(route.request().postDataJSON());return json(route,{run_id:'must-not-execute'});});
+  await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toBeEnabled();await expect(page.locator('#qa-confirm')).toBeDisabled({timeout:5000});await expect(page.locator('[data-commerce-expired]')).toContainText('未开始、未扣费');expect(starts).toEqual([]);
 });

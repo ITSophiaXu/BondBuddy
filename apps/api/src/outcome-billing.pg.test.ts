@@ -168,8 +168,7 @@ test('paid file checks settle only complete report and new update scope includes
   const input:Extract<ProjectFileOperation,{operation:'check'}>={version:'project-file-operation-v1',operation:'check',source:source(initial.project),files:[{file_id:file,file_version_id:version,filename:'target.docx',sequence:1,asset,links:[]}]};
   const s=await seed(pool,owner,input,initial.project);
   await pool.query("INSERT INTO bb_project_file_operations(run_id,owner_user_id,project_id,operation,manifest,input_hash) VALUES($1,$2,$3,'check',$4,$5)",[s.run.id,owner,s.project,input,s.hash]);
-  const pendingPrice=await transaction(pool,c=>fileCheckPrice(c,owner,input));assert.equal(pendingPrice.quote_status,'pending_scope');
-  await approve(pool,pendingPrice.scope_quote_id!,pendingPrice.scope_hash,1739);const price=await transaction(pool,c=>fileCheckPrice(c,owner,input));
+  const price=await transaction(pool,c=>fileCheckPrice(c,owner,input));assert.equal(price.quote_status,'ready');assert.equal(price.points,990);
   await fund(pool,owner,10000);await transaction(pool,c=>reserveFileCheck(c,owner,s.run,input,price.points,price.scope_quote_id));
   await transaction(pool,c=>enqueue(c,s.run,'project_file_v1'));const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,s.run.id);
   const report=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic file consistency report'}),blobs,'generated_review_v1');
@@ -179,10 +178,10 @@ test('paid file checks settle only complete report and new update scope includes
   await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});await pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[s.run.id]);
   assert.deepEqual(await creditBalance(pool,owner),{available:10000-price.points,frozen:0});
   const reused=await transaction(pool,c=>fileCheckPrice(c,owner,{...input,source:{...input.source,selection_revision:2}}));assert.equal(reused.points,0);
-  const changed=await transaction(pool,c=>fileCheckPrice(c,owner,{...input,source:{...input.source,version_id:'source-v2'}}));assert.equal(changed.quote_status,'pending_scope');assert.equal(changed.charged_file_versions.length,1);
+  const changed=await transaction(pool,c=>fileCheckPrice(c,owner,{...input,source:{...input.source,version_id:'source-v2'}}));assert.equal(changed.quote_status,'ready');assert.equal(changed.points,990);assert.equal(changed.charged_file_versions.length,1);
   const patch:Extract<ProjectFileOperation,{operation:'patch'}>={version:'project-file-operation-v1',operation:'patch',source:input.source,check_run_id:s.run.id,check_sha256:inputManifestHash(result),file_id:file,file_version_id:version,expected_current_version_id:version,filename:'target.docx',asset,findings:[]};
-  const pendingUpgrade=await transaction(pool,c=>fileUpdatePrice(c,owner,patch,true));assert.ok('scope_hash' in pendingUpgrade);assert.equal(pendingUpgrade.quote_status,'pending_scope');
-  await approve(pool,pendingUpgrade.scope_quote_id!,pendingUpgrade.scope_hash,1273);const upgrade=await transaction(pool,c=>fileUpdatePrice(c,owner,patch,true));assert.ok('scope_hash' in upgrade);
+  const upgrade=await transaction(pool,c=>fileUpdatePrice(c,owner,patch,true));assert.ok('scope_hash' in upgrade);assert.equal(upgrade.quote_status,'ready');assert.equal(upgrade.points,1000);
+  const fullSync=await transaction(pool,c=>fileUpdatePrice(c,owner,{...patch,source:{...patch.source,version_id:'source-v2'}},true));assert.equal(fullSync.points,1990);
   const p=await seed(pool,owner,patch,s.project);await pool.query("INSERT INTO bb_project_file_operations(run_id,owner_user_id,project_id,operation,manifest,input_hash) VALUES($1,$2,$3,'patch',$4,$5)",[p.run.id,owner,p.project,patch,p.hash]);
   await transaction(pool,c=>reserveFileUpdate(c,owner,p.run,patch,true,upgrade.points,upgrade.scope_quote_id));
   assert.deepEqual(await creditBalance(pool,owner),{available:10000-price.points-upgrade.points,frozen:upgrade.points});

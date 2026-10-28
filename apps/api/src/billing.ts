@@ -1,10 +1,11 @@
 import type { Pool, PoolClient } from 'pg';
-import { BILLING_TASKS, AUTHORING_BILLING_TASKS, DYNAMIC_REVIEW_BILLING_TASKS, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
+import { BILLING_TASKS, AUTHORING_BILLING_TASKS, DYNAMIC_REVIEW_BILLING_TASKS, isOutcomePriceVersion, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { classifyFixedPrice } from './billing-classification.js';
 import { assertAuthoringSourceInformation, isUnifiedInput } from './unified-authoring.js';
 import {OUTCOME_MODE,outcomeMetadata,outcomePriceVersion} from './outcome-pricing.js';
 import {requestScope,assertScopeQuote} from './scope-quotations.js';
+import {bindCommerceScopeRun} from './commerce-coverage.js';
 
 type Db = Pool | PoolClient;
 export async function lockCreditAccount(client: PoolClient, owner: string) {
@@ -48,7 +49,7 @@ export async function activePrice(client: PoolClient, commercial=false) {
   validatePrices(p.prices); return p;
 }
 export const quoteDto = (q: any): FixedQuote => ({ quote_id: q.id, project_id: q.project_id, input_revision: q.input_revision,
-  input_hash: q.input_hash.trim(), task_type: q.task_type, points: Number(q.points), price_version: q.price_version, reason: q.reason, created_at: date(q.created_at),...(q.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(Number(q.points)),scope_quote_id:q.scope_quote_id,quote_status:'ready',scope_lines:q.scope_lines??[]}:{}) });
+  input_hash: q.input_hash.trim(), task_type: q.task_type, points: Number(q.points), price_version: q.price_version, reason: q.reason, created_at: date(q.created_at),...(q.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(Number(q.points),Number(q.points),1,q.price_version),scope_quote_id:q.scope_quote_id,quote_status:q.quote_status??'ready',scope_expires_at:q.scope_expires_at??null,scope_lines:q.scope_lines??[]}:{}) });
 
 export async function quoteCredits(pool: Pool, owner: string, projectId: string, revision: number, hash: string, commercial=false) {
   return transaction(pool, async c => {
@@ -63,14 +64,14 @@ export async function quoteCredits(pool: Pool, owner: string, projectId: string,
     if (!commercial&&!classification.task) throw new Problem(422, 'INPUT_REQUIRED', `${classification.reason} 请补齐信息并保存当前输入后重新获取报价。`);
     const price = await activePrice(c,commercial),scope=commercial?await requestScope(c,owner,projectId,'authoring',hash,i.manifest):null;
     const task=classification.task??'new_authoring';
-    if(scope?.quote_status==='pending_scope')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:projectId,input_revision:revision,input_hash:hash,task_type:task,points:0,
+    if(scope&&scope.quote_status!=='ready')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:projectId,input_revision:revision,input_hash:hash,task_type:task,points:0,
       reason:'本次范围待核实；确认实际编制范围并给出明细后，才能确认费用并执行。',created_at:new Date().toISOString(),...outcomeMetadata(0),...scope},balance,shortage:0,reason:'本次范围待核实，尚未形成可执行报价。'};
-    const points=scope?.amount_fen??price.prices[task],reason=commercial?'按本次输入和已核定的范围明细锁定人民币总价，成功交付后结算。':classification.reason;
+    const points=scope?.amount_fen??price.prices[task],priceVersion=scope?.price_version??price.id,reason=commercial?'按本次输入和已核定的范围明细锁定人民币总价，成功交付后结算。':classification.reason;
     await c.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,pricing_mode,outcome_key,scope_quote_id,scope_lines)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(owner_user_id,project_id,input_revision,price_version) WHERE intent_hash IS NULL DO NOTHING`,
-      [uid(), owner, projectId, revision, hash, price.id, task, points, reason,commercial?OUTCOME_MODE:'legacy_credit',commercial?'scoped_authoring':null,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])]);
-    const row = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4 AND intent_hash IS NULL', [owner, projectId, revision, price.id])).rows[0];
-    const quote = quoteDto(row);
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`,
+      [uid(), owner, projectId, revision, hash, priceVersion, task, points, reason,commercial?OUTCOME_MODE:'legacy_credit',commercial?'scoped_authoring':null,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])]);
+    const row = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4 AND intent_hash IS NULL AND scope_quote_id IS NOT DISTINCT FROM $5::text', [owner, projectId, revision, priceVersion,scope?.scope_quote_id??null])).rows[0];
+    const quote = quoteDto({...row,...scope});
     return { enabled: true, quote, balance, shortage: Math.max(0, quote.points - balance.available), reason: null };
   });
 }
@@ -85,7 +86,11 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
     throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Project changed after quote');
   // The quotation pins the policy. A later feature-flag change cannot reinterpret it.
   const outcome=quote.pricing_mode===OUTCOME_MODE;
-  if(outcome)await assertScopeQuote(c,quote.scope_quote_id,owner,run.project_id,reviewIntentHash?'review':'authoring',(reviewIntentHash??quote.input_hash).trim(),Number(quote.points));
+  if(outcome){
+    const scope=await assertScopeQuote(c,quote.scope_quote_id,owner,run.project_id,reviewIntentHash?'review':'authoring',(reviewIntentHash??quote.input_hash).trim(),Number(quote.points));
+    if(!isOutcomePriceVersion(quote.price_version)||scope.price_version!==quote.price_version)throw new Problem(409,'QUOTE_CHANGED','人民币报价规则版本已变化，请重新核对。');
+    if(Number(quote.points)===0){await bindCommerceScopeRun(c,owner,scope.scope_quote_id,run.id);return;}
+  }
   const price = outcome?null:await activePrice(c,false);
   if (!outcome&&(price!.id !== quote.price_version || price!.prices[quote.task_type] !== Number(quote.points)))
     throw new Problem(409, 'QUOTE_CHANGED', '价格已更新，请查看新报价后确认。');
@@ -117,6 +122,7 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
     VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,'user_confirmed_fixed_quote')`, [uid(), owner, `reserve:${reservation}`, points, reservation, run.id]);
   await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1", [run.id, reservation]);
   run.billing_mode = 'fixed_credits'; run.reservation_id = reservation;
+  if(outcome)await bindCommerceScopeRun(c,owner,quote.scope_quote_id,run.id);
 }
 
 /** Only trusted payment/operations code calls this; no public arbitrary-credit endpoint. */

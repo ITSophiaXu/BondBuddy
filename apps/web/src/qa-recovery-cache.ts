@@ -1,4 +1,4 @@
-import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -64,7 +64,7 @@ function validValue(value:unknown,project:string,allowUndefinedOptional=false):v
   if(pending.kind==='answer'){
     return Value.Check(qaSchemas.QaAnswerRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&
       value.draft.preparation_id!==null&&value.draft.questions.length>0&&
-      (pending.request.price_version===OUTCOME_PRICE_VERSION?nonnegativeInteger(pending.request.expected_points)&&pending.request.included_followup_of===value.draft.included_followup_of&&(pending.request.expected_points===0&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
+      (isOutcomePriceVersion(pending.request.price_version)?nonnegativeInteger(pending.request.expected_points)&&pending.request.included_followup_of===value.draft.included_followup_of&&(pending.request.expected_points===0&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
       pending.request.expected_points===value.draft.questions.length*PROJECT_QA_PRICE.points&&pending.request.price_version===PROJECT_QA_PRICE.version);
   }
   return false;

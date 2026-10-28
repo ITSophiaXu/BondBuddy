@@ -17,7 +17,7 @@ import './file-workspace.css';
 import {WorkpaperPanel} from './workpaper-panel';
 import '../../../product-prototype/public/file-generation-ux.css';
 import '../../../product-prototype/public/workpaper-entry.css';
-import {isCnyPrice,displayPrice,cny,scopeLinesHtml} from './commerce';
+import {isCnyPrice,displayPrice,cny,scopeLinesHtml,scopeStatus,scopeStatusLabel,scopeLifecycleHtml,guardScopeExpiry} from './commerce';
 
 type Workspace=import('@bondbuddy/contracts').ProjectFileWorkspace;
 export type UploadFileMaterialState={
@@ -450,13 +450,13 @@ export class FileWorkspace {
     if(!this.live())return;
     if(quote){
       if(quote.documents.length!==documents.length||documents.some(doc=>!quote.documents.some(item=>item.document_type===doc.document_type&&item.draft_version===doc.draft_version)))throw new ApiError(0,'DATA_UNAVAILABLE');
-      if(quote.quote_status!=='ready'||quote.documents.some(item=>item.quote_status!=='ready')){const pending=this.modal('本次范围报价待确认','<p>本次范围报价待确认，尚未收费。所选文种、模板及材料版本保留；待逐份核实实际工作项后确认总价。</p><button class="btn primary" id="pf-refresh-scope">刷新范围报价</button>');pending.querySelector('#pf-refresh-scope')!.addEventListener('click',()=>{pending.close();void this.prepareGeneration();});return;}
+      if(scopeStatus(quote)!=='ready'||quote.documents.some(item=>scopeStatus(item)!=='ready')){const blocked=quote.documents.find(item=>scopeStatus(item)!=='ready')??quote;const pending=this.modal(scopeStatusLabel(blocked),scopeLifecycleHtml(blocked)+'<button class="btn primary" id="pf-refresh-scope">刷新范围报价</button>');pending.querySelector('#pf-refresh-scope')!.addEventListener('click',()=>{pending.close();void this.prepareGeneration();});return;}
       if(quote.documents.some(item=>!item.scope_quote_id)||quote.documents.reduce((n,item)=>n+item.points,0)!==quote.points)throw new ApiError(0,'DATA_UNAVAILABLE');
       body={...body,price_version:OUTCOME_PRICE_VERSION,expected_points:quote.points,documents:documents.map(doc=>({...doc,scope_quote_id:quote.documents.find(item=>item.document_type===doc.document_type)!.scope_quote_id!}))};
     }
-    const d=this.modal('确认本次文件包',`<p>${esc(this.project!.name)} · 依据 ${esc(s.filename)}（V${s.sequence}）</p><ul class="pf-confirm-files">${documents.map(({document_type})=>`<li><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)!.name}</strong><span>${quote?displayPrice(quote.documents.find(item=>item.document_type===document_type)):this.filePrice()}</span>${quote?scopeLinesHtml(quote.documents.find(item=>item.document_type===document_type)):null}</li>`).join('')}</ul><p class="pf-confirm-total">${documents.length} 份全部完成共 <strong>${quote?cny(quote.points):this.filePrice(documents.length)}</strong></p>${isCnyPrice(this.state.price)?'<p>每份包含正文Word和编制说明，按所选模板及固定募集书生成工作稿，待确认内容明确列示。确认后预留总价，各份按约定交付结算；未交付部分释放。原范围修正和平台重试包含，新范围另行确认。</p>':'<p>每份包含正文 Word 和编制说明。按顺序逐份处理，按有效处理时间和已完成工作扣减；排队和暂停不扣积分。</p><p>有积分即可开始；余额用完保存后暂停。主动结束保留已扣部分，平台失败退回已扣积分。后续新增要求用于下一轮。</p>'}<div class="pf-confirm-actions"><button class="btn secondary" id="pf-back-to-prepare">返回准备</button><button class="btn primary" id="pf-confirm-generation">确认生成这 ${documents.length} 份</button></div>`);
+    const d=this.modal('确认本次文件包',`<p>${esc(this.project!.name)} · 依据 ${esc(s.filename)}（V${s.sequence}）</p><ul class="pf-confirm-files">${documents.map(({document_type})=>`<li><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)!.name}</strong><span>${quote?displayPrice(quote.documents.find(item=>item.document_type===document_type)):this.filePrice()}</span>${quote?scopeLinesHtml(quote.documents.find(item=>item.document_type===document_type))+scopeLifecycleHtml(quote.documents.find(item=>item.document_type===document_type)):''}</li>`).join('')}</ul><p class="pf-confirm-total">${documents.length} 份全部完成共 <strong>${quote?cny(quote.points):this.filePrice(documents.length)}</strong></p>${isCnyPrice(this.state.price)?'<p>每份包含正文Word和编制说明，按所选模板及固定募集书生成工作稿，待确认内容明确列示。确认后预留总价，各份按约定交付结算；未交付部分释放。原范围修正和平台重试包含，新范围另行确认。</p>':'<p>每份包含正文 Word 和编制说明。按顺序逐份处理，按有效处理时间和已完成工作扣减；排队和暂停不扣积分。</p><p>有积分即可开始；余额用完保存后暂停。主动结束保留已扣部分，平台失败退回已扣积分。后续新增要求用于下一轮。</p>'}<div class="pf-confirm-actions"><button class="btn secondary" id="pf-back-to-prepare">返回准备</button><button class="btn primary" id="pf-confirm-generation">确认生成这 ${documents.length} 份</button></div>`);
     d.querySelector('#pf-back-to-prepare')!.addEventListener('click',()=>d.close());
-    d.querySelector('#pf-confirm-generation')!.addEventListener('click',()=>{if(this.busy)return;d.close();void this.generate(body);});this.status('文件包已准备，请核对范围和费用。');
+    d.querySelector('#pf-confirm-generation')!.addEventListener('click',()=>{if(this.busy)return;if(quote&&quote.documents.some(item=>scopeStatus(item)!=='ready')){this.status('报价已过期，未开始；准备内容保留，请返回重新核对。');return;}d.close();void this.generate(body);});if(quote)guardScopeExpiry(d,quote.documents,'#pf-confirm-generation');this.status('文件包已准备，请核对范围和费用。');
   });}
   private async generate(body=this.pendingBatch){if(!body)return;await this.act(async()=>{
     const replay=!!this.pendingBatch&&this.pendingUncertain;

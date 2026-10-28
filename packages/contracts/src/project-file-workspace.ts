@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { PROJECT_DOCUMENT_CATALOG } from './project-document-catalog.js';
 import { M4MaterialPinSchema, M4ArtifactPinSchema } from './m4-workspace.js';
-import {OUTCOME_PRICE_VERSION,CommerceMetadataFields,ScopeLineSchema,type CommercePriceMetadata} from './commerce.js';
+import {OutcomePriceVersionSchema,CommerceMetadataFields,ScopeLineSchema,ScopeQuoteStatusSchema,type CommercePriceMetadata} from './commerce.js';
 
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128});
@@ -48,17 +48,17 @@ export const projectFileSchemas={
   ProjectFileSourceRequest:obj({source_version_id:id,expected_selection_revision:Type.Integer({minimum:0})}),
   ProjectFileImportRequest:obj({request_id:id,document_type:ProjectDocumentTypeSchema,material:M4MaterialPinSchema,expected_latest_version_id:nullable(id)}),
   ProjectFileBatchRequest:obj({request_id:id,source_version_id:id,expected_selection_revision:Type.Integer({minimum:0}),
-    price_version:Type.Optional(Type.Literal(OUTCOME_PRICE_VERSION)),expected_points:Type.Optional(Type.Integer({minimum:1,maximum:100000000})),
+    price_version:Type.Optional(OutcomePriceVersionSchema),expected_points:Type.Optional(Type.Integer({minimum:1,maximum:100000000})),
     documents:Type.Array(obj({document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1}),scope_quote_id:Type.Optional(id)}),{minItems:1,maxItems:12})}),
-  ProjectFileBatchQuoteResponse:obj({points:Type.Integer({minimum:0}),quote_status:Type.Union([Type.Literal('pending_scope'),Type.Literal('ready')]),documents:Type.Array(obj({...CommerceMetadataFields,document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1}),points:Type.Integer({minimum:0})}))}),
-  ProjectFileCheckRequest:obj({scope_quote_id:Type.Optional(id),request_id:id,expected_source_version_id:id,price_version:Type.Optional(Type.Literal(OUTCOME_PRICE_VERSION)),expected_points:Type.Optional(Type.Integer({minimum:0,maximum:100000000})),file_version_ids:Type.Optional(Type.Array(id,{minItems:1,maxItems:200,uniqueItems:true}))}),
+  ProjectFileBatchQuoteResponse:obj({points:Type.Integer({minimum:0}),quote_status:ScopeQuoteStatusSchema,documents:Type.Array(obj({...CommerceMetadataFields,document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1}),points:Type.Integer({minimum:0})}))}),
+  ProjectFileCheckRequest:obj({scope_quote_id:Type.Optional(id),request_id:id,expected_source_version_id:id,price_version:Type.Optional(OutcomePriceVersionSchema),expected_points:Type.Optional(Type.Integer({minimum:0,maximum:100000000})),file_version_ids:Type.Optional(Type.Array(id,{minItems:1,maxItems:200,uniqueItems:true}))}),
   ProjectFileCheckQuoteResponse:obj({...CommerceMetadataFields,points:Type.Integer({minimum:0,maximum:100000000}),price_version:nullable(id),file_version_ids:Type.Array(id,{minItems:1,maxItems:200,uniqueItems:true}),source_version_id:id}),
   ProjectFileBatchActionRequest:obj({action:Type.Union([Type.Literal('retry'),Type.Literal('cancel')])}),
   ProjectFileUpdateRequest:obj({request_id:id,expected_check_sha256:hash,
-    price_version:Type.Union([Type.Literal(PROJECT_FILE_UPDATE_PRICE.version),Type.Literal(OUTCOME_PRICE_VERSION)]),expected_points:Type.Integer({minimum:1,maximum:100000000}),
+    price_version:Type.Union([Type.Literal(PROJECT_FILE_UPDATE_PRICE.version),OutcomePriceVersionSchema]),expected_points:Type.Integer({minimum:1,maximum:100000000}),
     files:Type.Array(obj({file_version_id:id,scope_quote_id:Type.Optional(id)}),{minItems:1,maxItems:200})}),
   ProjectFileUpdateQuoteRequest:obj({expected_check_sha256:hash,files:Type.Array(obj({file_version_id:id}),{minItems:1,maxItems:200})}),
-  ProjectFileUpdateQuoteResponse:obj({points:Type.Integer({minimum:0}),price_version:id,quote_status:Type.Union([Type.Literal('pending_scope'),Type.Literal('ready')]),items:Type.Array(obj({file_version_id:id,scope_quote_id:Type.Optional(id),quote_status:Type.Union([Type.Literal('pending_scope'),Type.Literal('ready')]),points:Type.Integer({minimum:0}),scope_lines:Type.Array(ScopeLineSchema)}))}),
+  ProjectFileUpdateQuoteResponse:obj({points:Type.Integer({minimum:0}),price_version:id,quote_status:ScopeQuoteStatusSchema,items:Type.Array(obj({...CommerceMetadataFields,file_version_id:id,scope_quote_id:Type.Optional(id),quote_status:ScopeQuoteStatusSchema,points:Type.Integer({minimum:0}),scope_lines:Type.Array(ScopeLineSchema)}))}),
 };
 
 export type ProjectFileVersion=Static<typeof ProjectFileVersionSchema>;

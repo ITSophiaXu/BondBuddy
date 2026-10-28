@@ -20,7 +20,10 @@ test('synthetic PAYG: exact payment, pinned order, replay safety, isolation and 
     await pool.query("INSERT INTO bb_users(id,username) VALUES('commerce-owner','synthetic_commerce_owner'),('commerce-other','synthetic_commerce_other')");
     const catalog=await send('GET','/api/v1/commerce/catalog');assert.equal(catalog.statusCode,200,catalog.body);
     assert.equal(catalog.json().version,OUTCOME_PRICE_VERSION);assert.equal(catalog.json().model,'pay_as_you_go');
-    assert.equal(catalog.json().items.find((x:any)=>x.code==='prospectus_first_draft').price_fen,OUTCOME_PRICES.prospectus_first_draft);
+    const items=catalog.json().items;
+    for(const [code,price] of Object.entries(OUTCOME_PRICES))assert.equal(items.find((x:any)=>x.code===code)?.price_fen,price,code);
+    assert.equal(items.some((x:any)=>x.code==='prospectus_first_draft'),false,'First draft requires actual business-scope classification rather than a flat 599-yuan SKU');
+    assert.equal(items.find((x:any)=>x.code==='integrity_check').price_fen,null);assert.equal(items.find((x:any)=>x.code==='integrity_check').capability,'unavailable');
     assert.equal((await send('GET','/api/v1/credits/recharge-config')).json().enabled,false,'New mode must not sell legacy bonus packs');
     assert.equal((await send('POST','/api/v1/credits/recharge-orders',{request_id:'legacy-bonus',provider:'wechat',pack_id:'cny500'})).statusCode,503);
     const request={request_id:'exact-980',provider:'wechat',amount_fen:980};

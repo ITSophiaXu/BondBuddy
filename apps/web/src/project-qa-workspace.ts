@@ -1,6 +1,6 @@
 import {UserFacingError} from './user-facing-error.js';
 
-import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,QaWorkspaceSchema,qaSchemas,type QaWorkspace,type QaDraft,type QaRun,type QaCase,type QaQuestion,type ProjectFileAsset} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,QaWorkspaceSchema,qaSchemas,type QaWorkspace,type QaDraft,type QaRun,type QaCase,type QaQuestion,type ProjectFileAsset} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {ProjectEntry} from './project-entry';
@@ -17,7 +17,7 @@ import {QaUploadJournal,qaUploadEnvelope,qaUploadContext,qaUploadRecordMatches,q
 import {QaReferenceMaterials,qaReferenceSummary} from './qa-reference-materials';
 import './file-workspace.css';
 import './project-qa-workspace.css';
-import {cny,isCnyPrice,displayPrice,scopeReady,scopeLinesHtml} from './commerce';
+import {cny,isCnyPrice,displayPrice,scopeReady,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel,guardScopeExpiry} from './commerce';
 
 const steps=['选择项目','上传问题清单','下载文档与待补材料'];
 const terminal=new Set(['succeeded','failed','cancelled','rejected','test_completed']);
@@ -27,7 +27,7 @@ const noAcceptance=new Set(['INPUT_REVISION_CONFLICT','PROJECT_RUN_ACTIVE','CRED
 export class ProjectQaWorkspace {
  private get unitPoints(){return this.state?.price.points??PROJECT_QA_PRICE.points;}
  private priceText(points:number){return isCnyPrice(this.state?.price)?cny(points):points.toLocaleString()+' 积分';}
- private pendingPrice(pending:QaRecoveryPending|undefined){return pending?.kind==='answer'?pending.request.price_version===OUTCOME_PRICE_VERSION?cny(pending.request.expected_points):pending.request.expected_points.toLocaleString()+' 积分':'包含在回复任务内';}
+ private pendingPrice(pending:QaRecoveryPending|undefined){return pending?.kind==='answer'?isOutcomePriceVersion(pending.request.price_version)?cny(pending.request.expected_points):pending.request.expected_points.toLocaleString()+' 积分':'包含在回复任务内';}
  private controller=new AbortController();
  private entry?:ProjectEntry;
  private state?:QaWorkspace;
@@ -450,16 +450,18 @@ export class ProjectQaWorkspace {
    const count=this.state!.draft.questions.length,revision=this.state!.revision,draft=structuredClone(this.state!.draft);
    const quote=commercial?await this.request<Dto<'QaQuoteResponse'>>('POST','/quote',{expected_revision:revision,...(draft.included_followup_of?{included_followup_of:draft.included_followup_of}:{})}):undefined;
    if(!this.live()||this.state!.revision!==revision||!qaSameDraft(this.state!.draft,draft))throw new ApiError(409,'QUOTE_CHANGED');
-   if(quote&&!scopeReady(quote)){const pending=this.modal('本次范围报价待确认','<p>本次范围报价待确认，尚未收费。原题、材料和要求保留；待核实本次工作项后确认总价。</p><button class="btn primary" id="qa-refresh-scope">刷新范围报价</button>');pending.querySelector('#qa-refresh-scope')!.addEventListener('click',()=>{pending.close();this.confirm();});return;}
+   if(quote&&!scopeReady(quote)){const pending=this.modal(scopeStatusLabel(quote),scopeLifecycleHtml(quote)+'<button class="btn primary" id="qa-refresh-scope">刷新范围报价</button>');pending.querySelector('#qa-refresh-scope')!.addEventListener('click',()=>{pending.close();this.confirm();});return;}
    const points=quote?.points??count*this.unitPoints,priceVersion=quote?.price_version??this.state!.price.version,total=quote?displayPrice(quote,points):this.priceText(points);
    const d=this.modal('确认回填问题清单',`<p>本轮 <strong>${count} 个问题 · 总价 ${total}</strong>。</p>${scopeLinesHtml(quote)}<p>${wordScope}</p><p>${commercial?draft.included_followup_of?'本次为原单范围内补料或修正，服务端已核对原题和原要求，不新增收费。':'问题整理、资料引用、回复Word与待补清单包含；原要求内补证和平台纠错不重复收费。只有新事实或新范围才另行确认。开始时预留总价，按约定交付结算；未交付部分释放。':'开始时冻结积分；回答、依据和待补材料清单写入Word并交付后扣费。失败或取消释放冻结积分。'}</p><button class="btn primary" id="qa-confirm">确认并开始 · ${total}</button>`);
    d.querySelector('#qa-confirm')!.addEventListener('click',()=>void this.act(async()=>{
+    if(quote&&!scopeReady(quote))throw new ApiError(409,'QUOTE_EXPIRED');
     if(this.state!.revision!==revision||!qaSameDraft(this.state!.draft,draft))throw new ApiError(409,'QUOTE_CHANGED');
     if(!commercial){await this.save();if(!this.live()||this.locked())return;}
     const request_id=await this.answerRequestId();if(!this.live()||this.locked())return;
     this.pending={kind:'answer',request:{request_id,expected_revision:this.state!.revision,expected_points:points,price_version:priceVersion,...(quote?.scope_quote_id?{scope_quote_id:quote.scope_quote_id}:{}),...(draft.included_followup_of?{included_followup_of:draft.included_followup_of}:{})}};
     if(!this.persist()){this.paint();return;}await this.sendPending();
    },'submit'));
+   if(quote){d.querySelector('#qa-confirm')!.before(document.createRange().createContextualFragment(scopeLifecycleHtml(quote)));guardScopeExpiry(d,[quote],'#qa-confirm');}
   },'save');
  }
  private result(r:QaRun){

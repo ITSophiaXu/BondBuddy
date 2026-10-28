@@ -2,7 +2,7 @@ import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
-import {PROJECT_FILE_UPDATE_PRICE,OUTCOME_PRICE_VERSION,projectFileSchemas,ProjectFilePatchInputSchema,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,projectFileSchemas,ProjectFilePatchInputSchema,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {projectFileSource,projectFileVersions,readProjectFileAsset} from './project-file-storage.js';
@@ -10,9 +10,9 @@ import {enqueue} from './queue.js';
 import {requireFileUpdateCredits,reserveFileUpdate,reserveFileCheck,fileCheckPrice,fileUpdatePrice} from './project-file-billing.js';
 
 import {OUTCOME_MODE,outcomeMetadata} from './outcome-pricing.js';
-import {assertScopeQuote} from './scope-quotations.js';
+import {assertScopeQuote,acceptScopeBatch} from './scope-quotations.js';
 type Patch=Extract<ProjectFileOperation,{operation:'patch'}>;
-type UpdateItem={pricing_mode?:typeof OUTCOME_MODE;points?:number;scope_quote_id?:string;manifest:Patch;issue_ids:string[];run_id:string|null;error:string|null;attempt?:number};
+type UpdateItem={pricing_mode?:typeof OUTCOME_MODE;points?:number;scope_quote_id?:string;scope_acceptance_id?:string;manifest:Patch;issue_ids:string[];run_id:string|null;error:string|null;attempt?:number};
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 async function available(c:PoolClient,owner:string,id:string){
   const p=await project(c,owner,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
@@ -25,7 +25,7 @@ async function event(c:PoolClient,owner:string,id:string,type:string,payload:unk
   await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
   await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,type,payload]);
 }
-async function createOperation(c:PoolClient,owner:string,id:string,key:string,requestHash:string,manifest:ProjectFileOperation,commercial=false,expectedPoints?:number,scopeQuoteId?:string){
+async function createOperation(c:PoolClient,owner:string,id:string,key:string,requestHash:string,manifest:ProjectFileOperation,commercial=false,expectedPoints?:number,scopeQuoteId?:string,acceptanceId?:string){
   const p=await available(c,owner,id),hash=inputManifestHash(manifest);
   const revision=Number((await c.query('SELECT COALESCE(max(revision),0)+1 AS next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0].next);
   await c.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
@@ -34,7 +34,7 @@ async function createOperation(c:PoolClient,owner:string,id:string,key:string,re
   const run=(await c.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
     VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *`,[uid(),owner,id,revision,hash,key,requestHash])).rows[0];
   await c.query('INSERT INTO bb_project_file_operations(run_id,owner_user_id,project_id,operation,manifest,input_hash) VALUES($1,$2,$3,$4,$5,$6)',[run.id,owner,id,manifest.operation,manifest,hash]);
-  if(manifest.operation==='patch')await reserveFileUpdate(c,owner,run,manifest,commercial,expectedPoints,scopeQuoteId);
+  if(manifest.operation==='patch')await reserveFileUpdate(c,owner,run,manifest,commercial,expectedPoints,scopeQuoteId,acceptanceId);
   else if(commercial)await reserveFileCheck(c,owner,run,manifest,expectedPoints!,scopeQuoteId);
   await enqueue(c,run,'project_file_v1');await event(c,owner,id,'project.file_'+manifest.operation+'_started',{run_id:run.id});
   return run;
@@ -46,7 +46,7 @@ async function projectFileChecks(db:Pool,owner:string,id:string,runId?:string,co
   const updates=(await db.query(`SELECT a.*,r.state,v.id AS new_version_id FROM bb_project_file_acceptances a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
     LEFT JOIN bb_project_file_versions v ON v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.check_run_id=ANY($2::text[])`,[owner,rows.map(r=>r.run_id)])).rows;
   const batches=(await db.query("SELECT * FROM bb_project_file_update_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[owner,id])).rows;
-  return rows.map(r=>({run_id:r.run_id,state:r.state,stage:r.stage,created_at:date(r.created_at),source:r.manifest.source,...(r.check_price_version?{points:Number(r.check_points),price_version:r.check_price_version,...outcomeMetadata(Number(r.check_points)),scope_quote_id:r.scope_quote_id??undefined,quote_status:'ready' as const,scope_lines:r.scope_lines??[]}:{}),...(commercial?{update_price_version:OUTCOME_PRICE_VERSION}:{}),
+  return rows.map(r=>({run_id:r.run_id,state:r.state,stage:r.stage,created_at:date(r.created_at),source:r.manifest.source,...(r.check_price_version?{points:Number(r.check_points),...outcomeMetadata(Number(r.check_points),Number(r.check_points),1,r.check_price_version),scope_quote_id:r.scope_quote_id??undefined,quote_status:'ready' as const,scope_lines:r.scope_lines??[]}:{}),...(commercial?{update_price_version:OUTCOME_PRICE_VERSION}:{}),
     stale:r.manifest.source.version_id!==current?.version_id||r.manifest.source.selection_revision!==current?.selection_revision,
     sha256:r.result_hash?.trim()??null,result:r.state==='succeeded'?r.result:null,
     files:r.manifest.files.map((f:any)=>({file_id:f.file_id,file_version_id:f.file_version_id,filename:f.filename,sequence:f.sequence})),
@@ -125,7 +125,7 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
       const p=await project(c,b.owner_user_id,b.project_id,true);await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
       const f=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[b.owner_user_id,next.manifest.file_id])).rows[0];
       if(!f||f.latest_version_id!==next.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');
-      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest,next.pricing_mode===OUTCOME_MODE,next.points,next.scope_quote_id);
+      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest,next.pricing_mode===OUTCOME_MODE,next.points,next.scope_quote_id,next.scope_acceptance_id);
       next.run_id=r.id;next.error=null;
       await c.query('INSERT INTO bb_project_file_acceptances(owner_user_id,check_run_id,file_version_id,issue_ids,run_id) VALUES($1,$2,$3,$4,$5)',
         [b.owner_user_id,b.check_run_id,next.manifest.file_version_id,JSON.stringify(next.issue_ids),r.id]);
@@ -157,7 +157,7 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
       const files=ids.map(id=>{const f=availableFiles.find(f=>f.version_id===id);if(!f)throw conflict('INPUT_REVISION_CONFLICT','所选文件已换版，请重新查看报价。');return {file_id:f.file_id,file_version_id:f.version_id,filename:f.filename,sequence:f.sequence,asset:f.asset,links:f.links};});
       const input:Extract<ProjectFileOperation,{operation:'check'}>={version:'project-file-operation-v1',operation:'check',source,files};
       const price=commercial?await fileCheckPrice(c,user,input,id):null;
-      return {points:price?.points??0,price_version:commercial?OUTCOME_PRICE_VERSION:null,file_version_ids:ids,source_version_id:source.version_id,...(price?{...outcomeMetadata(price.points),scope_quote_id:price.scope_quote_id,quote_status:price.quote_status,scope_lines:price.scope_lines}:{})};
+      return {points:price?.points??0,price_version:price?.price_version??null,file_version_ids:ids,source_version_id:source.version_id,...(price?{...outcomeMetadata(price.points,price.points,1,price.price_version),scope_quote_id:price.scope_quote_id,quote_status:price.quote_status,scope_expires_at:price.scope_expires_at,scope_lines:price.scope_lines}:{})};
     });
   });
   app.post(base+'/checks',{schema:{body:projectFileSchemas.ProjectFileCheckRequest}},async r=>{
@@ -177,8 +177,8 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
         files:files.map(f=>({file_id:f.file_id,file_version_id:f.version_id,filename:f.filename,sequence:f.sequence,asset:f.asset,links:f.links}))};
       if(commercial){
         const price=await fileCheckPrice(c,user,manifest,id);
-        if(!b.file_version_ids||b.price_version!==OUTCOME_PRICE_VERSION||b.expected_points!==price.points)throw conflict('QUOTE_CHANGED','请确认当前版本与人民币检查总价后开始。');
-        if(price.charged_file_versions.length)await assertScopeQuote(c,b.scope_quote_id,user,id,'project_file_check',price.scope_hash,b.expected_points);
+        if(!b.file_version_ids||b.price_version!==price.price_version||b.expected_points!==price.points)throw conflict('QUOTE_CHANGED','请确认当前版本与人民币检查总价后开始。');
+        if(price.scope_quote_id)await assertScopeQuote(c,b.scope_quote_id,user,id,'project_file_check',price.scope_hash,b.expected_points);
         const prior=(await c.query(`SELECT o.run_id FROM bb_project_file_operations o JOIN bb_runs r ON r.id=o.run_id AND r.owner_user_id=o.owner_user_id JOIN bb_project_file_check_quotes q ON q.run_id=o.run_id AND q.owner_user_id=o.owner_user_id
           WHERE o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check' AND o.manifest=$3::jsonb AND r.state='succeeded' AND (q.points=0 OR EXISTS(SELECT 1 FROM bb_credit_reservations res WHERE res.quote_id=q.id AND res.owner_user_id=q.owner_user_id AND res.state='settled')) ORDER BY o.created_at LIMIT 1`,[user,id,JSON.stringify(manifest)])).rows[0];
         if(prior)return prior.run_id;
@@ -193,9 +193,9 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
       const work=await prepareUpdateItems(c,user,id,checkId,b.expected_check_sha256,b.files),items=[];
       for(const item of work){
         const price=await fileUpdatePrice(c,user,item.manifest,commercial,id);
-        items.push({file_version_id:item.manifest.file_version_id,scope_quote_id:price.scope_quote_id,quote_status:commercial?price.quote_status:'ready' as const,points:price.points,scope_lines:price.scope_lines??[]});
+        items.push({file_version_id:item.manifest.file_version_id,scope_quote_id:price.scope_quote_id,quote_status:commercial?price.quote_status:'ready' as const,scope_expires_at:'scope_expires_at' in price?price.scope_expires_at:null,points:price.points,scope_lines:price.scope_lines??[]});
       }
-      return {points:items.reduce((sum,p)=>sum+p.points,0),price_version:commercial?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version,quote_status:items.every(p=>p.quote_status==='ready')?'ready':'pending_scope',items};
+      return {points:items.reduce((sum,p)=>sum+p.points,0),price_version:commercial?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version,quote_status:items.find(p=>p.quote_status!=='ready')?.quote_status??'ready',items};
     });
   });
   app.post(base+'/checks/:run_id/updates',{schema:{body:projectFileSchemas.ProjectFileUpdateRequest}},async r=>{
@@ -219,10 +219,14 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
         }
         total+=price.points;
       }
-      if(b.price_version!==(commercial?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version)||b.expected_points!==total)throw conflict('QUOTE_CHANGED','实际修改范围与费用已变化，请重新确认。');
+      if((commercial?!isOutcomePriceVersion(b.price_version):b.price_version!==PROJECT_FILE_UPDATE_PRICE.version)||b.expected_points!==total)throw conflict('QUOTE_CHANGED','实际修改范围与费用已变化，请重新确认。');
       await requireFileUpdateCredits(c,user,total,commercial);
       const batchId=uid();await c.query(`INSERT INTO bb_project_file_update_batches(id,owner_user_id,project_id,check_run_id,request_id,request_hash,items,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,'queued')`,[batchId,user,id,checkId,b.request_id,hash,JSON.stringify(items)]);
+      if(commercial){
+        for(const [index,item] of items.entries())item.scope_acceptance_id=await acceptScopeBatch(c,user,item.scope_quote_id!,'file_update_batch',batchId,index,item.manifest);
+        await c.query('UPDATE bb_project_file_update_batches SET items=$2 WHERE id=$1',[batchId,JSON.stringify(items)]);
+      }
       await event(c,user,id,'project.file_updates_accepted',{batch_id:batchId,check_run_id:checkId,files:b.files});return {batch_id:batchId};
     });
   });

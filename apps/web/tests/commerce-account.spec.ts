@@ -9,7 +9,7 @@ const policy:DataPolicy={policy_version:DATA_POLICY_VERSION,storage_location:'pl
 async function evidence(page:Page,name:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.screenshot({path:join(directory,name),fullPage:true});}
 test.beforeEach(async({page})=>page.setViewportSize({width:1440,height:960}));
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
-async function setup(page:Page,options:{payment?:boolean;uncertainTopup?:boolean}={}){
+async function setup(page:Page,options:{payment?:boolean;uncertainTopup?:boolean;unpricedCatalog?:boolean}={}){
   const calls:{method:string;path:string;body:any}[]=[];
   const order={order_id:'synthetic-cny-order',provider:'wechat',state:'pending',amount_fen:1234,points:1234,currency:'CNY',checkout_url:'weixin://wxpay/bizpayurl?pr=synthetic-local-qr',project_id:null,expires_at:'2030-01-01T00:00:00Z',credited_at:null};
   let created=0;
@@ -20,7 +20,7 @@ async function setup(page:Page,options:{payment?:boolean;uncertainTopup?:boolean
     if(path==='/account/sessions')return json(route,200,{items:[{session_id:'commerce-session',current:true,created_at:now,last_refreshed_at:now,refresh_expires_at:'2030-01-01T00:00:00Z'}]});
     if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
     if(path==='/data-policy')return json(route,200,policy);
-    if(path==='/commerce/catalog')return json(route,200,{enabled:true,currency:'CNY',version:'synthetic-price',model:'pay_as_you_go',items:[{code:'synthetic',label:'示例成果',unit:'份',price_fen:3990,capability:'limited',scope:['依本次输入范围报价'],included:['原范围修正']}],rules:['执行前确认本次总价。']});
+    if(path==='/commerce/catalog')return json(route,200,{enabled:true,currency:'CNY',version:'synthetic-price',model:'pay_as_you_go',items:[{code:'synthetic',label:'示例成果',unit:'份',price_fen:options.unpricedCatalog?null:3990,capability:options.unpricedCatalog?'unavailable':'limited',scope:['依本次输入范围报价'],included:['原范围修正']}],rules:['执行前确认本次总价。']});
     if(path==='/commerce/account')return json(route,200,{available_fen:16800,held_fen:4990,payment_enabled:!!options.payment,providers:options.payment?['wechat']:[],legacy_balance_notice:'旧积分保留原规则。'});
     if(path==='/credits/consumption-history')return json(route,200,{items:[{reservation_id:'cny-settled',run_id:'commercial-run',project_id:'project-1',project_name:'合成项目',task_name:'内审问题回复',created_at:now,finalized_at:now,state:'settled',reserved_points:4990,charged_points:4990,released_points:0,corrected_points:0,...commerceMetadata(4990)},{reservation_id:'legacy-settled',run_id:'legacy-run',project_id:'project-old',project_name:'旧项目',task_name:'关联文件生成',created_at:now,finalized_at:now,state:'settled',reserved_points:4500,charged_points:4500,released_points:0,corrected_points:0}],page:{next_cursor:null,has_more:false}});
     if(path==='/credits/recharge-history')return json(route,200,{items:[{order_id:'cny-topup',provider:'wechat',state:'paid',amount_fen:1234,points:1234,created_at:now,credited_at:now,...commerceMetadata(1234)},{order_id:'legacy-topup',provider:'alipay',state:'paid',amount_fen:20000,points:21000,created_at:now,credited_at:now}],page:{next_cursor:null,has_more:false}});
@@ -55,6 +55,14 @@ test('paid commercial results accept original-scope feedback without promising a
   await expect(page.locator('[data-feedback-run="commercial-run"]')).toContainText('已收到，将按原单核实处理。');
   expect(calls.filter(c=>c.path==='/commerce/feedback').map(c=>c.body)).toEqual([expect.objectContaining({run_id:'commercial-run',outcome:'needs_changes',reason:'原题依据页码需要修正'})]);
   await expect(page.locator('[data-record="legacy-settled"] [data-feedback]')).toHaveCount(0);
+});
+
+test('an unpriced catalog item stays pending rather than displaying zero or offering payment',async({page})=>{
+  const {calls}=await setup(page,{unpricedCatalog:true});await page.goto('/#/account');
+  const item=page.locator('.credit-pack').filter({hasText:'示例成果'});
+  await expect(item).toContainText('待定');await expect(item).toContainText('暂未开放');
+  await expect(item).not.toContainText('¥0.00');await expect(item.getByRole('button')).toHaveCount(0);
+  expect(calls.filter(c=>c.method==='POST')).toEqual([]);
 });
 
 test('an uncertain topup retries the same exact amount and renders the native WeChat QR locally',async({page})=>{

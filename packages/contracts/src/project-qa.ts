@@ -1,12 +1,12 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {ProjectFileAssetSchema,ProjectFileTextSchema} from './project-file-workspace.js';
-import {OUTCOME_PRICE_VERSION,CommerceMetadataFields} from './commerce.js';
+import {OutcomePriceVersionSchema,CommerceMetadataFields} from './commerce.js';
 
 export const PROJECT_QA_PRICE={points:60,version:'project-qa-question-60-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128}),short=Type.String({maxLength:250}),text=Type.String({maxLength:16000});
 const hash=Type.String({pattern:'^[a-f0-9]{64}$'}),nullable=<T extends import('@sinclair/typebox').TSchema>(s:T)=>Type.Union([s,Type.Null()]);
-const qaPriceVersion=Type.Union([Type.Literal(PROJECT_QA_PRICE.version),Type.Literal(OUTCOME_PRICE_VERSION)]);
+const qaPriceVersion=Type.Union([Type.Literal(PROJECT_QA_PRICE.version),OutcomePriceVersionSchema]);
 export const QaQuestionSchema=obj({id,start:Type.Integer({minimum:0}),end:Type.Integer({minimum:0}),question:Type.String({minLength:1,maxLength:16000})});
 export type QaQuestion=Static<typeof QaQuestionSchema>;
 export const QaCaseContentSchema=obj({title:Type.String({minLength:1,maxLength:250}),url:Type.String({minLength:1,maxLength:4096}),topic:Type.String({minLength:1,maxLength:250}),question:Type.String({minLength:1,maxLength:16000}),answer:Type.String({minLength:1,maxLength:16000}),approach:Type.String({minLength:1,maxLength:16000}),evidence_requirements:text});

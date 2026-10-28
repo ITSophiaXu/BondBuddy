@@ -1,0 +1,81 @@
+{
+  "asOf": "2026-10-28",
+  "status": "UNVALIDATED_PLANNING_SCENARIOS_NOT_ACTUALS",
+  "start": "2026-11-01",
+  "months": 24,
+  "rateCard": "rate-card.json",
+  "initialPaying": 0,
+  "observedTrialUsers": 3,
+  "fixedMonthly": {"technical": 25000, "content": 4000, "accounting": 2500, "cloud": 1600},
+  "tax": {"vat": 0.06, "vatSurchargeOnOutputVat": 0.12, "income": 0.25, "paymentOnGrossReceipt": 0.006},
+  "refundedDeliveredSalesFraction": 0.02,
+  "quoteEvaluationCostAssumed": 0.8,
+  "otherVariableCostRateSensitivity": [0.05, 0.10, 0.15],
+  "officialDeepseekPriceVerified": false,
+  "actualFullTaskCost": null,
+  "userReportedUpdateApiCostObservation": {
+    "asOf": "2026-10-28",
+    "evidenceType": "USER_REPORTED_ACTUAL",
+    "statement": "我做过实际测试 deepseek 在更新募集的情况下 成本也就是几块 人民币 你可以reference",
+    "scope": "The user's tested prospectus-update task; not all other SKUs or all financial-group sizes",
+    "currency": "CNY",
+    "exactAmount": null,
+    "sensitivityPointsNotNewMeasurements": [3, 5, 8],
+    "includesAllRetriesAndNonModelCosts": null,
+    "designCanProceedWithoutNewApiTest": true
+  },
+  "notes": [
+    "No price, person count, frequency or cost is backsolved from 60% profit.",
+    "All demand, task classification, purchase selection and repeat eligibility percentages are planning assumptions, not measured cohorts.",
+    "All projects enter the workspace. There is no blanket 35% project adoption filter.",
+    "The full-purchase list is an upper comparison, not observed personal spending.",
+    "11 updates are assumed one new main reporting period each. The old calendar did not specify periods; this assumption must be replaced.",
+    "96 initial question numbers are assumed 96 independent objectives only for this simulation. Real duplicates must merge.",
+    "The opportunity vector assumes different project/business-target/version scopes across rows. The source calendar does not establish cross-row independence; no real scope deduplication has been proven. Shared initial-draft/reply/revision analysis must be removed before actual forecasting.",
+    "10 old broad reviews are replaced with 10 financial-group reviews. The narrower scope cannot borrow old whole-prospectus token costs.",
+    "All 15 followup question units are treated as included original-scope work with zero new revenue. Their costs remain in the conditional other-variable budget.",
+    "SKU purchase fractions already reflect choosing manual/alternative work for that opportunity. No extra consumption-month or paid-month fraction is applied.",
+    "First-order vectors are taken out of the corresponding first-12-month selected SKU vector. The remaining selected vector is spread over 11 months; this is smoothing, not observed daily seasonality.",
+    "Second-year eligibility is separately redefined as being willing/able to consider the product for new work; it is not measured retention. Old 12-month paid-status numbers are only hypothetical values.",
+    "Other variable rate excludes separately modeled payment fees, VAT surcharge and quote evaluation cost; includes model attempts, OCR/tools, unrecoverable fulfillment/handling/rework costs, extra support, sales and marginal cloud beyond fixed budget. Refunded principal is already deducted from sales, never deducted again as cost.",
+    "The 0.8 per evaluation is an assumed incremental cash cost of parsing/scope APIs/tools outside fixed payroll and base cloud. It is not a second allocation of the 33100 fixed staff/cloud budget; actual cost is unknown.",
+    "Historical price snapshots and synthetic token geometry are not used to approve the cost rate.",
+    "Income tax is accrual with calendar-year loss carryforward, no historical losses, no five-year expiry within this horizon. Monthly reversals are not tax cash refunds. This is not a cash-flow forecast."
+  ],
+  "annualOpportunityVectorAt10Projects": [
+    {"id":"first_draft", "label":"首稿：完整财务组+四项独立新披露", "count":3, "priceComponents":{"financial_group":1,"new_disclosure":4}},
+    {"id":"period", "label":"一个新增主要报告期", "count":11, "priceKey":"period"},
+    {"id":"fact_revision", "label":"独立事实变化", "count":14, "priceKey":"fact_revision"},
+    {"id":"argument_revision", "label":"独立新披露/论证目标", "count":6, "priceKey":"argument_revision"},
+    {"id":"template", "label":"已有事实应用到一份标准模板", "count":23, "priceKey":"template"},
+    {"id":"sync", "label":"独立目标文件基础检查并修订", "count":24, "priceKey":"sync"},
+    {"id":"review", "label":"独立财务披露组复核", "count":10, "priceKey":"review"},
+    {"id":"fact_reply", "label":"去重后的已有事实回应目标", "count":60, "priceKey":"fact_reply"},
+    {"id":"calculation_reply", "label":"去重后的新核对/计算回应目标", "count":24, "priceKey":"calculation_reply"},
+    {"id":"argument_reply", "label":"去重后的独立论证回应目标", "count":12, "priceKey":"argument_reply"},
+    {"id":"check", "label":"同步之外独立基础检查目标文件", "count":15, "priceKey":"check"}
+  ],
+  "scenarios": [
+    {
+      "id":"conservative", "label":"保守", "projects":5,
+      "qualifiedQuarterMonthly":[10,15,20,25,30,30,35,35],
+      "qualifiedToEvaluation":0.35, "evaluationToFirstPay":0.05, "secondYearEligible":0.35,
+      "purchaseFractions":{"first_draft":0.20,"period":0.40,"fact_revision":0.50,"argument_revision":0.30,"template":0.50,"sync":0.50,"review":0.10,"fact_reply":0.50,"calculation_reply":0.30,"argument_reply":0.20,"check":0.50},
+      "firstOrderVector":{"fact_reply":0.60,"fact_revision":0.30,"argument_reply":0.08,"period":0.02}
+    },
+    {
+      "id":"base", "label":"基准", "projects":10,
+      "qualifiedQuarterMonthly":[20,30,40,60,80,100,120,150],
+      "qualifiedToEvaluation":0.45, "evaluationToFirstPay":0.10, "secondYearEligible":0.50,
+      "purchaseFractions":{"first_draft":0.50,"period":0.80,"fact_revision":0.75,"argument_revision":0.60,"template":0.80,"sync":0.80,"review":0.40,"fact_reply":0.80,"calculation_reply":0.60,"argument_reply":0.50,"check":0.70},
+      "firstOrderVector":{"fact_reply":0.30,"fact_revision":0.30,"argument_reply":0.20,"period":0.20}
+    },
+    {
+      "id":"optimistic", "label":"乐观", "projects":15,
+      "qualifiedQuarterMonthly":[60,90,120,165,210,255,285,315],
+      "qualifiedToEvaluation":0.55, "evaluationToFirstPay":0.18, "secondYearEligible":0.65,
+      "purchaseFractions":{"first_draft":0.90,"period":0.95,"fact_revision":0.90,"argument_revision":0.85,"template":0.95,"sync":0.95,"review":0.70,"fact_reply":0.95,"calculation_reply":0.85,"argument_reply":0.80,"check":0.90},
+      "firstOrderVector":{"fact_reply":0.10,"fact_revision":0.20,"argument_reply":0.25,"period":0.45}
+    }
+  ]
+}

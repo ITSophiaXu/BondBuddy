@@ -38,7 +38,7 @@ test('synthetic Native mock HTTP: signs exact request bytes and verifies signed 
   try {
     const provider = createWechatPayProvider(f.options, { ...dependencies, fetch: fetcher });
     assert.deepEqual(await provider.create(f.order), { checkoutUrl: 'weixin://wxpay/bizpayurl?pr=synthetic123' });
-    assert.deepEqual(await provider.query(f.order), { orderId: f.order.id, merchantId: f.options.merchantId, amountFen: 10000, currency: 'CNY', transactionId: 'synthetic_transaction_1', state: 'paid' });
+    assert.deepEqual(await provider.query(f.order), { orderId: f.order.id, merchantId: f.options.merchantId, amountFen: 10000, currency: 'CNY', transactionId: 'synthetic_transaction_1', state: 'paid',payerCash:{amountFen:1,currency:'CNY'} });
     assert.equal(requests, 2);
   } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });

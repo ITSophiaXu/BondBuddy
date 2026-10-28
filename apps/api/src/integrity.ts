@@ -8,6 +8,7 @@ import {enqueue} from './queue.js';
 import {creditBalance,lockCreditAccount} from './billing.js';
 import {readProjectFileAsset} from './project-file-storage.js';
 import {requestScope,assertScopeQuote,scopePriceMetadata,workScopeHash} from './scope-quotations.js';
+import {bindCommerceScopeRun} from './commerce-coverage.js';
 
 const empty=():IntegrityDraft=>({subjects:[],site_ids:[],notes:''});
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
@@ -42,6 +43,7 @@ async function reserve(c:PoolClient,owner:string,run:any,manifest:IntegrityInput
  if(left)throw new Problem(503,'DATA_UNAVAILABLE','Integrity credit allocation mismatch');
  await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,'integrity_round_confirmed')",[uid(),owner,'reserve:'+reservation,points,reservation,run.id]);
  await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run.id,reservation]);
+ if(manifest.scope_quote_id)await bindCommerceScopeRun(c,owner,manifest.scope_quote_id,run.id);
 }
 async function createRun(c:PoolClient,owner:string,p:any,key:string,requestHash:string,manifest:IntegrityInput,scopeHash?:string){
  await assertCanonicalBusinessRunIdle(c,owner,p);
@@ -118,8 +120,8 @@ export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    const draft=(await c.query('SELECT * FROM bb_integrity_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0];
    if(!draft||draft.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','请保存名单与网站范围后开始。');validateIntegrityDraft(draft.draft,true);
    const price=commercial?await assertScopeQuote(c,b.scope_quote_id,user,id,'integrity_round',workScopeHash({draft:draft.draft}),b.expected_points):null;
-   if(b.price_version!==(commercial?OUTCOME_PRICE_VERSION:INTEGRITY_PRICE.version)||!commercial&&b.expected_points!==INTEGRITY_PRICE.points)throw conflict('QUOTE_CHANGED','请核对本轮范围报价。');
-   return createRun(c,user,p,key,hash,{version:'integrity-round-v1',operation:'check',round_id:uid(),project_name:p.name,draft:draft.draft,price_version:commercial?OUTCOME_PRICE_VERSION:INTEGRITY_PRICE.version,points:price?.amount_fen??INTEGRITY_PRICE.points,...(price?scopePriceMetadata(price):{}),records:[],evidence_ids:[],collector:'official-browser-v1'},commercial?workScopeHash({draft:draft.draft}):undefined);
+   if(b.price_version!==(price?.price_version??INTEGRITY_PRICE.version)||!commercial&&b.expected_points!==INTEGRITY_PRICE.points)throw conflict('QUOTE_CHANGED','请核对本轮范围报价。');
+   return createRun(c,user,p,key,hash,{version:'integrity-round-v1',operation:'check',round_id:uid(),project_name:p.name,draft:draft.draft,points:price?.amount_fen??INTEGRITY_PRICE.points,...(price?scopePriceMetadata(price):{}),price_version:price?.price_version??INTEGRITY_PRICE.version,records:[],evidence_ids:[],collector:'official-browser-v1'},commercial?workScopeHash({draft:draft.draft}):undefined);
   });return {run_id:runId};
  });
  app.post(base+'/runs/:run_id/evidence',{schema:{body:integritySchemas.IntegrityManualRequest,response:{200:integritySchemas.IntegrityWorkspaceResponse}}},async r=>{
