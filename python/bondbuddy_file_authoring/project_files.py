@@ -16,12 +16,16 @@ from .review_corrections import package, write
 from .word_patch import Patcher, add_layout_comments, paragraph_text, q, serialized, xml
 
 
-def inspect(path, complete=False):
+def inspect(path, complete=False, packaged=None):
     path = Path(path)
     if path.suffix.lower() not in ('.docx', '.pdf'):
         raise ValueError('FILE_FORMAT_UNSUPPORTED')
-    with tempfile.TemporaryDirectory(prefix='bb-file-inspect-') as tmp:
-        parts, root, warnings = package(path, Path(tmp))
+    if packaged is None:
+        with tempfile.TemporaryDirectory(prefix='bb-file-inspect-') as tmp:
+            parts, root, warnings = package(path, Path(tmp))
+    else:
+        parts, root, warnings = packaged
+        warnings = list(warnings)
     heading = ''
     spans = []
     tables = list(root.iter(q('tbl')))

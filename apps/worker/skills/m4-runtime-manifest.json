@@ -40,6 +40,10 @@
     "m4-workpaper": {
       "path": "apps/worker/skills/m4-workpaper/SKILL.md",
       "sha256": "df270497ad50a4e407d58d9b2975ad81bdcad8497b32fa0c6936e27df1433e4f"
+    },
+    "m4-workpaper-batch": {
+      "sha256": "08fafca4d5bad9b1dbff8d2332cbfcbee2ca26b19d806c223f1eda1f0d355d7f",
+      "path": "apps/worker/skills/m4-workpaper-batch/SKILL.md"
     }
   }
 }

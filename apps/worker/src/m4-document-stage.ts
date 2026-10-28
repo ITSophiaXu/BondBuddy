@@ -16,6 +16,7 @@ import { m4ActionObserver, recordM4Progress } from './m4-action-progress.js';
 import { m4ModelGate,m4PinnedMethod } from './m4-method.js';
 import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks} from './project-file-tools.js';
 import type {ProjectFileText} from '@bondbuddy/contracts';
+import {sharedWorkpaperDocument} from './workpaper-shared-stage.js';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export type M4DocumentResult = {version: 'codex-m4-document-v1'; input_hash: string; skill_sha256: string; method_hash: string;
@@ -41,6 +42,8 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
+    if(input.manifest.input.workpaper?.execution==='shared_batch_v1')
+      return sharedWorkpaperDocument(ctx,input,options.model,options.config);
     const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file',workpaper:'m4-workpaper'} as const)[input.manifest.input.document_type]);
     const config = options.config ?? loadCodexAdapterConfig();
     const modelGate=await m4ModelGate(ctx,config); if(modelGate)return modelGate;
