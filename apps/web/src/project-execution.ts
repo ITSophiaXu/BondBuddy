@@ -14,6 +14,7 @@ import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAut
 import { taskProgress } from './task-progress';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { resolveContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
+import {isCnyPrice,displayPrice,confirmCnyTask,readCommerce,scopePending,scopeLinesHtml} from './commerce';
 
 type Input = Dto<'InputRevisionResponse'>;
 type Material = Dto<'MaterialResponse'>;
@@ -167,6 +168,7 @@ export class ProjectExecution {
   private generation = 0;
   private inputRejected = false;
   private quote?: Dto<'FixedQuoteResponse'>;
+  private commerceEnabled=false;
   private charge?: Dto<'RunCreditChargeResponse'>;
   private chargeRun?: string;
   private chargeRetryTimer?: ReturnType<typeof setTimeout>;
@@ -222,6 +224,7 @@ export class ProjectExecution {
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
+    void readCommerce(this.api,this.controller.signal).then(c=>{if(this.active){this.commerceEnabled=c?.enabled===true;this.render();}}).catch(()=>{});
     void this.api.creditBalance(this.controller.signal).then(balance => {
       if (this.active) { this.paidEnabled = balance.enabled; this.render(); }
     }).catch(() => {});
@@ -396,20 +399,21 @@ export class ProjectExecution {
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const block = this.startBlock(), blocked = block.reason;
     this.button('complete-source-information').hidden = !block.sourceGap || !this.materialsEditable;
-    this.button('execute-input').disabled = Boolean(blocked) || Boolean(this.quote && this.quote.balance.available === 0);
+    this.button('execute-input').disabled = Boolean(blocked) || scopePending(this.quote?.quote) || Boolean(this.quote && (isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0));
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…')
       : this.awaitingCredits ? '继续更新'
       : this.nextRequested ? '生成新版' : '开始更新';
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
-    quoteHost.hidden=!(q && q.balance.available === 0)||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=q && q.balance.available === 0?`<div class="fixed-quote"><h3>积分不足，请充值后继续更新</h3><p>项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="${esc(this.rechargeLink())}">充值积分</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
+    const insufficient=!!q&&(isCnyPrice(q.quote)?q.shortage>0:q.balance.available===0);
+    quoteHost.hidden=(!insufficient&&!scopePending(q?.quote))||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
+    quoteHost.innerHTML=scopePending(q?.quote)?`<div class="fixed-quote"><h3>本次范围报价待确认，尚未收费</h3><p>已保存材料与要求；待核实实际处理范围和工作项后确认总价。</p><button type="button" class="text-button" id="refresh-quote">刷新范围报价</button></div>`:insufficient?`<div class="fixed-quote"><h3>${isCnyPrice(q?.quote)?'服务余额不足':'积分不足'}，请充值后继续更新</h3><p>${isCnyPrice(q?.quote)?'本次总价 '+displayPrice(q?.quote)+'。':''}项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="${esc(this.rechargeLink())}">${isCnyPrice(q?.quote)?'按需充值':'充值积分'}</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote(),'other','read');});
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
     billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q && q.balance.available === 0);
-    billingHint.textContent = this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
+    billingHint.textContent = this.commerceEnabled?'按成果付费；开始前显示本次范围与人民币总价，确认后预留，交付结算。':this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
       : '有积分即可开始，处理时按进度扣减；积分用完暂停，充值到账后继续。';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
@@ -475,7 +479,7 @@ export class ProjectExecution {
     executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress))}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>充值到账后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a></div>` : ''}
-      ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{points:this.charge.quote.points,state:this.charge.state}:undefined,this.chargeError)}
+      ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
       <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
       <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
@@ -575,9 +579,14 @@ export class ProjectExecution {
       if (!this.active || !this.selected || !this.preflight) return;
       // Backend admission is authoritative; uncertainty alone does not add an upload review step.
       if (this.preflight.status === 'blocked') return;
-      if(this.preflight.billing_mode==='fixed_credits'){
-        if(!this.quote || this.quote.balance.available === 0)await this.action(()=>this.loadQuote(),'other','read');
-        if(!this.quote?.enabled || !this.quote.quote || this.quote.balance.available === 0)return;
+      if(this.preflight.billing_mode==='fixed_credits'||this.commerceEnabled){
+        if(!this.quote || scopePending(this.quote.quote) || this.quote.balance.available === 0)await this.action(()=>this.loadQuote(),'other','read');
+        if(!this.quote?.enabled || !this.quote.quote || scopePending(this.quote.quote) || (isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0))return;
+        if(isCnyPrice(this.quote.quote)){
+          const input=this.input,quote=this.quote;
+          if(!await confirmCnyTask('确认募集书任务费用',quote.quote!,`按已保存材料与要求执行，输入版本 ${input.input_revision}。本次仅处理所确认的目标和范围，生成工作稿。`))return;
+          if(!this.active||this.input?.input_hash!==input.input_hash||this.quote!==quote){this.message='材料或报价已变化，请重新核对。';return;}
+        }
       }
       await this.execute();
     } finally { this.starting = false; this.render(); }

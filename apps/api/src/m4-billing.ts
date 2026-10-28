@@ -1,11 +1,13 @@
 import type { Pool, PoolClient } from 'pg';
-import { M4_BILLING_TASKS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_FIXED_PRICE, type M4BillingTask, type M4Quote } from '@bondbuddy/contracts';
+import { M4_BILLING_TASKS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_FIXED_PRICE,OUTCOME_PRICE_VERSION, type M4BillingTask, type M4Quote } from '@bondbuddy/contracts';
 import { creditBalance, lockCreditAccount } from './billing.js';
 import { date, Problem, transaction, uid } from './data.js';
 import { DYNAMIC_AUTHORING_POLICY } from './authoring-credit-debit.js';
 import { readAuthoringProgress } from './authoring-progress.js';
 import type { M4CreditCharge } from '@bondbuddy/contracts';
 import { inputManifestHash } from './production-rule-pin.js';
+import {OUTCOME_MODE,outcomeMetadata} from './outcome-pricing.js';
+import {requestScope,assertScopeQuote} from './scope-quotations.js';
 
 type Db = Pool | PoolClient;
 const isDocumentTask = (task:string) => (Object.values(M4_DOCUMENT_BILLING_TASKS) as string[]).includes(task);
@@ -72,15 +74,27 @@ const roundedNumerator=(value:bigint)=>{const points=Number((value+100000000000n
   if(!Number.isSafeInteger(points)||points<0||points>1e9)throw new Problem(503,'BILLING_NOT_READY','M4 amount outside supported range');return points;};
 const roundedPoints=(input:number,cached:number,output:number,rate:M4CostRate,multiplier:number)=>roundedNumerator(costNumerator(input,cached,output,rate,multiplier));
 export const m4QuoteDto = (q:any):M4Quote => ({ quote_id:q.id,topic_id:q.topic_id,input_hash:q.intent_hash.trim(),task_type:q.task_type,
-  points:Number(q.reserve_points),price_version:q.fixed_price_version??q.config_id,billing_policy:q.billing_policy??'on_delivery',reason:q.billing_policy===DYNAMIC_AUTHORING_POLICY?'每份材料共 4,500 积分，包含正文 Word 和编制说明；按有效处理时间和已完成工作扣减，排队与暂停不扣。余额用完保存后暂停；主动结束保留已扣部分，平台失败退回已扣积分。':q.task_type==='m4_Q00'?'产品帮助免费':q.task_type==='m4_task_assistance'?'任务澄清与要求整理免费':q.billing_method==='fixed'?(isDocumentTask(q.task_type)?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':`本次独立问题 ${Number(q.reserve_points)} 积分；回答成功后扣费，失败或取消不扣费。`):'本次预留上限 B；交付后按真实成本 × 100 × K 结算，最多扣 B。',
+  points:Number(q.reserve_points),price_version:q.fixed_price_version??q.config_id,billing_policy:q.billing_policy??'on_delivery',reason:q.pricing_mode===OUTCOME_MODE?`本次成果固定 ¥${(Number(q.reserve_points)/100).toFixed(2)}，包含约定范围内的准备与交付；失败或取消释放，平台纠错不重复收费。`:q.billing_policy===DYNAMIC_AUTHORING_POLICY?'每份材料共 4,500 积分，包含正文 Word 和编制说明；按有效处理时间和已完成工作扣减，排队与暂停不扣。余额用完保存后暂停；主动结束保留已扣部分，平台失败退回已扣积分。':q.task_type==='m4_Q00'?'产品帮助免费':q.task_type==='m4_task_assistance'?'任务澄清与要求整理免费':q.billing_method==='fixed'?(isDocumentTask(q.task_type)?'每份材料固定 4,500 积分，包含正文 Word 和编制说明；成功交付后扣款，失败或取消全额释放。':`本次独立问题 ${Number(q.reserve_points)} 积分；回答成功后扣费，失败或取消不扣费。`):'本次预留上限 B；交付后按真实成本 × 100 × K 结算，最多扣 B。',
   created_at:date(q.created_at),expires_at:date(q.expires_at),billing_method:Number(q.reserve_points)===0?'free':q.billing_method==='fixed'?'fixed':'metered_capped',
-  multiplier:Number(q.multiplier),amount_semantics:q.billing_method==='fixed'?'fixed_price':'reservation_cap' });
-export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4BillingTask|'m4_Q00'|'m4_task_assistance',intentHash:string,snapshot:unknown) {
+  multiplier:Number(q.multiplier),amount_semantics:q.billing_method==='fixed'?'fixed_price':'reservation_cap',...(q.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(Number(q.reserve_points)),scope_quote_id:q.scope_quote_id,quote_status:q.quote_status??'ready',scope_lines:q.scope_lines??[]}:{}) });
+export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4BillingTask|'m4_Q00'|'m4_task_assistance',intentHash:string,snapshot:unknown,commercial=false) {
   let config:any=null,points=0,multiplier=0;
-  const qaPrice=isPaidQaTask(task)?await activeQaPrice(c):null;
-  const fixed=isDocumentTask(task)||!!qaPrice;
-  const fixedVersion=isDocumentTask(task)?M4_DOCUMENT_FIXED_PRICE.version:qaPrice?.id??null;
-  if(fixed) { points=qaPrice?Number(qaPrice.points):M4_DOCUMENT_FIXED_PRICE.points; multiplier=1; }
+  const qaPrice=!commercial&&isPaidQaTask(task)?await activeQaPrice(c):null;
+  const outcome=commercial&&(isDocumentTask(task)||isPaidQaTask(task));
+  let scope:Awaited<ReturnType<typeof requestScope>>|null=null;
+  if(outcome){
+    const t=(await c.query('SELECT project_id FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,topic])).rows[0];
+    if(!t)throw new Problem(404,'NOT_FOUND','Topic unavailable');
+    scope=await requestScope(c,owner,t.project_id,isDocumentTask(task)?'m4_document':'m4_qa',intentHash,snapshot);
+    if(scope.quote_status==='pending_scope'){
+      const now=new Date(),placeholder={id:scope.scope_quote_id,topic_id:topic,intent_hash:intentHash,task_type:task,reserve_points:0,multiplier:1,
+        pricing_mode:OUTCOME_MODE,billing_policy:'on_delivery',fixed_price_version:OUTCOME_PRICE_VERSION,billing_method:'fixed',created_at:now,expires_at:new Date(now.getTime()+300000),...scope};
+      return {quote:{...m4QuoteDto(placeholder),reason:'本次范围待核实；核定处理范围与交付明细后，请再确认费用。'},balance:await creditBalance(c,owner),shortage:0};
+    }
+  }
+  const fixed=isDocumentTask(task)||!!qaPrice||outcome;
+  const fixedVersion=outcome?OUTCOME_PRICE_VERSION:isDocumentTask(task)?M4_DOCUMENT_FIXED_PRICE.version:qaPrice?.id??null;
+  if(fixed) { points=outcome?scope!.amount_fen:qaPrice?Number(qaPrice.points):M4_DOCUMENT_FIXED_PRICE.points; multiplier=1; }
   else if(task!=='m4_Q00'&&task!=='m4_task_assistance') {
     await c.query("SELECT pg_advisory_xact_lock_shared(hashtextextended('bb-m4-billing',0))");
     config=(await c.query('SELECT * FROM bb_m4_billing_configs WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];
@@ -92,17 +106,20 @@ export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4Bill
     if(!b)throw new Problem(503,'BILLING_NOT_READY','该材料的预留预算尚未发布；当前输入已保存，可以继续准备材料。');
     points=Math.max(1,Math.ceil(roundedPoints(b.input_tokens,0,b.output_tokens,r,multiplier)*b.reserve_factor));
   }
-  const row=(await c.query(`INSERT INTO bb_m4_quotes(id,owner_user_id,topic_id,intent_hash,task_type,config_id,reserve_points,multiplier,snapshot,expires_at,billing_method,fixed_price_version,billing_policy)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '5 minutes',$10,$11,$12) RETURNING *`,[uid(),owner,topic,intentHash,task,config?.id??null,points,multiplier,snapshot,fixed?'fixed':'metered_capped',fixedVersion,isDocumentTask(task)?DYNAMIC_AUTHORING_POLICY:'on_delivery'])).rows[0];
-  const balance=await creditBalance(c,owner);return {quote:m4QuoteDto(row),balance,shortage:Math.max(0,(isDocumentTask(task)?1:points)-balance.available)};
+  const row=(await c.query(`INSERT INTO bb_m4_quotes(id,owner_user_id,topic_id,intent_hash,task_type,config_id,reserve_points,multiplier,snapshot,expires_at,billing_method,fixed_price_version,billing_policy,pricing_mode,scope_quote_id,scope_lines)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '5 minutes',$10,$11,$12,$13,$14,$15) RETURNING *`,[uid(),owner,topic,intentHash,task,config?.id??null,points,multiplier,snapshot,fixed?'fixed':'metered_capped',fixedVersion,!outcome&&isDocumentTask(task)?DYNAMIC_AUTHORING_POLICY:'on_delivery',outcome?OUTCOME_MODE:'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])])).rows[0];
+  const balance=await creditBalance(c,owner);return {quote:m4QuoteDto(row),balance,shortage:Math.max(0,(!outcome&&isDocumentTask(task)?1:points)-balance.available)};
 }
 export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string|undefined,topicId:string,intentHash:string) {
   if(!quoteId)throw new Problem(409,'QUOTE_REQUIRED','请先查看本次费用，再明确执行。');
   const q=(await c.query('SELECT * FROM bb_m4_quotes WHERE owner_user_id=$1 AND id=$2 AND topic_id=$3',[owner,quoteId,topicId])).rows[0];
   if(!q || q.intent_hash.trim()!==intentHash || new Date(q.expires_at).getTime()<=Date.now())throw new Problem(409,'QUOTE_CHANGED','任务输入或报价已变化，请重新核对后明确执行。');
   if(q.task_type==='m4_Q00'||q.task_type==='m4_task_assistance')return;
-  const fixed=q.billing_method==='fixed';
-  if(isDocumentTask(q.task_type)) {
+  const fixed=q.billing_method==='fixed',outcome=q.pricing_mode===OUTCOME_MODE;
+  if(outcome){
+    if(!fixed||q.fixed_price_version!==OUTCOME_PRICE_VERSION||Number(q.reserve_points)<=0||q.billing_policy!=='on_delivery')throw new Problem(409,'QUOTE_CHANGED','人民币成果报价不一致，请重新核对。');
+    await assertScopeQuote(c,q.scope_quote_id,owner,run.project_id,isDocumentTask(q.task_type)?'m4_document':'m4_qa',q.intent_hash.trim(),Number(q.reserve_points));
+  }else if(isDocumentTask(q.task_type)) {
     if(!fixed||q.fixed_price_version!==M4_DOCUMENT_FIXED_PRICE.version||Number(q.reserve_points)!==M4_DOCUMENT_FIXED_PRICE.points)
       throw new Problem(409,'QUOTE_CHANGED','材料生成已采用固定价，请重新查看费用后确认。');
   } else {
@@ -120,7 +137,7 @@ export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string
   await lockCreditAccount(c,owner);const points=Number(q.reserve_points),balance=await creditBalance(c,owner);
   const dynamic=q.billing_policy===DYNAMIC_AUTHORING_POLICY;
   if(dynamic&&(!fixed||!isDocumentTask(q.task_type)))throw new Problem(409,'QUOTE_CHANGED','材料计费规则与报价不一致。');
-  if(balance.available<(dynamic?1:points))throw new Problem(402,'CREDITS_INSUFFICIENT',dynamic?'积分已用完，请充值后开始生成。':`本次预留 ${points} 积分，当前可用 ${balance.available} 积分，请充值后明确执行。`);
+  if(balance.available<(dynamic?1:points))throw new Problem(402,'CREDITS_INSUFFICIENT',outcome?`本次预留 ¥${(points/100).toFixed(2)}，当前可用 ¥${(balance.available/100).toFixed(2)}，请充值后确认执行。`:dynamic?'积分已用完，请充值后开始生成。':`本次预留 ${points} 积分，当前可用 ${balance.available} 积分，请充值后明确执行。`);
   if((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1',[q.id])).rowCount)throw new Problem(409,'IDEMPOTENCY_CONFLICT','This M4 quotation was already consumed');
   const rid=uid();await c.query('INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy,charged_points) VALUES($1,$2,$3,$4,$5,$6,$7)',[rid,owner,run.id,q.id,points,dynamic?DYNAMIC_AUTHORING_POLICY:'on_delivery',dynamic?0:null]);
   if(!dynamic){

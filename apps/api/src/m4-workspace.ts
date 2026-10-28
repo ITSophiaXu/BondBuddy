@@ -387,7 +387,7 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   return {topic:topicDto(t),project:projectDto(p),drafts,
     materials,material_details,templates,messages,tasks,artifacts,pending_requirements,view:{...(view?.view??emptyM4View()),version:view?.version??0},active_run:[...tasks].reverse().find(t=>t.manifest.kind==='document' && !terminal.includes(t.run.state))?.run??null};
 }
-export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,queueEnabled:boolean){
+export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,queueEnabled:boolean,commercial=false){
   const base=M4_API_BASE;
   app.get(`${base}/topics`,async request=>{const user=await owner(request);const rows=(await db().query(`SELECT t.* FROM bb_m4_topics t JOIN bb_projects p ON p.id=t.project_id AND p.owner_user_id=t.owner_user_id
     WHERE t.owner_user_id=$1 AND p.deleted_at IS NULL ORDER BY t.updated_at DESC,t.id`,[user])).rows;return {topics:rows.map(topicDto)};});
@@ -437,8 +437,8 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       const row=(await c.query(`INSERT INTO bb_m4_templates(id,version,owner_user_id,document_type,name,broker,material,sha256,creation_request_id,request_hash,market,offering)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[id,version,user,b.document_type,b.name,b.broker,b.material,b.material.sha256,b.creation_request_id,h,market,offering])).rows[0];return {template:templateDto(row)};});});
   app.post(`${base}/topics/:topic_id/quote`,{schema:{body:M4QuoteRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4QuoteRequest;
-    return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);if(b.kind==='document'){const m=await documentManifest(c,user,t,b.document_type,b.expected_draft_version);if(m.kind!=='document')invalid('Invalid document');return quoteM4(c,user,id,m.billing_task,inputManifestHash(m),m);}
-      const s=await qaSnapshot(c,user,t,b);return quoteM4(c,user,id,s.billing_task,inputManifestHash(s),s);});});
+    return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);if(b.kind==='document'){const m=await documentManifest(c,user,t,b.document_type,b.expected_draft_version);if(m.kind!=='document')invalid('Invalid document');return quoteM4(c,user,id,m.billing_task,inputManifestHash(m),m,commercial);}
+      const s=await qaSnapshot(c,user,t,b);return quoteM4(c,user,id,s.billing_task,inputManifestHash(s),s,commercial);});});
   app.post(`${base}/topics/:topic_id/execute`,{schema:{body:M4ExecuteRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4ExecuteRequest;
     return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);return {run:runDto(await executeDocument(c,user,t,b,queueEnabled))};});});
   app.post(`${base}/topics/:topic_id/messages`,{schema:{body:M4MessageRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4MessageRequest;
@@ -455,7 +455,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
           const manifest:M4Manifest={version:'m4-qa-input-v1',kind:'qa',topic_id:id,message_id:messageId,...snapshot,billing_task:'m4_task_assistance',execution_proposal:proposal};
           const row=(await c.query(`INSERT INTO bb_m4_messages(id,owner_user_id,topic_id,role,content,context,submission_request_id,request_hash,reply_status)
             VALUES($1,$2,$3,'user',$4,$5,$6,$7,'queued') RETURNING *`,[messageId,user,id,b.content,b.context,b.submission_request_id,h])).rows[0];
-          const freeQuote=await quoteM4(c,user,id,'m4_task_assistance',inputManifestHash(manifest),manifest);
+          const freeQuote=await quoteM4(c,user,id,'m4_task_assistance',inputManifestHash(manifest),manifest,commercial);
           const r=await newRun(c,user,t,`m4-message-${b.submission_request_id}`,h,manifest,freeQuote.quote.quote_id,inputManifestHash(manifest),queueEnabled);
           await c.query('UPDATE bb_m4_messages SET run_id=$2 WHERE id=$1',[messageId,r.id]);row.run_id=r.id;return {message:messageDto(row),run:runDto(r)};
         }
@@ -474,7 +474,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       const row=(await c.query(`INSERT INTO bb_m4_messages(id,owner_user_id,topic_id,role,content,context,submission_request_id,request_hash,reply_status)
         VALUES($1,$2,$3,'user',$4,$5,$6,$7,'queued') RETURNING *`,[messageId,user,id,b.content,b.context,b.submission_request_id,h])).rows[0];
       const manifest:M4Manifest={version:'m4-qa-input-v1',kind:'qa',topic_id:id,message_id:messageId,...snapshot};
-      let quoteId=b.quote_id;if(['m4_Q00','m4_task_assistance'].includes(snapshot.billing_task)&&!quoteId)quoteId=(await quoteM4(c,user,id,snapshot.billing_task,inputManifestHash(snapshot),snapshot)).quote.quote_id;
+      let quoteId=b.quote_id;if(['m4_Q00','m4_task_assistance'].includes(snapshot.billing_task)&&!quoteId)quoteId=(await quoteM4(c,user,id,snapshot.billing_task,inputManifestHash(snapshot),snapshot,commercial)).quote.quote_id;
       const r=await newRun(c,user,t,`m4-message-${b.submission_request_id}`,h,manifest,quoteId,inputManifestHash(snapshot),queueEnabled);
       await c.query('UPDATE bb_m4_messages SET run_id=$2 WHERE id=$1',[messageId,r.id]);row.run_id=r.id;
       await topicEvent(c,user,id,'m4.message_sent',{message_id:messageId,run_id:r.id});return {message:messageDto(row),run:runDto(r)};});});

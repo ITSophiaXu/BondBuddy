@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 import type { Static } from '@sinclair/typebox';
-import { RECHARGE_PACKS, RECHARGE_PACK_VERSION, schemas } from '@bondbuddy/contracts';
+import { RECHARGE_PACKS, RECHARGE_PACK_VERSION, OUTCOME_PRICE_VERSION, schemas, type CommerceTopup } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { grantCredits } from './billing.js';
 
@@ -58,6 +58,24 @@ export async function createRecharge(pool:Pool,owner:string,input:OrderRequest,p
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'CNY',$10,$11,now()+interval '30 minutes') RETURNING *`,
       [uid().replaceAll('-',''),owner,input.request_id,hash,p.name,pack.id,RECHARGE_PACK_VERSION,pack.amount_fen,pack.points,input.project_id??null,p.merchantId])).rows[0];
   });
+  return openCheckout(pool,owner,order,providers);
+}
+/** Exact-amount service balance; purchased minor units equal cash paid, without a pack minimum or bonus. */
+export async function createServiceTopup(pool:Pool,owner:string,input:CommerceTopup,providers:readonly PaymentProvider[]){
+  if(!Number.isSafeInteger(input.amount_fen)||input.amount_fen<1||input.amount_fen>1000000)throw new Problem(422,'VALIDATION_FAILED','Invalid CNY amount');
+  const p=adapter(providers,input.provider),hash=digest(JSON.stringify(['service_balance',input.provider,input.amount_fen,input.project_id??null]));
+  const order=await transaction(pool,async c=>{
+    if(input.project_id)await project(c,owner,input.project_id);
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`recharge:${owner}:${input.request_id}`]);
+    const old=(await c.query('SELECT * FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[owner,input.request_id])).rows[0];
+    if(old){if(old.request_hash.trim()!==hash)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Payment key already used');return old;}
+    return (await c.query(`INSERT INTO bb_recharge_orders(id,owner_user_id,request_id,request_hash,provider,pack_id,pack_version,amount_fen,points,currency,project_id,merchant_id,expires_at)
+      VALUES($1,$2,$3,$4,$5,'service_balance',$6,$7,$7,'CNY',$8,$9,now()+interval '30 minutes') RETURNING *`,
+      [uid().replaceAll('-',''),owner,input.request_id,hash,p.name,OUTCOME_PRICE_VERSION,input.amount_fen,input.project_id??null,p.merchantId])).rows[0];
+  });
+  return openCheckout(pool,owner,order,providers);
+}
+async function openCheckout(pool:Pool,owner:string,order:any,providers:readonly PaymentProvider[]):Promise<Static<typeof schemas.RechargeOrderResponse>>{
   if(order.state!=='pending'||order.checkout_url)return rechargeDto(order);
   if(new Date(order.expires_at).getTime()<=Date.now())return refreshRecharge(pool,owner,order.id,providers);
   const originalProvider=adapter(providers,order.provider,order.merchant_id);
@@ -67,13 +85,16 @@ export async function createRecharge(pool:Pool,owner:string,input:OrderRequest,p
   const saved=await pool.query("UPDATE bb_recharge_orders SET checkout_url=COALESCE(checkout_url,$3) WHERE id=$1 AND owner_user_id=$2 RETURNING *",[order.id,owner,checkoutUrl]);
   return rechargeDto(saved.rows[0]);
 }
-export async function refreshRecharge(pool:Pool,owner:string,id:string,providers:readonly PaymentProvider[]){
+export async function refreshRecharge(pool:Pool,owner:string,id:string,providers:readonly PaymentProvider[]):Promise<Static<typeof schemas.RechargeOrderResponse>>{
   const order=(await pool.query('SELECT * FROM bb_recharge_orders WHERE id=$1 AND owner_user_id=$2',[id,owner])).rows[0];
   if(!order)throw missing();if(order.state==='paid')return rechargeDto(order);
   const p=adapter(providers,order.provider,order.merchant_id);
   let receipt:VerifiedPayment;try{receipt=await p.query(paymentOrder(order));}catch{throw unavailable();}
   if(receipt.orderId!==order.id)throw new Problem(422,'PAYMENT_INVALID','Provider returned another order');
-  return applyVerifiedPayment(pool,p,receipt);
+  const updated=await applyVerifiedPayment(pool,p,receipt);
+  // Recover the same payment intent after a create timeout, rather than asking for another payment.
+  if(updated.state==='pending'&&!updated.checkout_url&&new Date(order.expires_at).getTime()>Date.now())return openCheckout(pool,owner,order,providers);
+  return updated;
 }
 export function installPayments(app:FastifyInstance,pool:Pool,owner:(r:FastifyRequest)=>Promise<string>,enabled:boolean,providers:readonly PaymentProvider[]){
   app.get('/api/v1/credits/recharge-config',{schema:{response:{200:schemas.RechargeConfigResponse}}},async r=>{

@@ -1,4 +1,4 @@
-import {PROJECT_QA_PRICE,ProjectFileAssetSchema,QaDraftSchema,QaRunSchema,type ProjectFileAsset,type QaDraft,type QaQuestion,type QaResult,type QaRun} from '@bondbuddy/contracts';
+import {OUTCOME_PRICE_VERSION,PROJECT_QA_PRICE,ProjectFileAssetSchema,QaDraftSchema,QaRunSchema,type ProjectFileAsset,type QaDraft,type QaQuestion,type QaResult,type QaRun} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 
 export type QaPreparationChoice={preparation?:QaRun;error?:string};
@@ -25,7 +25,7 @@ function validDraft(value:unknown):value is QaDraft{
 }
 const questionValue=(q:QaQuestion)=>({id:q.id,start:q.start,end:q.end,question:q.question});
 const questionKey=(questions:readonly QaQuestion[])=>JSON.stringify(questions.map(questionValue));
-const draftKey=(draft:QaDraft)=>JSON.stringify({preparation_id:draft.preparation_id,questions:draft.questions.map(questionValue),
+const draftKey=(draft:QaDraft)=>JSON.stringify({included_followup_of:draft.included_followup_of,preparation_id:draft.preparation_id,questions:draft.questions.map(questionValue),
   materials:draft.materials.map(qaAssetKey),requirements:draft.requirements,use_knowledge:draft.use_knowledge});
 
 /** Compare the complete request meaning, retaining question and material order. */
@@ -80,7 +80,7 @@ export function qaFollowupFor(run:QaRun,runs:readonly QaRun[],projectId:string):
     if(!validRun(run)||run.operation!=='answer'||run.manifest.operation!=='answer')return failure('本轮回答记录不完整，请重新读取后再继续。');
     if(!terminal.has(run.state))return failure('本轮仍在处理中，请结束后再准备下一轮。');
     const input=run.manifest;
-    if(!input.questions.length||input.points!==input.questions.length*PROJECT_QA_PRICE.points)return failure('本轮问题数量与记录不一致，请重新读取后再继续。');
+    if(!input.questions.length||input.points!==(input.price_version===OUTCOME_PRICE_VERSION?(input.amount_fen):input.questions.length*PROJECT_QA_PRICE.points))return failure('本轮问题数量与记录不一致，请重新读取后再继续。');
     const resolved=qaPreparationFor({preparation_id:input.preparation_id,questions:input.questions,materials:input.materials.map(m=>m.asset),
       requirements:input.requirements,use_knowledge:false},runs,projectId);
     if(!resolved.preparation)return failure(resolved.error??'未找到原问题清单，请重新读取后再继续。');

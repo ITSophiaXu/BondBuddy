@@ -1,6 +1,7 @@
 import type { ApiClient, Dto } from './api';
 import { friendlyError } from './api';
 import { date, esc } from './ui';
+import {cny,isCnyPrice} from './commerce';
 import './credit-history.css';
 
 type Consumption=Dto<'CreditConsumptionHistoryResponse'>['items'][number];
@@ -16,7 +17,8 @@ export class CreditHistory {
   private controller=new AbortController();private host?:HTMLElement;private selected:Kind='consumption';
   private expanded=new Set<string>();
   private consumption=empty<Consumption>();private recharge=empty<Recharge>();
-  constructor(private api:ApiClient,private active:()=>boolean){}
+  private feedback=new Map<string,{request:Dto<'CommerceFeedbackRequest'>;busy:boolean;message:string;sent:boolean}>();
+  constructor(private api:ApiClient,private active:()=>boolean,private commerceMode:()=>boolean=()=>false){}
   private rememberDetails(){this.host?.querySelectorAll<HTMLElement>('[data-record]').forEach(row=>{if(row.querySelector('details')?.open)this.expanded.add(row.dataset.record!);else this.expanded.delete(row.dataset.record!);});}
   mount(host:HTMLElement){this.rememberDetails();this.host=host;this.draw();if(!this[this.selected].loaded)void this.load(this.selected);}
   dispose(){this.controller.abort();this.host=undefined;}
@@ -47,21 +49,34 @@ export class CreditHistory {
     finally{state.loading=false;if(this.live()){this.draw();if(state.refreshPending){state.refreshPending=false;void this.load(kind);}}}
   }
   private consumptionRow(r:Consumption){
-    const dynamic=r.billing_policy==='authoring_balance_v2';
+    const commercial=isCnyPrice(r),amount=(n:number)=>commercial?cny(n):number(n)+' 积分';
+    const dynamic=!commercial&&r.billing_policy==='authoring_balance_v2';
     const status=dynamic?(r.state==='held'?'按进度扣费中':r.corrected_points?'已退回扣费':'已结算'):r.state==='held'?'预留中 · 未扣费':r.state==='released'?'已释放 · 未扣费':r.corrected_points?'已扣费 · 有冲正返还':'已扣费';
-    return `<li class="credit-history-row" data-record="${esc(r.reservation_id)}"><div><strong>${esc(r.project_name)} · ${esc(r.task_name)}</strong><p>提交 ${esc(date(r.created_at))}${r.finalized_at?` · 结算 ${esc(date(r.finalized_at))}`:''}</p><details ${this.expanded.has(r.reservation_id)?'open':''}><summary>任务详情</summary><p>任务编号：${esc(r.run_id)}</p>${r.project_id?`<a href="#/projects/${encodeURIComponent(r.project_id)}">查看项目</a>`:''}</details></div><div class="credit-history-amount"><strong>${r.state==='held'&&!dynamic?`预留 ${number(r.reserved_points)}`:`消耗 ${number(r.charged_points)}`} 积分</strong><span>${status}</span>${r.released_points?`<small>已释放 ${number(r.released_points)} 积分</small>`:''}${r.corrected_points?`<small>已冲正返还 ${number(r.corrected_points)} 积分</small>`:''}</div></li>`;
+    const feedback=this.feedback.get(r.run_id);
+    return `<li class="credit-history-row" data-record="${esc(r.reservation_id)}"><div><strong>${esc(r.project_name)} · ${esc(r.task_name)}</strong><p>提交 ${esc(date(r.created_at))}${r.finalized_at?` · 结算 ${esc(date(r.finalized_at))}`:''}${!commercial?' · 历史积分任务':''}</p><details ${this.expanded.has(r.reservation_id)?'open':''}><summary>任务详情</summary><p>任务编号：${esc(r.run_id)}</p>${r.project_id?`<a href="#/projects/${encodeURIComponent(r.project_id)}">查看项目</a>`:''}</details>${commercial&&r.state==='settled'&&r.charged_points>0?`<div class="commerce-feedback" data-feedback-run="${esc(r.run_id)}"><p>这次成果是否采用？</p><div>${([['adopted','已采用'],['needs_changes','原范围问题／需要修改'],['not_used','未采用']] as const).map(([outcome,label])=>`<button class="text-button" type="button" data-feedback="${outcome}" ${feedback?.busy||feedback?.sent?'disabled':''}>${label}</button>`).join('')}</div><p role="status">${esc(feedback?.message??'原范围问题可补充说明，提交后按原单核实处理。')}</p></div>`:''}</div><div class="credit-history-amount"><strong>${r.state==='held'&&!dynamic?`预留 ${amount(r.reserved_points)}`:`消耗 ${amount(r.charged_points)}`}</strong><span>${status}</span>${r.released_points?`<small>已释放 ${amount(r.released_points)}</small>`:''}${r.corrected_points?`<small>已冲正返还 ${amount(r.corrected_points)}</small>`:''}</div></li>`;
   }
   private rechargeRow(r:Recharge){
-    return `<li class="credit-history-row" data-record="${esc(r.order_id)}"><div><strong>${r.provider==='wechat'?'微信支付':'支付宝'} · ${number(r.points)} 积分</strong><p>创建 ${esc(date(r.created_at))}${r.credited_at?` · 到账 ${esc(date(r.credited_at))}`:''}</p><p class="credit-history-order">订单号：${esc(r.order_id)}</p><a href="#/account?order=${encodeURIComponent(r.order_id)}">查看订单</a></div><div class="credit-history-amount"><strong>¥${(r.amount_fen/100).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong><span>${orderLabels[r.state]}</span></div></li>`;
+    return `<li class="credit-history-row" data-record="${esc(r.order_id)}"><div><strong>${r.provider==='wechat'?'微信支付':'支付宝'} · ${isCnyPrice(r)?cny(r.points)+' 服务余额':number(r.points)+' 历史积分'}</strong><p>创建 ${esc(date(r.created_at))}${r.credited_at?` · 到账 ${esc(date(r.credited_at))}`:''}</p><p class="credit-history-order">订单号：${esc(r.order_id)}</p><a href="#/account?order=${encodeURIComponent(r.order_id)}">查看订单</a></div><div class="credit-history-amount"><strong>${cny(r.amount_fen)}</strong><span>${orderLabels[r.state]}</span></div></li>`;
+  }
+  private async submitFeedback(runId:string,outcome:Dto<'CommerceFeedbackRequest'>['outcome']){
+    const previous=this.feedback.get(runId);if(previous?.busy||previous?.sent)return;
+    const reason=outcome==='needs_changes'?window.prompt('请说明原已确认范围内需要修正或补充的内容。提交后按原单核实处理。',''):undefined;
+    if(reason===null)return;
+    const request=previous?.request.outcome===outcome?previous.request:{request_id:crypto.randomUUID(),run_id:runId,outcome,...(reason?.trim()?{reason:reason.trim().slice(0,1000)}:{})};
+    const state={request,busy:true,message:'正在提交反馈…',sent:false};this.feedback.set(runId,state);this.draw();
+    try{await this.api.commerceFeedback(request,this.controller.signal);state.sent=true;state.message=outcome==='needs_changes'?'已收到，将按原单核实处理。':'感谢反馈，已记录。';}
+    catch(error){state.message=friendlyError(error,'save')+' 可再次点击重试原反馈。';}
+    finally{state.busy=false;if(this.live())this.draw();}
   }
   private draw(){
     if(!this.live()||!this.host?.isConnected)return;
     this.rememberDetails();
-    const s=this[this.selected];
-    this.host.innerHTML=`<section class="credit-history" aria-label="积分记录"><header><h2>积分记录</h2><button class="text-button" type="button" data-history-refresh ${s.loading?'disabled':''}>刷新记录与余额</button></header><div class="credit-history-tabs" role="tablist" aria-label="积分记录类型">${(['consumption','recharge'] as const).map(k=>`<button type="button" role="tab" id="credit-tab-${k}" aria-selected="${k===this.selected}" aria-controls="credit-history-panel" data-history-tab="${k}">${k==='consumption'?'积分消耗记录':'充值记录'}</button>`).join('')}</div><div role="tabpanel" id="credit-history-panel" aria-labelledby="credit-tab-${this.selected}" aria-busy="${s.loading}"><p class="credit-history-help">${this.selected==='consumption'?'按任务提交时间倒序。动态任务按进度扣减；其他任务按提交时的计费规则结算。':'按订单创建时间倒序。仅展示支付充值订单，赠送及人工调整积分不属于充值。'}</p>${s.error?`<p role="alert">记录加载失败。${esc(s.error)}${s.items.length?' 以下为上次读取的记录。':''} <button type="button" class="text-button" data-history-retry>重试</button></p>`:''}${s.loading?'<p role="status">正在读取记录…</p>':''}${s.items.length?`<ul class="credit-history-list">${this.selected==='consumption'?this.consumption.items.map(r=>this.consumptionRow(r)).join(''):this.recharge.items.map(r=>this.rechargeRow(r)).join('')}</ul>`:s.loaded&&!s.loading&&!s.error?`<p class="credit-history-empty">${this.selected==='consumption'?'暂无积分消耗或预留记录':'暂无充值记录'}</p>`:''}${s.cursor?`<button type="button" class="btn secondary" data-history-more ${s.loading?'disabled':''}>加载更多记录</button>`:''}</div></section>`;
+    const s=this[this.selected],commercial=this.commerceMode()||this.consumption.items.some(isCnyPrice)||this.recharge.items.some(isCnyPrice),title=commercial?'任务与充值记录':'积分记录';
+    this.host.innerHTML=`<section class="credit-history" aria-label="${title}"><header><h2>${title}</h2><button class="text-button" type="button" data-history-refresh ${s.loading?'disabled':''}>刷新记录与余额</button></header><div class="credit-history-tabs" role="tablist" aria-label="积分记录类型">${(['consumption','recharge'] as const).map(k=>`<button type="button" role="tab" id="credit-tab-${k}" aria-selected="${k===this.selected}" aria-controls="credit-history-panel" data-history-tab="${k}">${k==='consumption'?(commercial?'任务费用记录':'积分消耗记录'):'充值记录'}</button>`).join('')}</div><div role="tabpanel" id="credit-history-panel" aria-labelledby="credit-tab-${this.selected}" aria-busy="${s.loading}"><p class="credit-history-help">${this.selected==='consumption'?(commercial?'按任务提交时间倒序。人民币任务与历史积分任务分别按各自提交时的规则展示和结算。':'按任务提交时间倒序。动态任务按进度扣减；其他任务按提交时的计费规则结算。'):'按订单创建时间倒序。仅展示支付充值订单；各笔到账单位依该订单原规则保留。'}</p>${s.error?`<p role="alert">记录加载失败。${esc(s.error)}${s.items.length?' 以下为上次读取的记录。':''} <button type="button" class="text-button" data-history-retry>重试</button></p>`:''}${s.loading?'<p role="status">正在读取记录…</p>':''}${s.items.length?`<ul class="credit-history-list">${this.selected==='consumption'?this.consumption.items.map(r=>this.consumptionRow(r)).join(''):this.recharge.items.map(r=>this.rechargeRow(r)).join('')}</ul>`:s.loaded&&!s.loading&&!s.error?`<p class="credit-history-empty">${this.selected==='consumption'?'暂无任务消耗或预留记录':'暂无充值记录'}</p>`:''}${s.cursor?`<button type="button" class="btn secondary" data-history-more ${s.loading?'disabled':''}>加载更多记录</button>`:''}</div></section>`;
     this.host.querySelectorAll<HTMLButtonElement>('[data-history-tab]').forEach(b=>b.addEventListener('click',()=>{this.selected=b.dataset.historyTab as Kind;this.draw();if(!this[this.selected].loaded)void this.load(this.selected);}));
     this.host.querySelector('[data-history-refresh]')?.addEventListener('click',()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));
     this.host.querySelector('[data-history-retry]')?.addEventListener('click',()=>{void this.load(this.selected,this[this.selected].appendFailed);});
+    this.host.querySelectorAll<HTMLButtonElement>('[data-feedback]').forEach(button=>button.addEventListener('click',()=>{const run=button.closest<HTMLElement>('[data-feedback-run]')!.dataset.feedbackRun!;void this.submitFeedback(run,button.dataset.feedback as Dto<'CommerceFeedbackRequest'>['outcome']);}));
     this.host.querySelector('[data-history-more]')?.addEventListener('click',()=>{void this.load(this.selected,true);});
   }
 }

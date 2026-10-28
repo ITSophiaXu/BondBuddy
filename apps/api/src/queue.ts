@@ -573,6 +573,11 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
         const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);
         if(!ready.rowCount||ready.rows[0].operation==='check'&&!ready.rows[0].result?.records?.some((v:any)=>v.search_performed===true))
           throw new Problem(422,'DELIVERY_FAILED','Integrity workpaper requires recorded actual search');
+      }else if(j.subtype==='project_file_v1'&&(await client.query("SELECT 1 FROM bb_project_file_operations WHERE owner_user_id=$1 AND run_id=$2 AND operation='check'",[r.owner_user_id,r.id])).rowCount){
+        // Checks deliver one report Word. The locked structured result must cover every selected version.
+        // The normal artifact verification above still requires actual Word bytes and readback evidence.
+        const ready=(await client.query('SELECT bb_project_file_check_delivery_ready(r) ready FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2',[r.id,r.owner_user_id])).rows[0];
+        if(!ready?.ready)throw new Problem(422,'DELIVERY_FAILED','Delivered immutable consistency report required');
       }else if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
         const pair=j.checkpoint?.stages?.word_delivery_pair;
         if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)

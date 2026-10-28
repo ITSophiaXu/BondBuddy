@@ -44,7 +44,7 @@ function harness(options:Options={}){
     if(sql==='SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL'){
       assert.deepEqual(values,[owner,projectId,'synthetic-source-material',1]);return rows([{sha256:sha}]);
     }
-    if(sql.startsWith('SELECT o.*,r.state,r.stage FROM bb_project_file_operations o JOIN bb_runs r')){
+    if(sql.startsWith('SELECT o.*,r.state,r.stage,')&&sql.includes('FROM bb_project_file_operations o JOIN bb_runs r')){
       assert.ok(sql.includes('r.owner_user_id=o.owner_user_id AND r.project_id=o.project_id AND r.id=o.run_id'));
       assert.ok(sql.includes("o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check'"));
       const filtered=operations.filter(o=>o.owner_user_id===values[0]&&o.project_id===values[1]&&o.operation==='check');

@@ -140,6 +140,8 @@ export async function install(page:Page,s=fixture()){
     try{
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method();
     const body:unknown=req.postData()?req.postDataJSON():null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
+    if(method==='GET'&&path===`/projects/${ids.root}/workpapers/library`)return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
+    if(method==='GET'&&path==='/commerce/catalog')return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
     if(method==='GET'&&path==='/me')return dto(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
     if(method==='GET'&&path==='/account')return dto(route,'AccountResponse',{user_id:ids.owner,username:'synthetic_task_owner',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(method==='GET'&&path==='/credits/balance')return dto(route,'CreditBalanceResponse',{enabled:true,available:100000,frozen:0});

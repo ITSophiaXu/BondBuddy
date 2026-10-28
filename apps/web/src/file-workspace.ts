@@ -1,6 +1,6 @@
 import {UserFacingError} from './user-facing-error.js';
 import { ProjectEntry } from './project-entry';
-import {PROJECT_DOCUMENT_CATALOG,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,M4_DOCUMENT_FIXED_PRICE,
+import {PROJECT_DOCUMENT_CATALOG,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,M4_DOCUMENT_FIXED_PRICE,OUTCOME_PRICE_VERSION,
   ProjectFileBatchSchema,M4DraftRequestSchema,M4TemplateCreateRequestSchema,type M4DraftRequest,type M4TemplateCreateRequest,type ProjectDocumentType as M4DocumentType,type M4Template,type M4MaterialPin,type ProjectFileBatch} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
@@ -17,6 +17,7 @@ import './file-workspace.css';
 import {WorkpaperPanel} from './workpaper-panel';
 import '../../../product-prototype/public/file-generation-ux.css';
 import '../../../product-prototype/public/workpaper-entry.css';
+import {isCnyPrice,displayPrice,cny,scopeLinesHtml} from './commerce';
 
 type Workspace=import('@bondbuddy/contracts').ProjectFileWorkspace;
 export type UploadFileMaterialState={
@@ -57,6 +58,9 @@ export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undef
 }
 
 export class FileWorkspace {
+  private fileUnitPrice(){return this.state?.price?.points??M4_DOCUMENT_FIXED_PRICE.points;}
+  private filePrice(count=1){return isCnyPrice(this.state?.price)?'依本次范围报价':(count*this.fileUnitPrice()).toLocaleString()+' 积分';}
+
   private workpapers?:WorkpaperPanel;
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
   private state?:Workspace;private project?:Dto<'ProjectResponse'>;private selected=new Set<M4DocumentType>();private busy=false;
@@ -306,7 +310,7 @@ export class FileWorkspace {
     document.querySelectorAll<HTMLDetailsElement>('[data-pf-reused]').forEach(node=>node.addEventListener('toggle',()=>{if(node.isConnected&&this.live()){const type=node.dataset.pfReused as M4DocumentType;if(node.open)this.reusedExpanded.add(type);else this.reusedExpanded.delete(type);}}));
     document.querySelector('#pf-package-readiness')!.innerHTML=!selected.length?'<p>选择文件类型，开始准备本次清单。</p>':!this.prepared()?`<p>募集书依据已变化。<a href="${esc(this.href({step:'source'}))}">先确认本轮募集书 →</a></p>`:ready.length===selected.length?`<p>已复用 ${ready.length} 份模板，可以核对文件包。</p>`:`<p>还需为 ${selected.length-ready.length} 份文件添加模板。<button class="text-button" id="pf-go-template">前往准备 ↓</button></p>`;
     document.querySelector('#pf-go-template')?.addEventListener('click',()=>{const list=document.querySelector<HTMLElement>('#pf-template-list')!;list.tabIndex=-1;list.scrollIntoView({block:'start'});list.focus({preventScroll:true});});
-    document.querySelector('#pf-price')!.textContent=selected.length?`${selected.length} 份全部完成共 ${(selected.length*M4_DOCUMENT_FIXED_PRICE.points).toLocaleString()} 积分`:'请选择需要生成的文件';
+    document.querySelector('#pf-price')!.textContent=selected.length?`${selected.length} 份全部完成共 ${this.filePrice(selected.length)}`:'请选择需要生成的文件';
     document.querySelector<HTMLButtonElement>('#pf-generate')!.disabled=!selected.length||ready.length!==selected.length||!this.prepared()||this.busy||!!this.support||!!this.noteOperation||this.hasPendingUploads()||!!this.entryIntent||this.cacheUnknown;
     const saveNote=document.querySelector<HTMLButtonElement>('#pf-save-requirements')!;saveNote.disabled=(!this.noteOperation&&!selected.length)||!this.note.trim()||this.busy;saveNote.textContent=this.noteOperation?'继续保存原范围':'保存到所选文件';
     document.querySelector<HTMLButtonElement>('#pf-stop-note')!.hidden=!this.noteOperation;
@@ -441,8 +445,16 @@ export class FileWorkspace {
     if(!this.prepared()||[...this.selected].some(type=>!this.template(type)))throw new UserFacingError('募集书依据或模板已变化，请核对当前准备状态后再生成。');
     if(this.state.batches.some(b=>['queued','running','paused'].includes(b.state)))throw new UserFacingError('已有文件包尚未结束，请先在生成任务中处理。');
     const s=this.state.source!,documents=PROJECT_DOCUMENT_CATALOG.filter(d=>this.selected.has(d.id)).map(d=>({document_type:d.id,draft_version:this.state!.workspace.drafts[d.id].version}));
-    const body:FileGenerationBatchRequest={request_id:crypto.randomUUID(),source_version_id:s.version_id,expected_selection_revision:s.selection_revision,documents};
-    const d=this.modal('确认本次文件包',`<p>${esc(this.project!.name)} · 依据 ${esc(s.filename)}（V${s.sequence}）</p><ul class="pf-confirm-files">${documents.map(({document_type})=>`<li><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)!.name}</strong><span>${M4_DOCUMENT_FIXED_PRICE.points.toLocaleString()} 积分</span></li>`).join('')}</ul><p class="pf-confirm-total">${documents.length} 份全部完成共 <strong>${(documents.length*M4_DOCUMENT_FIXED_PRICE.points).toLocaleString()} 积分</strong></p><p>每份包含正文 Word 和编制说明。按顺序逐份处理，按有效处理时间和已完成工作扣减；排队和暂停不扣积分。</p><p>有积分即可开始；余额用完保存后暂停。主动结束保留已扣部分，平台失败退回已扣积分。后续新增要求用于下一轮。</p><div class="pf-confirm-actions"><button class="btn secondary" id="pf-back-to-prepare">返回准备</button><button class="btn primary" id="pf-confirm-generation">确认生成这 ${documents.length} 份</button></div>`);
+    let body:FileGenerationBatchRequest={request_id:crypto.randomUUID(),source_version_id:s.version_id,expected_selection_revision:s.selection_revision,documents};
+    const quote=isCnyPrice(this.state.price)?await this.request<Dto<'ProjectFileBatchQuoteResponse'>>('POST','/batches/quote',body):undefined;
+    if(!this.live())return;
+    if(quote){
+      if(quote.documents.length!==documents.length||documents.some(doc=>!quote.documents.some(item=>item.document_type===doc.document_type&&item.draft_version===doc.draft_version)))throw new ApiError(0,'DATA_UNAVAILABLE');
+      if(quote.quote_status!=='ready'||quote.documents.some(item=>item.quote_status!=='ready')){const pending=this.modal('本次范围报价待确认','<p>本次范围报价待确认，尚未收费。所选文种、模板及材料版本保留；待逐份核实实际工作项后确认总价。</p><button class="btn primary" id="pf-refresh-scope">刷新范围报价</button>');pending.querySelector('#pf-refresh-scope')!.addEventListener('click',()=>{pending.close();void this.prepareGeneration();});return;}
+      if(quote.documents.some(item=>!item.scope_quote_id)||quote.documents.reduce((n,item)=>n+item.points,0)!==quote.points)throw new ApiError(0,'DATA_UNAVAILABLE');
+      body={...body,price_version:OUTCOME_PRICE_VERSION,expected_points:quote.points,documents:documents.map(doc=>({...doc,scope_quote_id:quote.documents.find(item=>item.document_type===doc.document_type)!.scope_quote_id!}))};
+    }
+    const d=this.modal('确认本次文件包',`<p>${esc(this.project!.name)} · 依据 ${esc(s.filename)}（V${s.sequence}）</p><ul class="pf-confirm-files">${documents.map(({document_type})=>`<li><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)!.name}</strong><span>${quote?displayPrice(quote.documents.find(item=>item.document_type===document_type)):this.filePrice()}</span>${quote?scopeLinesHtml(quote.documents.find(item=>item.document_type===document_type)):null}</li>`).join('')}</ul><p class="pf-confirm-total">${documents.length} 份全部完成共 <strong>${quote?cny(quote.points):this.filePrice(documents.length)}</strong></p>${isCnyPrice(this.state.price)?'<p>每份包含正文Word和编制说明，按所选模板及固定募集书生成工作稿，待确认内容明确列示。确认后预留总价，各份按约定交付结算；未交付部分释放。原范围修正和平台重试包含，新范围另行确认。</p>':'<p>每份包含正文 Word 和编制说明。按顺序逐份处理，按有效处理时间和已完成工作扣减；排队和暂停不扣积分。</p><p>有积分即可开始；余额用完保存后暂停。主动结束保留已扣部分，平台失败退回已扣积分。后续新增要求用于下一轮。</p>'}<div class="pf-confirm-actions"><button class="btn secondary" id="pf-back-to-prepare">返回准备</button><button class="btn primary" id="pf-confirm-generation">确认生成这 ${documents.length} 份</button></div>`);
     d.querySelector('#pf-back-to-prepare')!.addEventListener('click',()=>d.close());
     d.querySelector('#pf-confirm-generation')!.addEventListener('click',()=>{if(this.busy)return;d.close();void this.generate(body);});this.status('文件包已准备，请核对范围和费用。');
   });}
@@ -503,7 +515,7 @@ export class FileWorkspace {
       return `<div class="pf-template-row pf-result-row" data-pf-document="${i.document_type}" data-pf-run="${esc(i.run_id??'')}" data-pf-item-state="${esc(i.state)}"><div><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===i.document_type)?.name??''}</strong><small>${esc(label)}</small>${i.error?'<small class="pf-result-error">'+esc(i.error)+'</small>':''}${incomplete?'<small class="pf-result-sync">任务与成果尚未读取完整，可刷新生成状态或查看原任务。</small>':''}</div><div class="pf-result-actions">${artifacts.map(a=>`<button class="btn secondary" data-pf-download="${a.artifact_id}">${a.kind==='document'?'下载文件':'编制说明'}</button>`).join('')}${i.run_id?`<a class="btn secondary" href="${esc('#generate?'+withProjectContext(new URLSearchParams({topic:w.topic.topic_id,run:i.run_id})))}">查看任务</a>`:''}</div></div>`;
     }).join('')}</section>`).join('')||'<p>暂无文件生成任务。</p>'}</section><footer class="pf-footer"><p id="pf-status" role="status">${esc(this.message)}</p><div><a class="btn secondary" href="${esc(this.filesHref())}">查看项目文件</a><a class="btn primary" href="${esc('#consistency?'+withProjectContext(new URLSearchParams({project:this.id!})))}">检查文件一致性</a></div></footer>`,'generate');
     this.paintEntryIntent();document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
-      if(b.dataset.batchRetry&&!window.confirm('重试会重新开始未完成的文件，沿用每份 4,500 积分的计费规则。是否继续？')){this.status('未重试，原任务状态保留。');return;}
+      if(b.dataset.batchRetry&&!window.confirm('重试仅处理原文件包未完成的文件，沿用原已确认范围与计费规则。是否继续？')){this.status('未重试，原任务状态保留。');return;}
       const state=await this.request<Workspace>('POST','/batches/'+(b.dataset.batchRetry??b.dataset.batchCancel)+'/actions',{action:b.dataset.batchRetry?'retry':'cancel'});if(!this.live())return;this.state=state;this.resultsSettleReads=3;this.status(b.dataset.batchRetry?'已提交重试，请按每份文件的任务状态核对。':'已停止后续生成；已启动任务仍按各自状态处理。');this.paintResults();
     },b.dataset.batchRetry?'submit':'action')));
     document.querySelector('#pf-refresh-results')!.addEventListener('click',()=>void this.refreshResults(true));
