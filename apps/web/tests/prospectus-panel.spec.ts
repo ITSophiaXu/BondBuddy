@@ -66,15 +66,23 @@ test('empty state exposes upload, has no saved history entries, and fits phone w
   for(const width of [1440,390,320]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const card=await page.locator('.prospectus-panel').boundingBox(),heading=await page.getByRole('heading',{name:'项目募集说明书'}).boundingBox();expect(heading!.x-card!.x).toBeGreaterThanOrEqual(18);}
 });
 
-test('file choice is explicit, survives refresh, and can be cancelled or corrected',async({page})=>{
-  const f=await setup(page);await selectFile(page,'错误.txt');await page.evaluate(()=>window.panelFixture.refresh());await expect(page.getByRole('alert')).toContainText('请上传不超过 100 MB');await expect(page.getByRole('button',{name:'上传并保存',exact:true})).toBeDisabled();
-  const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'重新选择',exact:true}).click();await(await chooser).setFiles({name:'合成新稿.docx',mimeType:mime,buffer:bytes});await page.evaluate(()=>window.panelFixture.refresh());
-  await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
-  await page.getByRole('button',{name:'取消',exact:true}).click();await expect(page.locator('.prospectus-selected-file')).toHaveCount(0);await expect(page.getByLabel('募集书新版本文件')).toHaveValue('');await expect(page.getByRole('button',{name:'上传募集说明书',exact:true})).toBeFocused();
+for(const purpose of ['update','consistency'])test(purpose+' automatically uploads a corrected selection without adopting or starting work',async({page})=>{
+  const f=await setup(page,{purpose});await selectFile(page,'错误.txt');await page.evaluate(()=>window.panelFixture.refresh());await expect(page.getByRole('alert')).toContainText('请上传不超过 100 MB');expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  await expect(page.getByRole('button',{name:'上传并保存',exact:true})).toHaveCount(0);
+  const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'重新选择',exact:true}).click();await(await chooser).setFiles({name:'合成新稿.docx',mimeType:mime,buffer:bytes});
+  await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);await page.evaluate(()=>window.panelFixture.refresh());
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.state.current_version_id).toBeNull();await expect(page.locator('#save-prospectus-version')).toBeHidden();
+  if(process.env.BB_UPLOAD_EVIDENCE){await mkdir(process.env.BB_UPLOAD_EVIDENCE,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.locator('.prospectus-panel').screenshot({path:`${process.env.BB_UPLOAD_EVIDENCE}/${purpose}-uploaded-${width}.png`});}}
+});
+
+for(const purpose of ['update','consistency'])test(purpose+' drops one file and ignores a second selection event while uploading',async({page})=>{
+  const f=await setup(page,{purpose});
+  await page.evaluate(bytes=>{const input=document.querySelector<HTMLInputElement>('#prospectus-version-file')!,data=new DataTransfer();data.items.add(new File([new Uint8Array(bytes)],'拖入募集书.pdf',{type:'application/pdf'}));document.querySelector('.prospectus-upload-editor')!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data}));input.dispatchEvent(new Event('change',{bubbles:true}));},[...bytes]);
+  await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);expect(f.state.current_version_id).toBeNull();
 });
 
 test('unknown upload receipt retries the original session without reupload and saving does not adopt',async({page})=>{
-  const f=await setup(page,{retry:true});await selectFile(page);await page.getByRole('button',{name:'上传并保存',exact:true}).click();await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
+  const f=await setup(page,{retry:true});await selectFile(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
   await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);expect(f.state.current_version_id).toBeNull();expect(f.state.selection_revision).toBe(0);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
   await adopt(page,'v3');expect(f.state.current_version_id).toBeNull();await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.prospectus-current-file')).toContainText('当前版本 · V3');expect(f.state.current_version_id).toBe('v3');

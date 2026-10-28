@@ -424,7 +424,7 @@ test('latest revision downloads identify their execution and retain the source r
 
 test('evidence upload retries the same session and pins original finding; differential execution stays explicit',async({page})=>{
   const state=await setup(page);state.dropUploadOnce=true;await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('报告 R1 · 历史名称需要补充说明');
-  await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'更名证明.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic name change evidence')});await page.getByRole('button',{name:'上传并保存'}).click();
+  await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'更名证明.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic name change evidence')});
   const row=page.locator('[data-review-recovery-id]').filter({hasText:'更名证明.txt'});await expect(row.locator('[data-review-recovery-action=resume]')).toBeEnabled();
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();await page.locator('#review-tab-materials').click();await row.locator('[data-review-recovery-action=resume]').click();
   await expect(page.getByRole('dialog')).toContainText('材料已补充，核对下一步');expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence']);expect(state.workspace.draft.evidence_links).toEqual([{report_id:'report-v1',finding_id:'F02',material_ref:{material_id:'evidence-new',material_version:1,sha256:hash('Synthetic name change evidence')}}]);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);expect(state.plans).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
@@ -634,7 +634,7 @@ test('duplicate feedback: evidence dialog names reused material while preserving
   s.workspace.materials.push({...s.workspace.materials[1],material_id:'existing-evidence',upload_id:'existing-upload',role:'other',filename:'既有证据.txt',sha256:hash(bytes),media_type:'text/plain',byte_size:Buffer.byteLength(bytes)});
   await setup(page,s);await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();
   await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'证据副本.txt',mimeType:'text/plain',buffer:Buffer.from(bytes)});
-  await page.getByRole('button',{name:'上传并保存'}).click();
+
   await expect(page.getByRole('dialog').locator('.duplicate-upload-notice')).toContainText('证据副本.txt：重复文件');
   await expect(page.getByRole('dialog')).toContainText('已保留原文件“既有证据.txt”');
   expect(s.workspace.materials).toHaveLength(3);expect(s.workspace.draft.evidence_links?.[0]).toMatchObject({finding_id:'F02',material_ref:{material_id:'existing-evidence'}});expect(s.executes).toHaveLength(0);
@@ -1011,7 +1011,7 @@ for(const width of [1440,390])test(`delete review uploads, retry failures and pr
   page.on('dialog',dialog=>dialog.accept());
   const button=page.getByRole('button',{name:'删除 合成审计报告.docx',exact:true});
   await expect(button).toBeVisible();await button.click();
-  await expect(page.locator('#review-status')).toContainText('删除未完成');await expect(button).toBeEnabled();
+  await expect(page.locator('#review-status')).toContainText('删除结果暂未确认');await expect(button).toBeEnabled();
   await button.click();await expect(button).toHaveCount(0);
   await expect.poll(()=>s.workspace.draft.material_versions.some(m=>m.material_id==='material-1')).toBe(false);
   expect(s.workspace.draft.source_material_ref?.material_id).toBe('material-0');

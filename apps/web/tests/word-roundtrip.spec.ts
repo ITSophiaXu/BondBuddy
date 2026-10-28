@@ -11,15 +11,15 @@ const row=(page:Page,version=ids.version)=>page.locator(`.collection-file[data-f
 const importDialog=(page:Page)=>page.getByRole('dialog',{name:'上传此文件修改稿',exact:true});
 const result=(page:Page)=>page.getByRole('region',{name:'项目文件保存结果'});
 const noOverflow=async(page:Page)=>expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-async function prepareImport(page:Page){
+async function prepareImport(page:Page,beforeChoose?:()=>void){
   await row(page).getByRole('button',{name:'上传此文件修改稿',exact:true}).click();
   const dialog=importDialog(page);await expect(dialog).toBeVisible();
   await expect(dialog.locator('#pw-import-target')).toContainText('合成 Word 往返项目');
   await expect(dialog.locator('#pw-import-target')).toContainText('立项报告原稿_V1.docx · V1');
   await expect(dialog.locator('[name=type]')).toHaveValue('init');await expect(dialog.locator('[name=type]')).toBeDisabled();
-  await dialog.locator('[name=file]').setInputFiles(editedFile);return dialog;
+  beforeChoose?.();await dialog.locator('[name=file]').setInputFiles(editedFile);return dialog;
 }
-async function saveImport(page:Page){const dialog=await prepareImport(page);await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(result(page)).toContainText('修改稿已保存为 V2，原 V1 保留。');}
+async function saveImport(page:Page){const dialog=await prepareImport(page);await expect(dialog).toHaveCount(0);await expect(result(page)).toContainText('修改稿已保存为 V2，原 V1 保留。');}
 async function saveDownload(page:Page,button:Locator){const pending=page.waitForEvent('download');await button.click();return downloadBytes(await pending);}
 async function historyDownloads(page:Page,s:State,newVersion=2){
   await result(page).getByRole('button',{name:'查看新旧版本',exact:true}).click();
@@ -122,27 +122,27 @@ test.describe('finite Word roundtrip contracts',()=>{
   });
 
   test('a newer file while the original dialog is open rejects the original CAS and retains the selected local file',async({page})=>{
-    const s=await install(page);await openFiles(page);const dialog=await prepareImport(page);const newer=appendMaterial(s);
-    await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();
+    const s=await install(page);await openFiles(page);let newer!:ReturnType<typeof appendMaterial>;const dialog=await prepareImport(page,()=>{newer=appendMaterial(s);});
+
     await expect(dialog.locator('[role=status]')).toContainText('刷新后重新选择目标');
-    await expect(dialog.getByRole('button',{name:'保存项目文件',exact:true})).toBeDisabled();
+    await expect(dialog.getByRole('button',{name:'重试保存项目文件',exact:true})).toBeDisabled();
     expect(await dialog.locator('[name=file]').evaluate((node:HTMLInputElement)=>node.files?.[0]?.name)).toBe(editedFile.name);
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);
-    expect(s.importReceipts.size).toBe(0);expect(s.registry.find(v=>v.file_id===ids.family&&v.latest)?.version_id).toBe(newer.version_id);
+    expect(s.importReceipts.size).toBe(0);expect(s.registry.find(v=>v.file_id===ids.family&&v.latest)?.version_id).toBe(newer!.version_id);
     await dialog.getByRole('button',{name:'关闭',exact:true}).click();await page.getByRole('button',{name:'刷新文件',exact:true}).click();
-    await expect(row(page,newer.version_id)).toBeVisible();expect(s.imports).toHaveLength(1);expect(businessCalls(s)).toEqual([]);assertFixture(s);
+    await expect(row(page,newer!.version_id)).toBeVisible();expect(s.imports).toHaveLength(1);expect(businessCalls(s)).toEqual([]);assertFixture(s);
   });
 
   test('an accepted import with a lost reply resumes only the original identity and does not mistake a later latest version for this save',async({page})=>{
     const s=await install(page);s.dropImportOnce=true;await openFiles(page);const dialog=await prepareImport(page);
-    await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(dialog.locator('[role=status]')).toContainText('保存结果尚未确认');
+    await expect(dialog.locator('[role=status]')).toContainText('保存结果尚未确认');
     expect(s.importReceipts.size).toBe(1);const first=structuredClone(s.imports[0]),saved=s.registry.find(v=>v.file_id===ids.family&&v.sequence===2)!;
     const third=appendMaterial(s);const writes=writeCalls(s).length;
     await page.reload();await expect(page.locator('[data-resume-project-file]')).toBeVisible();expect(writeCalls(s)).toHaveLength(writes);
     await page.locator('[data-resume-project-file]').click();const recovery=importDialog(page);
     await expect(recovery.locator('#pw-import-target')).toContainText('立项报告原稿_V1.docx · V1');
     await expect(recovery.locator('[name=type]')).toHaveValue('init');await expect(recovery.locator('[name=type]')).toBeDisabled();
-    await recovery.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);
+    await recovery.getByRole('button',{name:'重试保存项目文件',exact:true}).click();await expect(recovery).toHaveCount(0);
     await expect(result(page)).toContainText('修改稿已保存为 V2，原 V1 保留。');await expect(result(page)).toContainText('当前文件已有后续版本');
     expect(s.imports).toEqual([first,first]);expect(s.importReceipts.size).toBe(1);expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);
     expect(s.registry.filter(v=>v.file_id===ids.family)).toHaveLength(3);expect(s.registry.find(v=>v.file_id===ids.family&&v.latest)?.version_id).toBe(third.version_id);
@@ -152,7 +152,7 @@ test.describe('finite Word roundtrip contracts',()=>{
 
   test('confirmed save followed by list failure stays confirmed and a read-only refresh locates the exact saved version even after a third draft',async({page})=>{
     const s=await install(page);s.failFilesAfterImport=true;await openFiles(page);const dialog=await prepareImport(page);
-    await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(dialog).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
     await expect(result(page)).toContainText('文件已保存，列表暂未同步');await expect(page.locator('[data-resume-project-file]')).toHaveCount(0);
     expect(s.importReceipts.size).toBe(1);const imports=s.imports.length,writes=writeCalls(s).length;appendMaterial(s);s.filesFailure=false;
     await page.getByRole('button',{name:'刷新文件',exact:true}).click();await expect(result(page)).toContainText('修改稿已保存为 V2，原 V1 保留。');
@@ -162,13 +162,13 @@ test.describe('finite Word roundtrip contracts',()=>{
 
   test('an unresolved original import is isolated from another signed-in owner and remains available to the original owner',async({page})=>{
     const s=await install(page);s.dropImportOnce=true;await openFiles(page);const dialog=await prepareImport(page);
-    await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(dialog.locator('[role=status]')).toContainText('尚未确认');
+    await expect(dialog.locator('[role=status]')).toContainText('尚未确认');
     const first=structuredClone(s.imports[0]),writes=writeCalls(s).length;s.owner=ids.otherOwner;
     await page.goto(`/?word-owner=b#/projects/${ids.otherRoot}/files`);await expect(page.getByRole('heading',{name:'另一个账号的项目',exact:true})).toBeVisible();
     await expect(page.locator('[data-resume-project-file]')).toHaveCount(0);await expect(page.getByText(editedFile.name,{exact:false})).toHaveCount(0);
     expect(writeCalls(s)).toHaveLength(writes);expect(s.calls.filter(c=>c.owner===ids.otherOwner&&c.method!=='GET')).toEqual([]);
     s.owner=ids.owner;await page.goto(`/?word-owner=a#/projects/${ids.root}/files`);await expect(page.locator('[data-resume-project-file]')).toBeVisible();
-    expect(s.imports).toEqual([first]);await page.locator('[data-resume-project-file]').click();await importDialog(page).getByRole('button',{name:'保存项目文件',exact:true}).click();
+    expect(s.imports).toEqual([first]);await page.locator('[data-resume-project-file]').click();await importDialog(page).getByRole('button',{name:'重试保存项目文件',exact:true}).click();
     await expect(result(page)).toContainText('修改稿已保存为 V2');expect(s.imports).toEqual([first,first]);expect(s.puts).toBe(1);assertFixture(s);
   });
 });
@@ -190,10 +190,9 @@ for(const width of [1440,390])test(`component comparison: row and import dialog 
   }else{
     const opener=original.getByRole('button',{name:'上传此文件修改稿',exact:true});await opener.focus();await page.keyboard.press('Enter');
     const dialog=importDialog(page);await expect(dialog).toBeVisible();await expect(dialog.locator('[name=type]')).toBeDisabled();
-    await expect(dialog.locator('#pw-import-target')).toContainText('立项报告原稿_V1.docx · V1');await dialog.locator('[name=file]').setInputFiles(editedFile);await noOverflow(page);
-    const close=dialog.locator('[data-close]'),file=dialog.locator('[name=file]'),submit=dialog.getByRole('button',{name:'保存项目文件',exact:true});
-    await close.focus();await page.keyboard.press('Tab');await expect(file).toBeFocused();await page.keyboard.press('Tab');await expect(submit).toBeFocused();
-    await page.keyboard.press('Shift+Tab');await expect(file).toBeFocused();await page.keyboard.press('Shift+Tab');await expect(close).toBeFocused();
+    await expect(dialog.locator('#pw-import-target')).toContainText('立项报告原稿_V1.docx · V1');await noOverflow(page);
+    const close=dialog.locator('[data-close]'),file=dialog.locator('[name=file]');
+    await close.focus();await page.keyboard.press('Tab');await expect(file).toBeFocused();await page.keyboard.press('Shift+Tab');await expect(close).toBeFocused();
     await capture(page,`${prefix}-dialog-${width}`,{comparison:'Current dialog fixes root/type/original version and preserves the original file.'});
     await page.keyboard.press('Enter');await expect(dialog).toHaveCount(0);await expect(opener).toBeFocused();
     expect(writeCalls(s)).toEqual([]);

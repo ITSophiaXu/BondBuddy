@@ -187,8 +187,8 @@ test.describe('manual reading current desktop journeys',()=>{
     expect(href!.split('?')[0]).toBe('#/projects/'+ids.root+'/files');expect(q.get('file')).toBe(ids.family);expect(q.get('version')).toBe(ids.version);expect(q.get('check')).toBe(checkId);
     await link.click();await expect(currentFile(page)).toBeFocused();await expect(currentFile(page)).toHaveAttribute('data-file-version',ids.version);await expect(page.locator('#pw-file-context')).toContainText('检查时原文件');
     await currentFile(page).locator('[data-file-edit-upload]').click();const modal=page.getByRole('dialog',{name:'上传此文件修改稿',exact:true});
-    await expect(modal.locator('[name=type]')).toHaveValue('init');await expect(modal.locator('[name=type]')).toBeDisabled();await modal.locator('[name=file]').setInputFiles(editedFile);expect(s.imports).toEqual([]);
-    await modal.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(modal).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
+    await expect(modal.locator('[name=type]')).toHaveValue('init');await expect(modal.locator('[name=type]')).toBeDisabled();await modal.locator('[name=file]').setInputFiles(editedFile);
+    await expect(modal).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);expect(s.imports[0].material.sha256).toBe(hash(editedFile.buffer));expect(s.check).toEqual(checked);expect(s.checkRequests).toEqual([]);
     await page.locator('#pw-import-result').getByRole('link',{name:'免费检查全部项目文件',exact:true}).click();await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
     await page.locator('[data-fc-start]').click();await expect.poll(()=>s.checkRequests.length).toBe(1);expect(s.checkRequests[0].expected_source_version_id).toBe(s.source.version_id);

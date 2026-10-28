@@ -39,8 +39,8 @@ test.describe('consistency originals desktop journeys',()=>{
     await expect(file(page)).toHaveAttribute('data-file-version',ids.version);await expect(page.locator('dialog[open]')).toHaveCount(0);await returnCheck(page);
     await file(page).locator('[data-file-edit-upload]').click();const dialog=importDialog(page);await expect(dialog).toBeVisible();
     await expect(dialog.locator('[name=type]')).toHaveValue('init');await expect(dialog.locator('[name=type]')).toBeDisabled();await expect(dialog.locator('#pw-import-target')).toContainText('V1');
-    await dialog.locator('[name=file]').setInputFiles(editedFile);expect(s.imports).toEqual([]);expect(s.checkRequests).toEqual([]);
-    await dialog.getByRole('button',{name:'保存项目文件',exact:true}).click();await expect(dialog).toHaveCount(0);
+    await dialog.locator('[name=file]').setInputFiles(editedFile);expect(s.checkRequests).toEqual([]);
+    await expect(dialog).toHaveCount(0);
     await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2，原 V1 保留。');
     const saved=s.registry.find(v=>v.file_id===ids.family&&v.latest)!;expect(saved.sequence).toBe(2);expect(saved.consistency.status).toBe('unchecked');
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);expect(s.imports[0].document_type).toBe('init');expect(s.imports[0].material.sha256).toBe(hash(editedFile.buffer));
