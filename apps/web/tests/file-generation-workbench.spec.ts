@@ -156,7 +156,8 @@ test('support drop validates every file and cannot bypass selection or an active
 test('prepared source opens document selection without preparation or initial bulk selection',async({page})=>{
   const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.setViewportSize({width:1440,height:1000});
   const s=await fixture(page);await open(page);
-  await expect(page.getByRole('heading',{name:'按模板生成文件',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();
+  await expect(page.locator('.pf-flow-modes [aria-current]')).toContainText('按模板生成文件');
   await expect(page.locator('select[data-pf-document]')).toHaveCount(1);
   await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);
   await expect(page.locator('#pf-requirements')).toHaveValue('');
@@ -227,7 +228,7 @@ test('scope and authoring fees are reviewed before an exact public batch request
   const s=await fixture(page);await open(page);await choose(page,['init','underwriter']);
   await expect(page.locator('#pf-price')).toContainText('9,000');
   await confirm(page);
-  const dialog=page.getByRole('dialog');
+  const dialog=page.locator('.pf-flow-confirm');
   await expect(dialog).toContainText('立项报告');await expect(dialog).toContainText('主承销商核查意见');
   await expect(dialog).toContainText('9,000');
   await expect(dialog).toContainText(/4,500/);
@@ -246,7 +247,7 @@ test('scope and authoring fees are reviewed before an exact public batch request
 test('common requirements append only to selected files and confirmation captures saved draft versions',async({page})=>{
   const s=await fixture(page),before=structuredClone(s.workspaces.get(apiProject)!.workspace.drafts);
   await open(page);await choose(page,['init','underwriter']);
-  await page.locator('#pf-requirements').fill('本轮统一保留待核实标记');
+  await revealRequirements(page);await page.locator('#pf-requirements').fill('本轮统一保留待核实标记');
   await page.locator('#pf-save-requirements').click();
   await expect(page.locator('#pf-requirements')).toHaveValue('');
   await expect(page.locator('[data-pf-saved-requirements]').first()).toContainText('本轮统一保留待核实标记');
@@ -268,7 +269,7 @@ test('common requirements append only to selected files and confirmation capture
 
 test('unsaved common note survives reopening and is appended before confirmation',async({page})=>{
   const s=await fixture(page);await open(page);await choose(page,['credit']);
-  await page.locator('#pf-requirements').fill('刷新后仍需保留的补充要求');await page.reload();
+  await revealRequirements(page);await page.locator('#pf-requirements').fill('刷新后仍需保留的补充要求');await page.reload();
   await expect(documentChoice(page,'credit')).toHaveValue('credit');
   await expect(page.locator('#pf-requirements')).toHaveValue('刷新后仍需保留的补充要求');
   expect(draftWrites(s.calls)).toHaveLength(0);
@@ -281,7 +282,7 @@ test('unsaved common note survives reopening and is appended before confirmation
 test('a partially saved note resumes its original document scope after reselection and reload',async({page})=>{
   const s=await fixture(page);s.failDraft='underwriter';
   const before=structuredClone(s.workspaces.get(apiProject)!.workspace.drafts),note='本轮原范围的共同补充要求';
-  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);
+  await open(page);await choose(page,['init','underwriter']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);
   await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
   await expect(page.locator('#pf-save-requirements')).toBeEnabled();
   expect(draftWrites(s.calls).map(c=>c.path)).toEqual([draftPath('init'),draftPath('underwriter')]);
@@ -303,7 +304,7 @@ test('a partially saved note resumes its original document scope after reselecti
 test('note recovery preserves a later append from another page without duplicating the original note',async({page})=>{
   const s=await fixture(page);s.failDraft='underwriter';
   const note='第一次共同补充要求',later='另一页面后来追加的要求';
-  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);
+  await open(page);await choose(page,['init','underwriter']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);
   await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
   await expect(page.locator('#pf-save-requirements')).toBeEnabled();
   const draft=s.workspaces.get(apiProject)!.workspace.drafts.init;
@@ -322,7 +323,7 @@ test('note recovery preserves a later append from another page without duplicati
 test('stopping a partial note operation preserves saved requirements and never applies them to a new selection',async({page})=>{
   const s=await fixture(page);s.failDraft='underwriter';
   const before=structuredClone(s.workspaces.get(apiProject)!.workspace.drafts),note='只保留已成功保存的部分';
-  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-requirements').fill(note);
+  await open(page);await choose(page,['init','underwriter']);await revealRequirements(page);await page.locator('#pf-requirements').fill(note);
   await page.locator('#pf-save-requirements').click();await expect(page.locator('#pf-stop-note')).toBeVisible();
   await expect(page.locator('#pf-save-requirements')).toBeEnabled();
   await page.locator('#pf-stop-note').click();await expect(page.locator('#pf-stop-note')).toBeHidden();
@@ -339,7 +340,7 @@ test('unavailable browser session storage prevents a generation request before a
   const s=await fixture(page);await open(page);await choose(page,['init']);await confirm(page);
   await page.locator('#pf-confirm-generation').click();
   await expect(page.locator('#pf-status')).toContainText(/提交记录|会话存储/);
-  await expect(page.locator('#pf-generate')).toBeVisible();await expect(page.locator('#pf-retry-batch')).toHaveCount(0);
+  await expect(page.locator('#pf-confirm-generation')).toBeVisible();await expect(page.locator('#pf-retry-batch')).toHaveCount(0);
   expect(batches(s.calls)).toHaveLength(0);
 });
 
@@ -432,7 +433,7 @@ test('stopping a partially saved support package releases preparation and preser
 for(const failure of [408,429,'network'] as const){
   test(`uncertain ${failure} generation requires explicit recovery with the identical frozen envelope`,async({page})=>{
     const s=await fixture(page);s.batchFailure=failure;await open(page);await choose(page,['init','underwriter']);
-    await page.locator('#pf-requirements').fill('应进入原请求的补充要求');await confirm(page);
+    await revealRequirements(page);await page.locator('#pf-requirements').fill('应进入原请求的补充要求');await confirm(page);
     await page.locator('#pf-confirm-generation').click();await expect(page.locator('#pf-retry-batch')).toBeVisible();
     expect(batches(s.calls)).toHaveLength(1);const originalBody=structuredClone(batches(s.calls)[0].body);
     expect((originalBody as FileGenerationBatchRequest).documents.every(d=>d.draft_version===2)).toBe(true);
@@ -529,7 +530,7 @@ test('latest batch can seed scope while an explicit cached empty choice wins',as
 });
 
 test('selection and requirements cache isolate account owners and actual API projects sharing navigation',async({page})=>{
-  const s=await fixture(page);await open(page);await choose(page,['init']);await page.locator('#pf-requirements').fill('仅属于 P 与当前账号');
+  const s=await fixture(page);await open(page);await choose(page,['init']);await revealRequirements(page);await page.locator('#pf-requirements').fill('仅属于 P 与当前账号');
   await open(page,otherApiProject);
   await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);await expect(page.locator('#pf-requirements')).toHaveValue('');
   await choose(page,['legal']);await open(page);
@@ -572,7 +573,7 @@ for(const width of [390,320]){
 for(const width of [1440,390,320])test(`source upload has one obvious entry and no empty disclosures at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:960});const s=await fixture(page);s.workspaces.get(apiProject)!.source=null;
   await page.goto('/'+href(apiProject,{step:'source'}));
-  await expect(page.locator('.pf-prospectus-dropzone')).toBeVisible();
+  await expect(page.locator('#choose-prospectus-version')).toBeVisible();
   await expect(page.locator('.pf-steps,.pf-project-strip,.pf-source-intro')).toHaveCount(0);
   await expect(page.locator('[data-prospectus-history]')).toBeHidden();
   await expect(page.locator('.prospectus-upload-editor')).toBeHidden();
@@ -580,20 +581,20 @@ for(const width of [1440,390,320])test(`source upload has one obvious entry and 
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   const dir=process.env.BB_UX_EVIDENCE_DIR;
   if(dir){await mkdir(dir,{recursive:true});await page.screenshot({path:join(dir,`source-empty-${width}.png`),fullPage:true});if(width===1440)await writeFile(join(dir,'source-empty.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-source-workspace')!.outerHTML));}
-  const chooser=page.waitForEvent('filechooser');await page.locator('.pf-prospectus-dropzone').click();
+  const chooser=page.waitForEvent('filechooser');await page.locator('#choose-prospectus-version').click();
   await(await chooser).setFiles({name:'错误.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')});
-  await expect(page.locator('.prospectus-selected-file')).toContainText('错误.txt');
+  await expect(page.locator('.pf-source-upload-state')).toContainText('错误.txt');
   await expect(page.locator('#save-prospectus-version')).toBeHidden();
   await expect(page.locator('#prospectus-status')).toContainText('请上传不超过');
   await page.locator('#cancel-prospectus-version').click();
   await expect(page.locator('.prospectus-upload-editor')).toBeHidden();
-  await expect(page.locator('.pf-prospectus-dropzone')).toBeFocused();
+  await expect(page.locator('#choose-prospectus-version')).toBeFocused();
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
 test('source to file rows preserves the exact version and keeps choices beside template actions',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});const s=await fixture(page);
-  await page.goto('/'+href(apiProject,{step:'source'}));
+  await page.goto('/'+href(apiProject,{step:'source',mode:'documents'}));
   await expect(page.locator('#pf-source-next')).toBeEnabled();
   const dir=process.env.BB_UX_EVIDENCE_DIR;
   if(dir){await page.screenshot({path:join(dir,'source-current-1440.png'),fullPage:true});await writeFile(join(dir,'source-current.html'),await page.locator('.pf-workspace-heading').evaluate(e=>e.outerHTML+document.querySelector('.pf-source-workspace')!.outerHTML));}
@@ -642,3 +643,5 @@ for(const width of [1440,390])test('file row prototype and implementation compar
  await page.getByRole('button',{name:'移除第 3 行',exact:true}).click();await expect(page.locator('select[data-pf-document]')).toHaveCount(2);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
+
+async function revealRequirements(page:import('@playwright/test').Page){if(!await page.locator('#pf-requirements').isVisible())await page.locator('#pf-requirements-details > summary').click();}
