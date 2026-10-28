@@ -4,9 +4,10 @@ import {registerWorkpaperLibrary} from './workpaper-library.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
+import {Value} from '@sinclair/typebox/value';
 import {ZipFile} from 'yazl';
 import {PassThrough,Readable} from 'node:stream';
-import {WorkpaperImportSchema,WorkpaperStartSchema,WorkpaperActionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,
+import {WorkpaperImportSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,
   type WorkpaperDecision,type WorkpaperCatalogue,type WorkpaperWorkspace,type WorkpaperBatch,type WorkpaperEntry,type M4DocumentManifest,type Market,type Offering} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanonicalBusinessRunIdle,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -23,6 +24,24 @@ type Db=Pool|PoolClient;
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 const xlsx='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const catalogueDto=(r:any):WorkpaperCatalogue=>({catalogue_id:r.id,sha256:r.sha256.trim(),filename:r.filename,entries:r.entries,warnings:r.warnings,created_at:date(r.created_at)});
+export async function makeWorkpaperExplanation(entry:WorkpaperEntry,decision:WorkpaperDecision){
+ return workpaperDocx(entry.path.split('/').at(-1)!.replace(/\.docx$/i,'')+' — 不适用说明',explanationParagraphs(entry,decision),loadWorkpaperTemplate({code:entry.code,title:'不适用说明'}));
+}
+export type WorkpaperExplanationFile={key:string;sha256:string;filename:string};
+/** Host-only publication of a durable authoring result; no public classification setter. */
+export async function publishWorkpaperItemResult(db:Db,owner:string,runId:string,decision:WorkpaperDecision,explanation:WorkpaperExplanationFile|null){
+ if(!Value.Check(WorkpaperDecisionSchema,decision)||(decision.status==='generate')!==(explanation===null))throw Error('WORKPAPER_RESULT_INVALID');
+ const item=(await db.query('SELECT manifest FROM bb_workpaper_items WHERE owner_user_id=$1 AND run_id=$2 AND item_id=$3',[owner,runId,decision.item_id])).rows[0];
+ if(item?.manifest.input.workpaper.mode!=='direct')throw Error('INPUT_REVISION_CONFLICT');
+ if(explanation)explanation={key:explanation.key,sha256:explanation.sha256,filename:item.manifest.input.workpaper.entry.path.split('/').at(-1).replace(/\.docx$/i,'-不适用说明.docx')};
+ const hash=inputManifestHash({decision,explanation});
+ await db.query(`INSERT INTO bb_workpaper_item_results(run_id,owner_user_id,batch_id,item_id,decision,explanation,result_hash)
+  SELECT i.run_id,i.owner_user_id,i.batch_id,i.item_id,$3,$4,$5 FROM bb_workpaper_items i
+  WHERE i.owner_user_id=$1 AND i.run_id=$2 AND i.item_id=$6 ON CONFLICT(run_id) DO NOTHING`,[owner,runId,decision,explanation,hash,decision.item_id]);
+ const old=(await db.query('SELECT result_hash FROM bb_workpaper_item_results WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rows[0];
+ if(old?.result_hash.trim()!==hash)throw Error('INPUT_REVISION_CONFLICT');
+ if(explanation)await db.query('UPDATE bb_jobs SET credit_pause_requested=false WHERE owner_user_id=$1 AND run_id=$2',[owner,runId]);
+}
 async function event(c:PoolClient,owner:string,id:string,name:string,payload:unknown){
   await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,name,payload]);
   await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
@@ -33,16 +52,17 @@ async function ownedBatch(db:Db,owner:string,id:string,batch:string,lock=false){
 }
 export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:string):Promise<WorkpaperBatch>{
   const b=await ownedBatch(db,owner,id,batch);
-  const items=(await db.query(`SELECT i.*,r.state run_state,r.stage FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+  const items=(await db.query(`SELECT i.*,r.state run_state,r.stage,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+    LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 ORDER BY i.ordinal`,[owner,batch])).rows;
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_workpaper_items i JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state='succeeded'
     JOIN bb_m4_artifacts a ON a.owner_user_id=i.owner_user_id AND a.run_id=r.id JOIN bb_artifact_versions v ON v.owner_user_id=a.owner_user_id AND v.id=a.artifact_id AND v.version=a.artifact_version
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,batch])).rows;
   const charged=(await db.query(`SELECT coalesce(sum(CASE WHEN c.state='released' THEN 0 ELSE coalesce(c.charged_points,CASE WHEN c.state='settled' THEN c.points ELSE 0 END) END),0) amount
     FROM bb_workpaper_attempts a JOIN bb_credit_reservations c ON c.owner_user_id=a.owner_user_id AND c.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.batch_id=$2`,[owner,batch])).rows[0];
-  return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,
-    items:items.map(i=>({entry:i.manifest.input.workpaper.entry,decision:i.manifest.input.workpaper.decision,...(i.explanation?{explanation:{filename:i.explanation.filename,sha256:i.explanation.sha256}}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
-      artifacts:artifacts.filter(a=>a.run_id===i.run_id).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))}))};
+  return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
+    items:items.map(i=>({entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:i.delivered_explanation.filename,sha256:i.delivered_explanation.sha256}}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
+      artifacts:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))}))};
 }
 export async function readWorkpapers(db:Db,owner:string,id:string):Promise<WorkpaperWorkspace>{
   await project(db,owner,id);
@@ -136,14 +156,17 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(!cat)throw missing();if(cat.sha256.trim()!==b.catalogue_sha256)throw conflict('INPUT_REVISION_CONFLICT','目录已变化，请重新核对。');
       const selected=(cat.entries as WorkpaperEntry[]).filter(e=>b.item_ids.includes(e.id)&&e.kind==='file');
       if(selected.length!==b.item_ids.length)throw new Problem(422,'VALIDATION_FAILED','文件选择中包含目录或无效行。');
+      const direct=b.start_mode==='direct';let decisions:WorkpaperDecision[]=[];
+      if(!direct){
       const assessment=(await c.query("SELECT a.* FROM bb_workpaper_assessments a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded' WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3",[user,id,b.assessment_id])).rows[0];
       if(!assessment?.result||assessment.result_hash.trim()!==b.assessment_hash||inputManifestHash(assessment.result)!==b.assessment_hash)throw conflict('INPUT_REVISION_CONFLICT','请先完成判断并确认全部不生成项。');
       const {request_id:_request,...assessed}=assessment.manifest.request;
-      const {request_id:_start,assessment_id:_id,assessment_hash:_hash,expected_points:_points,price_version:_price,...requested}=b;
+      const {request_id:_start,start_mode:_mode,assessment_id:_id,assessment_hash:_hash,expected_points:_points,price_version:_price,...requested}=b;
       if(inputManifestHash({...assessed,item_ids:[...assessed.item_ids].sort()})!==inputManifestHash({...requested,item_ids:[...requested.item_ids].sort()}))throw conflict('INPUT_REVISION_CONFLICT','目录、选择、要求或募集书已变化，请重新判断。');
-      const decisions=assessment.result.decisions as WorkpaperDecision[];
+      decisions=assessment.result.decisions as WorkpaperDecision[];
       if(decisions.length!==selected.length||new Set(decisions.map(d=>d.item_id)).size!==selected.length||selected.some(e=>!decisions.some(d=>d.item_id===e.id)))throw conflict('INPUT_REVISION_CONFLICT','判断清单不完整，请重新判断。');
-      const generatable=decisions.filter(d=>d.status==='generate').length;
+      }
+      const generatable=direct?selected.length:decisions.filter(d=>d.status==='generate').length;
       if(b.price_version!==WORKPAPER_PRICE.version||b.expected_points!==generatable*WORKPAPER_PRICE.points)throw conflict('QUOTE_CHANGED','请重新核对文件数量及费用。');
       if((await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,id])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','本项目已有底稿文件包待完成，请先继续或结束原文件包。');
       const source=await projectFileSource(c,user,id);
@@ -157,15 +180,15 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       const batchId=uid(),topicId=uid(),child=uid(),scope=p.execution_scope_project_id||id;
       await c.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,execution_scope_project_id) VALUES($1,$2,$3,'generation',$4,$5,$6,$7)",[child,user,'底稿 · '+p.name,p.issuer_name,p.market,p.offering,scope]);
       await c.query("INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash,surface) VALUES($1,$2,$3,$4,$5,$6,$7,'materials')",[topicId,user,child,id,'底稿 · '+p.name,'workpaper:'+batchId,hash]);
-      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id,b.assessment_hash]);
+      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed']);
       for(const [ordinal,entry] of selected.entries()){
-        const decision=decisions.find(d=>d.item_id===entry.id)!;
+        const decision=decisions.find(d=>d.item_id===entry.id);
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
           market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry),
-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,decision},source_material:sourcePin,materials:[cat.material],template:null,edit_base:null,scope:'whole',
+          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const}:{decision})},source_material:sourcePin,materials:[cat.material],template:null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
-        if(decision.status!=='generate'){
+        if(decision&&decision.status!=='generate'){
           const bytes=await workpaperDocx(entry.path.split('/').at(-1)!.replace(/\.docx$/i,'')+' — 不适用说明',explanationParagraphs(entry,decision,source,''),loadWorkpaperTemplate({code:entry.code,title:'不适用说明'}));
           const sha256=digest(bytes),key=`owners/${user}/projects/${id}/workpapers/${batchId}/${entry.id}/${sha256}.docx`;
           await blobs().put(key,bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -252,7 +275,10 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
 
 async function explanationBytes(db:Db,blobs:PrivateBlobs,owner:string,id:string,batch:string,item:string){
  await ownedBatch(db,owner,id,batch);
- const row=(await db.query('SELECT explanation FROM bb_workpaper_items WHERE owner_user_id=$1 AND batch_id=$2 AND item_id=$3',[owner,batch,item])).rows[0];
+ const row=(await db.query(`SELECT coalesce(i.explanation,w.explanation) AS explanation FROM bb_workpaper_items i
+  LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+  LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
+  WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,item])).rows[0];
  if(!row?.explanation)throw missing();const bytes=await blobs.getIfExistsBounded(row.explanation.key,1024*1024);
  if(!bytes||digest(bytes)!==row.explanation.sha256)throw new Problem(503,'DATA_UNAVAILABLE','说明文件暂不可读取，请重试。');return bytes;
 }

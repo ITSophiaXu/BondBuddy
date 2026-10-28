@@ -1,3 +1,4 @@
+import {groundWorkpaperDecision} from './workpaper-grounding.js';
 import {mkdtemp,writeFile,rm,mkdir,copyFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -32,17 +33,7 @@ async function locked(ctx:StageContext,c:import('pg').PoolClient){
  const row=await c.query("SELECT 1 FROM bb_jobs j JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now() AND r.state='running' FOR UPDATE OF j,r",[ctx.lease.jobId,ctx.run.owner_user_id,ctx.run.id,ctx.lease.token]);
  if(!row.rowCount)throw Error('LEASE_LOST');
 }
-/** Quote existence is checked against the exact supplied spans, never against a newer prospectus. */
-export function groundWorkpaperDecision(d:WorkpaperDecision,entry:WorkpaperEntry,spans:ProjectFileText['spans']):WorkpaperDecision{
- const citations=d.citations.filter(c=>spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote))).map(c=>({...c,location:spans.find(s=>s.id===c.span_id)!.location}));
- const ungrounded=citations.length!==d.citations.length||!citations.length;
- const original=/营业执照|许可证|原件|原始凭证|签章|签字|访谈记录|函证回函|银行流水|征信报告/.test(entry.title+' '+entry.instructions)
-   && !/提纲|清单|模板|分析/.test(entry.title);
- if(original&&d.status==='generate')return {...d,item_id:entry.id,status:'external_evidence',citations,reason:'该项需要原始证据，募集说明书披露不能替代原件或已实施核查记录。',missing_materials:['请补充对应原件或实际执行形成的记录。']};
- if(ungrounded&&['generate','not_applicable'].includes(d.status))return {...d,item_id:entry.id,status:'missing_information',citations,reason:'现有资料不足以形成该项文件，亦不能确认该业务不适用。',missing_materials:['该项对应的项目披露及支持材料']};
-
- return {...d,item_id:entry.id,citations,...(d.status!=='generate'&&d.status!=='not_applicable'&&!d.missing_materials.length?{missing_materials:['请补充该项原始资料及业务适用性说明。']}: {})};
-}
+export {groundWorkpaperDecision} from './workpaper-grounding.js';
 export function assessmentEvidence(entries:WorkpaperEntry[],snapshot:ProjectFileText){
  // No search quota or head-of-table truncation. Large sources use the contained file workspace below.
  return snapshot.spans;

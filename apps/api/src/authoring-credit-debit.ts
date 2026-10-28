@@ -14,6 +14,10 @@ export async function debitAuthoringCredits(c: PoolClient, run: any, target: num
   const previous = Number(reservation.charged_points ?? 0), ceiling = Number(reservation.points);
   if (reservation.state !== 'held') return { charged: previous, available: (await creditBalance(c, run.owner_user_id)).available, ceiling };
   const balance = await creditBalance(c, run.owner_user_id);
+  // The host has accepted an explanation for this exact authoring attempt. The
+  // terminal transaction refunds prior progress debits; never charge the balance.
+  if((await c.query("SELECT 1 FROM bb_workpaper_item_results WHERE owner_user_id=$1 AND run_id=$2 AND decision->>'status'<>'generate'",[run.owner_user_id,run.id])).rowCount)
+    return {charged:previous,available:balance.available,ceiling:previous};
   const amount = Math.min(Math.max(0, Math.min(ceiling, target) - previous), balance.available);
   if (amount > 0) {
     const lots = await c.query(`SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen

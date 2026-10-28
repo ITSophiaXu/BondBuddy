@@ -64,12 +64,12 @@ export async function m4InputGate(pool: Pool, run: RunRow, input: InputRevisionR
   if (manifest.kind === 'document') {
     if(manifest.input.document_type==='workpaper'){
       const task=manifest.input.workpaper;
-      if(!task||task.decision?.status!=='generate'||task.decision.item_id!==task.entry.id||!manifest.input.source_material||!manifest.knowledge||manifest.input.project_file||task.entry.kind!=='file')return fail;
-      const item=(await pool.query(`SELECT i.manifest FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.id=i.batch_id AND b.owner_user_id=i.owner_user_id
+      if(!task||(task.mode==='direct'?!!task.decision:task.decision?.status!=='generate'||task.decision.item_id!==task.entry.id)||!manifest.input.source_material||!manifest.knowledge||manifest.input.project_file||task.entry.kind!=='file')return fail;
+      const item=(await pool.query(`SELECT i.manifest,b.start_mode FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.id=i.batch_id AND b.owner_user_id=i.owner_user_id
         JOIN bb_projects p ON p.owner_user_id=b.owner_user_id AND p.id=b.project_id AND p.deleted_at IS NULL
         WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.run_id=$4 AND b.topic_id=$5 AND b.catalogue_id=$6`,
         [run.owner_user_id,task.batch_id,task.entry.id,run.id,manifest.topic_id,task.catalogue_id])).rows[0];
-      if(!item||!same(item.manifest,manifest))return fail;
+      if(!item||!same(item.manifest,manifest)||task.mode==='direct'&&item.start_mode!=='direct')return fail;
     }else if(manifest.input.workpaper)return fail;
     if(!m4DocumentScopeSupported(manifest.input.document_type,manifest.market,manifest.offering,!!manifest.input.project_file))return fail;
     if(manifest.billing_task!==M4_DOCUMENT_BILLING_TASKS[manifest.input.document_type])return fail;
