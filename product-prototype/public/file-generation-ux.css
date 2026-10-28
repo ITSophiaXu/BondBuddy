@@ -85,6 +85,18 @@
 }
 
 /* One file per row keeps the document choice and its template together. */
+.pf-back-link{display:inline-flex;align-items:center;min-height:44px;color:#627164;font-size:13px;text-decoration:none}
+.pf-back-link:hover{text-decoration:underline}
+.pf-home-source{display:flex;align-items:flex-start;gap:12px;padding:20px 24px;border-top:1px solid #dfe6dc;color:#627164;font-size:14px}
+.pf-home-source svg,.pf-upload-ready svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;flex:none}
+.pf-home-source p{margin:6px 0 0;line-height:1.8;overflow-wrap:anywhere}
+.pf-upload-ready{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:20px 0;padding:20px;background:#f4f8ef;border:1px solid #c8d6bd;border-radius:10px}
+.pf-upload-ready>div{flex:1;min-width:180px;overflow-wrap:anywhere}
+.pf-upload-ready strong{font-size:15px;line-height:1.8}
+.pf-upload-ready p{font-size:13px;line-height:1.8;color:#627164;margin:6px 0 0}
+.pf-upload-ready .btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px}
+.pf-source-actions[hidden]{display:none}
+@media(max-width:760px){.pf-upload-ready{padding:16px;gap:12px}.pf-upload-ready>.btn,.pf-upload-ready>.text-button{width:100%}.pf-workspace-actions{display:flex;flex-wrap:wrap}.pf-home-source{padding:16px 0}}
 .pf-documents-layout .pf-generation-grid{display:block}
 .pf-documents-layout .pf-file-builder{padding:24px;margin:0;box-shadow:none;min-width:0}
 .pf-builder-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}

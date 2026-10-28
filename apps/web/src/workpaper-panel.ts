@@ -50,11 +50,14 @@ export class WorkpaperPanel {
         this.status=check?'已选择受影响及需核对的底稿，请按当前募集书重新判断生成范围。':'请先用当前募集书完成本批检查，再选择需重新编制的底稿。';
       }
       this.requirements=this.pending?.requirements??this.assessing?.requirements??saved?.requirements??'';this.paint();this.poll();
+      if(new URLSearchParams(location.hash.split('?')[1]).get('view')==='results'){
+        const results=this.host.querySelector<HTMLElement>('#wp-batches');if(results){results.tabIndex=-1;results.focus({preventScroll:true});results.scrollIntoView({block:'start'});}
+      }
     }catch(e){if(this.live()){this.host.innerHTML='<p role="status">底稿记录暂时无法读取。原记录已保留，请刷新重试。</p>';}}
   }
   private paint(){
     if(!this.live())return;
-    const sourceHref='#generate?'+withProjectContext(new URLSearchParams({project:this.project,step:'source'}));
+    const sourceHref='#generate?'+withProjectContext(new URLSearchParams({project:this.project,step:'source',mode:'workpapers'}));
     this.host.innerHTML=`<ol class="wp-workflow" aria-label="底稿生成流程"><li><span>1</span><div><strong>选择底稿</strong><small>上传目录并勾选文件</small></div></li><li><span>2</span><div><strong>检查文件</strong><small>检查材料，列出缺项</small></div></li><li><span>3</span><div><strong>确认并生成</strong><small>核对清单与费用后开始</small></div></li></ol>
       <section class="panel wp-prepare" aria-label="按底稿目录批量生成"><div class="wp-upload-zone"><span class="wp-upload-icon">${ico('upload')}</span><h2>上传底稿目录</h2><p>默认生成“1 尽职调查文件”；可以在清单中调整范围。</p><label class="wp-upload-picker"><span class="btn primary">${ico('plus')}选择 Excel 底稿目录</span><input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" aria-describedby="wp-upload-help" ${this.pending||this.assessing?'disabled':''}></label><small id="wp-upload-help">XLSX · 10 MB 以内 · 最多 ${WORKPAPER_LIMITS.items.toLocaleString()} 份文件</small></div>
       <div class="wp-source-context ${this.source?'':'wp-source-missing'}"><span class="wp-source-icon">${ico('file')}</span><div class="wp-source-info"><small>生成依据 · 募集说明书</small><div class="wp-source-file"><strong>${this.source?esc(this.source.filename):'请先上传并采用募集说明书'}</strong>${this.source?`<span class="wp-source-version">已采用 · V${this.source.sequence}</span>`:''}</div></div><a class="btn secondary" href="${esc(sourceHref)}">${this.source?'查看 / 更换':'上传募集说明书'} ${ico('arrow')}</a></div>
