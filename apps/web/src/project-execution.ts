@@ -1,6 +1,6 @@
 import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
-import { authoringTasks } from './project-collection-model';
+import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
 import { prototypeIcon as icon } from './prototype-design';
 import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -888,8 +888,14 @@ export class ProjectExecution {
       this.message = this.initialNotice;
       this.initialNotice = '';
       const requestedRun=new URLSearchParams(location.hash.split('?')[1]).get('run');
-      const own=await authoringTasks(c=>this.api.projectTasks(this.id,c,this.controller.signal),this.id,()=>!this.active);
+      let workpaperTask:ProjectTask|undefined;
+      const own=await authoringTasks(c=>this.api.projectTasks(this.id,c,this.controller.signal),this.id,()=>!this.active,task=>{
+        if(task.run_id===requestedRun&&(task.operation==='workpaper_assessment'||task.operation==='workpaper_check'))workpaperTask=task;
+      });
       if(!this.active)return;
+      // Older project links used the authoring route for checks without a topic.
+      // Resolve them during the normal asynchronous restore, without blocking draft editing.
+      if(workpaperTask){const returnProject=new URLSearchParams(location.hash.split('?')[1]).get('return_project');location.replace(taskHref(workpaperTask)+(returnProject?'&return_project='+encodeURIComponent(returnProject):''));return;}
       this.knownLatestInput=project.input_revision??0;
       const preparationIntent=new URLSearchParams(location.hash.split('?')[1]);
       const afterValue=preparationIntent.get('prepare_after');

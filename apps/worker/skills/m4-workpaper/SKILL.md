@@ -67,7 +67,9 @@ description: 目录逐项编制、完整数据、匹配格式及内部来源映�
 
 
 八、运行时固定输入和内部校验
-仅当 status=generate 时编制本项正文；其他分类交由逐项说明处理。本次仅生成 task.input.workpaper.entry 这一条；不改变已确认的选择范围。必须从 knowledge.template_path 的中性格式副本开始，替换全部 [[内容N]] 槽位、清除不用的空行；不能沿用旧事实。每份保留编号和对应标题。输出 output/document.docx，正文只包含结果。output/preparation-note.docx 仅作系统内部编制记录，不向本批底稿用户交付。
+本次只使用一次编制任务完成资料读取、事项判断和文件编制，不先创建独立的可生成文件检查任务，也不等待第二次用户确认。
+当 task.input.workpaper.mode=direct 时，完整阅读当前条目与本项目全文，在本次编制过程中确定结果，并按只读 workpaper-result-schema.json 写 output/workpaper-result.json：item_id 为本条目 id，status 为 generate、not_applicable、missing_information 或 external_evidence，填写具体 reason、missing_materials 和逐字一致的 citations。引用用原文 span_id/quote，位置由系统补充，不得伪造。局部缺项但已有实质内容时仍选 generate，写足已知内容并保留必要限定。未披露不能推定不适用。缺少原始证照、签章或实际履职记录时不得编造。
+仅当 status=generate 时编制本项正文和内部编制记录；其他分类同样写全 workpaper-result.json 与 workpaper-coverage.json，由系统使用相应模板形成具体说明文件，无需伪造正文或再调用模型。旧任务已有 task.input.workpaper.decision 时按其固定分类编制。本次仅生成 task.input.workpaper.entry 这一条；不改变已确认的选择范围。必须从 knowledge.template_path 的中性格式副本开始，替换全部 [[内容N]] 槽位、清除不用的空行；不能沿用旧事实。每份保留编号和对应标题。输出 output/document.docx，正文只包含结果。output/preparation-note.docx 仅作系统内部编制记录，不向本批底稿用户交付。
 完整读取 source-spans.json。对正文每个引用事实及每个相关表格单元格在 output/file-links.json 记录 {"links":[{"source_span_id":"p1","source_quote":"原文唯一引用","target_span_id":"p2","target_quote":"成果唯一引用","field":"字段","period":"期间","unit":"单位"}]}。target_span_id 按 document.xml 中全部 w:p（包括表格）零起算，格式 pN；不得将内部编号写入正文。
 同时写 output/workpaper-coverage.json：{"reviewed_span_ids":["全部实际检查过的非空原文段落"],"used_span_ids":["本底稿相关且已完整使用的原文段落"],"excluded":[{"span_id":"与本底稿无关或缺少读取条件的段落","reason":"具体原因"}]}。每个原文段落必须被 used 或 excluded 覆盖，不以不相关为由丢弃表格后半段。used 段落必须有 file-links，相关完整表格的所有有值单元格都必须入表并关联。保留完整明细、单位、期间和附注，不能以摘要替代表格。事实关联仅在内部使用。
 图片与图示需从固定原件读取，有图片或扫描未能确认时如实保留缺口，不声称完成全部覆盖。计算用 finance.py 核算并交宿主检查。生成后检查全文，修复空白、残句、编号、格式、宽表和分页问题。

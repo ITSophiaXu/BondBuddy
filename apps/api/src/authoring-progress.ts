@@ -56,7 +56,7 @@ export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runI
   if(!row)return undefined;
   const active=row.clock_at?measuredActiveMs(row,new Date(row.sampled_at)):0,points=Number(row.points??0);
   const terminal=['succeeded','test_completed','failed','cancelled','rejected'].includes(row.state);
-  const charged=row.billing_policy===DYNAMIC_AUTHORING_POLICY&&['failed','rejected'].includes(row.state)?0:Number(row.charged_points??(row.charge_state==='settled'?points:0));
+  const charged=row.charge_state==='released'||row.billing_policy===DYNAMIC_AUTHORING_POLICY&&['failed','rejected'].includes(row.state)?0:Number(row.charged_points??(row.charge_state==='settled'?points:0));
   const dynamic=row.billing_policy===DYNAMIC_AUTHORING_POLICY;
   return {...(dynamic?{credit_exhausted:row.credit_pause_requested,available_points:(await creditBalance(db,owner)).available}:{}),policy:row.billing_policy??'on_delivery',active_ms:active,
     accrued_points:terminal||dynamic?charged:Math.max(Number(row.accrued_points??0),accruedAuthoringPoints(points,active,Number(row.work_bps??0))),

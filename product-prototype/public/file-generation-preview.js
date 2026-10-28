@@ -1,28 +1,42 @@
 // Local design preview only. No API, persistence or generation request is sent.
 const host = document.querySelector('#preview');
 const message = text => { document.querySelector('#preview-message').textContent = text; };
+let mode=new URLSearchParams(location.search).get('mode')==='workpapers'?'workpapers':'documents';
+const next=()=>{if(mode==='workpapers')location.href='workpaper-batch.html';else show('documents');};
 function show(scene) {
   host.replaceChildren(document.querySelector('#'+scene).content.cloneNode(true));
   if(matchMedia('(max-width:760px)').matches)host.querySelectorAll('.pf-optional').forEach(panel=>panel.open=false);
   message('');
   document.querySelectorAll('[data-scene]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.scene === scene)));
-  host.querySelector('#pf-source-next')?.addEventListener('click',()=>show('documents'));
+  if(scene.startsWith('source')&&mode==='workpapers'){
+    host.querySelector('h1').textContent='批量生成底稿';host.querySelector('#pf-source-next').textContent='继续：选择底稿目录 →';
+  }
+  host.querySelector('#pf-source-next')?.addEventListener('click',next);
   const file=host.querySelector('#prospectus-version-file');
   const choose=host.querySelector('#choose-prospectus-version');
   choose?.addEventListener('click',()=>file.click());
   const previewFile=f=>{
     if(!f)return;
     if(!/\.(docx|pdf)$/i.test(f.name)||!f.size||f.size>100*1024*1024){message('请选择不超过 100 MB 的 DOCX 或 PDF 文件。');return;}
-    const editor=host.querySelector('.prospectus-upload-editor');editor.hidden=false;
-    const summary=document.createElement('p');summary.textContent='待保存：'+f.name;editor.prepend(summary);
-    const save=host.querySelector('#save-prospectus-version');save.disabled=false;
-    save.onclick=()=>{show('source-current');message('预览：文件已保存。实际使用时还需明确采用为项目当前稿。');};
+    host.querySelector('.pf-upload-ready')?.remove();
+    const saved=document.createElement('aside');saved.className='pf-upload-ready';saved.setAttribute('aria-label','已上传的募集说明书');
+    saved.innerHTML='<div><strong></strong><p>继续后将采用此版为项目当前稿，原版本保留。已提交任务保留原依据。</p></div><button class="btn primary">使用此版继续 →</button><button class="text-button">重新选择</button>';
+    saved.querySelector('strong').textContent='已上传 · '+f.name;
+    saved.querySelector('.btn').onclick=next;saved.querySelector('.text-button').onclick=()=>file.click();
+    host.querySelector('.prospectus-upload-hint').after(saved);host.querySelector('.pf-source-actions').hidden=true;
     if(choose.classList.contains('pf-prospectus-dropzone'))choose.hidden=true;
+    message('预览展示上传成功状态；实际文件未上传。');saved.querySelector('.btn').focus();
   };
   file?.addEventListener('change',()=>previewFile(file.files[0]));
   choose?.addEventListener('dragover',e=>e.preventDefault());
   choose?.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files.length!==1){message('每次请选择一份募集说明书。');return;}previewFile(e.dataTransfer.files[0]);});
-  host.querySelectorAll('a').forEach(link=>link.addEventListener('click',e=>{e.preventDefault();if(link.textContent.includes('管理募集说明书'))show('source-current');else message('这是界面预览。项目导航与生成记录将在实际工作区打开。');}));
+  host.querySelectorAll('a').forEach(link=>link.addEventListener('click',e=>{
+    e.preventDefault();
+    if(link.classList.contains('pf-generation-choice')){mode=link.getAttribute('aria-label')==='批量生成底稿'?'workpapers':'documents';next();}
+    else if(link.classList.contains('pf-back-link'))show('choose');
+    else if(link.textContent.includes('管理募集说明书'))show('source-current');
+    else message('这是界面预览。项目导航与生成记录将在实际工作区打开。');
+  }));
   host.querySelectorAll('[data-download-version],[data-pf-template]').forEach(button=>button.addEventListener('click',()=>message(button.hasAttribute('data-pf-template')?'实际工作区将在此打开模板选择与上传窗口。':'示例文件不可下载；实际工作区可在此下载对应版本。')));
   host.querySelector('#pf-generate')?.addEventListener('click',()=>message('实际工作区将在此核对所选文件、募集书版本和费用，明确确认后开始生成。'));
   if(scene==='documents'){
@@ -57,4 +71,4 @@ function show(scene) {
 }
 document.querySelectorAll('[data-scene]').forEach(button=>button.addEventListener('click',()=>show(button.dataset.scene)));
 const scene=new URLSearchParams(location.search).get('scene');
-show(['source-empty','source-current','documents'].includes(scene)?scene:'source-empty');
+show(['choose','source-empty','source-current','documents'].includes(scene)?scene:'choose');

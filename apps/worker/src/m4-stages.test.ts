@@ -70,6 +70,8 @@ async function fixture(kind:'document'|'qa'='document') {
     if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
     if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
     if(sql.startsWith('SELECT event_cursor'))return {rows:[{event_cursor:0}]};
+    if(sql.startsWith('SELECT manifest FROM bb_workpaper_items'))return {rows:[{manifest}]};
+    if(sql.startsWith('SELECT result_hash FROM bb_workpaper_item_results'))return {rows:[{result_hash:[...persisted].reverse().find(p=>p.sql.startsWith('INSERT INTO bb_workpaper_item_results'))!.args![4]}]};
     if(sql.startsWith('SELECT result_hash FROM bb_project_file_generation_links'))return {rows:[{result_hash:[...persisted].reverse().find(p=>p.sql.startsWith('INSERT INTO bb_project_file_generation_links'))!.args![3]}]};
     return {rows:[],rowCount:1};
   };
@@ -145,6 +147,46 @@ test('workpaper CLI verifies source, coverage, template and links; the private n
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing result');
     f.ctx.values.set('model_generation',result.value);const delivered=await m4DocumentDeliveryStage().run(f.ctx);
     assert.equal(calls,1);assert.equal(delivered.kind,'deliver');if(delivered.kind==='deliver'){assert.equal(delivered.bytes.readUInt32LE(0),0x04034b50);assert.equal(delivered.namedArtifacts?.length,1);assert.equal(delivered.namedArtifacts[0]!.kind,'preparation_note');}
+  }finally{await f.clean();}
+});
+
+for(const status of ['generate','missing_information'] as const)
+test(`direct workpaper ${status} uses one authoring call, publishes its result before settlement and delivers Word`,async()=>{
+  const f=await fixture();
+  try{
+    const m=f.input.manifest as M4DocumentManifest;
+    m.offering='public';m.billing_task='m4_workpaper';m.input.document_type='workpaper';
+    const entry={id:'s1-r2',code:'1.1',title:'财务分析',folder:'主体',path:'主体/1.1 财务分析.docx',sheet:'目录',row:2,instructions:'基于披露编制分析稿',kind:'file' as const};
+    m.input.workpaper={batch_id:'batch',catalogue_id:'catalogue',mode:'direct',entry};
+    const text='合成发行人2025年末总资产100万元，负债50万元，资产负债率50%。偿债资金来源：本期营业回款和存量流动资产。合并口径与母公司口径分开列示，期末余额与期间发生额分开分析，未取得银行流水，尚不能确认实际账户收支。';
+    const source=makeSyntheticDocxFixture({text});f.store.set('source',source);f.pin.sha256=digest(source);
+    f.input.materials[0]!.filename='synthetic.docx';f.input.materials[0]!.mediaType='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    m.knowledge=loadWorkpaperKnowledge('sse','public');f.ctx.run.input_hash=inputManifestHash(m);
+    let calls=0;
+    const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+      calls++;assert.match(await options.buildPrompt(f.ctx),/workpaper-result-schema.json/);
+      await options.fileWorkspace!.prepare(f.directory);
+      const input=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
+      assert.equal(input.task.input.workpaper.mode,'direct');assert.equal(input.task.input.workpaper.decision,undefined);
+      assert.ok(JSON.parse(await readFile(join(f.directory,'workpaper-result-schema.json'),'utf8')).properties.status);
+      if(status==='generate'){
+        await outputWords(f.directory);
+        await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(f.directory)})/'output/document.docx'\nd=Document(p);d.paragraphs[0].text=${JSON.stringify(text)};d.save(p)`],{cwd:root,timeout:30000});
+        await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
+      }
+      await writeFile(join(f.directory,'output/workpaper-result.json'),JSON.stringify({item_id:entry.id,status,reason:status==='generate'?'已有披露支持分析。':'缺少原始银行流水，尚不能确认实际账户收支。',missing_materials:status==='generate'?[]:['原始银行流水'],citations:[{span_id:'p0',quote:text}]}));
+      await writeFile(join(f.directory,'output/workpaper-coverage.json'),JSON.stringify({reviewed_span_ids:['p0'],used_span_ids:['p0'],excluded:[]}));
+      return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-direct'} as never,{text:'synthetic'})};
+    }})});
+    const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing result');
+    assert.ok(validM4DocumentResult(result.value,f.ctx));assert.equal(result.value.workpaper_decision?.status,status);
+    assert.equal(f.persisted.filter(p=>p.sql.startsWith('INSERT INTO bb_workpaper_item_results')).length,1,'result is published before the model-stage checkpoint');
+    f.ctx.values.set('model_generation',result.value);const delivered=await m4DocumentDeliveryStage().run(f.ctx);
+    assert.equal(calls,1);assert.equal(delivered.kind,'deliver');if(delivered.kind!=='deliver')throw Error('missing delivery');
+    assert.equal(delivered.bytes.readUInt32LE(0),0x04034b50);assert.equal(delivered.namedArtifacts?.length,1);
+    if(status==='missing_information')assert.match(String(delivered.wordSummary?.preview_content),/缺少原始银行流水/);
+    const receipts=f.persisted.filter(p=>p.sql.startsWith('INSERT INTO bb_workpaper_item_results'));
+    assert.equal(receipts.length,2);assert.equal(receipts[0].args![4],receipts[1].args![4],'delivery replay uses the same immutable receipt');
   }finally{await f.clean();}
 });
 

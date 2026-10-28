@@ -39,13 +39,14 @@ export function workpaperChangeStage():RunStage{return {name:'model_generation',
     const [baseline,current]=snapshots;await writeFile(join(dir,'baseline.json'),JSON.stringify(baseline));await writeFile(join(dir,'current.json'),JSON.stringify(current));
     await projectFilePython(ctx,['diff',join(dir,'baseline.json'),join(dir,'current.json'),join(dir,'diff.json')]);
     const diff:SourceDiff=JSON.parse(await readFile(join(dir,'diff.json'),'utf8'));
-    const rows=(await ctx.pool.query(`SELECT i.*,l.result AS links,l.result_hash,r.state AS run_state FROM bb_workpaper_items i
+    const rows=(await ctx.pool.query(`SELECT i.*,l.result AS links,l.result_hash,r.state AS run_state,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i
       LEFT JOIN bb_project_file_generation_links l ON l.owner_user_id=i.owner_user_id AND l.run_id=i.run_id LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+      LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
       WHERE i.owner_user_id=$1 AND i.batch_id=$2 ORDER BY i.ordinal`,[ctx.run.owner_user_id,input.batch_id])).rows;
     const result:WorkpaperChangeResult={version:'workpaper-change-result-v1',source_sha256:current!.sha256,baseline_sha256:baseline!.sha256,
       changed_spans:diff.reduce((n,d)=>n+d.before_ids.length+d.after_ids.length,0),warnings:[...baseline!.warnings,...current!.warnings],items:rows.map(r=>{
         const valid=r.links&&inputManifestHash(r.links)===r.result_hash.trim()&&r.links.source_sha256===baseline!.sha256;
-        return workpaperImpact({id:r.item_id,links:valid?r.links.links:[],decision:r.manifest.input.workpaper.decision,explanation:!!r.explanation,available:!!r.explanation||r.run_state==='succeeded'},baseline!,current!,diff);
+        return workpaperImpact({id:r.item_id,links:valid?r.links.links:[],decision:r.output_decision??r.manifest.input.workpaper.decision,explanation:!!r.delivered_explanation,available:!!r.delivered_explanation||r.run_state==='succeeded'},baseline!,current!,diff);
       })};
     await transaction(ctx.pool,async c=>{
       if(!(await c.query("SELECT 1 FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND state='running' AND lease_token=$3 AND lease_until>now() FOR UPDATE",[ctx.lease.jobId,ctx.run.owner_user_id,ctx.lease.token])).rowCount)throw Error('LEASE_LOST');

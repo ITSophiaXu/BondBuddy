@@ -1,3 +1,4 @@
+import {groundWorkpaperDecision} from './workpaper-grounding.js';
 import {mkdtemp,writeFile,rm,mkdir,copyFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -10,7 +11,7 @@ import {workpaperDocx} from '@bondbuddy/api/workpapers';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {digest,transaction} from '@bondbuddy/api/data';
 import {codexModelStage,type RunStage,type StageContext,type RunRow,type InputRevisionRow,type StageOutcome} from './run-pipeline.js';
-import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
+import {composeContainedPrompt,loadCodexAdapterConfig,CodexOutputValidationError,type ContainedCallInput} from './codex-adapter.js';
 import {inspectProjectFile} from './project-file-tools.js';
 import {checkedM4File,verifyM4Originals} from './m4-file-workspace.js';
 import type {Pool} from 'pg';
@@ -32,17 +33,7 @@ async function locked(ctx:StageContext,c:import('pg').PoolClient){
  const row=await c.query("SELECT 1 FROM bb_jobs j JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now() AND r.state='running' FOR UPDATE OF j,r",[ctx.lease.jobId,ctx.run.owner_user_id,ctx.run.id,ctx.lease.token]);
  if(!row.rowCount)throw Error('LEASE_LOST');
 }
-/** Quote existence is checked against the exact supplied spans, never against a newer prospectus. */
-export function groundWorkpaperDecision(d:WorkpaperDecision,entry:WorkpaperEntry,spans:ProjectFileText['spans']):WorkpaperDecision{
- const citations=d.citations.filter(c=>spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote))).map(c=>({...c,location:spans.find(s=>s.id===c.span_id)!.location}));
- const ungrounded=citations.length!==d.citations.length||!citations.length;
- const original=/营业执照|许可证|原件|原始凭证|签章|签字|访谈记录|函证回函|银行流水|征信报告/.test(entry.title+' '+entry.instructions)
-   && !/提纲|清单|模板|分析/.test(entry.title);
- if(original&&d.status==='generate')return {...d,item_id:entry.id,status:'external_evidence',citations,reason:'该项需要原始证据，募集说明书披露不能替代原件或已实施核查记录。',missing_materials:['请补充对应原件或实际执行形成的记录。']};
- if(ungrounded&&['generate','not_applicable'].includes(d.status))return {...d,item_id:entry.id,status:'missing_information',citations,reason:'现有资料不足以形成该项文件，亦不能确认该业务不适用。',missing_materials:['该项对应的项目披露及支持材料']};
-
- return {...d,item_id:entry.id,citations,...(d.status!=='generate'&&d.status!=='not_applicable'&&!d.missing_materials.length?{missing_materials:['请补充该项原始资料及业务适用性说明。']}: {})};
-}
+export {groundWorkpaperDecision} from './workpaper-grounding.js';
 export function assessmentEvidence(entries:WorkpaperEntry[],snapshot:ProjectFileText){
  // No search quota or head-of-table truncation. Large sources use the contained file workspace below.
  return snapshot.spans;
@@ -56,6 +47,31 @@ export function workpaperAssessmentModelSchema(count:number){
  const citation=Type.Omit(WorkpaperDecisionSchema.properties.citations.items,['location']);
  const decision=Type.Object({...WorkpaperDecisionSchema.properties,citations:Type.Array(citation,{maxItems:10})},{additionalProperties:false});
  return Type.Object({decisions:Type.Array(decision,{minItems:count,maxItems:count})},{additionalProperties:false});
+}
+export function workpaperAssessmentWorkspace(path:string,sourceName:string,sourceHash:string,snapshot:ProjectFileText,entries:WorkpaperEntry[]):NonNullable<ContainedCallInput['fileWorkspace']>{
+ const originals=new Map<string,string>(),schema=workpaperAssessmentModelSchema(entries.length);
+ const fileSchema=Type.Object({...schema.properties,checked_span_ids:Type.Array(Type.String({minLength:1}),{uniqueItems:true})},{additionalProperties:false});
+ return {prepare:async cwd=>{
+  for(const name of ['scratch','output'])await mkdir(join(cwd,name),{mode:0o700});
+  for(const [name,value] of [['source-spans.json',snapshot],['assessment-schema.json',fileSchema]] as const){
+   const bytes=Buffer.from(JSON.stringify(value));await writeFile(join(cwd,name),bytes,{mode:0o400});originals.set(name,digest(bytes));
+  }
+  await copyFile(path,join(cwd,sourceName));originals.set(sourceName,sourceHash);
+ },collect:async cwd=>{
+  await verifyM4Originals(cwd,originals);
+  let bytes:Buffer;
+  try{bytes=await checkedM4File(join(cwd,'output'),'assessment.json',32*1024*1024);}
+  catch(error){
+   if((error as NodeJS.ErrnoException).code==='ENOENT'||(error as Error).message==='M4_OUTPUT_UNSAFE')throw new CodexOutputValidationError('workpaper_output_missing_or_unsafe');
+   throw error;
+  }
+  let result:unknown;try{result=JSON.parse(bytes.toString('utf8'));}catch{throw new CodexOutputValidationError('workpaper_output_json_invalid');}
+  if(!Value.Check(fileSchema,result)||new Set(result.decisions.map(d=>d.item_id)).size!==entries.length||!entries.every(e=>result.decisions.some(d=>d.item_id===e.id)))
+   throw new CodexOutputValidationError('workpaper_output_schema_invalid');
+  const read=new Set(result.checked_span_ids);
+  if(snapshot.spans.some(s=>s.text.trim()&&!read.has(s.id)))throw new CodexOutputValidationError('workpaper_source_coverage_incomplete');
+  return {decisions:result.decisions};
+ }};
 }
 export function workpaperAssessmentStage(options:{model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig}={}):RunStage{
  return {name:'model_generation',replay:true,run:async ctx=>{
@@ -76,22 +92,11 @@ export function workpaperAssessmentStage(options:{model?:typeof codexModelStage;
     const schema=workpaperAssessmentModelSchema(entries.length);
     const large=JSON.stringify(spans).length>60000||snapshot.coverage==='partial';
     const data={entries,spans:large?[]:spans,requirements:input.request.requirements,source:input.source.filename,coverage:snapshot.coverage,warnings:snapshot.warnings};
-    let originals=new Map<string,string>();
-
-    const outcome=spans.length?await (options.model??codexModelStage)({name:'wp_assess_'+ordinal,logicalCallId:'workpaper-assessment-'+ordinal,templateVersion:'workpaper-assessment-full-v2',resultSchemaVersion:'workpaper-decisions-v1',schema,
+    const outcome=spans.length?await (options.model??codexModelStage)({name:'wp_assess_'+ordinal,logicalCallId:'workpaper-assessment-'+ordinal,templateVersion:'workpaper-assessment-full-v3',resultSchemaVersion:'workpaper-decisions-v1',schema,
      validate:(v):v is {decisions:WorkpaperDecision[]}=>Value.Check(schema,v)&&new Set(v.decisions.map(d=>d.item_id)).size===entries.length&&entries.every(e=>v.decisions.some(d=>d.item_id===e.id)),
      config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
-     buildPrompt:async()=>composeContainedPrompt({instructions:instructions+(large?' 全文已完整保存在 source-spans.json，原件保存在 source'+(asset.media_type==='application/pdf'?'.pdf':'.docx')+'。分批读完所有非空段落，包括完整表格和附注，不允许截断。写 output/assessment.json，包含 decisions 数组以及逐一读完的非空段落 checked_span_ids 数组；用本地工具提取原件内图片并逐张查看，PDF扫描页渲染后读取；不可读取的需如实列缺口。':''),materials:[{ref:'workpaper-assessment',text:JSON.stringify(data)}]}),
-     ...(large?{fileWorkspace:{prepare:async(cwd:string)=>{
-       for(const name of ['scratch','output'])await mkdir(join(cwd,name),{mode:0o700});
-       const text=JSON.stringify(snapshot);await writeFile(join(cwd,'source-spans.json'),text,{mode:0o400});originals.set('source-spans.json',digest(Buffer.from(text)));
-       const name='source'+(asset.media_type==='application/pdf'?'.pdf':'.docx');await copyFile(path,join(cwd,name));originals.set(name,digest(bytes));
-     },collect:async(cwd:string)=>{
-       await verifyM4Originals(cwd,originals);const result=JSON.parse((await checkedM4File(join(cwd,'output'),'assessment.json',32*1024*1024)).toString('utf8'));
-       const read=new Set(Array.isArray(result.checked_span_ids)?result.checked_span_ids:[]);
-       if(snapshot.spans.some(s=>s.text.trim()&&!read.has(s.id)))throw Error('WORKPAPER_SOURCE_COVERAGE_INCOMPLETE');
-       return {decisions:result.decisions};
-     }}}:{})}).run(ctx)
+     buildPrompt:async()=>composeContainedPrompt({instructions:instructions+(large?' 全文已完整保存在 source-spans.json，原件保存在 source'+(asset.media_type==='application/pdf'?'.pdf':'.docx')+'。分批读完所有非空段落，包括完整表格和附注，不允许截断。严格按只读文件 assessment-schema.json 写 output/assessment.json，包含 decisions 数组以及逐一读完的非空段落 checked_span_ids 数组；每项字段、条数、item_id 和引用结构均须符合 schema，引用位置由服务端解析，不自行增加 location。用本地工具提取原件内图片并逐张查看，PDF扫描页渲染后读取；不可读取的需如实列缺口。':''),materials:[{ref:'workpaper-assessment',text:JSON.stringify(data)}]}),
+     ...(large?{fileWorkspace:workpaperAssessmentWorkspace(path,'source'+(asset.media_type==='application/pdf'?'.pdf':'.docx'),digest(bytes),snapshot,entries)}:{})}).run(ctx)
      :{kind:'done' as const,value:{decisions:entries.map(e=>({item_id:e.id,status:'missing_information' as const,reason:'募集说明书未提取到可引用文本，暂无法判断。',citations:[],missing_materials:['请提供可检索的募集说明书或对应业务资料。']}))}};
     if(outcome.kind!=='done')return outcome;
     const chunk=entries.map(e=>groundWorkpaperDecision((outcome.value as {decisions:WorkpaperDecision[]}).decisions.find(d=>d.item_id===e.id)!,e,spans));

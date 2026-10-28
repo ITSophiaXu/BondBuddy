@@ -17,14 +17,16 @@ export const memberProjectsSql = (alias:string) => `
 `;
 export const collectionTasksSql = `
  SELECT r.*, CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END AS display_kind,
-   coalesce('qa_'||pqa.operation,CASE WHEN ir.operation='check' THEN 'integrity_check' WHEN ir.operation='export' THEN 'integrity_export' END,e.operation,CASE WHEN pf.operation='check' THEN 'file_check' WHEN pf.operation='patch' THEN 'file_patch' END) AS operation, t.id AS topic_id, me.manifest#>>'{input,document_type}' AS document_type,
+   coalesce('qa_'||pqa.operation,CASE WHEN ir.operation='check' THEN 'integrity_check' WHEN ir.operation='export' THEN 'integrity_export' END,e.operation,CASE WHEN pf.operation='check' THEN 'file_check' WHEN pf.operation='patch' THEN 'file_patch' END,CASE WHEN wa.run_id IS NOT NULL THEN 'workpaper_assessment' WHEN wc.run_id IS NOT NULL THEN 'workpaper_check' END) AS operation, t.id AS topic_id, me.manifest#>>'{input,document_type}' AS document_type,
    (SELECT id FROM bb_review_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.run_id=r.id LIMIT 1) AS report_id,
    row_number() OVER(PARTITION BY r.project_id,CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END,
-     coalesce(me.manifest#>>'{input,document_type}',pf.operation,'qa_'||pqa.operation,'integrity_'||ir.operation,'') ORDER BY r.created_at DESC,r.id DESC) AS lane_rank
+     coalesce(me.manifest#>>'{input,document_type}',pf.operation,'qa_'||pqa.operation,'integrity_'||ir.operation,CASE WHEN wa.run_id IS NOT NULL THEN 'workpaper_assessment' WHEN wc.run_id IS NOT NULL THEN 'workpaper_check' END,'') ORDER BY r.created_at DESC,r.id DESC) AS lane_rank
  FROM bb_runs r
  LEFT JOIN bb_project_qa_runs pqa ON pqa.owner_user_id=r.owner_user_id AND pqa.run_id=r.id
  LEFT JOIN bb_integrity_runs ir ON ir.owner_user_id=r.owner_user_id AND ir.run_id=r.id
  LEFT JOIN bb_project_file_operations pf ON pf.owner_user_id=r.owner_user_id AND pf.run_id=r.id
+ LEFT JOIN bb_workpaper_assessments wa ON wa.owner_user_id=r.owner_user_id AND wa.project_id=r.project_id AND wa.run_id=r.id
+ LEFT JOIN bb_workpaper_checks wc ON wc.owner_user_id=r.owner_user_id AND wc.project_id=r.project_id AND wc.run_id=r.id
  LEFT JOIN bb_review_executions e ON e.owner_user_id=r.owner_user_id AND e.run_id=r.id
  LEFT JOIN bb_m4_executions me ON me.owner_user_id=r.owner_user_id AND me.run_id=r.id
  LEFT JOIN bb_m4_topics t ON t.owner_user_id=r.owner_user_id AND t.id=me.topic_id

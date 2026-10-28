@@ -22,7 +22,7 @@ export async function readWorkpaperChecks(db:Db,owner:string,id:string):Promise<
 export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offset:number;limit:number;search:string;category:string;status:string;history:boolean}):Promise<WorkpaperLibrary>{
   await project(db,owner,id);const source=await projectFileSource(db,owner,id),checks=await readWorkpaperChecks(db,owner,id);
   const rows=(await db.query(`WITH ranked AS (
-    SELECT i.*,b.project_id,b.created_at,b.source,b.catalogue_id,
+    SELECT i.*,b.project_id,b.created_at,b.source,b.catalogue_id,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation,
       row_number() OVER(PARTITION BY i.manifest->'input'->'workpaper'->'entry'->>'sheet',
         i.manifest->'input'->'workpaper'->'entry'->>'title',i.manifest->'input'->'workpaper'->'entry'->>'path',
         coalesce(nullif(i.manifest->'input'->'workpaper'->'entry'->>'code',''),i.manifest->'input'->'workpaper'->'entry'->>'title') ORDER BY b.created_at DESC,b.id DESC) AS position,
@@ -30,10 +30,12 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
         i.manifest->'input'->'workpaper'->'entry'->>'title',i.manifest->'input'->'workpaper'->'entry'->>'path',
         coalesce(nullif(i.manifest->'input'->'workpaper'->'entry'->>'code',''),i.manifest->'input'->'workpaper'->'entry'->>'title'))::int AS version_count
     FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+    LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+    LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
     WHERE b.owner_user_id=$1 AND b.project_id=$2
-  ) SELECT owner_user_id,batch_id,item_id,ordinal,run_id,attempt,error,state,explanation,created_at,source,catalogue_id,position,version_count,manifest->'input'->'workpaper' AS task FROM ranked WHERE ($3 OR position=1)
+  ) SELECT owner_user_id,batch_id,item_id,ordinal,run_id,attempt,error,state,delivered_explanation AS explanation,output_decision,created_at,source,catalogue_id,position,version_count,manifest->'input'->'workpaper' AS task FROM ranked WHERE ($3 OR position=1)
     AND ($4='' OR strpos(lower((manifest->'input'->'workpaper'->'entry')::text),lower($4))>0)
-    AND ($5='all' OR ($5='explanation')=(explanation IS NOT NULL)) ORDER BY created_at DESC,batch_id DESC,ordinal`,[owner,id,q.history,q.search,q.category])).rows;
+    AND ($5='all' OR ($5='explanation')=(delivered_explanation IS NOT NULL)) ORDER BY created_at DESC,batch_id DESC,ordinal`,[owner,id,q.history,q.search,q.category])).rows;
   // Fetch status/link metadata once. Bytes and complete batch summaries are never
   // loaded for listing. The browser only receives the requested page.
   const runIds=rows.map(r=>r.run_id).filter(Boolean);
@@ -44,7 +46,7 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
   const latestChecks=new Map<string,WorkpaperCheck>();for(const check of checks)if(!latestChecks.has(check.batch_id))latestChecks.set(check.batch_id,check);
   const all:WorkpaperLibraryItem[]=rows.map(r=>{
     const check=latestChecks.get(r.batch_id),run=runs.get(r.run_id),task=r.task;
-    return {entry:task.entry,decision:task.decision,...(r.explanation?{explanation:{filename:r.explanation.filename,sha256:r.explanation.sha256}}:{}),
+    return {entry:task.entry,decision:r.output_decision??task.decision,...(r.explanation?{explanation:{filename:r.explanation.filename,sha256:r.explanation.sha256}}:{}),
       run_id:r.run_id,state:run?.state??r.state,stage:run?.stage??null,attempt:r.attempt,error:r.error,artifacts:[],batch_id:r.batch_id,catalogue_id:r.catalogue_id,created_at:date(r.created_at),source:r.source,
       latest:Number(r.position)===1,version_count:r.version_count,links_count:links.get(r.run_id)??0,
       impact:check?.result?.items.find(i=>i.item_id===r.item_id)??null,check_stale:check?check.stale:source?.version_id!==r.source.version_id||source?.selection_revision!==r.source.selection_revision};
@@ -54,7 +56,7 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_m4_artifacts a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
     JOIN bb_artifact_versions v ON v.owner_user_id=a.owner_user_id AND v.id=a.artifact_id AND v.version=a.artifact_version
     WHERE a.owner_user_id=$1 AND a.run_id=ANY($2::text[]) AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,items.map(i=>i.run_id).filter(Boolean)])).rows;
-  for(const item of items)item.artifacts=artifacts.filter(a=>a.run_id===item.run_id).map(a=>({kind:'document',filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));
+  for(const item of items)item.artifacts=artifacts.filter(a=>a.run_id===item.run_id&&!item.explanation).map(a=>({kind:'document',filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));
   return {items,total:filtered.length,offset:q.offset,limit:q.limit,source,checks:checks.slice(0,30).map(c=>({...c,result:null}))};
 }
 export function registerWorkpaperLibrary(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){

@@ -261,7 +261,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
   if((currentProject.execution_scope_project_id||currentProject.id)!==manifest.execution_scope_project_id
     && (await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 AND id<>$2 LIMIT 1',[owner,t.project_id])).rowCount)
     throw conflict('INPUT_REVISION_CONFLICT','本话题已被其他业务采用为来源，请新建话题使用新的来源。');
-  if((await c.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>'qa' AND NOT(state=ANY($3::text[]))",[owner,t.project_id,terminal])).rowCount)
+  if((await c.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>'qa' AND NOT(state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(owner_user_id,project_id,input_revision)",[owner,t.project_id,terminal])).rowCount)
     throw conflict('PROJECT_RUN_ACTIVE','本话题已有任务执行中，新输入将作为后继草稿保存。');
   const sourceId=manifest.input.source_material?.source_project_id||manifest.input.edit_base?.source_project_id||t.source_project_id;
   const scopeIds=[...new Set([manifest.execution_scope_project_id,...(sourceId?[sourceId]:[])])].sort();
@@ -271,7 +271,8 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
   if(scopeProjects.length!==scopeIds.length)throw missing();
   if(sourceId){const source=scopeProjects.find(p=>p.id===sourceId)!;if((source.execution_scope_project_id||source.id)!==manifest.execution_scope_project_id)stale();}
   const active=(await c.query(`SELECT r.id FROM bb_runs r JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id
-    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[])) LIMIT 1`,[owner,manifest.execution_scope_project_id,terminal])).rows[0];
+    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))
+    AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision) LIMIT 1`,[owner,manifest.execution_scope_project_id,terminal])).rows[0];
   if(active)throw conflict('PROJECT_RUN_ACTIVE','同一项目已有任务执行中；新要求已保存，请等待完成或停止任务后执行。');
   await c.query("UPDATE bb_projects SET execution_scope_project_id=$3,kind=CASE WHEN kind='qa' THEN 'generation' ELSE kind END WHERE owner_user_id=$1 AND id=$2",[owner,t.project_id,manifest.execution_scope_project_id]);
   return newRun(c,owner,t,b.execution_request_id,requestHash,manifest,b.quote_id,inputManifestHash(manifest),queueEnabled);
