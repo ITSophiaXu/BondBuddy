@@ -31,7 +31,8 @@ const assertNoPreflight=async(page:import('@playwright/test').Page)=>{
 test('first visit with no catalogue presents the upload control',async({page})=>{
   const state=await setup(page);state.data.catalogues=[];
   await page.goto('/'+href({step:'choose'}));
-  await page.getByRole('link',{name:'批量生成底稿',exact:true}).click();
+  await page.locator('#pf-confirm-source').click();
+  await page.getByRole('button',{name:'批量生成底稿',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`project=${ids.api}&step=workpapers`));
   await expect(page.getByRole('heading',{name:'上传底稿目录',exact:true})).toBeVisible();
   await expect(page.locator('#wp-upload')).toBeEnabled();
@@ -62,7 +63,7 @@ test('uncertain direct submit survives reload and source changes using the exact
  const state=await setup(page,3);state.uncertain=true;await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-start').click();
  await expect(page.locator('#wp-start')).toHaveText('继续确认上次提交');state.source.version_id='source-new';state.source.selection_revision++;
  await page.reload();await expect(page.locator('#wp-start')).toHaveText('继续确认上次提交');await expect(page.locator('[data-wp-item]').first()).toBeDisabled();
- await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('0 / 3 份完成');expect(state.requests).toHaveLength(2);expect(state.requests[1]).toEqual(state.requests[0]);expect(state.assessmentRequests).toHaveLength(0);
+ await page.locator('#wp-start').click();await expect.poll(()=>state.requests.length).toBe(2);await expect(page.locator('#wp-batches')).toContainText('0 / 3 份完成');expect(state.requests[1]).toEqual(state.requests[0]);expect(state.assessmentRequests).toHaveLength(0);
 });
 for(const oldState of ['paused','running','succeeded'])test(`legacy ${oldState} preflight never gates direct submission`,async({page})=>{
  const state=await setup(page,4),cat=state.data.catalogues[0];
@@ -71,7 +72,7 @@ for(const oldState of ['paused','running','succeeded'])test(`legacy ${oldState} 
  await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-requirements').fill('临时');await page.locator('#wp-requirements').fill('');
  await page.evaluate(request=>{const key=Object.keys(localStorage).find(k=>k.startsWith('bb-workpapers-v1:'))!,saved=JSON.parse(localStorage.getItem(key)!);saved.assessing=request;localStorage.setItem(key,JSON.stringify(saved));},request);
  await page.reload();await assertNoPreflight(page);await expect(page.locator('#wp-start')).toBeEnabled();await page.locator('#wp-start').click();
- expect(state.requests).toHaveLength(1);expect(state.requests[0].start_mode).toBe('direct');expect(state.assessmentRequests).toHaveLength(0);expect(state.resumeRequests).toHaveLength(0);
+ await expect.poll(()=>state.requests.length).toBe(1);expect(state.requests[0].start_mode).toBe('direct');expect(state.assessmentRequests).toHaveLength(0);expect(state.resumeRequests).toHaveLength(0);
 });
 
 test('a previously confirmed legacy request is replayed without changing its price or identity',async({page})=>{
