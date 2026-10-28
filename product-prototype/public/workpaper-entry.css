@@ -117,6 +117,17 @@
 .wp-fee-summary strong{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
 .wp-fee-summary small{display:block;font-size:12px;color:#71806a;line-height:20px;margin-top:3px}
 .wp-action-buttons{display:flex;gap:10px;flex-wrap:wrap}
+.wp-action-area{flex:0 1 500px;min-width:0}
+.wp-action-area .wp-action-buttons{justify-content:flex-end}
+#wp-confirm #wp-action-hint{margin:0 0 10px;font-size:13px;line-height:22px;color:#425b44;text-align:right}
+#wp-confirm #wp-start{min-width:180px;font-weight:600;justify-content:center}
+#wp-confirm #wp-start:disabled{opacity:1;background:#e1e8dc;color:#53634d;border:1px solid #becbb5;cursor:not-allowed}
+.wp-check-status{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-top:20px;padding:14px 16px;border:1px solid #dce5d4;border-radius:8px;background:#fff;color:#304e40;font-size:14px;line-height:24px}
+.wp-check-status span{font-size:13px;color:#627164;font-variant-numeric:tabular-nums}
+.wp-check-status progress{width:100%;height:8px;accent-color:#62824d}
+.wp-check-help{margin:12px 0 0;font-size:13px;line-height:22px;color:#627164}
+.wp-check-help summary{cursor:pointer;color:#43623b;min-height:32px;display:list-item;align-content:center}
+.wp-check-help p{margin:8px 0 0}
 #wp-confirm .btn,.wp-batch .btn{min-height:44px;padding:10px 16px;font-size:14px;line-height:22px;border-radius:7px}
 #wp-confirm .wp-fee-note{margin:14px 0 0;font-size:12px;color:#71806a;line-height:20px}
 .wp-assessment-status:empty{display:none}
@@ -148,6 +159,10 @@
  .wp-confirm-heading,.wp-confirm-actions,.wp-batch-heading{flex-direction:column;align-items:flex-start;gap:12px}
  .wp-confirm-actions{margin-top:16px;padding-top:16px}
  .wp-action-buttons{width:100%;flex-direction:column}
+ .wp-action-area{flex:auto;width:100%}
+ #wp-confirm #wp-action-hint{text-align:left}
+ .wp-action-area #wp-start{order:-1}
+ .wp-workflow strong{white-space:normal}
  .wp-action-buttons>.btn{width:100%}
  .wp-batches .wp-batch{padding:18px}
  .wp-batch-meta{grid-template-columns:1fr 1fr;gap:16px}
