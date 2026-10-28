@@ -15,6 +15,11 @@ export async function readWorkpaperAssessments(db:Pool|PoolClient,owner:string,i
  result_hash:a.state==='succeeded'?a.result_hash?.trim()??null:null,decisions:a.state==='succeeded'?a.result?.decisions??[]:[],warnings:a.result?.warnings??[],completed_items:Number(a.completed_items)}));
 }
 export function registerWorkpaperAssessments(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
+ app.get('/api/v1/projects/:project_id/workpapers/assessments/:run_id',async r=>{
+  const {project_id:id,run_id:run} = r.params as {project_id:string;run_id:string};
+  const assessment=(await readWorkpaperAssessments(db(),await owner(r),id,run)).find(a=>a.assessment_id===run);
+  if(!assessment)throw missing();return assessment;
+ });
  app.post('/api/v1/projects/:project_id/workpapers/assessments',{schema:{body:WorkpaperAssessSchema}},async r=>{
   const user=await owner(r),id=(r.params as {project_id:string}).project_id,b=r.body as WorkpaperAssess,requestHash=inputManifestHash({id,...b});
   const runId=await transaction(db(),async c=>{

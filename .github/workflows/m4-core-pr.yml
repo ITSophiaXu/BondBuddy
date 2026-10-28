@@ -120,6 +120,7 @@ jobs:
             apps/api/dist/m4-workspace.pg.test.js \
             apps/api/dist/m4-fixed-billing.pg.test.js \
             apps/api/dist/authoring-task-kind.pg.test.js \
+            apps/api/dist/workpaper-task-routing.pg.test.js \
             apps/api/dist/project-assistant.pg.test.js \
             apps/api/dist/billing.pg.test.js \
             apps/api/dist/review-billing.pg.test.js \

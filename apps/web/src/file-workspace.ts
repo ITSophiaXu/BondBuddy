@@ -15,6 +15,7 @@ import {withProjectContext,navigationProjectContext,projectWorkHref} from './pro
 import {UploadRecovery,type UploadRecoveryJson,type UploadRecoveryRecord} from './upload-recovery';
 import './file-workspace.css';
 import {WorkpaperPanel} from './workpaper-panel';
+import {WorkpaperTaskPanel} from './workpaper-task';
 import '../../../product-prototype/public/file-generation-ux.css';
 import '../../../product-prototype/public/workpaper-entry.css';
 
@@ -57,7 +58,7 @@ export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undef
 }
 
 export class FileWorkspace {
-  private workpapers?:WorkpaperPanel;
+  private workpapers?:WorkpaperPanel|WorkpaperTaskPanel;
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
   private state?:Workspace;private project?:Dto<'ProjectResponse'>;private selected=new Set<M4DocumentType>();private busy=false;
   private timer?:ReturnType<typeof setTimeout>;private pendingBatch?:Readonly<FileGenerationBatchRequest>;private pendingUncertain=false;private pendingStored=false;private pendingExpired=false;
@@ -173,6 +174,13 @@ export class FileWorkspace {
     if(!this.id){await this.chooseProject();return;}
     try{
       this.project=await this.api.project(this.id,this.controller.signal);
+      const taskQuery=new URLSearchParams(location.hash.split('?')[1]),operation=taskQuery.get('operation');
+      if(taskQuery.get('run')&&(operation==='workpaper_assessment'||operation==='workpaper_check')){
+        if(!this.live())return;
+        this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,'generate');
+        this.workpapers=new WorkpaperTaskPanel(this.api,document.querySelector('#pf-workpapers')!,this.id,taskQuery.get('run')!,operation,()=>this.live());
+        await this.workpapers.render();return;
+      }
       try{this.state=await this.request<Workspace>('GET','/workspace');}
       catch(e){if(!(e instanceof ApiError)||e.status!==404)throw e;this.state=await this.request<Workspace>('POST','/workspace',{request_id:crypto.randomUUID()});}
       if(this.live()){
