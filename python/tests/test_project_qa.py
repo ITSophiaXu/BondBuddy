@@ -54,6 +54,19 @@ def pdf_fixture(path, pages):
 
 
 class ProjectQaTests(unittest.TestCase):
+    def test_word_numbered_review_comments_are_candidates_without_literal_numbers(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); doc = Document()
+            doc.add_heading('审核意见', 0)
+            doc.add_paragraph('发行人报告期内收入变动的合理性。', style='List Number')
+            doc.add_paragraph('关于关联交易，需补充定价依据及交易明细。')
+            doc.add_paragraph('此段为文件说明。')
+            doc.save(root/'questions.docx')
+            prepare(root/'questions.docx', root/'prepared.docx', root/'meta.json')
+            parsed = json.loads((root/'meta.json').read_text(encoding='utf8'))
+            self.assertEqual(len(parsed['questions']), 2)
+            self.assertEqual([q['start'] for q in parsed['questions']], [1, 2])
+
     def test_pdf_questions_generate_word_and_keep_unreadable_page_warning(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td); source = root/'questions.pdf'

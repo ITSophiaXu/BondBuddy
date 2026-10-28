@@ -39,8 +39,13 @@ for(const operation of ['prepare','answer'] as const)for(const status of ['pause
       await expect(page).toHaveURL(new RegExp(`#qa\\?project=${projectId}&run=${runId}$`));
       await expect(page.getByRole('heading',{name:'项目问答',exact:true})).toBeVisible();
       await expect(page.locator('#qa-history')).toHaveValue(runId);
-      await expect(page.locator('.qa-run-head')).toContainText(operation==='prepare'?'识别问题清单':'回填回复文件');
-      await expect(page.locator('.qa-run-head')).toContainText(status==='paused'?'等待恢复':'已完成');
+      if(operation==='prepare'&&status==='succeeded'){
+        await expect(page.locator('.qa-prepared')).toContainText('候选问题');
+        await expect(page.locator('#qa-download')).toHaveCount(0);
+      }else{
+        await expect(page.locator('.qa-run-head')).toContainText(operation==='prepare'?'识别问题清单':'回答问题');
+        await expect(page.locator('.qa-run-head')).toContainText(status==='paused'?'等待恢复':'已完成');
+      }
       await expect(page.getByText('募集书全文更新',{exact:true})).toHaveCount(0);
       expect(workspaceReads(state).every(call=>new URLSearchParams(call.search).get('run_id')===runId)).toBe(true);
       expect(writes(state)).toEqual([]);expect(state.workspace).toEqual(original);

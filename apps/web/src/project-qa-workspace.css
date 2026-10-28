@@ -96,3 +96,38 @@
 .qa-upload-recovery input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
 
 .qa-result-overview{margin:20px 0;padding:18px 20px;background:#f3f7ee;border:1px solid #dce6d4;border-radius:10px}.qa-result-overview h3{font-size:16px;margin:0 0 8px}.qa-result-overview p{font-size:13px;line-height:1.8;margin:8px 0}.qa-result-navigation{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}.qa-result-navigation>.btn{max-width:100%;white-space:normal}.qa-answer summary,#qa-followup-heading,[data-qa-followup]{scroll-margin-top:24px}.qa-answer summary:focus-visible,#qa-followup-heading:focus-visible{outline:2px solid #285d48;outline-offset:4px}
+
+/* One type system for the work area, independent of legacy prototype typography. */
+.prototype-app .qa-page,.qa-modal{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:14px;line-height:1.75;color:#203b33;font-synthesis:none}
+.qa-page{max-width:1120px;margin:0 auto}
+.qa-page :is(button,input,textarea,select),.qa-modal :is(button,input,textarea,select){font-family:inherit;font-size:14px;line-height:1.6}
+.qa-page :is(h1,h2,h3,h4),.qa-modal :is(h2,h3){font-family:inherit;font-weight:600;letter-spacing:0;line-height:1.5}
+.qa-page h1{font-size:28px}.qa-page h2{font-size:18px}.qa-page h3{font-size:16px}.qa-page h4{font-size:14px}
+.qa-page p,.qa-modal p{font-size:14px;line-height:1.8}.qa-page small{font-size:12px;line-height:1.6}
+.qa-page .page-head{margin-bottom:20px}.qa-page .page-head p{margin-top:8px;color:#647366}
+.qa-page .panel{box-shadow:none;border-color:#dfe5df;border-radius:12px}
+.qa-page .btn,.qa-modal .btn{min-height:42px;padding:10px 16px;border-radius:8px;white-space:normal;line-height:1.5;font-weight:500;max-width:100%}
+.qa-page label.btn{margin:0}.qa-page .text-button{font-size:13px}
+.qa-workflow{display:flex;gap:24px;margin:0 0 20px;padding:0;list-style:none;color:#718075;font-size:13px}
+.qa-workflow li{display:flex;gap:8px;align-items:center}.qa-workflow span{display:grid;place-items:center;width:25px;height:25px;border:1px solid #d8e2d9;border-radius:50%;font-size:12px;flex-shrink:0}
+.qa-workflow [aria-current]{color:#173e33;font-weight:600}.qa-workflow [aria-current] span{background:#173e33;border-color:#173e33;color:white}
+.qa-project-materials{padding:24px}.qa-project-materials header{display:flex;gap:16px;justify-content:space-between;align-items:start}.qa-project-materials header p{margin-top:6px;color:#647366;font-size:13px}
+.qa-material-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:#edf4ee;border-radius:6px;color:#366347;font-size:12px;white-space:nowrap;line-height:1.6;font-weight:500}
+.qa-material-badge.is-missing{background:#fff5e3;color:#8a6022}
+.qa-prospectus-row{display:flex;gap:14px;align-items:center;margin-top:20px}.qa-prospectus-row>div{flex:1;min-width:0}.qa-prospectus-row strong{font-size:14px;font-weight:600;overflow-wrap:anywhere;display:block}.qa-prospectus-row p{font-size:13px;margin-top:4px;color:#647366}.qa-prospectus-row .qa-upload-icon{width:42px;height:46px;border-radius:8px}
+.qa-project-materials footer{display:flex;gap:12px;align-items:center;justify-content:flex-end;margin-top:10px}
+.qa-layout:has(.qa-upload-empty){grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
+.qa-layout:has(.qa-upload-empty) .qa-project-materials header,.qa-layout:has(.qa-upload-empty) .qa-prospectus-row{flex-wrap:wrap}
+.qa-layout:has(.qa-upload-empty) .qa-prospectus-row>.btn{flex-basis:100%}
+.qa-layout:has(.qa-upload-empty) .qa-deliverables{grid-column:1/-1}
+.qa-page .qa-upload-empty{padding:28px 24px;background:#fff}.qa-page .qa-upload-empty h2{font-size:18px}.qa-page .qa-upload-empty .qa-upload-copy{margin:14px 0 20px}
+.qa-page .qa-upload-compact{padding:18px 24px}.qa-page .qa-upload-compact h2{font-size:14px}
+.qa-page .qa-document{padding:24px}.qa-document>h2{padding-bottom:18px;border-bottom:1px solid #e8ede7;margin-bottom:20px}
+.qa-prepared-heading h3{margin:12px 0 6px}.qa-prepared-heading p{color:#647366}
+.qa-candidate-list{padding:0 0 0 24px;margin:20px 0;max-height:420px;overflow:auto;scrollbar-gutter:stable}.qa-candidate-list li{padding:14px 12px 14px 4px;border-bottom:1px solid #e8ede7}.qa-candidate-list p{margin:0 0 6px}.qa-candidate-list small{color:#647366}
+.qa-actions{align-items:center}.qa-actions>p{font-size:13px;color:#647366}.qa-round-summary{padding:14px 18px;background:#f4f7f1;border-radius:8px;margin-bottom:16px}
+.qa-page .qa-reference-panel{background:#fafcf9}.qa-page .qa-reference-row label{margin:0}.qa-page .qa-reference-row :is(input[type=checkbox],input[type=radio]),.qa-page .qa-knowledge-choice input{width:18px;height:18px;min-height:18px;padding:0;margin:3px 0 0;accent-color:#285d48}
+.qa-page .qa-field textarea{width:100%;padding:12px 14px;border:1px solid #cbd6cc;border-radius:8px;resize:vertical}
+.qa-page .qa-answer{padding:18px 0}.qa-page .qa-answer summary{font-size:14px;line-height:1.8}.qa-page .qa-answer>p{margin-top:16px}
+.qa-modal .panel{box-shadow:none}.qa-modal #qa-prospectus-panel{margin-top:16px}.qa-modal #qa-prospectus-panel p{white-space:normal}
+@media(max-width:760px){.qa-layout:has(.qa-upload-empty){grid-template-columns:minmax(0,1fr)}.qa-page .qa-project-materials,.qa-page .qa-document{padding:20px}.qa-project-materials header{flex-wrap:wrap}.qa-prospectus-row{flex-wrap:wrap}.qa-prospectus-row>.btn{width:100%}.qa-workflow{gap:12px;justify-content:space-between;font-size:12px}.qa-workflow li{flex:1;align-items:start;gap:6px}.qa-workflow span{width:22px;height:22px}.qa-page h1{font-size:25px}.qa-page .page-head{align-items:start;gap:12px}.qa-project-materials footer{flex-wrap:wrap}.qa-page .qa-toolbar{justify-content:space-between}.qa-page .qa-toolbar label{margin:0}.qa-page .qa-toolbar select{max-width:70%;font-size:12px}}
