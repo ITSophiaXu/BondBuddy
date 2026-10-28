@@ -229,7 +229,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
   for (const partition of ['历史／参考募集书（选填）', '审计报告 / 财务报表及附注', '募投项目与权证材料', '债务、授信与担保（选填）', '公司、经营与信用（选填）', '其他补充材料（选填）']) {
-    await expect(page.getByRole('heading', { name: partition, exact: true })).toBeVisible();
+    await expect(page.locator('#material-partitions').getByRole('heading', { name: partition, exact: true })).toBeVisible();
   }
   await expect(page.locator('#material-partitions select')).toHaveCount(0);
   const auditInput = page.getByLabel('为审计报告（可含报表及附注）选择文件');
