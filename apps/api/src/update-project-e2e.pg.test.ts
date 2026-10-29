@@ -63,6 +63,9 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     assert.equal((await send('POST',`${path}/input-revisions`,{...input,material_versions:[...input.material_versions,{material_id:first.material_id,material_version:1}]})).statusCode,409);
     for(const kind of ['review','generation']){
       const source=await create(kind);const original=await upload(source.project_id,`${kind}-history`);await upload(source.project_id,`${kind}-audit`,'audit');
+      const sourceDraft=await ok('GET',`/api/v1/projects/${source.project_id}`);
+      await ok('PATCH',`/api/v1/projects/${source.project_id}`,{update_details:{...sourceDraft.update_details,
+        format_template:{material_id:original.material_id,material_version:1,sha256:original.sha256}}},{'if-match':String(sourceDraft.draft_revision)});
       const route=`/api/v1/projects/${source.project_id}/update-workspace`;
       const [a,b]=await Promise.all([ok('POST',route,{}),ok('POST',route,{})]);
       assert.equal(a.update_project_id,b.update_project_id);assert.notEqual(a.update_project_id,source.project_id);
@@ -72,6 +75,8 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
       const copies=(await pool.query('SELECT * FROM bb_material_versions WHERE project_id=$1',[a.update_project_id])).rows;
       assert.equal(copies.length,2);const copy=copies.find(m=>m.role==='historical');
       assert.equal(copy.sha256.trim(),original.sha256);assert.notEqual(copy.id,original.material_id);
+      assert.deepEqual(target.update_details.format_template,{material_id:copy.id,material_version:1,sha256:original.sha256},
+        'format template is remapped to the private target-project copy');
       assert.equal(digest(await blobs.get(copy.object_key)),original.sha256);
       const listed=await ok('GET','/api/v1/projects');assert.ok(!listed.items.some((p:any)=>p.project_id===a.update_project_id));
       assert.equal(listed.items.find((p:any)=>p.project_id===source.project_id).update_project_id,a.update_project_id);
@@ -139,10 +144,16 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     assert.equal(generated.versions.length,2,'completion replay creates no duplicate');
     assert.equal((await send('DELETE',`${path}/materials/${second.material_id}`)).statusCode,409,'old task source remains protected after current changes');
     assert.equal(generated.versions.find((v:any)=>v.version_id===generated.current_version_id).artifact_id,clean.artifactId);
+    const laterFormat=await upload(p.project_id,'later-format-reference','reference');
     project=await ok('GET',path);
+    project=await ok('PATCH',path,{update_details:{...project.update_details,
+      format_template:{material_id:laterFormat.material_id,material_version:1,sha256:laterFormat.sha256}}},{'if-match':String(project.draft_revision)});
     const next=await ok('POST',`${path}/input-revisions`,{...input,draft_revision:project.draft_revision,prospectus_selection_revision:generated.selection_revision});
     const nextManifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[p.project_id,next.input_revision])).rows[0].manifest;
     assert.equal(nextManifest.authoring.previous_output.artifact_id,clean.artifactId,'repeat update pins current generated clean version');
+    assert.deepEqual(nextManifest.authoring.format_policy,{version:'source-format-v1',mode:'preserve_docx',
+      template:{kind:'artifact',...nextManifest.authoring.previous_output},selection:'previous_output'},'continuation inherits exact clean-result format');
+    assert.equal(nextManifest.update_details.format_template.material_id,laterFormat.material_id,'continuation does not mutate the saved draft choice');
     const running=await execute(next),third=await upload(p.project_id,'v3-during-run');
     const uploaded=await ok('POST',vpath,{request_id:randomUUID(),expected_selection_revision:generated.selection_revision,material_id:third.material_id,material_version:1,sha256:third.sha256});
     await complete(running);

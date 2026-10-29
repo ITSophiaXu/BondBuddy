@@ -28,6 +28,7 @@ import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
+import { formatTemplateNotice, formatTemplatePin, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
@@ -753,6 +754,13 @@ function confirmedMaterials(projectId: string) {
   return [...materials.values()].filter(m=>!prospectusPanel?.inactive.has(m.material_id));
 }
 
+function sourceFormatContext(projectId: string): SourceFormatContext | undefined {
+  if (!draft || !['update', 'generation'].includes(draft.project.kind)) return undefined;
+  return { materials: confirmedMaterials(projectId), sources: draft.fields.update_details.source_prospectuses,
+    template: draft.fields.update_details.format_template, inheritedFromResult: projectExecution?.inheritsResultFormat,
+    group: `source-format-${projectId}` };
+}
+
 function isCurrentProjectWorkspace(projectId: string) {
   // Navigation context (from, step, run, handoff) does not change the project.
   // Keep the full route for navigation, but compare the path when accepting material updates.
@@ -802,7 +810,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? `<progress max="${uploadSize(upload)}" value="${progress}" aria-label="${esc(uploadName(upload))} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? `<progress max="${uploadSize(upload)}" value="${progress}" aria-label="${esc(uploadName(upload))} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -825,7 +833,7 @@ function renderMaterialPartitions(projectId: string) {
     {label:'公司、经营与信用（选填）',roles:[...M1_MATERIAL_PARTITIONS[5].roles,...M1_MATERIAL_PARTITIONS[3].roles].filter(role=>role.code!=='other'),primary:['governance','corporate','business','rating'],optional:true},
     {label:'其他补充材料（选填）',roles:M1_MATERIAL_PARTITIONS[5].roles.filter(role=>role.code==='other'),primary:['other'],optional:true}
   ];
-  const groups = partitions.map((partition, index) => `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => partition.primary.includes(role.code) === primary).filter(role => {
+  const groups = partitions.map((partition, index) => `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${index === 1 && sourceFormatContext(projectId) ? formatTemplateNotice(sourceFormatContext(projectId)!) : ''}${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => partition.primary.includes(role.code) === primary).filter(role => {
     const relevant = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     return relevant || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code);
   }).map(rawRole => {
@@ -837,7 +845,7 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId))}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
@@ -868,6 +876,14 @@ function updateMaterialWorkspace(projectId: string) {
     // Keep file input nodes attached: rebuilding them during recovery/progress can swallow
     // the native file chooser's change event. Only partition changes add/remove pickers.
     const template = document.createElement('template'); template.innerHTML = renderMaterialPartitions(projectId);
+    template.content.querySelectorAll('.material-partition').forEach((fresh, index) => {
+      const partition = list.querySelectorAll('.material-partition')[index];
+      if (!partition) return;
+      const notice = fresh.querySelector(':scope > .source-format-notice'), previous = partition.querySelector(':scope > .source-format-notice');
+      if (!notice) previous?.remove();
+      else if (previous) previous.replaceWith(notice.cloneNode(true));
+      else partition.querySelector('h3')?.after(notice.cloneNode(true));
+    });
     const groups = list.querySelectorAll('.material-role-list');
     template.content.querySelectorAll('.material-role-list').forEach((desired, index) => {
       const group = groups[index]; if (!group) return;
@@ -898,6 +914,14 @@ function updateMaterialWorkspace(projectId: string) {
       const details = group.closest<HTMLDetailsElement>('.material-subtypes');
       const visibleFiles = [...group.querySelectorAll('.material-file-main strong')].map(el => el.textContent).join('\n');
       if (details && visibleFiles && details.dataset.shownFiles !== visibleFiles) { details.open = true; details.dataset.shownFiles = visibleFiles; }
+    });
+    const context = sourceFormatContext(projectId), selected = context ? selectedFormatTemplate(context) : null;
+    list.querySelectorAll<HTMLInputElement>('[data-format-template]').forEach(control => {
+      const row = control.closest<HTMLElement>('[data-source-material]');
+      control.checked = Boolean(selected && row?.dataset.sourceMaterial === selected.material_id &&
+        Number(row.dataset.sourceMaterialVersion) === selected.material_version && row.dataset.sourceSha256 === selected.sha256);
+      const label = control.parentElement?.querySelector('span');
+      if (label) label.textContent = `沿用此稿格式${control.checked && !context?.template ? '（自动选择）' : ''}`;
     });
   }
   const status = document.querySelector<HTMLElement>('#material-recovery-status');
@@ -1165,8 +1189,19 @@ function bindMaterialWorkspace(projectId: string) {
     const target = event.target as HTMLElement;
     const source = target.closest<HTMLElement>('[data-source-material]');
     if (!source || !draft) return;
-    const material = confirmedMaterials(projectId).find(m => m.material_id === source.dataset.sourceMaterial);
+    const material = confirmedMaterials(projectId).find(m => m.material_id === source.dataset.sourceMaterial &&
+      m.material_version === Number(source.dataset.sourceMaterialVersion) && m.sha256 === source.dataset.sourceSha256);
     if (!material) return;
+    if (target.matches('[data-format-template]')) {
+      if (!(target instanceof HTMLInputElement) || !target.checked || target.disabled || projectExecution?.inheritsResultFormat) return;
+      const details = { ...draft.fields.update_details, format_template: formatTemplatePin(material) };
+      draft.edit({ update_details: details });
+      retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);
+      updateMaterialWorkspace(projectId);
+      host.querySelector<HTMLInputElement>(`[data-format-template="${CSS.escape(material.material_id)}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (!target.dataset.sourceField) return;
     const previous = draft.fields.update_details.source_prospectuses?.find(s => s.material_id === material.material_id && s.material_version === material.material_version && s.sha256 === material.sha256);
     const value = readSourceFields(source, material, previous, target.dataset.sourceField);
     const sources = (draft.fields.update_details.source_prospectuses ?? []).filter(s => s.material_id !== material.material_id);
@@ -1179,7 +1214,7 @@ function bindMaterialWorkspace(projectId: string) {
     }
     source.querySelector('[data-source-period-summary]')!.textContent = sourcePeriodSummary(value.reporting_periods);
     source.querySelector('[data-source-required-message]')!.textContent = sourceRequiredMessage(value);
-    syncProjectExecution(projectId);
+    updateMaterialWorkspace(projectId);
   });
   host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });
   host.addEventListener('drop', event => {
@@ -1195,6 +1230,16 @@ function bindMaterialWorkspace(projectId: string) {
     input.value = '';
   });
   host.addEventListener('click', event => {
+    const resetTemplate = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-format-template-auto]');
+    if (resetTemplate) {
+      if (!draft || resetTemplate.disabled || projectExecution?.inheritsResultFormat || projectExecution && !projectExecution.materialsEditable) return;
+      const details = { ...draft.fields.update_details, format_template: null };
+      draft.edit({ update_details: details });
+      retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);
+      updateMaterialWorkspace(projectId);
+      host.querySelector<HTMLInputElement>('[data-format-template]:checked')?.focus({ preventScroll: true });
+      return;
+    }
     const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
     if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');

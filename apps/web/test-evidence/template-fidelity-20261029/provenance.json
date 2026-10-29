@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "source_base_commit": "c7d0c42a58c467c999f9c565a7355aaef37079bf",
+  "source_state": "uncommitted_worktree_changes_above_base",
+  "workspace": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\template-fidelity-20261029",
+  "browser": "Microsoft Edge",
+  "base_url": "http://127.0.0.1:5197",
+  "verification_command": "npx playwright test tests/source-format-template.spec.ts --grep \"shared prototype\" --reporter=line",
+  "verification_result": "1 passed (9.8s)",
+  "synthetic": true,
+  "files": [
+    {
+      "path": "apps/web/src/source-format-template.ts",
+      "sha256": "18d9c576b2850b0bdce5a6172ef7c169c33d7b9daff186f55705cb1eeafaf48d"
+    },
+    {
+      "path": "apps/web/src/source-prospectus.ts",
+      "sha256": "08d2edb2e76a685bddc15bbc1e00627de068b285352c678329fb2e77b3cd7edc"
+    },
+    {
+      "path": "apps/web/src/main.ts",
+      "sha256": "da71cdbb9c69a9bca9235dbf16c6639adefa6934c05e6849a9e4cbbaba537e33"
+    },
+    {
+      "path": "apps/web/src/project-execution.ts",
+      "sha256": "4cd3b05aadaf17bb257d597f96acaf6f339550ea5e88698e46b1c1a9ae32ad13"
+    },
+    {
+      "path": "product-prototype/public/project-workspace.js",
+      "sha256": "73ab2b9412cd2b33aea01eb0b91f07aa544f3eff9c98ea6a0e05f32eb74429bf"
+    },
+    {
+      "path": "product-prototype/public/source-prospectus.css",
+      "sha256": "5b0d29f6be13aa7ac7f6ad4fb7a61ae27630f5bb28a237f5b5fdd162ccdcf558"
+    },
+    {
+      "path": "apps/web/tests/source-format-template.spec.ts",
+      "sha256": "f561e0029dd89455335023fc3f215d52c85e18c4e61ec562d18c174b6d2e37e5"
+    },
+    {
+      "path": "apps/web/test-evidence/template-fidelity-20261029/implementation-1440.png",
+      "sha256": "84474111a59ed1d43780cabd23ce4bf0f5c5791384911102752f3a33b7a9cfa4"
+    },
+    {
+      "path": "apps/web/test-evidence/template-fidelity-20261029/prototype-1440.png",
+      "sha256": "e70ee58f73a7b01705470c124816abc19ae9d6e74da2f9969adfb3124dce08a9"
+    },
+    {
+      "path": "apps/web/test-evidence/template-fidelity-20261029/implementation-390.png",
+      "sha256": "781868c4901046975637a7c9107de7ad94ea4aada8ad34175b0947a2ffc6fea2"
+    },
+    {
+      "path": "apps/web/test-evidence/template-fidelity-20261029/prototype-390.png",
+      "sha256": "6477aedcaa406eb4ed8bf7ecd38abffbe5460efdada9ea736546ee0d6c8fe0c7"
+    }
+  ]
+}

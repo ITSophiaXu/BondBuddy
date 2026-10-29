@@ -14,6 +14,7 @@ import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAut
 import { taskProgress } from './task-progress';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { resolveContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
+import { syncFormatTemplateMode } from './source-format-template';
 
 type Input = Dto<'InputRevisionResponse'>;
 type Material = Dto<'MaterialResponse'>;
@@ -183,6 +184,7 @@ export class ProjectExecution {
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
+  get inheritsResultFormat() { return Boolean(this.nextRequested && (this.nextBasis?.editBase || this.nextChoice === 'result')); }
   get materialsEditable() {
     return this.active && !this.restoring && !this.inputReadUncertain && !this.pendingExecution && !this.starting && !this.busy && (!this.run || this.nextRequested);
   }
@@ -351,6 +353,7 @@ export class ProjectExecution {
   }
   private render() {
     if (!this.active) return;
+    syncFormatTemplateMode(document.querySelector('#material-partitions') ?? this.host, this.inheritsResultFormat);
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     const materialsLocked = Boolean(this.pendingExecution || this.run && !this.nextRequested);
     const editsFrozen=Boolean(this.pendingExecution || this.inputWriteUncertain);

@@ -65,7 +65,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -335,6 +335,7 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request), b=body<{creation_request_id?:string;name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);
     const details={...emptyUpdateDetails(),...b.update_details};
+    if(details.format_template)throw new Problem(422,'VALIDATION_FAILED','请先创建项目并上传原稿，再选择格式模板。');
     const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
     const id=uid(), value=await transaction(db(),async client=>{
       if(b.creation_request_id){
@@ -610,8 +611,15 @@ export function createServer(settings: Settings = {}) {
         // an explicit [] is the only way to clear the list.
         ...(!submittedDetails || !Object.hasOwn(submittedDetails,'target_reporting_periods')
           ? (priorDetails.target_reporting_periods === undefined ? {} : {target_reporting_periods:priorDetails.target_reporting_periods})
+          : {}),
+        ...(!submittedDetails || !Object.hasOwn(submittedDetails,'format_template')
+          ? (priorDetails.format_template === undefined ? {} : {format_template:priorDetails.format_template})
           : {})};
       const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
+      // Validate newly selected references; unrelated edits can still preserve an old selection.
+      // Exact selected-material membership is rechecked when a new input is locked.
+      if(submittedDetails && Object.hasOwn(submittedDetails,'format_template'))
+        await assertOwnedFormatTemplate(client,user,id,details.format_template);
       const result=await client.query('UPDATE bb_projects SET name=$3,issuer_name=$4,market=$5,offering=$6,update_details=$7,draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING *',[user,id,next.name,next.issuer_name,next.market,next.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.draft_updated',{project_id:id,draft_revision:result.rows[0].draft_revision}]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_edit',status:'submitted'});
@@ -722,7 +730,10 @@ export function createServer(settings: Settings = {}) {
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
-      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      const formatMaterials=[];
+      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();const pin={material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()};resolved.push(pin);formatMaterials.push({...pin,media_type:String(q.rows[0].media_type)});}
+      // Keep the request's material order for automatic format choice, independent of canonical hashing order.
+      formatMaterials.sort((a,bm)=>b.material_versions.findIndex(m=>m.material_id===a.material_id)-b.material_versions.findIndex(m=>m.material_id===bm.material_id));
       if(prospectus.inactive_material_ids.some(id=>refs.some(ref=>ref.material_id===id)))throw conflict('INPUT_REVISION_CONFLICT','选择中包含旧募集书版本，请刷新后使用当前版本。');
       if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
@@ -839,7 +850,6 @@ export function createServer(settings: Settings = {}) {
       if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       if (p.update_details?.authoring_mode === 'unified_v1') {
-        const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(p, resolved, currentMessageSet);
         const previous = (await client.query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.input_revision,i.manifest
           FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
           JOIN bb_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
@@ -850,8 +860,13 @@ export function createServer(settings: Settings = {}) {
             [user,id,b.edit_base?.artifact_id??null,b.edit_base?.artifact_version??null,b.edit_base?.sha256??null])).rows[0];
         const sourceKey = (items: {material_id:string;material_version:number;role:string;sha256:string}[]) => JSON.stringify(items.filter(m => ['historical','reference'].includes(m.role)).map(m => [m.material_id,m.material_version,m.sha256]).sort());
         if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
-        if (b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
-            sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved)) {
+        const continuesPrevious = b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
+          sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved);
+        // A continuation inherits its verified clean artifact. An unrelated draft
+        // template choice cannot block or replace that already selected baseline.
+        const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(
+          continuesPrevious ? {...p,update_details:{...p.update_details,format_template:null}} : p, formatMaterials, currentMessageSet);
+        if (continuesPrevious) {
           authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
           if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,
             reporting_periods:previous.manifest.update_details.target_reporting_periods?.length
@@ -859,6 +874,7 @@ export function createServer(settings: Settings = {}) {
               : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
+        inheritPreviousOutputFormat(authoring);
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
       Object.assign(manifest,{prospectus_selection:{revision:prospectus.selection_revision,version_id:prospectus.current_version_id}});
