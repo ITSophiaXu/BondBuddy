@@ -36,6 +36,9 @@ function resolvedQaCitations(proposal:QaAnswer,evidence:QaResult['evidence']){
 export function qaHasGroundedCitations(proposal:QaAnswer,evidence:QaResult['evidence']){
  return proposal.citations.length>0&&resolvedQaCitations(proposal,evidence).length===proposal.citations.length;
 }
+function qaUnanswered(proposal:QaAnswer){
+ return proposal.status==='missing'&&!proposal.citations.length&&proposal.missing_materials.some(item=>item.trim());
+}
 export function groundedQaAnswer(proposal:QaAnswer,q:QaQuestion,input:QaInput,evidence:QaResult['evidence']):QaAnswer{
  const valid=resolvedQaCitations(proposal,evidence),cases=proposal.case_ids.filter(id=>input.cases.some(c=>c.id===id));
  const unreliable=valid.length!==proposal.citations.length||!valid.length;
@@ -45,7 +48,7 @@ export function groundedQaAnswer(proposal:QaAnswer,q:QaQuestion,input:QaInput,ev
   ?['本题答复的引文未能在已提供材料中准确定位，请核对对应的募集说明书段落或表格；不代表该事项未披露。']
   :qaMissingMaterials(q.question)));
  return {...proposal,question_id:q.id,citations:valid,case_ids:cases,status:unreliable||missing.length||proposal.status==='missing'?'missing':'draft',
-  answer:unreliable?(hasReadableEvidence?'【待确认：回答依据】本题答复的引文未能在已提供材料中准确定位，需核对对应原文；不能据此认定募集说明书未披露相关事实。':'【暂无法形成有依据的回答】当前没有可准确引用的项目材料。请提供本题对应的募集说明书内容或可读材料。'):proposal.answer,
+  answer:qaUnanswered(proposal)?'【暂无法形成有依据的回答】本题尚缺可准确引用的对应信息，请仅补充下列具体事项。':unreliable?(hasReadableEvidence?'【待确认：回答依据】本题答复的引文未能在已提供材料中准确定位，需核对对应原文；不能据此认定募集说明书未披露相关事实。':'【暂无法形成有依据的回答】当前没有可准确引用的项目材料。请提供本题对应的募集说明书内容或可读材料。'):proposal.answer,
   missing_materials:missing};
 }
 /** Recovery suggestions describe evidence to request, never facts about the issuer. */
@@ -94,7 +97,9 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
      const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v2',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
-      validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&qaHasGroundedCitations(v,evidence),
+      // An explicit unanswered question can finish without a citation. Its model
+      // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
+      validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
       config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
       buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(ctx);
      if(outcome.kind!=='done')return outcome;
