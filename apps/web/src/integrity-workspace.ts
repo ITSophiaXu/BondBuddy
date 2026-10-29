@@ -1,3 +1,4 @@
+import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge,displayCharge} from './commerce';
 import {displayPrice,isCnyPrice,cny,scopeReady,scopeLinesHtml,copyCommercePrice,scopeLifecycleHtml,scopeStatusLabel,guardScopeExpiry} from './commerce';
@@ -40,7 +41,7 @@ export class IntegrityWorkspace {
  get hasUnconfirmed(){return this.busy||!!this.problem||!!this.confirmed||!!this.selectedFile||!!this.state&&(this.dirty||!!this.pending||!!this.evidenceDraft)&&!this.cacheMatches();}
  async beforeLeave(){if(this.busy)return false;if(this.selectedFile){this.status('所选文件尚未完成上传，请先保存补证；文件字节不能跨刷新保留。');return false;}if(this.foreignCompleted)return true;if(this.confirmed)return false;return !this.state||this.persist();}
  dispose(){window.removeEventListener('storage',this.storageChanged);this.entry?.dispose();this.controller.abort();this.dialog?.remove();clearTimeout(this.timer);this.downloads.dispose();}
- private request<T>(method:'GET'|'POST',suffix:string,body?:unknown){const run=new URLSearchParams(location.hash.split('?')[1]).get('run');if(method==='GET'&&!suffix&&run)suffix='?run_id='+encodeURIComponent(run);return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/integrity${suffix}`,body,{},this.controller.signal);}
+ private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){const run=new URLSearchParams(location.hash.split('?')[1]).get('run');if(method==='GET'&&!suffix&&run)suffix='?run_id='+encodeURIComponent(run);return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/integrity${suffix}`,body,headers,this.controller.signal);}
  private error(e:unknown,operation:'read'|'save'|'download'|'submit'|'action'='action'){return e instanceof UploadRecoveryNeedsFileError?'需要重新上传，请选择相同内容的文件后继续。':friendlyError(e,operation);}
  private async read(suffix=''){const fresh=await this.request<Workspace>('GET',suffix);if(!Value.Check(IntegrityWorkspaceSchema,fresh))throw new ApiError(0,'DATA_UNAVAILABLE');return fresh;}
  private currentPrice(){return displayPrice(this.state?.price,this.state?.price.points??INTEGRITY_PRICE.points);}
@@ -105,7 +106,7 @@ export class IntegrityWorkspace {
   try{
    if(p.kind==='draft'){const fresh=await this.request<Workspace>('POST','/draft',p.request);if(!Value.Check(IntegrityWorkspaceSchema,fresh)||fresh.revision!==p.request.expected_revision+1||!integritySameDraft(fresh.draft,p.request.draft))throw new ApiError(0,'DATA_UNAVAILABLE');if(this.live()&&!this.completeDraft(fresh))throw new UserFacingError(this.problem);return;}
    if(p.kind==='evidence'){const fresh=await this.request<Workspace>('POST',`/runs/${encodeURIComponent(p.roundId)}/evidence`,p.request);if(!Value.Check(IntegrityWorkspaceSchema,fresh))throw new ApiError(0,'DATA_UNAVAILABLE');if(!this.live())return;this.state!.rounds=fresh.rounds;if(!this.completeEvidence(fresh,p)&&!this.confirmed)await this.readPending();if(this.pending&&!this.confirmed)throw new ApiError(0,'DATA_UNAVAILABLE');this.dialog?.close();this.paint();if(!this.confirmed)this.status('证据已保存；此版底稿不变，免费重新导出后可包含新增证据。');return;}
-   const result=await this.request<Dto<'IntegrityRunResponse'>>('POST',p.kind==='check'?'/runs':`/runs/${encodeURIComponent(p.roundId)}/exports`,p.request);if(!Value.Check(integritySchemas.IntegrityRunResponse,result))throw new ApiError(0,'DATA_UNAVAILABLE');if(!this.live())return;
+   const result=await this.request<Dto<'IntegrityRunResponse'>>('POST',p.kind==='check'?'/runs':`/runs/${encodeURIComponent(p.roundId)}/exports`,p.request,p.kind==='check'?billingRecoveryHeaders('IntegrityRunRequest',p.request):{});if(!Value.Check(integritySchemas.IntegrityRunResponse,result))throw new ApiError(0,'DATA_UNAVAILABLE');if(!this.live())return;
    const previous=this.snapshot(),{pending:removed,...next}=previous;this.confirmed={previous,next,runId:result.run_id};if(!this.finish(previous,next)){this.dialog?.close();this.paint();return;}this.confirmed=undefined;this.pending=undefined;this.dialog?.close();location.hash=this.href({run:result.run_id});
   }catch(error){
    if(!this.live())throw error;

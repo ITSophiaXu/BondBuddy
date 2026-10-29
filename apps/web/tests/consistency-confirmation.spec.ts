@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Locator} from '@playwright/test';
-import {PROJECT_FILE_UPDATE_PRICE,encodeBillingDto} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,encodeBillingDto,BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {fixture,open,assertFixture,expected,typeName,resultHash,completeReceipt,changeLive,forgetOriginalCheck,
   selectedVersions,sharedFilename,excludedFilename,ids,base,cacheKey,fileIds,checkId,writes,serverSnapshot,type State} from './consistency-confirmation-fixtures';
@@ -99,6 +99,24 @@ async function startUnknown(page:Page,s=fixture({dropUpdateOnce:true})){
 }
 
 test.afterEach(async({page})=>assertFixture(page));
+test('ordinary upgrade preserves an unsafe numeric original without starting or overwriting a task',async({page})=>{
+  const {s}=await startUnknown(page);
+  const raw=await page.evaluate(key=>{const saved=JSON.parse(sessionStorage.getItem(key)!);saved.pendingUpdate.body.expected_points=Number.MAX_SAFE_INTEGER+1;const raw=JSON.stringify(saved);sessionStorage.setItem(key,raw);return raw;},cacheKey);
+  await page.reload();await expect(page.getByRole('alert')).toContainText('原检查或更新请求无法核实');
+  expect(await page.evaluate(key=>sessionStorage.getItem(key),cacheKey)).toBe(raw);expect(s.posts).toHaveLength(1);expect(s.receipts.size).toBe(1);
+});
+test('ordinary upgrade restores numeric update confirmation and replays the exact original request once',async({page})=>{
+  const {s,original}=await startUnknown(page);completeReceipt(s,original.body.request_id);changeLive(s);
+  await page.evaluate(({key,body})=>{const saved=JSON.parse(sessionStorage.getItem(key)!);saved.pendingUpdate.body=body;saved.pendingUpdate.confirmation.binding.body=body;sessionStorage.setItem(key,JSON.stringify(saved));},{key:cacheKey,body:original.body});
+  const wire:{raw:string;header:string|undefined}[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1'+base+'/checks/'+checkId+'/updates')wire.push({raw:request.postData()!,header:request.headers()[BILLING_WIRE_HEADER.toLowerCase()]});});
+  await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();expect(s.posts).toHaveLength(1);
+  const restored=await cached(page);expect(restored?.pendingUpdate.body).toEqual(original.body);expect(restored?.pendingUpdate.confirmation).toBeDefined();
+  await page.locator('#fc-pending-action').click();await assertBusinessScope(page,s);await modal(page).locator('#fc-confirm-update').click();
+  await expect.poll(()=>s.posts.length).toBe(2);expect(s.posts[1]).toEqual(original);
+  expect(wire).toEqual([{raw:JSON.stringify(restored!.pendingUpdate.body),header:LEGACY_BILLING_WIRE_VERSION}]);
+  expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);expect(s.validatedNewEnvelopes).toHaveLength(1);
+});
 
 test('consistency confirmation: native file entry reviews differences and confirms only two of three actionable original files',async({page})=>{
   const s=await open(page,fixture(),'files'),before=serverSnapshot(s),original=expected(s);

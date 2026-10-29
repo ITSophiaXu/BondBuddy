@@ -590,16 +590,16 @@ export class MaterialWorkspace {
             this.docQuote={response:await this.m4.quote(this.topicId!,{kind:'document',document_type:type,expected_draft_version:draft.version}),version:draft.version,type};
             if(!this.live()||this.uploadInputBlocked(false))return;if(!isAutomaticCharge(this.docQuote.response.quote)){this.message('本轮材料制作报价已显示。确认当前输入后，在助手发送相同开始命令即可执行。');return;}
           }
-          if(this.docQuote.response.shortage&&!isAutomaticCharge(this.docQuote.response.quote)){this.message('积分不足，制作任务尚未开始。原命令保留。',true);return;}
+          if(int64(this.docQuote.response.shortage)>0n&&!isAutomaticCharge(this.docQuote.response.quote)){this.message('积分不足，制作任务尚未开始。原命令保留。',true);return;}
           quoteId=this.docQuote.response.quote.quote_id;execute=true;
         }else{
           const signature=this.qaSignature();
           if(!this.qaQuote||this.qaQuote.signature!==signature||Date.parse(this.qaQuote.response.quote.expires_at)<=Date.now()){
             this.qaQuote={response:await this.m4.quote(this.topicId!,{kind:'qa',content,context:this.view.unsent_context}),signature};
-            if(!this.live()||this.uploadInputBlocked(false))return;if(this.qaQuote.response.shortage&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('积分不足，原问题与引用已保留。',true);return;}
+            if(!this.live()||this.uploadInputBlocked(false))return;if(int64(this.qaQuote.response.shortage)>0n&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('积分不足，原问题与引用已保留。',true);return;}
             if(int64(this.qaQuote.response.quote.points)>0n&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('本次问答报价已显示，请确认并发送。');return;}
           }
-          if(this.qaQuote.response.shortage&&!isAutomaticCharge(this.qaQuote.response.quote))return;quoteId=this.qaQuote.response.quote.quote_id;
+          if(int64(this.qaQuote.response.shortage)>0n&&!isAutomaticCharge(this.qaQuote.response.quote))return;quoteId=this.qaQuote.response.quote.quote_id;
         }
         const request:M4MessageRequest={submission_request_id:crypto.randomUUID(),content,context:structuredClone(this.view.unsent_context),quote_id:quoteId,...(execute?{execute:true}:{})};
         this.pendingMessage={request,viewContent:this.view.unsent_content};this.cache();

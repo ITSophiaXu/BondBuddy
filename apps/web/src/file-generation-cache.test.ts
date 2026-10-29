@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {PROJECT_DOCUMENT_CATALOG} from '@bondbuddy/contracts';
+import {PROJECT_DOCUMENT_CATALOG,OUTCOME_PRICE_VERSION} from '@bondbuddy/contracts';
 import {FileGenerationCache,type FileGenerationBatchRequest,type FileGenerationCacheStorage,type FileGenerationNoteOperation} from './file-generation-cache.js';
 
 class MemoryStorage implements FileGenerationCacheStorage{
@@ -10,6 +10,13 @@ class MemoryStorage implements FileGenerationCacheStorage{
   removeItem(key:string){this.values.delete(key);}
 }
 const request=():FileGenerationBatchRequest=>({request_id:'request-1',source_version_id:'source-v3',expected_selection_revision:7,documents:[{document_type:'issuer',draft_version:2},{document_type:'financial',draft_version:4}]});
+test('ordinary upgrade reads a priced numeric file batch without replacing the original request',()=>{
+  const storage=new MemoryStorage(),cache=new FileGenerationCache('owner','project',storage),key='bondbuddy:file-generation:owner:project:pending';
+  const legacy={...request(),expected_points:5000,price_version:OUTCOME_PRICE_VERSION};
+  const raw=JSON.stringify({version:'file-generation-cache-v1',owner:'owner',project:'project',value:legacy});storage.setItem(key,raw);
+  assert.equal(cache.readForEntry().status,'ok');assert.deepEqual(cache.readPending(),legacy);assert.equal(storage.getItem(key),raw);
+  assert.equal(new FileGenerationCache('other','project',storage).readPending(),undefined);
+});
 const operation=():FileGenerationNoteOperation=>({note:'本轮追加要求',documents:[
   {document_type:'issuer',before:'发行人原有要求',after:'发行人原有要求\n\n本轮追加要求'},
   {document_type:'financial',before:'财务原有要求',after:'财务原有要求\n\n本轮追加要求'},

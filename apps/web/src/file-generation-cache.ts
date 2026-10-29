@@ -1,8 +1,8 @@
-import {projectFileSchemas,ProjectDocumentTypeSchema,PROJECT_DOCUMENT_CATALOG,type ProjectDocumentType} from './billing-types.js';
-import type {Static} from '@sinclair/typebox';
+import {billingRecoverySchemas,type BillingRecoveryDto} from './billing-recovery-wire.js';
+import {ProjectDocumentTypeSchema,PROJECT_DOCUMENT_CATALOG,type ProjectDocumentType} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 
-type BatchBody=Static<typeof projectFileSchemas.ProjectFileBatchRequest>;
+type BatchBody=BillingRecoveryDto<'ProjectFileBatchRequest'>;
 export type FileGenerationBatchRequest=Readonly<Omit<BatchBody,'documents'>>&{
   readonly documents:ReadonlyArray<Readonly<BatchBody['documents'][number]>>;
 };
@@ -26,7 +26,7 @@ function validSelection(value:unknown):value is ProjectDocumentType[]{
   return Array.isArray(value)&&value.length<=PROJECT_DOCUMENT_CATALOG.length&&value.every(item=>Value.Check(ProjectDocumentTypeSchema,item))&&new Set(value).size===value.length;
 }
 function validPending(value:unknown):value is BatchBody{
-  if(!Value.Check(projectFileSchemas.ProjectFileBatchRequest,value))return false;
+  if(!Value.Check(billingRecoverySchemas.ProjectFileBatchRequest,value))return false;
   return validId(value.request_id)&&validId(value.source_version_id)&&Number.isSafeInteger(value.expected_selection_revision)&&
     value.documents.every(item=>Number.isSafeInteger(item.draft_version))&&new Set(value.documents.map(item=>item.document_type)).size===value.documents.length;
 }

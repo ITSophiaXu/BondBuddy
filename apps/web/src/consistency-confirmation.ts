@@ -1,10 +1,11 @@
+import {billingRecoverySchemas,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {Type} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {schemas,ProjectFileCheckSchema,ProjectFileSourceSchema,ProjectFileVersionSchema,ProjectFileAssetSchema,
   ProjectDocumentTypeSchema,type ProjectFileCheck,type ProjectFileSource,type ProjectFileVersion,type ProjectFileAsset} from './billing-types.js';
 import type {Dto} from './api.js';
 
-export type ConfirmationBinding={owner?:string;project:string;checkId:string;body:Dto<'ProjectFileUpdateRequest'>;filenames:string[]};
+export type ConfirmationBinding={owner?:string;project:string;checkId:string;body:BillingRecoveryDto<'ProjectFileUpdateRequest'>;filenames:string[]};
 export type ConfirmationSnapshot={version:1;binding:ConfirmationBinding;projectName:string;createdAt:string;source:ProjectFileSource;
   files:Array<{fileId:string;versionId:string;filename:string;sequence:number;documentType:ProjectFileVersion['document_type']|null;
     asset:ProjectFileAsset|null;automatic:number;manual:number;manualUnlisted:boolean}>};
@@ -14,7 +15,7 @@ const id=Type.String({minLength:1,maxLength:128});
 const filename=Type.String({maxLength:200});
 const count=Type.Integer({minimum:0,maximum:2000});
 const sequence=Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER});
-const bindingSchema=obj({owner:Type.Optional(id),project:id,checkId:id,body:schemas.ProjectFileUpdateRequest,
+const bindingSchema=obj({owner:Type.Optional(id),project:id,checkId:id,body:billingRecoverySchemas.ProjectFileUpdateRequest,
   filenames:Type.Array(filename,{minItems:1,maxItems:200})});
 const snapshotSchema=obj({version:Type.Literal(1),binding:bindingSchema,projectName:Type.String({maxLength:200}),
   createdAt:Type.String({minLength:24,maxLength:24}),source:ProjectFileSourceSchema,

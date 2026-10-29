@@ -1,3 +1,4 @@
+import {billingRecoverySchemas,billingRecoveryHeaders,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {serializeInt64} from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
 import {formatPoints} from '@bondbuddy/contracts';
@@ -25,7 +26,7 @@ export class WorkpaperPanel {
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
   private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
   private downloadFeedback?:{node:HTMLElement;target:Record<string,string|undefined>};
-  private pending?:WorkpaperStart;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
+  private pending?:BillingRecoveryDto<'WorkpaperStart'>;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
   private uploadNeedsFile=new Set<string>();
@@ -38,7 +39,7 @@ export class WorkpaperPanel {
   async beforeLeave(){return !this.busy&&!this.storageError;}
   dispose(){this.controller.abort();clearTimeout(this.timer);this.downloads.dispose();}
   private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
-  private request<T>(method:string,path='',body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,{},this.controller.signal);}
+  private request<T>(method:string,path='',body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,headers,this.controller.signal);}
   private async readWorkspace(){
     const data=await this.request<WorkpaperWorkspace>('GET');
     // The workspace contains only recent batches. Resolve the requested batch on every
@@ -58,7 +59,7 @@ export class WorkpaperPanel {
       this.progressBatch=query.get('view')==='results'?query.get('batch')??undefined:undefined;
       this.data=await this.readWorkspace();if(!this.live())return;
       const saved=JSON.parse(localStorage.getItem(this.key)??'null');
-      if(saved?.pending){if(!Value.Check(WorkpaperStartSchema,saved.pending))throw Error('invalid pending');this.pending=saved.pending;}
+      if(saved?.pending){if(!Value.Check(billingRecoverySchemas.WorkpaperStart,saved.pending))throw Error('invalid pending');this.pending=saved.pending;}
       const restoredCatalogue=this.pending?.catalogue_id??saved?.catalogue;
       if(restoredCatalogue&&!this.data.catalogues.some(c=>c.catalogue_id===restoredCatalogue)){
         const catalogue=await this.request<WorkpaperCatalogue>('GET','/catalogues/'+encodeURIComponent(restoredCatalogue));
@@ -259,7 +260,7 @@ export class WorkpaperPanel {
       this.pending={start_mode:'direct',request_id:crypto.randomUUID(),catalogue_id:this.catalogue.catalogue_id,catalogue_sha256:this.catalogue.sha256,item_ids:[...this.selected],source_version_id:this.source.version_id,source_selection_revision:this.source.selection_revision,requirements:this.requirements,price_version:price.version,expected_points:serializeInt64(BigInt(this.selected.size)*int64(price.points))};
       if(!this.save())return;this.paint();}
     let batch:WorkpaperBatch;
-    try{batch=await this.request<WorkpaperBatch>('POST','/batches',this.pending);}catch(e){
+    try{batch=await this.request<WorkpaperBatch>('POST','/batches',this.pending,billingRecoveryHeaders('WorkpaperStart',this.pending));}catch(e){
       if(e instanceof ApiError&&e.status===402&&e.code==='CREDITS_INSUFFICIENT'){this.pending=undefined;this.save();this.view='prepare';this.paint();throw e;}
       if(e instanceof ApiError&&e.code==='PROJECT_FILE_BATCH_INPUT_EXPIRED'){this.pending=undefined;this.save();this.source=null;this.view='prepare';this.paint();throw new UserFacingError('原底稿文件包未提交。募集书依据已变化，请刷新页面后重新核对并提交。');}throw e;
     }

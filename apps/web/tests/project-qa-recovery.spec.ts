@@ -1,6 +1,6 @@
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 import {expect,test,type Page} from '@playwright/test';
-import {PROJECT_QA_PRICE} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION,encodeBillingDto} from '@bondbuddy/contracts';
 import type {Dto} from './billing-fixture-wire';
 import {QaRecoveryCache,type QaRecoveryValue} from '../src/qa-recovery-cache';
 import {answerId,assertFixture,checked,fixture,historicalRecords,install,newMaterial,oldArtifact,oldMaterial,originalDraft,ownerId,projectId,
@@ -11,6 +11,26 @@ import {answerId,assertFixture,checked,fixture,historicalRecords,install,newMate
 const url=(run:string|null=answerId)=>`/#qa?project=${projectId}${run?`&run=${run}`:''}`;
 const selectedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
 test.beforeEach(async({page})=>{page.on('dialog',dialog=>void dialog.accept());});
+test('ordinary upgrade retries the original numeric QA envelope with explicit legacy wire and one accepted run',async({page})=>{
+  const state=await open(page);await adopt(page);state.dropAnswer='after';await start(page);
+  await expect.poll(()=>state.answers.length).toBe(1);await expect(page.locator('#qa-retry-pending')).toBeEnabled();
+  const original=structuredClone(state.answers[0]);
+  // Recreate the pre-int64 persisted envelope, including its independent journal.
+  await page.evaluate(({owner,project,original})=>{
+    for(const key of Object.keys(localStorage).filter(key=>key.startsWith('bb-qa-recovery')&&key.includes(encodeURIComponent(owner)+':'+encodeURIComponent(project)))){
+      const record=JSON.parse(localStorage.getItem(key)!);
+      if(record.value?.pending?.kind==='answer'){record.value.pending.request=original;localStorage.setItem(key,JSON.stringify(record));}
+    }
+  },{owner:ownerId,project:projectId,original});
+  const replays:{raw:string;header:string|undefined}[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname===`/api/v1/projects/${projectId}/qa/runs`)replays.push({raw:request.postData()!,header:request.headers()[BILLING_WIRE_HEADER.toLowerCase()]});});
+  await page.reload();await expect(page.locator('#qa-retry-pending')).toBeEnabled();expect(state.answers).toHaveLength(1);
+  const restored=await readRecovery(page);expect(restored.pending?.request).toEqual(original);
+  await page.locator('#qa-retry-pending').click();await expect.poll(()=>state.answers.length).toBe(2);
+  expect(replays).toEqual([{raw:JSON.stringify(restored.pending!.request),header:LEGACY_BILLING_WIRE_VERSION}]);
+  expect(state.answers).toEqual([original,original]);expect(state.accepted.size).toBe(1);
+  await expect(page.locator('#qa-retry-pending')).toHaveCount(0);expect((await readRecovery(page)).pending).toBeUndefined();
+});
 test.afterEach(async({page})=>{await assertFixture(page);});
 
 async function open(page:Page,state=fixture(),run:string|null=answerId){await install(page,state);await page.goto(url(run));await expect(page.locator('#qa-history')).toBeVisible();if(await page.locator('.qa-followup').count())await page.locator('.qa-followup>summary').click();return state;}
@@ -58,7 +78,7 @@ async function failPersistenceAfterPost(page:Page,kind:'draft'|'answer'|'prepare
   await page.route(`**/api/v1/projects/${projectId}/qa/${suffix}`,async route=>{
     if(route.request().method()!=='POST'||capture.value)return route.fallback();
     const body:unknown=fixtureRequest(route.request());checked(kind==='draft'?'QaDraftRequest':kind==='answer'?'QaAnswerRequest':'QaPrepareRequest',body);
-    capture.body=structuredClone(body);capture.value=await readRecovery(page);expect(capture.value.pending?.kind).toBe(kind);expect(capture.value.pending?.request).toEqual(body);
+    capture.body=structuredClone(body);capture.value=await readRecovery(page);expect(capture.value.pending?.kind).toBe(kind);expect(capture.value.pending?.request).toEqual(route.request().postDataJSON());
     await blockStorageWrites(page);await route.fallback();
   });return capture;
 }
@@ -79,7 +99,7 @@ test('draft acknowledgement with a failed local write retains the full original 
 test('answer acknowledgement with a failed local write keeps the original complete envelope and retries without a second accepted run',async({page})=>{
   const state=await open(page),old=historicalRecords(state);await adopt(page);const capture=await failPersistenceAfterPost(page,'answer');await start(page);
   await expect.poll(()=>state.answers.length).toBe(1);await expect(page.locator('#qa-recheck-cache')).toBeVisible();await frozen(page);
-  const original=capture.value!,body=structuredClone(state.answers[0]);expect(original.revision).toBe(body.expected_revision);expect(original.pending).toEqual({kind:'answer',request:body});expect(await readRecovery(page)).toEqual(original);expect(state.accepted.size).toBe(1);
+  const original=capture.value!,body=structuredClone(state.answers[0]);expect(original.revision).toBe(body.expected_revision);expect(original.pending).toEqual({kind:'answer',request:encodeBillingDto('qaAnswerRequest',body)});expect(await readRecovery(page)).toEqual(original);expect(state.accepted.size).toBe(1);
   await recoverStorage(page);await expect(page.locator('#qa-retry-pending')).toBeEnabled();expect(await readRecovery(page)).toEqual(original);
   await page.locator('#qa-retry-pending').click();await expect.poll(()=>state.answers.length).toBe(2);await expect(page.locator('#qa-retry-pending')).toHaveCount(0);
   expect(state.answers).toEqual([body,body]);expect(state.drafts).toHaveLength(1);expect(state.accepted.size).toBe(1);expect((await readRecovery(page)).pending).toBeUndefined();expect(historicalRecords(state)).toEqual(old);

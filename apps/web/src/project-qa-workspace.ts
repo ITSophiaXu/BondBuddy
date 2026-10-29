@@ -1,3 +1,4 @@
+import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {serializeInt64} from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
 import {formatPoints} from '@bondbuddy/contracts';
@@ -118,7 +119,7 @@ export class ProjectQaWorkspace {
  dispose(){window.removeEventListener('storage',this.storageChanged);this.controller.abort();this.entry?.dispose();this.prospectusPanel?.dispose();clearTimeout(this.timer);this.dialog?.remove();this.downloads.dispose();}
  private error(e:unknown,operation:'read'|'save'|'download'|'submit'|'action'='action'){return friendlyError(e,operation);}
  private status(text:string){this.message=text;const node=document.querySelector('#project-qa-status');if(node)node.textContent=text;}
- private request<T>(method:'GET'|'POST',suffix:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/qa${suffix}`,body,{[QA_HISTORY_CAPABILITY.header]:QA_HISTORY_CAPABILITY.value},this.controller.signal);}
+ private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/qa${suffix}`,body,{...headers,[QA_HISTORY_CAPABILITY.header]:QA_HISTORY_CAPABILITY.value},this.controller.signal);}
  private async read(){const value=await this.request<QaWorkspace>('GET',this.query());if(!Value.Check(QaWorkspaceSchema,value))throw new ApiError(0,'DATA_UNAVAILABLE');return value;}
  private snapshot():QaRecoveryValue{return {revision:this.state!.revision,draft:structuredClone(this.state!.draft),...(this.needsKnowledgeChoice?{needsKnowledgeChoice:true}:{}),...(this.sourceRun?{sourceRun:this.sourceRun}:{}),...(this.pending?{pending:structuredClone(this.pending)}:{})};}
  private cacheError(status:string){
@@ -481,7 +482,7 @@ export class ProjectQaWorkspace {
     if(!this.completeDraft(saved))throw new UserFacingError(this.cacheProblem);
     this.message='本轮问题、材料与要求已保存。';this.paint();return;
    }
-   const ack=await this.request<Dto<'QaRunResponse'>>('POST',pending.kind==='prepare'?'/prepare':'/runs',pending.request);
+   const ack=await this.request<Dto<'QaRunResponse'>>('POST',pending.kind==='prepare'?'/prepare':'/runs',pending.request,pending.kind==='answer'?billingRecoveryHeaders('QaAnswerRequest',pending.request):{});
    if(!Value.Check(qaSchemas.QaRunResponse,ack))throw new ApiError(0,'DATA_UNAVAILABLE');
    if(!this.live())return;
    const previous=this.snapshot(),{pending:removed,...next}=previous;

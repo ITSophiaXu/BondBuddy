@@ -1,4 +1,5 @@
-import {int64,serializeInt64,parseInt64,isAutomaticPriceVersion} from '@bondbuddy/contracts';
+import {billingRecoverySchemas,billingRecoveryHeaders,type BillingRecoveryDto} from './billing-recovery-wire.js';
+import {encodeBillingDto,int64,serializeInt64,parseInt64,isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import {FileCheckBatches} from './project-file-check-batches';
 import {formatPoints} from './billing-types.js';
 import {isAutomaticCharge} from './commerce';
@@ -33,7 +34,7 @@ type ReadingTarget={kind:'file'|'select'|'detail'|'finding'|'coverage'|'manual-n
   {kind:'nav';href:string;label:string};
 type ReadingSnapshot={context:string;filter:string;query:string;anchor?:{target:ReadingTarget;top:number};focus?:ReadingTarget};
 type RenderedView={host:HTMLElement;context:string;filter:string;query:string;check?:ProjectFileCheck};
-type PendingUpdate={checkId:string;body:Dto<'ProjectFileUpdateRequest'>;filenames:string[];attempted:boolean;confirmation?:ConfirmationSnapshot;quote?:Dto<'ProjectFileUpdateQuoteResponse'>};
+type PendingUpdate={checkId:string;body:BillingRecoveryDto<'ProjectFileUpdateRequest'>;filenames:string[];attempted:boolean;confirmation?:ConfirmationSnapshot;quote?:Dto<'ProjectFileUpdateQuoteResponse'>};
 const active=new Set(['queued','preparing','running','validating','delivering','settlement_pending']);
 export class FileConsistency {
   private commerce=false;
@@ -45,8 +46,9 @@ export class FileConsistency {
   private linkedUpdateHistory?:string;
   private chosen=new Set<string>();private selectionCheck?:string;private filter='all';private name='';private message='';private needsCredits=false;
   private prospectus?:ProspectusPanel;private prospectusHost?:HTMLElement;
-  private checkRequest?:Dto<'ProjectFileCheckRequest'>;
+  private checkRequest?:BillingRecoveryDto<'ProjectFileCheckRequest'>;
   private pendingUpdate?:PendingUpdate;
+  private recoveryError='';
   private dialog?:HTMLDialogElement;private locatedUpdate?:string;
   private originalMessages=new Map<string,string>();
   private manualTokens=new Map<string,string>();private manualControls=new Map<string,ManualNav>();
@@ -69,18 +71,19 @@ export class FileConsistency {
       if(typeof cached.selectionCheck==='string'&&cached.selectionCheck.length<=128&&Array.isArray(cached.chosen)&&cached.chosen.length<=200&&cached.chosen.every((id:unknown)=>typeof id==='string'&&id.length>0&&id.length<=128)){this.selectionCheck=cached.selectionCheck;this.chosen=new Set(cached.chosen);}
       if(['all','conflict','consistent','manual','updated','selected'].includes(cached.filter))this.filter=cached.filter;
       this.needsCredits=cached.needsCredits===true;
-      if(Value.Check(schemas.ProjectFileCheckRequest,cached.checkRequest))this.checkRequest=cached.checkRequest;
+      if(Value.Check(billingRecoverySchemas.ProjectFileCheckRequest,cached.checkRequest))this.checkRequest=cached.checkRequest;
       const pending=cached.pendingUpdate;
-      if(pending?.attempted===true&&typeof pending.checkId==='string'&&pending.checkId.length>0&&pending.checkId.length<=128&&Value.Check(schemas.ProjectFileUpdateRequest,pending.body)&&Array.isArray(pending.filenames)&&pending.filenames.length===pending.body.files.length&&pending.filenames.every((n:unknown)=>typeof n==='string'&&n.length<=200)){
-        this.pendingUpdate={checkId:pending.checkId,body:pending.body,filenames:pending.filenames,attempted:true,...(Value.Check(schemas.ProjectFileUpdateQuoteResponse,pending.quote)?{quote:pending.quote}:{})};
+      if(pending?.attempted===true&&typeof pending.checkId==='string'&&pending.checkId.length>0&&pending.checkId.length<=128&&Value.Check(billingRecoverySchemas.ProjectFileUpdateRequest,pending.body)&&Array.isArray(pending.filenames)&&pending.filenames.length===pending.body.files.length&&pending.filenames.every((n:unknown)=>typeof n==='string'&&n.length<=200)){
+        this.pendingUpdate={checkId:pending.checkId,body:pending.body,filenames:pending.filenames,attempted:true,...(Value.Check(billingRecoverySchemas.ProjectFileUpdateQuoteResponse,pending.quote)?{quote:encodeBillingDto('projectFileUpdateQuote',pending.quote)}:{})};
         this.pendingUpdate.confirmation=restoreConfirmationSnapshot(pending.confirmation,this.confirmationBinding(this.pendingUpdate));
       }
+      if(cached.checkRequest!=null&&!this.checkRequest||pending?.attempted===true&&!this.pendingUpdate)throw new Error('Invalid retained request');
       if(this.checkRequest||this.pendingUpdate)this.message='已恢复上次尚未确认的提交，请重试核对同一请求。';
       else if(this.needsCredits)this.message='已恢复本轮文件选择。充值后请重新确认费用，尚未提交更新。';
-    }catch{/* Server records remain authoritative; do not invent a completed operation. */}
+    }catch{this.recoveryError='本机保存的原检查或更新请求无法核实，记录已保留。请联系支持核对原任务，避免重复提交。';}
   }
   private cache(){
-    if(!this.cacheKey)return;
+    if(!this.cacheKey||this.recoveryError)return;
     try{if(!this.checkRequest&&!this.pendingUpdate?.attempted&&!this.chosen.size&&!this.needsCredits)sessionStorage.removeItem(this.cacheKey);else sessionStorage.setItem(this.cacheKey,JSON.stringify({owner:this.owner,project:this.id,selectionCheck:this.checkRequest||this.pendingUpdate?.attempted?this.selectionCheck:this.selected()?.run_id??this.selectionCheck,chosen:[...this.chosen],filter:this.filter,needsCredits:this.needsCredits,checkRequest:this.checkRequest,pendingUpdate:this.pendingUpdate?.attempted?this.pendingUpdate:undefined}));}
     catch{this.message='浏览器无法保存重试凭据，请保持页面打开并确认本次提交结果。';}
   }
@@ -88,8 +91,9 @@ export class FileConsistency {
   private workpaperCheck(c=this.selected()){return c?.files.length===1&&this.files.some(f=>f.file_id===c.files[0].file_id&&f.document_type==='workpaper');}
   private currentCheckFiles(c=this.selected()){return this.files.filter(f=>f.latest&&(this.workpaperCheck(c)?f.file_id===c!.files[0].file_id:f.document_type!=='workpaper'));}
   dispose(){this.abort.abort();clearTimeout(this.timer);this.downloads.dispose();this.prospectus?.dispose();this.checkBatches.dispose();this.closeDialog();}
-  private request<T>(method:'GET'|'POST',path:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id)}/project-files${path||'?include_workpapers=true'}`,body,{},AbortSignal.any([this.abort.signal,AbortSignal.timeout(30000)]));}
+  private request<T>(method:'GET'|'POST',path:string,body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id)}/project-files${path||'?include_workpapers=true'}`,body,headers,AbortSignal.any([this.abort.signal,AbortSignal.timeout(30000)]));}
   async render(){
+    if(this.recoveryError){this.shell(`<h1>检查文件一致性</h1><p role="alert">${esc(this.recoveryError)}</p>`,'projects');return;}
     if(!this.id){this.shell('<h1>检查文件一致性</h1><p>请从任务进度与结果选择需要检查的项目。</p><a class="btn primary" href="#tasks">选择项目</a>','projects');return;}
     this.shell('<p role="status">正在读取文件与检查记录…</p>','projects');
     try{const [p,catalog]=await Promise.all([this.api.project(this.id,this.abort.signal),readCommerce(this.api,this.abort.signal)]);this.commerce=catalog?.enabled===true;this.automaticChecks=this.commerce&&isAutomaticPriceVersion(catalog?.version);this.name=p.name;await this.reload();}
@@ -452,7 +456,7 @@ export class FileConsistency {
         this.checkRequest=request;
       }
       this.cache();let r:{run_id:string};
-      try{r=await this.request<{run_id:string}>('POST','/checks',this.checkRequest);}
+      try{r=await this.request<{run_id:string}>('POST','/checks',this.checkRequest,billingRecoveryHeaders('ProjectFileCheckRequest',this.checkRequest));}
       catch(e){if(e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status)){this.checkRequest=undefined;this.cache();try{await this.reload();}catch{}}throw e;}
       this.checkRequest=undefined;this.cache();this.message='检查已提交，关闭页面后仍会继续处理。';
       history.replaceState(null,'',location.pathname+location.search+'#consistency?'+withProjectContext(new URLSearchParams({project:this.id,run:r.run_id})));await this.reload();
@@ -679,7 +683,7 @@ export class FileConsistency {
   private async submitUpdate(){const pending=this.pendingUpdate;if(!pending)return;if(!pending.attempted&&pending.quote&&pending.quote.items.some(item=>scopeStatus(item)!=='ready')){this.message='报价已过期，未开始；选择与准备保留，请返回重新核对。';this.status();return;}await this.act(()=>this.submitUpdateRequest(pending));}
   private async submitUpdateRequest(pending:NonNullable<FileConsistency['pendingUpdate']>){
     pending.attempted=true;this.cache();this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=true);
-    try{await this.request('POST','/checks/'+encodeURIComponent(pending.checkId)+'/updates',pending.body);}
+    try{await this.request('POST','/checks/'+encodeURIComponent(pending.checkId)+'/updates',pending.body,billingRecoveryHeaders('ProjectFileUpdateRequest',pending.body));}
     catch(e){
       if(e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status)){this.pendingUpdate=undefined;this.cache();this.needsCredits=e.code==='CREDITS_INSUFFICIENT';this.closeDialog();try{await this.reload();}catch{};}
       else {const status=this.dialog?.querySelector('#fc-confirm-status');if(status)status.textContent='提交结果尚未确认。请重试核对同一请求，避免重复更新。';}

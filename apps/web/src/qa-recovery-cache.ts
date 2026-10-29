@@ -1,3 +1,4 @@
+import {billingRecoverySchemas,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {int64} from '@bondbuddy/contracts';
 import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
@@ -7,7 +8,7 @@ export type QaRecoveryCacheStorage=Pick<Storage,'getItem'|'setItem'|'removeItem'
 export type QaRecoveryPending=
   | {kind:'draft';request:Dto<'QaDraftRequest'>}
   | {kind:'prepare';request:Dto<'QaPrepareRequest'>}
-  | {kind:'answer';request:Dto<'QaAnswerRequest'>};
+  | {kind:'answer';request:BillingRecoveryDto<'QaAnswerRequest'>};
 export type QaRecoveryValue={revision:number;draft:QaDraft;needsKnowledgeChoice?:boolean;sourceRun?:string;pending?:QaRecoveryPending};
 export type QaRecoveryCacheRead=
   | {status:'empty'|'invalid'|'unavailable';value?:undefined}
@@ -66,9 +67,9 @@ function validValueInner(value:unknown,project:string,allowUndefinedOptional=fal
       validDraft(pending.request.draft)&&sameDraft(value.draft,pending.request.draft);
   }
   if(pending.kind==='answer'){
-    return Value.Check(qaSchemas.QaAnswerRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&
+    return Value.Check(billingRecoverySchemas.QaAnswerRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&
       value.draft.preparation_id!==null&&value.draft.questions.length>0&&
-      (isOutcomePriceVersion(pending.request.price_version)?typeof pending.request.expected_points==='string'&&pending.request.included_followup_of===value.draft.included_followup_of&&(int64(pending.request.expected_points)===0n&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
+      (isOutcomePriceVersion(pending.request.price_version)?pending.request.included_followup_of===value.draft.included_followup_of&&(int64(pending.request.expected_points)===0n&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
       int64(pending.request.expected_points)===BigInt(value.draft.questions.length)*BigInt(PROJECT_QA_PRICE.points)&&pending.request.price_version===PROJECT_QA_PRICE.version);
   }
   return false;

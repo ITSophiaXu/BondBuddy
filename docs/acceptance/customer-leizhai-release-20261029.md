@@ -2,7 +2,44 @@
 
 Status: integration in progress, not deployed, user acceptance not recorded.
 
-## Current validation at 4da8b930
+## Browser upgrade compatibility repair
+
+The browser now restores valid numeric requests saved before the int64 wire
+upgrade in QA, integrity, project-file batch/check/update and workpaper flows.
+It retains the original request IDs, amounts, version/hash bindings and bodies,
+and explicitly uses numeric-v1 only when replaying those validated requests.
+New HTTP requests still require strings. Unsafe or malformed pending file
+updates remain in storage and block a replacement operation. Retained update
+confirmation metadata survives ordinary refresh as well.
+
+The legacy material assistant controller also compares shortage amounts as
+integers: string `"0"` no longer blocks its confirmed QA/document submission,
+while a positive shortage still blocks it. This is retained-controller coverage,
+not a claim that the retired composer is visible in the current interface.
+
+- Full browser unit suite: 943/943 passed, zero skips, after correcting the
+  runner cwd (the initial run could not find two build-context fixture paths).
+  The focused 101/101 cache/wire tests are a subset, not additional unique tests.
+- Affected browser suites: first 27 passed, one old domain-number versus wire
+  string assertion failed, and one optional screenshot collector was skipped.
+  The corrected acknowledgement case passed its targeted recheck. The three
+  new ordinary-refresh cases passed, preserving exact original requests and
+  one accepted task; unsafe original data was retained without resubmission.
+- Material controller regressions reproduced two zero-shortage failures before
+  repair; all four zero/positive-shortage QA/document cases passed afterward.
+- Type checking and Vite production build passed. These browser checks use
+  synthetic HTTP producers; they do not prove real model or payment execution.
+- The first new file-batch cache test had an invalid symbolic price version.
+  A separate comparison against b7aa371d reproduced the same cache rejection
+  using the valid historical price version and confirmed the repaired cache
+  retains the identical numeric body. Initial records were not overwritten.
+
+API/worker product source is unchanged from 4da8b930. Its images and backend
+results below remain valid for those services; a new web image is still needed
+for this repair. Full incremental review and the original-template permission
+gate remain unfinished. Production has not changed.
+
+## Backend and image validation at 4da8b930
 
 The integrated product source includes #814 `f818d860`, #804 `c7ba5c51` and
 #815 `2aaf596f`. All three complete Linux images build successfully from an

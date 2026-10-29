@@ -1,3 +1,4 @@
+import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {int64,formatPoints} from '@bondbuddy/contracts';
 import {isOutcomePriceVersion} from './billing-types.js';
 import {isAutomaticCharge} from './commerce';
@@ -177,7 +178,7 @@ export class FileWorkspace {
     return true;
   }
   dispose(){this.workpapers?.dispose();this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
-  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,{},this.controller.signal);}
+  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,headers,this.controller.signal);}
   async render(){
     this.shell('<p role="status">正在读取文件生成…</p>','generate');
     if(!this.id){await this.chooseProject();return;}
@@ -508,7 +509,7 @@ export class FileWorkspace {
     const replay=!!this.pendingBatch&&this.pendingUncertain;
     if(!this.pendingBatch){this.pendingBatch=body;this.pendingStored=this.cache?.savePending(body)??false;if(!this.pendingStored){this.pendingBatch=undefined;throw new UserFacingError('浏览器暂无法保存本次提交记录，请允许会话存储后重试。任务尚未提交。');}}
     try{
-      const batch=await this.request<ProjectFileBatch>('POST','/batches',this.pendingBatch);
+      const batch=await this.request<ProjectFileBatch>('POST','/batches',this.pendingBatch,billingRecoveryHeaders('ProjectFileBatchRequest',this.pendingBatch));
       if(!Value.Check(ProjectFileBatchSchema,batch)||batch.items.length!==this.pendingBatch.documents.length||batch.items.some((item,i)=>item.document_type!==this.pendingBatch!.documents[i].document_type))throw new ApiError(0,'DATA_UNAVAILABLE');
       this.cache?.clearPending();this.pendingBatch=undefined;this.pendingUncertain=false;this.pendingStored=false;
       if(!this.live())return;

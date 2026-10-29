@@ -11,6 +11,18 @@ class MemoryStorage implements QaRecoveryCacheStorage{
 }
 const sha='a'.repeat(64),otherSha='b'.repeat(64),key='bb-qa-recovery:owner:project';
 const source=():ProjectFileAsset=>({kind:'material',pin:{source_project_id:'project',material_id:'questions',material_version:2,sha256:sha}});
+test('ordinary upgrade restores the original numeric QA request without changing its identity or bytes',()=>{
+  const storage=new MemoryStorage(),cache=new QaRecoveryCache('owner','project',storage);
+  const legacy={revision:7,draft:draft(),pending:{kind:'answer',request:{request_id:'old-answer',expected_revision:7,
+    price_version:PROJECT_QA_PRICE.version,expected_points:2*PROJECT_QA_PRICE.points}}};
+  const raw=JSON.stringify({version:'qa-recovery-cache-v1',owner:'owner',project:'project',value:legacy});storage.setItem(key,raw);
+  const result=cache.read();assert.equal(result.status,'valid');assert.deepEqual(result.value,legacy);assert.equal(storage.getItem(key),raw);
+  if(result.status==='valid'){assert.equal(cache.save(result.value,result.value).status,'valid');assert.deepEqual(cache.read().value,legacy);}
+  for(const amount of [Number.MAX_SAFE_INTEGER+1,-1,0.5,'05000']){
+    storage.setItem(key,JSON.stringify({version:'qa-recovery-cache-v1',owner:'owner',project:'project',value:{...legacy,pending:{...legacy.pending,request:{...legacy.pending.request,expected_points:amount}}}}));
+    assert.equal(cache.read().status,'invalid');
+  }
+});
 const draft=():QaDraft=>({preparation_id:'prepare-run',questions:[{id:'q0',start:0,end:2,question:'请说明债券的偿付安排。'},{id:'q4',start:4,end:4,question:'补充最新财务指标。'}],
   materials:[{kind:'material',pin:{source_project_id:'member-project',material_id:'financial-report',material_version:3,sha256:otherSha}},
     {kind:'artifact',pin:{source_project_id:'project',artifact_id:'prospectus',artifact_version:5,sha256:sha}}],requirements:'逐项标记缺失的证据',use_knowledge:false});
