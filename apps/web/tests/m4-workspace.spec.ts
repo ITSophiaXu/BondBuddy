@@ -560,10 +560,10 @@ for(const state of ['running','succeeded','failed'] as const)test(`project mater
  await mount(page,s);
  await page.route('**/api/v1/projects**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/api/v1/projects/m4-project/tasks')return reply(route,taskPage('m4-project',[task.run],'generation',{topic_id:s.workspace.topic.topic_id}));if(url.pathname==='/api/v1/projects')return reply(route,{items:[{...s.workspace.project,status:state,latest_run:{run_id:'dashboard-run',state,updated_at:now}}],page:{has_more:false,next_cursor:null}});if(url.pathname==='/api/v1/projects/m4-project')return reply(route,s.workspace.project);return route.fallback();});
  await page.goto('/#dashboard');await page.locator('[data-tasks]').click();await page.locator('.collection-task a').click();
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
  if(state==='succeeded')await expect(page.locator('#m4-content')).toContainText('本次材料成果.docx');else await expect(page.locator('#m4-content')).toContainText(state==='running'?'正在':'本轮未完成');
- await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
- await page.getByRole('link',{name:'返回全部项目'}).click();await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();expect(s.executions).toHaveLength(0);
+ await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await page.getByRole('link',{name:'返回任务进度与结果'}).click();await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();expect(s.executions).toHaveLength(0);
 });
 
 

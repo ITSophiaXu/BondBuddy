@@ -459,7 +459,7 @@ test('workbench alone owns version history and retains stopped/failed snapshots 
   await setup(page,state,'#tasks');const project=page.locator(`.collection-project[data-project-id="${id}"]`);await expect(project).toBeVisible();await project.locator('[data-tasks]').click();await page.getByRole('button',{name:'复核版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
   await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
   await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(3);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
-  await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('.sidebar a.active')).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');await expect(page.locator('.sidebar a.active')).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 
@@ -596,15 +596,15 @@ test('annotated source prototype screenshots',async({page})=>{
 
 for(const viewport of [{width:1360,height:900},{width:390,height:844}])test(`unified review materials preserve inline requirements ${viewport.width}`,async({page})=>{
  await page.setViewportSize(viewport);const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials&from=projects`);
- await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');
  await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.locator('.review-agent-fab')).toHaveCount(0);
  await expect(page.getByRole('heading',{name:'材料与要求',exact:true})).toBeVisible();
  await page.locator('#review-requirements').fill('请关注本期现金流。');
  await expect.poll(()=>state.workspace.draft.requirements.includes('请关注本期现金流。')).toBe(true);
  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
  await page.reload();await expect(page.locator('#review-requirements')).toHaveValue('请关注本期现金流。');
- await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
- await page.reload();await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');
+ await page.reload();await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');
  await page.getByRole('tab',{name:/材料与要求/}).click();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  const output=process.env.BB_WORKSPACE_SCREENSHOTS;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/materials-${viewport.width}.png`,fullPage:true});}
@@ -917,8 +917,8 @@ test('review task receipt displays the actual reserved, charged and released poi
 
 test('dashboard review progress keeps its collection context through tab changes and reload',async({page})=>{
  const s=fixture();s.workspace.active_run=s.makeRun('active-run','running');await setup(page,s,`#/projects/${id}/review?tab=making&from=dashboard&dashboard_kind=review&dashboard_status=active`);
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
- await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.getByRole('link',{name:'返回全部项目'})).toHaveAttribute('href','#tasks');expect(s.executes).toHaveLength(0);
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
+ await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.getByRole('link',{name:'返回任务进度与结果'})).toHaveAttribute('href','#tasks');expect(s.executes).toHaveLength(0);
 });
 
 

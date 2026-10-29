@@ -270,7 +270,7 @@ test('navigation cancels an in-flight download and suppresses late completion', 
   await page.getByRole('button', { name: '下载修订版', exact: true }).click(); await requested;
   await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeDisabled();
   await page.evaluate(() => { location.hash = '/'; });
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   release();
   await expect(page.locator('.artifact-review')).toHaveCount(0);
   expect(downloads).toBe(0);
@@ -363,8 +363,8 @@ for (const action of ['navigate', 'switch account'] as const) {
     await page.getByRole('button', { name: '下载', exact:true }).click(); await requested;
     await expect(page.getByRole('button', { name: '下载', exact:true })).toBeDisabled();
     if (action === 'navigate') {
-      await page.getByRole('link', { name: '← 返回全部项目' }).click();
-      await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
+      await page.getByRole('link', { name: '← 返回任务进度与结果' }).click();
+      await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
     } else {
       await page.evaluate(() => { const channel = new BroadcastChannel('bondbuddy-session'); channel.postMessage('changed'); channel.close(); });
       await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
@@ -390,7 +390,7 @@ test('project-files refresh keeps a pending download disabled and releases it on
   await page.goto('/#/projects/'+projectId+'/files');
   const button = page.getByRole('button', { name: '下载', exact:true });
   await button.click(); await requested;
-  await page.getByRole('button', { name: '刷新文件' }).click();
+  await page.getByRole('button', { name: '刷新文件', exact: true }).click();
   await expect(button).toBeDisabled();
   const downloaded = page.waitForEvent('download');
   release();

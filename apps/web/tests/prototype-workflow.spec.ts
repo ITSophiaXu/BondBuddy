@@ -60,7 +60,7 @@ async function expandOptionalGroups(page: Page) {
 test('prototype dashboard leads through creation to materials with persistent material-footer requirements',async({page})=>{
   const errors: string[]=[]; page.on('pageerror',e=>errors.push(e.message));
   const state=await setup(page);
-  await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
   const navigation=page.getByRole('navigation',{name:'主导航'}).getByRole('link');
   await expect(navigation).toHaveCount(6);
   expect(await navigation.evaluateAll(links=>links.map(link=>link.getAttribute('href')))).toEqual(['#tasks','#update','#review','#generate','#integrity','#qa']);
@@ -72,7 +72,7 @@ test('prototype dashboard leads through creation to materials with persistent ma
   await page.screenshot({path:join(tmpdir(),'bb361-dashboard-mobile.png'),fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
   await page.getByRole('button',{name:'打开菜单'}).click();
-  await expect(page.getByRole('link',{name:'全部项目',exact:true}).first()).toBeVisible();
+  await expect(page.getByRole('link',{name:'任务进度与结果',exact:true}).first()).toBeVisible();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'更新募集书',exact:true}).click();
   await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
   await expect(page.getByRole('heading',{name:'更新募集说明书'})).toBeVisible();
@@ -192,7 +192,7 @@ for (const width of [1440, 390]) {
   });
 }
 
-for (const [suffix, active] of [['','更新募集书'],['?from=projects','全部项目'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','全部项目']]) {
+for (const [suffix, active] of [['','更新募集书'],['?from=projects','任务进度与结果'],['?from=dashboard&dashboard_kind=update&dashboard_status=active','任务进度与结果']]) {
   test(`project loading and error preserve the entry navigation: ${active} (${suffix || 'direct'})`,async({page})=>{
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release=resolve; });
@@ -216,8 +216,8 @@ test('material workspace respects unavailable server resources without creating 
   await page.goto('/#review?new=1'); await expect(page.locator('#review-create-form')).toBeVisible();
   expect(state.writes).toEqual([]);
   expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
-  await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
-  await page.goto('/'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
+  await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
+  await page.goto('/'); await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
 });
 
 for (const width of [1440, 390]) {

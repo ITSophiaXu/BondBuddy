@@ -283,7 +283,7 @@ test('save-only sends, exact edit history, lost-response idempotency and refresh
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('first'); await page.getByLabel('密码').fill('synthetic-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${id}`);
   await expect(page.locator('.cowork-message')).toContainText('用户修正：截至6月');
   await expect(page.locator('.cowork-assistant')).toHaveCount(0);
@@ -405,7 +405,7 @@ test('stale edit and cursor reread without overriding; owner switch clears priva
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('second'); await page.getByLabel('密码').fill('synthetic-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByText('项目暂时无法打开')).toBeVisible();
   await expect(page.getByText('用户原话 A')).toHaveCount(0);

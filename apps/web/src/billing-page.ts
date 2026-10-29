@@ -52,7 +52,7 @@ export class BillingPage {
     const faqOpen=document.querySelector<HTMLDetailsElement>('.billing-faq')?.open;
     const b=this.balance,c=this.config,o=this.order;
     const shortage=this.reviewProject?Math.max(0,(this.quote?.quote?.points??0)-(b?.available??0)):(b?.available??0)===0;
-    const returnLink=`<a class="btn secondary" href="${esc(this.back())}">${this.returnTo?'返回刚才的工作':this.projectId?(this.reviewProject?'返回项目确认开始':'返回项目继续更新'):'返回全部项目'}</a>`;
+    const returnLink=`<a class="btn secondary" href="${esc(this.back())}">${this.returnTo?'返回刚才的工作':this.projectId?(this.reviewProject?'返回项目确认开始':'返回项目继续更新'):'返回任务进度与结果'}</a>`;
     const context=this.projectId||this.returnTo?`<section class="notice"><span>${this.quote?.quote?shortage?'可用积分为 0，请充值后继续更新。':'已有可用积分，可返回项目继续更新。':''}${this.continuity()}</span>${returnLink}</section>`:'';
     this.shell(`<section class="credit-overview" aria-labelledby="account-balance-title"><h2 id="account-balance-title">可用积分</h2><p class="account-balance-value">${b?number(b.available):'—'}<span>积分</span></p><p class="account-balance-note">上传、保存项目和下载已有成果免费</p>${b && b.frozen > 0 ? `<p class="credit-reservation">进行中任务预留 <strong>${number(b.frozen)}</strong> 积分<span>已从可用积分中预留，成功后扣除，失败或取消后返还。</span></p>` : ''}</section>
       <div class="account-billing-content">${this.error?`<p class="account-billing-error" role="alert">${esc(this.error)}</p>`:''}${context}

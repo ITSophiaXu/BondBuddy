@@ -1,0 +1,32 @@
+
+Running 2 tests using 1 worker
+
+(node:58256) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 apps\web\tests\task-results-baseline.spec.ts:105:1 › mobile files appear before the collapsed directory and folder selection closes it (7.4s)
+(node:56228) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 2 apps\web\tests\task-results-baseline.spec.ts:193:57 › import reconciles a lost put receipt before sending bytes again (7.9s)
+
+
+  1) apps\web\tests\task-results-baseline.spec.ts:105:1 › mobile files appear before the collapsed directory and folder selection closes it 
+
+    Error: expect(received).toBeLessThan(expected)
+
+    Expected: < 330
+    Received:   453.390625
+
+      109 |   await expect(page.locator('#file-list>.collection-file')).toHaveCount(2);
+      110 |   const gap=await page.evaluate(()=>document.querySelector('#file-list>.collection-file')!.getBoundingClientRect().top-document.querySelector('.pw-files-head')!.getBoundingClientRect().bottom);
+    > 111 |   expect(gap).toBeLessThan(330);
+          |               ^
+      112 |   await page.locator('.pw-files-head').evaluate(element=>element.scrollIntoView({block:'start'}));
+      113 |   await expect(page.locator('#file-list>.collection-file').first()).toBeInViewport();
+      114 |   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        at [workspace]\apps\web\tests\task-results-baseline.spec.ts:111:15
+
+    Error Context: work\task-results-baseline-final\task-results-baseline-mobi-b9a8b--folder-selection-closes-it\error-context.md
+
+  1 failed
+    apps\web\tests\task-results-baseline.spec.ts:105:1 › mobile files appear before the collapsed directory and folder selection closes it 
+  1 passed (31.7s)
