@@ -37,7 +37,8 @@ import type { M4AssistantReply,M4DocumentManifest,M4QaManifest } from '@bondbudd
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { m4DocumentStage,m4DocumentDeliveryStage,validM4DocumentResult } from './m4-document-stage.js';
 import { m4QaStage,authorizedM4Reply,constrainM4Reply,validM4QaResult } from './m4-qa-stage.js';
-import { checkedM4File } from './m4-file-workspace.js';
+import { checkedM4File,prepareM4Files,verifyM4Originals } from './m4-file-workspace.js';
+import {loadM4RuntimeSkill} from './m4-runtime-skills.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import { m4ActionReason } from './m4-action-progress.js';
 import { m4InputGate } from './m4-input.js';
@@ -84,6 +85,22 @@ async function outputWords(directory:string) {
   await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(directory)})/'output'\nfor name,text in [('document.docx','Synthetic summary'),('preparation-note.docx','Synthetic preparation note')]:\n d=Document();d.add_paragraph(text);t=d.add_table(rows=2,cols=2);t.cell(0,0).text='项目';t.cell(1,0).text='资产';t.cell(1,1).text='100';d.save(p/name)\n`],{cwd:root,timeout:30000});
 }
 const reply=(overrides:Partial<M4AssistantReply>={}):M4AssistantReply=>({content:'Synthetic answer',citations:[],requirements:[],fields:{},intent:'answer',document_type:null,target_business:null,retrieval:'not_performed',...overrides});
+
+test('selected Word is copied with its tables and sections, remains editable and never changes the original',async()=>{
+ const f=await fixture();
+ try{
+  const file=join(f.directory,'synthetic-template.docx');
+  await runFile(python,['-B','-c',`from docx import Document\nfrom docx.shared import Cm\nimport sys\nd=Document();d.sections[0].left_margin=Cm(2.7);d.sections[0].header.paragraphs[0].text='Synthetic header';d.add_paragraph('Synthetic template');t=d.add_table(rows=2,cols=2);t.style='Table Grid';t.cell(0,0).text='项目';t.cell(1,1).text='旧值';d.save(sys.argv[1])`,file],{cwd:root,timeout:30000});
+  const bytes=await readFile(file),pin={...f.pin,material_id:'selected-template',sha256:digest(bytes)};
+  const manifest=f.input.manifest as M4DocumentManifest;manifest.input.template={template_id:'private-template',template_version:3,sha256:pin.sha256};manifest.template_material=pin;
+  f.input.materials.push({pin,filename:'Template.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:'template'});f.store.set('template',bytes);
+  const originals=await prepareM4Files(f.ctx,f.input,loadM4RuntimeSkill('m4-workpaper'),f.directory),data=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
+  assert.equal(data.selected_template.template_version,3);assert.equal(digest(await readFile(join(f.directory,data.selected_template.original_path))),pin.sha256);
+  assert.ok(!data.authorized_sources.some((s:{id:string})=>s.id===pin.material_id),'historical template facts are not authorized project evidence');
+  await runFile(python,['-B','-c',`from docx import Document\nfrom docx.shared import Cm\nimport sys\nd=Document(sys.argv[1]);assert len(d.tables)==1;assert len(d.tables[0].rows)==2;assert abs(d.sections[0].left_margin-Cm(2.7))<1000;assert d.sections[0].header.paragraphs[0].text=='Synthetic header';d.tables[0].cell(1,1).text='新值';d.save(sys.argv[1])`,join(f.directory,data.selected_template.working_copy_path)],{cwd:root,timeout:30000});
+  await verifyM4Originals(f.directory,originals);assert.equal(digest(f.store.get('template')!),pin.sha256);
+ }finally{await f.clean();}
+});
 
 for(const documentType of ['private_summary','underwriter','legal'] as const)for(const market of ['sse','szse'] as const)
 test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requirements and delivers editable Word`,async()=>{

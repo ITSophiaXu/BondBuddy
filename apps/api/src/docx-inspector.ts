@@ -528,11 +528,17 @@ function validateContentTypes(xml: ParsedXml, entries: ZipEntry[]) {
 
 /** Bounded Office ZIP reader shared by the catalogue importer. Does not execute workbook content. */
 export function readBoundedOfficeParts(bytes:Buffer,include:(name:string)=>boolean=()=>true):Map<string,Buffer> {
+  return readBoundedZipParts(bytes,name=>isXmlPart(name)&&include(name));
+}
+/** Same path, CRC, size, symlink and compression guards for user template packages. */
+export function readBoundedZipParts(bytes:Buffer,include:(name:string)=>boolean=()=>true,streamingXml=false):Map<string,Buffer> {
   const report=inspectGeneratedWord(bytes),entries=parseZipDirectory(bytes,report),parts=new Map<string,Buffer>();
   let total=0;
   for(const entry of entries){
-    if(entry.directory||!isXmlPart(entry.name)||!include(entry.name))continue;
-    if(entry.uncompressedSize>DOCX_LIMITS.xmlPartBytes||(total+=entry.uncompressedSize)>DOCX_LIMITS.totalXmlBytes)fail('DOCX_XML_SIZE_LIMIT');
+    if(entry.directory||!include(entry.name))continue;
+    // Streaming consumers avoid the much larger DOM allocation. Archive/part,
+    // total expansion and compression-ratio guards still apply to every entry.
+    if(isXmlPart(entry.name)&&(entry.uncompressedSize>(streamingXml?DOCX_LIMITS.partBytes:DOCX_LIMITS.xmlPartBytes)||(total+=entry.uncompressedSize)>(streamingXml?64*1024*1024:DOCX_LIMITS.totalXmlBytes)))fail('DOCX_XML_SIZE_LIMIT');
     const compressed=bytes.subarray(entry.dataOffset,entry.dataOffset+entry.compressedSize);
     let content:Buffer;
     if(entry.method===0)content=Buffer.from(compressed);

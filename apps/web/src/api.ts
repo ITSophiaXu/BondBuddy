@@ -128,7 +128,7 @@ export class ApiClient {
       method, credentials: 'same-origin', cache: 'no-store', signal,
       headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(method === 'GET' || !csrf ? {} : { 'X-BB-CSRF': csrf }), ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : body instanceof Blob ? body : JSON.stringify(body)
     });
   }
 

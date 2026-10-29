@@ -9,12 +9,12 @@ import {M4KnowledgeSnapshotSchema,m4DocumentScopeSupported,PROJECT_DOCUMENT_CATA
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..');
 const sha=(content:string)=>createHash('sha256').update(content,'utf8').digest('hex');
-export function loadWorkpaperKnowledge(market:Market,offering:Offering,entry?:WorkpaperEntry):M4KnowledgeSnapshot {
+export function loadWorkpaperKnowledge(market:Market,offering:Offering,entry?:WorkpaperEntry,selectedTemplate=false):M4KnowledgeSnapshot {
   if(!m4DocumentScopeSupported('workpaper',market,offering))throw Error('M4_KNOWLEDGE_UNAVAILABLE');
-  const template=loadWorkpaperTemplate(entry??{code:'',title:'专项核查文件'});
+  const template=selectedTemplate?null:loadWorkpaperTemplate(entry??{code:'',title:'专项核查文件'});
   const content='充分使用固定募集说明书的全部有关正文、表格、附注与图片；原文已有数据不得留空。按目录逐项形成结果，募集书不替代独立核查证据。不伪造原件、签章或履职记录。正文不写来源、依据栏目、内部编号或编制过程。采用本项固定格式模板，逐项替换内容槽位，保留字体、段落、表格与页面，不保留无用空行。内部映射和编制说明不得进入交付文件包。';
-  return {version:'workpaper-guide-20261027-v2',document_type:'workpaper',market,offering,title:'尽职调查底稿',content,sha256:sha(content),source_ids:[template.id],
-    template:{id:template.id,version:'2026-10-27',sha256:template.sha256,docx_base64:template.bytes.toString('base64')}};
+  return {version:selectedTemplate?'workpaper-selected-template-v1':'workpaper-guide-20261027-v2',document_type:'workpaper',market,offering,title:'尽职调查底稿',content,sha256:sha(content),source_ids:[template?.id??'selected-word-template'],
+    ...(template?{template:{id:template.id,version:'2026-10-27',sha256:template.sha256,docx_base64:template.bytes.toString('base64')}}:{})};
 }
 /** User-selected historical/template files supply structure; this guide supplies provenance rules only. */
 export function loadProjectFileKnowledge(market:Market,type:M4DocumentType,offering:Offering):M4KnowledgeSnapshot {

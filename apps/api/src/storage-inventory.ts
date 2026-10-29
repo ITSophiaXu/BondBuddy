@@ -5,7 +5,7 @@ import { azureBlobs, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
 
 export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/', 'owners/'] as const;
-export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'file_authoring' | 'format_report' | 'unrecognized';
+export type InventoryKind = 'snapshot' | 'upload' | 'file_template' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'file_authoring' | 'format_report' | 'unrecognized';
 export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'post_0042_unregistered' | 'snapshot_provenance_unknown' | 'unrecognized';
 type Item = { key: string; bytes: number; lastModified?: Date; etag: string };
 type Db = Pool | PoolClient;
@@ -18,6 +18,7 @@ const authoringRun = `owners/${authoringId}/projects/${authoringId}/runs/${autho
 const patterns: [InventoryKind, RegExp][] = [
   ['snapshot', new RegExp(`^users/${id}/projects/${id}/snapshots/${id}$`)],
   ['upload', new RegExp(`^users/${id}/projects/${id}/uploads/${id}$`)],
+  ['file_template', new RegExp(`^users/${id}/projects/${id}/file-templates/assets/${hex}\\.docx$`)],
   ['provider_result', new RegExp(`^users/${id}/projects/${id}/provider-results/${id}-${hex}\\.json$`)],
   ['ocr_result', new RegExp(`^users/${id}/projects/${id}/ocr/results/${hex}\\.json$`)],
   ['ocr_page', new RegExp(`^users/${id}/projects/${id}/ocr/${id}/[1-9][0-9]{0,8}/${hex}\\.png$`)],
@@ -47,6 +48,8 @@ async function classify(db: Db, kind: InventoryKind, key: string): Promise<Inven
     snapshot: `SELECT 1 FROM bb_snapshot_refs s WHERE s.object_key=$1 AND NOT EXISTS
       (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind='prompt_snapshot' AND t.content_id=s.id)`,
     upload: 'SELECT 1 FROM bb_uploads WHERE object_key=$1 UNION ALL SELECT 1 FROM bb_material_versions WHERE object_key=$1',
+    file_template: `SELECT 1 FROM bb_file_template_sets s CROSS JOIN LATERAL jsonb_array_elements(s.records) r
+      WHERE s.owner_user_id=split_part($1,'/',2) AND s.project_id=split_part($1,'/',4) AND r->>'object_key'=$1`,
     provider_result: `SELECT 1 FROM bb_provider_result_refs r WHERE r.result_ref=$1 AND NOT EXISTS
       (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind='provider_result' AND t.content_id=r.id)`,
     ocr_result: 'SELECT 1 FROM bb_ocr_snapshots WHERE result_key=$1',

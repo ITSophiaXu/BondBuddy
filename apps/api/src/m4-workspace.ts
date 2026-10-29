@@ -87,10 +87,10 @@ async function bindHandoff(db:PoolClient,owner:string,topicId:string,b:M4Handoff
     VALUES($1,$2,'project',$3,'project.m4_handoff_bound',$4)`,[uid(),owner,target.id,binding]);
   return {binding};
 }
-export async function readM4MaterialPin(db:Db,owner:string,pin:M4MaterialPin){
+export async function readM4MaterialPin(db:Db,owner:string,pin:M4MaterialPin,allowInternalTemplate=false){
   await project(db,owner,pin.source_project_id);
   const m=(await db.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,[owner,pin.source_project_id,pin.material_id,pin.material_version])).rows[0];
-  if(!m || m.sha256.trim()!==pin.sha256)throw missing();return m;
+  if(!m || m.sha256.trim()!==pin.sha256 || m.internal_template&&!allowInternalTemplate)throw missing();return m;
 }
 export async function readM4ArtifactPin(db:Db,owner:string,pin:M4ArtifactPin){
   await project(db,owner,pin.source_project_id);
@@ -127,7 +127,7 @@ async function validateDraft(db:Db,owner:string,topic:string,input:M4DraftInput)
     const base=(await db.query('SELECT * FROM bb_m4_artifacts WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[owner,input.edit_base.artifact_id,input.edit_base.artifact_version])).rows[0];
     if(!base || base.kind!=='document' || base.document_type!==input.document_type)invalid('全文改稿必须明确选择同文种的已交付正文，复核报告与编制说明不能作为正文底稿。');}
   if(input.template){const t=(await db.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 AND id=$2 AND version=$3',[owner,input.template.template_id,input.template.template_version])).rows[0];
-    if(!t || t.sha256.trim()!==input.template.sha256 || t.document_type!==input.document_type || t.retired_at)stale();await readM4MaterialPin(db,owner,t.material);}
+    if(!t || t.sha256.trim()!==input.template.sha256 || t.document_type!==input.document_type || t.retired_at)stale();await readM4MaterialPin(db,owner,t.material,true);}
   for(const requirement of input.requirements){const m=(await db.query('SELECT * FROM bb_m4_messages WHERE owner_user_id=$1 AND topic_id=$2 AND id=$3 AND version=$4',[owner,topic,requirement.message_id,requirement.message_version])).rows[0];
     if(!m || m.role!=='assistant' || !m.reply?.requirements?.includes(requirement.text))invalid('采用的要求必须来自本话题助手的准确消息。');}
 }

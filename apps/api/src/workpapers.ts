@@ -8,7 +8,7 @@ import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {ZipFile} from 'yazl';
 import {PassThrough,Readable} from 'node:stream';
-import {WorkpaperImportSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,workpaperDownloadFilename,workpaperZipPath,
+import {WorkpaperImportSchema,WorkpaperPreviewSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,workpaperDownloadFilename,workpaperZipPath,
   type WorkpaperDecision,type WorkpaperCatalogue,type WorkpaperWorkspace,type WorkpaperBatch,type WorkpaperEntry,type M4DocumentManifest,type Market,type Offering} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanonicalBusinessRunIdle,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -22,7 +22,7 @@ import {registerWorkpaperAssessments,readWorkpaperAssessments} from './workpaper
 import {workpaperDocx,explanationParagraphs} from './workpaper-docx.js';
 export {workpaperDocx} from './workpaper-docx.js';
 export {loadWorkpaperTemplate} from './workpaper-templates.js';
-import {parseWorkpaperXlsx} from './workpaper-catalogue.js';
+import {parseWorkpaperXlsx,previewWorkpaperXlsx} from './workpaper-catalogue.js';
 type Db=Pool|PoolClient;
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 const xlsx='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -128,38 +128,8 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
   });
 }
 
-export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
-  registerWorkpaperAssessments(app,db,owner);
-  registerWorkpaperLibrary(app,db,owner);
-  const base='/api/v1/projects/:project_id/workpapers',params=(r:FastifyRequest)=>r.params as {project_id:string;batch_id:string};
-  app.get(base,async r=>readWorkpapers(db(),await owner(r),params(r).project_id));
-  app.get(base+'/batches/:batch_id',async r=>readWorkpaperBatch(db(),await owner(r),params(r).project_id,params(r).batch_id));
-  app.get(base+'/catalogues/:catalogue_id',async r=>{
-    const user=await owner(r),id=params(r).project_id;
-    await project(db(),user,id);
-    const row=(await db().query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,(r.params as {catalogue_id:string}).catalogue_id])).rows[0];
-    if(!row)throw missing();return catalogueDto(row);
-  });
-  app.post(base+'/catalogues',{schema:{body:WorkpaperImportSchema}},async r=>{
-    const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof WorkpaperImportSchema>,hash=inputManifestHash({project_id:id,...b});
-    return transaction(db(),async c=>{
-      const p=await project(c,user,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
-      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-catalogue:'+b.request_id]);
-      const prior=(await c.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];
-      if(prior){if(prior.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','此上传请求已使用。');return catalogueDto(prior);}
-      if(b.material.source_project_id!==id)throw missing();const material=await readM4MaterialPin(c,user,b.material);
-      if(material.media_type!==xlsx)throw new Problem(422,'VALIDATION_FAILED','请上传 XLSX 底稿目录；旧版 XLS 请先另存为 XLSX。');
-      const bytes=await blobs().getIfExistsBounded(material.object_key,WORKPAPER_LIMITS.fileBytes);if(!bytes||digest(bytes)!==b.material.sha256)throw new Problem(422,'VALIDATION_FAILED','目录文件超过 10 MB 或暂时不可读取。');
-      let parsed:ReturnType<typeof parseWorkpaperXlsx>;
-      try{parsed=parseWorkpaperXlsx(bytes,b.scope);}catch(e){if(e instanceof Problem)throw e;throw new Problem(422,'VALIDATION_FAILED','目录格式无法读取，请另存为标准 XLSX 后上传。');}
-      const row=(await c.query('INSERT INTO bb_workpaper_catalogues(id,owner_user_id,project_id,request_id,request_hash,material,filename,entries,warnings,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-        [uid(),user,id,b.request_id,hash,b.material,material.filename,JSON.stringify(parsed.entries),JSON.stringify(parsed.warnings),inputManifestHash(parsed)])).rows[0];
-      await event(c,user,id,'workpaper.catalogue_imported',{catalogue_id:row.id});return catalogueDto(row);
-    });
-  });
-  app.post(base+'/batches',{schema:{body:WorkpaperStartSchema}},async r=>{
-    const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof WorkpaperStartSchema>,hash=inputManifestHash({project_id:id,...b});
-    const batch=await transaction(db(),async c=>{
+export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,user:string,id:string,b:Static<typeof WorkpaperStartSchema>,templateInputs?:{templates:Record<string,{template:import('@bondbuddy/contracts').M4TemplateRef;material:import('@bondbuddy/contracts').M4MaterialPin}>;materials:import('@bondbuddy/contracts').M4MaterialPin[]}){
+ const hash=inputManifestHash({project_id:id,...b,...(templateInputs?{templateInputs}:{})});
       const p=await project(c,user,id,true);
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-batch:'+b.request_id]);
       const prior=(await c.query('SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];
@@ -199,8 +169,8 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       for(const [ordinal,entry] of selected.entries()){
         const decision=decisions.find(d=>d.item_id===entry.id);
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
-          market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry),
-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,execution:'shared_batch_v1' as const}:{decision})},source_material:sourcePin,materials:[cat.material],template:null,edit_base:null,scope:'whole',
+          market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:templateInputs?.templates[entry.id]?.material??null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry,!!templateInputs),
+          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs?{}:{execution:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[])],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
         if(decision&&decision.status!=='generate'){
@@ -214,6 +184,53 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       }
       if(!generatable)await c.query("UPDATE bb_workpaper_batches SET state='complete' WHERE id=$1",[batchId]);
       await event(c,user,id,'workpaper.batch_submitted',{batch_id:batchId,count:selected.length});return batchId;
+}
+
+export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
+  registerWorkpaperAssessments(app,db,owner);
+  registerWorkpaperLibrary(app,db,owner);
+  const base='/api/v1/projects/:project_id/workpapers',params=(r:FastifyRequest)=>r.params as {project_id:string;batch_id:string};
+  app.get(base,async r=>readWorkpapers(db(),await owner(r),params(r).project_id));
+  app.get(base+'/batches/:batch_id',async r=>readWorkpaperBatch(db(),await owner(r),params(r).project_id,params(r).batch_id));
+  app.get(base+'/catalogues/:catalogue_id',async r=>{
+    const user=await owner(r),id=params(r).project_id;
+    await project(db(),user,id);
+    const row=(await db().query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,(r.params as {catalogue_id:string}).catalogue_id])).rows[0];
+    if(!row)throw missing();return catalogueDto(row);
+  });
+  const readCatalogue=async(c:Db,user:string,id:string,b:Static<typeof WorkpaperPreviewSchema>)=>{
+    if(b.material.source_project_id!==id)throw missing();const material=await readM4MaterialPin(c,user,b.material);
+    if(material.media_type!==xlsx)throw new Problem(422,'VALIDATION_FAILED','请上传 XLSX 底稿目录；旧版 XLS 请先另存为 XLSX。');
+    const bytes=await blobs().getIfExistsBounded(material.object_key,WORKPAPER_LIMITS.fileBytes);
+    if(!bytes||digest(bytes)!==b.material.sha256)throw new Problem(422,'VALIDATION_FAILED','目录文件超过 10 MB 或暂时不可读取。');
+    try{return {material,bytes,preview:previewWorkpaperXlsx(bytes,b.scope,b.mapping)};}
+    catch(e){if(e instanceof Problem)throw e;throw new Problem(422,'VALIDATION_FAILED','目录格式无法读取，请另存为标准 XLSX 后上传。');}
+  };
+  // Read-only interpretation of a pinned upload. No catalogue, run or charge is created.
+  app.post(base+'/catalogue-preview',{schema:{body:WorkpaperPreviewSchema}},async r=>{
+    const user=await owner(r),id=params(r).project_id;await project(db(),user,id);
+    const {material,preview}=await readCatalogue(db(),user,id,r.body as Static<typeof WorkpaperPreviewSchema>);
+    return {filename:material.filename,...preview};
+  });
+  app.post(base+'/catalogues',{schema:{body:WorkpaperImportSchema}},async r=>{
+    const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof WorkpaperImportSchema>,hash=inputManifestHash({project_id:id,...b});
+    return transaction(db(),async c=>{
+      const p=await project(c,user,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-catalogue:'+b.request_id]);
+      const prior=(await c.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];
+      if(prior){if(prior.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','此上传请求已使用。');return catalogueDto(prior);}
+      const {material,bytes,preview}=await readCatalogue(c,user,id,b);
+      if(!b.mapping&&preview.needs_review)throw new Problem(422,'VALIDATION_FAILED','目录结构需要确认，请打开识别预览核对名称列和条目范围，无需重新上传。');
+      const parsed=parseWorkpaperXlsx(bytes,b.scope,b.mapping);parsed.warnings=preview.warnings;
+      const row=(await c.query('INSERT INTO bb_workpaper_catalogues(id,owner_user_id,project_id,request_id,request_hash,material,filename,entries,warnings,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+        [uid(),user,id,b.request_id,hash,b.material,material.filename,JSON.stringify(parsed.entries),JSON.stringify(parsed.warnings),inputManifestHash(parsed)])).rows[0];
+      await event(c,user,id,'workpaper.catalogue_imported',{catalogue_id:row.id});return catalogueDto(row);
+    });
+  });
+  app.post(base+'/batches',{schema:{body:WorkpaperStartSchema}},async r=>{
+    const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof WorkpaperStartSchema>,hash=inputManifestHash({project_id:id,...b});
+    const batch=await transaction(db(),async c=>{
+      return createWorkpaperBatch(c,blobs,user,id,b);
     });return readWorkpaperBatch(db(),user,id,batch);
   });
   app.post(base+'/batches/:batch_id/actions',{schema:{body:WorkpaperActionSchema}},async r=>{

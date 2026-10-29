@@ -18,7 +18,7 @@ const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 type Db=Pool|PoolClient;
 export async function qaMaterials(db:Db,owner:string,id:string){
  await project(db,owner,id);
- const rows=(await db.query(`SELECT m.* FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.deleted_at IS NULL
+ const rows=(await db.query(`SELECT m.* FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.deleted_at IS NULL AND NOT m.internal_template
  AND NOT EXISTS(SELECT 1 FROM bb_project_qa_runs q WHERE q.owner_user_id=m.owner_user_id AND q.manifest#>>'{source,asset,pin,material_id}'=m.id) AND m.project_id IN(SELECT members.id FROM bb_projects p CROSS JOIN LATERAL(${memberProjectsSql('p')}) members WHERE p.owner_user_id=$1 AND p.id=$2)
  ORDER BY m.persisted_at DESC,m.id LIMIT 300`,[owner,id])).rows;
  const materials:QaInput['materials']=rows.map(m=>({filename:m.filename,asset:{kind:'material',pin:{source_project_id:m.project_id,material_id:m.id,material_version:m.version,sha256:m.sha256.trim()}}}));

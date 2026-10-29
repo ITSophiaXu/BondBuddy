@@ -5,6 +5,13 @@ import {automaticTaskPath,billingTaskReturnTo,cancelBillingTask,configureBilling
 
 function memory(){const rows=new Map<string,string>();return {rows,getItem:(key:string)=>rows.get(key)??null,setItem:(key:string,value:string)=>{rows.set(key,value);},removeItem:(key:string)=>{rows.delete(key);}};}
 const endpoint='/projects/p1/qa/runs',body={request_id:'answer-one',expected_revision:7,price_version:AUTOMATIC_PRICE_VERSION,expected_points:1218,scope_quote_id:'q1'},route='#qa?project=p1';
+test('mixed file package returns from funding with its original request, tariff and exact template quote',async()=>{
+ const store=memory(),path='/projects/p1/file-generation/batches',returnTo='#generate?project=p1&step=documents';
+ const input={request_id:'mixed-files',expected_revision:3,source_version_id:'source-v1',source_selection_revision:2,price_version:AUTOMATIC_PRICE_VERSION,expected_points:11423,document_quotes:[{document_type:'annual',draft_version:5,scope_quote_id:'annual-v5'}]};
+ const task=await createBillingTask('owner',path,input,{},returnTo,store);waiting(store,task.id);
+ let calls=0;await Promise.all([1,2].map(()=>resumeBillingTask('owner',task.id,returnTo,async(p,snapshot)=>{calls++;assert.equal(p,path);assert.deepEqual(snapshot,input);return {batch_id:'same-parent'};},store)));
+ assert.equal(calls,1);assert.equal(await readBillingTask('owner',task.id,store),undefined);
+});
 function waiting(store:ReturnType<typeof memory>,id:string){const key=[...store.rows.keys()].find(k=>k.endsWith(id))!,value=JSON.parse(store.getItem(key)!);store.setItem(key,JSON.stringify({...value,state:'needs_funds'}));}
 
 test('task recovery rejects a different owner, tampered input, expired intent and arbitrary routes',async()=>{

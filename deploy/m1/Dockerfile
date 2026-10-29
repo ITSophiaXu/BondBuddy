@@ -91,7 +91,13 @@ COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs dep
 
 FROM node-runtime AS api
 ARG BB_RELEASE_SHA=unknown
-ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool
+ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool PATH=/opt/template-preview/bin:$PATH
+# The API renders only allowlisted derivatives. Keep its Python dependencies
+# independent of the model/worker runtime and never render an original directly.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libreoffice-writer fonts-noto-cjk \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build --chown=root:root /app/python/bondbuddy_template_preview.py /app/python/bondbuddy_template_redaction.py /app/python/template-preview-requirements.txt ./python/
+RUN python3 -m venv /opt/template-preview && /opt/template-preview/bin/pip install --no-cache-dir -r python/template-preview-requirements.txt
 # Disk-backed upload spool (compose mounts a volume here); a fresh named volume inherits this owner.
 RUN mkdir -p /var/lib/bondbuddy/upload-spool && chown node:node /var/lib/bondbuddy/upload-spool && chmod 0700 /var/lib/bondbuddy/upload-spool
 USER node
