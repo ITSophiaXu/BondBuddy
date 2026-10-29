@@ -390,7 +390,7 @@ test('project-files refresh keeps a pending download disabled and releases it on
   await page.goto('/#/projects/'+projectId+'/files');
   const button = page.getByRole('button', { name: '下载', exact:true });
   await button.click(); await requested;
-  await page.getByRole('button', { name: '刷新文件' }).click();
+  await page.getByRole('button', { name: '刷新文件', exact: true }).click();
   await expect(button).toBeDisabled();
   const downloaded = page.waitForEvent('download');
   release();
