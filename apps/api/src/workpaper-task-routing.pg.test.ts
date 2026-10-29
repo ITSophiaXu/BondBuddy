@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {test} from 'node:test';
 import {Pool} from 'pg';
+import {PROJECT_TASK_COUNTS_CAPABILITY} from '@bondbuddy/contracts';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 
@@ -46,7 +47,7 @@ test('workpaper task projection distinguishes inspections; exact historical read
 test('batch tasks project immutable attempt membership to both collection endpoints with owner/source isolation',{skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection});let owner='batch-routing-'+randomUUID();const originalOwner=owner;
   const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
-  const send=(method:'GET'|'POST',url:string,payload?:any)=>app.inject({method,url,payload,headers:{origin:'http://bondbuddy.test'}});
+  const send=(method:'GET'|'POST',url:string,payload?:any)=>app.inject({method,url,payload,headers:{origin:'http://bondbuddy.test',[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value}});
   const ok=async(method:'GET'|'POST',url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.json();};
   const hash='b'.repeat(64);
   try{
@@ -95,6 +96,15 @@ test('batch tasks project immutable attempt membership to both collection endpoi
     const summary=(await ok('GET','/api/v1/projects')).items.find((item:any)=>item.project_id===project).task_summary;
     assert.equal(summary.latest.run_id,batch);assert.equal(summary.active,1);assert.equal(summary.total,3);
     assert.deepEqual(summary.latest.workpaper_batch,batchTask.workpaper_batch);
+    for(const capability of [undefined,'unknown-version']){
+      const headers=capability?{[PROJECT_TASK_COUNTS_CAPABILITY.header]:capability}:{};
+      const legacyTasks=await app.inject({method:'GET',url:`/api/v1/projects/${project}/tasks?limit=50`,headers});
+      assert.equal(legacyTasks.statusCode,200);
+      assert.deepEqual(legacyTasks.json().items.find((t:any)=>t.run_id===batch).workpaper_batch,{batch_id:batch,project_id:project});
+      const legacyProjects=await app.inject({method:'GET',url:'/api/v1/projects',headers});
+      assert.equal(legacyProjects.statusCode,200);
+      assert.deepEqual(legacyProjects.json().items.find((p:any)=>p.project_id===project).task_summary.latest.workpaper_batch,{batch_id:batch,project_id:project});
+    }
     const exact=await ok('GET',`/api/v1/projects/${project}/workpapers/batches/${batch}`);
     assert.equal(exact.items[0].run_id,retry);assert.equal(exact.items[0].attempt,2);
     for(const [batchState,taskState] of [['queued','queued'],['paused','paused'],['partial','failed'],['cancelled','cancelled'],['complete','succeeded']]){

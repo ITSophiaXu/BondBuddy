@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { schemas } from '@bondbuddy/contracts';
+import { schemas, PROJECT_TASK_COUNTS_CAPABILITY } from '@bondbuddy/contracts';
 import type { Static } from '@sinclair/typebox';
 import { date, project, Problem } from './data.js';
 import { artifactDownloadName, artifactNameColumns, artifactNameJoins } from './artifact-filename.js';
@@ -63,11 +63,11 @@ export const collectionTasksSql = `
 `;
 export const activeTaskSql = "('preparing','queued','running','validating','delivering','settlement_pending')";
 export const terminalTaskSql = "('succeeded','test_completed','failed','cancelled','rejected')";
-export const taskDto = (r:any) => r ? ({
+export const taskDto = (r:any, counts=false) => r ? ({
   run_id:r.id,project_id:r.project_id,kind:r.display_kind,state:r.state,stage:r.stage,
   created_at:date(r.created_at),updated_at:date(r.updated_at),artifact_id:r.artifact_id??null,
   report_id:r.report_id??null,topic_id:r.topic_id??null,document_type:r.document_type??null,operation:r.operation??null,
-  ...(r.workpaper_batch_id?{workpaper_batch:{batch_id:r.workpaper_batch_id,project_id:r.workpaper_project_id,total:r.workpaper_total,completed:r.workpaper_completed}}:{})
+  ...(r.workpaper_batch_id?{workpaper_batch:{batch_id:r.workpaper_batch_id,project_id:r.workpaper_project_id,...(counts?{total:r.workpaper_total,completed:r.workpaper_completed}:{})}}:{})
 }) : null;
 
 // One entry per immutable file version. Only successful delivered artifacts are shown;
@@ -133,7 +133,8 @@ export function registerProjectCollection(app:FastifyInstance,db:()=>Pool,owner:
       WHERE ($3::timestamptz IS NULL OR (created_at,id)<($3::timestamptz,$4::text))
       ORDER BY created_at DESC,id DESC LIMIT $5`,[user,id,cursor?.time??null,cursor?.id??null,limit+1])).rows;
     const page=rows.slice(0,limit),last=page.at(-1);
-    return {project_id:id,items:page.map(taskDto),page:{has_more:rows.length>limit,next_cursor:rows.length>limit?Buffer.from(JSON.stringify({project:id,time:last.cursor_time,id:last.id})).toString('base64url'):null}};
+    const counts=request.headers[PROJECT_TASK_COUNTS_CAPABILITY.header]===PROJECT_TASK_COUNTS_CAPABILITY.value;
+    return {project_id:id,items:page.map(row=>taskDto(row,counts)),page:{has_more:rows.length>limit,next_cursor:rows.length>limit?Buffer.from(JSON.stringify({project:id,time:last.cursor_time,id:last.id})).toString('base64url'):null}};
   });
   app.get('/api/v1/projects/:project_id/files',{schema:{response:{200:schemas.ProjectFilesResponse}}},async request=>{
     const user=await owner(request),id=(request.params as {project_id:string}).project_id,scope=await collectionScope(db(),user,id);

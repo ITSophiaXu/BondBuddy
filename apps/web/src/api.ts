@@ -2,7 +2,7 @@ import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-f
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
-import { isUploadInspectionPublicReason, m4InputIssue, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
@@ -81,7 +81,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
 }
 
 export class ApiClient {
-  projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
+  projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value},signal);}
   projectFiles(id:string,signal?:AbortSignal){return this.request<Dto<'ProjectFilesResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/files',undefined,{},signal);}
   consumptionHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'CreditConsumptionHistoryResponse'>>('GET','/credits/consumption-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   rechargeHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'RechargeHistoryResponse'>>('GET','/credits/recharge-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
@@ -211,7 +211,7 @@ export class ApiClient {
   projects(cursor?: string, filters: Dto<'ProjectListQuery'> = {}, signal?: AbortSignal) {
     const query = new URLSearchParams(filters);
     if (cursor) query.set('cursor', cursor);
-    return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {}, signal);
+    return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value}, signal);
   }
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
   artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }

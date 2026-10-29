@@ -38,10 +38,10 @@ for(const width of [1440,390])test(`QA history contains only answers, ordered an
  expect(writes(s)).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
-test('preparation-only history stays hidden while direct preparation and adoption remain available',async({page})=>{
+test('preparation-only history stays hidden while the current preparation remains editable',async({page})=>{
  const s=fixture();s.workspace.runs=s.workspace.runs.filter(r=>r.operation==='prepare');
  await install(page,s);await page.goto(route(prepareId));await expect(page.locator('#qa-history')).toBeHidden();
- await expect(page.locator('.qa-prepared')).toBeVisible();await page.reload();
+ await expect(page.locator('#qa-preparation-controls')).toBeVisible();await page.reload();
  await expect(page.locator('#qa-use-preparation')).toHaveCount(0);await expect(page.locator('#qa-preparation-controls')).toBeVisible();
  await expect(page.locator('#qa-history')).toBeHidden();expect(s.answers).toEqual([]);expect(s.prepares).toEqual([]);
 });
