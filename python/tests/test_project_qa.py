@@ -54,6 +54,45 @@ def pdf_fixture(path, pages):
 
 
 class ProjectQaTests(unittest.TestCase):
+    def test_evidence_keeps_footnotes_and_table_cells_beyond_four_hundred(self):
+        from bondbuddy_file_authoring.review_corrections import write
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); doc = Document()
+            doc.add_paragraph('关联交易明细，单位：万元')
+            table = doc.add_table(rows=110, cols=4)
+            for i, row in enumerate(table.rows):
+                for j, cell in enumerate(row.cells):
+                    cell.text = f'第{i+1}行第{j+1}列'
+            doc.add_paragraph('附注：2024年度交易金额含税。'); doc.save(root/'facts.docx')
+            with ZipFile(root/'facts.docx') as z:
+                parts = {n:z.read(n) for n in z.namelist()}
+            parts['word/footnotes.xml'] = ('<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:footnote w:id="1"><w:p><w:r><w:t>脚注：结算期为半年。</w:t></w:r></w:p></w:footnote></w:footnotes>').encode('utf8')
+            write(root/'facts.docx', parts)
+            evidence(root/'facts.docx', root/'facts.json')
+            result = json.loads((root/'facts.json').read_text(encoding='utf8'))
+            self.assertEqual(len([s for s in result['spans'] if s['location'].startswith('表格')]), 440)
+            self.assertTrue(any(s['text']=='脚注：结算期为半年。' and s['id']=='footnotes-p0' for s in result['spans']))
+            self.assertTrue(any(s['text']=='第110行第4列' for s in result['spans']))
+
+    def test_answer_table_is_editable_and_keeps_units_blanks_zero_and_local_gap(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); source=fixtures(root)
+            prepare(source,root/'prepared.docx',root/'meta.json')
+            parsed=json.loads((root/'meta.json').read_text(encoding='utf8'))
+            questions=[parsed['questions'][0],parsed['questions'][-1]]
+            table='单位：万元\n| 项目 | 2024年 | 2025年 |\n| --- | ---: | ---: |\n| 甲\\|乙 | 0 | - |\n| 丙 |  | 20 |\n\n附注：金额含税。\n【待确认：期后回款金额】'
+            answers=[dict(question_id=q['id'],status='missing',answer=table,missing_materials=['期后回款金额'],citations=[],case_ids=[],approach='') for q in questions]
+            fill(root/'prepared.docx',dict(source_sha256=hashlib.sha256((root/'prepared.docx').read_bytes()).hexdigest(),questions=questions,answers=answers,evidence=[],cases=[],warnings=[]),root/'answer.docx')
+            doc=Document(root/'answer.docx')
+            self.assertEqual(len(doc.tables),2)
+            self.assertEqual([c.text for c in doc.tables[0].rows[1].cells],['甲|乙','0','-'])
+            self.assertEqual([c.text for c in doc.tables[0].rows[2].cells],['丙','','20'])
+            self.assertEqual(len(doc.tables[1].cell(0,0).tables),1)
+            with ZipFile(root/'answer.docx') as z:
+                xml=z.read('word/document.xml').decode('utf8')
+            self.assertIn('单位：万元',xml);self.assertIn('附注：金额含税',xml);self.assertIn('待确认：期后回款金额',xml)
+            self.assertEqual(xml.count('<w:tblHeader'),2);self.assertNotIn('w:hRule="exact"',xml)
+
     def test_word_numbered_review_comments_are_candidates_without_literal_numbers(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td); doc = Document()

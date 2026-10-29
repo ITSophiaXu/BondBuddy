@@ -129,3 +129,10 @@
 @media(max-width:760px){.qa-layout:has(.qa-upload-empty){grid-template-columns:minmax(0,1fr)}.qa-page .qa-project-materials,.qa-page .qa-document{padding:20px}.qa-project-materials header{flex-wrap:wrap}.qa-prospectus-row{flex-wrap:wrap}.qa-prospectus-row>.btn{width:100%}.qa-workflow{gap:12px;justify-content:space-between;font-size:12px}.qa-workflow li{flex:1;align-items:start;gap:6px}.qa-workflow span{width:22px;height:22px}.qa-page h1{font-size:25px}.qa-page .page-head{align-items:start;gap:12px}.qa-project-materials footer{flex-wrap:wrap}.qa-page .qa-toolbar{justify-content:space-between}.qa-page .qa-toolbar label{margin:0}.qa-page .qa-toolbar select{max-width:70%;font-size:12px}}
 
 .qa-start-summary{padding:18px 20px;margin-top:24px;background:#f4f7f1;border:1px solid #dfe7dc;border-radius:10px}.qa-start-summary h3{margin:0 0 8px}.qa-start-summary p{margin:8px 0 0;color:#647366;font-size:13px}.qa-question-list{max-height:420px;overflow:auto;scrollbar-gutter:stable;margin-bottom:16px}
+
+/* Quoted prospectus tables retain their columns on narrow screens. */
+.qa-answer-body{min-width:0;line-height:1.75;overflow-wrap:anywhere}
+.qa-answer-body .readable-table{max-width:100%;overflow-x:auto;margin:16px 0}
+.qa-answer-body table{width:100%;border-collapse:collapse;font:inherit}
+.qa-answer-body th,.qa-answer-body td{padding:10px 12px;border:1px solid var(--line,#dce2d5);text-align:left;min-width:96px;vertical-align:top}
+.qa-answer-body th{background:#edf2ef;font-weight:600}
