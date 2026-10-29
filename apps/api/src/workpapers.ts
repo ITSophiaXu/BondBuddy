@@ -15,7 +15,7 @@ import {readM4MaterialPin,startPinnedM4Run} from './m4-workspace.js';
 import {quoteM4} from './m4-billing.js';
 import {creditBalance} from './billing.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
-import {projectFileSource,readProjectFileAsset} from './project-file-storage.js';
+import {projectFileSource,readProjectFileAsset,workpaperFileVersions} from './project-file-storage.js';
 import {importProspectusMaterial} from './prospectus-import.js';
 import {loadWorkpaperKnowledge} from './m4-knowledge.js';
 import {registerWorkpaperAssessments,readWorkpaperAssessments} from './workpaper-assessments.js';
@@ -74,10 +74,11 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const remaining=items.filter(i=>i.state==='queued').length;
   const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?remaining*automaticTaskTariff(b.price_version).workpaper.points:0;
   const balance=required?await creditBalance(db,owner):null;
+  const files=await workpaperFileVersions(db,owner,id);
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
     ...(balance?{billing_resume:{price_version:b.price_version,required_points:required,available_points:balance.available,shortage:Math.max(0,required-balance.available)}}:{}),
-    items:items.map(i=>({entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:i.delivered_explanation.filename,sha256:i.delivered_explanation.sha256}}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
-      artifacts:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))}))};
+    items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:i.delivered_explanation.filename,sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
+      artifacts:current?.asset.kind==='artifact'?[{kind:'document' as const,filename:current.filename,pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))};})};
 }
 export async function readWorkpapers(db:Db,owner:string,id:string):Promise<WorkpaperWorkspace>{
   await project(db,owner,id);

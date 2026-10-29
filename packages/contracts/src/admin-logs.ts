@@ -8,7 +8,7 @@ import { RUN_CHANNELS, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 // except AdminPromptView, which needs the separate prompt_viewer grant and is always audited.
 // log_operator performs writes (gate resume, usage corrections); log_reader is read-only.
 export const OPERATOR_ROLES = ['log_reader', 'log_operator', 'prompt_viewer', RECOVERY_ROLE] as const;
-export const OPS_ALERT_KINDS = ['log_sink_unavailable', 'log_backlog_stale', 'evidence_persist_failed', 'evidence_gate_paused', 'usage_conflict', 'retention_purge_failed', 'storage_orphan_candidates', 'payment_reconciliation_unresolved', ...TRIAL_ALERT_KINDS, ...OPS_SCHEDULER_ALERT_KINDS] as const;
+export const OPS_ALERT_KINDS = ['log_sink_unavailable', 'log_backlog_stale', 'evidence_persist_failed', 'evidence_gate_paused', 'usage_conflict', 'retention_purge_failed', 'storage_orphan_candidates', 'payment_reconciliation_unresolved', 'payment_statement_difference', 'payment_statement_unavailable', ...TRIAL_ALERT_KINDS, ...OPS_SCHEDULER_ALERT_KINDS] as const;
 export const EVIDENCE_GATE_STATES = ['open', 'paused'] as const;
 export const LOG_CONTENT_STATES = ['available', 'purged'] as const;
 export const LOG_CONTENT_TOMBSTONE_REASONS = ['retention_expired', 'user_deleted'] as const;

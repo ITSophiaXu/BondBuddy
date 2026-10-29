@@ -83,3 +83,11 @@ test('malformed Compose JSON produces a redacted CLI failure', () => {
   assert.equal(result.stdout.trim(), '{"passed":false,"error":"COMPOSE_CONFIG_JSON_INVALID"}');
   assert.equal(result.stderr, '');
 });
+
+test('statement enablement requires the merchant channel and an explicit supported account list',()=>{
+  const value=config();value.services.api.environment.BB_WECHAT_PAY_STATEMENTS_ENABLED='1';
+  failed(value,'wechat_statement_configuration');
+  value.services.api.environment.BB_WECHAT_PAY_ENABLED='1';
+  value.services.api.environment.BB_WECHAT_PAY_STATEMENT_ACCOUNTS='BASIC,UNKNOWN';
+  failed(value,'wechat_statement_configuration');
+});

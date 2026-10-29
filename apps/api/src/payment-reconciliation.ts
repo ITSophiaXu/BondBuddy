@@ -1,6 +1,6 @@
 import type {FastifyInstance} from 'fastify';
 import type {Pool} from 'pg';
-import {applyVerifiedPayment,paymentOrder,type PaymentProvider} from './payments.js';
+import {applyVerifiedPayment,paymentOrder,closeRecharge,type PaymentProvider} from './payments.js';
 import {refreshPaymentRefund} from './payment-refunds.js';
 import {raiseAlert} from './evidence-gate.js';
 
@@ -31,6 +31,12 @@ export async function reconcilePendingPayments(pool:Pool,providers:readonly Paym
     counts.payments_checked++;
     const provider=providers.find(p=>p.name===order.provider&&p.merchantId===order.merchant_id)!;
     try{
+      if(provider.closePayment&&(order.close_requested_at||new Date(order.expires_at).getTime()<=Date.now())){
+        const applied=await closeRecharge(pool,order.owner_user_id,order.id,providers,true);
+        if(applied.state==='paid')counts.payments_paid++;
+        if(applied.state==='pending'){counts.unknown++;await unresolved('payment',order);}
+        return;
+      }
       const receipt=await provider.query(paymentOrder(order));
       if(receipt.orderId!==order.id)throw Error('Payment query identity mismatch');
       const applied=await applyVerifiedPayment(pool,provider,receipt);

@@ -51,7 +51,7 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
     const directory=await mkdtemp(join(tmpdir(),'bb-project-files-'));
     try{
       if(input.operation==='patch'){
-        const prospectus=await copyAsset(ctx,input.source.asset,directory,'prospectus'),evidence=await inspectProjectFile(ctx,prospectus);
+        const prospectus=await copyAsset(ctx,input.source.asset,directory,'prospectus'),evidence=await inspectProjectFile(ctx,prospectus,true);
         if(input.findings.some(f=>!fileAnchor(evidence,f.source_span_id,f.source_quote)))throw Error('INPUT_REVISION_CONFLICT');
         const source=await copyAsset(ctx,input.asset,directory,'target'),request=join(directory,'request.json');
         await writeFile(request,JSON.stringify({target_sha256:input.asset.pin.sha256,source_filename:input.source.filename,edits:input.findings,manual_findings:input.manual_findings??[]}),{mode:0o600});
@@ -70,10 +70,16 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
         });
         return {kind:'done',value:result,checkpoint:{project_file_result:result}};
       }
-      const sourcePath=await copyAsset(ctx,input.source.asset,directory,'source'),sourceText=await inspectProjectFile(ctx,sourcePath);
+      const workpaperIds=new Set((await ctx.pool.query(`SELECT v.id FROM bb_project_file_versions v JOIN bb_project_files f ON f.owner_user_id=v.owner_user_id AND f.id=v.file_id
+        WHERE v.owner_user_id=$1 AND v.id=ANY($2::text[]) AND f.document_type='workpaper'`,[ctx.run.owner_user_id,input.files.map(f=>f.file_version_id)])).rows.map(r=>r.id));
+      const sourcePath=await copyAsset(ctx,input.source.asset,directory,'source'),sourceText=await inspectProjectFile(ctx,sourcePath,workpaperIds.size>0);
       const files:ProjectFileCheckResult['files']=[];
       for(const file of input.files){
-        const targetPath=await copyAsset(ctx,file.asset,directory,'target-'+file.file_version_id.replace(/[^a-zA-Z0-9-]/g,'')),targetText=await inspectProjectFile(ctx,targetPath);
+        const targetPath=await copyAsset(ctx,file.asset,directory,'target-'+file.file_version_id.replace(/[^a-zA-Z0-9-]/g,'')),targetText=await inspectProjectFile(ctx,targetPath,workpaperIds.has(file.file_version_id));
+        const workpaper=workpaperIds.has(file.file_version_id),nonempty=targetText.spans.filter(s=>s.text.trim());
+        let verifiedCoverage=workpaper?!!(await ctx.pool.query(`SELECT 1 FROM bb_workpaper_check_evidence WHERE owner_user_id=$1 AND run_id=$2 AND file_version_id=$3
+          AND input_hash=$4 AND source_sha256=$5 AND target_sha256=$6 AND checked_spans=$7 AND total_spans=$7`,[ctx.run.owner_user_id,ctx.run.id,file.file_version_id,ctx.run.input_hash.trim(),sourceText.sha256,targetText.sha256,nonempty.length])).rowCount:false;
+        if(workpaper&&(sourceText.coverage!=='complete'||targetText.coverage!=='complete'||!sourceText.spans.some(s=>s.text.trim())||!nonempty.length))throw Error('FILE_CHECK_INCOMPLETE');
         let originals=new Map<string,string>();
         const result=await (options.model??codexModelStage)({name:'project_file_check_v1',logicalCallId:'file-check-'+file.file_version_id,
           config:{...loadCodexAdapterConfig(),max_output_bytes:8*1024*1024},buildPrompt:async()=>prompt,schema:{},
@@ -88,10 +94,23 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
             await verifyM4Originals(cwd,originals);
             const bytes=await checkedM4File(join(cwd,'output'),'check.json',8*1024*1024);
             const proposal=JSON.parse(bytes.toString('utf8'));
-            return {version:'project-file-check-v1',files:[verifiedFileCheck(file.file_version_id,sourceText,targetText,proposal)]} as ProjectFileCheckResult;
+            const checked=verifiedFileCheck(file.file_version_id,sourceText,targetText,proposal);
+            if(workpaper){
+              const spans=new Set(Array.isArray(proposal.checked_span_ids)?proposal.checked_span_ids:[]);
+              if(!Array.isArray(proposal.findings)||nonempty.some(s=>!spans.has(s.id))||!checked.links.length&&!checked.findings.some(f=>fileAnchor(targetText,f.target_span_id,f.original)&&f.reason.trim()))throw Error('FILE_CHECK_INCOMPLETE');
+              verifiedCoverage=true;
+              for(const finding of checked.findings)if(finding.kind==='conflict'&&!/^p\d+$/.test(finding.target_span_id)){finding.kind='manual';finding.replacement=null;finding.reason+='；位于页眉、页脚或附注，请人工修订此处。';}
+              checked.status=checked.findings.some(f=>f.kind==='conflict')?'conflict':checked.findings.length?'manual':'consistent';
+            }
+            return {version:'project-file-check-v1',files:[checked]} as ProjectFileCheckResult;
           }}}).run(ctx);
         if(result.kind!=='done')return result;
         const checked=result.value as ProjectFileCheckResult;if(!Value.Check(ProjectFileCheckResultSchema,checked))throw Error('FILE_CHECK_INVALID');
+        if(workpaper){
+          if(!verifiedCoverage)throw Error('FILE_CHECK_INCOMPLETE');
+          await ctx.pool.query(`INSERT INTO bb_workpaper_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$7) ON CONFLICT(run_id,file_version_id) DO NOTHING`,[ctx.run.owner_user_id,ctx.run.id,file.file_version_id,ctx.run.input_hash.trim(),sourceText.sha256,targetText.sha256,nonempty.length]);
+        }
         files.push(...checked.files);
       }
       const result:ProjectFileCheckResult={version:'project-file-check-v1',files},hash=inputManifestHash(result);
@@ -105,6 +124,7 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
         [join(projectFilesRoot,'python/bondbuddy_file_authoring/report_from_text.py'),join(directory,'report.md'),join(directory,'report.docx')],
         {cwd:projectFilesRoot,signal:ctx.signal,timeout:120000,maxBuffer:1024*1024});
       const output=await storeOutputs(ctx,directory,['report.docx']);return {kind:'done',value:output,checkpoint:{project_file_result:output}};
+    }catch(error){if(error instanceof Error&&error.message==='FILE_CHECK_INCOMPLETE')return {kind:'fail',code:'FILE_CHECK_INCOMPLETE'};throw error;
     }finally{await rm(directory,{recursive:true,force:true});}
   }};
 }

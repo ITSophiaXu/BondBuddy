@@ -225,13 +225,13 @@ test('asynchronous workpaper shortage resumes only the original batch once and n
   }finally{await app.close();await pool.end();}
 });
 
-test('unconnected automatic batch checks fail closed before execution and preserve an already accepted legacy request',{skip:!database,timeout:120000},async()=>{
+test('retired source-diff route remains replayable while automatic workpaper checks use independent paid files',{skip:!database,timeout:120000},async()=>{
   const pool=new Pool({connectionString:database}),f=await fixture(pool),app=server(pool,f),batch=randomUUID();
   const base=`/api/v1/projects/${f.project}/workpapers`,body={request_id:randomUUID(),source_version_id:f.sourceVersion,source_selection_revision:1};
   const send=(payload:{request_id:string;source_version_id:string;source_selection_revision:number})=>app.inject({method:'POST',url:base+'/batches/'+batch+'/checks',headers:{origin},payload});
   try{
     await fund(pool,f.owner,50000);const before=await counts(pool,f.owner);
-    const library=await app.inject({method:'GET',url:base+'/library',headers:{origin}});assert.equal(library.statusCode,200,library.body);assert.equal(library.json().check_capability.enabled,false);
+    const library=await app.inject({method:'GET',url:base+'/library',headers:{origin}});assert.equal(library.statusCode,200,library.body);assert.equal(library.json().check_capability.enabled,true);assert.equal(library.json().check_capability.mode,'per_file');
     for(const input of [body,{...body,request_id:randomUUID(),source_version_id:'new-unconnected-source'}]){
       const response=await send(input);assert.equal(response.statusCode,409,response.body);assert.equal(response.json().code,'BILLING_NOT_READY');
     }

@@ -266,6 +266,7 @@ export class ProjectFiles {
   private locateFileContext(){
     this.fileContextAutoPending=false;const context=this.resolvedFileContext();if(!context){this.paintFileContext();return;}
     if(this.hasUnconfirmed||document.querySelector('dialog[open]')){this.status('请先确认当前上传或保存结果，再定位文件。');return;}
+    if(context.current.document_type==='workpaper'){document.querySelector('#pw-workpaper-library')?.scrollIntoView({block:'start'});return;}
     this.folder=PROJECT_DOCUMENT_CATALOG.find(d=>d.id===context.current.document_type)!.folder;this.q='';this.typeFilter=context.current.document_type;this.statusFilter='all';this.fileContextTarget=context.current.version_id;
     const search=document.querySelector<HTMLInputElement>('#file-search');if(search)search.value='';this.paint();
     const rows=Array.from(document.querySelectorAll<HTMLElement>('#file-list [data-file-family]')).filter(row=>row.dataset.fileFamily===context.request.family&&row.dataset.fileVersion===context.current.version_id);
@@ -445,6 +446,7 @@ export class ProjectFiles {
     return '#generate?'+withProjectContext(new URLSearchParams({topic:w.topic.topic_id,run:v.run_id,return_project:this.id}));
   }
   private fileEditActions(f:ProjectFile,v?:ProjectFileVersion){
+    if(v?.document_type==='workpaper')return '<small class="pw-file-note">请在下方底稿文件库查看检查和维护版本。</small>';
     if(!v?.latest)return f.file_key.startsWith('project-file:')?'<small class="pw-file-note">文件版本暂未核对，请刷新后再修改。</small>':'';
     const href=this.continuationHref(v);
     return (href?'<a class="text-button" href="'+esc(href)+'">打开此稿继续修改</a>':'<small class="pw-file-note">此稿暂不能直接接续，可上传修改稿。</small>')+'<button class="text-button" data-file-edit-upload="'+esc(v.version_id)+'">上传此文件修改稿</button>';
@@ -521,7 +523,7 @@ export class ProjectFiles {
     document.querySelectorAll<HTMLButtonElement>('[data-import-type]').forEach(b=>b.addEventListener('click',()=>this.importFile(b.dataset.importType as ProjectDocumentType)));
     document.querySelectorAll<HTMLButtonElement>('[data-file-edit-upload]').forEach(b=>b.addEventListener('click',()=>{
       const targets=projectFileStatusRows(this.files,this.registry,this.registryLoaded).filter(row=>row.version?.version_id===b.dataset.fileEditUpload),v=targets.length===1?targets[0].version:undefined;
-      if(!v?.latest){this.status('文件版本已变化，请刷新后重新选择。');return;}this.importFile(v.document_type,undefined,structuredClone(v));
+      if(!v?.latest){this.status('文件版本已变化，请刷新后重新选择。');return;}if(v.document_type==='workpaper'){this.status('请在底稿文件库中查看该文件的检查和维护版本。');return;}this.importFile(v.document_type,undefined,structuredClone(v));
     }));
     this.bindDownloads(document.querySelector('#file-list')!);
     document.querySelectorAll<HTMLButtonElement>('[data-file-history]').forEach(b=>b.addEventListener('click',()=>this.history(b.dataset.fileHistory!)));
@@ -539,7 +541,9 @@ export class ProjectFiles {
     if(operationId){try{const record=this.imports().list().find(r=>r.id===operationId);if(!record)throw new UserFacingError('原上传记录已变化，请重新读取。');if(this.pendingImport?.upload.operationId!==operationId)this.restoreImport(record);}catch(e){this.status(friendlyError(e,'read'));return;}}
     if(this.uploading||this.panel?.hasUnconfirmed){this.status('请先确认当前上传或采用操作的结果，再上传关联文件。');return;}const opener=document.activeElement instanceof HTMLElement?document.activeElement:undefined;this.dialog?.remove();const d=document.createElement('dialog');this.dialog=d;d.className='pf-modal pw-file-import';
     const restoring=this.pendingImport;if(restoring)type=restoring.type;
-    const target=restoring?this.registry.find(v=>v.version_id===restoring.latest&&v.document_type===restoring.type):clickedTarget;
+    const candidate=restoring?this.registry.find(v=>v.version_id===restoring.latest&&v.document_type===restoring.type):clickedTarget;
+    if(candidate?.document_type==='workpaper'){this.status('请在底稿文件库中查看该文件的检查和维护版本。');return;}
+    const target=candidate as (ProjectFileVersion&{document_type:ProjectDocumentType})|undefined;
     if(target)type=target.document_type;
     let targetConflict=false,uploadFailed=!!restoring;
     d.setAttribute('aria-labelledby','pw-import-heading');

@@ -80,8 +80,10 @@ export class FileConsistency {
     catch{this.message='浏览器无法保存重试凭据，请保持页面打开并确认本次提交结果。';}
   }
   private live(){return this.current()&&!this.abort.signal.aborted;}
+  private workpaperCheck(c=this.selected()){return c?.files.length===1&&this.files.some(f=>f.file_id===c.files[0].file_id&&f.document_type==='workpaper');}
+  private currentCheckFiles(c=this.selected()){return this.files.filter(f=>f.latest&&(this.workpaperCheck(c)?f.file_id===c!.files[0].file_id:f.document_type!=='workpaper'));}
   dispose(){this.abort.abort();clearTimeout(this.timer);this.downloads.dispose();this.prospectus?.dispose();this.closeDialog();}
-  private request<T>(method:'GET'|'POST',path:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id)}/project-files${path}`,body,{},AbortSignal.any([this.abort.signal,AbortSignal.timeout(30000)]));}
+  private request<T>(method:'GET'|'POST',path:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id)}/project-files${path||'?include_workpapers=true'}`,body,{},AbortSignal.any([this.abort.signal,AbortSignal.timeout(30000)]));}
   async render(){
     if(!this.id){this.shell('<h1>检查文件一致性</h1><p>请从全部项目选择需要检查的项目。</p><a class="btn primary" href="#tasks">选择项目</a>','projects');return;}
     this.shell('<p role="status">正在读取文件与检查记录…</p>','projects');
@@ -346,7 +348,7 @@ export class FileConsistency {
   }
   private blocked(c:ProjectFileCheck,version:string){return !!this.blockReason(c,version);}
   private freshness(c:ProjectFileCheck){
-    const latest=this.files.filter(f=>f.latest),families=new Set(c.files.map(f=>f.file_id));
+    const latest=this.currentCheckFiles(c),families=new Set(c.files.map(f=>f.file_id));
     const files:FileFreshness[]=c.files.map(checked=>{
       const candidates=latest.filter(f=>f.file_id===checked.file_id),current=candidates.length===1?candidates[0]:undefined;
       const state:FileFreshness['state']=!current?'missing':current.version_id===checked.file_version_id?'same':c.updates.some(u=>u.file_version_id===checked.file_version_id&&u.new_version_id===current.version_id&&u.state==='succeeded')?'delivered':'changed';
@@ -367,7 +369,7 @@ export class FileConsistency {
     const source=this.source,sourceMessage=!source?'当前募集书暂不可读取，请回到项目文件核对。':c.source.project_id===source.project_id&&c.source.version_id===source.version_id?'募集书采用记录已变化；即使文件仍是 V'+source.sequence+'，也需按当前采用记录重新核对。':'募集书依据已变化：本轮使用 '+c.source.filename+'（V'+c.source.sequence+'），当前为 '+source.filename+'（V'+source.sequence+'）。';
     const changes=scope.files.filter(f=>f.state!=='same'),counts=[['changed','份文件已换版'],['delivered','份已有本轮交付新稿'],['missing','份原文件的当前版本暂不可读']] as const;
     const summary=counts.map(([state,label])=>{const count=changes.filter(f=>f.state===state).length;return count?count+' '+label:'';}).filter(Boolean);if(scope.added.length)summary.push(scope.added.length+' 份新增文件未在本轮检查');
-    const next=this.checkRequest?'原检查提交结果尚未确认，请先继续确认原请求和原范围；确认后再按当前文件重新检查。':this.pendingUpdate?.attempted?'原文件更新提交结果尚未确认，请先确认原更新；确认后再按当前文件重新检查。':source?'重新检查将使用当前募集书 '+source.filename+'（V'+source.sequence+'）及本项目全部 '+this.files.filter(f=>f.latest).length+' 份当前文件。':'请先确认当前募集书，再检查全部当前项目文件。';
+    const next=this.checkRequest?'原检查提交结果尚未确认，请先继续确认原请求和原范围；确认后再按当前文件重新检查。':this.pendingUpdate?.attempted?'原文件更新提交结果尚未确认，请先确认原更新；确认后再按当前文件重新检查。':source?'重新检查将使用当前募集书 '+source.filename+'（V'+source.sequence+'）及'+(this.workpaperCheck(c)?'本份底稿的当前版本。':'本项目全部 '+this.currentCheckFiles(c).length+' 份当前关联文件。'):'请先确认当前募集书，再检查当前文件。';
     return `<section class="fc-freshness" aria-label="当前文件与本轮检查范围"><h2>当前范围需要重新核对</h2><p>本轮结论仅对应检查时固定的版本。当前有以下范围变化，需要重新核对的文件不能沿用旧结论。</p>${scope.sourceChanged?'<p class="fc-source-freshness">'+esc(sourceMessage)+'</p>':''}${summary.length?'<p class="fc-freshness-counts">'+esc(summary.join('；'))+'。</p>':''}<p>${esc(next)}只有明确确认后才会开始。${this.commerce?'主动检查按文件收费，开始前显示总价；有效已付范围复用。':'检查免费。'}</p>${changes.length||scope.added.length?`<details data-fc-freshness-detail ${this.freshnessDetailOpen?'open':''}><summary>查看文件范围变化（${changes.length+scope.added.length} 份）</summary><ul>${changes.map(f=>'<li data-fc-current-state="'+f.state+'"><strong>'+esc(f.checked.filename)+'</strong>：'+esc(this.freshnessText(f))+'</li>').join('')}${scope.added.map(f=>'<li data-fc-current-state="added"><strong>'+esc(f.filename)+'</strong> · 当前 V'+f.sequence+'，本轮未覆盖。</li>').join('')}</ul></details>`:''}<a class="text-button" href="#/projects/${encodeURIComponent(this.id)}/files">回到项目文件核对</a></section>`;
   }
   private batchItem(item:Updates['batches'][number]['items'][number]){
@@ -400,7 +402,7 @@ export class FileConsistency {
     if(!this.live())return;
     if(this.composingSearch&&document.querySelector('#fc-file-search')){this.deferredPaint=true;return;}
     this.deferredPaint=false;const reading=this.captureReading();this.captureDetails();this.manualControls.clear();
-    const target=this.updateTarget(),c=this.selected(),context=this.readingContext(c),checking=!!c&&active.has(c.state),latest=this.files.filter(f=>f.latest),base=c?.source??this.source,scope=c?this.freshness(c):undefined;
+    const target=this.updateTarget(),c=this.selected(),context=this.readingContext(c),checking=!!c&&active.has(c.state),latest=this.currentCheckFiles(c),base=c?.source??this.source,scope=c?this.freshness(c):undefined;
     if(context!==this.detailsContext){this.detailsContext=context;this.detailStates.clear();this.freshnessDetailOpen=false;this.detailsRevealed=false;}
     if(c?.result&&!this.detailsRevealed){
       this.detailsRevealed=true;const values=new URLSearchParams(location.hash.split('?')[1]).getAll('file');
@@ -410,7 +412,7 @@ export class FileConsistency {
     if(!this.checkRequest&&!this.pendingUpdate?.attempted){if(this.selectionCheck&&this.selectionCheck!==c?.run_id){this.chosen.clear();this.needsCredits=false;}this.selectionCheck=c?.run_id;}
     const open=new Set([...this.detailStates].filter(([,opened])=>opened).map(([version])=>version));
     const source=base?`<div class="pf-source-strip fc-original-source">${ico('file')}<div><strong>${esc(base.filename)}</strong><small>${c?'本轮固定使用':'本项目正在使用'} · V${base.sequence} · ${esc(this.name)}</small></div><span class="pf-chip">${c?'本轮依据':'当前募集书'}</span>${c?'<button type="button" class="btn secondary" data-fc-source-download '+(this.busy?'disabled':'')+'>下载本轮募集书依据</button>':''}${c&&target===undefined?'<button type="button" class="text-button" data-fc-refresh '+(this.busy?'disabled':'')+'>重新读取记录</button>':''}</div>${c?'<p class="fc-original-status" role="status" data-fc-original-status="'+esc('source:'+c.run_id)+'">'+esc(this.originalMessages.get('source:'+c.run_id)??'')+'</p>':''}`:'';
-    const start=`<button class="btn ${this.checkRequest||scope?.changed||!c?'primary':'secondary'}" data-fc-start ${this.busy||!!this.pendingUpdate?.attempted||!this.checkRequest&&(checking||!this.source||!latest.length)?'disabled':''}>${this.checkRequest?'重试确认原检查':scope?.changed?(this.commerce?'核对当前范围与费用':'按当前全部文件重新检查（免费）'):c?(this.commerce?'核对重新检查费用':'重新检查（免费）'):(this.commerce?'查看检查总价':'开始检查（免费）')}</button>`;
+    const start=`<button class="btn ${this.checkRequest||scope?.changed||!c?'primary':'secondary'}" data-fc-start ${this.busy||!!this.pendingUpdate?.attempted||!this.checkRequest&&(checking||!this.source||!latest.length)?'disabled':''}>${this.checkRequest?'重试确认原检查':this.workpaperCheck(c)?'重新检查此份底稿':scope?.changed?(this.commerce?'核对当前范围与费用':'按当前全部文件重新检查（免费）'):c?(this.commerce?'核对重新检查费用':'重新检查（免费）'):(this.commerce?'查看检查总价':'开始检查（免费）')}</button>`;
     const filesHref='#/projects/'+encodeURIComponent(this.id)+'/files',emptyAction=this.checkRequest?start:!this.source?start+' <a class="btn primary" href="'+filesHref+'">添加并采用募集书</a> <a class="btn secondary" href="'+filesHref+'">上传关联文件</a> <a class="btn secondary" href="#generate?project='+encodeURIComponent(this.id)+'">生成关联文件</a>':!latest.length?'<a class="btn primary" href="'+filesHref+'">上传已有项目文件</a>':start;
     const html=`<a class="back-link" href="#tasks">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">FILE CONSISTENCY</div><h1 id="fc-page-heading" tabindex="-1">${checking?'正在检查文件一致性':'文件一致性检查'}</h1><p>${esc(this.name)} · 核对关联文件与募集书，查看差异后选择是否生成修订版与清洁版。</p></div><a class="btn secondary" href="${filesHref}">返回项目文件</a></div>${source}
       <p id="fc-status" role="status">${esc(this.message)}</p>${this.pendingUpdate?.attempted?'<section class="fc-warning"><p>上次更新提交结果尚未确认。请沿用原范围确认，避免重复创建批次。</p><button class="btn secondary" id="fc-pending-action" data-fc-confirm-pending>重试确认上次更新</button></section>':''}${this.needsCredits?`<p><a class="text-button" href="${esc(rechargeHref(this.id))}">${this.commerce?'查看余额与按需充值':'查看积分与充值'}</a> · 检查结果和选择保留，充值后需重新确认更新。</p>`:''}
@@ -429,6 +431,8 @@ export class FileConsistency {
     document.querySelectorAll('[data-fc-start]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
       if(!this.checkRequest){
         const request:Dto<'ProjectFileCheckRequest'>={request_id:crypto.randomUUID(),expected_source_version_id:this.source!.version_id};
+        const workpaper=this.workpaperCheck()?this.currentCheckFiles()[0]:undefined;
+        if(workpaper)request.file_version_ids=[workpaper.version_id];
         if(this.commerce){
           const quote=await this.request<Dto<'ProjectFileCheckQuoteResponse'>>('POST','/checks/quote',request);
           const price={...quote,price_version:quote.price_version??undefined};

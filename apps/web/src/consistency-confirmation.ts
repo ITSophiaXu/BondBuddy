@@ -19,7 +19,7 @@ const bindingSchema=obj({owner:Type.Optional(id),project:id,checkId:id,body:sche
 const snapshotSchema=obj({version:Type.Literal(1),binding:bindingSchema,projectName:Type.String({maxLength:200}),
   createdAt:Type.String({minLength:24,maxLength:24}),source:ProjectFileSourceSchema,
   files:Type.Array(obj({fileId:id,versionId:id,filename,sequence,
-    documentType:Type.Union([ProjectDocumentTypeSchema,Type.Null()]),asset:Type.Union([ProjectFileAssetSchema,Type.Null()]),
+    documentType:Type.Union([ProjectDocumentTypeSchema,Type.Literal('workpaper'),Type.Null()]),asset:Type.Union([ProjectFileAssetSchema,Type.Null()]),
     automatic:count,manual:count,manualUnlisted:Type.Boolean()}),{minItems:1,maxItems:200})});
 const validId=(value:string)=>!!value.trim()&&!/[\u0000-\u001f\u007f-\u009f]/.test(value);
 function validBinding(value:unknown):value is ConfirmationBinding{

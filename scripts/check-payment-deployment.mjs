@@ -45,6 +45,10 @@ export function checkPaymentDeployment(config) {
   const wechatSwitch = String(apiEnv.BB_WECHAT_PAY_ENABLED);
   record('wechat_switch_explicit', ['0', '1'].includes(wechatSwitch));
   record('wechat_host_when_enabled', wechatSwitch !== '1' || allowedHosts.includes(merchantHost));
+  const statementSwitch=String(apiEnv.BB_WECHAT_PAY_STATEMENTS_ENABLED??'0');
+  const accounts=String(apiEnv.BB_WECHAT_PAY_STATEMENT_ACCOUNTS??'BASIC').split(',').map(value=>value.trim());
+  record('wechat_statement_configuration', ['0','1'].includes(statementSwitch)&&(statementSwitch!=='1'||wechatSwitch==='1')
+    &&accounts.length>0&&new Set(accounts).size===accounts.length&&accounts.every(value=>['BASIC','OPERATION','FEES'].includes(value)));
   return { passed: checks.every(check => check.passed), checks };
 }
 

@@ -4,9 +4,10 @@ import type {Static} from '@sinclair/typebox';
 import {WorkpaperCheckRequestSchema,WORKPAPER_CHECK_UNAVAILABLE,type WorkpaperCheck,type WorkpaperLibrary,type WorkpaperLibraryItem,type WorkpaperChangeInput} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
-import {projectFileSource,readProjectFileAsset} from './project-file-storage.js';
+import {projectFileSource,readProjectFileAsset,workpaperFileVersions} from './project-file-storage.js';
 import {enqueue} from './queue.js';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {registerWorkpaperPaidChecks,readWorkpaperPaidChecks} from './workpaper-paid-checks.js';
 type Db=Pool|PoolClient;
 export async function readWorkpaperChecks(db:Db,owner:string,id:string):Promise<WorkpaperCheck[]>{
   await project(db,owner,id);const source=await projectFileSource(db,owner,id);
@@ -22,6 +23,7 @@ export async function readWorkpaperChecks(db:Db,owner:string,id:string):Promise<
  * catalogue identity, never by a shortened filename that might collide. */
 export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offset:number;limit:number;search:string;category:string;status:string;history:boolean}):Promise<WorkpaperLibrary>{
   await project(db,owner,id);const source=await projectFileSource(db,owner,id),checks=await readWorkpaperChecks(db,owner,id);
+  const automatic=automaticBillingEnabled(db);
   const rows=(await db.query(`WITH ranked AS (
     SELECT i.*,b.project_id,b.created_at,b.source,b.catalogue_id,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation,
       row_number() OVER(PARTITION BY i.manifest->'input'->'workpaper'->'entry'->>'sheet',
@@ -44,24 +46,25 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
   const runs=new Map(runRows.map(r=>[r.id,r]));
   const metadata=(await db.query("SELECT run_id,jsonb_array_length(result->'links') AS count FROM bb_project_file_generation_links WHERE owner_user_id=$1 AND run_id=ANY($2::text[])",[owner,runIds])).rows;
   const links=new Map(metadata.map(r=>[r.run_id,Number(r.count)]));
+  const fileVersions=await workpaperFileVersions(db,owner,id);
   const latestChecks=new Map<string,WorkpaperCheck>();for(const check of checks)if(!latestChecks.has(check.batch_id))latestChecks.set(check.batch_id,check);
   const all:WorkpaperLibraryItem[]=rows.map(r=>{
-    const check=latestChecks.get(r.batch_id),run=runs.get(r.run_id),task=r.task;
+    const check=latestChecks.get(r.batch_id),run=runs.get(r.run_id),task=r.task,file=fileVersions.get(r.batch_id+':'+r.item_id);
     return {entry:task.entry,decision:r.output_decision??task.decision,...(r.explanation?{explanation:{filename:r.explanation.filename,sha256:r.explanation.sha256}}:{}),
       run_id:r.run_id,state:run?.state??r.state,stage:run?.stage??null,attempt:r.attempt,error:r.error,artifacts:[],batch_id:r.batch_id,catalogue_id:r.catalogue_id,created_at:date(r.created_at),source:r.source,
-      latest:Number(r.position)===1,version_count:r.version_count,links_count:links.get(r.run_id)??0,
-      impact:check?.result?.items.find(i=>i.item_id===r.item_id)??null,check_stale:check?check.stale:source?.version_id!==r.source.version_id||source?.selection_revision!==r.source.selection_revision};
+      ...(file?{file}:{}),latest:Number(r.position)===1,version_count:r.version_count,links_count:file?.current.links.length??links.get(r.run_id)??0,
+      impact:check?.result?.items.find(i=>i.item_id===r.item_id)??null,check_stale:automatic&&file?file.current.consistency.status==='stale':check?check.stale:source?.version_id!==r.source.version_id||source?.selection_revision!==r.source.selection_revision};
   });
-  const filtered=all.filter(i=>q.status==='all'||q.status==='stale'&&i.check_stale||q.status==='needs_update'&&!i.check_stale&&i.impact?.status==='needs_update'||q.status==='manual'&&!i.check_stale&&i.impact?.status==='manual'||q.status===i.state);
+  const filtered=all.filter(i=>q.status==='all'||q.status==='stale'&&i.check_stale||q.status==='needs_update'&&!i.check_stale&&(automatic&&i.file?i.file.current.consistency.status==='conflict':i.impact?.status==='needs_update')||q.status==='manual'&&!i.check_stale&&(automatic&&i.file?i.file.current.consistency.status==='manual':i.impact?.status==='manual')||q.status===i.state);
   const items=filtered.slice(q.offset,q.offset+q.limit);
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_m4_artifacts a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
     JOIN bb_artifact_versions v ON v.owner_user_id=a.owner_user_id AND v.id=a.artifact_id AND v.version=a.artifact_version
     WHERE a.owner_user_id=$1 AND a.run_id=ANY($2::text[]) AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,items.map(i=>i.run_id).filter(Boolean)])).rows;
-  for(const item of items)item.artifacts=artifacts.filter(a=>a.run_id===item.run_id&&!item.explanation).map(a=>({kind:'document',filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));
-  const automatic=automaticBillingEnabled(db);
-  return {items,total:filtered.length,offset:q.offset,limit:q.limit,source,checks:checks.slice(0,30).map(c=>({...c,result:null})),check_capability:{enabled:!automatic,reason:automatic?WORKPAPER_CHECK_UNAVAILABLE:''}};
+  for(const item of items){const current=item.file?.current;item.artifacts=current?.asset.kind==='artifact'?[{kind:'document',filename:current.filename,pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===item.run_id&&!item.explanation).map(a=>({kind:'document',filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));}
+  return {items,total:filtered.length,offset:q.offset,limit:q.limit,source,checks:checks.slice(0,30).map(c=>({...c,result:null})),paid_checks:await readWorkpaperPaidChecks(db,owner,id),check_capability:{enabled:true,reason:'',mode:automatic?'per_file':'legacy'}};
 }
 export function registerWorkpaperLibrary(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
+  registerWorkpaperPaidChecks(app,db,owner);
   const base='/api/v1/projects/:project_id/workpapers';
   app.get(base+'/library',async r=>{
     const user=await owner(r),id=(r.params as {project_id:string}).project_id,q=r.query as Record<string,string>;

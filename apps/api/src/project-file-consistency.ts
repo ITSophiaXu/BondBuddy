@@ -25,19 +25,26 @@ async function event(c:PoolClient,owner:string,id:string,type:string,payload:unk
   await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
   await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,type,payload]);
 }
-async function createOperation(c:PoolClient,owner:string,id:string,key:string,requestHash:string,manifest:ProjectFileOperation,commercial=false,expectedPoints?:number,scopeQuoteId?:string,acceptanceId?:string){
-  const p=await available(c,owner,id),hash=inputManifestHash(manifest);
+async function createOperation(c:PoolClient,owner:string,id:string,key:string,requestHash:string,manifest:ProjectFileOperation,commercial=false,expectedPoints?:number,scopeQuoteId?:string,acceptanceId?:string,batchRun?:string){
+  const p=batchRun?await project(c,owner,id,true):await available(c,owner,id),hash=inputManifestHash(manifest);
   const revision=Number((await c.query('SELECT COALESCE(max(revision),0)+1 AS next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0].next);
   await c.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
     VALUES($1,$2,$3,$4,$5,$6,'[]','[]')`,[id,revision,owner,p.draft_revision,hash,manifest]);
   await c.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id,revision]);
   const run=(await c.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
-    VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *`,[uid(),owner,id,revision,hash,key,requestHash])).rows[0];
+    VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *`,[batchRun??uid(),owner,id,revision,hash,key,requestHash])).rows[0];
   await c.query('INSERT INTO bb_project_file_operations(run_id,owner_user_id,project_id,operation,manifest,input_hash) VALUES($1,$2,$3,$4,$5,$6)',[run.id,owner,id,manifest.operation,manifest,hash]);
   if(manifest.operation==='patch')await reserveFileUpdate(c,owner,run,manifest,commercial,expectedPoints,scopeQuoteId,acceptanceId);
   else if(commercial)await reserveFileCheck(c,owner,run,manifest,expectedPoints!,scopeQuoteId);
   await enqueue(c,run,'project_file_v1');await event(c,owner,id,'project.file_'+manifest.operation+'_started',{run_id:run.id});
   return run;
+}
+/** Only a pre-persisted immutable batch item can bypass the one-file API preflight. */
+export async function createBatchedFileCheck(c:PoolClient,owner:string,id:string,runId:string,manifest:Extract<ProjectFileOperation,{operation:'check'}>){
+  const item=(await c.query(`SELECT i.*,b.source,b.project_id FROM bb_workpaper_paid_check_items i JOIN bb_workpaper_paid_check_batches b
+    ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id WHERE i.owner_user_id=$1 AND i.run_id=$2 AND b.project_id=$3`,[owner,runId,id])).rows[0];
+  if(!item||manifest.files.length!==1||manifest.files[0].file_version_id!==item.file_version_id||inputManifestHash(item.source)!==inputManifestHash(manifest.source))throw missing();
+  return createOperation(c,owner,id,'workpaper-file-check:'+item.batch_id+':'+item.ordinal,inputManifestHash(manifest),manifest,true,Number(item.points),item.scope_quote_id,undefined,runId);
 }
 async function projectFileChecks(db:Pool,owner:string,id:string,runId?:string,commercial=false):Promise<ProjectFileCheck[]>{
   await project(db,owner,id);const current=await projectFileSource(db,owner,id);
@@ -151,9 +158,10 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
     return transaction(db(),async c=>{
       await project(c,user,id,true);
       const source=await currentSource(c,user,id,{version_id:b.expected_source_version_id});
-      const availableFiles=(await projectFileVersions(c as unknown as Pool,user,id)).filter(f=>f.latest);
+      const availableFiles=(await projectFileVersions(c as unknown as Pool,user,id,!!b.file_version_ids)).filter(f=>f.latest);
       const ids=b.file_version_ids??availableFiles.map(f=>f.version_id);
       if(!ids.length||new Set(ids).size!==ids.length)throw new Problem(422,'INPUT_REQUIRED','请选择需要检查的文件，且不能重复。');
+      if(ids.length>1&&availableFiles.some(f=>ids.includes(f.version_id)&&f.document_type==='workpaper'))throw new Problem(422,'VALIDATION_FAILED','批量底稿请从底稿库按逐份交付计费委托。');
       const files=ids.map(id=>{const f=availableFiles.find(f=>f.version_id===id);if(!f)throw conflict('INPUT_REVISION_CONFLICT','所选文件已换版，请重新查看报价。');return {file_id:f.file_id,file_version_id:f.version_id,filename:f.filename,sequence:f.sequence,asset:f.asset,links:f.links};});
       const input:Extract<ProjectFileOperation,{operation:'check'}>={version:'project-file-operation-v1',operation:'check',source,files};
       const price=commercial?await fileCheckPrice(c,user,input,id):null;
@@ -167,10 +175,11 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':'+key]);
       const old=(await c.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,key])).rows[0];
       if(old){if(old.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','此请求已用于其他检查。');return old.id;}
-      const source=await currentSource(c,user,id,{version_id:b.expected_source_version_id}),availableFiles=(await projectFileVersions(c as unknown as Pool,user,id)).filter(f=>f.latest);
+      const source=await currentSource(c,user,id,{version_id:b.expected_source_version_id}),availableFiles=(await projectFileVersions(c as unknown as Pool,user,id,!!b.file_version_ids)).filter(f=>f.latest);
       const selected=b.file_version_ids??availableFiles.map(f=>f.version_id);
       if(new Set(selected).size!==selected.length)throw new Problem(422,'VALIDATION_FAILED','检查文件不能重复。');
       const files=selected.map(id=>{const f=availableFiles.find(f=>f.version_id===id);if(!f)throw conflict('INPUT_REVISION_CONFLICT','所选文件已换版，请重新查看报价。');return f;});
+      if(files.length>1&&files.some(f=>f.document_type==='workpaper'))throw new Problem(422,'VALIDATION_FAILED','批量底稿请从底稿库按逐份交付计费委托。');
       if(!files.length)throw new Problem(422,'INPUT_REQUIRED','请先生成或上传需要检查的项目关联文件。');
       for(const f of files)await readProjectFileAsset(c,user,f.asset);
       const manifest:Extract<ProjectFileOperation,{operation:'check'}>={version:'project-file-operation-v1',operation:'check',source,
@@ -181,7 +190,7 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
         if(price.scope_quote_id)await assertScopeQuote(c,b.scope_quote_id,user,id,'project_file_check',price.scope_hash,b.expected_points);
         const prior=(await c.query(`SELECT o.run_id FROM bb_project_file_operations o JOIN bb_runs r ON r.id=o.run_id AND r.owner_user_id=o.owner_user_id JOIN bb_project_file_check_quotes q ON q.run_id=o.run_id AND q.owner_user_id=o.owner_user_id
           WHERE o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check' AND o.manifest=$3::jsonb AND r.state='succeeded' AND (q.points=0 OR EXISTS(SELECT 1 FROM bb_credit_reservations res WHERE res.quote_id=q.id AND res.owner_user_id=q.owner_user_id AND res.state='settled')) ORDER BY o.created_at LIMIT 1`,[user,id,JSON.stringify(manifest)])).rows[0];
-        if(prior)return prior.run_id;
+        if(prior&&price.points===0)return prior.run_id;
       }
       return (await createOperation(c,user,id,key,hash,manifest,commercial,b.expected_points,b.scope_quote_id)).id;
     });return {run_id:runId};
