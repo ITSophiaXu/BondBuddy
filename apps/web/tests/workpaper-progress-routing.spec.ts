@@ -13,7 +13,7 @@ async function setup(page:Page){
       artifacts:i===0?[{kind:'document',filename:'合成已完成底稿.docx',pin:{source_project_id:'execution-project',artifact_id:'completed-workpaper',artifact_version:1,sha256:sha}}]:[]}))};
   const newer:WorkpaperBatch={...structuredClone(target),batch_id:'newer-batch',source:{...source,filename:'另一批募集说明书.docx'},items:[],state:'complete'};
   const data:WorkpaperWorkspace={catalogues:[{catalogue_id:'catalogue',filename:'合成底稿目录.xlsx',sha256:sha,created_at:now,warnings:[],entries}],assessments:[],batches:[newer,target]};
-  const task={run_id:'item-run-1',project_id:'execution-project',kind:'generation',state:'running',stage:null,created_at:now,updated_at:now,artifact_id:null,report_id:null,topic_id:'batch-topic',document_type:'workpaper',operation:null,workpaper_batch:{batch_id:target.batch_id,project_id:ids.api}};
+  const task={run_id:target.batch_id,project_id:ids.api,kind:'generation',state:'running',stage:null,created_at:now,updated_at:now,artifact_id:null,report_id:null,topic_id:'batch-topic',document_type:'workpaper',operation:'workpaper_batch',workpaper_batch:{batch_id:target.batch_id,project_id:ids.api,total:248,completed:120}};
   const calls:{path:string;method:string}[]=[],state={missing:false};
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1','');calls.push({path,method:request.method()});
@@ -39,6 +39,11 @@ async function assertTarget(page:Page){
 for(const width of [1440,390])test(`project list opens and expands the exact batch progress ${width}`,async({page})=>{
   const s=await setup(page);await page.setViewportSize({width,height:960});await page.goto('/#tasks');
   await page.locator(`[data-tasks="${ids.api}"]`).click();
+  await expect(page.locator('[data-run-id]')).toHaveCount(1);
+  await expect(page.locator(`[data-run-id="${s.task.run_id}"]`)).toContainText('批量生成底稿');
+  await expect(page.locator(`[data-run-id="${s.task.run_id}"]`)).toContainText('120 / 248 份完成');
+  await mkdir('test-evidence/workpaper-download-batch-20261029',{recursive:true});
+  await page.screenshot({path:`test-evidence/workpaper-download-batch-20261029/task-${width}.png`,fullPage:true});
   await page.locator(`[data-run-id="${s.task.run_id}"]`).getByRole('link',{name:'查看进度'}).click();
   await expect(page).toHaveURL(new RegExp(`project=${ids.api}.*step=workpapers&view=results&batch=requested-batch`));
   await assertTarget(page);await expect(page.locator('[data-wp-batch-id="newer-batch"] details')).not.toHaveAttribute('open','');
@@ -47,6 +52,37 @@ for(const width of [1440,390])test(`project list opens and expands the exact bat
   await page.reload();await assertTarget(page);
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);expect(s.original.errors).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('ZIP download shows waiting state and a usable save link if automatic download is suppressed',async({page})=>{
+  const s=await setup(page);
+  await page.addInitScript(()=>{
+    const click=HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click=function(){if(!this.download)click.call(this);};
+  });
+  let release!:()=>void;const gate=new Promise<void>(r=>release=r);let reads=0;
+  await page.route('**/workpapers/batches/requested-batch/download',async route=>{reads++;await gate;await route.fulfill({contentType:'application/zip',body:Buffer.concat([Buffer.from('PK'),Buffer.alloc(100)])});});
+  await page.goto(s.href);await page.getByRole('button',{name:'下载已完成文件（ZIP）'}).first().click();
+  await expect(page.getByRole('button',{name:'正在准备下载…'})).toBeDisabled();
+  await expect(page.locator('#wp-download-feedback')).toContainText('正在准备下载');release();
+  const save=targetPanel(page).locator('#wp-download-feedback').getByRole('link',{name:'保存文件'});await expect(save).toBeInViewport();
+  await mkdir('test-evidence/workpaper-download-batch-20261029',{recursive:true});
+  await page.screenshot({path:'test-evidence/workpaper-download-batch-20261029/download-ready.png'});
+  await page.clock.install();await page.clock.fastForward(6000);await expect(save).toBeVisible();
+  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('底稿文件包.zip');
+  expect(reads).toBe(1);expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+test('a hanging ZIP request ends visibly and the same batch can retry without resubmitting generation',async({page})=>{
+  const s=await setup(page);await page.clock.install();
+  let reads=0;
+  await page.route('**/workpapers/batches/requested-batch/download',async route=>{reads++;if(reads===1)return;await route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}});});
+  await page.goto(s.href);await page.getByRole('button',{name:'下载已完成文件（ZIP）'}).first().click();
+  await expect.poll(()=>reads).toBe(1);await page.clock.fastForward(20*60_000+1);
+  await expect(page.locator('#wp-download-feedback')).toContainText('下载准备超时');
+  await page.getByRole('button',{name:'下载已完成文件（ZIP）'}).first().click();
+  await expect(page.locator('#wp-download-feedback')).toContainText('文件');
+  expect(reads).toBe(2);expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
 test('project files recent task opens the source batch and retains return navigation',async({page})=>{

@@ -68,24 +68,45 @@ test('batch tasks project immutable attempt membership to both collection endpoi
       await pool.query('INSERT INTO bb_m4_executions(run_id,owner_user_id,topic_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)',[id,owner,topic.topic_id,{input:{document_type:documentType}},hash]);return id;
     };
     const attempt=async(batch:string,run:string,n=1)=>pool.query('INSERT INTO bb_workpaper_attempts(owner_user_id,batch_id,item_id,attempt,run_id) VALUES($1,$2,\'item\',$3,$4)',[owner,batch,n,run]);
-    const batch=await addBatch(),oldRun=await addRun(),retry=await addRun('running');
+    const batch=await addBatch();
+    await pool.query("UPDATE bb_workpaper_batches SET state='queued' WHERE id=$1",[batch]);
+    const queued=(await ok('GET',`/api/v1/projects/${project}/tasks`)).items;
+    assert.equal(queued.length,1,'a submitted batch is visible before its first child run');
+    assert.equal(queued[0].state,'queued');
+    assert.deepEqual(queued[0].workpaper_batch,{batch_id:batch,project_id:project,total:1,completed:0});
+    await pool.query("UPDATE bb_workpaper_batches SET state='running' WHERE id=$1",[batch]);
+    const oldRun=await addRun(),retry=await addRun('running');
     await attempt(batch,oldRun);await attempt(batch,retry,2);
     await pool.query("UPDATE bb_workpaper_items SET run_id=$1,attempt=2,state='running' WHERE batch_id=$2",[retry,batch]);
     const ordinary=await addRun('failed','issuer');
     // Even inconsistent historical associations must not expose another source project.
     const unrelatedBatch=await addBatch(other.project_id),unrelatedRun=await addRun();await attempt(unrelatedBatch,unrelatedRun);
+    // Hundreds of delivered files plus historical failed attempts are still one task.
+    await pool.query(`INSERT INTO bb_workpaper_items(owner_user_id,batch_id,item_id,ordinal,manifest,state)
+      SELECT $1,$2,'item-'||n,n,$3,'succeeded' FROM generate_series(2,248)n`,[owner,batch,{input:{document_type:'workpaper',workpaper:{entry,mode:'direct'}}}]);
     const tasks=await ok('GET',`/api/v1/projects/${project}/tasks?limit=50`);
-    for(const run of [oldRun,retry]){
-      const task=tasks.items.find((t:any)=>t.run_id===run);
-      assert.equal(task.project_id,topic.project_id,'execution identity is retained');
-      assert.deepEqual(task.workpaper_batch,{batch_id:batch,project_id:project});
-    }
+    for(const run of [oldRun,retry])assert.equal(tasks.items.some((t:any)=>t.run_id===run),false);
+    const batchTask=tasks.items.find((t:any)=>t.workpaper_batch?.batch_id===batch);
+    assert.equal(batchTask.operation,'workpaper_batch');assert.equal(batchTask.state,'running');
+    assert.equal(batchTask.project_id,project);assert.equal(batchTask.run_id,batch);
+    assert.deepEqual(batchTask.workpaper_batch,{batch_id:batch,project_id:project,total:248,completed:247});
     for(const run of [ordinary,unrelatedRun])assert.equal(tasks.items.find((t:any)=>t.run_id===run).workpaper_batch,undefined);
-    assert.equal(tasks.items.length,4,'attempt joins do not duplicate tasks');
+    assert.equal(tasks.items.length,3,'one batch plus two unrelated ordinary tasks');
     const summary=(await ok('GET','/api/v1/projects')).items.find((item:any)=>item.project_id===project).task_summary;
-    assert.equal(summary.latest.run_id,retry);assert.deepEqual(summary.latest.workpaper_batch,{batch_id:batch,project_id:project});
+    assert.equal(summary.latest.run_id,batch);assert.equal(summary.active,1);assert.equal(summary.total,3);
+    assert.deepEqual(summary.latest.workpaper_batch,batchTask.workpaper_batch);
     const exact=await ok('GET',`/api/v1/projects/${project}/workpapers/batches/${batch}`);
     assert.equal(exact.items[0].run_id,retry);assert.equal(exact.items[0].attempt,2);
+    for(const [batchState,taskState] of [['queued','queued'],['paused','paused'],['partial','failed'],['cancelled','cancelled'],['complete','succeeded']]){
+      await pool.query('UPDATE bb_workpaper_batches SET state=$2 WHERE id=$1',[batch,batchState]);
+      const page=await ok('GET',`/api/v1/projects/${project}/tasks?limit=1`),all=[...page.items];
+      let next=page.page.next_cursor;
+      while(next){const part=await ok('GET',`/api/v1/projects/${project}/tasks?limit=1&cursor=${encodeURIComponent(next)}`);all.push(...part.items);next=part.page.next_cursor;}
+      assert.equal(all.length,3);assert.equal(all.filter((t:any)=>t.workpaper_batch).length,1);
+      assert.equal(all.find((t:any)=>t.workpaper_batch).state,taskState);
+      const current=(await ok('GET','/api/v1/projects')).items.find((p:any)=>p.project_id===project).task_summary;
+      assert.equal(current.active,batchState==='queued'?1:0,'counts follow batch status, not stale or failed attempts');
+    }
     assert.equal((await send('GET',`/api/v1/projects/${other.project_id}/workpapers/batches/${batch}`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/projects/${project}/workpapers/batches/absent`)).statusCode,404);
     assert.deepEqual((await ok('GET',`/api/v1/projects/${other.project_id}/tasks`)).items,[]);
