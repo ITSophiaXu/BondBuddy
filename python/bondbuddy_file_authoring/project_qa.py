@@ -86,6 +86,60 @@ def paragraph(text, bold=False):
     return p
 
 
+def answer_blocks(text):
+    """Render quoted Markdown tables as editable Word tables, preserving all cell text.
+
+    Unknown markup remains literal text. No HTML, links or remote resources are executed.
+    Percentage widths also work when the original question lives inside a table cell.
+    """
+    def cells(line):
+        return [s.strip().replace(r'\|', '|') for s in re.split(r'(?<!\\)\|', line.strip().strip('|'))]
+
+    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    index, pending = 0, []
+    while index < len(lines):
+        header = cells(lines[index])
+        separator = cells(lines[index+1]) if index+1 < len(lines) else []
+        if ('|' not in lines[index] or len(header) < 2 or len(separator) != len(header)
+                or not all(re.fullmatch(r':?-{3,}:?', c) for c in separator)):
+            pending.append(lines[index]); index += 1
+            continue
+        if '\n'.join(pending).strip():
+            yield paragraph('\n'.join(pending).strip())
+        pending = []
+        rows = [header]; index += 2
+        while index < len(lines) and '|' in lines[index] and lines[index].strip():
+            rows.append(cells(lines[index])); index += 1
+        columns = max(len(row) for row in rows)
+        table = etree.Element(q('tbl'))
+        prop = etree.SubElement(table, q('tblPr'))
+        etree.SubElement(prop, q('tblW'), {q('w'): '5000', q('type'): 'pct'})
+        etree.SubElement(prop, q('tblLayout'), {q('type'): 'fixed'})
+        borders = etree.SubElement(prop, q('tblBorders'))
+        for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            etree.SubElement(borders, q(side), {q('val'): 'single', q('sz'): '4', q('color'): 'B8C2BD'})
+        margins = etree.SubElement(prop, q('tblCellMar'))
+        for side in ('top', 'left', 'bottom', 'right'):
+            etree.SubElement(margins, q(side), {q('w'): '80', q('type'): 'dxa'})
+        grid = etree.SubElement(table, q('tblGrid'))
+        for _ in range(columns):
+            etree.SubElement(grid, q('gridCol'))
+        for number, row in enumerate(rows):
+            tr = etree.SubElement(table, q('tr'))
+            if number == 0:
+                trprop = etree.SubElement(tr, q('trPr'))
+                etree.SubElement(trprop, q('tblHeader'))
+            for value in row + [''] * (columns-len(row)):
+                cell = etree.SubElement(tr, q('tc')); cp = etree.SubElement(cell, q('tcPr'))
+                etree.SubElement(cp, q('tcW'), {q('w'): str(5000//columns), q('type'): 'pct'})
+                if number == 0:
+                    etree.SubElement(cp, q('shd'), {q('fill'): 'EDF2EF'})
+                cell.append(paragraph(value, bold=number == 0))
+        yield table
+    if '\n'.join(pending).strip():
+        yield paragraph('\n'.join(pending).strip())
+
+
 def evidence(source, result):
     source = Path(source)
     if source.suffix.lower() == '.xlsx':
@@ -114,11 +168,11 @@ def evidence(source, result):
         with tempfile.TemporaryDirectory(prefix='bb-qa-evidence-') as tmp:
             output, meta = Path(tmp) / 'converted.docx', Path(tmp) / 'parsed.json'
             prepare(source, output, meta)
-            data = json.loads(meta.read_text(encoding='utf8'))['snapshot']
+            data = inspect(output, complete=True)
             data.update(format='doc', sha256=hashlib.sha256(source.read_bytes()).hexdigest(), coverage='partial')
             data['warnings'].append('DOC 已转换后提取，定位请对照原稿核对。')
     else:
-        data = inspect(source)
+        data = inspect(source, complete=True)
     Path(result).write_text(json.dumps(data, ensure_ascii=False), encoding='utf8')
 
 
@@ -162,10 +216,14 @@ def fill(source, request, output):
             if ancestor.tag == q('tr'):
                 for height in list(ancestor.findall('./' + q('trPr') + '/' + q('trHeight'))):
                     height.getparent().remove(height)
-        for text, bold in content:
-            new = paragraph(text, bold)
-            anchor.addnext(new)
-            anchor = new
+        for index, (text, bold) in enumerate(content):
+            blocks = answer_blocks(text) if index == 1 else [paragraph(text, bold)]
+            for new in blocks:
+                anchor.addnext(new)
+                anchor = new
+        # A Word cell must end in a paragraph, including when its last answer is a table.
+        if anchor.tag == q('tbl') and anchor.getparent().tag == q('tc'):
+            anchor.addnext(paragraph(''))
     if request.get('warnings'):
         body = root.find(q('body'))
         section = body.find(q('sectPr'))
