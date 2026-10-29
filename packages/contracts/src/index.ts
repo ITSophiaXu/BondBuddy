@@ -1,5 +1,7 @@
 import {workpaperOpenApiPaths} from './workpapers.js';
 import {commerceSchemas} from './commerce.js';
+import {subscriptionSchemas} from './subscriptions.js';
+export * from './subscriptions.js';
 import {paymentRefundSchemas,paymentRefundOpenApiPaths} from './payment-refunds.js';
 export * from './payment-refunds.js';
 export * from './commerce.js';
@@ -207,6 +209,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
   ...commerceSchemas,
+  ...subscriptionSchemas,
   ...paymentRefundSchemas,
   ...prospectusVersionSchemas,
   ...m4Schemas,
@@ -372,6 +375,13 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get','/subscriptions/catalog','Read monthly plans and actual recurring-payment capabilities','SubscriptionCatalogResponse'),
+  op('get','/subscriptions/account','Read subscription periods and the existing wallet projections','SubscriptionAccountResponse'),
+  op('post','/subscriptions','Purchase one monthly subscription period','SubscriptionCheckoutResponse',201,'SubscriptionCheckoutRequest',[409,422,503]),
+  op('post','/subscriptions/{subscription_id}/renew','Manually purchase the next ended subscription cycle','SubscriptionCheckoutResponse',201,'SubscriptionCheckoutRequest',[404,409,422,503]),
+  op('post','/subscriptions/{subscription_id}/cancel','Stop future renewal while preserving issued credit rights','SubscriptionResponse',200,'SubscriptionCancelRequest',[404,409]),
+  op('post','/subscriptions/{subscription_id}/auto-renew','Request or cancel a real channel mandate','SubscriptionAutoRenewResponse',200,'SubscriptionAutoRenewRequest',[404,409,503]),
+  op('post','/subscriptions/{subscription_id}/auto-renew/refresh','Verify mandate state with the configured provider','SubscriptionAutoRenewResponse',200,undefined,[404,409,503]),
   op('get','/credits/consumption-history','Read owned task reservations, settlements and releases','CreditConsumptionHistoryResponse',200,undefined,[422]),
   op('get','/credits/recharge-history','Read owned payment recharge orders','RechargeHistoryResponse',200,undefined,[422]),
   op('get','/credits/balance','Read available and frozen credits','CreditBalanceResponse'),
@@ -638,3 +648,4 @@ export * from './review-revision.js';
 export * from './review-update.js';
 
 export * from './project-assistant.js';
+export * from './automatic-pricing.js';

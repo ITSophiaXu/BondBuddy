@@ -1,3 +1,4 @@
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -30,7 +31,8 @@ async function event(c:PoolClient,owner:string,id:string,type:string,payload:unk
 async function reserve(c:PoolClient,owner:string,run:any,manifest:IntegrityInput,scopeHash?:string){
  await lockCreditAccount(c,owner);
  const points=manifest.points;
- if((await creditBalance(c,owner)).available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',manifest.pricing_mode?'服务余额不足，请补充本次已确认金额；名单已保留。':'每轮诚信核查需要 5,000 积分，请补充积分后开始；名单已保留。');
+ const balance=await creditBalance(c,owner);
+ if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(manifest.price_version)?`本轮诚信核查需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(points-balance.available).toLocaleString('zh-CN')} 积分；名单已保留，补足后自动继续。`:manifest.pricing_mode?'服务余额不足，请补充本次已确认金额；名单已保留。':'每轮诚信核查需要 5,000 积分，请补充积分后开始；名单已保留。');
  const quote=uid(),reservation=uid();
  await c.query('INSERT INTO bb_integrity_quotes(id,owner_user_id,run_id,input_hash,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[quote,owner,run.id,run.input_hash,points,manifest.price_version,manifest.scope_quote_id??null,JSON.stringify(manifest.scope_lines??[]),scopeHash??null]);
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);

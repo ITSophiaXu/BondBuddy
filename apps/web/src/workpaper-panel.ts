@@ -1,4 +1,4 @@
-import {defaultWorkpaperIds,WORKPAPER_PRICE,WORKPAPER_LIMITS,WorkpaperStartSchema,type WorkpaperStart,type WorkpaperWorkspace,type WorkpaperCatalogue,type WorkpaperBatch,type ProjectFileSource} from '@bondbuddy/contracts';
+import {defaultWorkpaperIds,isAutomaticPriceVersion,WORKPAPER_PRICE,WORKPAPER_LIMITS,WorkpaperStartSchema,type WorkpaperStart,type WorkpaperWorkspace,type WorkpaperCatalogue,type WorkpaperBatch,type ProjectFileSource} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError} from './api';
 import {UserFacingError} from './user-facing-error';
@@ -21,6 +21,8 @@ export class WorkpaperPanel {
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
   constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean,private stepChanged:(step:number)=>void=()=>{}){}
+  private get price(){return this.data.price??WORKPAPER_PRICE;}
+  private get automatic(){return isAutomaticPriceVersion(this.price.version)&&this.data.price?.auto_charge!==false;}
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
   get hasUnconfirmed(){return this.busy||!!this.pending||this.storageError;}
   async beforeLeave(){return !this.busy&&!this.storageError;}
@@ -115,19 +117,19 @@ export class WorkpaperPanel {
       :!this.source?'请先上传并采用募集说明书，再开始批量生成。'
       :!count?'请先在目录中勾选需要生成的底稿。'
       :this.busy?'正在提交，请稍候。'
-      :'先核对生成范围和费用，确认后开始逐份编制。';
+      :this.automatic?'点击开始后自动预留积分，按所选条目逐份交付结算。':'先核对生成范围和费用，确认后开始逐份编制。';
     const focusId=node.contains(document.activeElement)?document.activeElement?.id:undefined;
     node.innerHTML=`<div class="wp-confirm-heading"><div><h3>批量生成底稿</h3><p>按所选目录逐份编制，资料不足或不适用的条目附具体说明。</p></div><span class="wp-selection-count">已选 <strong>${count}</strong> 份底稿</span></div>
       <p class="wp-confirm-source">本批依据：${this.source?`${esc(this.source.filename)} · V${this.source.sequence}`:'请先选择募集说明书'}</p>
-      <div class="wp-confirm-actions"><div class="wp-fee-summary"><span>本批费用上限 <strong>${(count*WORKPAPER_PRICE.points).toLocaleString()}</strong> 积分</span><small>每份底稿 ${WORKPAPER_PRICE.points.toLocaleString()} 积分</small></div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${active?'<a class="btn secondary" id="wp-view-progress" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint wp-fee-note" ${disabled?'disabled':''}>下一步：确认生成</button></div></div></div>
+      <div class="wp-confirm-actions"><div class="wp-fee-summary"><span>本批费用上限 <strong>${(count*this.price.points).toLocaleString()}</strong> 积分</span><small>每份底稿 ${this.price.points.toLocaleString()} 积分</small></div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${active?'<a class="btn secondary" id="wp-view-progress" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint wp-fee-note" ${disabled?'disabled':''}>${this.automatic?'开始生成底稿':'下一步：确认生成'}</button></div></div></div>
       <p class="wp-fee-note" id="wp-fee-note">生成底稿按处理进度逐份计费；仅形成说明的条目不收取生成积分，已扣部分自动退回。</p>`;
     if(focusId)node.querySelector<HTMLElement>('#'+focusId)?.focus({preventScroll:true});
-    node.querySelector('#wp-start')?.addEventListener('click',()=>{if(!disabled){this.view='confirm';this.paint();this.host.querySelector<HTMLElement>('#wp-confirm-start')?.focus();}});
+    node.querySelector('#wp-start')?.addEventListener('click',()=>{if(!disabled){if(this.automatic){void this.start();return;}this.view='confirm';this.paint();this.host.querySelector<HTMLElement>('#wp-confirm-start')?.focus();}});
     node.querySelector('#wp-view-progress')?.addEventListener('click',e=>{e.preventDefault();this.view='results';this.paint();this.host.querySelector('#wp-batches')?.scrollIntoView({block:'start'});});
   }
   private paintConfirmationPage(){
     const node=this.host.querySelector<HTMLElement>('#wp-confirmation-page');if(!node||this.view!=='confirm')return;
-    const count=this.pending?.item_ids.length??this.selected.size,total=this.pending?.expected_points??count*WORKPAPER_PRICE.points;
+    const count=this.pending?.item_ids.length??this.selected.size,total=this.pending?.expected_points??count*this.price.points;
     const confirmedSource=this.pending&&this.source?.version_id!==this.pending.source_version_id?null:this.source;
     node.innerHTML=`<section class="panel pf-flow-confirm"><h2>确认本次生成</h2><p>核对募集说明书、生成范围及预计积分。</p><div class="pf-confirm-section"><h3>募集说明书</h3><p>${esc(confirmedSource?.filename??'原提交已固定的募集说明书（保留原版本）')} ${confirmedSource?'· V'+confirmedSource.sequence:''}</p></div><div class="pf-confirm-section"><h3>生成内容</h3><p>${esc(this.catalogue?.filename??'')} · ${count} 份文件</p><details><summary>查看所选文件</summary><ul>${this.catalogue?.entries.filter(e=>(this.pending?.item_ids??[...this.selected]).includes(e.id)).map(e=>`<li>${esc(e.code)} ${esc(e.title)}</li>`).join('')??''}</ul></details>${this.requirements?`<p>本批编制要求：${esc(this.requirements)}</p>`:''}</div><p>可编制的条目形成文件；业务不适用或资料不足的条目分别写明情况。成果按“可生成文件”和“不适用说明”两个文件夹打包。</p><div class="pf-confirm-total">本批费用上限 <strong>${total.toLocaleString()}</strong> 积分</div><p class="muted">仅形成说明的条目不收取生成积分，已扣部分自动退回。</p><p id="wp-confirm-status" role="status">${esc(this.status)}</p><footer class="pf-footer"><button class="btn secondary" id="wp-confirm-back" ${this.busy?'disabled':''}>上一步：调整范围</button><button class="btn primary" id="wp-confirm-start" ${this.busy||this.storageError?'disabled':''}>${this.pending?'继续确认上次提交':'确认并开始生成'}</button></footer></section>`;
     node.querySelector('#wp-confirm-back')!.addEventListener('click',()=>{this.view='prepare';this.paint();});
@@ -168,10 +170,12 @@ export class WorkpaperPanel {
   }
   private async start(){await this.act(async()=>{
     if(!this.pending){if(!this.catalogue||!this.source||!this.selected.size)return;
-      this.pending={start_mode:'direct',request_id:crypto.randomUUID(),catalogue_id:this.catalogue.catalogue_id,catalogue_sha256:this.catalogue.sha256,item_ids:[...this.selected],source_version_id:this.source.version_id,source_selection_revision:this.source.selection_revision,requirements:this.requirements,price_version:WORKPAPER_PRICE.version,expected_points:this.selected.size*WORKPAPER_PRICE.points};
+      const price=this.price;if((!isAutomaticPriceVersion(price.version)&&price.version!==WORKPAPER_PRICE.version)||!Number.isSafeInteger(price.points)||price.points<=0)throw new ApiError(503,'BILLING_NOT_READY');
+      this.pending={start_mode:'direct',request_id:crypto.randomUUID(),catalogue_id:this.catalogue.catalogue_id,catalogue_sha256:this.catalogue.sha256,item_ids:[...this.selected],source_version_id:this.source.version_id,source_selection_revision:this.source.selection_revision,requirements:this.requirements,price_version:price.version,expected_points:this.selected.size*price.points};
       if(!this.save())return;this.paint();}
     let batch:WorkpaperBatch;
     try{batch=await this.request<WorkpaperBatch>('POST','/batches',this.pending);}catch(e){
+      if(e instanceof ApiError&&e.status===402&&e.code==='CREDITS_INSUFFICIENT'){this.pending=undefined;this.save();this.view='prepare';this.paint();throw e;}
       if(e instanceof ApiError&&e.code==='PROJECT_FILE_BATCH_INPUT_EXPIRED'){this.pending=undefined;this.save();this.source=null;this.view='prepare';this.paint();throw new UserFacingError('原底稿文件包未提交。募集书依据已变化，请刷新页面后重新核对并提交。');}throw e;
     }
     this.pending=undefined;this.save();this.data.batches=[batch,...this.data.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='底稿文件包已提交，关闭页面后仍会继续。';this.view='results';this.progressBatch=batch.batch_id;this.expandedBatches.set(batch.batch_id,false);const query=new URLSearchParams(location.hash.split('?')[1]);query.set('view','results');query.set('batch',batch.batch_id);history.replaceState(history.state,'','#generate?'+query);this.paint();this.poll();

@@ -1,3 +1,4 @@
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type { Pool, PoolClient } from 'pg';
 import { BILLING_TASKS, AUTHORING_BILLING_TASKS, DYNAMIC_REVIEW_BILLING_TASKS, isOutcomePriceVersion, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
@@ -66,7 +67,7 @@ export async function quoteCredits(pool: Pool, owner: string, projectId: string,
     const task=classification.task??'new_authoring';
     if(scope&&scope.quote_status!=='ready')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:projectId,input_revision:revision,input_hash:hash,task_type:task,points:0,
       reason:'本次范围待核实；确认实际编制范围并给出明细后，才能确认费用并执行。',created_at:new Date().toISOString(),...outcomeMetadata(0),...scope},balance,shortage:0,reason:'本次范围待核实，尚未形成可执行报价。'};
-    const points=scope?.amount_fen??price.prices[task],priceVersion=scope?.price_version??price.id,reason=commercial?'按本次输入和已核定的范围明细锁定人民币总价，成功交付后结算。':classification.reason;
+    const points=scope?.amount_fen??price.prices[task],priceVersion=scope?.price_version??price.id,reason=isAutomaticPriceVersion(priceVersion)?'按已保存材料和业务目标锁定积分，开始自动预留，成功交付后结算。':commercial?'按本次输入和已核定的范围明细锁定人民币总价，成功交付后结算。':classification.reason;
     await c.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,pricing_mode,outcome_key,scope_quote_id,scope_lines)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`,
       [uid(), owner, projectId, revision, hash, priceVersion, task, points, reason,commercial?OUTCOME_MODE:'legacy_credit',commercial?'scoped_authoring':null,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])]);
@@ -97,7 +98,7 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
   await lockCreditAccount(c, owner);
   const balance = await creditBalance(c, owner), points = Number(quote.points);
   const dynamic = !outcome&&((!reviewIntentHash && quote.task_type in AUTHORING_BILLING_TASKS) || (!!reviewIntentHash && quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS));
-  if (balance.available < (dynamic ? 1 : points)) throw new Problem(402, 'CREDITS_INSUFFICIENT', outcome?`本次任务需要 ¥${(points/100).toFixed(2)}，当前可用 ¥${(balance.available/100).toFixed(2)}，请充值后开始。`:dynamic ? '可用积分为 0，请充值后开始；项目材料与补充要求已保留。' : `本次任务需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始。`);
+  if (balance.available < (dynamic ? 1 : points)) throw new Problem(402, 'CREDITS_INSUFFICIENT', isAutomaticPriceVersion(quote.price_version)?`本次任务需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(points-balance.available).toLocaleString('zh-CN')} 积分；通过原任务入口补足后自动继续。`:outcome?`本次任务需要 ¥${(points/100).toFixed(2)}，当前可用 ¥${(balance.available/100).toFixed(2)}，请充值后开始。`:dynamic ? '可用积分为 0，请充值后开始；项目材料与补充要求已保留。' : `本次任务需要 ${points} 积分，当前可用 ${balance.available} 积分，还差 ${points - balance.available} 积分，请充值后开始。`);
   if ((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1', [quote.id])).rowCount)
     throw new Problem(409, 'IDEMPOTENCY_CONFLICT', 'Quote already used by another execution');
   const reservation = uid();
@@ -126,7 +127,7 @@ export async function reserveCredits(c: PoolClient, owner: string, run: any, quo
 }
 
 /** Only trusted payment/operations code calls this; no public arbitrary-credit endpoint. */
-export async function grantCredits(c: PoolClient, input: { owner: string; source: 'purchase' | 'existing_grant' | 'correction'; key: string; points: number; expiresAt: string | null; actor: string; reason: string; reservationId?:string; runId?:string }) {
+export async function grantCredits(c: PoolClient, input: { owner: string; source: 'purchase' | 'subscription' | 'existing_grant' | 'correction'; key: string; points: number; expiresAt: string | null; actor: string; reason: string; reservationId?:string; runId?:string }) {
   if (!Number.isSafeInteger(input.points) || input.points < 1 || input.points > 1000000000 || !input.key || !input.actor || !input.reason ||
     input.expiresAt !== null && (!Number.isFinite(Date.parse(input.expiresAt)) || input.source === 'purchase')) throw new Problem(422, 'VALIDATION_FAILED', 'Invalid credit grant');
   await lockCreditAccount(c, input.owner);

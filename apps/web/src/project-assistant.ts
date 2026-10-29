@@ -1,3 +1,4 @@
+import {isAutomaticCharge,displayCharge} from './commerce';
 import {isCnyPrice,displayPrice,cny,confirmCnyTask,scopePending,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel} from './commerce';
 import { duplicateUploadMessage, isReusedUpload } from './duplicate-upload';
 import { artifactFilename } from './artifact-download';
@@ -364,8 +365,8 @@ export class ProjectAssistant {
     if(this.workspace.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)))throw new AssistantInputError('请等待本轮回复后继续。');
     if(this.currentUploads().some(u=>!uploadReady(u)))throw new AssistantInputError('请先确认附件已保存并加入原对话，或停止本机追踪。');
     await this.flush();const id=this.workspace.topic.topic_id,content=this.text.trim(),context=this.context();
-    if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(value.quote.points>0||scopePending(value.quote))return;}
-    const q=this.qaQuote;if(q.value.shortage>0)throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价并按需充值。':'积分不足，请充值后重新发送。');
+    if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(!isAutomaticCharge(value.quote)&&(value.quote.points>0||scopePending(value.quote)))return;}
+    const q=this.qaQuote;if(q.value.shortage>0&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价并按需充值。':'积分不足，请充值后重新发送。');
     if(isCnyPrice(q.value.quote)&&!await confirmCnyTask('确认本次回答费用',q.value.quote,'按当前问题和已选材料回答；新增问题或范围须另行确认。'))return;
     await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
     this.text='';this.qaQuote=undefined;this.changed();await this.flush();await this.poll();
@@ -439,7 +440,7 @@ export class ProjectAssistant {
     this.assertPreparation(guard);await this.flush();this.assertPreparation(guard);
     const {card}=await this.preparationWrite(guard,()=>this.api.request<{card:AssistantCard}>('POST',`/assistant/topics/${topic}/cards`,b,{},this.controller.signal));
     this.view.assistant!.prepared_card_id=card.card_id;this.changed();const expected=this.viewSnapshot()!;await this.flush();await this.cacheQueue;if(!this.scopeCurrent(topic,project)||this.viewDirty||this.viewConflict||this.view.version!==expected.version+1||this.editGeneration!==expected.generation||!assistantSame(this.fullView(this.view),expected.view))throw new AssistantInputError('确认卡已保存，本页完整输入又有变化，请重新核对。');
-    this.cards.push(card);this.runtimeGeneration++;this.cache();this.formOpen=false;this.status=b.operation==='update'?'请核对材料与要求后开始更新。':'请核对材料、要求和本次费用后开始。';
+    this.cards.push(card);this.runtimeGeneration++;this.cache();this.formOpen=false;if(isAutomaticCharge(card.quote)){await this.execute(card);return;}this.status=b.operation==='update'?'请核对材料与要求后开始更新。':'请核对材料、要求和本次费用后开始。';
   }
   private reviewRequest(c:AssistantCardRequest){return {execution_request_id:c.execution_request_id,operation:'full_review' as const,expected_input_version:c.expected_input_version!,source_report_id:null,expected_plan_version:null,finding_ids:[],...(c.quote_id?{quote_id:c.quote_id}:{})};}
   private async execute(c:AssistantCard){
@@ -452,7 +453,7 @@ export class ProjectAssistant {
       const refreshed=c.operation==='update'?await this.api.creditQuote(c.project_id,{input_revision:c.input_revision!,input_hash:c.input_hash!},this.controller.signal):c.operation==='review'?await new ReviewApi(this.api,c.project_id,this.controller.signal).quoteExecution(this.reviewRequest(c)):await this.m4.quote(topic,{kind:'document',document_type:c.document_type as M4DocumentType,expected_draft_version:c.expected_draft_version!});
       if(!refreshed.quote)throw new ApiError(503,'BILLING_NOT_READY');c.quote=refreshed.quote;c.balance=refreshed.balance;c.quote_id=refreshed.quote.quote_id;
       if(scopePending(c.quote)){this.status=scopeStatusLabel(c.quote)+'，尚未收费。准备内容保留，可查看账户报价明细或返回调整。';return;}
-      if(refreshed.shortage>0)throw new AssistantInputError('服务余额不足，请核对本次总价并按需充值。');
+      if(refreshed.shortage>0&&!isAutomaticCharge(refreshed.quote))throw new AssistantInputError('服务余额不足，请核对本次总价并按需充值。');
     }
     if(isCnyPrice(c.quote)){if(!await confirmCnyTask('确认'+businessName(c.operation)+'费用',c.quote!,`${c.project_name} · ${c.operation==='update'?'材料版本 '+c.input_revision:c.operation==='review'?'复核输入版本 '+c.expected_input_version:'文件草稿版本 '+c.expected_draft_version} · 按任务卡所列要求和材料执行。`))return;if(!this.live||this.staleCard(c))throw new AssistantInputError('输入已变化，请重新核对本次任务和费用。');}
     if(c.operation==='update'){
@@ -587,7 +588,7 @@ export class ProjectAssistant {
       ${a.business!=='update'&&sources.length>1?`<label>本次采用的募集说明书<select data-primary-source><option value="">请选择</option>${sources.map(m=>option(m.material_id,m.filename,this.view.unsent_context.source_material?.material_id)).join('')}</select></label>`:''}
       <ul class="ba-files">${!this.data?(this.workspace?.material_details??[]).map(m=>`<li>${esc(m.filename)} <small>已保存</small></li>`).join(''):''}${materials.map(m=>`<li>${esc(m.filename)} <small>已保存</small>${a.business==='update'?sourceFields(m,this.data?.project.update_details?.source_prospectuses):''}</li>`).join('')}</ul>
       <label>补充要求 <small>选填</small><textarea data-requirements maxlength="12000" rows="3" placeholder="例如：只修改偿债能力分析，保留财务数据与表格。">${esc(a.requirements)}</textarea></label>
-      ${a.business!=='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<button class="ba-primary" data-a="prepare"${this.busy?' disabled':''}>核对本次任务</button></section>`;
+      ${a.business!=='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<button class="ba-primary" data-a="prepare"${this.busy?' disabled':''}>开始任务</button></section>`;
   }
   private staleCard(c:AssistantCard){return c.draft_token!==(this.view.assistant?.draft_token??null)||this.view.assistant?.prepared_card_id!==c.card_id;}
   private taskLink(c:AssistantCard){
@@ -597,10 +598,10 @@ export class ProjectAssistant {
       document_type:c.document_type??null,operation:null};
     return `<a data-assistant-task-run="${esc(r.run_id)}" href="${esc(taskHref(task))}">${esc(taskView(task).action)}</a>`;
   }
-  private card(c:AssistantCard){const stale=!c.run&&this.staleCard(c),r=c.run,price=c.quote?.points??0,insufficient=c.balance.available<price;
+  private card(c:AssistantCard){const stale=!c.run&&this.staleCard(c),r=c.run,price=c.quote?.points??0,insufficient=!isAutomaticCharge(c.quote)&&c.balance.available<price;
     return `<section class="ba-task ${r?'ba-committed':''}" data-card="${esc(c.card_id)}"><div class="ba-card-head"><strong>${businessName(c.operation)}</strong><span>${r?runLabel(r.state):stale?'已保留旧方案':'待确认'}</span></div><p>${esc(c.project_name)}</p><p>${esc([c.target?.issuer_name,MARKET_LABELS[c.target?.market as Market],OFFERING_LABELS[c.target?.offering as Offering],c.document_type?M4_DOCUMENT_LABELS[c.document_type as M4DocumentType]:null,c.target?.reporting_cutoff?`最新报告期 ${c.target.reporting_cutoff}`:null].filter(Boolean).join(' · '))}</p>
       <details${!r?' open':''}><summary>${c.baseline?'基于已选成果继续修改':'任务材料与要求'}</summary><p>${c.baseline?'保留旧成果，生成新的文件版本。':''}</p><ul>${c.material_names.map(n=>`<li>${esc(n)}</li>`).join('')}</ul><p class="ba-text">${esc(c.requirements||'按所选材料和对应编制要求处理。')}</p></details>
-      ${c.operation==='update'&&!r&&!isCnyPrice(c.quote)?'':`<div class="ba-credits">${r?'本次任务费用':'本次总价'} <strong>${displayPrice(c.quote,price)}</strong>${!r?`<small>可用 ${isCnyPrice(c.quote)?cny(c.balance.available):c.balance.available.toLocaleString()+' 积分'}</small>`:''}</div>`}
+      ${c.operation==='update'&&!r&&!isCnyPrice(c.quote)?'':`<div class="ba-credits">${r?'本次任务费用':'本次总价'} <strong>${displayPrice(c.quote,price)}</strong>${!r?`<small>可用 ${displayCharge(c.quote,c.balance.available)}</small>`:''}</div>`}
       ${!r?scopeLinesHtml(c.quote):''}${scopePending(c.quote)&&!r?scopeLifecycleHtml(c.quote):''}
       ${r&&!finished(r.state)?taskProgress(r,c.operation==='generation'?'material':c.operation):''}
       ${r?`${this.taskLink(c)}${r.state==='succeeded'?` <button data-a="continue" data-id="${esc(c.card_id)}">继续修改</button><div data-delivery="${esc(r.run_id)}"></div>`:''}${['failed','paused'].includes(r.state)?'<p>原材料和要求已保留，可在原任务中查看原因与恢复状态。</p>':''}`:

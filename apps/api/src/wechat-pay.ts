@@ -27,7 +27,7 @@ export type WechatPayDependencies = {
   fetch?: typeof globalThis.fetch;
   now?: () => number;
 };
-type FailureCode = 'CONFIG_INVALID' | 'ORDER_INVALID' | 'SIGNATURE_INVALID' | 'PAYLOAD_INVALID' | 'RECEIPT_INVALID' | 'HTTP_ERROR' | 'TIMEOUT' | 'TRANSPORT_ERROR';
+type FailureCode = 'CONFIG_INVALID' | 'ORDER_INVALID' | 'SIGNATURE_INVALID' | 'PAYLOAD_INVALID' | 'RECEIPT_INVALID' | 'HTTP_ERROR' | 'ORDER_NOT_FOUND' | 'TIMEOUT' | 'TRANSPORT_ERROR';
 /** Messages/codes contain no request body, provider error body, key material or credentials. */
 export class WechatPayError extends Error {
   constructor(readonly code: FailureCode) { super(`WeChat Pay ${code}`); this.name = 'WechatPayError'; }
@@ -188,7 +188,7 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
       return {event,value:json(plaintext)};
     }catch{return fail('PAYLOAD_INVALID');}
   }
-  async function request(method: 'POST' | 'GET', path: string, payload?: JsonObject): Promise<JsonObject> {
+  async function request(method: 'POST' | 'GET', path: string, payload?: JsonObject, authenticatedMissingOrder = false): Promise<JsonObject> {
     const body = payload ? JSON.stringify(payload) : '', timestamp = String(Math.floor(now() / 1000)), nonce = randomBytes(16).toString('hex');
     const signature = sign('RSA-SHA256', Buffer.from(`${method}\n${path}\n${timestamp}\n${nonce}\n${body}\n`), merchantKey).toString('base64');
     const authorization = `WECHATPAY2-SHA256-RSA2048 mchid="${merchantId}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${merchantSerial}",signature="${signature}"`;
@@ -197,11 +197,15 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { controller.abort(); reject(new WechatPayError('TIMEOUT')); }, timeoutMs); });
     const perform = async () => {
       const response = await fetcher(API_ORIGIN + path, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: authorization, 'User-Agent': 'BondBuddy-WechatPay/1' }, body: method === 'POST' ? body : undefined, redirect: 'error', signal: controller.signal });
-      if (response.status !== 200) { await response.body?.cancel(); return fail('HTTP_ERROR'); }
+      // Only a signed, exact Native-order query error can establish absence. In
+      // particular an unsigned 404, transport failure, or refund NOT_FOUND is unknown.
+      if (response.status !== 200 && !(authenticatedMissingOrder && method === 'GET' && response.status === 404)) { await response.body?.cancel(); return fail('HTTP_ERROR'); }
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) return fail('PAYLOAD_INVALID');
       const raw = await boundedBody(response);
       verifyMessage(response.headers, raw);
-      return json(raw);
+      const value=json(raw);
+      if(response.status!==200)return fail(value.code==='ORDER_NOT_EXIST'?'ORDER_NOT_FOUND':'HTTP_ERROR');
+      return value;
     };
     try { return await Promise.race([perform(), timeout]); }
     catch (error) { if (error instanceof WechatPayError) throw error; return fail(controller.signal.aborted ? 'TIMEOUT' : 'TRANSPORT_ERROR'); }
@@ -237,7 +241,15 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     },
     async query(order) {
       assertOrder(order);
-      return receipt(await request('GET', `/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}?mchid=${encodeURIComponent(merchantId)}`), order);
+      try{
+        return receipt(await request('GET', `/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}?mchid=${encodeURIComponent(merchantId)}`,undefined,true), order);
+      }catch(error){
+        // After its immutable channel deadline an absent Native order cannot be
+        // created/payable. A new purchase may follow only this verified outcome.
+        if(error instanceof WechatPayError&&error.code==='ORDER_NOT_FOUND'&&Date.parse(order.expires_at)<=now())
+          return{orderId:order.id,merchantId,amountFen:order.amount_fen,currency:order.currency,transactionId:null,state:'expired'};
+        throw error;
+      }
     },
     async verifyCallback(headers, rawBody) {
       const {event,value}=decryptEvent(headers,rawBody,'transaction');

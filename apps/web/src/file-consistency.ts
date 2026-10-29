@@ -1,3 +1,4 @@
+import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import {PROJECT_DOCUMENT_CATALOG,PROJECT_FILE_UPDATE_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,schemas,type ProjectFileCheck,type ProjectFileVersion,type ProjectFileSource,type ProjectFileFinding,type ProjectFileAsset} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
@@ -650,16 +651,20 @@ export class FileConsistency {
       const quote=this.commerce?await this.request<Dto<'ProjectFileUpdateQuoteResponse'>>('POST','/checks/'+encodeURIComponent(c.run_id)+'/updates/quote',{expected_check_sha256:c.sha256,files:files.map(f=>({file_version_id:f.file_version_id}))}):undefined;
       if(quote&&(scopeStatus(quote)!=='ready'||quote.items.some(item=>scopeStatus(item)!=='ready'))){this.closeDialog();const pending=document.createElement('dialog');this.dialog=pending;pending.className='pf-modal commerce-confirm';const blocked=quote.items.find(item=>scopeStatus(item)!=='ready')??quote;pending.innerHTML='<h2>'+esc(scopeStatusLabel(blocked))+'</h2>'+scopeLifecycleHtml(blocked)+'<button class="btn secondary" data-close>返回准备</button><button class="btn primary" id="fc-refresh-scope">刷新范围报价</button>';pending.querySelector('[data-close]')!.addEventListener('click',()=>this.closeDialog());pending.querySelector('#fc-refresh-scope')!.addEventListener('click',()=>{this.closeDialog();this.confirmUpdate(c,file);});document.body.append(pending);pending.showModal();return;}
       if(quote&&(quote.items.length!==files.length||files.some(f=>!quote.items.some(item=>item.file_version_id===f.file_version_id&&item.scope_quote_id))||quote.items.reduce((n,item)=>n+item.points,0)!==quote.points))throw new ApiError(0,'DATA_UNAVAILABLE');
-      this.pendingUpdate={checkId:c.run_id,body:{request_id:crypto.randomUUID(),expected_check_sha256:c.sha256,price_version:this.commerce?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version,expected_points:quote?.points??this.updateTotal(c,files),files:files.map(f=>({file_version_id:f.file_version_id,...(quote?{scope_quote_id:quote.items.find(item=>item.file_version_id===f.file_version_id)!.scope_quote_id!}:{})}))},filenames:files.map(f=>f.filename),attempted:false,...(quote?{quote}: {})};
+      const priceVersion=quote?.items[0]?.price_version??(this.commerce?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version);
+      if(!isOutcomePriceVersion(priceVersion)&&priceVersion!==PROJECT_FILE_UPDATE_PRICE.version)throw new ApiError(0,'DATA_UNAVAILABLE');
+      this.pendingUpdate={checkId:c.run_id,body:{request_id:crypto.randomUUID(),expected_check_sha256:c.sha256,price_version:priceVersion,expected_points:quote?.points??this.updateTotal(c,files),files:files.map(f=>({file_version_id:f.file_version_id,...(quote?{scope_quote_id:quote.items.find(item=>item.file_version_id===f.file_version_id)!.scope_quote_id!}:{})}))},filenames:files.map(f=>f.filename),attempted:false,...(quote?{quote}: {})};
       this.pendingUpdate.confirmation=createConfirmationSnapshot(this.confirmationBinding(this.pendingUpdate),c,this.files,files.map(f=>this.pending(c,f.file_version_id).length),this.name);
     }
     const pending=this.pendingUpdate;if(!pending)return;
+    if(pending.quote?.items.every(isAutomaticCharge)){await this.submitUpdateRequest(pending);return;}
     this.closeDialog();const d=document.createElement('dialog');this.dialog=d;d.className='pf-modal fc-confirm';d.setAttribute('aria-labelledby','fc-confirm-heading');
     d.innerHTML=`<header><h2 id="fc-confirm-heading">确认更新这些文件</h2><button class="icon-btn" data-close aria-label="关闭费用确认">${ico('close')}</button></header><div class="fc-confirm-body" tabindex="0" aria-label="更新范围与版本明细">${this.confirmationContent(pending)}${pending.quote?pending.quote.items.map(item=>scopeLinesHtml(item)+scopeLifecycleHtml(item)).join(''):''}</div><footer><p class="fc-confirm-total">${isOutcomePriceVersion(pending.body.price_version)?`${pending.body.files.length} 份 · 本次总价 <strong>${cny(pending.body.expected_points)}</strong>`:`${pending.body.files.length} 份 × ${PROJECT_FILE_UPDATE_PRICE.points.toLocaleString('zh-CN')} 积分 = <strong>${pending.body.expected_points.toLocaleString('zh-CN')} 积分</strong>`}${isOutcomePriceVersion(pending.body.price_version)?'<small>已按服务端核实的各文件工作项报价合计；原范围修正与平台重试包含。</small>':''}</p><p>确认时需余额覆盖本批总额。每份分别结算，成功交付后扣费；失败或取消的文件不扣费。</p><p id="fc-confirm-status" role="status">${pending.attempted?'上次提交结果尚未确认。重试沿用同一份已确认请求，不创建新的重复批次。':''}</p><div class="pf-footer"><button class="btn secondary" data-close>返回调整</button><button class="btn primary" id="fc-confirm-update">${pending.attempted?'重试确认提交结果':'确认更新'}</button></div></footer>`;
     const dismiss=()=>{if(this.busy)return;this.closeDialog();if(!pending.attempted)this.pendingUpdate=undefined;};
     d.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',dismiss));d.addEventListener('cancel',e=>{e.preventDefault();dismiss();});d.querySelector('#fc-confirm-update')!.addEventListener('click',()=>void this.submitUpdate());document.body.append(d);if(pending.quote&&!pending.attempted)guardScopeExpiry(d,pending.quote.items,'#fc-confirm-update');d.showModal();
   }
-  private async submitUpdate(){const pending=this.pendingUpdate;if(!pending)return;if(!pending.attempted&&pending.quote&&pending.quote.items.some(item=>scopeStatus(item)!=='ready')){this.message='报价已过期，未开始；选择与准备保留，请返回重新核对。';this.status();return;}await this.act(async()=>{
+  private async submitUpdate(){const pending=this.pendingUpdate;if(!pending)return;if(!pending.attempted&&pending.quote&&pending.quote.items.some(item=>scopeStatus(item)!=='ready')){this.message='报价已过期，未开始；选择与准备保留，请返回重新核对。';this.status();return;}await this.act(()=>this.submitUpdateRequest(pending));}
+  private async submitUpdateRequest(pending:NonNullable<FileConsistency['pendingUpdate']>){
     pending.attempted=true;this.cache();this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=true);
     try{await this.request('POST','/checks/'+encodeURIComponent(pending.checkId)+'/updates',pending.body);}
     catch(e){
@@ -668,6 +673,6 @@ export class FileConsistency {
       throw e;
     }finally{this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=false);}
     this.pendingUpdate=undefined;this.needsCredits=false;window.dispatchEvent(new Event('bondbuddy:credits-changed'));this.closeDialog();this.chosen.clear();this.cache();this.message='已提交所选文件更新。每份分别交付、分别结算；存疑事项保留，原稿保留。';await this.reload();
-  });}
+  }
 }
 

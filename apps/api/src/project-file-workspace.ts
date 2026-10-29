@@ -6,11 +6,13 @@ import {project,transaction,uid,conflict,missing,Problem,type PrivateBlobs} from
 import {inputManifestHash} from './production-rule-pin.js';
 import {readM4Workspace,saveM4Draft,projectFileDocumentManifest,startPinnedM4Run,readM4MaterialPin} from './m4-workspace.js';
 import {quoteM4} from './m4-billing.js';
-import {OUTCOME_PRICE_VERSION,isOutcomePriceVersion} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,OUTCOME_PRICE_VERSION,isOutcomePriceVersion} from '@bondbuddy/contracts';
 import {OUTCOME_MODE,outcomeMetadata} from './outcome-pricing.js';
 import {importProspectusMaterial} from './prospectus-import.js';
 import {projectFileSource,projectFileVersions,projectFileFamily,appendProjectFile} from './project-file-storage.js';
 import {acceptScopeBatch} from './scope-quotations.js';
+import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {requireFileUpdateCredits} from './project-file-billing.js';
 
 type Db=Pool|PoolClient;
 type BatchItem={pricing_mode?:typeof OUTCOME_MODE;scope_quote_id?:string;scope_acceptance_id?:string;scope_expires_at?:string|null;points?:number;scope_lines?:ScopeLine[];manifest:M4DocumentManifest;run_id:string|null;attempt:number;error:string|null};
@@ -44,7 +46,7 @@ async function batchDto(db:Db,owner:string,row:any):Promise<ProjectFileBatch>{
   const scopes=scopeIds.length?(await db.query('SELECT id,price_version FROM bb_scope_quotations WHERE owner_user_id=$1 AND id=ANY($2::text[])',[owner,scopeIds])).rows:[];
   const scopeVersions=new Map(scopes.map(scope=>[scope.id,scope.price_version]));
   return {batch_id:row.id,state:row.state,items:items.filter(i=>i.manifest.input.document_type!=='workpaper').map(i=>({document_type:i.manifest.input.document_type as ProjectFileBatch['items'][number]['document_type'],run_id:i.run_id,
-    state:runs.find(r=>r.id===i.run_id)?.state??'queued',error:i.error,...(i.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(i.points??0),price_version:scopeVersions.get(i.scope_quote_id),scope_quote_id:i.scope_quote_id,scope_expires_at:i.scope_expires_at??null,scope_lines:i.scope_lines??[],quote_status:'ready'}:{})}))};
+    state:runs.find(r=>r.id===i.run_id)?.state??'queued',error:i.error,...(i.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(i.points??0,i.points??0,1,scopeVersions.get(i.scope_quote_id)),scope_quote_id:i.scope_quote_id,scope_expires_at:i.scope_expires_at??null,scope_lines:i.scope_lines??[],quote_status:'ready'}:{})}))};
 }
 export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,commercial=false){
   await project(db,owner,id);
@@ -52,7 +54,7 @@ export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,co
   if(!binding)throw missing();
   const batches=(await db.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 20',[owner,id])).rows;
   return {project_id:id,source:await projectFileSource(db,owner,id),workspace:await readM4Workspace(db,owner,binding.topic_id),
-    files:await projectFileVersions(db,owner,id),batches:await Promise.all(batches.map(b=>batchDto(db,owner,b))),...(commercial?{price:{points:0,price_version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope' as const,scope_lines:[]}}:{})};
+    files:await projectFileVersions(db,owner,id),batches:await Promise.all(batches.map(b=>batchDto(db,owner,b))),...(commercial?{price:{points:0,...outcomeMetadata(0,0,1,automaticBillingEnabled(db)?AUTOMATIC_PRICE_VERSION:OUTCOME_PRICE_VERSION),quote_status:'pending_scope' as const,scope_lines:[]}}:{})};
 }
 
 /** The worker starts each frozen item after its predecessor; closing the browser cannot lose a batch. */
@@ -128,7 +130,9 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
         documents.push({document_type:d.document_type,draft_version:d.draft_version,points:quote.points,...(commercial?{...price,scope_quote_id:quote.scope_quote_id,quote_status:quote.quote_status,scope_expires_at:quote.scope_expires_at,scope_lines:quote.scope_lines??[]}:{})});
       }
       const points=documents.reduce((sum,d)=>sum+d.points,0),ready=!commercial||documents.every(d=>d.quote_status==='ready');
-      return {points,price_version:commercial?OUTCOME_PRICE_VERSION:null,quote_status:ready?'ready':documents.find(d=>d.quote_status!=='ready')?.quote_status??'pending_scope',documents,...(commercial?outcomeMetadata(points):{})};
+      const candidateVersion=documents.find(d=>d.price_version)?.price_version;
+      const version=isOutcomePriceVersion(candidateVersion)?candidateVersion:OUTCOME_PRICE_VERSION;
+      return {points,price_version:commercial?version:null,quote_status:ready?'ready':documents.find(d=>d.quote_status!=='ready')?.quote_status??'pending_scope',documents,...(commercial?outcomeMetadata(points,points,1,version):{})};
     });
   });
   app.post(base+'/batches/:batch_id/actions',{schema:{body:projectFileSchemas.ProjectFileBatchActionRequest}},async r=>{
@@ -198,6 +202,7 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
       }
       if(pending)return {scope_pending:true};
       if(commercial&&(!isOutcomePriceVersion(b.price_version)||b.expected_points!==total))throw conflict('QUOTE_CHANGED','请确认每份文件的范围明细和人民币总价后开始。');
+      if(automaticBillingEnabled(c))await requireFileUpdateCredits(c,user,total,true);
       const row=(await c.query(`INSERT INTO bb_project_file_batches(id,owner_user_id,project_id,topic_id,request_id,request_hash,items,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,'queued') RETURNING *`,[uid(),user,projectId,t.id,b.request_id,hash,JSON.stringify(items)])).rows[0];
       if(commercial){

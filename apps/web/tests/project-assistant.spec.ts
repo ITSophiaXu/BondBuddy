@@ -1,3 +1,4 @@
+import {AUTOMATIC_PRICE_VERSION,commerceMetadata} from '@bondbuddy/contracts';
 import { test,expect,type Page } from '@playwright/test';
 import { mkdir,readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -276,4 +277,10 @@ for(const state of ['queued','paused'])test(`ordinary QA ${state} exposes status
   await expect(page.getByRole('button',{name:'停止本次回答',exact:true})).toHaveCount(0);
   await expect(page.locator('.ba-message')).toContainText('本次回答已停止');
   expect(cancellations).toBe(1);expect(s.messages).toHaveLength(0);
+});
+
+
+test('automatic assistant answer is submitted once on the first send',async({page})=>{
+ const s=await setup(page);await page.route('**/m4/topics/topic/quote',route=>route.fulfill({json:{quote:{...commerceMetadata(1218),quote_id:'automatic-qa',topic_id:'topic',input_hash:hash,points:1218,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,quote_status:'ready',scope_quote_id:'scope-automatic',scope_lines:[],expires_at:'2099-01-01T00:00:00Z',task_type:'m4_Q01',billing_method:'fixed',amount_semantics:'fixed_price'},balance:{available:100000,frozen:0},shortage:0}}));
+ await page.getByRole('button',{name:'打开 BondBuddy'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0]).toMatchObject({content:'解释担保条款',quote_id:'automatic-qa'});expect(s.executions).toHaveLength(0);await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);
 });

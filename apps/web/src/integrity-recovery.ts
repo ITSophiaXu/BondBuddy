@@ -1,4 +1,4 @@
-import {INTEGRITY_PRICE,OUTCOME_PRICE_VERSION,CommercePriceMetadataSchema,type CommercePriceMetadata,INTEGRITY_SITES,INTEGRITY_SITE_LIMIT,M4MaterialPinSchema,integritySchemas,type IntegrityDraft,type M4MaterialPin} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,CommercePriceMetadataSchema,type CommercePriceMetadata,INTEGRITY_SITES,INTEGRITY_SITE_LIMIT,M4MaterialPinSchema,integritySchemas,type IntegrityDraft,type M4MaterialPin} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -74,7 +74,7 @@ function validValue(value:unknown,project:string,allowUndefined=false):value is 
   if(pending.kind==='check'){
     if(!exact(pending,['kind','request'],['price'])||(Object.hasOwn(pending,'price')&&!Value.Check(CommercePriceMetadataSchema,pending.price)))return false;
     const price=pending.price as CommercePriceMetadata|undefined;
-    return Value.Check(integritySchemas.IntegrityRunRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&pending.request.price_version===(price?.pricing_mode==='outcome_cny_v1'?OUTCOME_PRICE_VERSION:INTEGRITY_PRICE.version)&&
+    return Value.Check(integritySchemas.IntegrityRunRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&(price?.pricing_mode==='outcome_cny_v1'?isOutcomePriceVersion(pending.request.price_version)&&pending.request.price_version===(price.price_version??OUTCOME_PRICE_VERSION):pending.request.price_version===INTEGRITY_PRICE.version)&&
       (price?.pricing_mode==='outcome_cny_v1'?price.quote_status==='ready'&&price.amount_fen===pending.request.expected_points&&validId(pending.request.scope_quote_id):pending.request.expected_points===INTEGRITY_PRICE.points)&&validDraft(value.draft,true,true);
   }
   if(pending.kind==='export')return exact(pending,['kind','roundId','request'])&&validId(pending.roundId)&&

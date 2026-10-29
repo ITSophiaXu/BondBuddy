@@ -1,3 +1,4 @@
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -78,7 +79,8 @@ export async function reserveQaCredits(c:PoolClient,owner:string,run:any,input:Q
  if(input.included_followup_of&&points===0)return;
  if(commercial&&points===0){await bindCommerceScopeRun(c,owner,scope!.scope_quote_id,run.id);return;}
  await lockCreditAccount(c,owner);
- if((await creditBalance(c,owner)).available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
+ const balance=await creditBalance(c,owner);
+ if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(input.price_version)?`本轮 ${input.questions.length} 个问题需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(points-balance.available).toLocaleString('zh-CN')} 积分；问题与材料已保留，补足后自动继续。`:commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
  const reservation=uid();
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);
  const lots=(await c.query("SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now()) ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE",[owner])).rows;

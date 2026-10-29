@@ -20,7 +20,7 @@ const database=await isolatedTestDatabase(undefined,'original-cash-refunds');
 async function setup(){
   const pool=new Pool({connectionString:database}),f=syntheticWechatFixture(Date.now()),owner=randomUUID();let actor:string=owner,creates=0,queries=0;
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_refund_'+owner.slice(0,8)]);
-  await publishPrices(pool,{id:'synthetic-refund-price-'+owner,prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'Synthetic isolated refund-allocation price fixture'});
+  await publishPrices(pool,{id:'synthetic-refund-price',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'Synthetic isolated refund-allocation price fixture'});
   const channel=new Map<string,any>(),orders=new Map<string,any>();let mode:'processing'|'timeout'|'success'|'closed'='processing';
   const provider=createWechatPayProvider({...f.options,refundNotifyUrl:'https://bondbuddy.example/api/v1/payments/wechat/refund-callback'},
     {now:()=>f.now,fetch:async(url,init)=>{

@@ -1,9 +1,10 @@
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import './commerce.css';
 import type {CommercePriceMetadata,CommerceCatalog} from '@bondbuddy/contracts';
 import {ApiClient,ApiError} from './api';
 import {esc} from './ui';
-import {cny,isCnyPrice,includedPrice,displayPrice,scopeStatus,scopeStatusLabel,type ScopeLifecycle} from './commerce-price';
-export {cny,isCnyPrice,includedPrice,displayPrice,scopeStatus,scopeStatusLabel} from './commerce-price';
+import {cny,isCnyPrice,isAutomaticCharge,displayCharge,includedPrice,displayPrice,scopeStatus,scopeStatusLabel,type ScopeLifecycle} from './commerce-price';
+export {cny,isCnyPrice,isAutomaticCharge,displayCharge,includedPrice,displayPrice,scopeStatus,scopeStatusLabel} from './commerce-price';
 
 export function scopeReady(price:CommercePriceMetadata|undefined|null){return isCnyPrice(price)&&scopeStatus(price)==='ready';}
 export function scopePending(price:CommercePriceMetadata|undefined|null){return isCnyPrice(price)&&!scopeReady(price);}
@@ -21,9 +22,9 @@ export function guardScopeExpiry(dialog:HTMLDialogElement,prices:ScopeLifecycle[
   const delay=times.length?Math.min(...times)-Date.now():undefined;
   const timer=delay===undefined?undefined:setTimeout(expire,Math.max(0,Math.min(delay+10,2147483647)));dialog.addEventListener('close',()=>clearTimeout(timer),{once:true});expire();
 }
-export function copyCommercePrice(price:CommercePriceMetadata):CommercePriceMetadata{const result:CommercePriceMetadata={};for(const key of ['pricing_mode','currency','amount_fen','unit_amount_fen','units','scope_quote_id','quote_status','scope_expires_at','scope_lines','price_version'] as const){if(price[key]!==undefined)(result as Record<string,unknown>)[key]=structuredClone(price[key]);}return result;}
-export function scopeLinesHtml(price:CommercePriceMetadata|undefined|null){return price?.scope_lines?.length?`<section class="commerce-scope-lines" aria-label="本次范围报价明细"><h3>本次工作项</h3><ul>${price.scope_lines.map(line=>`<li><strong>${esc(line.label)}</strong>${line.pricing?`<span>原价 ${cny(line.pricing.base_amount_fen)} · 已购覆盖 ${cny(line.pricing.owned_coverage_fen)} · 本次应付 ${cny(line.pricing.due_fen)}</span><p>${esc(line.pricing.reason)}</p>`:`<span>${line.quantity.toLocaleString()} ${esc(line.unit)} × ${cny(line.unit_price_fen)} = ${cny(line.amount_fen)}</span>`}<ul>${line.evidence.map(evidence=>`<li>${esc(evidence)}</li>`).join('')}</ul></li>`).join('')}</ul></section>`:'';}
-export function priceScope(price:CommercePriceMetadata|undefined|null){return includedPrice(price)?'本次属于原范围包含或已购覆盖，无需充值或新增预留；核对范围后继续处理。':isCnyPrice(price)?'确认本次范围与总价后预留，按约定交付结算；原范围澄清、平台纠错与重试包含。':'';}
+export function copyCommercePrice(price:CommercePriceMetadata):CommercePriceMetadata{const result:CommercePriceMetadata={};for(const key of ['auto_charge','pricing_mode','currency','amount_fen','unit_amount_fen','units','scope_quote_id','quote_status','scope_expires_at','scope_lines','price_version'] as const){if(price[key]!==undefined)(result as Record<string,unknown>)[key]=structuredClone(price[key]);}return result;}
+export function scopeLinesHtml(price:CommercePriceMetadata|undefined|null){const money=(value:number)=>isAutomaticPriceVersion(price?.price_version)?value.toLocaleString('zh-CN')+' 积分':cny(value);return price?.scope_lines?.length?`<section class="commerce-scope-lines" aria-label="本次范围报价明细"><h3>本次工作项</h3><ul>${price.scope_lines.map(line=>`<li><strong>${esc(line.label)}</strong>${line.pricing?`<span>原价 ${money(line.pricing.base_amount_fen)} · 已购覆盖 ${money(line.pricing.owned_coverage_fen)} · 本次应付 ${money(line.pricing.due_fen)}</span><p>${esc(line.pricing.reason)}</p>`:`<span>${line.quantity.toLocaleString()} ${esc(line.unit)} × ${money(line.unit_price_fen)} = ${money(line.amount_fen)}</span>`}<ul>${line.evidence.map(evidence=>`<li>${esc(evidence)}</li>`).join('')}</ul></li>`).join('')}</ul></section>`:'';}
+export function priceScope(price:CommercePriceMetadata|undefined|null){return isAutomaticCharge(price)?'任务开始时自动预留积分，成果交付后结算；原范围修正与平台重试包含。':includedPrice(price)?'本次属于原范围包含或已购覆盖，无需充值或新增预留；核对范围后继续处理。':isCnyPrice(price)?'确认本次范围与总价后预留，按约定交付结算；原范围澄清、平台纠错与重试包含。':'';}
 /** A missing endpoint is an older deployment; a failed enabled endpoint is never assumed to be free. */
 export async function readCommerce(api:ApiClient,signal?:AbortSignal):Promise<CommerceCatalog|undefined>{
   try{return await api.commerceCatalog(signal);}catch(error){if(error instanceof ApiError&&error.status===404)return undefined;throw error;}
@@ -31,5 +32,6 @@ export async function readCommerce(api:ApiClient,signal?:AbortSignal):Promise<Co
 export function catalogItem(catalog:CommerceCatalog|undefined,code:string){return catalog?.enabled?catalog.items.find(item=>item.code===code):undefined;}
 export function commerceQuoteHtml(price:CommercePriceMetadata|undefined|null,points?:number){return `<strong>${esc(displayPrice(price,points))}</strong>${scopeLinesHtml(price)}${isCnyPrice(price)?`<p>${esc(priceScope(price))}</p>`:''}`;}
 export function confirmCnyTask(title:string,price:CommercePriceMetadata,scope:string):Promise<boolean>{
+  if(isAutomaticCharge(price))return Promise.resolve(true);
   return new Promise(resolve=>{const ready=scopeReady(price),included=includedPrice(price),dialog=document.createElement('dialog');dialog.className='pf-modal commerce-confirm';dialog.dataset.commerceConfirm='true';dialog.innerHTML=`<h2>${esc(title)}</h2><p>${esc(scope)}</p>${ready?`<p>${included?'本次无需另付':'本次总价'} <strong>${esc(displayPrice(price))}</strong></p>${scopeLinesHtml(price)}<p>${esc(priceScope(price))}</p><p>${included?'本次沿用原单范围；真正新增目标须另行确认。':'开始后固定上述材料与范围。未交付部分释放；新事实或新范围须重新确认。'}</p>`:''}${scopeLifecycleHtml(price)}<div class="form-actions"><button class="btn secondary" data-commerce-back>${ready?'返回调整':'返回准备'}</button>${ready?`<button class="btn primary" data-commerce-accept>${included?'确认范围并继续':'确认总价并开始'}</button>`:''}</div>`;let settled=false;const finish=(accepted:boolean)=>{if(settled)return;settled=true;dialog.close();dialog.remove();resolve(accepted);};dialog.querySelector('[data-commerce-back]')!.addEventListener('click',()=>finish(false));dialog.querySelector('[data-commerce-accept]')?.addEventListener('click',()=>{if(scopeReady(price))finish(true);});dialog.querySelector('a')?.addEventListener('click',()=>finish(false));dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false);});document.body.append(dialog);guardScopeExpiry(dialog,[price],'[data-commerce-accept]');dialog.showModal();});
 }

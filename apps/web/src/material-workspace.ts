@@ -1,3 +1,4 @@
+import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import { duplicateUploadNotices, isReusedUpload, type DuplicateUploadNotice } from './duplicate-upload';
 import { MARKETS, MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M4_DOCUMENT_MARKETS, m4DocumentScopeSupported, M4_CASE_TEMPLATES, m4DocumentInputIssues, type M4InputIssue, type M4InputField, M4_DOCUMENT_LABELS, M4_DOCUMENT_TYPES, M4DraftInputSchema, M4ViewStateSchema, M4MessageRequestSchema, M4ExecuteRequestSchema,
@@ -585,18 +586,18 @@ export class MaterialWorkspace {
           this.view.unsent_context={...this.view.unsent_context,document_type:type,draft_version:draft.version,source_material:structuredClone(draft.input.source_material)};
           if(!this.docQuote||this.docQuote.type!==type||this.docQuote.version!==draft.version||Date.parse(this.docQuote.response.quote.expires_at)<=Date.now()){
             this.docQuote={response:await this.m4.quote(this.topicId!,{kind:'document',document_type:type,expected_draft_version:draft.version}),version:draft.version,type};
-            if(!this.live()||this.uploadInputBlocked(false))return;this.message('本轮材料制作报价已显示。确认当前输入后，在助手发送相同开始命令即可执行。');return;
+            if(!this.live()||this.uploadInputBlocked(false))return;if(!isAutomaticCharge(this.docQuote.response.quote)){this.message('本轮材料制作报价已显示。确认当前输入后，在助手发送相同开始命令即可执行。');return;}
           }
-          if(this.docQuote.response.shortage){this.message('积分不足，制作任务尚未开始。原命令保留。',true);return;}
+          if(this.docQuote.response.shortage&&!isAutomaticCharge(this.docQuote.response.quote)){this.message('积分不足，制作任务尚未开始。原命令保留。',true);return;}
           quoteId=this.docQuote.response.quote.quote_id;execute=true;
         }else{
           const signature=this.qaSignature();
           if(!this.qaQuote||this.qaQuote.signature!==signature||Date.parse(this.qaQuote.response.quote.expires_at)<=Date.now()){
             this.qaQuote={response:await this.m4.quote(this.topicId!,{kind:'qa',content,context:this.view.unsent_context}),signature};
-            if(!this.live()||this.uploadInputBlocked(false))return;if(this.qaQuote.response.shortage){this.message('积分不足，原问题与引用已保留。',true);return;}
-            if(this.qaQuote.response.quote.points>0){this.message('本次问答报价已显示，请确认并发送。');return;}
+            if(!this.live()||this.uploadInputBlocked(false))return;if(this.qaQuote.response.shortage&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('积分不足，原问题与引用已保留。',true);return;}
+            if(this.qaQuote.response.quote.points>0&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('本次问答报价已显示，请确认并发送。');return;}
           }
-          if(this.qaQuote.response.shortage)return;quoteId=this.qaQuote.response.quote.quote_id;
+          if(this.qaQuote.response.shortage&&!isAutomaticCharge(this.qaQuote.response.quote))return;quoteId=this.qaQuote.response.quote.quote_id;
         }
         const request:M4MessageRequest={submission_request_id:crypto.randomUUID(),content,context:structuredClone(this.view.unsent_context),quote_id:quoteId,...(execute?{execute:true}:{})};
         this.pendingMessage={request,viewContent:this.view.unsent_content};this.cache();
@@ -634,7 +635,7 @@ export class MaterialWorkspace {
         if(this.selected!==type||current.version!==version||current.dirty){
           this.message('材料或要求已修改，请保存后重新点击生成。',true);return;
         }
-        if(shortage){this.message('积分不足，本次未开始生成、未扣费。充值后请重新点击生成。',true,true);return;}
+        if(shortage&&!isAutomaticCharge(quote)){this.message('积分不足，本次未开始生成、未扣费。充值后请重新点击生成。',true,true);return;}
         this.pendingExecution={execution_request_id:crypto.randomUUID(),document_type:type,expected_draft_version:version,quote_id:quote.quote_id,entrypoint};
         this.cache();
       }

@@ -1,6 +1,7 @@
 import type {PoolClient} from 'pg';
 import {calculateOutcomePrice,OUTCOME_RATE_CARD,type OutcomeOwnedCoverage,type OutcomePricingInput,type OutcomePricingItemResult} from '@bondbuddy/contracts';
 import {digest,Problem} from './data.js';
+import {bindAutomaticScopeRun} from './automatic-pricing.js';
 
 const changed=()=>new Problem(409,'QUOTE_CHANGED','已购覆盖或本次业务范围已变化，请重新确认报价。');
 const stable=(value:unknown):string=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
@@ -73,6 +74,7 @@ export async function bindCommerceScopeRun(c:PoolClient,owner:string,scopeQuoteI
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['commerce-coverage:'+owner]);
   const scope=(await c.query('SELECT * FROM bb_scope_quotations WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,scopeQuoteId])).rows[0];
   if(!scope)throw changed();
+  if(scope.automatic_price){await bindAutomaticScopeRun(c,owner,scope,runId);return;}
   if(scope.work_plan===null)return; // Historical reviewed quotes do not manufacture new entitlements.
   const existing=(await c.query('SELECT * FROM bb_commerce_scope_runs WHERE run_id=$1',[runId])).rows[0];
   if(existing){if(existing.owner_user_id===owner&&existing.scope_quote_id===scopeQuoteId&&existing.run_id===runId)return;throw new Problem(409,'IDEMPOTENCY_CONFLICT','该业务报价已经绑定另一任务。');}

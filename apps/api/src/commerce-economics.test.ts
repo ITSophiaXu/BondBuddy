@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EXPENSE_CATEGORIES,summarizeRunCosts} from './commerce-economics.js';
 const expenses=()=>EXPENSE_CATEGORIES.map((category,i)=>({id:String(i),category,amount_fen:i===0?300:0,within_fixed_budget:false}));
-const base=()=>({run_id:'synthetic-run',state:'succeeded',revenue_fen:10000,compensation_fen:0,attempts:[{attempt_id:'first',billable:true,pricing_status:'priced',usage_status:'measured',currency:'CNY',cost_amount:'2.5',cached_input_tokens:10,reasoning_tokens:1},{attempt_id:'retry',billable:true,pricing_status:'priced',usage_status:'measured',currency:'CNY',cost_amount:'1.5',cached_input_tokens:0,reasoning_tokens:0}],expenses:expenses()});
+const base=()=>({run_id:'synthetic-run',state:'succeeded',revenue_fen:10000,compensation_fen:0,cash_consideration_fen:'10000',cash_compensation_fen:'0',attempts:[{attempt_id:'first',billable:true,pricing_status:'priced',usage_status:'measured',currency:'CNY',cost_amount:'2.5',cached_input_tokens:10,reasoning_tokens:1},{attempt_id:'retry',billable:true,pricing_status:'priced',usage_status:'measured',currency:'CNY',cost_amount:'1.5',cached_input_tokens:0,reasoning_tokens:0}],expenses:expenses()});
 const reviewed=(b:ReturnType<typeof base>)=>summarizeRunCosts({...b,reviews:[{snapshot_hash:summarizeRunCosts(b).snapshot_hash,model_required:true}]});
 test('all billable attempts count, company-budget allocations do not count twice and contribution is not net margin',()=>{
  const b=base();b.expenses[1]={...b.expenses[1],amount_fen:160000,within_fixed_budget:true};
@@ -30,4 +30,12 @@ test('explicit zero expenses require all categories and a terminal review; missi
 test('a missing cache or reasoning subset is incomplete when procurement rates differ',()=>{
  const b=base();Object.assign(b.attempts[0],{cached_input_tokens:null,input_per_million:'2',cached_input_per_million:'0.2'});assert.equal(reviewed(b).cost_complete,false);
  Object.assign(b.attempts[0],{input_per_million:'2',cached_input_per_million:'2'});assert.equal(reviewed(b).cost_complete,true);
+});
+
+test('subscription face value is not cash revenue, and unknown consideration never becomes healthy profit',()=>{
+ const b={...base(),cash_consideration_fen:'9000'};
+ const r=reviewed(b);assert.equal(r.delivered_service_charge_fen,10000);assert.equal(r.net_consideration_fen,9000);assert.equal(r.contribution_cny,83);
+ const unknown={...base(),cash_consideration_fen:null};
+ const missing=summarizeRunCosts({...unknown,reviews:[{snapshot_hash:summarizeRunCosts(unknown).snapshot_hash,model_required:true}]});
+ assert.equal(missing.cost_complete,true);assert.equal(missing.consideration_complete,false);assert.equal(missing.contribution_cny,null);assert.equal(missing.contribution_margin,null);
 });

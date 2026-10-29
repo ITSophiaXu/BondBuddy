@@ -6,7 +6,7 @@ import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { creditBalance } from './billing.js';
 import { auditCredits } from './billing-ops.js';
-import type { PaymentProvider,VerifiedPayment } from './payments.js';
+import {applyVerifiedPayment,type PaymentProvider,type VerifiedPayment} from './payments.js';
 
 const connection=await isolatedTestDatabase(undefined,'m2-payments');
 test('synthetic signed provider: forged/mismatched/replayed callbacks and query-based credit repair', {skip:!connection,timeout:60000},async()=>{
@@ -68,5 +68,41 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).statusCode,404);
     assert.equal((await send('POST',`/api/v1/credits/recharge-orders/${second.order_id}/refresh`,{})).statusCode,404);
     const report=await auditCredits(pool);assert.equal(report.consistent,true,JSON.stringify(report));
+  }finally{await app.close();await pool.end();}
+});
+
+test('subscription mode closes legacy bonus-pack sales while replaying original paid and pending orders unchanged',{skip:!connection,timeout:60000},async()=>{
+  const pool=new Pool({connectionString:connection}),actor=randomUUID(),receipts=new Map<string,VerifiedPayment>();let creates=0;
+  const provider:PaymentProvider={name:'alipay',merchantId:'synthetic-legacy-transition',acknowledgement:{accepted:true},
+    create:async order=>{creates++;receipts.set(order.id,{orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',transactionId:null,state:'pending'});return{checkoutUrl:'https://synthetic.invalid/transition/'+order.id};},
+    query:async order=>receipts.get(order.id)!,verifyCallback:async()=>{throw Error('Synthetic test uses verified provider seam');}};
+  const settings={pool,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})};
+  let app=createServer({...settings,enableSubscriptionBilling:false,enableOutcomePricing:false});
+  const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
+  try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[actor,'synthetic_transition_'+actor.slice(0,8)]);
+    const paidRequest={request_id:randomUUID(),provider:'alipay',pack_id:'cny500'},pendingRequest={...paidRequest,request_id:randomUUID(),pack_id:'cny2000'};
+    const paidResponse=await send('POST','/api/v1/credits/recharge-orders',paidRequest);assert.equal(paidResponse.statusCode,201,paidResponse.body);
+    const pendingResponse=await send('POST','/api/v1/credits/recharge-orders',pendingRequest);assert.equal(pendingResponse.statusCode,201,pendingResponse.body);
+    const paid=paidResponse.json(),pending=pendingResponse.json();
+    await applyVerifiedPayment(pool,provider,{...receipts.get(paid.order_id)!,state:'paid',transactionId:'synthetic-transition-paid'});
+    await app.close();app=createServer({...settings,enableSubscriptionBilling:true});
+    const config=(await send('GET','/api/v1/credits/recharge-config')).json();assert.equal(config.enabled,false);assert.deepEqual(config.packs,[]);assert.deepEqual(config.providers,[]);
+    for(const pack_id of ['cny200','cny500','cny2000','cny10000']){
+      const blocked=await send('POST','/api/v1/credits/recharge-orders',{...paidRequest,request_id:randomUUID(),pack_id});
+      assert.equal(blocked.statusCode,503,blocked.body);
+    }
+    for(const [request,original] of [[paidRequest,paid],[pendingRequest,pending]] as const){
+      const replay=await send('POST','/api/v1/credits/recharge-orders',request);assert.equal(replay.statusCode,201,replay.body);
+      assert.equal(replay.json().order_id,original.order_id);assert.equal(replay.json().amount_fen,original.amount_fen);assert.equal(replay.json().points,original.points);
+    }
+    assert.equal(creates,2,'legacy replays do not create new channel orders');
+    assert.equal((await send('POST','/api/v1/credits/recharge-orders',{...paidRequest,pack_id:'cny200'})).statusCode,409,'existing request terms remain immutable');
+    receipts.set(pending.order_id,{...receipts.get(pending.order_id)!,state:'paid',transactionId:'synthetic-transition-pending'});
+    assert.equal((await send('POST',`/api/v1/credits/recharge-orders/${pending.order_id}/refresh`,{})).json().state,'paid');
+    assert.deepEqual(await creditBalance(pool,actor),{available:52500+220000,frozen:0},'the accepted old bonuses remain intact');
+    const topup=await send('POST','/api/v1/commerce/topups',{request_id:randomUUID(),provider:'alipay',amount_fen:50000});assert.equal(topup.statusCode,201,topup.body);
+    assert.equal(topup.json().amount_fen,50000);assert.equal(topup.json().points,50000,'all new topups use one yuan per 100 points');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[actor])).rows[0].n,3);
   }finally{await app.close();await pool.end();}
 });

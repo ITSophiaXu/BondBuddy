@@ -55,9 +55,10 @@ export const conflict = (code: string, message: string) => new Problem(409, code
 export const unavailable = () => new Problem(501, 'CAPABILITY_NOT_READY', 'Capability is not connected');
 export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
+  markAutomaticBillingClient(pool,client);
   try { await client.query('BEGIN'); const result = await fn(client); await client.query('COMMIT'); return result; }
   catch (error) { await client.query('ROLLBACK'); throw error; }
-  finally { client.release(); }
+  finally { clearAutomaticBillingClient(client); client.release(); }
 }
 export const date = (value: Date | string) => new Date(value).toISOString();
 export const projectDto = (p: any) => ({ ...(p.source_project_id?{source_project_id:p.source_project_id}:{}), project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
@@ -306,3 +307,4 @@ export function checkedPair(market: Market | null, offering: Offering | null) {
   if (market && offering && !isMarketOffering(market,offering)) throw new Problem(422,'VALIDATION_FAILED','Market and offering do not match');
   if (!market && offering) throw new Problem(422,'VALIDATION_FAILED','Market is required for an offering');
 }
+import {markAutomaticBillingClient,clearAutomaticBillingClient} from './automatic-billing-context.js';

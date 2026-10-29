@@ -7,6 +7,7 @@ import { navigationProjectContext, rechargeHref, workReturnTo } from './project-
 import {readCommerce,cny} from './commerce';
 import {CommerceQuotations} from './commerce-quotations';
 import {CommerceRefunds} from './commerce-refunds';
+import {SubscriptionBillingPage,readSubscriptionCatalog} from './subscription-billing-page';
 import type {CommerceCatalog,CommerceAccount} from '@bondbuddy/contracts';
 import '../../../product-prototype/public/credits.css';
 
@@ -19,19 +20,23 @@ export class BillingPage {
   private busy=false;private balance?:Dto<'CreditBalanceResponse'>;private config?:Dto<'RechargeConfigResponse'>;
   private quote?:Dto<'FixedQuoteResponse'>;private order?:Dto<'RechargeOrderResponse'>;private error='';
   private history:CreditHistory;private updatingHistory=false;private historyTimer?:ReturnType<typeof setTimeout>;
-  private onCredits=()=>{if(!document.hidden)void this.refreshHistory();};
+  private onCredits=()=>{if(!this.subscriptionPage&&!document.hidden)void this.refreshHistory();};
   private request?:Dto<'RechargeOrderRequest'>;private reviewProject=false;
   private commerce?:CommerceCatalog;private commerceBalance?:CommerceAccount;private topupRequest?:Dto<'CommerceTopupRequest'>;private topupAmount='';
   private qr?:{url:string;data:string};private qrPending?:string;
   private quotations:CommerceQuotations;private refunds:CommerceRefunds;
+  private subscriptionPage?:SubscriptionBillingPage;
   private returnTo=workReturnTo(new URLSearchParams(location.hash.split('?')[1]).get('return_to'));
   private returnProject=navigationProjectContext(location.hash)?.projectId;
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private active:()=>boolean,
-    private projectId?:string,private orderId?:string,owner?:string){this.history=new CreditHistory(api,active,()=>!!this.commerce?.enabled);this.quotations=new CommerceQuotations(api,active);this.refunds=new CommerceRefunds(api,active,owner);window.addEventListener('bondbuddy:credits-changed',this.onCredits);window.addEventListener('focus',this.onCredits);document.addEventListener('visibilitychange',this.onCredits);}
-  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.historyTimer);this.history.dispose();this.quotations.dispose();this.refunds.dispose();window.removeEventListener('bondbuddy:credits-changed',this.onCredits);window.removeEventListener('focus',this.onCredits);document.removeEventListener('visibilitychange',this.onCredits);}
+    private projectId?:string,private orderId?:string,private owner?:string){this.history=new CreditHistory(api,active,()=>!!this.commerce?.enabled);this.quotations=new CommerceQuotations(api,active);this.refunds=new CommerceRefunds(api,active,owner);window.addEventListener('bondbuddy:credits-changed',this.onCredits);window.addEventListener('focus',this.onCredits);document.addEventListener('visibilitychange',this.onCredits);}
+  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.historyTimer);this.history.dispose();this.quotations.dispose();this.refunds.dispose();this.subscriptionPage?.dispose();window.removeEventListener('bondbuddy:credits-changed',this.onCredits);window.removeEventListener('focus',this.onCredits);document.removeEventListener('visibilitychange',this.onCredits);}
   async render(){
     this.shell('<p role="status">正在读取账户与计费方式…</p>','billing');
     try{
+      const subscriptions=await readSubscriptionCatalog(this.api,this.controller.signal);
+      if(!this.active())return;
+      if(subscriptions?.enabled){this.subscriptionPage=new SubscriptionBillingPage(this.api,this.shell,this.active,subscriptions,this.projectId,this.orderId,this.owner);await this.subscriptionPage.render();return;}
       this.commerce=await readCommerce(this.api,this.controller.signal);
       if(this.commerce?.enabled)this.commerceBalance=await this.api.commerceAccount(this.controller.signal);
       else [this.balance,this.config]=await Promise.all([this.api.creditBalance(this.controller.signal),this.api.rechargeConfig(this.controller.signal)]);

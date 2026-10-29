@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
-import {WORKPAPER_PRICE,type WorkpaperWorkspace,type WorkpaperStart,type WorkpaperBatch,type WorkpaperAssess} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,WORKPAPER_PRICE,type WorkpaperWorkspace,type WorkpaperStart,type WorkpaperBatch,type WorkpaperAssess} from '@bondbuddy/contracts';
 import {fixture,href,ids,now,sha} from './generation-entry-fixtures';
 
 async function setup(page:import('@playwright/test').Page,count=350){
@@ -129,4 +129,11 @@ for(const width of [1440,390])test(`direct generation prototype ${width}`,async(
  await page.locator('#wp-filter').fill('核查 350');await page.locator('#entries input').uncheck();await page.locator('#wp-filter').fill('');await page.locator('#wp-requirements').fill('访谈只准备提纲，缺原件处如实说明');await page.locator('#wp-requirements').press('Tab');
  await mkdir('test-evidence/workpaper-direct',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-direct/prototype-preparation-${width}.png`,fullPage:true});await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-direct/prototype-preparation-card-${width}.png`});
  await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('3 / 349 份完成');await page.screenshot({path:`test-evidence/workpaper-direct/prototype-progress-${width}.png`,fullPage:true});expect(errors).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+
+test('automatic workpaper tariff starts the chosen batch on one click with the server unit price',async({page})=>{
+ const state=await setup(page,3);state.data.price={version:AUTOMATIC_PRICE_VERSION,points:3458,auto_charge:true};
+ await page.goto('/'+href({step:'workpapers'}));await expect(page.locator('.wp-fee-summary')).toContainText('10,374');await expect(page.locator('#wp-start')).toHaveText('开始生成底稿');
+ await page.locator('#wp-start').click();await expect.poll(()=>state.requests.length).toBe(1);expect(state.requests[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:10374});await expect(page.locator('#wp-confirm-start')).toHaveCount(0);
 });

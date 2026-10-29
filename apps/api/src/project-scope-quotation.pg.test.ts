@@ -30,10 +30,10 @@ async function setup(pool:Pool){
  registerProjectQa(app,()=>pool,async()=>owner,true);registerProjectFileConsistency(app,()=>pool,async()=>owner,true);
  return {owner,project,app};
 }
-async function material(pool:Pool,owner:string,project:string,name:string){
+async function material(pool:Pool,owner:string,project:string,name:string,role='other'){
  const id=randomUUID(),upload=randomUUID();
- await pool.query("INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state) VALUES($1,$2,$3,$4,$5,1,$6,'other',$1,now()+interval '1 day','completed')",[upload,owner,project,name,media,sha]);
- await pool.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,'other',$5,$6,1,$7,$1,'persisted')",[id,owner,project,upload,name,media,sha]);
+ await pool.query("INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state) VALUES($1,$2,$3,$4,$5,1,$6,$7,$1,now()+interval '1 day','completed')",[upload,owner,project,name,media,sha,role]);
+ await pool.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,$8,$5,$6,1,$7,$1,'persisted')",[id,owner,project,upload,name,media,sha,role]);
  return {kind:'material' as const,pin:{source_project_id:project,material_id:id,material_version:1,sha256:sha}};
 }
 async function approve(pool:Pool,id:string,amount:number){
@@ -50,6 +50,10 @@ test('QA HTTP scope quote stays free/pending, rejects stale work, then pins a re
  const pool=new Pool({connectionString:database}),h=await setup(pool),blobs=memoryBlobs(),base=`/api/v1/projects/${h.project}/qa`;
  try{
   const asset=await material(pool,h.owner,h.project,'Synthetic questions.docx');
+  // Answering requires a separate, adopted prospectus selected as evidence for this round.
+  const prospectus=await material(pool,h.owner,h.project,'Synthetic current prospectus.docx','historical'),sourceVersion=randomUUID();
+  await pool.query("INSERT INTO bb_prospectus_versions(id,owner_user_id,project_id,sequence,origin,filename,sha256,material_id,material_version) VALUES($1,$2,$3,1,'upload','Synthetic current prospectus.docx',$4,$5,1)",[sourceVersion,h.owner,h.project,sha,prospectus.pin.material_id]);
+  await pool.query('INSERT INTO bb_prospectus_selection(owner_user_id,project_id,version_id,revision) VALUES($1,$2,$3,1)',[h.owner,h.project,sourceVersion]);
   const prepared=await h.app.inject({method:'POST',url:base+'/prepare',payload:{request_id:randomUUID(),source:asset}});assert.equal(prepared.statusCode,200,prepared.body);
   const runId=prepared.json().run_id,lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,runId);
   const doc=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic reviewer question'}),blobs,'generated_pair_v1');
@@ -59,7 +63,7 @@ test('QA HTTP scope quote stays free/pending, rejects stale work, then pins a re
    snapshot:{version:'project-file-text-v1',sha256:sha,format:'docx',spans:[{id:'s0',text:questions[0].question,location:'Synthetic page 1',sha256:sha}],warnings:[],coverage:'complete'},questions,answers:[],warnings:[],evidence:[]};
   await pool.query('UPDATE bb_project_qa_runs SET result=$2,result_hash=$3 WHERE run_id=$1',[runId,result,inputManifestHash(result)]);
   await finish(pool,lease,'succeeded',{artifactId:doc.artifactId,artifactVersion:1,blobs});
-  const draft:QaDraft={preparation_id:runId,questions,materials:[],requirements:'Use evidenced facts',use_knowledge:false};
+  const draft:QaDraft={preparation_id:runId,questions,materials:[prospectus],requirements:'Use evidenced facts',use_knowledge:false};
   const saved=await h.app.inject({method:'POST',url:base+'/draft',payload:{expected_revision:0,draft}});assert.equal(saved.statusCode,200,saved.body);
   assert.equal(saved.json().price.quote_status,'pending_scope');assert.equal(saved.json().price.points,0);
   const before=await counts(pool,h.owner),pending=await h.app.inject({method:'POST',url:base+'/quote',payload:{expected_revision:1}});

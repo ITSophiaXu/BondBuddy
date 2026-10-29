@@ -10,3 +10,5 @@
 
 .commerce-account .credit-pack-heading{white-space:normal}.commerce-account .credit-pack-heading h3{min-width:0;overflow-wrap:anywhere}.commerce-account .credit-pack-heading>span{flex-shrink:0}.commerce-quotation p,.commerce-scope-lines{overflow-wrap:anywhere}
 @media(max-width:600px){.prototype-app .account-page .commerce-account .credit-pack-grid{grid-template-columns:minmax(0,1fr)}}
+
+.billing-task-notice{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1200;max-width:min(640px,calc(100vw - 32px));padding:18px;background:var(--bg-card,#fff);border:1px solid #d7dce2;border-radius:12px;box-shadow:0 8px 30px #0002}.billing-task-notice p{margin:0 0 12px}.billing-task-notice .btn{margin-right:8px}

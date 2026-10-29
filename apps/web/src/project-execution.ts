@@ -1,3 +1,4 @@
+import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
@@ -407,7 +408,7 @@ export class ProjectExecution {
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const block = this.startBlock(), blocked = block.reason;
     this.button('complete-source-information').hidden = !block.sourceGap || !this.materialsEditable;
-    this.button('execute-input').disabled = Boolean(blocked) || scopePending(this.quote?.quote) || Boolean(this.quote && (isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0));
+    this.button('execute-input').disabled = Boolean(blocked) || scopePending(this.quote?.quote) || Boolean(this.quote && (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0)));
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…')
       : this.materialsEditable && this.materialBlock() ? '等待材料保存完成'
       : this.awaitingCredits ? '继续更新'
@@ -591,7 +592,7 @@ export class ProjectExecution {
       if (this.preflight.status === 'blocked') return;
       if(this.preflight.billing_mode==='fixed_credits'||this.commerceEnabled){
         if(!this.quote || scopePending(this.quote.quote) || this.quote.balance.available === 0)await this.action(()=>this.loadQuote(),'other','read');
-        if(!this.quote?.enabled || !this.quote.quote || scopePending(this.quote.quote) || (isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0))return;
+        if(!this.quote?.enabled || !this.quote.quote || scopePending(this.quote.quote) || (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0)))return;
         if(isCnyPrice(this.quote.quote)){
           const input=this.input,quote=this.quote;
           if(!await confirmCnyTask('确认募集书任务费用',quote.quote!,`按已保存材料与要求执行，输入版本 ${input.input_revision}。本次仅处理所确认的目标和范围，生成工作稿。`))return;

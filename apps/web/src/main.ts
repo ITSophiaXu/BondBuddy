@@ -1,3 +1,4 @@
+import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, type BillingTask} from './billing-task-recovery';
 import { ProjectQaWorkspace } from './project-qa-workspace';
 import { IntegrityWorkspace } from './integrity-workspace';
 import { ReviewEntry } from './review-entry';
@@ -59,6 +60,17 @@ const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
 const plus = icon('M12 5v14M5 12h14');
 const person = icon('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0');
 let identity: string | undefined;
+configureBillingTaskRecovery(()=>identity);
+function billingNotice(message:string,task?:BillingTask,retryHash?:string){
+  document.querySelector('#billing-task-notice')?.remove();
+  const notice=document.createElement('aside');notice.id='billing-task-notice';notice.className='billing-task-notice';notice.setAttribute('role','status');
+  const text=document.createElement('p');text.textContent=message;notice.append(text);
+  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='订阅或充值，继续原任务';notice.append(link);
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='btn secondary';cancel.textContent='取消待执行任务';cancel.addEventListener('click',()=>{if(identity===task.owner)void cancelBillingTask(task.owner,task.id).then(()=>notice.remove());});notice.append(cancel);
+  }else{if(retryHash){const retry=document.createElement('a');retry.href=retryHash;retry.className='btn secondary';retry.textContent='核对原任务提交';retry.addEventListener('click',event=>{if(location.hash===retryHash){event.preventDefault();void renderRoute();}});notice.append(retry);}const close=document.createElement('button');close.type='button';close.textContent='知道了';close.addEventListener('click',()=>notice.remove());notice.append(close);}
+  document.body.append(notice);
+}
+window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice('积分不足，原任务尚未开始。完成订阅或充值并返回后，将自动继续这一个任务。',task);});
 let accountIdentity: { owner: string; name?: string; request?: Promise<void> } | undefined;
 let epoch = 0;
 let currentRoute = '/';
@@ -142,6 +154,7 @@ function clearPrivateState() {
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();uploadRecoveries.clear();uploadJournalErrors.clear();for(const input of uploadReselectInputs.values())input.remove();uploadReselectInputs.clear();
   epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
+  document.querySelector('#billing-task-notice')?.remove();
   identity = undefined; projectBrowser?.dispose(); projectBrowser = undefined;
 }
 
@@ -419,6 +432,12 @@ async function renderRoute() {
   materialProcessing?.dispose(); materialProcessing = undefined;
   reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   currentRoute = nextRoute;
+  const resumeId=new URLSearchParams(raw.split('?')[1]??'').get('resume_request');
+  if(resumeId&&!/^\/?(?:account|billing|payment)(?:[/?]|$)/.test(raw)){
+    const returnHash=cleanBillingReturn(location.hash),resumeOwner=identity;
+    try{await resumeBillingTask(resumeOwner,resumeId,returnHash,(path,body,headers)=>api.request('POST',path,body,headers));if(identity!==resumeOwner||token!==epoch)return;history.replaceState(null,'',location.pathname+location.search+returnHash);currentRoute=returnHash.slice(1);document.querySelector('#billing-task-notice')?.remove();}
+    catch(error){if(identity!==resumeOwner||token!==epoch)return;if(error instanceof ApiError&&error.code==='CREDITS_INSUFFICIENT'){/* The scoped payment notice remains visible. */}else if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){history.replaceState(null,'',location.pathname+location.search+returnHash);currentRoute=returnHash.slice(1);billingNotice(friendlyError(error,'submit')+' 原请求未受理，材料与输入保留，请在工作区按当前版本开始。');}else billingNotice(friendlyError(error,'submit')+' 原请求和范围保留，可核对原任务提交。',undefined,returnHash+(returnHash.includes('?')?'&':'?')+'resume_request='+encodeURIComponent(resumeId));}
+  }
   if (!raw || legacyDashboard) history.replaceState(null,'',location.pathname+location.search+'#tasks'+(raw.includes('?')?'?'+raw.split('?')[1]:''));
   if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commerceMetadata} from '@bondbuddy/contracts';
-import {scopeStatus,scopeStatusLabel,displayPrice,includedPrice} from './commerce-price.js';
+import {commerceMetadata,AUTOMATIC_PRICE_VERSION} from '@bondbuddy/contracts';
+import {scopeStatus,scopeStatusLabel,displayPrice,includedPrice,isAutomaticCharge,displayCharge} from './commerce-price.js';
 
 test('a zero pending scope is never presented as a free executable result',()=>{
   assert.equal(scopeStatus({quote_status:'pending_scope'}),'pending_scope');
@@ -41,4 +41,13 @@ test('already admitted price receipts keep their amount after scope expiry and h
   assert.equal(scopeStatusLabel(included),'报价已过期');
   assert.equal(displayPrice(included),'原范围包含／已购覆盖');
   assert.equal(displayPrice(undefined,4500),'4,500 积分');
+});
+
+
+test('automatic task readiness and points receipts remain separate from legacy cash prices',()=>{
+ const price={...commerceMetadata(3458),price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,quote_status:'ready' as const};
+ assert.equal(isAutomaticCharge(price),true);assert.equal(displayPrice(price),'3,458 积分');assert.equal(displayCharge(price,3458),'3,458 积分');
+ assert.equal(isAutomaticCharge({...price,quote_status:'pending_scope'}),false);assert.equal(isAutomaticCharge({...price,scope_expires_at:'2020-01-01T00:00:00Z'}),false);
+ assert.equal(displayPrice({...price,scope_expires_at:'2020-01-01T00:00:00Z'}),'3,458 积分');assert.equal(isAutomaticCharge({...commerceMetadata(3458),quote_status:'ready'}),false);
+ assert.equal(isAutomaticCharge({price_version:AUTOMATIC_PRICE_VERSION,points:3458,quote_status:'ready'}),true);
 });

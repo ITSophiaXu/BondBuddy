@@ -1,7 +1,9 @@
+import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
+import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew} from '@bondbuddy/contracts';
 import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
@@ -62,7 +64,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
-    case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请充值后重新确认。';
+    case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请通过原任务入口补足积分后继续。';
     case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
     case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
     case 'QUOTE_EXPIRED': return '报价已过期，本次未开始、未扣费。准备内容保留，请重新申请范围报价。';
@@ -84,6 +86,13 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
 }
 
 export class ApiClient {
+  subscriptionCatalog(signal?:AbortSignal){return this.request<SubscriptionCatalog>('GET','/subscriptions/catalog',undefined,{},signal);}
+  subscriptionAccount(signal?:AbortSignal){return this.request<SubscriptionAccount>('GET','/subscriptions/account',undefined,{},signal);}
+  createSubscription(input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST','/subscriptions',input,{},signal);}
+  renewSubscription(id:string,input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST',`/subscriptions/${encodeURIComponent(id)}/renew`,input,{},signal);}
+  cancelSubscription(id:string,input:{request_id:string},signal?:AbortSignal){return this.request<Subscription>('POST',`/subscriptions/${encodeURIComponent(id)}/cancel`,input,{},signal);}
+  subscriptionAutoRenew(id:string,input:SubscriptionAutoRenewRequest,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew`,input,{},signal);}
+  refreshSubscriptionAutoRenew(id:string,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew/refresh`,{}, {},signal);}
   projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value},signal);}
   commerceCatalog(signal?:AbortSignal){return this.request<Dto<'CommerceCatalogResponse'>>('GET','/commerce/catalog',undefined,{},signal);}
   commerceAccount(signal?:AbortSignal){return this.request<Dto<'CommerceAccountResponse'>>('GET','/commerce/account',undefined,{},signal);}
@@ -153,8 +162,11 @@ export class ApiClient {
   }
 
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
-    const response = await this.response(method, path, body, headers, signalOverride);
-    const value = response.status === 204 ? undefined as T : await response.json();
+    const value=await runRecoverableBillingRequest(method,path,body,headers,async()=>{
+      const response=await this.response(method,path,body,headers,signalOverride);
+      return response.status===204?undefined as T:await response.json() as T;
+    });
+    observeAutomaticQuotes(value);
     // Refresh the signed-in wallet after charge/quote reads and explicit execution/payment changes.
     if (typeof window !== 'undefined' && (path.endsWith('/credit-charge') || path.endsWith('/credit-quote') ||
         method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/') || path.startsWith('/commerce/')))) {

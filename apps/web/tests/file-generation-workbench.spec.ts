@@ -3,7 +3,7 @@ import {expect,test,type Page,type Route} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {Value} from '@sinclair/typebox/value';
-import {commerceMetadata,OUTCOME_PRICE_VERSION,PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_FIXED_PRICE,m4Schemas,projectFileSchemas,
+import {commerceMetadata,AUTOMATIC_PRICE_VERSION,OUTCOME_PRICE_VERSION,PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_FIXED_PRICE,m4Schemas,projectFileSchemas,
   type M4DocumentType,type M4Draft,type M4DraftRequest,type M4Template,
   type ProjectFileBatch,type ProjectFileWorkspace} from '@bondbuddy/contracts';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
@@ -653,4 +653,12 @@ test('commercial scope batch uses each document quote and cannot generate a part
  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-generate').click();await expect(page.locator('#pf-refresh-scope')).toBeVisible();expect(batches(state.calls)).toEqual([]);await expect(page.locator('#pf-confirm-generation')).toHaveCount(0);
  ready=true;await page.locator('#pf-refresh-scope').click();await expect(page.locator('.pf-confirm-total')).toContainText('¥106.72');await expect(page.locator('.pf-confirm-files')).toContainText('¥23.81');await expect(page.locator('.pf-confirm-files')).toContainText('¥82.91');
  await page.locator('#pf-confirm-generation').click();await expect.poll(()=>batches(state.calls).length).toBe(1);expect(batches(state.calls)[0].body).toMatchObject({expected_points:10672,price_version:OUTCOME_PRICE_VERSION,documents:[{document_type:'init',scope_quote_id:'scope-doc-init'},{document_type:'underwriter',scope_quote_id:'scope-doc-underwriter'}]});
+});
+
+
+test('automatic file package executes once without a separate confirmation screen',async({page})=>{
+ const state=await fixture(page);state.workspaces.get(apiProject)!.price={...commerceMetadata(0),price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,points:0,quote_status:'pending_scope'};
+ await page.route('**/project-files/batches/quote',route=>{const body=route.request().postDataJSON();return json(route,200,{quote_status:'ready',points:15930,documents:body.documents.map((doc:{document_type:string;draft_version:number})=>({...doc,points:7965,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,quote_status:'ready',scope_quote_id:'auto-doc-'+doc.document_type,scope_lines:[]}))});});
+ await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-generate').click();await expect.poll(()=>batches(state.calls).length).toBe(1);
+ expect(batches(state.calls)[0].body).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:15930});await expect(page.locator('#pf-confirm-generation')).toHaveCount(0);
 });

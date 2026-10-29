@@ -5,13 +5,16 @@ import {Value} from '@sinclair/typebox/value';
 import {OUTCOME_PRICE_VERSION,ScopeLineSchema,OutcomeWorkPlanSchema,calculateOutcomePrice,type OutcomeWorkPlan,type OutcomePriceVersion,type ScopeLine,type CommercePriceMetadata,type ScopeQuoteStatus} from '@bondbuddy/contracts';
 import {digest,missing,Problem,project,transaction,uid} from './data.js';
 import {readOwnedCommerceCoverage} from './commerce-coverage.js';
+import {AUTOMATIC_PRICE_VERSION,isAutomaticPriceVersion} from '@bondbuddy/contracts';
+import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {resolveAutomaticTaskPrice,assertAutomaticPriceSources,assertAutomaticScopeAvailable} from './automatic-pricing.js';
 
 export type ScopePrice={scope_quote_id:string;quote_status:ScopeQuoteStatus;amount_fen:number;scope_lines:ScopeLine[];scope_expires_at:string|null;price_version:OutcomePriceVersion};
 const iso=(v:unknown)=>v?new Date(v as string).toISOString():null;
 const dto=(r:any):ScopePrice=>({scope_quote_id:r.id,quote_status:r.status==='quoted'?'ready':r.status==='pending'?'pending_scope':r.status,amount_fen:Number(r.amount_fen??0),scope_lines:r.lines??[],scope_expires_at:iso(r.expires_at),price_version:r.price_version});
 const quotationDto=(r:any)=>({id:r.id,project_id:r.project_id,action:r.action,input_hash:r.input_hash.trim(),price_version:r.price_version,quote_status:dto(r).quote_status,amount_fen:Number(r.amount_fen??0),scope_lines:r.lines??[],reason:r.reason,created_at:iso(r.created_at)!,published_at:iso(r.published_at),expires_at:iso(r.expires_at),closed_at:iso(r.closed_at),decline_reason:r.decline_reason,closure_reason:r.closure_reason,revision:r.revision,previous_quote_id:r.previous_quote_id});
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
-export function scopePriceMetadata(price:ScopePrice):CommercePriceMetadata{return{pricing_mode:'outcome_cny_v1',currency:'CNY',amount_fen:price.amount_fen,price_version:price.price_version,scope_quote_id:price.scope_quote_id,quote_status:price.quote_status,scope_lines:price.scope_lines,scope_expires_at:price.scope_expires_at};}
+export function scopePriceMetadata(price:ScopePrice):CommercePriceMetadata{return{pricing_mode:'outcome_cny_v1',currency:'CNY',amount_fen:price.amount_fen,price_version:price.price_version,scope_quote_id:price.scope_quote_id,quote_status:price.quote_status,scope_lines:price.scope_lines,scope_expires_at:price.scope_expires_at,...(isAutomaticPriceVersion(price.price_version)?{auto_charge:true}:{})};}
 /** Hash only work scope. Never include a price, quotation id, timestamps or model retry count. */
 export const workScopeHash=(snapshot:unknown)=>digest(canonical(snapshot));
 const scopeLock=(c:PoolClient,owner:string,projectId:string,action:string,hash:string)=>c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[canonical(['scope',owner,projectId,action,hash])]);
@@ -25,6 +28,7 @@ async function pricePlan(c:PoolClient,owner:string,plan:OutcomeWorkPlan){
   try{return calculateOutcomePrice({...plan,owned_coverage:owned});}catch{throw new Problem(422,'VALIDATION_FAILED','Business work plan is inconsistent with valid owned coverage');}
 }
 async function assertCurrentCoverage(c:PoolClient,row:any){
+  if(row.automatic_price){await assertAutomaticPriceSources(c,row.owner_user_id,row.automatic_price);await assertAutomaticScopeAvailable(c,row.owner_user_id,row.id);return;}
   if(!row.work_plan)return;
   const priced=await pricePlan(c,row.owner_user_id,row.work_plan);
   if(priced.status!=='ready'||priced.amount_fen!==Number(row.amount_fen)||priced.price_version!==row.price_version||canonical(priced.pricing_items)!==canonical(row.pricing_items))throw new Problem(409,'QUOTE_CHANGED','已购覆盖已变化，请关闭旧报价并重新报价。');
@@ -57,6 +61,7 @@ export async function requestScope(c:PoolClient,owner:string,projectId:string,ac
   if(!/^[a-f0-9]{64}$/.test(inputHash)||!/^[a-z][a-z0-9_]{0,63}$/.test(action))throw new Problem(422,'VALIDATION_FAILED','Invalid work scope');
   if(workPlan)validatePlan(workPlan);
   await project(c,owner,projectId);await coverageLock(c,owner);await scopeLock(c,owner,projectId,action,inputHash);
+  if(automaticBillingEnabled(c))return requestAutomaticScope(c,owner,projectId,action,inputHash,snapshot);
   const old=await resolveApprovedScope(c,owner,projectId,action,inputHash);
   if(old){
     if(workPlan&&old.quote_status==='pending_scope'){
@@ -69,6 +74,40 @@ export async function requestScope(c:PoolClient,owner:string,projectId:string,ac
     VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[uid(),owner,projectId,action,inputHash,snapshot,OUTCOME_PRICE_VERSION])).rows[0];
   const row=inserted;await event(c,row,'requested',{action});
   return workPlan?publishPlan(c,row,workPlan,'service:standard-scope','按已确认标准业务范围与有效已购合同计价。'):dto(row);
+}
+
+async function requestAutomaticScope(c:PoolClient,owner:string,projectId:string,action:string,inputHash:string,snapshot:unknown):Promise<ScopePrice>{
+  const old=(await c.query('SELECT * FROM bb_scope_quotations WHERE owner_user_id=$1 AND project_id=$2 AND action=$3 AND input_hash=$4 ORDER BY revision DESC LIMIT 1 FOR UPDATE',[owner,projectId,action,inputHash])).rows[0];
+  if(old?.automatic_price&&old.status==='quoted'&&new Date(old.expires_at).getTime()>Date.now()){
+    const attempted=(await c.query('SELECT 1 FROM bb_automatic_scope_runs WHERE owner_user_id=$1 AND scope_quote_id=$2 LIMIT 1',[owner,old.id])).rowCount;
+    if(!attempted)return dto(old);
+  }
+  if(old?.published_at){
+    // Already accepted/executing contracts retain their original terms even after the mode changes.
+    const bound=(await c.query(`SELECT 1 FROM bb_scope_acceptances WHERE owner_user_id=$1 AND scope_quote_id=$2
+      UNION ALL SELECT 1 FROM (
+        SELECT owner_user_id,run_id,scope_quote_id FROM bb_commerce_scope_runs
+        UNION ALL SELECT owner_user_id,run_id,scope_quote_id FROM bb_automatic_scope_runs
+      ) b JOIN bb_runs r ON r.owner_user_id=b.owner_user_id AND r.id=b.run_id
+      LEFT JOIN bb_credit_reservations h ON h.owner_user_id=r.owner_user_id AND h.id=r.reservation_id
+      WHERE b.owner_user_id=$1 AND b.scope_quote_id=$2
+        AND (r.state NOT IN ('failed','cancelled','rejected') OR (r.reservation_id IS NOT NULL AND h.state IS DISTINCT FROM 'released'))
+      LIMIT 1`,[owner,old.id])).rowCount;
+    if(bound)return dto(old);
+  }
+  const price=resolveAutomaticTaskPrice(action,snapshot);
+  await assertAutomaticPriceSources(c,owner,price);
+  // Period price protection is a stored contract, not a second client confirmation.
+  const {resolveActiveSubscriptionPrice}=await import('./subscriptions.js');
+  const periodVersion=await resolveActiveSubscriptionPrice(c,owner);
+  if(periodVersion&&periodVersion!==AUTOMATIC_PRICE_VERSION)throw new Problem(503,'BILLING_NOT_READY','本订阅周期的计费版本尚未加载，暂不执行。');
+  if(old&&['pending','quoted'].includes(old.status))await c.query("UPDATE bb_scope_quotations SET status='unavailable',closed_at=clock_timestamp(),closure_reason='未受理范围由当前自动计费规则替换。' WHERE id=$1",[old.id]);
+  const row=(await c.query(`INSERT INTO bb_scope_quotations(id,owner_user_id,project_id,action,input_hash,snapshot,price_version,revision,previous_quote_id,
+    status,lines,amount_fen,approved_by,reason,published_at,expires_at,automatic_price)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'quoted',$10,$11,'service:automatic-tariff','已锁定用户委托范围；成功交付后自动扣费。',clock_timestamp(),clock_timestamp()+interval '7 days',$12) RETURNING *`,
+    [uid(),owner,projectId,action,inputHash,snapshot,AUTOMATIC_PRICE_VERSION,old?old.revision+1:1,old?.id??null,JSON.stringify(price.lines),price.points,JSON.stringify(price)])).rows[0];
+  await event(c,row,'quoted',{auto_charge:true,points:price.points,price_version:row.price_version});
+  return dto(row);
 }
 export async function assertScopeQuote(c:PoolClient,id:string|undefined,owner:string,projectId:string,action:string,inputHash:string,amountFen:number):Promise<ScopePrice>{
   if(!id)throw new Problem(409,'QUOTE_REQUIRED','请先获取本次实际处理范围的报价。');

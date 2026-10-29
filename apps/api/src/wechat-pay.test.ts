@@ -127,6 +127,24 @@ test('rejects HTTP errors, unsigned/tampered responses, unsafe checkout, excess 
   await assert.rejects(() => slowBody.create(f.order), rejected('TIMEOUT'));
 });
 
+test('only signed ORDER_NOT_EXIST after the immutable Native deadline resolves an absent payment',async()=>{
+  const raw=JSON.stringify({code:'ORDER_NOT_EXIST',message:'synthetic absent Native order'});
+  const signed=()=>new Response(raw,{status:404,headers:{'content-type':'application/json',...f.signed(raw) as Record<string,string>}});
+  const provider=createWechatPayProvider(f.options,{...dependencies,fetch:async()=>signed()});
+  await assert.rejects(provider.query(f.order),rejected('ORDER_NOT_FOUND'),'an unexpired absent order could still reach the channel');
+  const expired={...f.order,expires_at:new Date(f.now-1).toISOString()};
+  assert.deepEqual(await provider.query(expired),{orderId:expired.id,merchantId:expired.merchant_id,amountFen:expired.amount_fen,currency:'CNY',transactionId:null,state:'expired'});
+  for(const response of [
+    ()=>new Response(raw,{status:404,headers:{'content-type':'application/json'}}),
+    ()=>new Response(raw,{status:404,headers:{'content-type':'application/json',...f.signed(raw,{key:f.merchant.privateKey}) as Record<string,string>}}),
+    ()=>new Response(JSON.stringify({code:'SYSTEM_ERROR'}),{status:404,headers:{'content-type':'application/json',...f.signed(JSON.stringify({code:'SYSTEM_ERROR'})) as Record<string,string>}}),
+    ()=>new Response(raw,{status:500,headers:{'content-type':'application/json',...f.signed(raw) as Record<string,string>}}),
+  ]){
+    const unknown=createWechatPayProvider(f.options,{...dependencies,fetch:async()=>response()});
+    await assert.rejects(unknown.query(expired),error=>error instanceof WechatPayError,'untrusted/non-absence errors cannot release the pending purchase');
+  }
+});
+
 test('configuration fails closed and supports pinned certificate validity/serial and controlled rotation', async () => {
   const weak = generateKeyPairSync('rsa', { modulusLength: 1024 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
   for (const changes of [{ apiV3Key: 'short' }, { merchantId: 'bad' }, { notifyUrl: 'http://example.test/notify' }, { platformKeys: [] }, { merchantPrivateKeyPem: weak }, { timeoutMs: 0 }, { platformKeys: [f.options.platformKeys[0], f.options.platformKeys[0]] }]) {

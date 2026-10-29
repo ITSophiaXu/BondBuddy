@@ -1,6 +1,6 @@
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { commerceMetadata, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
+import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
@@ -1680,4 +1680,22 @@ test('commercial scope authoring blocks pending quotes and confirms ready work i
  await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('本次范围报价待确认，尚未收费');await expect(page.locator('#execute-input')).toBeDisabled();expect(state.executes).toEqual([]);
  ready=true;await page.locator('#refresh-quote').click();await page.locator('#execute-input').click();await expect(page.locator('[data-commerce-confirm]')).toContainText('¥168.00');await expect(page.locator('[data-commerce-confirm]')).toContainText('更新本期财务表');
  await page.locator('[data-commerce-back]').click();expect(state.executes).toEqual([]);await page.locator('#execute-input').click();await page.locator('[data-commerce-accept]').click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('commercial-authoring-quote');
+});
+
+
+test('automatic authoring performs one quoted task without an amount dialog',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;await setup(page,state);
+ await page.route('**/api/v1/commerce/**',route=>json(route,200,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}));
+ await page.route('**/credit-quote',route=>json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-authoring',project_id:id,...route.request().postDataJSON(),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-authoring',scope_lines:[]},balance:{available:100000,frozen:0},shortage:0,reason:null}));
+ await page.reload();await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('auto-authoring');await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);
+});
+
+
+test('automatic authoring with no balance saves the original task for exact supplement',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=0;await setup(page,state);const starts:any[]=[];
+ await page.route('**/api/v1/commerce/**',route=>json(route,200,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}));
+ await page.route('**/credit-quote',route=>json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-shortage',project_id:id,...route.request().postDataJSON(),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-shortage',scope_lines:[]},balance:{available:0,frozen:0},shortage:8864,reason:null}));
+ await page.route('**/api/v1/runs/execute',route=>{starts.push(route.request().postDataJSON());return json(route,402,{code:'CREDITS_INSUFFICIENT'});});
+ await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');expect(starts).toHaveLength(1);
+ const saved=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>key.startsWith('bondbuddy:billing-task:v1:'))!;return JSON.parse(localStorage.getItem(key)!);});expect(saved.requiredPoints).toBe(8864);expect(saved.body).toEqual(starts[0]);expect(saved.body).not.toHaveProperty('expected_points');
 });

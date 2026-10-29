@@ -1,5 +1,5 @@
 import type {PoolClient} from 'pg';
-import {PROJECT_FILE_UPDATE_PRICE,LEGACY_OUTCOME_PRICE_VERSION,isOutcomePriceVersion,type OutcomeWorkPlan,type ProjectFileOperation} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,PROJECT_FILE_UPDATE_PRICE,LEGACY_OUTCOME_PRICE_VERSION,isOutcomePriceVersion,type OutcomeWorkPlan,type ProjectFileOperation} from '@bondbuddy/contracts';
 import {creditBalance,lockCreditAccount} from './billing.js';
 import {Problem,uid} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -15,13 +15,32 @@ const quotedCheckEvidence=(row:any)=>{const {price_version:_,...evidence}=row;re
 
 /** A settled quote proves which exact target versions were paid for. Free legacy checks do not. */
 export async function paidFileCheckEvidence(c:PoolClient,owner:string,source:Check['source']){
-  return (await c.query(`SELECT q.id AS quote_id,q.run_id,q.scope_quote_id,q.price_version,q.charged_file_versions,q.points,q.source_fingerprint FROM bb_project_file_check_quotes q
+  const rows=(await c.query(`SELECT q.id AS quote_id,q.run_id,q.scope_quote_id,q.price_version,q.charged_file_versions,q.points,q.source_fingerprint FROM bb_project_file_check_quotes q
     JOIN bb_credit_reservations r ON r.quote_id=q.id AND r.owner_user_id=q.owner_user_id AND r.run_id=q.run_id
     JOIN bb_runs run ON run.id=q.run_id AND run.owner_user_id=q.owner_user_id
     WHERE q.owner_user_id=$1 AND q.source_fingerprint=$2 AND r.state='settled' AND r.charged_points=q.points AND run.state='succeeded'
       AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=q.owner_user_id AND e.reservation_id=r.id AND e.kind='correction')
     ORDER BY q.created_at,q.id`,
     [owner,fileCheckFingerprint({operation:'check',version:'project-file-operation-v1',source,files:[]})])).rows;
+  if(!automaticBillingEnabled(c))return rows;
+  // Revalidation follows only platform-produced repairs from this paid maintenance round.
+  // User uploads and edits have no such lineage, so they create a new paid scope.
+  for(const row of rows.filter(r=>r.price_version===AUTOMATIC_PRICE_VERSION)){
+    const covered=(await c.query(`WITH RECURSIVE covered(version_id) AS (
+      SELECT jsonb_array_elements_text($2::jsonb)
+      UNION
+      SELECT v.id FROM covered parent
+      JOIN bb_project_file_operations op ON op.owner_user_id=$1 AND op.operation='patch' AND op.manifest->>'file_version_id'=parent.version_id
+      JOIN bb_runs run ON run.owner_user_id=op.owner_user_id AND run.id=op.run_id AND run.state='succeeded'
+      JOIN bb_project_file_update_quotes q ON q.owner_user_id=op.owner_user_id AND q.run_id=op.run_id AND q.points=0 AND q.price_version=$5
+      JOIN bb_scope_quotations scope ON scope.owner_user_id=q.owner_user_id AND scope.id=q.scope_quote_id AND scope.automatic_price->'source_quote_ids' ? $6
+      JOIN bb_project_file_versions v ON v.owner_user_id=op.owner_user_id AND v.run_id=op.run_id AND v.file_id=op.manifest->>'file_id'
+      WHERE op.manifest->'source'->>'version_id'=$3 AND op.manifest->'source'->'asset'=$4::jsonb
+    ) SELECT version_id FROM covered ORDER BY version_id`,[owner,JSON.stringify(row.charged_file_versions),source.version_id,JSON.stringify(source.asset),AUTOMATIC_PRICE_VERSION,row.quote_id])).rows;
+    const original=new Set<string>(row.charged_file_versions);
+    row.charged_file_versions=[...row.charged_file_versions,...covered.map(r=>r.version_id).filter(id=>!original.has(id))];
+  }
+  return rows;
 }
 export async function paidFileChecks(c:PoolClient,owner:string,source:Check['source']):Promise<Set<string>>{
   const rows=await paidFileCheckEvidence(c,owner,source);
@@ -66,7 +85,7 @@ export async function fileUpdatePrice(c:PoolClient,owner:string,input:Extract<Pr
   if(!commercial)return {points:PROJECT_FILE_UPDATE_PRICE.points,version:PROJECT_FILE_UPDATE_PRICE.version,scope_quote_id:undefined,quote_status:'ready' as const,scope_lines:[],scope_hash:inputManifestHash({manifest:input})};
   // Select the earliest owned settled proof, so later checks cannot change an accepted/retried quote.
   const evidence=(await paidFileCheckEvidence(c,owner,input.source)).find(e=>(e.charged_file_versions as string[]).includes(input.file_version_id))??null;
-  const snapshot={manifest:input,paid_check:evidence?quotedCheckEvidence(evidence):null};
+  const snapshot={manifest:input,paid_check:evidence?{...quotedCheckEvidence(evidence),...(automaticBillingEnabled(c)?{price_version:evidence.price_version}:{})}:null};
   // A legacy payment needs reviewed exact evidence; it must not silently become a full-price v2 purchase.
   const workPlan:OutcomeWorkPlan|undefined=evidence?.price_version===LEGACY_OUTCOME_PRICE_VERSION?undefined:{scope_status:'confirmed',items:[{key:input.file_version_id,coverage_key:fileConsistencyCoverageKey(input.source,input.file_version_id),family:'goal_upgrade',price_key:'sync',label:`检查并修订：${input.filename}`.slice(0,200),evidence:[`固定募集书版本 ${input.source.version_id} 与关联文件版本 ${input.file_version_id}，仅落实已定位且有依据的差异；人工待确认事项不包含。`]}]};
   const scope=await requestScope(c,owner,projectId,'project_file_patch',inputManifestHash(snapshot),snapshot,workPlan);
@@ -77,6 +96,7 @@ export async function requireFileUpdateCredits(c:PoolClient,owner:string,points:
   await lockCreditAccount(c,owner);
   const balance=await creditBalance(c,owner);
   if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',
+    automaticBillingEnabled(c)?`本次任务需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分；补足后继续原任务。`:
     commercial?`本次确认范围需要 ¥${(points/100).toFixed(2)}，当前可用 ¥${(balance.available/100).toFixed(2)}；检查结果与原文件已保留。`:
     `本次更新需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，请充值后更新；检查结果与原文件已保留。`);
 }
@@ -116,3 +136,4 @@ export async function reserveFileUpdate(c:PoolClient,owner:string,run:any,input:
   run.billing_mode='fixed_credits';run.reservation_id=reservation;
   if(scope)await bindCommerceScopeRun(c,owner,scope.scope_quote_id,run.id);
 }
+import {automaticBillingEnabled} from './automatic-billing-context.js';

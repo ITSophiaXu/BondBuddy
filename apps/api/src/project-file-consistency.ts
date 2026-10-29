@@ -193,9 +193,9 @@ export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,o
       const work=await prepareUpdateItems(c,user,id,checkId,b.expected_check_sha256,b.files),items=[];
       for(const item of work){
         const price=await fileUpdatePrice(c,user,item.manifest,commercial,id);
-        items.push({file_version_id:item.manifest.file_version_id,scope_quote_id:price.scope_quote_id,quote_status:commercial?price.quote_status:'ready' as const,scope_expires_at:'scope_expires_at' in price?price.scope_expires_at:null,points:price.points,scope_lines:price.scope_lines??[]});
+        items.push({file_version_id:item.manifest.file_version_id,price_version:price.version,scope_quote_id:price.scope_quote_id,quote_status:commercial?price.quote_status:'ready' as const,scope_expires_at:'scope_expires_at' in price?price.scope_expires_at:null,points:price.points,scope_lines:price.scope_lines??[]});
       }
-      return {points:items.reduce((sum,p)=>sum+p.points,0),price_version:commercial?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version,quote_status:items.find(p=>p.quote_status!=='ready')?.quote_status??'ready',items};
+      return {points:items.reduce((sum,p)=>sum+p.points,0),price_version:items[0]?.price_version??PROJECT_FILE_UPDATE_PRICE.version,quote_status:items.find(p=>p.quote_status!=='ready')?.quote_status??'ready',items};
     });
   });
   app.post(base+'/checks/:run_id/updates',{schema:{body:projectFileSchemas.ProjectFileUpdateRequest}},async r=>{

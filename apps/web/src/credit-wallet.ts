@@ -3,12 +3,15 @@ import { rechargeHref } from './project-navigation';
 import { esc } from './ui';
 import {readCommerce,cny} from './commerce';
 import type {CommerceAccount} from '@bondbuddy/contracts';
+import type {SubscriptionAccount} from '@bondbuddy/contracts';
+import {readSubscriptionCatalog} from './subscription-billing-page';
 
 /** One wallet per signed-in session; route rendering never owns or clears the balance. */
 export class CreditWallet {
   private controller = new AbortController();
   private balance?: Dto<'CreditBalanceResponse'>;
   private commerce=false;private account?:CommerceAccount;
+  private subscription=false;private subscriptionAccount?:SubscriptionAccount;
   private loading = false;
   private unavailable = false;
   private refreshPending = false;
@@ -25,6 +28,12 @@ export class CreditWallet {
     void this.refresh();
   }
   private draw() {
+    if(this.subscription){
+      const account=this.subscriptionAccount,amount=this.unavailable?'—':account?(account.available_points+account.held_points).toLocaleString('zh-CN'):'…',href=esc(rechargeHref());
+      document.querySelectorAll<HTMLElement>('.top-plan-link').forEach(e=>{e.textContent='订阅与充值';});
+      for(const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')){host.setAttribute('aria-label','积分余额');host.innerHTML=host.dataset.creditWallet==='compact'?`<a href="${href}" aria-label="积分余额 ${amount}，查看我的账号"><span>积分</span> <strong aria-live="polite">${amount}</strong></a>`:`<div class="wallet-heading"><span>积分余额</span><button type="button" class="wallet-refresh" aria-label="刷新积分余额" ${this.loading?'disabled':''}>刷新</button></div><div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="${href}" aria-label="查看订阅与充值">充值 ↗</a></div><p class="wallet-note">${this.unavailable?'积分暂未同步，请刷新':account?`可用 ${account.available_points.toLocaleString('zh-CN')} · 已预留 ${account.held_points.toLocaleString('zh-CN')} 积分`:'正在读取积分'}</p>`;host.querySelector('button')?.addEventListener('click',()=>void this.refresh());}
+      return;
+    }
     if(this.commerce){
       const amount=this.unavailable?'—':this.account?cny(this.account.available_fen+this.account.held_fen):'…',href=esc(rechargeHref());
       document.querySelectorAll<HTMLElement>('.top-plan-link').forEach(e=>{e.textContent='按成果付费 · 无月费';});
@@ -50,6 +59,8 @@ export class CreditWallet {
     clearTimeout(this.timer);
     this.loading = true;
     try {
+      const subscriptions=await readSubscriptionCatalog(this.api,this.controller.signal);this.subscription=subscriptions?.enabled===true;
+      if(this.subscription){this.subscriptionAccount=await this.api.subscriptionAccount(this.controller.signal);this.unavailable=false;return;}
       const catalog=await readCommerce(this.api,this.controller.signal);this.commerce=catalog?.enabled===true;
       const account=this.commerce?await this.api.commerceAccount(this.controller.signal):undefined;
       const balance = this.commerce?undefined:await this.api.creditBalance(this.controller.signal);

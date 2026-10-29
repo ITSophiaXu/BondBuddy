@@ -1,7 +1,8 @@
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Pool} from 'pg';
 import type {Static} from '@sinclair/typebox';
-import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,schemas,type CommerceTopup} from '@bondbuddy/contracts';
+import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,AUTOMATIC_BILLING_RULES,AUTOMATIC_PRICE_VERSION,schemas,type CommerceTopup} from '@bondbuddy/contracts';
+import {automaticBillingEnabled} from './automatic-billing-context.js';
 import {creditBalance} from './billing.js';
 import {createServiceTopup,rechargeDto,refreshRecharge,type PaymentProvider} from './payments.js';
 import {digest,missing,Problem,transaction,uid} from './data.js';
@@ -17,13 +18,21 @@ export function installCommerce(app:FastifyInstance,pool:Pool,owner:(r:FastifyRe
   app.post('/api/v1/commerce/quotations/:quotation_id/decline',{schema:{body:schemas.CommerceScopeDeclineRequest,response:{200:schemas.CommerceScopeQuotationResponse}}},async r=>declineScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id,r.body as Static<typeof schemas.CommerceScopeDeclineRequest>));
   app.post('/api/v1/commerce/quotations/:quotation_id/requote',{schema:{body:schemas.CommerceScopeRequoteRequest,response:{200:schemas.CommerceScopeQuotationResponse}}},async r=>requoteScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id,r.body as Static<typeof schemas.CommerceScopeRequoteRequest>));
   app.get('/api/v1/commerce/catalog',{schema:{response:{200:schemas.CommerceCatalogResponse}}},async r=>{
-    await owner(r);return{enabled,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:OUTCOME_CATALOG,rules:COMMERCE_RULES};
+    await owner(r);
+    if(automaticBillingEnabled(pool))return{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',
+      items:Object.entries(AUTOMATIC_TASK_TARIFF).map(([code,item])=>({code,label:item.label,unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',
+        scope:[code==='integrity'?'每轮至多5个主体、每主体至多20个适用官网；按明确名单和截至时间执行':'用户明确提出并锁定的独立业务范围'],
+        included:['原范围必要检查、修复、支撑材料及平台重试包含在任务内']})),rules:AUTOMATIC_BILLING_RULES};
+    return{enabled,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:OUTCOME_CATALOG,rules:COMMERCE_RULES};
   });
   app.get('/api/v1/commerce/account',{schema:{response:{200:schemas.CommerceAccountResponse}}},async r=>{
-    const balance=await creditBalance(pool,await owner(r));return{available_fen:balance.available,held_fen:balance.frozen,payment_enabled:enabled&&providers.length>0,providers:enabled?providers.map(p=>p.name):[],legacy_balance_notice:'旧余额权益继续有效，按原账本单位抵扣；历史任务保留原计费规则。'};
+    const balance=await creditBalance(pool,await owner(r)),automatic=automaticBillingEnabled(pool),payable=enabled||automatic;
+    return{available_fen:balance.available,held_fen:balance.frozen,...(automatic?{available_points:balance.available,held_points:balance.frozen}:{}),
+      payment_enabled:payable&&providers.length>0,providers:payable?providers.map(p=>p.name):[],
+      legacy_balance_notice:automatic?'余额为可用积分，包含订阅额度及充值权益，不等于可退现金。旧批次权益继续有效，现金退款按原支付订单核算。':'旧余额权益继续有效，按原账本单位抵扣；历史任务保留原计费规则。'};
   });
   app.post('/api/v1/commerce/topups',{schema:{body:schemas.CommerceTopupRequest,response:{201:schemas.RechargeOrderResponse}}},async(r,reply)=>{
-    const user=await owner(r);if(!enabled)throw new Problem(503,'PAYMENT_UNAVAILABLE','Outcome payments are not enabled');
+    const user=await owner(r);if(!enabled&&!automaticBillingEnabled(pool))throw new Problem(503,'PAYMENT_UNAVAILABLE','Outcome payments are not enabled');
     return reply.code(201).send(await createServiceTopup(pool,user,r.body as CommerceTopup,providers));
   });
   app.get('/api/v1/commerce/topups/:order_id',{schema:{response:{200:schemas.RechargeOrderResponse}}},async r=>{

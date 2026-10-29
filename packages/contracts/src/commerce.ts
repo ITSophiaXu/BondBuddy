@@ -1,4 +1,5 @@
 import {Type,type Static,type TSchema} from '@sinclair/typebox';
+import {isAutomaticPriceVersion} from './automatic-pricing.js';
 import {OUTCOME_PRICE_VERSION,OUTCOME_RATE_CARD,OUTCOME_PRICE_LABELS,OutcomePriceVersionSchema,OutcomePricingExplanationSchema,type OutcomePriceVersion} from './outcome-pricing.js';
 export {OUTCOME_PRICE_VERSION,LEGACY_OUTCOME_PRICE_VERSION,OutcomePriceVersionSchema,isOutcomePriceVersion} from './outcome-pricing.js';
 
@@ -17,6 +18,7 @@ export const ScopeQuoteStatusSchema=Type.Union([Type.Literal('pending_scope'),Ty
 export type ScopeQuoteStatus=Static<typeof ScopeQuoteStatusSchema>;
 export const ScopeQuotationSchema=obj({id,project_id:id,action:id,input_hash:Type.String({pattern:'^[a-f0-9]{64}$'}),price_version:Type.Optional(OutcomePriceVersionSchema),quote_status:ScopeQuoteStatusSchema,amount_fen:amount,scope_lines:Type.Array(ScopeLineSchema),reason:text,created_at:Type.String(),published_at:Type.Union([Type.String(),Type.Null()]),expires_at:Type.Union([Type.String(),Type.Null()]),closed_at:Type.Union([Type.String(),Type.Null()]),decline_reason:Type.String({maxLength:1000}),closure_reason:text,revision:Type.Integer({minimum:1}),previous_quote_id:Type.Union([id,Type.Null()])});
 export const CommerceMetadataFields={
+  auto_charge:Type.Optional(Type.Boolean()),
   pricing_mode:Type.Optional(Type.Literal(OUTCOME_PRICING_MODE)),
   price_version:Type.Optional(id),
   currency:Type.Optional(Type.Literal('CNY')),
@@ -64,9 +66,9 @@ export const commerceSchemas={
   CommerceScopeQuotationResponse:obj({quotation:ScopeQuotationSchema}),
   CommerceScopeDeclineRequest:obj({request_id:id,reason:Type.String({minLength:1,maxLength:1000})}),
   CommerceScopeRequoteRequest:obj({request_id:id}),
-  CommerceCatalogResponse:obj({enabled:Type.Boolean(),currency:Type.Literal('CNY'),version:id,model:Type.Literal('pay_as_you_go'),
-    items:Type.Array(obj({code:id,label:text,unit:text,price_fen:Type.Union([amount,Type.Null()]),capability:Type.Union([Type.Literal('standard'),Type.Literal('limited'),Type.Literal('unavailable')]),scope:Type.Array(text),included:Type.Array(text)})),rules:Type.Array(text)}),
-  CommerceAccountResponse:obj({available_fen:amount,held_fen:amount,payment_enabled:Type.Boolean(),providers:Type.Array(provider),legacy_balance_notice:text}),
+  CommerceCatalogResponse:obj({enabled:Type.Boolean(),currency:Type.Literal('CNY'),version:id,model:Type.Union([Type.Literal('pay_as_you_go'),Type.Literal('subscription_and_topup')]),
+    items:Type.Array(obj({code:id,label:text,unit:text,price_fen:Type.Union([amount,Type.Null()]),price_points:Type.Optional(amount),capability:Type.Union([Type.Literal('standard'),Type.Literal('limited'),Type.Literal('unavailable')]),scope:Type.Array(text),included:Type.Array(text)})),rules:Type.Array(text)}),
+  CommerceAccountResponse:obj({available_fen:amount,held_fen:amount,available_points:Type.Optional(amount),held_points:Type.Optional(amount),payment_enabled:Type.Boolean(),providers:Type.Array(provider),legacy_balance_notice:text}),
   CommerceTopupRequest:obj({request_id:id,provider,amount_fen:Type.Integer({minimum:1,maximum:1000000}),project_id:Type.Optional(id)}),
   CommerceFeedbackRequest:obj({request_id:id,run_id:id,outcome:Type.Union([Type.Literal('adopted'),Type.Literal('needs_changes'),Type.Literal('not_used')]),reason:Type.Optional(Type.String({maxLength:1000}))}),
   CommerceFeedbackResponse:obj({ok:Type.Boolean()}),
@@ -76,5 +78,5 @@ export type CommerceAccount=Static<typeof commerceSchemas.CommerceAccountRespons
 export type CommerceTopup=Static<typeof commerceSchemas.CommerceTopupRequest>;
 export function commerceMetadata(amountFen:number,unitAmountFen=amountFen,units=1,priceVersion:OutcomePriceVersion=OUTCOME_PRICE_VERSION):CommercePriceMetadata{
   if(![amountFen,unitAmountFen,units].every(Number.isSafeInteger)||amountFen<0||unitAmountFen<0||units<0)throw Error('Invalid CNY minor units');
-  return{pricing_mode:OUTCOME_PRICING_MODE,price_version:priceVersion,currency:'CNY',amount_fen:amountFen,unit_amount_fen:unitAmountFen,units};
+  return{pricing_mode:OUTCOME_PRICING_MODE,price_version:priceVersion,currency:'CNY',amount_fen:amountFen,unit_amount_fen:unitAmountFen,units,...(isAutomaticPriceVersion(priceVersion)?{auto_charge:true}:{})};
 }
