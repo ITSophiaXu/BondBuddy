@@ -11,18 +11,37 @@ const plain=(v:any):string=>v==null?'':typeof v==='object'?(v['#text']??(v.t!==u
 const header=(s='')=>s.replace(/[\s：:（）()]/g,'').toLowerCase();
 const aliases={title:['底稿名称','文件名称','材料名称','资料名称','目录名称','底稿内容','文件名','名称','项目'],code:['底稿编号','文件编号','索引号','索引编号','编号','序号'],folder:['目录路径','文件夹','所属目录','目录层级','分类','路径'],instructions:['编制要求','底稿要求','内容要求','说明','备注'],kind:['类型','条目类型','文件类型']} as const;
 export type CatalogueSheet={name:string;rows:{row:number;cells:string[]}[]};
+const numberedCode=(value='')=>/^\d{1,3}(?:[-.．]\d{1,3})*$/.test(value.trim());
+function headerlessColumns(sheet:CatalogueSheet){
+  const candidates=new Map<number,{count:number;start:number}>();
+  for(const [index,row] of sheet.rows.entries())for(let col=0;col<row.cells.length-1;col++){
+    const title=row.cells[col+1]?.trim();
+    if(numberedCode(row.cells[col])&&title&&!/^\d[\d,.%\s]*$/.test(title)){
+      const found=candidates.get(col);candidates.set(col,{count:(found?.count??0)+1,start:found?.start??index});
+    }
+  }
+  const matches=[...candidates].filter(([,v])=>v.count>=2).sort((a,b)=>b[1].count-a[1].count);
+  // A title line or an isolated numeric cell is not a directory. Do not choose
+  // arbitrarily between equally plausible side-by-side lists.
+  if(!matches.length||matches[1]?.[1].count===matches[0]![1].count)return undefined;
+  const [code,match]=matches[0]!;
+  return {start:match.start,cols:{code,title:code+1,folder:-1,instructions:-1,kind:-1} as Record<string,number>};
+}
 
 export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEntry[];warnings:string[]}{
   const entries:WorkpaperEntry[]=[],warnings:string[]=[];let totalRows=0;
   for(const sheet of sheets){
     if((totalRows+=sheet.rows.length)>WORKPAPER_LIMITS.rows)invalid('目录最多支持 10,000 行，请拆分后上传。');
     const head=sheet.rows.findIndex(r=>r.cells.some(c=>aliases.title.includes(header(c) as any)));
-    if(head<0){warnings.push(`工作表“${sheet.name}”没有识别到文件名称列，已跳过。`);continue;}
-    const cols=Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,sheet.rows[head]!.cells.findIndex(c=>(names as readonly string[]).includes(header(c)))]));
+    const inferred=head<0?headerlessColumns(sheet):undefined;
+    if(head<0&&!inferred){warnings.push(`工作表“${sheet.name}”没有识别到文件名称列或明确的编号名称清单，已跳过。`);continue;}
+    const cols=inferred?.cols??Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,sheet.rows[head]!.cells.findIndex(c=>(names as readonly string[]).includes(header(c)))]));
+    if(inferred)warnings.push(`工作表“${sheet.name}”未设置表头，已按“编号＋底稿名称”清单识别，请核对生成范围。`);
     const local:WorkpaperEntry[]=[];
-    for(const row of sheet.rows.slice(head+1)){
+    for(const row of sheet.rows.slice(inferred?.start??head+1)){
       const get=(key:string)=>row.cells[cols[key]!]??'';
       const title=get('title').trim(),code=get('code').trim();
+      if(inferred&&title&&!numberedCode(code)){warnings.push(`“${sheet.name}”第 ${row.row} 行没有明确编号，未作为底稿条目读取。`);continue;}
       if(!title||aliases.title.includes(header(title) as any)||/^(注|备注|填表说明)[：:]?$/.test(code))continue;
       if(title.length>300||code.length>100||get('instructions').length>2000||get('folder').length>600)invalid(`“${sheet.name}”第 ${row.row} 行文字过长，请缩短后上传。`);
       const kind=/^(目录|文件夹|章节|分类|folder)$/i.test(get('kind').trim())?'folder':'file';
@@ -44,7 +63,7 @@ export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEn
     }
   }
   const files=entries.filter(e=>e.kind==='file');
-  if(!files.length)invalid('未识别到可生成文件。请设置“底稿名称”或“文件名称”列，并在“类型”列用“目录”标明文件夹。');
+  if(!files.length)invalid('未识别到可生成文件。请提供“底稿名称”或“文件名称”列，或明确的“编号＋底稿名称”清单；文件夹可在“类型”列标为“目录”。');
   if(files.length>WORKPAPER_LIMITS.items)invalid('每批最多支持 1,000 份文件，请拆分目录。');
   const used=new Set<string>();
   for(const e of files){let path=e.path;let suffix=1;while(used.has(path.toLowerCase()))path=e.path.replace(/\.docx$/i,` (${++suffix}).docx`);

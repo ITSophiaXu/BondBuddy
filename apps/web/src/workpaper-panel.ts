@@ -1,10 +1,11 @@
 import {defaultWorkpaperIds,WORKPAPER_PRICE,WORKPAPER_LIMITS,WorkpaperStartSchema,type WorkpaperStart,type WorkpaperWorkspace,type WorkpaperCatalogue,type WorkpaperBatch,type ProjectFileSource} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
-import {ApiClient,ApiError,friendlyError} from './api';
+import {ApiClient,ApiError,errorReference,friendlyError} from './api';
 import {UserFacingError} from './user-facing-error';
 import {ArtifactDownloads,artifactError,boundedDownload} from './artifact-download';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
-import {UploadRecovery} from './upload-recovery';
+import {UploadRecovery,UploadRecoveryNeedsFileError} from './upload-recovery';
+import {uploadErrorMessage} from './upload-error';
 import {esc,date} from './ui';
 import {prototypeIcon as ico} from './prototype-design';
 import {withProjectContext} from './project-navigation';
@@ -20,6 +21,7 @@ export class WorkpaperPanel {
   private pending?:WorkpaperStart;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
+  private uploadNeedsFile=new Set<string>();
   constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean,private stepChanged:(step:number)=>void=()=>{}){}
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
   get hasUnconfirmed(){return this.busy||!!this.pending||this.storageError;}
@@ -76,7 +78,7 @@ export class WorkpaperPanel {
     this.stepChanged(this.view==='prepare'?2:this.view==='confirm'?3:4);
     const sourceHref='#generate?'+withProjectContext(new URLSearchParams({project:this.project,step:'source',mode:'workpapers'}));
     this.host.innerHTML=`<div class="wp-source-context ${this.source?'':'wp-source-missing'}" ${this.view!=='prepare'?'hidden':''}><span class="wp-source-icon">${ico('file')}</span><div class="wp-source-info"><small>生成依据 · 募集说明书</small><div class="wp-source-file"><strong>${this.source?esc(this.source.filename):'请先上传并采用募集说明书'}</strong>${this.source?`<span class="wp-source-version">V${this.source.sequence}</span>`:''}</div></div><a class="text-button" href="${esc(sourceHref)}">更换</a></div>
-      <section class="panel wp-prepare" aria-label="按底稿目录批量生成" ${this.view!=='prepare'?'hidden':''}><h2>选择要生成的文件</h2>${this.catalogue?`<div class="wp-directory-current">${ico('folder')}<div><strong>${esc(this.catalogue.filename)}</strong><small>${this.catalogue.entries.filter(e=>e.kind==='file').length} 份文件已识别</small></div><button class="text-button" id="wp-change-directory" ${this.pending||this.busy?'disabled':''}>更换目录</button></div><div id="wp-directory-editor" hidden><label>选择项目已有目录<select id="wp-catalogue" ${this.pending||this.busy?'disabled':''}>${this.data.catalogues.map(c=>`<option value="${esc(c.catalogue_id)}" ${this.catalogue?.catalogue_id===c.catalogue_id?'selected':''}>${esc(c.filename)}</option>`).join('')}</select></label><label>上传新目录<input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" ${this.pending||this.busy?'disabled':''}></label><p class="muted">XLSX · 10 MB 以内</p></div>`:`<div class="wp-upload-zone"><span class="wp-upload-icon">${ico('upload')}</span><h2>添加底稿目录</h2><p>默认生成“1 尽职调查文件”；可以在清单中调整范围。</p><label class="wp-upload-picker"><span class="btn primary">${ico('plus')}选择 Excel 底稿目录</span><input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" aria-describedby="wp-upload-help" ${this.pending||this.busy?'disabled':''}></label><small id="wp-upload-help">XLSX · 10 MB 以内 · 最多 ${WORKPAPER_LIMITS.items.toLocaleString()} 份文件</small></div><details class="wp-format-help"><summary>Excel 目录怎么准备？</summary><p>至少包含“底稿名称”或“文件名称”列；可提供“编号、目录路径、类型、编制要求”。文件夹在“类型”列填写“目录”。旧版 XLS 请另存为 XLSX。</p></details>`}
+      <section class="panel wp-prepare" aria-label="按底稿目录批量生成" ${this.view!=='prepare'?'hidden':''}><h2>选择要生成的文件</h2>${this.catalogue?`<div class="wp-directory-current">${ico('folder')}<div><strong>${esc(this.catalogue.filename)}</strong><small>${this.catalogue.entries.filter(e=>e.kind==='file').length} 份文件已识别</small></div><button class="text-button" id="wp-change-directory" ${this.pending||this.busy?'disabled':''}>更换目录</button></div><div id="wp-directory-editor" hidden><label>选择项目已有目录<select id="wp-catalogue" ${this.pending||this.busy?'disabled':''}>${this.data.catalogues.map(c=>`<option value="${esc(c.catalogue_id)}" ${this.catalogue?.catalogue_id===c.catalogue_id?'selected':''}>${esc(c.filename)}</option>`).join('')}</select></label><label>上传新目录<input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" ${this.pending||this.busy?'disabled':''}></label><p class="muted">XLSX · 10 MB 以内</p></div>`:`<div class="wp-upload-zone"><span class="wp-upload-icon">${ico('upload')}</span><h2>添加底稿目录</h2><p>默认生成“1 尽职调查文件”；可以在清单中调整范围。</p><label class="wp-upload-picker"><span class="btn primary">${ico('plus')}选择 Excel 底稿目录</span><input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" aria-describedby="wp-upload-help" ${this.pending||this.busy?'disabled':''}></label><small id="wp-upload-help">XLSX · 10 MB 以内 · 最多 ${WORKPAPER_LIMITS.items.toLocaleString()} 份文件</small></div><details class="wp-format-help"><summary>Excel 目录怎么准备？</summary><p>支持带“底稿名称”或“文件名称”表头的表格，也支持“1、1-1”式编号与名称的无表头清单；可提供“目录路径、类型、编制要求”。文件夹在“类型”列填写“目录”。旧版 XLS 请另存为 XLSX。</p></details>`}
       <div id="wp-upload-recovery"></div><p id="wp-status" role="status">${esc(this.status)}</p>
       ${this.catalogue?`<details ${this.catalogue.warnings.length?'open':''}><summary>目录识别提示（${this.catalogue.warnings.length}）</summary>${this.catalogue.warnings.map(w=>`<p>${esc(w)}</p>`).join('')}</details>
       <div class="wp-controls"><label>查找底稿<span class="wp-search-field">${ico('search')}<input id="wp-filter" type="search" value="${esc(this.filter)}" placeholder="搜索编号或名称"></span></label><div class="wp-selection-actions" role="group" aria-label="底稿选择操作"><button class="btn secondary" id="wp-all" ${this.pending||this.busy?'disabled':''}>选择全部文件</button><button class="btn secondary" id="wp-none" ${this.pending||this.busy?'disabled':''}>清空选择</button></div></div><div id="wp-entries"></div>
@@ -84,7 +86,7 @@ export class WorkpaperPanel {
       <div id="wp-confirm"></div>`:''}<p class="wp-explanation-note">不生成项将逐份附说明；资料不足或缺少原始证据时标注“暂无法生成”，不直接认定为业务不适用。</p></section><section id="wp-confirmation-page" ${this.view==='confirm'?'':'hidden'}></section><section class="wp-batches" id="wp-batches" aria-label="底稿生成任务" ${this.view==='results'?'':'hidden'}></section><footer class="pf-footer" ${this.view==='confirm'?'hidden':''}><a class="text-button" href="${esc(sourceHref)}">上一步：选择募集说明书</a>${this.view==='results'?'<button class="btn secondary" id="wp-prepare-again">准备下一批</button>':''}</footer>`;
     this.host.querySelector('#wp-change-directory')?.addEventListener('click',()=>{const editor=this.host.querySelector<HTMLElement>('#wp-directory-editor')!;editor.hidden=!editor.hidden;if(!editor.hidden)editor.querySelector('select')?.focus();});
     this.host.querySelector('#wp-prepare-again')?.addEventListener('click',()=>{this.view='prepare';const query=new URLSearchParams(location.hash.split('?')[1]);query.delete('view');query.delete('batch');history.replaceState(history.state,'','#generate?'+query);this.paint();});
-    this.host.querySelector('#wp-upload')?.addEventListener('change',e=>{const file=(e.target as HTMLInputElement).files?.[0];if(file)void this.importFile(file);});
+    this.host.querySelector('#wp-upload')?.addEventListener('change',e=>{const input=e.target as HTMLInputElement,file=input.files?.[0];input.value='';if(file)void this.importFile(file);});
     this.host.querySelector('#wp-catalogue')?.addEventListener('change',e=>{this.catalogue=this.data.catalogues.find(c=>c.catalogue_id===(e.target as HTMLSelectElement).value);this.selected=new Set(defaultWorkpaperIds(this.catalogue?.entries??[]));this.save();this.paint();});
     this.host.querySelector('#wp-filter')?.addEventListener('input',e=>{this.filter=(e.target as HTMLInputElement).value;this.paintEntries();});
     this.host.querySelector('#wp-all')?.addEventListener('click',()=>{this.selected=new Set(this.catalogue!.entries.filter(e=>e.kind==='file').map(e=>e.id));this.save();this.paintEntries();});
@@ -135,13 +137,22 @@ export class WorkpaperPanel {
   }
   private paintRecovery(){
     const node=this.host.querySelector('#wp-upload-recovery');if(!node)return;
+    const disabled=this.busy||!!this.pending;
+    const picker=this.host.querySelector<HTMLInputElement>('#wp-upload');if(picker)picker.disabled=disabled;
     try{const records=new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).list();
-      node.innerHTML=records.map(r=>`<p>待确认上传：${esc(r.declaration.filename)} <button class="btn secondary" data-wp-upload="${esc(r.id)}">继续确认</button> <label>重新选择原文件<input type="file" accept=".xlsx" data-wp-reselect="${esc(r.id)}"></label></p>`).join('');
+      node.innerHTML=records.map(r=>{
+        const needsFile=this.uploadNeedsFile.has(r.id)||!r.uploadId&&!r.material&&this.upload.operationId!==r.id;
+        return `<div class="wp-upload-recovery-item"><p><strong>${esc(r.declaration.filename)}</strong><span>${r.material?'已上传，目录待识别':'上传结果待确认'}</span></p><div class="wp-actions"><button class="btn secondary" data-wp-upload="${esc(r.id)}" ${disabled?'disabled':''}>${r.material?'继续识别目录':'确认上传状态'}</button>${needsFile?`<label>重新选择原文件<input type="file" accept=".xlsx" data-wp-reselect="${esc(r.id)}" ${disabled?'disabled':''}></label>`:''}<button class="text-button" data-wp-forget="${esc(r.id)}" ${disabled?'disabled':''}>移除待办</button></div><small>${r.material?'文件已保存，无需重新上传。':'先确认服务器是否已保存；需要补传时再选择原文件。'} 移除待办不会删除服务器文件。</small></div>`;
+      }).join('');
       node.querySelectorAll<HTMLElement>('[data-wp-upload]').forEach(b=>b.onclick=()=>void this.importFile(undefined,b.dataset.wpUpload));
       node.querySelectorAll<HTMLInputElement>('[data-wp-reselect]').forEach(b=>b.onchange=()=>void this.importFile(b.files?.[0],b.dataset.wpReselect));
+      node.querySelectorAll<HTMLElement>('[data-wp-forget]').forEach(b=>b.onclick=()=>void this.act(async()=>{
+        const id=b.dataset.wpForget!;await new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).forget(id);
+        if(this.upload.operationId===id)this.upload={};this.uploadNeedsFile.delete(id);this.status='已移除本机待办，服务器文件仍保留。';
+      }));
     }catch{node.textContent='原上传记录无法读取，请恢复浏览器存储后刷新。';}
   }
-  private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paintConfirm();this.paintConfirmationPage();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy)return;this.busy=true;
     const feedback=this.downloadFeedback?.node??document.createElement('p');
@@ -159,11 +170,31 @@ export class WorkpaperPanel {
     if(this.pending||this.busy)return;
     await this.act(async()=>{
       if(file&&(!/\.xlsx$/i.test(file.name)||file.size>WORKPAPER_LIMITS.fileBytes))throw new UserFacingError('请上传 10 MB 以内的 XLSX。');
-      if(operation)this.upload={operationId:operation,projectId:this.project};else if(file)this.upload={};
-      const pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,s=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.textContent=s;},this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());
-      const cat=await this.request<WorkpaperCatalogue>('POST','/catalogues',{request_id:this.upload.operationId,material:pin});
-      await this.upload.recovery?.forget(this.upload.operationId!);this.upload={};this.catalogue=cat;
-      this.data.catalogues=[cat,...this.data.catalogues.filter(c=>c.catalogue_id!==cat.catalogue_id)];this.selected=new Set(defaultWorkpaperIds(cat.entries));this.status='目录已保存，选好文件后即可开始批量生成。';this.save();this.paint();
+      if(!operation&&file){
+        const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
+        if(!this.live())return;
+        const records=new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).list();
+        operation=records.find(r=>r.context===undefined&&r.declaration.filename===file.name&&r.declaration.byte_size===file.size&&r.declaration.sha256===hash)?.id;
+        if(!operation)this.upload={};
+      }
+      if(operation&&operation!==this.upload.operationId)this.upload={operationId:operation,projectId:this.project};
+      const status=(s:string)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.textContent=s;};
+      let pin:Awaited<ReturnType<typeof uploadFileMaterial>>;
+      try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());}
+      catch(e){if(e instanceof UploadRecoveryNeedsFileError&&this.upload.operationId)this.uploadNeedsFile.add(this.upload.operationId);throw new UserFacingError(uploadErrorMessage(e));}
+      this.uploadNeedsFile.delete(this.upload.operationId!);status('Excel 已上传，正在识别底稿目录…');
+      let cat:WorkpaperCatalogue;
+      try{cat=await this.request<WorkpaperCatalogue>('POST','/catalogues',{request_id:this.upload.operationId,material:pin});}
+      catch(e){throw new UserFacingError(e instanceof ApiError&&e.status===422&&e.code==='VALIDATION_FAILED'
+        ?'Excel 已上传，但目录未识别成功。请检查文件格式，并提供“底稿名称／文件名称”表头，或“1、1-1”式编号与名称清单。'+errorReference(e)
+        :'Excel 已上传，目录识别结果尚未确认。可继续识别目录，无需重新上传。'+friendlyError(e,'save'));}
+      // Older screens created a new journal for every selection of the same file.
+      // Clean only receipts for the exact material just imported; never delete bytes.
+      const recovery=this.upload.recovery!,duplicates=recovery.list().filter(r=>r.context===undefined&&r.material?.material_id===pin.material_id&&r.material.material_version===pin.material_version&&r.material.sha256===pin.sha256);
+      let cleanupPending=false;
+      for(const record of duplicates){try{await recovery.forget(record.id);}catch{cleanupPending=true;}}
+      this.upload={};this.catalogue=cat;
+      this.data.catalogues=[cat,...this.data.catalogues.filter(c=>c.catalogue_id!==cat.catalogue_id)];this.selected=new Set(defaultWorkpaperIds(cat.entries));this.status=cleanupPending?'目录已识别，本机仍有待办未清理，可稍后移除。':'目录已保存，选好文件后即可开始批量生成。';this.save();this.paint();
     });
   }
   private async start(){await this.act(async()=>{
