@@ -71,6 +71,8 @@
 
 最终测试夹具调整之后，Web源码与当前全部E2E TypeScript检查再次通过，见[最终类型检查](completion/automatic-task-final-typecheck.log)；页面schema修复后的Web产物构建见[构建日志](completion/workspace-wire-web-build.log)。
 
+修复源码`19241ef12ef0289468ec1cb9c72b653b014160ec`已重新完成原Dockerfile API目标构建：镜像`sha256:854478de05dc26f5c91c51470dbe76ac129e87d0579f0e3700c325c1dd326cda`，Node v22.23.4，运行时及OCI源码标识一致。全工作区编译与网页生产构建通过，身份探针仅运行于无网络、只读容器；临时容器已清理，完整前后既有资源清单一致。详见[修复后镜像](RELEASE-API-19241ef12ef0-VALIDATION.md)。该版本之后只修改测试夹具、断言和文档/证据；未重新运行旧镜像的worker/代理用例，也不把旧运行结果绑定到新镜像。
+
 ## 发布及经营边界
 
 收费开关默认关闭。升级顺序、停旧worker、同步API/worker/网页、独立权限及回退见[升级手册](../../apps/api/BILLING-UPGRADE-RUNBOOK.md)。真实微信/支付宝商户安全配置、正式支付及原路退款验收、签约代扣适配器与专业成果质量仍待完成；现有适配器提供单期订阅及手动续期，不宣称真实自动续费可用。

@@ -39,6 +39,7 @@
 - 原Desktop工作流的八个浏览器文件已在本地Edge补验75/75、无跳过。与Linux/Chromium及GitHub运行环境仍分别计量，见[Desktop补验](DESKTOP-CI-LOCAL-VALIDATION.md)。
 - 新自动扣费定向浏览器验收7/7、0跳过，含每页未处理异常断言。本轮实际修复了QA与诚信核查页面误用领域数字金额schema导致打不开的问题；测试还修正了旧恢复记录读取及账户mock。见[自动扣费专项](completion/AUTOMATIC-TASK-BILLING-VERIFICATION.md)。
 - 原Dockerfile的API目标已在本地Linux构建；精确`279f13a`镜像、Node v22.23.4的四项代理探针通过。同一镜像完成空库迁移、M2四个worker测试及API进程/路由启动，临时容器及网络已清理。详见[镜像证据](RELEASE-API-LOCAL-VALIDATION.md)、[M2补验](M2-CI-LOCAL-VALIDATION.md)。这些结果不替代完整worker/OCR镜像、生产网络或真实商户验收。
+- 上述页面schema缺陷修复后，另以`19241ef`精确源码重新构建API镜像成功，Node v22.23.4与源码标识核对通过。旧镜像运行用例和新镜像身份探针分别记录，见[修复后镜像](RELEASE-API-19241ef12ef0-VALIDATION.md)。后续仅有测试与文档/证据更新。
 - 已补充[盈利决策门槛](../../docs/finance/subscription-20261029/盈利决策门槛.md)，保持现有需求和预算，未改变主预测。它给出经营保本、历史回收及60%目标的收入门槛和成本上限；不是客户愿意支付这些价格的证据。后续调整已认可价表或预算的方向仍待用户决定。
 
 参考：[Spec](../../docs/product-decisions/2026-10-29-subscription-auto-billing.md)、[24个月条件估算](../../docs/finance/subscription-20261029/24个月条件估算.md)、[全面复核验证](FULL-REVIEW-V3-VALIDATION.md)、[部署检查](DEPLOYMENT-VALIDATION.md)。
