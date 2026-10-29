@@ -129,3 +129,17 @@ test('material download rejects a partial response or a substituted content type
     await assert.rejects(()=>api.materialBytes('project a',sourceMaterial()),error=>error instanceof ApiError&&error.code==='DATA_UNAVAILABLE');
   });
 });
+
+test('workpaper ZIP reports received bytes and returns the complete streamed archive',async t=>{
+  const first=new Uint8Array(24).fill(1),last=new Uint8Array(37).fill(2);
+  const {api,calls}=stubDownload(t,()=>new Response(new ReadableStream({start(c){c.enqueue(first);c.enqueue(last);c.close();}}),{headers:{'Content-Type':'application/zip'}}));
+  const progress:number[]=[],bytes=await api.workpaperZip('source project','batch',new AbortController().signal,n=>progress.push(n));
+  assert.deepEqual(progress,[24,61]);assert.equal(bytes.size,61);
+  assert.deepEqual(new Uint8Array(await bytes.arrayBuffer()),new Uint8Array([...first,...last]));
+  assert.equal(calls[0]!.url,'/api/v1/projects/source%20project/workpapers/batches/batch/download');
+});
+
+test('a broken ZIP response body is never offered as a finished download',async t=>{
+  const {api}=stubDownload(t,()=>new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(30));c.error(new Error('connection lost'));}}),{headers:{'Content-Type':'application/zip'}}));
+  await assert.rejects(api.workpaperZip('project','batch',new AbortController().signal,()=>{}),/connection lost/);
+});

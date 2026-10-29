@@ -1,6 +1,6 @@
 import type {WorkpaperLibrary,WorkpaperLibraryItem} from '@bondbuddy/contracts';
 import {ApiClient,friendlyError,type Dto} from './api';
-import {ArtifactDownloads} from './artifact-download';
+import {ArtifactDownloads,artifactError,boundedDownload} from './artifact-download';
 import {esc,date} from './ui';
 import './workpaper-library.css';
 const labels={needs_update:'内容需更新',manual:'需核对',current:'未发现关联变动'};
@@ -8,6 +8,7 @@ const labels={needs_update:'内容需更新',manual:'需核对',current:'未发�
 export class WorkpaperLibraryPanel {
   private abort=new AbortController();private downloads=new ArtifactDownloads();private timer?:ReturnType<typeof setTimeout>;private debounce?:ReturnType<typeof setTimeout>;
   private checkRequests=new Map<string,string>();private data?:WorkpaperLibrary;private revision=0;private offset=0;private busy=false;private dialog?:HTMLDialogElement;
+  private downloadFeedback?:{node:HTMLElement;key:string};
   constructor(private api:ApiClient,private host:HTMLElement,private project:string){}
   dispose(){this.abort.abort();clearTimeout(this.timer);clearTimeout(this.debounce);this.downloads.dispose();this.dialog?.remove();}
   private get base(){return `/projects/${encodeURIComponent(this.project)}/workpapers`;}
@@ -48,10 +49,23 @@ export class WorkpaperLibraryPanel {
     page.querySelector<HTMLButtonElement>('[data-prev]')!.onclick=()=>{this.offset=Math.max(0,this.offset-50);void this.refresh();};
     page.querySelector<HTMLButtonElement>('[data-next]')!.onclick=()=>{this.offset+=50;void this.refresh();};
     this.host.querySelector('.wl-checks')!.innerHTML=data.checks.filter(c=>!['succeeded','cancelled'].includes(c.state)).map(c=>`<p>${c.state==='failed'?'检查未完成，可重试':'检查进行中'} · 原募集书 V${c.baseline.sequence} → V${c.source.sequence}${c.stale?' · 当前募集书已更换':''}</p>`).join('');
-    for(const action of ['download','preview','zip','check'])list.querySelectorAll<HTMLButtonElement>(`[data-${action}]`).forEach(button=>button.onclick=()=>void this.act(button,()=>this.perform(action,data.items[Number(button.dataset[action])]!)));
+    for(const action of ['download','preview','zip','check'])list.querySelectorAll<HTMLButtonElement>(`[data-${action}]`).forEach(button=>button.onclick=()=>void this.act(button,()=>this.perform(action,data.items[Number(button.dataset[action])]!,button)));
+    const feedback=this.downloadFeedback;
+    if(feedback){const file=[...list.querySelectorAll<HTMLElement>('[data-key]')].find(el=>el.dataset.key===feedback.key);if(file)file.querySelector('.wl-actions')!.append(feedback.node);else this.host.querySelector('.wl-message')!.after(feedback.node);}
   }
   private async act(button:HTMLButtonElement,action:()=>Promise<void>){if(this.busy)return;this.busy=true;button.disabled=true;try{await action();}catch(e){this.message(friendlyError(e,'read'));}finally{this.busy=false;button.disabled=false;}}
-  private async perform(action:string,item:WorkpaperLibraryItem){
+  private async saveFile(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>,archive=false){
+    const feedback=this.downloadFeedback?.node??document.createElement('p');
+    feedback.className='wl-download-feedback';feedback.setAttribute('role','status');
+    this.downloadFeedback={node:feedback,key:button.closest<HTMLElement>('[data-key]')!.dataset.key!};button.closest('.wl-actions')!.append(feedback);
+    const text=button.textContent;button.textContent='正在准备下载…';button.setAttribute('aria-busy','true');
+    feedback.textContent='正在准备下载，请稍候…';
+    const progress=(received:number)=>{if(this.live())feedback.textContent=`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;};
+    try{const file=await boundedDownload(this.abort.signal,signal=>read(signal,progress),archive?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
+    catch(e){if(this.live())feedback.textContent=artifactError(e);}
+    finally{button.textContent=text;button.removeAttribute('aria-busy');}
+  }
+  private async perform(action:string,item:WorkpaperLibraryItem,button:HTMLButtonElement){
     if(action==='check'){
       const source=this.data!.source!;
       const key=item.batch_id+':'+source.version_id+':'+source.selection_revision;const request=this.checkRequests.get(key)??crypto.randomUUID();this.checkRequests.set(key,request);
@@ -65,9 +79,9 @@ export class WorkpaperLibraryPanel {
       d.innerHTML=`<header><h2>${esc(item.explanation?.filename??item.entry.path.split('/').at(-1)!)}</h2><button class="btn secondary">关闭</button></header><p>正文文本预览；Word 文件保留完整排版。</p><pre>${esc(result.text)}</pre>`;
       document.body.append(d);d.querySelector('button')!.onclick=()=>d.close();d.onclose=()=>{if(this.live())void this.refresh();};d.showModal();return;
     }
-    if(action==='zip'){const bytes=await this.api.workpaperZip(this.project,item.batch_id,this.abort.signal);if(this.live())this.downloads.save(bytes,'尽职调查底稿.zip');return;}
-    if(item.explanation){const bytes=await this.api.workpaperExplanation(this.project,item.batch_id,item.entry.id,this.abort.signal);if(this.live())this.downloads.save(bytes,item.explanation.filename);return;}
-    const a=item.artifacts[0]!;const meta=await this.api.request<Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(a.pin.artifact_id)}?version=${a.pin.artifact_version}`,undefined,{},this.abort.signal);
-    const bytes=await this.api.artifactBytes(meta,this.abort.signal);if(this.live())this.downloads.save(bytes,item.entry.path.split('/').at(-1)!);
+    if(action==='zip'){await this.saveFile(button,async (signal,progress)=>({bytes:await this.api.workpaperZip(this.project,item.batch_id,signal,progress),filename:'尽职调查底稿.zip'}),true);return;}
+    if(item.explanation){await this.saveFile(button,async signal=>({bytes:await this.api.workpaperExplanation(this.project,item.batch_id,item.entry.id,signal),filename:item.explanation!.filename}));return;}
+    await this.saveFile(button,async signal=>{const a=item.artifacts[0]!;const meta=await this.api.request<Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(a.pin.artifact_id)}?version=${a.pin.artifact_version}`,undefined,{},signal);
+      return {bytes:await this.api.artifactBytes(meta,signal),filename:item.entry.path.split('/').at(-1)!};});
   }
 }

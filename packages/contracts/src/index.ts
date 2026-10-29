@@ -165,7 +165,7 @@ const ProjectTaskSchema = obj({
   run_id:id, project_id:id, kind:taskKind, state:runState, stage:nullable(Type.String()),
   created_at:utc, updated_at:utc, artifact_id:nullable(id), report_id:nullable(id), topic_id:nullable(id),
   document_type:nullable(Type.String()), operation:nullable(Type.String()),
-  workpaper_batch:Type.Optional(obj({batch_id:id,project_id:id}))
+  workpaper_batch:Type.Optional(obj({batch_id:id,project_id:id,total:Type.Optional(Type.Integer({minimum:0})),completed:Type.Optional(Type.Integer({minimum:0}))}))
 });
 const historyResult = {
   run_id: id, input_revision: revision, completed_at: utc,
