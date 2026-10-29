@@ -69,7 +69,7 @@ test('lost draft acknowledgement is confirmed only by exact v+1 and the whole in
 test('v plus unchanged base retains a sealed full CAS and retries that exact request only on explicit confirmation', async ({ page }) => {
   const state = await install(page); state.dropDraft = 'before'; await mount(page); await pending(page, state); expect(draftWrites(state)).toHaveLength(1);
   const request = structuredClone(draftWrites(state)[0]); expect(state.draft.version).toBe(3); const before = await refreshReadOnly(page, state); expect(writes(state)).toHaveLength(before);
-  await expect(resume(page)).toContainText('原草稿'); await resume(page).click();
+  await expect(resume(page)).toHaveText('重试'); await resume(page).click();
   await saved(page, state); expect(draftWrites(state)).toEqual([request, request]); expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1);
 });
 

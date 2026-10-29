@@ -55,6 +55,9 @@ export class ReviewWorkspace {
   private fromList = projectListContext();
   private deletingMaterial?: string;
   private uploadRows = new Map<string,UploadRow>();
+  private uploadProgress = new Map<string,{percent:number;phase:'queued'|'uploading'|'saving'}>();
+  private inputComposing = false;
+  private renderingMaterials = false;
   private duplicateUploads = new Map<string,DuplicateUploadNotice>();
   private uploadQueue: {keys:string[];files:File[];role:Dto<'MaterialResponse'>['role'];target?:ReviewContext;targetLabel?:string;operationIds:string[];done:(saved:boolean)=>void}[] = [];
   private uploadRecoveryProblem='';
@@ -279,7 +282,7 @@ export class ReviewWorkspace {
   private cacheInput() {
     try{if(this.inputDirty&&this.draftInput)localStorage.setItem(this.localInputKey,JSON.stringify({owner:this.owner,project_id:this.projectId,version:this.inputConflictVersion??this.workspace?.draft.version,input:this.draftInput}));else localStorage.removeItem(this.localInputKey);}catch{if(this.inputDirty)this.message('浏览器无法缓存输入，请保持页面打开并保存材料与要求。',true);}
   }
-  private message(text:string,error=false){this.status=text;this.statusError=error;const node=this.page?.querySelector<HTMLElement>('#review-status');if(node){node.textContent=text;node.classList.toggle('review-warning',error);}const fieldStatus=this.page?.querySelector<HTMLElement>('#review-requirements-status');if(fieldStatus){fieldStatus.textContent=this.inputDirty?(error?text:'正在保存要求…'):'要求已保存';fieldStatus.classList.toggle('review-warning',this.inputDirty&&error);}}
+  private message(text:string,error=false){const retry=this.page?.querySelector<HTMLButtonElement>('[data-review-action=save-input]');if(retry)retry.hidden=!this.inputDirty||!error;this.status=text;this.statusError=error;const node=this.page?.querySelector<HTMLElement>('#review-status');if(node){node.textContent=text;node.classList.toggle('review-warning',error);}const fieldStatus=this.page?.querySelector<HTMLElement>('#review-requirements-status');if(fieldStatus){fieldStatus.textContent=this.inputDirty?(error?text:'正在保存要求…'):'要求已保存';fieldStatus.classList.toggle('review-warning',this.inputDirty&&error);}}
   private syncSelections(){
     const report=this.workspace?.selected_report,plan=this.workspace?.plan;
     this.selections=new Set(report&&plan&&plan.source_report_id===report.report_id?plan.finding_ids:[]);
@@ -506,6 +509,9 @@ export class ReviewWorkspace {
         this.draftInput.requirements=target.value.split('\n').map(text=>text.trim()).filter(Boolean);this.changedInput();
       }
     });
+    this.page!.addEventListener('compositionstart',event=>{if((event.target as HTMLElement).id==='review-requirements'){this.inputComposing=true;clearTimeout(this.inputTimer);}});
+    this.page!.addEventListener('compositionend',event=>{if((event.target as HTMLElement).id==='review-requirements'){this.inputComposing=false;this.changedInput();}});
+    this.page!.addEventListener('focusout',event=>{if((event.target as HTMLElement).id==='review-requirements'&&!this.inputComposing&&!this.renderingMaterials&&this.inputDirty&&!this.uploadInputBlocked(false))void this.saveInput();});
     this.page!.addEventListener('change',event=>{
       const target=event.target;
       if(target instanceof HTMLInputElement&&target.name==='review-source-mode'){
@@ -523,17 +529,18 @@ export class ReviewWorkspace {
     this.page!.addEventListener('drop',event=>{const zone=(event.target as HTMLElement).closest<HTMLElement>('[data-review-drop]');if(zone){event.preventDefault();if(event.dataTransfer?.files.length)void this.upload([...event.dataTransfer.files],zone.dataset.reviewDrop as Dto<'MaterialResponse'>['role']);}});
     this.page!.addEventListener('keydown',event=>{if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&(event.target as HTMLElement).matches('[data-review-tab]')){event.preventDefault();this.setTab(this.tab==='materials'?'results':'materials');this.page?.querySelector<HTMLButtonElement>(`[data-review-tab="${this.tab}"]`)?.focus();}});
   }
-  private changedInput(){this.inputDirty=true;this.cacheInput();clearTimeout(this.inputTimer);if(this.uploadInputBlocked(false)){this.message('新要求已留在本页。请先处理原上传；不会覆盖原草稿或自动保存新要求。',true);return;}this.message(isActiveRun(this.workspace?.active_run)?'补充内容进入下一版，当前任务输入保持不变。':'材料与要求草稿等待保存。');this.inputTimer=setTimeout(()=>void this.saveInput(),650);}
+  private changedInput(){this.inputDirty=true;this.cacheInput();clearTimeout(this.inputTimer);if(this.uploadInputBlocked(false)){this.message('要求已保留，材料上传完成后继续保存。');return;}this.message(isActiveRun(this.workspace?.active_run)?'补充内容进入下一版，当前任务输入保持不变。':'正在自动保存…');if(!this.inputComposing)this.inputTimer=setTimeout(()=>void this.saveInput(),650);}
 
   private renderMaterials(){
     const host=this.page?.querySelector('#review-materials-panel');if(!host||!this.workspace||!this.draftInput)return;
+    this.renderingMaterials=true;
     const active=document.activeElement;
     const editing=host.contains(active)&&active instanceof HTMLElement&&!!active.id&&(active instanceof HTMLTextAreaElement||(active instanceof HTMLInputElement&&active.type!=='file')||active instanceof HTMLSelectElement)?{id:active.id,value:active.value,start:active instanceof HTMLTextAreaElement?active.selectionStart:null,end:active instanceof HTMLTextAreaElement?active.selectionEnd:null}:undefined;
     const input=this.draftInput,materials=this.workspace.materials;
     const running=isActiveRun(this.workspace.active_run);
     const pending=[...this.uploadRows.values()].filter(row=>!row.error).length;
     const failed=this.uploadRows.size-pending;
-    const uploadNotice=this.uploadRecoveryProblem||(this.uploadRecordsPresent?'有原文件需要确认。先核对文件保存和原材料选择；刷新不会自动提交。':pending?`还有 ${pending} 份材料正在上传或等待可靠准备，可继续添加文件。请保持页面打开。`:failed?`${failed} 份本机文件选择尚未保存，请明确重试或移除后开始。`:'');
+    const uploadNotice=this.uploadRecoveryProblem||(this.uploading?'':this.uploadRecordsPresent?'有文件上传未完成，请重试或移除。':pending?'正在准备上传…':failed?`${failed} 份文件上传失败，请重试或移除。`:'');
     const pendingMaterialIds=new Set([...this.uploadRows.values()].flatMap(row=>row.material?[row.material.material_id]:[]));
     const financeRoles=['audit','financial','interimFinancial','notes'];
     const groups=[{title:'待复核募集书',roles:['historical'],primary:'historical',help:'选择一种方式，确定一份本次待复核稿。'},
@@ -559,10 +566,11 @@ export class ReviewWorkspace {
     host.querySelector('#review-materials-after')!.innerHTML=`
     ${materials.filter(m=>!groups.some(g=>g.roles.includes(m.role))).length?`<div class="review-section-heading"><h3>已保存的其他材料</h3></div><ul class="material-file-list">${materials.filter(m=>!groups.some(g=>g.roles.includes(m.role))).map(fileRow).join('')}</ul>`:''}
 
-    <section class="review-optional-requirements"><label for="review-requirements">补充复核要求（选填）</label><p class="review-muted" id="review-requirements-help">填写希望重点核对的内容、统计口径或特殊情况。要求自动保存，开始复核时一并采用。</p><textarea id="review-requirements" class="review-source-select" rows="4" aria-describedby="review-requirements-help" placeholder="例如：请重点核对法定代表人信息是否准确，并核对各处披露是否一致。">${esc(input.requirements.join('\n'))}</textarea><div class="review-requirements-save"><span id="review-requirements-status" class="review-muted" role="status">${this.inputDirty?'要求等待保存':'要求已保存'}</span><button type="button" class="text-btn" data-review-action="save-input">保存要求</button></div>${running?'<p class="review-muted">本次补充用于下一轮复核，当前任务仍使用开始时的要求。</p>':''}</section>
+    <section class="review-optional-requirements"><label for="review-requirements">补充复核要求（选填）</label><p class="review-muted" id="review-requirements-help">填写希望重点核对的内容、统计口径或特殊情况。要求自动保存，开始复核时一并采用。</p><textarea id="review-requirements" class="review-source-select" rows="4" aria-describedby="review-requirements-help" placeholder="例如：请重点核对法定代表人信息是否准确，并核对各处披露是否一致。">${esc(input.requirements.join('\n'))}</textarea><div class="review-requirements-save"><span id="review-requirements-status" class="review-muted" role="status">${this.inputDirty?'要求等待保存':'要求已保存'}</span><button type="button" class="text-btn" data-review-action="save-input" hidden>重试</button></div>${running?'<p class="review-muted">本次补充用于下一轮复核，当前任务仍使用开始时的要求。</p>':''}</section>
     <div class="review-footer-actions review-materials-footer"><div class="review-footer-copy"><strong>${running?'当前任务进行中':this.uploadRows.size||this.uploadRecordsPresent?'材料保存完成后即可开始':'准备好了，就可以开始。'}</strong><p class="review-muted">${esc(uploadNotice||(running?'补充材料与要求将用于下一轮复核。':'确认材料与要求后，点击开始复核。'))}</p></div><div class="review-footer-buttons"><button type="button" class="btn primary" data-review-action="review" ${running||this.uploadRows.size||this.uploadRecordsPresent||this.uploadRecoveryProblem||this.starting?'disabled':''}>${running?'当前任务进行中':this.starting?'正在开始复核…':'开始复核'}</button></div></div>`;
     this.renderProjectSource();
     if(editing){const field=host.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(`#${CSS.escape(editing.id)}`);if(field){field.value=editing.value;field.focus({preventScroll:true});if(field instanceof HTMLTextAreaElement&&editing.start!==null&&editing.end!==null)field.setSelectionRange(editing.start,editing.end);}}
+    this.renderingMaterials=false;
   }
   private renderProjectSource(){
     const box=this.page?.querySelector<HTMLElement>('[data-project-source]');if(!box||!this.workspace||!this.draftInput)return;
@@ -1009,13 +1017,19 @@ export class ReviewWorkspace {
     const names=report?target.finding_ids.map(id=>report.findings.find(f=>f.finding_id===id)?.title).filter(Boolean):[];
     return `${version?`报告 R${version}`:'原报告'} · ${names.length===target.finding_ids.length?names.join('；'):`原问题 ${target.finding_ids.length} 项`}`;
   }
+  private uploadProgressHtml(key:string,row:UploadRow){
+    const progress=this.uploadProgress.get(key)??{percent:row.material?100:0,phase:row.material?'saving':'queued'};
+    const label=row.error?'上传未完成':!this.uploading&&row.envelopeId?'上传已暂停':progress.phase==='saving'?'正在保存':progress.phase==='queued'?'等待上传':'正在上传';
+    return `<div class="review-file-progress"><progress max="100" value="${progress.percent}" aria-label="${esc(row.name)} 上传进度" aria-valuetext="${label} ${progress.percent}%"></progress><span>${progress.percent}%</span></div><span class="review-upload-phase">${label}</span>`;
+  }
   private uploadRowHtml(key:string,row:UploadRow){
     const envelope=row.envelopeId?this.recoveryEnvelopes.find(e=>e.id===row.envelopeId):undefined,item=envelope?.items[row.itemIndex??0];
     const previous=item&&item.index>0?envelope!.items[item.index-1]:undefined;
     const disabled=this.uploading||this.uploadReading||!!(previous&&(previous.stage!=='complete'||previous.localCacheResult!=='cleared'));
     const clean=item&&['adopted','cleanup_pending','complete'].includes(item.stage);
     const target=envelope?.targetContext?this.uploadTargetLabels.get(envelope.id)??this.uploadTargetDescription(envelope.targetContext,envelope.targetGuard?.version):row.target?this.uploadTargetDescription(row.target):'';
-    return `<li class="material-file-row review-upload-recovery" data-review-upload-key="${esc(key)}" ${row.operationId?`data-review-recovery-id="${esc(row.operationId)}"`:''} ${row.envelopeId?`data-review-recovery-envelope="${esc(row.envelopeId)}"`:''}><div class="material-file-main"><strong>${esc(row.name)}</strong><span>${esc(roleLabels[row.role]??'其他材料')}</span>${target?`<p class="review-upload-target">原补证对象：${esc(target)}</p>`:''}<p class="material-file-status ${row.error?'material-file-error':''}" role="${row.error?'alert':'status'}">${esc(row.state)}</p></div><div class="material-file-actions">${item?`<button type="button" class="text-button" data-review-recovery-action="resume" data-operation-id="${esc(item.id)}" ${disabled?'disabled':''}>${clean?'清理本机上传记录':this.uploadRetryAdoption.has(item.id)?'保存到原草稿':'确认原上传并保存材料选择'}</button>${this.uploadNeedsFile.has(item.id)&&!item.adoptionRequest?`<label class="text-button review-upload-reselect">重新选择原文件<input type="file" data-review-recovery-reselect="${esc(item.id)}" accept="${['historical','reference'].includes(row.role)?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="重新选择原文件 ${esc(row.name)}" ${disabled?'disabled':''}></label>`:''}<button type="button" class="text-button" data-review-recovery-remove="${esc(row.envelopeId!)}" ${this.uploading?'disabled':''}>${clean?'移除本机待办':'停止本机后续保存'}</button>`:row.orphan?`<button type="button" class="text-button" data-review-recovery-remove="orphan:${esc(row.operationId!)}" ${this.uploading?'disabled':''}>移除本机待办</button>`:row.error?`<button type="button" class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}" ${this.uploading?'disabled':''}>重试此文件</button><button type="button" class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}" ${this.uploading?'disabled':''}>移除此行</button>`:''}</div>${item?'<small class="review-upload-boundary">只处理原文件和原材料选择；移除本机待办不会删除服务器文件或撤销已有保存。</small>':''}</li>`;
+    const bar=this.uploadProgressHtml(key,row);
+    return `<li class="material-file-row review-upload-recovery" data-review-upload-key="${esc(key)}" ${row.operationId?`data-review-recovery-id="${esc(row.operationId)}"`:''} ${row.envelopeId?`data-review-recovery-envelope="${esc(row.envelopeId)}"`:''}><div class="material-file-main"><strong>${esc(row.name)}</strong><span>${esc(roleLabels[row.role]??'其他材料')}</span>${target?`<p class="review-upload-target">原补证对象：${esc(target)}</p>`:''}${bar}${row.error?`<p class="material-file-status material-file-error" role="alert">${esc(row.state)}</p>`:''}</div><div class="material-file-actions" ${this.uploading?'hidden':''}>${item?`<button type="button" class="text-button" data-review-recovery-action="resume" data-operation-id="${esc(item.id)}" ${disabled?'disabled':''}>${clean?'完成':row.error?'重试':'继续上传'}</button>${this.uploadNeedsFile.has(item.id)&&!item.adoptionRequest?`<label class="text-button review-upload-reselect">重新选择原文件<input type="file" data-review-recovery-reselect="${esc(item.id)}" accept="${['historical','reference'].includes(row.role)?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg'}" aria-label="重新选择原文件 ${esc(row.name)}" ${disabled?'disabled':''}></label>`:''}<button type="button" class="text-button" data-review-recovery-remove="${esc(row.envelopeId!)}" ${this.uploading?'disabled':''}>移除</button>`:row.orphan?`<button type="button" class="text-button" data-review-recovery-remove="orphan:${esc(row.operationId!)}" ${this.uploading?'disabled':''}>移除本机待办</button>`:row.error?`<button type="button" class="text-button" data-review-action="retry-upload" data-upload-key="${esc(key)}" ${this.uploading?'disabled':''}>重试此文件</button><button type="button" class="text-button" data-review-action="remove-upload" data-upload-key="${esc(key)}" ${this.uploading?'disabled':''}>移除此行</button>`:''}</div>${item&&!this.uploading&&row.error?'<small class="review-upload-boundary">已上传的文件会保留。</small>':''}</li>`;
   }
   private uploadErrorText(error:unknown){
     const text=friendlyError(error,'save');
@@ -1027,7 +1041,20 @@ export class ReviewWorkspace {
     if(error instanceof ApiError&&error.status===422&&error.details.uploadReason!==undefined)this.uploadRejected.add(id);
     this.uploadErrors.set(id,this.uploadErrorText(error));this.scanUploadRecovery();
   }
-  private uploadCallbacks(id:string){return {status:(text:string)=>{if(!this.live())return;try{const record=this.reviewUploads.transportRecords().find(r=>r.id===id);if(record?.uploadId)this.uploadOriginalIds.set(id,record.uploadId);}catch{/* The helper still enforces durable identity before its next stage. */}const row=this.uploadRows.get(id);if(row){row.state=text;row.error=false;}const progress=this.dialog?.querySelector<HTMLElement>('#review-upload-progress');if(progress)progress.textContent=text;this.renderMaterials();},progress:(loaded:number,total:number)=>{if(!this.live())return;const row=this.uploadRows.get(id);if(row)row.state=loaded>=total?'传输完成，正在确认文件保存…':`正在上传 ${Math.min(100,Math.round(loaded/Math.max(total,1)*100))}%…`;this.renderMaterials();}};}
+  private uploadCallbacks(id:string){return {
+    status:(_text:string)=>{
+      if(!this.live())return;
+      const progress=this.uploadProgress.get(id)??{percent:0,phase:'queued' as const};
+      try{const record=this.reviewUploads.transportRecords().find(r=>r.id===id);if(record?.uploadId)this.uploadOriginalIds.set(id,record.uploadId);if(record?.stage==='bytes_unknown')progress.phase='uploading';else if(record&&['confirming','saved'].includes(record.stage))progress.phase='saving';}catch{/* The recovery helper checks the durable record before continuing. */}
+      this.uploadProgress.set(id,progress);this.renderMaterials();this.paintUploadDialog();
+    },
+    progress:(loaded:number,total:number)=>{
+      if(!this.live())return;
+      this.uploadProgress.set(id,{percent:Math.min(100,Math.floor(loaded/Math.max(total,1)*100)),phase:loaded>=total?'saving':'uploading'});
+      this.renderMaterials();this.paintUploadDialog();
+    }
+  };}
+  private paintUploadDialog(){const host=this.dialog?.querySelector<HTMLElement>('#review-upload-progress');if(host)host.innerHTML='<ul class="material-file-list">'+[...this.uploadRows].map(([key,row])=>`<li class="material-file-row"><div class="material-file-main"><strong>${esc(row.name)}</strong>${this.uploadProgressHtml(key,row)}</div></li>`).join('')+'</ul>';}
   private applyUploadResult(result:ReviewUploadResult,index:number){
     if(!this.live()||!this.workspace)return;
     const item=result.envelope.items[index];
@@ -1037,7 +1064,7 @@ export class ReviewWorkspace {
     else if(result.draft){clearTimeout(this.inputTimer);this.inputConflictVersion??=item.adoptionBase?.version??this.workspace.draft.version;}
     if(result.state==='retryable')this.uploadRetryAdoption.add(item.id);else this.uploadRetryAdoption.delete(item.id);
     if(result.reason)this.uploadErrors.set(item.id,this.uploadErrorText(new Error(result.reason)));else this.uploadErrors.delete(item.id);
-    if(result.state==='adopted'||result.state==='complete'){this.uploadNeedsFile.delete(item.id);this.uploadFiles.delete(item.id);}
+    if(result.state==='adopted'||result.state==='complete'){this.uploadProgress.delete(item.id);this.uploadNeedsFile.delete(item.id);this.uploadFiles.delete(item.id);}
     this.scanUploadRecovery();this.renderMaterials();this.renderMeta();
     this.message(result.reason?this.uploadErrorText(new Error(result.reason)):result.state==='adopted'||result.state==='complete'?'已加入原准备，任务尚未启动。':'文件保存结果尚未确认，请继续核对原文件。',result.state==='conflict'||!!result.reason);
   }
@@ -1131,7 +1158,7 @@ export class ReviewWorkspace {
           if(batch.targetLabel)this.uploadTargetLabels.set(envelope.id,batch.targetLabel);
           for(const item of envelope.items){batch.operationIds.push(item.id);if(this.uploadRows.get(remaining[item.index].key)?.duplicateSelection)this.uploadDuplicateSelections.add(item.id);}
           for(const {key} of remaining)this.uploadRows.delete(key);
-          for(const item of envelope.items)this.uploadFiles.set(item.id,remaining[item.index].file);
+          for(const item of envelope.items){this.uploadFiles.set(item.id,remaining[item.index].file);this.uploadProgress.set(item.id,{percent:0,phase:'queued'});}
           this.scanUploadRecovery();this.renderMaterials();
           let finished=true;
           for(const item of envelope.items){

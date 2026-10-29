@@ -640,6 +640,7 @@ export class ProjectExecution {
   }
   private async save() {
     await this.action(async () => {
+      if (!await this.conversation.flush()) { this.message = '补充说明尚未保存，内容已保留，请稍后重试。'; return; }
       if (this.materialBlock() || this.inputReadUncertain || this.pendingExecution) return;
       const selected = this.eligibleMaterials();
       if (!selected.length) { this.message = '请先添加本次需要的项目材料。'; return; }

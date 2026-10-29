@@ -183,7 +183,7 @@ test('failed requirement save retains editable text, blocks start, and retries w
   state.failDrafts=false;await page.reload();
   await expect(page.getByLabel('补充复核要求（选填）')).toHaveValue('保存失败时保留这条要求。');
   await expect.poll(()=>state.workspace.draft.requirements).toEqual(['保存失败时保留这条要求。']);
-  await page.getByLabel('补充复核要求（选填）').fill('');await page.getByRole('button',{name:'保存要求',exact:true}).click();
+  await page.getByLabel('补充复核要求（选填）').fill('');await page.locator('#review-requirements').blur();
   await expect.poll(()=>state.workspace.draft.requirements).toEqual([]);
   await page.reload();await expect(page.getByLabel('补充复核要求（选填）')).toHaveValue('');
   expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
@@ -656,7 +656,7 @@ test('duplicate feedback: cached duplicate retains its notice when saving the dr
  const input=page.locator('[data-review-upload-role="audit"]'),zone=page.locator('[data-review-drop="audit"]');
  const file={name:'重复草稿材料.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic draft retry duplicate')};
  await input.setInputFiles(file);await expect.poll(()=>s.workspace.materials.length).toBe(3);await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);
- s.failDrafts=true;await input.setInputFiles(file);const retry=zone.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toContainText('原草稿');
+ s.failDrafts=true;await input.setInputFiles(file);const retry=zone.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toHaveText('重试');
  const bytesBeforeRetry=s.uploadBytes,createsBeforeRetry=s.uploads.length,request=structuredClone(s.inputSaves.at(-1)!);expect(createsBeforeRetry).toBe(2);expect(bytesBeforeRetry).toBe(2);
  s.failDrafts=false;await retry.click();
  await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);await expect(zone.locator('.duplicate-upload-notice')).toContainText('重复草稿材料.txt：重复文件');
@@ -695,13 +695,13 @@ for(const width of [1360,390])test(`upload queue keeps other pickers usable thro
  await expect(start).toBeDisabled();await expect(other).toBeEnabled();
  const chooserPromise=page.waitForEvent('filechooser');
  await page.locator('label[for="review-upload-other"]').click();const chooser=await chooserPromise;
- bytes.release();await expect(first).toContainText('正在确认材料保存');
+ bytes.release();await expect(first).toContainText('正在保存');
  expect(await original!.evaluate(el=>el.isConnected)).toBe(true);
  await chooser.setFiles({name:'synthetic-other.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic other evidence')});
  const second=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-other.txt'});
- await expect(second).toContainText('等待前一批');expect(state.uploads).toHaveLength(1);
+ await expect(second).toContainText('等待上传');expect(state.uploads).toHaveLength(1);
  completion.release();await expect.poll(()=>state.inputSaves.some(request=>request.input.material_versions.some(material=>material.material_id==='evidence-new'))).toBe(true);
- await expect(start).toBeDisabled();await expect(other).toBeEnabled();await expect(second).toContainText('等待前一批');
+ await expect(start).toBeDisabled();await expect(other).toBeEnabled();await expect(second).toContainText('等待上传');
  const output=process.env.BB_UPLOAD_EVIDENCE;
  if(output){await mkdir(output,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${output}/implementation-uploading-${width}.png`,fullPage:true});if(width===1360)await writeFile(output+'/uploading-scene.json',JSON.stringify(await page.locator('#app').innerHTML()));}
  draft.release();
@@ -740,7 +740,7 @@ test('draft-save retry continues saved material and invalid file can be removed'
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
  await page.locator('[data-review-upload-role="other"]').setInputFiles({name:'synthetic-saved.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic saved evidence')});
  const row=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-saved.txt'});
- const retry=row.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toContainText('原草稿');await expect(row.getByRole('button',{name:'移除此行'})).toHaveCount(0);const request=structuredClone(state.inputSaves.at(-1)!);
+ const retry=row.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toHaveText('重试');await expect(row.getByRole('button',{name:'移除此行'})).toHaveCount(0);const request=structuredClone(state.inputSaves.at(-1)!);
  state.failDrafts=false;await retry.click();await expect(row).toContainText('已保存');
  expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.uploadCompletions).toEqual(['upload-evidence']);expect(state.inputSaves).toEqual([request,request]);expect(state.quoteCalls).toHaveLength(0);
  await page.locator('[data-review-upload-role="other"]').setInputFiles({name:'synthetic-invalid.exe',mimeType:'application/octet-stream',buffer:Buffer.from('not executable')});
@@ -1143,7 +1143,7 @@ test('old browser draft cannot reintroduce a question file omitted by the review
   const input={...original,material_versions:[...original.material_versions,question]};
   await page.addInitScript(({key,value})=>localStorage.setItem(key,JSON.stringify(value)),{key:`bb-review-input:owner-a:${id}`,value:{owner:'owner-a',project_id:id,version:1,input}});
   await setup(page,state,`#/projects/${id}/review?tab=materials`);
-  await page.locator('#review-requirements').fill('保留本机补充要求');await page.getByRole('button',{name:'保存要求',exact:true}).click();
+  await page.locator('#review-requirements').fill('保留本机补充要求');await page.locator('#review-requirements').blur();
   await expect.poll(()=>state.workspace.draft.requirements).toEqual(['保留本机补充要求']);
   expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1']);
 });

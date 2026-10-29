@@ -15,7 +15,7 @@
 <div class="section-heading"><h2>提供复核材料</h2></div><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。</p>
 <div class="section-heading"><h3>待复核募集书</h3></div><div class="material-row"><div class="file-info"><strong>示例募集说明书.docx</strong><span class="file-meta">待复核募集书 · 899 KB</span></div><span class="file-status">已保存</span></div>
 <div class="section-heading"><h3>审计报告 / 财务报表及附注</h3></div><div class="material-row"><div class="file-info"><strong>示例审计报告.pdf</strong><span class="file-meta">审计报告 · 132 KB</span></div><span class="file-status">已保存</span></div>
-<section class="requirements"><label for="requirements">补充复核要求（选填）</label><p>填写希望重点核对的内容、统计口径或特殊情况。要求自动保存，开始复核时一并采用。</p><textarea id="requirements" rows="4" placeholder="例如：请重点核对法定代表人信息是否准确，并核对各处披露是否一致。"></textarea><div class="save-row"><span class="saved" id="saved" role="status">要求已保存</span><button class="text-button" id="save">保存要求</button></div></section>
+<section class="requirements"><label for="requirements">补充复核要求（选填）</label><p>填写希望重点核对的内容、统计口径或特殊情况。要求自动保存，开始复核时一并采用。</p><textarea id="requirements" rows="4" placeholder="例如：请重点核对法定代表人信息是否准确，并核对各处披露是否一致。"></textarea><div class="save-row"><span class="saved" id="saved" role="status">要求已保存</span></div></section>
 <div class="action-footer"><div><strong>准备好了，就可以开始。</strong><p>确认材料与要求后，点击开始复核。</p></div><button class="button primary" id="start">开始复核</button></div><p class="saved" id="execution" role="status"></p>
 </div></section></div></main></div>
 <section class="floating-buddy" id="buddy" aria-label="BondBuddy" hidden><div class="buddy-head"><strong>BondBuddy</strong><button class="icon-button" id="collapse" aria-label="收起BondBuddy">−</button></div><p>围绕项目提问、整理思路或准备下一项任务。</p><textarea rows="4" placeholder="说说你想完成什么…"></textarea><p class="saved">交互示例，未连接模型。</p></section>
@@ -23,7 +23,7 @@
 const input=document.querySelector('#requirements'),status=document.querySelector('#saved'),buddy=document.querySelector('#buddy'),toggle=document.querySelector('#buddy-toggle');
 input.value=localStorage.getItem('review-requirements-prototype')||'';
 function save(){localStorage.setItem('review-requirements-prototype',input.value);status.textContent='要求已保存';}
-input.addEventListener('input',save);document.querySelector('#save').onclick=save;
+input.addEventListener('input',save);
 function show(open){buddy.hidden=!open;toggle.setAttribute('aria-expanded',String(open));if(!open)toggle.focus();}
 toggle.onclick=()=>show(buddy.hidden);document.querySelector('#collapse').onclick=()=>show(false);
 document.addEventListener('keydown',event=>{if(event.key==='Escape')show(false);});

@@ -354,7 +354,7 @@ async function logout() {
   if (projectFiles && !await projectFiles.beforeLeave()) return;
   if (fileConsistency && !await fileConsistency.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
-  if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
+  if (projectConversation?.hasUnsent && !await projectConversation.flush() && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
   if (draft && (draft.dirty || draft.state === 'saving') && !await draft.save()) {
     if (!identity) return;
@@ -388,7 +388,7 @@ async function renderRoute() {
   }
   if (!identity || location.hash.slice(1) !== raw) return;
   if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？')) ||
-      nextRoute !== currentRoute && projectConversation?.hasUnsent &&
+      nextRoute !== currentRoute && projectConversation?.hasUnsent && !await projectConversation.flush() &&
       !window.confirm('还有未发送或保存结果未确认的消息。离开后本页输入将无法恢复，是否继续？')) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }

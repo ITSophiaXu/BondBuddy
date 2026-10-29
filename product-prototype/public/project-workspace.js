@@ -167,7 +167,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     return true;
   }
   function input(el){
-    if(el.id==='project-message'){draft(state.route).messageDraft=el.value;saveDraft(state.route);return;}
+    if(el.id==='project-message'){draft(state.route).messageDraft=el.value;saveDraft(state.route);if(state.route==='update')conversation.autosave(state.route);return;}
     if(el.closest('#workflow-form')&&el.name){
       const d=draft(state.route);
       if(state.route==='update'&&!d.projectId){d[el.name]=el.value;d.title=autoTitle(d);const output=document.querySelector('#generated-project-name');if(output)output.value=d.title||'填写发行人后自动生成';}
