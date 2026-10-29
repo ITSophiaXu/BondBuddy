@@ -8,6 +8,7 @@ import { listProjects, archiveProject } from './project-list.js';
 import { registerProjectCollection } from './project-collection.js';
 import { registerProjectFileWorkspace } from './project-file-workspace.js';
 import { registerWorkpapers } from './workpapers.js';
+import { registerFileGeneration } from './file-generation.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
@@ -319,6 +320,7 @@ export function createServer(settings: Settings = {}) {
   registerProjectCollection(app,db,owner);
   registerProjectFileWorkspace(app,db,owner,blob);
   registerWorkpapers(app,db,owner,blob);
+  registerFileGeneration(app,db,owner,blob);
   registerProjectFileConsistency(app,db,owner);
   registerIntegrity(app,db,owner,blob);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
@@ -722,7 +724,7 @@ export function createServer(settings: Settings = {}) {
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
-      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
       if(prospectus.inactive_material_ids.some(id=>refs.some(ref=>ref.material_id===id)))throw conflict('INPUT_REVISION_CONFLICT','选择中包含旧募集书版本，请刷新后使用当前版本。');
       if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
@@ -1046,14 +1048,14 @@ export function createServer(settings: Settings = {}) {
       const converted=await client.query('SELECT 1 FROM bb_project_kind_conversions WHERE owner_user_id=$1 AND project_id=$2',[user,id]);
       if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted project cannot accept historical material');
       const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
-        AND id=$3 AND version=$4 AND deleted_at IS NULL FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
+        AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
       if(!source)throw missing();
       if(source.role!=='reference'||!['application/pdf',DOCX_MEDIA_TYPE].includes(source.media_type)||
         source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type||
         !Number.isSafeInteger(Number(source.byte_size))||Number(source.byte_size)>MAX_BYTES)
         throw conflict('MATERIAL_CONTENT_MISMATCH','Source identity, format or bytes differ');
       const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
-        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL`,[user,id])).rows[0];
+        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template`,[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const uploadId=await freshUpload(client,source);
@@ -1078,7 +1080,7 @@ export function createServer(settings: Settings = {}) {
         return {receipt_id:receipt.id,source_material_id:receipt.source_material_id,source_material_version:receipt.source_material_version,material:materialDto(saved)};
       }
       const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
-        AND id=$3 AND version=$4 AND deleted_at IS NULL FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
+        AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
       if(!source||source.role!=='reference'||source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type)throw missing();
       let upload=(await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,receipt.upload_id])).rows[0];
       if(upload.state==='deleting'||upload.state==='purged'){
@@ -1088,7 +1090,7 @@ export function createServer(settings: Settings = {}) {
       }
       if(upload.state!=='uploading'&&upload.state!=='received')throw conflict('IDEMPOTENCY_CONFLICT','Copy reservation is no longer writable');
       const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
-        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL`,[user,id])).rows[0];
+        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template`,[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const release=reserveSpool(Number(source.byte_size)),copy=join(spoolDirectory(),`${uid()}.blob`);
@@ -1256,7 +1258,7 @@ export function createServer(settings: Settings = {}) {
         await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.reused',$4)",[uid(),user,uploadId,{project_id:id,material_id:m.id,material_version:m.version}]);
         return result;
       }
-      const capacity=(await client.query('SELECT count(*)::int AS files,COALESCE(sum(byte_size),0)::bigint AS bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id])).rows[0];
+      const capacity=(await client.query('SELECT count(*)::int AS files,COALESCE(sum(byte_size),0)::bigint AS bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template',[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+b.byte_size>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const materialId=uid();

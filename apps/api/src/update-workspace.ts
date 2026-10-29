@@ -20,7 +20,7 @@ async function copyMaterial(pool:Pool,blobs:PrivateBlobs,owner:string,target:str
   await transaction(pool,async c=>{
     await project(c,owner,target,true); await project(c,owner,sourceId);
     if((await c.query('SELECT 1 FROM bb_update_material_copies WHERE project_id=$1 AND source_material_id=$2 AND source_material_version=$3',[target,materialId,version])).rowCount)return;
-    const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[owner,sourceId,materialId,version])).rows[0];
+    const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template',[owner,sourceId,materialId,version])).rows[0];
     if(!m)throw missing();
     const upload=await reserve(c,m);
     await c.query(`INSERT INTO bb_update_material_copies(owner_user_id,project_id,source_project_id,source_material_id,source_material_version,upload_id) VALUES($1,$2,$3,$4,$5,$6)`,[owner,target,sourceId,materialId,version,upload]);
@@ -29,9 +29,9 @@ async function copyMaterial(pool:Pool,blobs:PrivateBlobs,owner:string,target:str
     await project(c,owner,target,true);const source=await project(c,owner,sourceId);
     const receipt=(await c.query('SELECT * FROM bb_update_material_copies WHERE project_id=$1 AND source_material_id=$2 AND source_material_version=$3 FOR UPDATE',[target,materialId,version])).rows[0];
     if(receipt.material_id)return;
-    const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[owner,sourceId,materialId,version])).rows[0];
+    const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR SHARE',[owner,sourceId,materialId,version])).rows[0];
     if(!m)throw missing();
-    const capacity=(await c.query('SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[owner,target])).rows[0];
+    const capacity=(await c.query('SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template',[owner,target])).rows[0];
     if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(m.byte_size)>M1_UPLOAD_LIMITS.projectBytes)throw new Problem(422,'VALIDATION_FAILED','项目材料已达到 60 份 / 500 MB 上限。');
     let upload=(await c.query('SELECT * FROM bb_uploads WHERE id=$1 FOR UPDATE',[receipt.upload_id])).rows[0];
     if(['deleting','purged'].includes(upload.state)){
@@ -82,7 +82,7 @@ export function registerUpdateWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r
       const sources=[...new Set([id,...(source.execution_scope_project_id&&source.execution_scope_project_id!==id?[source.execution_scope_project_id]:[])])];
       for(const sourceId of sources){
         await project(db(),user,sourceId);
-        const materials=(await db().query('SELECT DISTINCT ON(id) id,version FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC',[user,sourceId])).rows;
+        const materials=(await db().query('SELECT DISTINCT ON(id) id,version FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template ORDER BY id,version DESC',[user,sourceId])).rows;
         for(const m of materials)await copyMaterial(db(),blobs(),user,target,sourceId,m.id,m.version,event);
         await transaction(db(),async c=>{
           await project(c,user,target,true);

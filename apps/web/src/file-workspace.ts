@@ -16,6 +16,7 @@ import {UploadRecovery,type UploadRecoveryJson,type UploadRecoveryRecord} from '
 import './file-workspace.css';
 import {WorkpaperPanel} from './workpaper-panel';
 import {WorkpaperTaskPanel} from './workpaper-task';
+import {FileGenerationPanel} from './file-generation-panel';
 import '../../../product-prototype/public/file-generation-ux.css';
 import '../../../product-prototype/public/workpaper-entry.css';
 import './generation-flow.css';
@@ -59,7 +60,7 @@ export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undef
 }
 
 export class FileWorkspace {
-  private workpapers?:WorkpaperPanel|WorkpaperTaskPanel;
+  private workpapers?:WorkpaperPanel|WorkpaperTaskPanel|FileGenerationPanel;
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
   private state?:Workspace;private project?:Dto<'ProjectResponse'>;private selected=new Set<M4DocumentType>();private busy=false;
   private timer?:ReturnType<typeof setTimeout>;private pendingBatch?:Readonly<FileGenerationBatchRequest>;private pendingUncertain=false;private pendingStored=false;private pendingExpired=false;
@@ -196,7 +197,7 @@ export class FileWorkspace {
     const button=document.querySelector<HTMLButtonElement>('#pf-source-next');
     if(button){button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;const footer=button.closest<HTMLElement>('footer')!;footer.hidden=false;footer.querySelector('p')!.textContent=this.state?.source?`将使用 V${this.state.source.sequence} 作为本次生成依据。`:'请上传或选择募集说明书，保存完成后继续。';}
   }
-  private sourceDestination(){return new URLSearchParams(location.hash.split('?')[1]).get('mode')==='documents'||this.entryIntent||this.entryAdopted?'documents':'workpapers';}
+  private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'||mode==='workpapers'?mode:'prepare';}
   private async continueFromSource(){
     this.state=await this.request<Workspace>('GET','/workspace');
     const source=this.state.source;if(!source)return;
@@ -210,17 +211,18 @@ export class FileWorkspace {
   private prepared(){const source=this.state?.source;if(!source)return false;const matches=(id:M4DocumentType)=>{const pin=this.state!.workspace.drafts[id].project_file;return !!pin&&pin.project_id===this.id&&pin.source_version_id===source.version_id&&pin.source_selection_revision===source.selection_revision;};return this.selected.size?[...this.selected].every(matches):PROJECT_DOCUMENT_CATALOG.some(d=>matches(d.id));}
   private saveSelection(){if(this.cache&&!this.cache.saveSelection([...this.selected]))this.status('本次文件选择暂未保存到浏览器会话，刷新后请重新核对。');}
   private header(step:string){
+    const unified=step==='prepare'||step==='source'&&this.sourceDestination()==='prepare';
     const workpapers=step==='workpapers'||step==='source'&&this.sourceDestination()==='workpapers',results=step==='results'||workpapers&&new URLSearchParams(location.hash.split('?')[1]).get('view')==='results';
     const active=step==='source'||step==='choose'?1:step==='confirm'?3:results?4:2;
     return `<header class="pf-workspace-heading pf-generation-heading"><div class="pf-title-row"><div><p class="eyebrow">FILE GENERATION</p><h1>生成文件</h1><p>从募集说明书出发，生成项目所需文件。</p></div><nav class="pf-workspace-actions" aria-label="文件生成导航"><a class="btn secondary" href="${esc(this.href(workpapers?{step:'workpapers',view:'results'}:{step:'results'}))}">生成记录</a>${results?`<a class="btn secondary" href="${esc(this.href(workpapers?{step:'results'}:{step:'workpapers',view:'results'}))}">${workpapers?'模板文件生成记录':'底稿生成记录'}</a>`:''}<a class="btn secondary" href="${esc(this.filesHref())}">项目文件</a></nav></div></header>
-      <nav class="pf-flow-steps" aria-label="文件生成步骤">${['选择募集说明书','选择生成内容','确认并生成','查看成果'].map((label,i)=>{const n=i+1,href=n===1?this.href({step:'source',mode:workpapers?'workpapers':'documents'}):this.href({step:workpapers?'workpapers':'documents'});return `<${n<active&&n<3?'a':'span'} ${n<active&&n<3?`href="${esc(href)}"`:''} data-flow-step="${n}" class="${n===active?'is-current':n<active?'is-complete':''}" ${n===active?'aria-current="step"':''}><b>${n<active?'✓':n}</b>${label}</${n<active&&n<3?'a':'span'}>`;}).join('')}</nav>
-      ${active===2?this.generationModes(workpapers?'workpapers':'documents'):''}<section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`;
+      <nav class="pf-flow-steps" aria-label="文件生成步骤">${['选择募集说明书','选择生成内容','确认并生成','查看成果'].map((label,i)=>{const n=i+1,href=unified?this.href({step:n===1?'source':'prepare'}):n===1?this.href({step:'source',mode:workpapers?'workpapers':'documents'}):this.href({step:workpapers?'workpapers':'documents'});return `<${n<active&&n<3?'a':'span'} ${n<active&&n<3?`href="${esc(href)}"`:''} data-flow-step="${n}" class="${n===active?'is-current':n<active?'is-complete':''}" ${n===active?'aria-current="step"':''}><b>${n<active?'✓':n}</b>${label}</${n<active&&n<3?'a':'span'}>`;}).join('')}</nav>
+      ${active===2&&step!=='prepare'?this.generationModes(workpapers?'workpapers':'documents'):''}<section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`;
   }
-  private generationModes(mode:'workpapers'|'documents'){return `<nav class="pf-flow-modes" aria-label="选择文件生成方式"><a href="${esc(this.href({step:'workpapers'}))}" ${mode==='workpapers'?'aria-current="page"':''}><strong>按目录批量生成</strong><span>从底稿目录中勾选文件</span></a><a href="${esc(this.href({step:'documents'}))}" ${mode==='documents'?'aria-current="page"':''}><strong>按模板生成文件</strong><span>在表格中逐行添加所需文件</span></a></nav>`;}
+  private generationModes(_mode:'workpapers'|'documents'){return `<nav class="pf-flow-modes" aria-label="文件生成导航"><a href="${esc(this.href({step:'prepare'}))}"><strong>准备生成文件</strong><span>选择目录、模板和本批文件</span></a></nav>`;}
   private setWorkpaperStep(step:number){document.querySelectorAll<HTMLElement>('[data-flow-step]').forEach((el,i)=>{const n=i+1;el.classList.toggle('is-current',n===step);el.classList.toggle('is-complete',n<step);if(n===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');el.querySelector('b')!.textContent=n<step?'✓':String(n);});const modes=document.querySelector<HTMLElement>('.pf-flow-modes');if(modes)modes.hidden=step!==2;}
   private async chooseProject(){
     this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'generate',title:'文件生成',eyebrow:'FILE GENERATION',
-      description:'先选择项目和募集说明书，再按底稿目录或文件模板生成文件。',
+      description:'选择募集说明书、所需文件和模板，统一生成本批成果。',
       steps:[],next:'打开文件生成',onNew:()=>this.newProject(),
       open:async(id)=>{if(this.live())location.hash='generate?project='+encodeURIComponent(id);}});
     await this.entry.render();
@@ -241,6 +243,11 @@ export class FileWorkspace {
     const step=!requested||requested==='choose'?'source':requested;
     if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,'generate');this.paintEntryIntent();return;}
     if(this.pendingBatch){this.paintRecovery();return;}
+    if(step==='prepare'){
+      if(!this.state.source){location.hash=this.href({step:'source'});return;}
+      this.shell(`${this.header('prepare')}<div id="pf-unified-generation"></div>`,'generate');
+      this.workpapers=new FileGenerationPanel(this.api,document.querySelector('#pf-unified-generation')!,this.id!,this.owner!,this.state,()=>this.live(),step=>this.setWorkpaperStep(step));await this.workpapers.render();return;
+    }
     if(step==='workpapers'){
       if(!this.state.source&&new URLSearchParams(location.hash.split('?')[1]).get('view')!=='results'){location.hash=this.href({step:'source',mode:'workpapers'});return;}
       this.shell(`${this.header(step)}<div id="pf-workpapers"></div>`,'generate');

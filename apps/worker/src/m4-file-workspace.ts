@@ -28,7 +28,8 @@ export async function m4ToolHashes() {
   return Object.fromEntries(entries) as Record<string,string>;
 }
 export function m4AuthorizedSources(input:M4WorkerInput) {
-  return [...input.materials.map(file=>({kind:'material',id:file.pin.material_id,project_id:file.pin.source_project_id,
+  const template=input.manifest.kind==='document'?input.manifest.template_material:null;
+  return [...input.materials.filter(file=>!template||inputManifestHash(file.pin)!==inputManifestHash(template)).map(file=>({kind:'material',id:file.pin.material_id,project_id:file.pin.source_project_id,
     version:file.pin.material_version,sha256:file.pin.sha256})),
   ...input.artifacts.map(file=>({kind:'artifact',id:file.pin.artifact_id,project_id:file.pin.source_project_id,
     version:file.pin.artifact_version,sha256:file.pin.sha256}))];
@@ -96,7 +97,16 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     await writeFile(join(cwd,path),content,{mode:0o400});originals.set(path,pin.sha256);
     knowledge={...metadata,path,...(template?{template_id:template.id,template_version:template.version,template_sha256:template.sha256,template_path}:{})};
   }
-  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,
+  const chosen=material.find(m=>m.purpose==='template');
+  let selected_template=null;
+  if(input.manifest.kind==='document'&&input.manifest.input.template){
+    if(!chosen)throw Error('INPUT_REVISION_CONFLICT');
+    const working_copy_path='scratch/selected-template.docx';
+    await copyFile(join(cwd,chosen.effective_path),join(cwd,working_copy_path));
+    await chmod(join(cwd,working_copy_path),0o600);
+    selected_template={...input.manifest.input.template,original_path:chosen.path,effective_path:chosen.effective_path,working_copy_path};
+  }
+  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,selected_template,
     requirements: input.manifest.kind === 'document' ? [...input.manifest.input.requirements.map(r => r.text),
       ...(input.manifest.input.supplemental_requirements?.trim() ? [input.manifest.input.supplemental_requirements.trim()] : [])] : [],
     materials: material, artifacts, authorized_sources:m4AuthorizedSources(input), skill: {id: skill.id, version: skill.version, sha256: skill.sha256},

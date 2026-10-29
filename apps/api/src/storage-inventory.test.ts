@@ -11,6 +11,7 @@ test('inventory keys accept only known private object layouts', () => {
   const owner = 'owner_1', project = 'project_1', sha = 'a'.repeat(64), u = '12345678-1234-1234-1234-123456789012';
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/snapshots/s1`), 'snapshot');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/uploads/u1`), 'upload');
+  assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/file-templates/assets/${sha}.docx`), 'file_template');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/provider-results/c1-${sha}.json`), 'provider_result');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr/results/${sha}.json`), 'ocr_result');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr-v2/material/1/${sha}/${sha}.json`), 'ocr_v2_checkpoint');

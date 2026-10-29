@@ -34,7 +34,7 @@ export async function ensureProjectFileWorkspace(c:PoolClient,owner:string,id:st
   await c.query('INSERT INTO bb_project_file_workspaces(owner_user_id,project_id,topic_id) VALUES($1,$2,$3)',[owner,id,t.id]);
   await event(c,owner,id,'project.file_workspace_prepared',{topic_id:t.id});return t;
 }
-async function batchDto(db:Db,owner:string,row:any):Promise<ProjectFileBatch>{
+export async function projectFileBatchDto(db:Db,owner:string,row:any):Promise<ProjectFileBatch>{
   const items=row.items as BatchItem[],ids=items.flatMap(i=>i.run_id?[i.run_id]:[]);
   const runs=(await db.query('SELECT id,state FROM bb_runs WHERE owner_user_id=$1 AND id=ANY($2::text[])',[owner,ids])).rows;
   return {batch_id:row.id,state:row.state,items:items.filter(i=>i.manifest.input.document_type!=='workpaper').map(i=>({document_type:i.manifest.input.document_type as ProjectFileBatch['items'][number]['document_type'],run_id:i.run_id,
@@ -46,7 +46,7 @@ export async function readProjectFileWorkspace(db:Pool,owner:string,id:string){
   if(!binding)throw missing();
   const batches=(await db.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 20',[owner,id])).rows;
   return {project_id:id,source:await projectFileSource(db,owner,id),workspace:await readM4Workspace(db,owner,binding.topic_id),
-    files:await projectFileVersions(db,owner,id),batches:await Promise.all(batches.map(b=>batchDto(db,owner,b)))};
+    files:await projectFileVersions(db,owner,id),batches:await Promise.all(batches.map(b=>projectFileBatchDto(db,owner,b)))};
 }
 
 /** The worker starts each frozen item after its predecessor; closing the browser cannot lose a batch. */
@@ -97,6 +97,34 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
   });
 }
 
+export async function createProjectFileBatch(c:PoolClient,user:string,projectId:string,b:Static<typeof projectFileSchemas.ProjectFileBatchRequest>){
+      const t=await ensureProjectFileWorkspace(c,user,projectId),hash=inputManifestHash({project_id:projectId,...b});
+      const old=(await c.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];
+      if(old){if(old.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','请求已用于其他文件选择。');return old;}
+      if(new Set(b.documents.map(d=>d.document_type)).size!==b.documents.length)throw new Problem(422,'VALIDATION_FAILED','文件类型不能重复。');
+      const source=await projectFileSource(c,user,projectId);
+      if(!source)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
+      // Only after the locked project's receipt lookup can an irreversible input
+      // change prove that an uncertain request did not create this package.
+      // Future revisions and temporarily unavailable sources are not that proof.
+      if(source.selection_revision>b.expected_selection_revision||source.selection_revision===b.expected_selection_revision&&source.version_id!==b.source_version_id)
+        throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，募集书依据已换版，请重新准备并确认。');
+      if(source.version_id!==b.source_version_id||source.selection_revision!==b.expected_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
+      if((await c.query("SELECT 1 FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,projectId])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有文件包尚未完成，请先处理当前任务。');
+      const items:BatchItem[]=[];
+      for(const d of b.documents){
+        const current=(await c.query('SELECT version FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3',[user,t.id,d.document_type])).rows[0];
+        if(current&&Number(current.version)>d.draft_version)
+          throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，文件草稿已换版，请重新准备并确认。');
+        const manifest=await projectFileDocumentManifest(c,user,t,d.document_type,d.draft_version);
+        if(manifest.input.project_file?.project_id!==projectId||manifest.input.project_file?.source_version_id!==source.version_id||manifest.input.project_file.source_selection_revision!==source.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','文件草稿的募集书版本与本次选择不同。');
+        items.push({manifest,run_id:null,attempt:1,error:null});
+      }
+      const row=(await c.query(`INSERT INTO bb_project_file_batches(id,owner_user_id,project_id,topic_id,request_id,request_hash,items,state)
+        VALUES($1,$2,$3,$4,$5,$6,$7,'queued') RETURNING *`,[uid(),user,projectId,t.id,b.request_id,hash,JSON.stringify(items)])).rows[0];
+      await event(c,user,projectId,'project.file_batch_submitted',{batch_id:row.id,document_types:b.documents.map(d=>d.document_type)});return row;
+}
+
 export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
   const base='/api/v1/projects/:project_id/project-files',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
   app.post(base+'/workspace',{schema:{body:projectFileSchemas.ProjectFileWorkspaceRequest}},async r=>{
@@ -142,32 +170,8 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
   app.post(base+'/batches',{schema:{body:projectFileSchemas.ProjectFileBatchRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileBatchRequest>;
     const batch=await transaction(db(),async c=>{
-      const t=await ensureProjectFileWorkspace(c,user,projectId),hash=inputManifestHash({project_id:projectId,...b});
-      const old=(await c.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];
-      if(old){if(old.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','请求已用于其他文件选择。');return old;}
-      if(new Set(b.documents.map(d=>d.document_type)).size!==b.documents.length)throw new Problem(422,'VALIDATION_FAILED','文件类型不能重复。');
-      const source=await projectFileSource(c,user,projectId);
-      if(!source)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
-      // Only after the locked project's receipt lookup can an irreversible input
-      // change prove that an uncertain request did not create this package.
-      // Future revisions and temporarily unavailable sources are not that proof.
-      if(source.selection_revision>b.expected_selection_revision||source.selection_revision===b.expected_selection_revision&&source.version_id!==b.source_version_id)
-        throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，募集书依据已换版，请重新准备并确认。');
-      if(source.version_id!==b.source_version_id||source.selection_revision!==b.expected_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集书版本已变化，请重新确认。');
-      if((await c.query("SELECT 1 FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,projectId])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有文件包尚未完成，请先处理当前任务。');
-      const items:BatchItem[]=[];
-      for(const d of b.documents){
-        const current=(await c.query('SELECT version FROM bb_m4_drafts WHERE owner_user_id=$1 AND topic_id=$2 AND document_type=$3',[user,t.id,d.document_type])).rows[0];
-        if(current&&Number(current.version)>d.draft_version)
-          throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次文件包未被接收，文件草稿已换版，请重新准备并确认。');
-        const manifest=await projectFileDocumentManifest(c,user,t,d.document_type,d.draft_version);
-        if(manifest.input.project_file?.project_id!==projectId||manifest.input.project_file?.source_version_id!==source.version_id||manifest.input.project_file.source_selection_revision!==source.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','文件草稿的募集书版本与本次选择不同。');
-        items.push({manifest,run_id:null,attempt:1,error:null});
-      }
-      const row=(await c.query(`INSERT INTO bb_project_file_batches(id,owner_user_id,project_id,topic_id,request_id,request_hash,items,state)
-        VALUES($1,$2,$3,$4,$5,$6,$7,'queued') RETURNING *`,[uid(),user,projectId,t.id,b.request_id,hash,JSON.stringify(items)])).rows[0];
-      await event(c,user,projectId,'project.file_batch_submitted',{batch_id:row.id,document_types:b.documents.map(d=>d.document_type)});return row;
-    });return batchDto(db(),user,batch);
+      return createProjectFileBatch(c,user,projectId,b);
+    });return projectFileBatchDto(db(),user,batch);
   });
   app.post(base+'/imports',{schema:{body:projectFileSchemas.ProjectFileImportRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileImportRequest>;

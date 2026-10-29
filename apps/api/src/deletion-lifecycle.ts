@@ -142,6 +142,9 @@ async function purgeDeletedProjects(pool: Pool, blobs: PrivateBlobs, policy: Del
       const artifacts = await pool.query(`SELECT a.object_key FROM bb_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
         WHERE r.owner_user_id=$1 AND r.project_id=$2`, [p.owner_user_id, p.id]);
       for (const a of artifacts.rows) await blobs.delete(a.object_key);
+      const templates=await pool.query(`SELECT DISTINCT r->>'object_key' AS object_key FROM bb_file_template_sets s,
+        LATERAL jsonb_array_elements(s.records) r WHERE s.owner_user_id=$1 AND s.project_id=$2`,[p.owner_user_id,p.id]);
+      for(const t of templates.rows)await blobs.delete(t.object_key);
       await policy.afterBlobDeletes?.(p.id);
       await transaction(pool, async client => {
         const receipt = await client.query(`INSERT INTO bb_deleted_content_purges(id,owner_user_id,project_id,subject_kind,artifact_objects,policy_version)
